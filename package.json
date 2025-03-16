@@ -1,0 +1,33 @@
+{
+  "name": "mockifyer",
+  "version": "1.0.0",
+  "description": "API mocking and logging utility for storing and replaying API responses",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mock",
+    "api",
+    "testing",
+    "http",
+    "intercept"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.11.24",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.6",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "axios-mock-adapter": "^1.22.0"
+  }
+}

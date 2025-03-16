@@ -1,0 +1,28 @@
+# Source code
+src/
+
+# Tests
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# Development configs
+.github/
+.gitignore
+.eslintrc*
+.prettierrc*
+tsconfig.json
+jest.config.js
+
+# IDE files
+.vscode/
+.idea/
+
+# Misc
+.DS_Store
+*.log
+coverage/
+docs/
+examples/
+mock-data/ 
