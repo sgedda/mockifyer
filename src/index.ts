@@ -123,13 +123,26 @@ class MockifyerClass {
   }
 
   private setupInterceptors(): void {
+    // Add mockifyer flag to identify mocked instances
+    (this.axiosInstance as any).__mockifyer = true;
+
+    // Add response interceptor to record responses
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => {
+        console.log('[Mockifyer] Recording response for:', {
+          method: response.config.method?.toUpperCase() || 'GET',
+          url: response.config.url
+        });
         this.saveResponse(response);
         return response;
       },
       (error) => {
         if (error.response) {
+          console.log('[Mockifyer] Recording error response for:', {
+            method: error.response.config.method?.toUpperCase() || 'GET',
+            url: error.response.config.url,
+            status: error.response.status
+          });
           this.saveResponse(error.response);
         }
         return Promise.reject(error);
