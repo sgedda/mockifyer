@@ -30,4 +30,10 @@ coverage/
 
 # OS specific files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Exclude generated files and test artifacts
+*.log
+test-mock-data/
+examples/mock-data/
+example-projects/*/mock-data/ 
