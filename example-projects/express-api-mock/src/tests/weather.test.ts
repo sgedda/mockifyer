@@ -1,4 +1,3 @@
-import { setupMockifyer } from '@sgedda/mockifyer';
 import { WeatherService } from '../services/weather';
 import fs from 'fs';
 import path from 'path';

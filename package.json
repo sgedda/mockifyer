@@ -14,11 +14,6 @@
     "release:major": "npm version major && git push && git push --tags",
     "prepublishOnly": "npm test && npm run build"
   },
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
   "keywords": [
     "mock",
     "api",
