@@ -1,0 +1,16 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# DRY (Don't Repeat Yourself) Rules
+- Avoid code duplication in all forms
+- Extract repeated logic into reusable functions/components
+- Use inheritance, composition, and abstraction when appropriate
+- When you see similar code in 3+ places, it's time to refactor
+- Examples of what to look for:
+  - Similar function implementations
+  - Repeated validation logic
+  - Duplicate configuration settings
+  - Copy-pasted UI components
+  - Similar test setups

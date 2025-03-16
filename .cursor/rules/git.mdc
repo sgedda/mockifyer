@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Git Rules
+- NEVER automatically commit or push changes without explicit user request
+- Always wait for direct command from user (e.g. "commit these changes", "push to git")
+- Show changes made and allow user review first (via "show me the changes", "git status")
+- Do not bundle commits/pushes with other operations

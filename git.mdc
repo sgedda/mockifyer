@@ -1,0 +1,23 @@
+# Git Rules
+
+1. NEVER automatically commit or push changes without explicit user request
+2. After making file changes:
+   - Show what changes were made
+   - Wait for explicit command to commit/push
+   - Allow user to review changes if requested
+
+3. Valid commit/push triggers are:
+   - "commit these changes"
+   - "push to git"
+   - "push this"
+   - Any explicit mention of git commit/push action
+
+4. User can review changes first with:
+   - "show me the changes"
+   - "git status"
+   - Any request to see current changes
+
+5. Default behavior:
+   - Make necessary file edits
+   - Show changes
+   - Wait for explicit git commands 
