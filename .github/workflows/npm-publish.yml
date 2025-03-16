@@ -66,15 +66,15 @@ jobs:
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$PREVIOUS_TAG" ]; then
             # If no previous tag exists, get all commits
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            git log --pretty=format:"* %s (%h)" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)")
           else
             # Get commits since last tag
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD)
           fi
+          # Properly escape the changelog for GitHub Actions output
+          echo "CHANGELOG<<delimiter" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "delimiter" >> $GITHUB_OUTPUT
 
       # Create GitHub Release
       - name: Create Release
