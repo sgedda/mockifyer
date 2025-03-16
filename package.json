@@ -1,5 +1,5 @@
 {
-  "name": "mockifyer",
+  "name": "@sgedda/mockifyer",
   "version": "1.0.0",
   "description": "API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
@@ -21,7 +21,7 @@
     "http",
     "intercept"
   ],
-  "author": "",
+  "author": "sgedda",
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^29.5.14",
@@ -35,7 +35,7 @@
     "axios-mock-adapter": "^1.22.0"
   },
   "publishConfig": {
-    "access": "public"
+    "registry": "https://npm.pkg.github.com"
   },
   "repository": {
     "type": "git",
