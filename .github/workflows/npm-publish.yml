@@ -3,7 +3,7 @@ name: Publish Package to GitHub Packages
 on:
   push:
     tags:
-      - 'v*' # Trigger on version tags
+      - 'v*'
 
 jobs:
   quality:
@@ -33,10 +33,13 @@ jobs:
     needs: quality
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
@@ -56,12 +59,22 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      # Generate changelog
+      # Generate changelog from git log
       - name: Generate changelog
         id: changelog
-        uses: metcalfc/changelog-generator@v4.1.0
-        with:
-          myToken: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # If no previous tag exists, get all commits
+            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+            git log --pretty=format:"* %s (%h)" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            # Get commits since last tag
+            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+            git log --pretty=format:"* %s (%h)" $PREVIOUS_TAG..HEAD >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
 
       # Create GitHub Release
       - name: Create Release
@@ -71,7 +84,7 @@ jobs:
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ steps.get_version.outputs.VERSION }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
           draft: false
           prerelease: false
 
