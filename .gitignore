@@ -30,4 +30,10 @@ coverage/
 
 # OS specific files
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Mock data directories
+mock-data/
+**/mock-data/
+example-projects/**/mock-data/
+test-mock-data/ 
