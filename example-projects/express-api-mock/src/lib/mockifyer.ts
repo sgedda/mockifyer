@@ -20,7 +20,7 @@ export function initializeMockifyer() {
     const instance = setupMockifyer({
       mockDataPath: mockPath,
       recordMode: process.env.MOCKIFYER_RECORD === 'true',
-      autoMock: false, // Set to false in record mode
+      autoMock: true, // Set to false in record mode
       useGlobalAxios: true
     });
 

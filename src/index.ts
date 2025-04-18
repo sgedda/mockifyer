@@ -22,7 +22,7 @@ class MockifyerClass {
       // Create a new instance for non-global usage
       this.axiosInstance = axios.create();
     }
-    
+    console.log('[Mockifyer] record mode:', config.recordMode);
     if (!config.recordMode) {
       this.loadMockData();
       this.mockAdapter = new MockAdapter(this.axiosInstance, { onNoMatch: 'passthrough' });
@@ -39,41 +39,45 @@ class MockifyerClass {
   }
 
   private generateRequestKey(request: StoredRequest): string {
-    const { method, url, data, queryParams } = request;
-    const relevantHeaders = this.filterRelevantHeaders(request.headers);
-    return JSON.stringify({
-      method,
-      url,
-      data,
-      queryParams: this.filterQueryParams(queryParams || {}),
-      headers: relevantHeaders
-    });
+    const normalizedUrl = request.url.toLowerCase();
+    const normalizedMethod = request.method.toUpperCase();
+    const queryString = request.queryParams ? new URLSearchParams(request.queryParams).toString() : '';
+    return `${normalizedMethod}:${normalizedUrl}${queryString ? '?' + queryString : ''}`;
   }
 
-  private filterRelevantHeaders(headers: Record<string, string>): Record<string, string> {
-    if (!this.config.requestMatching?.headers) {
-      return {};
+  private findBestMatchingMock(request: StoredRequest): MockData | undefined {
+    const requestKey = this.generateRequestKey(request);
+    console.log('[Mockifyer] requestKey:', requestKey); 
+    // Try exact match first
+    const exactMatch = this.mockDataCache.get(requestKey);
+    if (exactMatch) {
+      console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
+      return exactMatch;
     }
-    return Object.fromEntries(
-      Object.entries(headers).filter(([key]) => 
-        this.config.requestMatching!.headers!.includes(key.toLowerCase())
-      )
-    );
-  }
 
-  private filterQueryParams(params: Record<string, string>): Record<string, string> {
-    if (!this.config.requestMatching?.ignoreQueryParams) {
-      return params;
+    // If no exact match and auRecording response forRecording response fortoMock is false, try to find a similar match
+    if (!this.config.autoMock) {
+      const requestUrl = new URL(request.url);
+      const requestPath = requestUrl.pathname;
+      
+      for (const [key, mockData] of this.mockDataCache.entries()) {
+        const mockUrl = new URL(mockData.request.url);
+        const mockPath = mockUrl.pathname;
+        
+        if (mockPath === requestPath && mockData.request.method === request.method) {
+          console.log(`[Mockifyer] Using similar mock match for ${requestKey}`);
+          return mockData;
+        }
+      }
     }
-    return Object.fromEntries(
-      Object.entries(params).filter(([key]) => 
-        !this.config.requestMatching!.ignoreQueryParams!.includes(key)
-      )
-    );
+
+    return undefined;
   }
 
   private loadMockData(): void {
+    console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
     if (fs.existsSync(this.config.mockDataPath)) {
+      console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
       const files = fs.readdirSync(this.config.mockDataPath);
       files.forEach(file => {
         if (file.endsWith('.json')) {
@@ -101,22 +105,31 @@ class MockifyerClass {
         queryParams: config.params
       };
 
-      const key = this.generateRequestKey(request);
-      const mockData = this.mockDataCache.get(key);
-
+      const mockData = this.findBestMatchingMock(request);
+      console.log('[Mockifyer] mockData:', mockData);
       if (mockData) {
+        // Add mockifyer headers to indicate this is a mocked response
+        const responseHeaders = {
+          ...mockData.response.headers,
+          'x-mockifyer': 'true',
+          'x-mockifyer-timestamp': mockData.timestamp
+        };
+
         return [
           mockData.response.status,
           mockData.response.data,
-          mockData.response.headers
+          responseHeaders
         ];
       }
 
       // If autoMock is true, we should fail when no mock is found
       if (this.config.autoMock) {
-        throw new Error(`No mock data found for request: ${key}`);
+        const errorMessage = `No mock data found for request: ${this.generateRequestKey(request)}`;
+        console.error(`[Mockifyer] ${errorMessage}`);
+        throw new Error(errorMessage);
       }
 
+      console.log(`[Mockifyer] No mock found for ${this.generateRequestKey(request)}, passing through to real API`);
       // For non-autoMock mode, the onNoMatch: 'passthrough' option will handle this
       return [404, { error: 'No mock data found' }];
     });
@@ -129,7 +142,7 @@ class MockifyerClass {
     // Add response interceptor to record responses
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => {
-        console.log('[Mockifyer] Recording response for:', {
+        console.log('[Mockifyer] öööööö Recording response for:', {
           method: response.config.method?.toUpperCase() || 'GET',
           url: response.config.url
         });
@@ -172,7 +185,19 @@ class MockifyerClass {
       scenario: this.config.scenarios?.default
     };
 
-    const filename = `${Date.now()}_${request.method}_${request.url.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
+    // Format the datetime to be readable
+    const now = new Date();
+    const dateStr = now.toISOString()
+      .replace(/T/, '_')  // Replace T with underscore
+      .replace(/\..+/, '') // Remove milliseconds
+      .replace(/:/g, '-'); // Replace colons with hyphens
+
+    // Create a safe filename from the URL
+    const urlSafe = request.url
+      .replace(/^https?:\/\//, '') // Remove protocol
+      .replace(/[^a-zA-Z0-9]/g, '_'); // Replace special chars with underscore
+
+    const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
     fs.writeFileSync(
       path.join(this.config.mockDataPath, filename),
       JSON.stringify(mockData, null, 2)
