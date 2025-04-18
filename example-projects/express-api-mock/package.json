@@ -13,7 +13,7 @@
     "deploy:prepare": "npm run build:prod && rm -rf node_modules && npm install --production"
   },
   "dependencies": {
-    "@sgedda/mockifyer": "^1.1.0",
+    "@sgedda/mockifyer": "file:../../",
     "axios": "^1.6.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

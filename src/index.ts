@@ -23,8 +23,10 @@ class MockifyerClass {
       this.axiosInstance = axios.create();
     }
     console.log('[Mockifyer] record mode:', config.recordMode);
-    if (!config.recordMode) {
+    if(!config.recordSameEndpoints) {
       this.loadMockData();
+    }
+    if (!config.recordMode) {
       this.mockAdapter = new MockAdapter(this.axiosInstance, { onNoMatch: 'passthrough' });
       this.setupMockResponses();
     } else {
@@ -45,9 +47,11 @@ class MockifyerClass {
     return `${normalizedMethod}:${normalizedUrl}${queryString ? '?' + queryString : ''}`;
   }
 
-  private findBestMatchingMock(request: StoredRequest): MockData | undefined {
+  private async findBestMatchingMock(request: StoredRequest): Promise<MockData | undefined> {
     const requestKey = this.generateRequestKey(request);
-    console.log('[Mockifyer] requestKey:', requestKey); 
+    console.log('[Mockifyer] requestKey:', requestKey);
+    console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
+    
     // Try exact match first
     const exactMatch = this.mockDataCache.get(requestKey);
     if (exactMatch) {
@@ -55,8 +59,9 @@ class MockifyerClass {
       return exactMatch;
     }
 
-    // If no exact match and auRecording response forRecording response fortoMock is false, try to find a similar match
-    if (!this.config.autoMock) {
+    console.log('[Mockifyer] useSimilarMatch:', this.config.useSimilarMatch);
+    // If no exact match and useSimilarMatch is true, try to find a similar match
+    if (this.config.useSimilarMatch) {
       const requestUrl = new URL(request.url);
       const requestPath = requestUrl.pathname;
       
@@ -64,9 +69,51 @@ class MockifyerClass {
         const mockUrl = new URL(mockData.request.url);
         const mockPath = mockUrl.pathname;
         
+        console.log('[Mockifyer] mockPath:', mockPath);
+        console.log('[Mockifyer] requestPath:', requestPath);
+        
+        // Only match on path and method, ignore query parameters
         if (mockPath === requestPath && mockData.request.method === request.method) {
-          console.log(`[Mockifyer] Using similar mock match for ${requestKey}`);
-          return mockData;
+          // If useSimilarMatchCheckResponse is true, make the actual request and compare
+          if (this.config.useSimilarMatchCheckResponse) {
+            const requestParams = request.queryParams || {};
+            const mockParams = mockData.request.queryParams || {};
+            
+            console.log('[Mockifyer] requestParams:', requestParams);
+            console.log('[Mockifyer] mockParams:', mockParams);
+            
+            try {
+              // Make the actual request
+              const response = await this.axiosInstance.request({
+                method: request.method,
+                url: request.url,
+                params: requestParams
+              });
+              
+              // Compare the actual response with mock data
+              const actualResponseStr = JSON.stringify(response.data);
+              const mockResponseStr = JSON.stringify(mockData.response.data);
+              
+              console.log('[Mockifyer] Comparing responses:', {
+                actual: actualResponseStr,
+                mock: mockResponseStr
+              });
+              
+              if (actualResponseStr === mockResponseStr) {
+                console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath})`);
+                return mockData;
+              } else {
+                console.log(`[Mockifyer] Similar path match found but response content differs: ${key}`);
+                continue;
+              }
+            } catch (error) {
+              console.error('[Mockifyer] Error making request for comparison:', error);
+              continue;
+            }
+          } else {
+            console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath})`);
+            return mockData;
+          }
         }
       }
     }
@@ -77,17 +124,25 @@ class MockifyerClass {
   private loadMockData(): void {
     console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
     if (fs.existsSync(this.config.mockDataPath)) {
-      console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
       const files = fs.readdirSync(this.config.mockDataPath);
+      console.log('[Mockifyer] Found files:', files);
+      
+      let loadedCount = 0;
       files.forEach(file => {
         if (file.endsWith('.json')) {
           const mockData: MockData = JSON.parse(
             fs.readFileSync(path.join(this.config.mockDataPath, file), 'utf-8')
           );
           const key = this.generateRequestKey(mockData.request);
+          console.log('[Mockifyer] Loading mock:', key);
           this.mockDataCache.set(key, mockData);
+          loadedCount++;
         }
       });
+      console.log('[Mockifyer] Loaded', loadedCount, 'mock files into cache');
+      console.log('[Mockifyer] Cache size:', this.mockDataCache.size);
+    } else {
+      console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     }
   }
 
@@ -96,7 +151,7 @@ class MockifyerClass {
       throw new Error('MockAdapter not initialized');
     }
 
-    this.mockAdapter.onAny().reply((config: AxiosRequestConfig) => {
+    this.mockAdapter.onAny().reply(async (config: AxiosRequestConfig) => {
       const request: StoredRequest = {
         method: config.method?.toUpperCase() || 'GET',
         url: config.url || '',
@@ -105,7 +160,7 @@ class MockifyerClass {
         queryParams: config.params
       };
 
-      const mockData = this.findBestMatchingMock(request);
+      const mockData = await this.findBestMatchingMock(request);
       console.log('[Mockifyer] mockData:', mockData);
       if (mockData) {
         // Add mockifyer headers to indicate this is a mocked response
@@ -122,6 +177,7 @@ class MockifyerClass {
         ];
       }
 
+      console.log('[Mockifyer] autoMock:', this.config.autoMock);
       // If autoMock is true, we should fail when no mock is found
       if (this.config.autoMock) {
         const errorMessage = `No mock data found for request: ${this.generateRequestKey(request)}`;
@@ -163,14 +219,23 @@ class MockifyerClass {
     );
   }
 
-  private saveResponse(response: AxiosResponse): void {
+  private async saveResponse(response: AxiosResponse): Promise<void> {
     const request: StoredRequest = {
       method: response.config.method?.toUpperCase() || 'GET',
       url: response.config.url || '',
       headers: response.config.headers as Record<string, string>,
       data: response.config.data,
-      queryParams: response.config.params
+      queryParams: response.config.params || {}
     };
+
+    // Always check cache first, unless recordSameEndpoints is true
+    if (this.config.recordSameEndpoints !== true) {
+      const existingMock = await this.findBestMatchingMock(request);
+      if (existingMock) {
+        console.log(`[Mockifyer] Using existing mock for endpoint: ${request.url}`);
+        return;
+      }
+    }
 
     const storedResponse: StoredResponse = {
       status: response.status,
@@ -185,17 +250,23 @@ class MockifyerClass {
       scenario: this.config.scenarios?.default
     };
 
+    // Add to cache immediately
+    const key = this.generateRequestKey(request);
+    this.mockDataCache.set(key, mockData);
+    console.log(`[Mockifyer] Added new mock to cache: ${key}`);
+    console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
+
     // Format the datetime to be readable
     const now = new Date();
     const dateStr = now.toISOString()
-      .replace(/T/, '_')  // Replace T with underscore
-      .replace(/\..+/, '') // Remove milliseconds
-      .replace(/:/g, '-'); // Replace colons with hyphens
+      .replace(/T/, '_')
+      .replace(/\..+/, '')
+      .replace(/:/g, '-');
 
     // Create a safe filename from the URL
     const urlSafe = request.url
-      .replace(/^https?:\/\//, '') // Remove protocol
-      .replace(/[^a-zA-Z0-9]/g, '_'); // Replace special chars with underscore
+      .replace(/^https?:\/\//, '')
+      .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
     fs.writeFileSync(

@@ -22,7 +22,10 @@ export class WeatherService {
       this.axios = setupMockifyer({
         mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
-        autoMock: false
+        autoMock: false,
+        recordSameEndpoints: process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true',
+        useSimilarMatch: process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true',
+        useSimilarMatchCheckResponse: process.env.MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE === 'true'
       });
     } else {
       this.axios = axios;

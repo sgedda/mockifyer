@@ -3,6 +3,9 @@ export interface MockifyerConfig {
   recordMode?: boolean;
   autoMock?: boolean;
   useGlobalAxios?: boolean;
+  recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
+  useSimilarMatch?: boolean; // When true, try to find similar path matches
+  useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
   dateManipulation?: {
     // Fixed date to use instead of current date
     fixedDate?: string | Date;
@@ -50,5 +53,7 @@ export const ENV_VARS = {
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
-  MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE'
+  MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',
+  MOCK_USE_SIMILAR_MATCH: 'MOCKIFYER_USE_SIMILAR_MATCH',
+  MOCK_USE_SIMILAR_MATCH_CHECK_RESPONSE: 'MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE'
 } as const; 

@@ -112,12 +112,74 @@ Date manipulation settings are applied in the following order:
 
 ## Environment Variables
 
-- `MOCKIFYER_ENABLED`: Enable/disable mocking (true/false)
-- `MOCKIFYER_RECORD`: Enable/disable recording mode (true/false)
-- `MOCKIFYER_PATH`: Path to store mock data
-- `MOCKIFYER_DATE`: Set a fixed date for testing
-- `MOCKIFYER_DATE_OFFSET`: Set a date offset in milliseconds
-- `MOCKIFYER_TIMEZONE`: Set a specific timezone for date manipulation
+Mockifyer can be configured using the following environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MOCKIFYER_ENABLED` | `false` | Enable/disable mockifyer globally |
+| `MOCKIFYER_PATH` | `./mock-data` | Path to store mock data files |
+| `MOCKIFYER_RECORD_MODE` | `false` | When true, records responses instead of mocking |
+| `MOCKIFYER_RECORD_SAME_ENDPOINTS` | `false` | When true, allows recording multiple responses for the same endpoint |
+| `MOCKIFYER_USE_SIMILAR_MATCH` | `false` | When true, tries to find similar path matches when exact match fails |
+| `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | `false` | When true, verifies response content matches before using similar path match |
+| `MOCKIFYER_AUTO_MOCK` | `false` | When true, automatically mocks all requests (fails if no mock found) |
+
+### Dependencies and Interactions
+
+1. **Basic Configuration**
+   - `MOCKIFYER_ENABLED` must be `true` for any mocking functionality to work
+   - `MOCKIFYER_PATH` is used in both recording and mocking modes
+
+2. **Recording Mode**
+   - `MOCKIFYER_RECORD_MODE` controls whether to record or mock responses
+   - When recording:
+     - `MOCKIFYER_RECORD_SAME_ENDPOINTS` determines if multiple responses for same endpoint are allowed
+     - Other mock-related settings are ignored
+
+3. **Mocking Mode**
+   - When not in record mode:
+     - `MOCKIFYER_USE_SIMILAR_MATCH` enables path-based matching
+     - `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` adds response verification
+     - `MOCKIFYER_AUTO_MOCK` controls fail-fast behavior
+
+4. **Similar Match Flow**
+   ```
+   MOCKIFYER_USE_SIMILAR_MATCH = true
+   └── If exact match fails
+       └── If MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE = true
+           └── Makes real request and compares responses
+       └── If MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE = false
+           └── Uses first matching path without verification
+   ```
+
+5. **Auto Mock Behavior**
+   - When `MOCKIFYER_AUTO_MOCK = true`:
+     - All requests must have a matching mock
+     - Similar match rules still apply
+     - Requests without matches will fail
+
+### Example Configurations
+
+1. **Basic Recording**
+   ```bash
+   MOCKIFYER_ENABLED=true
+   MOCKIFYER_RECORD_MODE=true
+   MOCKIFYER_PATH=./mock-data
+   ```
+
+2. **Strict Mocking**
+   ```bash
+   MOCKIFYER_ENABLED=true
+   MOCKIFYER_AUTO_MOCK=true
+   MOCKIFYER_USE_SIMILAR_MATCH=true
+   ```
+
+3. **Flexible Mocking with Verification**
+   ```bash
+   MOCKIFYER_ENABLED=true
+   MOCKIFYER_USE_SIMILAR_MATCH=true
+   MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE=true
+   ```
 
 ## Contributing
 
