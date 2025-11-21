@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Verify Node.js version (for debugging) - do this early so we see it even if build fails
+RUN node --version && npm --version
+
 WORKDIR /app
 
 # Copy files (if Root Directory is set to example-projects/express-api-mock, 
@@ -23,9 +26,6 @@ RUN npm install --legacy-peer-deps || npm install --force
 
 # Build the application
 RUN npm run build
-
-# Verify Node.js version (for debugging)
-RUN node --version && npm --version
 
 # Expose port
 EXPOSE 3000
