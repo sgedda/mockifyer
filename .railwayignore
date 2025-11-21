@@ -10,3 +10,6 @@ dist/
 coverage/
 *.test.ts
 *.test.js
+# But keep production files for deployment
+!package.prod.json
+!package-lock.prod.json

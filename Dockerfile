@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+# Verify Node.js version (for debugging) - do this early so we see it even if build fails
+RUN node --version && npm --version
+
 WORKDIR /app
 
 # Copy files (if Root Directory is set to example-projects/express-api-mock, 
@@ -8,18 +11,21 @@ WORKDIR /app
 # Railway with Root Directory set means context is already the subdirectory
 COPY . ./
 
+# Verify source files exist
+RUN ls -la package*.json || (echo "ERROR: package files not found!" && exit 1)
+
 # Copy production package files
 RUN cp package.prod.json package.json && \
     cp package-lock.prod.json package-lock.json
+
+# Verify copied files exist
+RUN ls -la package.json package-lock.json || (echo "ERROR: package files not copied!" && exit 1)
 
 # Install dependencies
 RUN npm ci
 
 # Build the application
 RUN npm run build
-
-# Verify Node.js version (for debugging)
-RUN node --version && npm --version
 
 # Expose port
 EXPOSE 3000
