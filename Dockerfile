@@ -2,8 +2,11 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy only the example project
-COPY example-projects/express-api-mock/ ./
+# Copy files (if Root Directory is set to example-projects/express-api-mock, 
+# the build context is already that directory, so we copy from .)
+# If Root Directory is root, we'd need example-projects/express-api-mock/ but
+# Railway with Root Directory set means context is already the subdirectory
+COPY . ./
 
 # Copy production package files
 RUN cp package.prod.json package.json && \
