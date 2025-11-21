@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20.19.5-alpine
 
 # Verify Node.js version (for debugging) - do this early so we see it even if build fails
 RUN node --version && npm --version
