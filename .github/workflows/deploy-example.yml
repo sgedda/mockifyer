@@ -1,0 +1,44 @@
+name: Deploy Example App
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'example-projects/express-api-mock/**'
+      - '.github/workflows/deploy-example.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: example-projects/express-api-mock/package-lock.json
+
+      - name: Install dependencies
+        working-directory: example-projects/express-api-mock
+        run: npm ci
+
+      - name: Build
+        working-directory: example-projects/express-api-mock
+        run: npm run build
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        working-directory: example-projects/express-api-mock
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service ${{ secrets.RAILWAY_SERVICE_ID }}
+
