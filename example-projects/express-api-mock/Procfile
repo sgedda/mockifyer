@@ -1,2 +1,2 @@
-web: cd example-projects/express-api-mock && npm start
+web: npm start
 
