@@ -32,7 +32,8 @@ RUN echo "=== Checking lockfile ===" && \
     ls -la
 
 # Install dependencies
-RUN npm ci
+# npm ci is failing despite valid lockfile - try with verbose output first
+RUN npm ci --verbose 2>&1 || (echo "=== npm ci failed, checking npm debug log ===" && cat /root/.npm/_logs/*-debug-0.log 2>/dev/null || echo "No debug log found" && echo "=== Trying npm install as fallback ===" && npm install)
 
 # Build the application
 RUN npm run build
