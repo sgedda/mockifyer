@@ -19,7 +19,7 @@ RUN cp package.prod.json package.json && \
 RUN ls -la package.json package-lock.json || (echo "ERROR: package files not copied!" && exit 1)
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --verbose
 
 # Build the application
 RUN npm run build
