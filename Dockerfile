@@ -12,14 +12,14 @@ COPY . ./
 RUN ls -la package*.json || (echo "ERROR: package files not found!" && exit 1)
 
 # Copy production package files
-RUN cp package.prod.json package.json && \
-    cp package-lock.prod.json package-lock.json
+RUN cp package.prod.json package.json
 
-# Verify copied files exist
-RUN ls -la package.json package-lock.json || (echo "ERROR: package files not copied!" && exit 1)
+# npm 10.8.2 has a bug parsing lockfiles - delete it and let npm generate fresh one
+RUN rm -f package-lock.json package-lock.prod.json
 
-# Install dependencies
-RUN npm install --verbose
+# Install dependencies (will generate new lockfile)
+# npm 10.8.2 has a bug - use --legacy-peer-deps to work around it
+RUN npm install --legacy-peer-deps || npm install --force
 
 # Build the application
 RUN npm run build
