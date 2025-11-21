@@ -32,7 +32,7 @@ RUN rm -f package-lock.json package-lock.prod.json
 
 # Replace @sgedda/mockifyer dependency with local file path to avoid GitHub Packages auth
 # This works because we're building from the same repository
-RUN if [ -d "/tmp/mockifyer/src" ]; then \
+RUN if [ -d "./src" ]; then \
       echo "Using local mockifyer from repository" && \
       npm pkg set dependencies.@sgedda/mockifyer=file:/tmp/mockifyer || \
       sed -i 's|"@sgedda/mockifyer": "[^"]*"|"@sgedda/mockifyer": "file:/tmp/mockifyer"|' package.json; \
