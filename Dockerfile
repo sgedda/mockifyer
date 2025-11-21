@@ -21,6 +21,16 @@ RUN cp package.prod.json package.json && \
 # Verify copied files exist
 RUN ls -la package.json package-lock.json || (echo "ERROR: package files not copied!" && exit 1)
 
+# Check lockfile version and verify it's valid JSON
+RUN echo "=== Checking lockfile ===" && \
+    head -10 package-lock.json && \
+    echo "---" && \
+    node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package-lock.json', 'utf8')); console.log('lockfileVersion:', pkg.lockfileVersion); console.log('Valid JSON: YES');" && \
+    echo "=== Current directory ===" && \
+    pwd && \
+    echo "=== Files in current directory ===" && \
+    ls -la
+
 # Install dependencies
 RUN npm ci
 
