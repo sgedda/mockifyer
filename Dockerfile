@@ -15,25 +15,13 @@ COPY . ./
 RUN ls -la package*.json || (echo "ERROR: package files not found!" && exit 1)
 
 # Copy production package files
-RUN cp package.prod.json package.json && \
-    cp package-lock.prod.json package-lock.json
+RUN cp package.prod.json package.json
 
-# Verify copied files exist
-RUN ls -la package.json package-lock.json || (echo "ERROR: package files not copied!" && exit 1)
+# npm 10.8.2 has a bug parsing lockfiles - delete it and let npm generate fresh one
+RUN rm -f package-lock.json package-lock.prod.json
 
-# Check lockfile version and verify it's valid JSON
-RUN echo "=== Checking lockfile ===" && \
-    head -10 package-lock.json && \
-    echo "---" && \
-    node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package-lock.json', 'utf8')); console.log('lockfileVersion:', pkg.lockfileVersion); console.log('Valid JSON: YES');" && \
-    echo "=== Current directory ===" && \
-    pwd && \
-    echo "=== Files in current directory ===" && \
-    ls -la
-
-# Install dependencies
-# npm ci is failing despite valid lockfile - try with verbose output first
-RUN npm ci --verbose 2>&1 || (echo "=== npm ci failed, checking npm debug log ===" && cat /root/.npm/_logs/*-debug-0.log 2>/dev/null || echo "No debug log found" && echo "=== Trying npm install as fallback ===" && npm install)
+# Install dependencies (will generate new lockfile)
+RUN npm install
 
 # Build the application
 RUN npm run build
