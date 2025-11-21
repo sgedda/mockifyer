@@ -1,5 +1,9 @@
 FROM node:20-alpine
 
+# Build argument for GitHub token (Railway will pass this as build secret)
+ARG GITHUB_TOKEN
+ARG NPM_TOKEN
+
 # Verify Node.js version (for debugging) - do this early so we see it even if build fails
 RUN node --version && npm --version
 
@@ -21,11 +25,16 @@ RUN cp package.prod.json package.json
 RUN rm -f package-lock.json package-lock.prod.json
 
 # Configure npm authentication for GitHub Packages
-# Railway should have GITHUB_TOKEN or NPM_TOKEN set as environment variable
+# Use build arguments (Railway passes secrets as build args)
 RUN if [ -n "$GITHUB_TOKEN" ]; then \
       echo "//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN" >> .npmrc; \
+      echo "Configured GitHub token"; \
     elif [ -n "$NPM_TOKEN" ]; then \
       echo "//npm.pkg.github.com/:_authToken=$NPM_TOKEN" >> .npmrc; \
+      echo "Configured NPM token"; \
+    else \
+      echo "WARNING: No GitHub token provided - authentication may fail"; \
+      cat .npmrc; \
     fi
 
 # Install dependencies (will generate new lockfile)
