@@ -2,6 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
+    "installCommand": "echo 'Skipping root install, will install in build phase'",
     "buildCommand": "cd example-projects/express-api-mock && cp package.prod.json package.json && cp package-lock.prod.json package-lock.json && npm ci && npm run build"
   },
   "deploy": {
