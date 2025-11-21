@@ -19,13 +19,11 @@ Railway offers a free tier with automatic deployments from GitHub.
    - Select the root directory
 
 3. **Configure Service**
-   - Railway will auto-detect the Node.js app
    - **IMPORTANT**: In the service settings, go to "Settings" → "Source"
    - Set the **Root Directory** to: `example-projects/express-api-mock`
-   - Railway will automatically detect:
-     - Build Command: `npm install` (runs automatically, then `postinstall` runs `npm run build`)
-     - Start Command: `npm start` (from package.json)
-   - No need to manually set build/start commands if Root Directory is set correctly
+   - **IMPORTANT**: In "Settings" → "Build", set **Builder** to: `Dockerfile`
+   - This forces Railway to use the Dockerfile instead of Railpack auto-detection
+   - The Dockerfile handles copying production files and building correctly
 
 4. **Set Environment Variables**
    - Go to the service settings → Variables

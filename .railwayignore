@@ -1,0 +1,12 @@
+package.json
+package-lock.json
+tsconfig.json
+src/
+tests/
+examples/
+.git/
+node_modules/
+dist/
+coverage/
+*.test.ts
+*.test.js
