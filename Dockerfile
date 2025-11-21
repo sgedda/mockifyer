@@ -18,6 +18,9 @@ RUN npm ci
 # Build the application
 RUN npm run build
 
+# Verify Node.js version (for debugging)
+RUN node --version && npm --version
+
 # Expose port
 EXPOSE 3000
 
