@@ -20,6 +20,14 @@ RUN cp package.prod.json package.json
 # npm 10.8.2 has a bug parsing lockfiles - delete it and let npm generate fresh one
 RUN rm -f package-lock.json package-lock.prod.json
 
+# Configure npm authentication for GitHub Packages
+# Railway should have GITHUB_TOKEN or NPM_TOKEN set as environment variable
+RUN if [ -n "$GITHUB_TOKEN" ]; then \
+      echo "//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN" >> .npmrc; \
+    elif [ -n "$NPM_TOKEN" ]; then \
+      echo "//npm.pkg.github.com/:_authToken=$NPM_TOKEN" >> .npmrc; \
+    fi
+
 # Install dependencies (will generate new lockfile)
 RUN npm install
 
