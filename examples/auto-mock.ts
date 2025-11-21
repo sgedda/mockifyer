@@ -10,7 +10,7 @@ if (isEnabled) {
   setupMockifyer({
     mockDataPath,
     recordMode: isRecordMode,
-    autoMock: true,
+    failOnMissingMock: true,
     useGlobalAxios: true
   });
 }

@@ -32,7 +32,12 @@ This example project demonstrates how to use `mockifyer` to mock external API ca
    npm run dev
    ```
 
-4. Run tests:
+4. Open the web dashboard:
+   - Navigate to `http://localhost:3000` in your browser
+   - The dashboard provides a user-friendly interface to test all API endpoints
+   - It displays whether responses are mocked or from the real API with cute visual indicators 🎭
+
+5. Run tests:
    ```bash
    npm test
    ```
@@ -76,6 +81,18 @@ Example response:
   }
 ]
 ```
+
+## Web Dashboard
+
+The project includes a beautiful web dashboard for testing endpoints interactively:
+
+- **Visual Interface**: Modern, gradient-styled UI with card-based layout
+- **Mock Detection**: Automatically detects and displays when responses are mocked vs real API calls
+- **Mock Information**: Shows mock timestamp and other mockifyer metadata
+- **Real-time Testing**: Test all endpoints directly from the browser
+- **Cute Indicators**: 🎭 badges for mocked responses, 🌐 badges for real API calls
+
+Access the dashboard at `http://localhost:3000` when the server is running.
 
 ## Testing with mockifyer
 

@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockifyer Test Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .response-container {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .response-container.mocked {
+            background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+            border-left-color: #4caf50;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
+        }
+
+        .response-container.real-api {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-left-color: #ff9800;
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.2);
+        }
+
+        .response-container h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .mock-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: 700;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+            box-shadow: 0 2px 8px rgba(17, 153, 142, 0.4);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.9;
+                transform: scale(1.02);
+            }
+        }
+
+        .real-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: 700;
+            margin-left: 10px;
+            box-shadow: 0 2px 8px rgba(245, 87, 108, 0.4);
+        }
+
+        .mock-info {
+            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            border-left: 5px solid #2e7d32;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+        }
+
+        .mock-info h4 {
+            color: #1b5e20;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1em;
+        }
+
+        .mock-info p {
+            color: #2e7d32;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        .real-api-info {
+            background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%);
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            border-left: 5px solid #f57c00;
+            box-shadow: 0 2px 8px rgba(245, 124, 0, 0.2);
+        }
+
+        .real-api-info h4 {
+            color: #e65100;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1em;
+        }
+
+        .real-api-info p {
+            color: #bf360c;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, .3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #ffebee;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+
+        .error h3 {
+            color: #f44336;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-ok {
+            background: #4caf50;
+        }
+
+        .status-error {
+            background: #f44336;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        .status-banner {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-banner h2 {
+            color: #667eea;
+            margin: 0;
+            font-size: 1.3em;
+        }
+
+        .status-banner .status-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+        }
+
+        .status-item strong {
+            color: #333;
+        }
+
+        .status-value {
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .status-value.enabled {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .status-value.disabled {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .status-value.recording {
+            background: #fff3e0;
+            color: #e65100;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎭 Mockifyer Test Dashboard</h1>
+
+        <div class="status-banner" id="status-banner">
+            <h2>📊 Current Status</h2>
+            <div class="status-items" id="status-items">
+                <div class="status-item">
+                    <strong>Loading...</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Check Card -->
+        <div class="card">
+            <h2>🏥 Health Check</h2>
+            <button onclick="checkHealth()">Check Server Health</button>
+            <div id="health-response"></div>
+        </div>
+
+        <!-- Current Weather Card -->
+        <div class="card">
+            <h2>🌤️ Current Weather</h2>
+            <div class="form-group">
+                <label for="city-input">City Name:</label>
+                <input type="text" id="city-input" placeholder="e.g., London, New York, Tokyo" value="London">
+            </div>
+            <button onclick="getCurrentWeather()">Get Current Weather</button>
+            <div id="current-weather-response"></div>
+        </div>
+
+        <!-- Forecast Card -->
+        <div class="card">
+            <h2>📅 Weather Forecast</h2>
+            <div class="form-group">
+                <label for="forecast-city-input">City Name:</label>
+                <input type="text" id="forecast-city-input" placeholder="e.g., London, New York, Tokyo" value="London">
+            </div>
+            <div class="form-group">
+                <label for="days-input">Number of Days:</label>
+                <select id="days-input">
+                    <option value="1">1 day</option>
+                    <option value="2">2 days</option>
+                    <option value="3" selected>3 days</option>
+                    <option value="5">5 days</option>
+                    <option value="7">7 days</option>
+                </select>
+            </div>
+            <button onclick="getForecast()">Get Forecast</button>
+            <div id="forecast-response"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        async function makeRequest (url, options = {}) {
+            const startTime = performance.now();
+            try {
+                const response = await fetch(url, options);
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+                const data = await response.json();
+                // Check for mock header (case-insensitive)
+                const mockHeader = response.headers.get('x-mockifyer') ||
+                    response.headers.get('X-Mockifyer') ||
+                    response.headers.get('X-MOCKIFYER');
+                const isMocked = mockHeader === 'true';
+
+                console.log('[Dashboard] Response headers:', Object.fromEntries(response.headers.entries()));
+                console.log('[Dashboard] Mock header value:', mockHeader);
+                console.log('[Dashboard] Is mocked:', isMocked);
+
+                return {
+                    success: response.ok,
+                    data,
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    isMocked: isMocked,
+                    mockTimestamp: response.headers.get('x-mockifyer-timestamp') || response.headers.get('X-Mockifyer-Timestamp'),
+                    mockFilename: response.headers.get('x-mockifyer-filename') || response.headers.get('X-Mockifyer-Filename'),
+                    mockFilepath: response.headers.get('x-mockifyer-filepath') || response.headers.get('X-Mockifyer-Filepath'),
+                    responseTime: responseTime
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message,
+                    isMocked: false
+                };
+            }
+        }
+
+        function displayResponse (containerId, result, title) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            if (!result) return;
+
+            const responseDiv = document.createElement('div');
+            const containerClass = result.success
+                ? (result.isMocked ? 'mocked' : 'real-api')
+                : 'error';
+            responseDiv.className = `response-container ${containerClass}`;
+
+            const titleEl = document.createElement('h3');
+            const statusText = result.isMocked
+                ? '<span class="mock-badge">🎭 USING MOCK DATA</span>'
+                : '<span class="real-badge">🌐 REAL API CALL</span>';
+            titleEl.innerHTML = `
+                <span class="status-indicator ${result.success ? 'status-ok' : 'status-error'}"></span>
+                ${title}
+                ${statusText}
+            `;
+            titleEl.style.fontSize = '1.3em';
+            titleEl.style.marginBottom = '20px';
+            responseDiv.appendChild(titleEl);
+
+            // Add a prominent banner at the top
+            const banner = document.createElement('div');
+            banner.style.cssText = `
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                font-weight: 700;
+                font-size: 1.1em;
+                text-align: center;
+                ${result.isMocked
+                    ? 'background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);'
+                    : 'background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);'}
+            `;
+            banner.innerHTML = result.isMocked
+                ? '🎭 This response came from MOCK DATA - No external API call was made!'
+                : '🌐 This response came from REAL API - External API call was made!';
+            responseDiv.insertBefore(banner, titleEl);
+
+            if (result.success) {
+                if (result.isMocked && result.mockTimestamp) {
+                    const mockInfo = document.createElement('div');
+                    mockInfo.className = 'mock-info';
+
+                    let fileInfo = '';
+                    if (result.mockFilename) {
+                        // Try to make path relative if it's an absolute path
+                        let displayPath = result.mockFilepath || result.mockFilename;
+                        // Remove common workspace patterns to make it more readable
+                        displayPath = displayPath.replace(/^.*\/(mock-data|mockifyer)/, '$1');
+                        fileInfo = `
+                            <p><strong>📁 Mock File Name:</strong> <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-weight: 600;">${result.mockFilename}</code></p>
+                            <p><strong>📂 File Path:</strong> <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px; word-break: break-all; font-family: 'Courier New', monospace; font-size: 0.9em;">${displayPath}</code></p>
+                        `;
+                    }
+
+                    mockInfo.innerHTML = `
+                        <h4>✨ Mockifyer Information - Using Mock Data 🎭</h4>
+                        <p><strong>📅 Mock Created:</strong> ${new Date(result.mockTimestamp).toLocaleString()}</p>
+                        <p><strong>⚡ Response Time:</strong> ${result.responseTime}ms (mocked - instant!)</p>
+                        <p><strong>✅ Status Code:</strong> ${result.status}</p>
+                        <p><strong>💾 Source:</strong> Mock data file</p>
+                        ${fileInfo}
+                    `;
+                    responseDiv.appendChild(mockInfo);
+                } else {
+                    const realInfo = document.createElement('div');
+                    realInfo.className = 'real-api-info';
+                    realInfo.innerHTML = `
+                        <h4>🌐 Real API Call Information - Using External API</h4>
+                        <p><strong>⏱️ Response Time:</strong> ${result.responseTime}ms</p>
+                        <p><strong>✅ Status Code:</strong> ${result.status}</p>
+                        <p><strong>🌍 Source:</strong> External API (WeatherAPI)</p>
+                        <p><strong>💡 Tip:</strong> Enable MOCKIFYER_ENABLED=true to use mock data</p>
+                    `;
+                    responseDiv.appendChild(realInfo);
+                }
+
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(result.data, null, 2);
+                responseDiv.appendChild(pre);
+            } else {
+                const errorDiv = document.createElement('div');
+                errorDiv.innerHTML = `<p><strong>Error:</strong> ${result.error || JSON.stringify(result.data, null, 2)}</p>`;
+                responseDiv.appendChild(errorDiv);
+            }
+
+            container.appendChild(responseDiv);
+        }
+
+        async function checkHealth () {
+            const button = event.target;
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Checking...';
+
+            const result = await makeRequest(`${API_BASE}/health`);
+            displayResponse('health-response', result, 'Health Check Result');
+
+            button.disabled = false;
+            button.textContent = 'Check Server Health';
+        }
+
+        async function getCurrentWeather () {
+            const button = event.target;
+            const city = document.getElementById('city-input').value.trim();
+
+            if (!city) {
+                alert('Please enter a city name');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
+            displayResponse('current-weather-response', result, `Current Weather for ${city}`);
+
+            button.disabled = false;
+            button.textContent = 'Get Current Weather';
+        }
+
+        async function getForecast () {
+            const button = event.target;
+            const city = document.getElementById('forecast-city-input').value.trim();
+            const days = document.getElementById('days-input').value;
+
+            if (!city) {
+                alert('Please enter a city name');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
+            displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}`);
+
+            button.disabled = false;
+            button.textContent = 'Get Forecast';
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('city-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getCurrentWeather();
+        });
+
+        document.getElementById('forecast-city-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getForecast();
+        });
+
+        // Load status on page load
+        async function loadStatus () {
+            try {
+                const result = await makeRequest(`${API_BASE}/health`);
+                const statusItems = document.getElementById('status-items');
+
+                // Try to detect mockifyer status from a test call (don't show error if it fails)
+                let isMockEnabled = false;
+                let isCurrentlyMocked = false;
+
+                try {
+                    const testResult = await makeRequest(`${API_BASE}/api/weather/current/London`);
+                    isMockEnabled = testResult.isMocked !== undefined;
+                    isCurrentlyMocked = testResult.isMocked === true;
+                } catch (e) {
+                    // If test fails, we can't determine status - that's okay
+                }
+
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>Mockifyer:</strong>
+                        <span class="status-value ${isMockEnabled ? 'enabled' : 'disabled'}">
+                            ${isMockEnabled ? '✅ Enabled' : '❌ Disabled'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <strong>Current Mode:</strong>
+                        <span class="status-value ${isCurrentlyMocked ? 'enabled' : 'real-api'}">
+                            ${isCurrentlyMocked ? '🎭 Using Mocks' : '🌐 Real API'}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <strong>💡 Tip:</strong>
+                        <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
+                    </div>
+                `;
+            } catch (error) {
+                const statusItems = document.getElementById('status-items');
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>Status:</strong>
+                        <span class="status-value disabled">Unable to detect</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Load status when page loads
+        loadStatus();
+    </script>
+</body>
+
+</html>

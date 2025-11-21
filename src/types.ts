@@ -1,7 +1,12 @@
+import { HTTPClientType } from './clients/http-client-factory';
+
 export interface MockifyerConfig {
   mockDataPath: string;
+  /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
-  autoMock?: boolean;
+  /** When true, throws an error if no mock data is found for a request. 
+   * Note: This is automatically set to false when recordMode is true, as real API calls are needed for recording. */
+  failOnMissingMock?: boolean;
   useGlobalAxios?: boolean;
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
@@ -22,6 +27,11 @@ export interface MockifyerConfig {
     headers?: string[];
     ignoreQueryParams?: string[];
   };
+  // HTTP client configuration
+  httpClientType?: HTTPClientType;
+  baseUrl?: string;
+  defaultHeaders?: Record<string, string>;
+  axiosInstance?: any;
 }
 
 export interface StoredRequest {

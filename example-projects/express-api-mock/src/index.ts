@@ -9,6 +9,7 @@ initializeMockifyer();
 // Other imports after mockifyer is initialized
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { weatherRouter } from './routes/weather';
 
 const app = express();
@@ -17,6 +18,9 @@ const port = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/api/weather', weatherRouter);

@@ -13,7 +13,7 @@ function createMockifyerInstance(baseConfig = {}) {
   return setupMockifyer({
     recordMode: isRecordMode,
     mockDataPath: mockPath,
-    autoMock: true,
+    failOnMissingMock: true,
     scenarios: scenario ? {
       default: scenario
     } : undefined,
@@ -40,7 +40,7 @@ export function initializeMockifyer() {
 
   // Replace axios.create
   axios.create = function mockedCreate(config = {}): AxiosInstance {
-    return createMockifyerInstance(config);
+    return createMockifyerInstance(config) as unknown as AxiosInstance;
   };
 
   isInitialized = true;

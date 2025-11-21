@@ -4,7 +4,7 @@ import { setupMockifyer } from '@sgedda/mockifyer';
 setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: true,  // Enable recording mode to generate mock data
-  autoMock: true,
+  failOnMissingMock: true,
   useGlobalAxios: true,
   dateManipulation: {
     fixedDate: '2024-03-16T00:00:00Z'

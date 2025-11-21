@@ -7,7 +7,7 @@ async function runDateExamples() {
   // Example 2: Using a fixed date
   const mockifyerFixed = setupMockifyer({
     mockDataPath: './examples/mock-data',
-    autoMock: true,
+    failOnMissingMock: true,
     dateManipulation: {
       fixedDate: '2024-12-25T12:00:00Z'
     }
@@ -19,7 +19,7 @@ async function runDateExamples() {
   // Example 3: Using date offset (1 week in the future)
   const mockifyerOffset = setupMockifyer({
     mockDataPath: './examples/mock-data',
-    autoMock: true,
+    failOnMissingMock: true,
     dateManipulation: {
       offset: 7 * 24 * 60 * 60 * 1000 // 7 days
     }
@@ -31,7 +31,7 @@ async function runDateExamples() {
   // Example 4: Using timezone
   const mockifyerTimezone = setupMockifyer({
     mockDataPath: './examples/mock-data',
-    autoMock: true,
+    failOnMissingMock: true,
     dateManipulation: {
       timezone: 'Asia/Tokyo'
     }
@@ -43,7 +43,7 @@ async function runDateExamples() {
   // Example 5: Practical example with API mocking
   const axiosInstance = setupMockifyer({
     mockDataPath: './examples/mock-data',
-    autoMock: true,
+    failOnMissingMock: true,
     useGlobalAxios: false,
     dateManipulation: {
       fixedDate: '2024-03-16T10:00:00Z'
