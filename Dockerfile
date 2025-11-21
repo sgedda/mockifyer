@@ -22,7 +22,7 @@ RUN rm -f package-lock.json package-lock.prod.json
 
 # Install dependencies (will generate new lockfile)
 # npm 10.8.2 has a bug - use --legacy-peer-deps to work around it
-RUN npm install --legacy-peer-deps || npm install --force
+RUN npm ci --verbose
 
 # Build the application
 RUN npm run build
