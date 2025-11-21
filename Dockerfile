@@ -1,8 +1,5 @@
+# syntax=docker/dockerfile:1.4
 FROM node:20-alpine
-
-# Build argument for GitHub token (Railway will pass this as build secret)
-ARG GITHUB_TOKEN
-ARG NPM_TOKEN
 
 # Verify Node.js version (for debugging) - do this early so we see it even if build fails
 RUN node --version && npm --version
@@ -25,16 +22,25 @@ RUN cp package.prod.json package.json
 RUN rm -f package-lock.json package-lock.prod.json
 
 # Configure npm authentication for GitHub Packages
-# Use build arguments (Railway passes secrets as build args)
-RUN if [ -n "$GITHUB_TOKEN" ]; then \
-      echo "//npm.pkg.github.com/:_authToken=$GITHUB_TOKEN" >> .npmrc; \
-      echo "Configured GitHub token"; \
-    elif [ -n "$NPM_TOKEN" ]; then \
-      echo "//npm.pkg.github.com/:_authToken=$NPM_TOKEN" >> .npmrc; \
-      echo "Configured NPM token"; \
+# Railway environment variables should be available during build
+# Debug: Show what environment variables are available
+RUN echo "=== Environment Debug ===" && \
+    env | grep -i token || echo "No token variables found" && \
+    echo "=== End Debug ==="
+
+# Add token to .npmrc if available
+RUN if [ -n "${GITHUB_TOKEN:-}" ]; then \
+      echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc && \
+      echo "✓ Configured GitHub token"; \
+    elif [ -n "${NPM_TOKEN:-}" ]; then \
+      echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+      echo "✓ Configured NPM token"; \
     else \
-      echo "WARNING: No GitHub token provided - authentication may fail"; \
-      cat .npmrc; \
+      echo "✗ ERROR: No GITHUB_TOKEN or NPM_TOKEN found in environment" && \
+      echo "Please set NPM_TOKEN or GITHUB_TOKEN in Railway environment variables" && \
+      echo "Current .npmrc:" && \
+      cat .npmrc && \
+      exit 1; \
     fi
 
 # Install dependencies (will generate new lockfile)
