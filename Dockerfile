@@ -12,6 +12,15 @@ WORKDIR /app
 # Railway with Root Directory set means context is already the subdirectory
 COPY . ./
 
+# Copy mockifyer source code from parent directory to avoid GitHub Packages auth
+# This works because we're in the same repository
+RUN mkdir -p /tmp/mockifyer && \
+    if [ -d "../../src" ]; then \
+      cp -r ../../src /tmp/mockifyer/ && \
+      cp ../../package.json /tmp/mockifyer/ && \
+      cp ../../tsconfig.json /tmp/mockifyer/ 2>/dev/null || true; \
+    fi
+
 # Verify source files exist
 RUN ls -la package*.json || (echo "ERROR: package files not found!" && exit 1)
 
@@ -21,26 +30,24 @@ RUN cp package.prod.json package.json
 # npm 10.8.2 has a bug parsing lockfiles - delete it and let npm generate fresh one
 RUN rm -f package-lock.json package-lock.prod.json
 
-# Configure npm authentication for GitHub Packages
-# Railway environment variables should be available during build
-# Debug: Show what environment variables are available
-RUN echo "=== Environment Debug ===" && \
-    env | grep -i token || echo "No token variables found" && \
-    echo "=== End Debug ==="
-
-# Add token to .npmrc if available
-RUN if [ -n "${GITHUB_TOKEN:-}" ]; then \
-      echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc && \
-      echo "✓ Configured GitHub token"; \
-    elif [ -n "${NPM_TOKEN:-}" ]; then \
-      echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
-      echo "✓ Configured NPM token"; \
+# Replace @sgedda/mockifyer dependency with local file path to avoid GitHub Packages auth
+# This works because we're building from the same repository
+RUN if [ -d "/tmp/mockifyer/src" ]; then \
+      echo "Using local mockifyer from repository" && \
+      npm pkg set dependencies.@sgedda/mockifyer=file:/tmp/mockifyer || \
+      sed -i 's|"@sgedda/mockifyer": "[^"]*"|"@sgedda/mockifyer": "file:/tmp/mockifyer"|' package.json; \
     else \
-      echo "✗ ERROR: No GITHUB_TOKEN or NPM_TOKEN found in environment" && \
-      echo "Please set NPM_TOKEN or GITHUB_TOKEN in Railway environment variables" && \
-      echo "Current .npmrc:" && \
-      cat .npmrc && \
-      exit 1; \
+      echo "WARNING: Could not find mockifyer source, will try GitHub Packages" && \
+      if [ -n "${GITHUB_TOKEN:-}" ]; then \
+        echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> .npmrc && \
+        echo "✓ Configured GitHub token"; \
+      elif [ -n "${NPM_TOKEN:-}" ]; then \
+        echo "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" >> .npmrc && \
+        echo "✓ Configured NPM token"; \
+      else \
+        echo "✗ ERROR: No mockifyer source and no token available"; \
+        exit 1; \
+      fi; \
     fi
 
 # Install dependencies (will generate new lockfile)
