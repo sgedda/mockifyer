@@ -1,5 +1,6 @@
 [build]
 builder = "NIXPACKS"
+buildCommand = "cp package.prod.json package.json && cp package-lock.prod.json package-lock.json && npm ci && npm run build"
 
 [deploy]
 startCommand = "npm start"

@@ -11,7 +11,10 @@
     "forceConsistentCasingInFileNames": true,
     "lib": ["es2019", "dom"],
     "types": ["node", "jest"],
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@sgedda/mockifyer": ["../../src"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
