@@ -1,24 +1,22 @@
 [phases.setup]
-# Install exact Node.js version 20.19.5 using nvm
-# Nixpacks may install a different 20.x version, so we ensure exact version
+# Install exact Node.js version 20.19.5 directly (Nixpacks may use different 20.x)
+# Delete lockfiles in setup phase to prevent Railpack auto-detection
 cmds = [
-  "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash",
-  "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
-  "nvm install 20.19.5",
-  "nvm use 20.19.5",
+  "curl -fsSL https://nodejs.org/dist/v20.19.5/node-v20.19.5-linux-x64.tar.xz -o /tmp/node.tar.xz",
+  "tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1",
+  "rm /tmp/node.tar.xz",
   "node --version",
+  "npm --version",
   "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true"
 ]
 
 [phases.install]
 cmds = [
-  "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
-  "nvm use 20.19.5",
+  "node --version",
   "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true",
   "cp package.prod.json package.json 2>/dev/null || true",
   "npm install -g npm@latest",
   "npm --version",
-  "node --version",
   "echo '@sgedda:registry=https://npm.pkg.github.com' > .npmrc",
   "echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}' >> .npmrc",
   "npm install --legacy-peer-deps"
@@ -26,11 +24,10 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\"",
-  "nvm use 20.19.5",
+  "node --version",
   "npm run build"
 ]
 
 [start]
-cmd = "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm use 20.19.5 && npm start"
+cmd = "npm start"
 
