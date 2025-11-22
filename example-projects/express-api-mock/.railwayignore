@@ -4,4 +4,6 @@ coverage
 *.log
 .env
 .env.local
+package-lock.json
+package-lock.prod.json
 
