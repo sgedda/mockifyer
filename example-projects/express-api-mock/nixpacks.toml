@@ -26,7 +26,9 @@ cmds = [
 cmds = [
   "export PATH=/usr/local/bin:$PATH",
   "node --version",
-  "npm run build"
+  "npm run build",
+  "mkdir -p mock-data || true",
+  "ls -la mock-data || echo 'Mock data directory check'"
 ]
 
 [start]
