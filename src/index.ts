@@ -80,8 +80,8 @@ class MockifyerClass {
         console.log(`[Mockifyer] Cached mock file no longer exists: ${exactMatch.filePath}, removing from cache`);
         this.mockDataCache.delete(requestKey);
       } else {
-        console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
-        return exactMatch;
+      console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
+      return exactMatch;
       }
     }
 

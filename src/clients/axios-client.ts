@@ -38,11 +38,11 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         });
       } else {
         // It's a plain object - use Object.entries
-        Object.entries(response.headers).forEach(([key, value]) => {
+    Object.entries(response.headers).forEach(([key, value]) => {
           if (value !== undefined && value !== null) {
             headers[key.toLowerCase()] = String(value);
-          }
-        });
+      }
+    });
       }
     }
 

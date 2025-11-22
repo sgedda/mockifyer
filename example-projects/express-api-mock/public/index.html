@@ -361,13 +361,6 @@
             </div>
         </div>
 
-        <!-- Health Check Card -->
-        <div class="card">
-            <h2>🏥 Health Check</h2>
-            <button onclick="checkHealth()">Check Server Health</button>
-            <div id="health-response"></div>
-        </div>
-
         <!-- Current Weather Card -->
         <div class="card">
             <h2>🌤️ Current Weather</h2>
@@ -553,18 +546,6 @@
             container.appendChild(responseDiv);
         }
 
-        async function checkHealth () {
-            const button = event.target;
-            button.disabled = true;
-            button.innerHTML = '<span class="loading"></span> Checking...';
-
-            const result = await makeRequest(`${API_BASE}/health`);
-            displayResponse('health-response', result, 'Health Check Result');
-
-            button.disabled = false;
-            button.textContent = 'Check Server Health';
-        }
-
         async function getCurrentWeather () {
             const button = event.target;
             const city = document.getElementById('city-input').value.trim();
@@ -579,6 +560,11 @@
 
             const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
             displayResponse('current-weather-response', result, `Current Weather for ${city}`);
+
+            // Refresh mock files list in case a new mock was created
+            if (result.success) {
+                loadMockFiles();
+            }
 
             button.disabled = false;
             button.textContent = 'Get Current Weather';
@@ -600,6 +586,11 @@
             const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
             displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}`);
 
+            // Refresh mock files list in case a new mock was created
+            if (result.success) {
+                loadMockFiles();
+            }
+
             button.disabled = false;
             button.textContent = 'Get Forecast';
         }
@@ -615,48 +606,64 @@
 
         // Load status on page load
         async function loadStatus () {
+            const statusItems = document.getElementById('status-items');
+            statusItems.innerHTML = `
+                <div class="status-item">
+                    <strong>💡 Tip:</strong>
+                    <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
+                </div>
+            `;
+        }
+
+        // Helper function to find a mock file by request parameters
+        async function findMockFileByParams (endpointType, city, days = null) {
             try {
-                const result = await makeRequest(`${API_BASE}/health`);
-                const statusItems = document.getElementById('status-items');
+                // Get list of all mock files
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
 
-                // Try to detect mockifyer status from a test call (don't show error if it fails)
-                let isMockEnabled = false;
-                let isCurrentlyMocked = false;
+                // Search through mock files to find a match
+                for (const file of files) {
+                    try {
+                        const fileResponse = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`);
+                        const fileData = await fileResponse.json();
 
-                try {
-                    const testResult = await makeRequest(`${API_BASE}/api/weather/current/London`);
-                    isMockEnabled = testResult.isMocked !== undefined;
-                    isCurrentlyMocked = testResult.isMocked === true;
-                } catch (e) {
-                    // If test fails, we can't determine status - that's okay
+                        if (!fileData.data || !fileData.data.request) continue;
+
+                        const request = fileData.data.request;
+                        const url = request.url || '';
+                        const queryParams = request.queryParams || {};
+
+                        // Check if this is the right endpoint type
+                        const isCurrentWeather = endpointType === 'current' && url.includes('/current.json');
+                        const isForecast = endpointType === 'forecast' && url.includes('/forecast.json');
+
+                        if (!isCurrentWeather && !isForecast) continue;
+
+                        // Check if city matches (case-insensitive)
+                        const mockCity = queryParams.q;
+                        if (!mockCity || mockCity.toLowerCase() !== city.toLowerCase()) continue;
+
+                        // For forecast, check if days match (if specified)
+                        if (endpointType === 'forecast' && days !== null) {
+                            const mockDays = queryParams.days;
+                            if (mockDays !== days.toString()) continue;
+                        }
+
+                        // Found a match!
+                        return file.filename;
+                    } catch (error) {
+                        // Skip files that can't be read
+                        console.warn(`[DeleteMock] Could not read file ${file.filename}:`, error);
+                        continue;
+                    }
                 }
 
-                statusItems.innerHTML = `
-                    <div class="status-item">
-                        <strong>Mockifyer:</strong>
-                        <span class="status-value ${isMockEnabled ? 'enabled' : 'disabled'}">
-                            ${isMockEnabled ? '✅ Enabled' : '❌ Disabled'}
-                        </span>
-                    </div>
-                    <div class="status-item">
-                        <strong>Current Mode:</strong>
-                        <span class="status-value ${isCurrentlyMocked ? 'enabled' : 'real-api'}">
-                            ${isCurrentlyMocked ? '🎭 Using Mocks' : '🌐 Real API'}
-                        </span>
-                    </div>
-                    <div class="status-item">
-                        <strong>💡 Tip:</strong>
-                        <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
-                    </div>
-                `;
+                return null; // No match found
             } catch (error) {
-                const statusItems = document.getElementById('status-items');
-                statusItems.innerHTML = `
-                    <div class="status-item">
-                        <strong>Status:</strong>
-                        <span class="status-value disabled">Unable to detect</span>
-                    </div>
-                `;
+                console.error('[DeleteMock] Error finding mock file:', error);
+                throw error;
             }
         }
 
@@ -669,9 +676,8 @@
             }
 
             try {
-                // First, get the current weather to find the mock filename
-                const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
-                const filename = result.mockFilename;
+                // Find the mock file by searching through mock files
+                const filename = await findMockFileByParams('current', city);
 
                 if (!filename) {
                     document.getElementById('delete-message').innerHTML =
@@ -714,10 +720,9 @@
             }
 
             try {
-                // First, get the forecast to find the mock filename
                 const days = document.getElementById('days-input').value;
-                const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
-                const filename = result.mockFilename;
+                // Find the mock file by searching through mock files
+                const filename = await findMockFileByParams('forecast', city, days);
 
                 if (!filename) {
                     document.getElementById('delete-forecast-message').innerHTML =
@@ -840,10 +845,6 @@
 
         // Delete a mock file from the list
         async function deleteMockFile (filename) {
-            if (!confirm(`Are you sure you want to delete ${filename}?`)) {
-                return;
-            }
-
             try {
                 const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
                     method: 'DELETE'
