@@ -377,7 +377,8 @@
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getCurrentWeather()">Get Current Weather</button>
-                <button onclick="deleteCurrentWeatherMock()" style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+                <button onclick="deleteCurrentWeatherMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
             </div>
             <div id="delete-message" style="margin-top: 10px;"></div>
             <div id="current-weather-response"></div>
@@ -402,7 +403,8 @@
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getForecast()">Get Forecast</button>
-                <button onclick="deleteForecastMock()" style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+                <button onclick="deleteForecastMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
             </div>
             <div id="delete-forecast-message" style="margin-top: 10px;"></div>
             <div id="forecast-response"></div>
@@ -413,7 +415,6 @@
             <h2>📁 Mock Data Files</h2>
             <button onclick="loadMockFiles()" style="margin-bottom: 15px;">Refresh List</button>
             <div id="mock-files-list"></div>
-            <div id="mock-file-viewer" style="margin-top: 20px;"></div>
         </div>
     </div>
 
@@ -659,7 +660,7 @@
         }
 
         // Delete mock for current weather
-        async function deleteCurrentWeatherMock() {
+        async function deleteCurrentWeatherMock () {
             const city = document.getElementById('city-input').value.trim();
             if (!city) {
                 alert('Please enter a city name first');
@@ -670,9 +671,9 @@
                 // First, get the current weather to find the mock filename
                 const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
                 const filename = result.mockFilename;
-                
+
                 if (!filename) {
-                    document.getElementById('delete-message').innerHTML = 
+                    document.getElementById('delete-message').innerHTML =
                         '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
                     return;
                 }
@@ -683,20 +684,20 @@
                 const deleteData = await deleteResult.json();
 
                 if (deleteResult.ok) {
-                    document.getElementById('delete-message').innerHTML = 
+                    document.getElementById('delete-message').innerHTML =
                         `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
                             <strong>✅ Deleted:</strong> ${deleteData.filename}
                         </div>`;
                     // Refresh mock files list
                     loadMockFiles();
                 } else {
-                    document.getElementById('delete-message').innerHTML = 
+                    document.getElementById('delete-message').innerHTML =
                         `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
                             <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
                         </div>`;
                 }
             } catch (error) {
-                document.getElementById('delete-message').innerHTML = 
+                document.getElementById('delete-message').innerHTML =
                     `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
                         <strong>❌ Error:</strong> ${error.message}
                     </div>`;
@@ -704,7 +705,7 @@
         }
 
         // Delete mock for forecast
-        async function deleteForecastMock() {
+        async function deleteForecastMock () {
             const city = document.getElementById('forecast-city-input').value.trim();
             if (!city) {
                 alert('Please enter a city name first');
@@ -716,9 +717,9 @@
                 const days = document.getElementById('days-input').value;
                 const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
                 const filename = result.mockFilename;
-                
+
                 if (!filename) {
-                    document.getElementById('delete-forecast-message').innerHTML = 
+                    document.getElementById('delete-forecast-message').innerHTML =
                         '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
                     return;
                 }
@@ -729,20 +730,20 @@
                 const deleteData = await deleteResult.json();
 
                 if (deleteResult.ok) {
-                    document.getElementById('delete-forecast-message').innerHTML = 
+                    document.getElementById('delete-forecast-message').innerHTML =
                         `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
                             <strong>✅ Deleted:</strong> ${deleteData.filename}
                         </div>`;
                     // Refresh mock files list
                     loadMockFiles();
                 } else {
-                    document.getElementById('delete-forecast-message').innerHTML = 
+                    document.getElementById('delete-forecast-message').innerHTML =
                         `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
                             <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
                         </div>`;
                 }
             } catch (error) {
-                document.getElementById('delete-forecast-message').innerHTML = 
+                document.getElementById('delete-forecast-message').innerHTML =
                     `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
                         <strong>❌ Error:</strong> ${error.message}
                     </div>`;
@@ -750,7 +751,7 @@
         }
 
         // Load and display mock files
-        async function loadMockFiles() {
+        async function loadMockFiles () {
             const listContainer = document.getElementById('mock-files-list');
             listContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
 
@@ -765,26 +766,31 @@
                 }
 
                 let html = '<div style="display: grid; gap: 10px;">';
-                files.forEach(file => {
+                files.forEach((file, index) => {
                     const fileSize = (file.size / 1024).toFixed(2);
                     const created = new Date(file.created).toLocaleString();
+                    const viewerId = `mock-viewer-${index}`;
                     html += `
-                        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
-                             onclick="viewMockFile('${file.filename}')"
-                             onmouseover="this.style.background='#e9ecef'" 
-                             onmouseout="this.style.background='#f8f9fa'">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" 
+                                 onclick="toggleMockFile('${file.filename}', '${viewerId}', this)"
+                                 onmouseover="this.style.opacity='0.8'" 
+                                 onmouseout="this.style.opacity='1'">
                                 <div>
                                     <strong style="color: #667eea;">📄 ${file.filename}</strong>
                                     <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
                                         Size: ${fileSize} KB • Created: ${created}
                                     </div>
                                 </div>
-                                <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
-                                        style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); padding: 6px 12px; font-size: 0.9em;">
-                                    🗑️ Delete
-                                </button>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <span id="${viewerId}-indicator" style="color: #667eea; font-size: 0.9em;">▶</span>
+                                    <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
+                                            style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); padding: 6px 12px; font-size: 0.9em;">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
                             </div>
+                            <div id="${viewerId}" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #dee2e6;"></div>
                         </div>
                     `;
                 });
@@ -795,38 +801,49 @@
             }
         }
 
-        // View a specific mock file
-        async function viewMockFile(filename) {
-            const viewerContainer = document.getElementById('mock-file-viewer');
-            viewerContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+        // Toggle mock file viewer (open/close inline)
+        async function toggleMockFile (filename, viewerId, clickElement) {
+            const viewerContainer = document.getElementById(viewerId);
+            const indicator = document.getElementById(`${viewerId}-indicator`);
+            const isOpen = viewerContainer.style.display !== 'none';
 
-            try {
-                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
-                const data = await response.json();
+            if (isOpen) {
+                // Close it
+                viewerContainer.style.display = 'none';
+                indicator.textContent = '▶';
+            } else {
+                // Open it - load the file content
+                viewerContainer.style.display = 'block';
+                indicator.textContent = '▼';
+                viewerContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
 
-                const pre = document.createElement('pre');
-                pre.textContent = JSON.stringify(data.data, null, 2);
-                pre.style.maxHeight = '500px';
-                pre.style.overflow = 'auto';
+                try {
+                    const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
+                    const data = await response.json();
 
-                viewerContainer.innerHTML = `
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
-                        <h3 style="color: #667eea; margin-bottom: 10px;">📄 ${data.filename}</h3>
-                        <div style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
-                            Size: ${(data.metadata.size / 1024).toFixed(2)} KB • 
-                            Created: ${new Date(data.metadata.created).toLocaleString()} • 
-                            Modified: ${new Date(data.metadata.modified).toLocaleString()}
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(data.data, null, 2);
+                    pre.style.cssText = 'max-height: 500px; overflow: auto; background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;';
+
+                    viewerContainer.innerHTML = `
+                        <div style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                            <div style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                                Size: ${(data.metadata.size / 1024).toFixed(2)} KB • 
+                                Created: ${new Date(data.metadata.created).toLocaleString()} • 
+                                Modified: ${new Date(data.metadata.modified).toLocaleString()}
+                            </div>
                         </div>
-                    </div>
-                `;
-                viewerContainer.appendChild(pre);
-            } catch (error) {
-                viewerContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading file: ${error.message}</div>`;
+                    `;
+                    viewerContainer.appendChild(pre);
+                } catch (error) {
+                    viewerContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading file: ${error.message}</div>`;
+                    indicator.textContent = '▶';
+                }
             }
         }
 
         // Delete a mock file from the list
-        async function deleteMockFile(filename) {
+        async function deleteMockFile (filename) {
             if (!confirm(`Are you sure you want to delete ${filename}?`)) {
                 return;
             }
