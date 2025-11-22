@@ -33,7 +33,7 @@ Railway offers a free tier with automatic deployments from GitHub.
      PORT=3000
      NODE_ENV=production
      MOCKIFYER_ENABLED=true
-     MOCKIFYER_RECORD=false
+     MOCKIFYER_RECORD=true  # Set to true initially to record mocks
      MOCKIFYER_PATH=./mock-data
      GITHUB_TOKEN=your_github_token_with_read_packages_scope
      ```
@@ -42,6 +42,12 @@ Railway offers a free tier with automatic deployments from GitHub.
      - Create token at: https://github.com/settings/tokens/new
      - Select scope: `read:packages`
      - The build process will automatically configure npm to use this token
+   
+   **Recording Mocks:**
+   - Initially set `MOCKIFYER_RECORD=true` to record mock data on the server
+   - Make some API calls through your deployed app to record the responses
+   - After mocks are recorded, set `MOCKIFYER_RECORD=false` to use the recorded mocks
+   - The mock data files will be created in the `mock-data` directory on the server
 
 5. **Deploy**
    - Railway will automatically deploy on every push to `main`
