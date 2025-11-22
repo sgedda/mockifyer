@@ -8,6 +8,8 @@ cmds = [
 [phases.install]
 cmds = [
   "cp package.prod.json package.json 2>/dev/null || true",
+  "npm install -g npm@latest",
+  "npm --version",
   "npm install --legacy-peer-deps"
 ]
 
