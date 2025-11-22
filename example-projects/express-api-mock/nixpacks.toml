@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs-20_x", "npm"]
+# Let Nixpacks auto-detect Node.js version from .nvmrc (20.19.5)
 # Delete lockfiles in setup phase to prevent Railpack auto-detection
 cmds = [
   "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true"
