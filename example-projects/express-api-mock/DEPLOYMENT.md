@@ -35,12 +35,13 @@ Railway offers a free tier with automatic deployments from GitHub.
      MOCKIFYER_ENABLED=true
      MOCKIFYER_RECORD=false
      MOCKIFYER_PATH=./mock-data
-     NPM_TOKEN=your_github_token_with_read_packages_scope
+     GITHUB_TOKEN=your_github_token_with_read_packages_scope
      ```
-   - **Important**: Add `NPM_TOKEN` with a GitHub Personal Access Token that has `read:packages` scope
+   - **Important**: Add `GITHUB_TOKEN` with a GitHub Personal Access Token that has `read:packages` scope
      - This is needed to install `@sgedda/mockifyer` from GitHub Packages
      - Create token at: https://github.com/settings/tokens/new
      - Select scope: `read:packages`
+     - The build process will automatically configure npm to use this token
 
 5. **Deploy**
    - Railway will automatically deploy on every push to `main`
