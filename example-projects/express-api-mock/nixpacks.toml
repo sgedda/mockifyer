@@ -1,10 +1,12 @@
 [phases.setup]
 nixPkgs = ["nodejs-20_x", "npm"]
+# Delete lockfiles in setup phase to prevent Railpack auto-detection
+cmds = [
+  "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true"
+]
 
 [phases.install]
-# Delete lockfiles first to prevent Railpack from auto-detecting and using npm ci
 cmds = [
-  "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true",
   "cp package.prod.json package.json 2>/dev/null || true",
   "npm install --legacy-peer-deps"
 ]
