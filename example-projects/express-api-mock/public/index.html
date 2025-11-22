@@ -375,7 +375,11 @@
                 <label for="city-input">City Name:</label>
                 <input type="text" id="city-input" placeholder="e.g., London, New York, Tokyo" value="London">
             </div>
-            <button onclick="getCurrentWeather()">Get Current Weather</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getCurrentWeather()">Get Current Weather</button>
+                <button onclick="deleteCurrentWeatherMock()" style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-message" style="margin-top: 10px;"></div>
             <div id="current-weather-response"></div>
         </div>
 
@@ -396,8 +400,20 @@
                     <option value="7">7 days</option>
                 </select>
             </div>
-            <button onclick="getForecast()">Get Forecast</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getForecast()">Get Forecast</button>
+                <button onclick="deleteForecastMock()" style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-forecast-message" style="margin-top: 10px;"></div>
             <div id="forecast-response"></div>
+        </div>
+
+        <!-- Mock Files Browser Card -->
+        <div class="card">
+            <h2>📁 Mock Data Files</h2>
+            <button onclick="loadMockFiles()" style="margin-bottom: 15px;">Refresh List</button>
+            <div id="mock-files-list"></div>
+            <div id="mock-file-viewer" style="margin-top: 20px;"></div>
         </div>
     </div>
 
@@ -642,8 +658,209 @@
             }
         }
 
+        // Delete mock for current weather
+        async function deleteCurrentWeatherMock() {
+            const city = document.getElementById('city-input').value.trim();
+            if (!city) {
+                alert('Please enter a city name first');
+                return;
+            }
+
+            try {
+                // First, get the current weather to find the mock filename
+                const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
+                const filename = result.mockFilename;
+                
+                if (!filename) {
+                    document.getElementById('delete-message').innerHTML = 
+                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                    return;
+                }
+
+                const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const deleteData = await deleteResult.json();
+
+                if (deleteResult.ok) {
+                    document.getElementById('delete-message').innerHTML = 
+                        `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                            <strong>✅ Deleted:</strong> ${deleteData.filename}
+                        </div>`;
+                    // Refresh mock files list
+                    loadMockFiles();
+                } else {
+                    document.getElementById('delete-message').innerHTML = 
+                        `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                            <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('delete-message').innerHTML = 
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Delete mock for forecast
+        async function deleteForecastMock() {
+            const city = document.getElementById('forecast-city-input').value.trim();
+            if (!city) {
+                alert('Please enter a city name first');
+                return;
+            }
+
+            try {
+                // First, get the forecast to find the mock filename
+                const days = document.getElementById('days-input').value;
+                const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
+                const filename = result.mockFilename;
+                
+                if (!filename) {
+                    document.getElementById('delete-forecast-message').innerHTML = 
+                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                    return;
+                }
+
+                const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const deleteData = await deleteResult.json();
+
+                if (deleteResult.ok) {
+                    document.getElementById('delete-forecast-message').innerHTML = 
+                        `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                            <strong>✅ Deleted:</strong> ${deleteData.filename}
+                        </div>`;
+                    // Refresh mock files list
+                    loadMockFiles();
+                } else {
+                    document.getElementById('delete-forecast-message').innerHTML = 
+                        `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                            <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('delete-forecast-message').innerHTML = 
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Load and display mock files
+        async function loadMockFiles() {
+            const listContainer = document.getElementById('mock-files-list');
+            listContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks`);
+                const data = await response.json();
+                const files = data.files || [];
+
+                if (files.length === 0) {
+                    listContainer.innerHTML = '<div style="padding: 10px; color: #666;">No mock files found</div>';
+                    return;
+                }
+
+                let html = '<div style="display: grid; gap: 10px;">';
+                files.forEach(file => {
+                    const fileSize = (file.size / 1024).toFixed(2);
+                    const created = new Date(file.created).toLocaleString();
+                    html += `
+                        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
+                             onclick="viewMockFile('${file.filename}')"
+                             onmouseover="this.style.background='#e9ecef'" 
+                             onmouseout="this.style.background='#f8f9fa'">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: #667eea;">📄 ${file.filename}</strong>
+                                    <div style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                                        Size: ${fileSize} KB • Created: ${created}
+                                    </div>
+                                </div>
+                                <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
+                                        style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); padding: 6px 12px; font-size: 0.9em;">
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                listContainer.innerHTML = html;
+            } catch (error) {
+                listContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading files: ${error.message}</div>`;
+            }
+        }
+
+        // View a specific mock file
+        async function viewMockFile(filename) {
+            const viewerContainer = document.getElementById('mock-file-viewer');
+            viewerContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
+                const data = await response.json();
+
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(data.data, null, 2);
+                pre.style.maxHeight = '500px';
+                pre.style.overflow = 'auto';
+
+                viewerContainer.innerHTML = `
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                        <h3 style="color: #667eea; margin-bottom: 10px;">📄 ${data.filename}</h3>
+                        <div style="font-size: 0.9em; color: #666; margin-bottom: 15px;">
+                            Size: ${(data.metadata.size / 1024).toFixed(2)} KB • 
+                            Created: ${new Date(data.metadata.created).toLocaleString()} • 
+                            Modified: ${new Date(data.metadata.modified).toLocaleString()}
+                        </div>
+                    </div>
+                `;
+                viewerContainer.appendChild(pre);
+            } catch (error) {
+                viewerContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading file: ${error.message}</div>`;
+            }
+        }
+
+        // Delete a mock file from the list
+        async function deleteMockFile(filename) {
+            if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Show success message
+                    const listContainer = document.getElementById('mock-files-list');
+                    listContainer.innerHTML = `
+                        <div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32; margin-bottom: 10px;">
+                            ✅ Deleted: ${data.filename}
+                        </div>
+                    `;
+                    // Reload the list
+                    loadMockFiles();
+                    // Clear viewer
+                    document.getElementById('mock-file-viewer').innerHTML = '';
+                } else {
+                    alert(`Error: ${data.error || 'Failed to delete'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
         // Load status when page loads
         loadStatus();
+        // Load mock files when page loads
+        loadMockFiles();
     </script>
 </body>
 

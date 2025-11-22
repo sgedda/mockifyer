@@ -11,6 +11,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { weatherRouter } from './routes/weather';
+import { mocksRouter } from './routes/mocks';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -24,6 +25,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/api/weather', weatherRouter);
+app.use('/api/mocks', mocksRouter);
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {
