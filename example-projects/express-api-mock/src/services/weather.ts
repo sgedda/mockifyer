@@ -1,5 +1,6 @@
 import { HTTPClient } from '@sgedda/mockifyer';
 import { setupMockifyer } from '@sgedda/mockifyer';
+import path from 'path';
 
 export interface WeatherData {
   location: string;
@@ -22,9 +23,23 @@ export class WeatherService {
     }
     
     // Initialize mockifyer if enabled
+    // Use absolute path to ensure mock data is found regardless of working directory
+    const mockDataPath = process.env.MOCKIFYER_PATH 
+      ? (path.isAbsolute(process.env.MOCKIFYER_PATH) 
+          ? process.env.MOCKIFYER_PATH 
+          : path.join(process.cwd(), process.env.MOCKIFYER_PATH))
+      : path.join(process.cwd(), 'mock-data');
+    
+    console.log('[WeatherService] Mock data path:', {
+      envPath: process.env.MOCKIFYER_PATH,
+      resolvedPath: mockDataPath,
+      cwd: process.cwd(),
+      pathExists: require('fs').existsSync(mockDataPath)
+    });
+    
     if (process.env.MOCKIFYER_ENABLED === 'true') {
       this.httpClient = setupMockifyer({
-        mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
+        mockDataPath: mockDataPath,
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
         failOnMissingMock: false,
         recordSameEndpoints: process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true',
@@ -33,7 +48,7 @@ export class WeatherService {
       });
     } else {
       this.httpClient = setupMockifyer({
-        mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
+        mockDataPath: mockDataPath,
         recordMode: false,
         failOnMissingMock: false
       });
