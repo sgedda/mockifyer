@@ -8,6 +8,7 @@
     "npm": ">=9.0.0"
   },
   "scripts": {
+    "preinstall": "rm -f package-lock.json package-lock.prod.json || true",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest"

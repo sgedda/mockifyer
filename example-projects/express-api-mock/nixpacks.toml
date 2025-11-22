@@ -1,0 +1,18 @@
+[phases.setup]
+nixPkgs = ["nodejs-20_x", "npm"]
+
+[phases.install]
+cmds = [
+  "cp package.prod.json package.json || true",
+  "rm -f package-lock.json package-lock.prod.json || true",
+  "npm install --legacy-peer-deps"
+]
+
+[phases.build]
+cmds = [
+  "npm run build"
+]
+
+[start]
+cmd = "npm start"
+

@@ -21,9 +21,9 @@ Railway offers a free tier with automatic deployments from GitHub.
 3. **Configure Service**
    - **IMPORTANT**: In the service settings, go to "Settings" → "Source"
    - Set the **Root Directory** to: `example-projects/express-api-mock`
-   - **IMPORTANT**: In "Settings" → "Build", set **Builder** to: `Dockerfile`
-   - This forces Railway to use the Dockerfile instead of Railpack auto-detection
-   - The Dockerfile handles copying production files and building correctly
+   - **IMPORTANT**: In "Settings" → "Build", set **Builder** to: `Nixpacks` (or leave as auto-detect)
+   - Railway will use Railpack (Nixpacks) which reads `nixpacks.toml` configuration
+   - The `nixpacks.toml` handles copying production files, regenerating lockfile, and building correctly
 
 4. **Set Environment Variables**
    - Go to the service settings → Variables
