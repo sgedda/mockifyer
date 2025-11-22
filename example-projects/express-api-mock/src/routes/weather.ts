@@ -42,8 +42,19 @@ router.get('/current/:city', async (req: Request, res: Response) => {
     res.setHeader('Expires', '0');
     
     res.json(result.data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch weather data' });
+  } catch (error: any) {
+    console.error('[WeatherRoute] Current - Error:', {
+      message: error?.message,
+      stack: error?.stack,
+      response: error?.response?.data,
+      status: error?.response?.status
+    });
+    const errorMessage = error?.message || 'Failed to fetch weather data';
+    const statusCode = error?.response?.status || 500;
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    });
   }
 });
 
@@ -87,8 +98,19 @@ router.get('/forecast/:city', async (req: Request, res: Response) => {
     res.setHeader('Expires', '0');
     
     res.json(result.data);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch forecast data' });
+  } catch (error: any) {
+    console.error('[WeatherRoute] Forecast - Error:', {
+      message: error?.message,
+      stack: error?.stack,
+      response: error?.response?.data,
+      status: error?.response?.status
+    });
+    const errorMessage = error?.message || 'Failed to fetch forecast data';
+    const statusCode = error?.response?.status || 500;
+    res.status(statusCode).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+    });
   }
 });
 

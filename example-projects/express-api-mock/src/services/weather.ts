@@ -17,6 +17,10 @@ export class WeatherService {
     this.apiKey = process.env.WEATHER_API_KEY || '';
     this.baseUrl = 'https://api.weatherapi.com/v1';
     
+    if (!this.apiKey) {
+      console.warn('[WeatherService] WARNING: WEATHER_API_KEY is not set! API calls will fail.');
+    }
+    
     // Initialize mockifyer if enabled
     if (process.env.MOCKIFYER_ENABLED === 'true') {
       this.httpClient = setupMockifyer({
