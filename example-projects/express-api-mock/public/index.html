@@ -1532,6 +1532,84 @@
         }
 
         // GraphQL Functions
+        // Date Demo function
+        async function getDateDemo () {
+            const responseDiv = document.getElementById('date-demo-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const result = await makeRequest(`${API_BASE}/api/date-demo`);
+
+                if (result.success) {
+                    const data = result.data;
+                    const diff = data.difference;
+
+                    // Determine if dates are different
+                    const isDifferent = diff.milliseconds !== 0;
+                    const diffColor = isDifferent ? '#f57c00' : '#2e7d32';
+                    const diffIcon = isDifferent ? '⚠️' : '✅';
+                    const diffText = isDifferent
+                        ? `Dates differ by ${Math.abs(diff.days)} day(s), ${Math.abs(diff.hours % 24)} hour(s), ${Math.abs(diff.minutes % 60)} minute(s)`
+                        : 'Dates are the same (no manipulation configured)';
+
+                    responseDiv.innerHTML = `
+                        <div class="response-container">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${diffIcon} Date Comparison</h3>
+                                <div style="font-size: 0.9em; opacity: 0.95;">${diffText}</div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                                    <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">📅 Manipulated Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.manipulated.iso}</div>
+                                        <div><strong>Local:</strong> ${data.manipulated.local}</div>
+                                        <div><strong>UTC:</strong> ${data.manipulated.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.manipulated.timestamp}</div>
+                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9;">
+                                            <strong>Components:</strong><br>
+                                            ${data.manipulated.year}-${String(data.manipulated.month).padStart(2, '0')}-${String(data.manipulated.day).padStart(2, '0')} 
+                                            ${String(data.manipulated.hours).padStart(2, '0')}:${String(data.manipulated.minutes).padStart(2, '0')}:${String(data.manipulated.seconds).padStart(2, '0')}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                                    <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">🖥️ System Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.system.iso}</div>
+                                        <div><strong>Local:</strong> ${data.system.local}</div>
+                                        <div><strong>UTC:</strong> ${data.system.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.system.timestamp}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid ${diffColor};">
+                                <h4 style="margin: 0 0 10px 0; color: ${diffColor}; font-size: 1em;">📊 Difference</h4>
+                                <div style="font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.8;">
+                                    <div><strong>Milliseconds:</strong> ${diff.milliseconds.toLocaleString()}</div>
+                                    <div><strong>Seconds:</strong> ${diff.seconds.toLocaleString()}</div>
+                                    <div><strong>Minutes:</strong> ${diff.minutes.toLocaleString()}</div>
+                                    <div><strong>Hours:</strong> ${diff.hours.toLocaleString()}</div>
+                                    <div><strong>Days:</strong> ${diff.days.toLocaleString()}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-top: 15px; font-size: 0.9em; color: #2e7d32;">
+                                <strong>💡 Note:</strong> ${data.note}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to get date information'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
         async function executeGraphQLQuery () {
             const button = event.target;
             const query = document.getElementById('graphql-query-input').value.trim();

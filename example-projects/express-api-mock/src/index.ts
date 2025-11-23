@@ -15,6 +15,8 @@ import { footballRouter } from './routes/football';
 import { mocksRouter } from './routes/mocks';
 import { graphqlRouter } from './routes/graphql';
 import { dateConfigRouter } from './routes/date-config';
+import { dateDemoRouter } from './routes/date-demo';
+import { dateExampleRouter } from './routes/date-example';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -32,6 +34,8 @@ app.use('/api/football', footballRouter);
 app.use('/api/mocks', mocksRouter);
 app.use('/api/graphql', graphqlRouter);
 app.use('/api/date-config', dateConfigRouter);
+app.use('/api/date-demo', dateDemoRouter);
+app.use('/api/date-example', dateExampleRouter);
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

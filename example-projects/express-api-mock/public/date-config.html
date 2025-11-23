@@ -88,6 +88,22 @@
             font-size: 1.5em;
         }
 
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(102, 126, 234, .3);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         .form-group {
             margin-bottom: 15px;
         }
@@ -166,6 +182,11 @@
             .nav-links a {
                 width: 100%;
                 text-align: center;
+            }
+
+            /* Date demo - stack columns on mobile */
+            #date-demo-grid {
+                grid-template-columns: 1fr !important;
             }
         }
     </style>
@@ -283,27 +304,53 @@
                 <div id="date-config-message" style="margin-top: 10px;"></div>
             </div>
         </div>
+
+        <!-- Date Manipulation Demo Card -->
+        <div class="card">
+            <h2>📊 Date Manipulation Demo</h2>
+            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+                This endpoint demonstrates how date manipulation works. Compare the manipulated date (used by Mockifyer)
+                with the system date.
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getDateDemo()">🔄 Get Date Info</button>
+            </div>
+            <div id="date-demo-response" style="margin-top: 20px;"></div>
+        </div>
+
+        <!-- Date Example Data Card -->
+        <div class="card">
+            <h2>📋 Example Data with Date Manipulation</h2>
+            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+                This endpoint returns example data (subscriptions, events, activity) where all dates are calculated
+                relative to the manipulated date. Change the date configuration above and see how the data changes!
+            </p>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getDateExample()">🔄 Get Example Data</button>
+            </div>
+            <div id="date-example-response" style="margin-top: 20px;"></div>
+        </div>
     </div>
 
     <script>
         const API_BASE = window.location.origin;
 
         // Date Configuration Functions
-        function toggleDateConfig() {
+        function toggleDateConfig () {
             const enabled = document.getElementById('date-config-enabled').checked;
             document.getElementById('date-config-options').style.display = enabled ? 'block' : 'none';
             // Don't reload config when user manually toggles - only show/hide the UI
             // loadDateConfig() will be called on page load or after saving
         }
 
-        function updateDateConfigUI() {
+        function updateDateConfigUI () {
             const type = document.getElementById('date-config-type').value;
             document.getElementById('date-config-fixed').style.display = type === 'fixed' ? 'block' : 'none';
             document.getElementById('date-config-offset').style.display = type === 'offset' ? 'block' : 'none';
             document.getElementById('date-config-timezone').style.display = type === 'timezone' ? 'block' : 'none';
         }
 
-        async function loadDateConfig() {
+        async function loadDateConfig () {
             try {
                 const response = await fetch(`${API_BASE}/api/date-config`);
                 const config = await response.json();
@@ -346,7 +393,7 @@
             }
         }
 
-        async function saveDateConfig() {
+        async function saveDateConfig () {
             try {
                 const enabled = document.getElementById('date-config-enabled').checked;
                 const type = document.getElementById('date-config-type').value;
@@ -433,7 +480,7 @@
             }
         }
 
-        async function resetDateConfig() {
+        async function resetDateConfig () {
             if (!confirm('Are you sure you want to reset date manipulation to system date?')) {
                 return;
             }
@@ -469,10 +516,213 @@
             }
         }
 
+        // Date Demo function
+        async function getDateDemo () {
+            const responseDiv = document.getElementById('date-demo-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/date-demo`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    const diff = data.difference;
+
+                    // Determine if dates are different
+                    const isDifferent = diff.milliseconds !== 0;
+                    const diffColor = isDifferent ? '#f57c00' : '#2e7d32';
+                    const diffIcon = isDifferent ? '⚠️' : '✅';
+                    const diffText = isDifferent
+                        ? `Dates differ by ${Math.abs(diff.days)} day(s), ${Math.abs(diff.hours % 24)} hour(s), ${Math.abs(diff.minutes % 60)} minute(s)`
+                        : 'Dates are the same (no manipulation configured)';
+
+                    responseDiv.innerHTML = `
+                        <div class="response-container" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${diffIcon} Date Comparison</h3>
+                                <div style="font-size: 0.9em; opacity: 0.95;">${diffText}</div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;" id="date-demo-grid">
+                                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                                    <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">📅 Manipulated Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.manipulated.iso}</div>
+                                        <div><strong>Local:</strong> ${data.manipulated.local}</div>
+                                        <div><strong>UTC:</strong> ${data.manipulated.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.manipulated.timestamp}</div>
+                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9;">
+                                            <strong>Components:</strong><br>
+                                            ${data.manipulated.year}-${String(data.manipulated.month).padStart(2, '0')}-${String(data.manipulated.day).padStart(2, '0')} 
+                                            ${String(data.manipulated.hours).padStart(2, '0')}:${String(data.manipulated.minutes).padStart(2, '0')}:${String(data.manipulated.seconds).padStart(2, '0')}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                                    <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">🖥️ System Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.system.iso}</div>
+                                        <div><strong>Local:</strong> ${data.system.local}</div>
+                                        <div><strong>UTC:</strong> ${data.system.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.system.timestamp}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid ${diffColor};">
+                                <h4 style="margin: 0 0 10px 0; color: ${diffColor}; font-size: 1em;">📊 Difference</h4>
+                                <div style="font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.8;">
+                                    <div><strong>Milliseconds:</strong> ${diff.milliseconds.toLocaleString()}</div>
+                                    <div><strong>Seconds:</strong> ${diff.seconds.toLocaleString()}</div>
+                                    <div><strong>Minutes:</strong> ${diff.minutes.toLocaleString()}</div>
+                                    <div><strong>Hours:</strong> ${diff.hours.toLocaleString()}</div>
+                                    <div><strong>Days:</strong> ${diff.days.toLocaleString()}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-top: 15px; font-size: 0.9em; color: #2e7d32;">
+                                <strong>💡 Note:</strong> ${data.note}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error: ${data.error || 'Failed to get date information'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Date Example function
+        async function getDateExample () {
+            const responseDiv = document.getElementById('date-example-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/date-example`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    responseDiv.innerHTML = `
+                        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${data.message}</h3>
+                                <div style="font-size: 0.9em; opacity: 0.95;">
+                                    Current Manipulated Date: <strong>${data.currentDate.formatted}</strong>
+                                </div>
+                            </div>
+
+                            <!-- Subscription Example -->
+                            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
+                                <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">💳 Subscription Example</h4>
+                                <div style="font-size: 0.9em; line-height: 1.8;">
+                                    <div><strong>Status:</strong> <span style="color: #2e7d32; font-weight: 600;">${data.examples.subscription.status.toUpperCase()}</span></div>
+                                    <div><strong>Start Date:</strong> ${new Date(data.examples.subscription.startDate).toLocaleString()}</div>
+                                    <div><strong>End Date:</strong> ${new Date(data.examples.subscription.endDate).toLocaleString()}</div>
+                                    <div><strong>Days Active:</strong> ${data.examples.subscription.daysActive} days</div>
+                                    <div><strong>Days Remaining:</strong> ${data.examples.subscription.daysRemaining} days</div>
+                                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9; font-size: 0.85em; color: #666; font-style: italic;">
+                                        ${data.examples.subscription.note}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Events Example -->
+                            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
+                                <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">📅 Events Example</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">Upcoming Event</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Name:</strong> ${data.examples.events.upcoming.name}</div>
+                                            <div><strong>Date:</strong> ${data.examples.events.upcoming.formatted}</div>
+                                            <div><strong>Days Until:</strong> ${data.examples.events.upcoming.daysUntil} days</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">Past Event</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Name:</strong> ${data.examples.events.past.name}</div>
+                                            <div><strong>Date:</strong> ${data.examples.events.past.formatted}</div>
+                                            <div><strong>Days Ago:</strong> ${data.examples.events.past.daysAgo} days</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffcc80; font-size: 0.85em; color: #666; font-style: italic;">
+                                    ${data.examples.events.note}
+                                </div>
+                            </div>
+
+                            <!-- User Activity Example -->
+                            <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #9c27b0;">
+                                <h4 style="margin: 0 0 10px 0; color: #7b1fa2; font-size: 1em;">👤 User Activity Example</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">Last Login</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Time:</strong> ${data.examples.userActivity.lastLogin.formatted}</div>
+                                            <div><strong>Hours Ago:</strong> ${data.examples.userActivity.lastLogin.hoursAgo} hours</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">Next Billing</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Time:</strong> ${data.examples.userActivity.nextBilling.formatted}</div>
+                                            <div><strong>Hours Until:</strong> ${data.examples.userActivity.nextBilling.hoursUntil} hours</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #ce93d8; font-size: 0.85em; color: #666; font-style: italic;">
+                                    ${data.examples.userActivity.note}
+                                </div>
+                            </div>
+
+                            <!-- Date Ranges Example -->
+                            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
+                                <h4 style="margin: 0 0 10px 0; color: #2e7d32; font-size: 1em;">📆 Date Ranges Example</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">This Week</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Start:</strong> ${new Date(data.examples.dateRanges.thisWeek.start).toLocaleDateString()}</div>
+                                            <div><strong>End:</strong> ${new Date(data.examples.dateRanges.thisWeek.end).toLocaleDateString()}</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; margin-bottom: 5px;">This Month</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6;">
+                                            <div><strong>Start:</strong> ${new Date(data.examples.dateRanges.thisMonth.start).toLocaleDateString()}</div>
+                                            <div><strong>End:</strong> ${new Date(data.examples.dateRanges.thisMonth.end).toLocaleDateString()}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #a5d6a7; font-size: 0.85em; color: #666; font-style: italic;">
+                                    ${data.examples.dateRanges.thisWeek.note}
+                                </div>
+                            </div>
+
+                            <!-- Explanation -->
+                            <div style="background: #fff9c4; padding: 15px; border-radius: 8px; border-left: 4px solid #fbc02d;">
+                                <h4 style="margin: 0 0 10px 0; color: #f57f17; font-size: 1em;">💡 ${data.explanation.title}</h4>
+                                <div style="font-size: 0.9em; line-height: 1.6; color: #5d4037;">
+                                    <p style="margin: 0 0 10px 0;">${data.explanation.description}</p>
+                                    <p style="margin: 0;"><strong>Use Case:</strong> ${data.explanation.useCase}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error: ${data.error || 'Failed to get example data'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error: ${error.message}</div>`;
+            }
+        }
+
         // Load date config when page loads
         loadDateConfig();
     </script>
 </body>
 
 </html>
-
