@@ -73,7 +73,7 @@ export class FootballService {
         useSimilarMatch: process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true',
         useSimilarMatchCheckResponse: process.env.MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE === 'true',
         // Require these parameters to match for similar matching (fundamental params that change the data)
-        similarMatchRequiredParams: ['season', 'league'],
+        similarMatchRequiredParams: ['season', 'league', 'team'],
         defaultHeaders: {
           'x-rapidapi-key': this.apiKey,
           'x-rapidapi-host': 'v3.football.api-sports.io'
