@@ -530,9 +530,34 @@
             }
 
             /* Mock file viewer mobile */
+            #mock-file-viewer {
+                margin-top: 15px;
+            }
+
+            #mock-file-viewer>div:first-child {
+                padding: 12px !important;
+                margin-bottom: 12px !important;
+            }
+
+            #mock-file-viewer h3 {
+                font-size: 1em !important;
+                margin-bottom: 8px !important;
+                word-break: break-word;
+            }
+
+            #mock-file-viewer>div:first-child>div {
+                font-size: 0.75em !important;
+                line-height: 1.4 !important;
+                word-break: break-word;
+            }
+
             #mock-file-viewer pre {
-                font-size: 11px;
+                font-size: 0.75em;
                 padding: 10px;
+                max-height: 400px !important;
+                overflow-x: auto;
+                word-break: break-word;
+                white-space: pre-wrap;
             }
         }
 
@@ -559,6 +584,21 @@
 
             pre {
                 font-size: 11px;
+            }
+
+            /* Mock file viewer - extra small screens */
+            #mock-file-viewer h3 {
+                font-size: 0.9em !important;
+            }
+
+            #mock-file-viewer>div:first-child>div {
+                font-size: 0.7em !important;
+            }
+
+            #mock-file-viewer pre {
+                font-size: 0.7em;
+                padding: 8px;
+                max-height: 300px !important;
             }
 
             /* Mock files list - extra small screens */
@@ -1718,15 +1758,17 @@
                     line-height: 1.5;
                     margin: 0;
                     border: 1px solid #3e3e3e;
+                    word-break: break-word;
+                    overflow-wrap: break-word;
                 `;
 
                 viewerContainer.innerHTML = `
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
-                        <h3 style="color: white; margin: 0 0 10px 0; font-size: 1.2em;">📄 ${data.filename}</h3>
-                        <div style="font-size: 0.9em; color: rgba(255, 255, 255, 0.9);">
-                            Size: ${(data.metadata.size / 1024).toFixed(2)} KB • 
-                            Created: ${new Date(data.metadata.created).toLocaleString()} • 
-                            Modified: ${new Date(data.metadata.modified).toLocaleString()}
+                        <h3 style="color: white; margin: 0 0 10px 0; font-size: 1.2em; word-break: break-word;">📄 ${data.filename}</h3>
+                        <div style="font-size: 0.9em; color: rgba(255, 255, 255, 0.9); line-height: 1.5;">
+                            <div style="margin-bottom: 4px;">Size: ${(data.metadata.size / 1024).toFixed(2)} KB</div>
+                            <div style="margin-bottom: 4px;">Created: ${new Date(data.metadata.created).toLocaleString()}</div>
+                            <div>Modified: ${new Date(data.metadata.modified).toLocaleString()}</div>
                         </div>
                     </div>
                 `;
