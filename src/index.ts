@@ -6,12 +6,11 @@ import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './type
 import { initializeDateManipulation } from './utils/date';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
-
-interface CachedMockData {
-  mockData: MockData;
-  filename: string;
-  filePath: string;
-}
+import { 
+  findBestMatchingMock as findBestMatchingMockUtil,
+  generateRequestKey as generateRequestKeyUtil,
+  CachedMockData 
+} from './utils/mock-matcher';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -63,10 +62,7 @@ class MockifyerClass {
   }
 
   private generateRequestKey(request: StoredRequest): string {
-    const normalizedUrl = request.url.toLowerCase();
-    const normalizedMethod = request.method.toUpperCase();
-    const queryString = request.queryParams ? new URLSearchParams(request.queryParams).toString() : '';
-    return `${normalizedMethod}:${normalizedUrl}${queryString ? '?' + queryString : ''}`;
+    return generateRequestKeyUtil(request);
   }
 
   private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
@@ -79,98 +75,34 @@ class MockifyerClass {
       requestKey
     });
     
-    // Try exact match first
-    const exactMatch = this.mockDataCache.get(requestKey);
-    if (exactMatch) {
-      // Check if the file still exists - if not, remove from cache
-      if (!fs.existsSync(exactMatch.filePath)) {
-        console.log(`[Mockifyer] Cached mock file no longer exists: ${exactMatch.filePath}, removing from cache`);
-        this.mockDataCache.delete(requestKey);
+    // Filter cache to only include existing files and clean up stale entries
+    const validCache = new Map<string, CachedMockData>();
+    for (const [key, cachedMock] of this.mockDataCache.entries()) {
+      if (!fs.existsSync(cachedMock.filePath)) {
+        console.log(`[Mockifyer] Cached mock file no longer exists: ${cachedMock.filePath}, removing from cache`);
+        this.mockDataCache.delete(key);
       } else {
+        validCache.set(key, cachedMock);
+      }
+    }
+    
+    // Use utility function to find best match
+    const config = {
+      useSimilarMatch: this.config.useSimilarMatch,
+      similarMatchRequiredParams: this.config.similarMatchRequiredParams
+    };
+    
+    const result = findBestMatchingMockUtil(request, validCache, config);
+    
+    if (result) {
+      if (requestKey === this.generateRequestKey(result.mockData.request)) {
         console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
-        return exactMatch;
+      } else {
+        console.log(`[Mockifyer] Using similar mock match for ${requestKey}`);
       }
     }
-
-    // If no exact match and useSimilarMatch is true, try to find a similar match
-    if (this.config.useSimilarMatch) {
-      console.log(`[Mockifyer] useSimilarMatch enabled, requiredParams config:`, this.config.similarMatchRequiredParams);
-      
-      let requestPath: string;
-      try {
-        const requestUrl = new URL(request.url);
-        requestPath = requestUrl.pathname;
-      } catch (e) {
-        console.log('[Mockifyer] Failed to parse request URL:', request.url);
-        return undefined;
-      }
-      
-      // Find first matching path and method, return immediately
-      for (const [key, cachedMock] of this.mockDataCache.entries()) {
-        // Check if the file still exists - if not, skip this cached entry
-        if (!fs.existsSync(cachedMock.filePath)) {
-          continue;
-        }
-        
-        const mockData = cachedMock.mockData;
-        let mockPath: string;
-        try {
-          const mockUrl = new URL(mockData.request.url);
-          mockPath = mockUrl.pathname;
-        } catch (e) {
-          continue;
-        }
-        
-        // Only match on path and method
-        if (mockPath === requestPath && mockData.request.method === request.method) {
-          // Check if required parameters match (if configured)
-          if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
-            const requestParams = request.queryParams || {};
-            const mockParams = mockData.request.queryParams || {};
-            
-            console.log(`[Mockifyer] Checking required params for similar match:`, {
-              requiredParams: this.config.similarMatchRequiredParams,
-              requestParams,
-              mockParams
-            });
-            
-            // Check if all required parameters match
-            const allRequiredParamsMatch = this.config.similarMatchRequiredParams.every(paramName => {
-              const requestValue = requestParams[paramName];
-              const mockValue = mockParams[paramName];
-              
-              // Both must be present and equal, or both must be absent
-              if (requestValue === undefined && mockValue === undefined) {
-                console.log(`[Mockifyer] Required param '${paramName}': both absent, OK`);
-                return true;
-              }
-              
-              // Convert to string for comparison (query params are usually strings)
-              const requestStr = String(requestValue || '');
-              const mockStr = String(mockValue || '');
-              const matches = requestStr === mockStr;
-              
-              console.log(`[Mockifyer] Required param '${paramName}': request='${requestStr}', mock='${mockStr}', match=${matches}`);
-              
-              return matches;
-            });
-            
-            if (!allRequiredParamsMatch) {
-              // Required parameter differs, skip this mock
-              console.log(`[Mockifyer] ❌ Similar path match found but required params differ, skipping: ${requestKey}`);
-              continue;
-            }
-            
-            console.log(`[Mockifyer] ✅ All required params match for similar match`);
-          }
-          
-          console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath}, method: ${request.method})`);
-          return cachedMock;
-        }
-      }
-    }
-
-    return undefined;
+    
+    return result;
   }
 
   private loadMockData(): void {
