@@ -78,6 +78,7 @@ router.get('/', (req: Request, res: Response) => {
         
         return {
           filename: file,
+          filePath: filePath,
           size: stats.size,
           created: stats.birthtime,
           modified: stats.mtime,
