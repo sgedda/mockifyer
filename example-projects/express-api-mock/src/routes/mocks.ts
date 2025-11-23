@@ -6,8 +6,18 @@ const router = express.Router();
 
 // Get mock data directory path
 function getMockDataPath(): string {
-  const mockPath = process.env.MOCKIFYER_PATH || path.join(process.cwd(), 'mock-data');
-  return path.isAbsolute(mockPath) ? mockPath : path.join(process.cwd(), mockPath);
+  // Use the same logic as initializeMockifyer to ensure consistency
+  if (process.env.MOCKIFYER_PATH) {
+    return path.isAbsolute(process.env.MOCKIFYER_PATH) 
+      ? process.env.MOCKIFYER_PATH 
+      : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
+  } else if (process.env.RAILWAY_ENVIRONMENT || require('fs').existsSync('/persisted/mock-data')) {
+    // On Railway, use volume path
+    return '/persisted/mock-data';
+  } else {
+    // Local development fallback
+    return path.join(process.cwd(), 'persisted', 'mock-data');
+  }
 }
 
 // List all mock files
@@ -16,7 +26,7 @@ router.get('/', (req: Request, res: Response) => {
     const mockDataPath = getMockDataPath();
     
     if (!fs.existsSync(mockDataPath)) {
-      return res.json({ files: [] });
+      return res.json({ files: [], mockDataPath });
     }
 
     const files = fs.readdirSync(mockDataPath)
@@ -88,7 +98,7 @@ router.get('/', (req: Request, res: Response) => {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime()); // Sort by most recent first
 
-    res.json({ files });
+    res.json({ files, mockDataPath });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
     res.status(500).json({ error: 'Failed to list mock files', details: error.message });

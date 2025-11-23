@@ -25,7 +25,14 @@ Railway offers a free tier with automatic deployments from GitHub.
    - Railway will use Railpack (Nixpacks) which reads `nixpacks.toml` configuration
    - The `nixpacks.toml` handles copying production files, regenerating lockfile, and building correctly
 
-4. **Set Environment Variables**
+4. **Create Persistent Volume (Recommended)**
+   - Go to your Railway service → "Volumes" tab
+   - Click "Add Volume"
+   - Set the mount path to: `/persisted/mock-data`
+   - This ensures mock data persists across deployments
+   - **Note**: The app will automatically detect and use the Railway volume at `/persisted/mock-data`
+
+5. **Set Environment Variables**
    - Go to the service settings → Variables
    - Add these variables:
      ```
@@ -34,9 +41,14 @@ Railway offers a free tier with automatic deployments from GitHub.
      NODE_ENV=production
      MOCKIFYER_ENABLED=true
      MOCKIFYER_RECORD=true  # Set to true initially to record mocks
-     MOCKIFYER_PATH=./mock-data
      GITHUB_TOKEN=your_github_token_with_read_packages_scope
      ```
+   - **Optional**: If you want to use a custom volume path, set:
+     ```
+     MOCKIFYER_PATH=/persisted/mock-data
+     ```
+     - If not set, the app will automatically use `/persisted/mock-data` when a Railway volume is detected
+     - For local development, it defaults to `persisted/mock-data`
    - **Important**: Add `GITHUB_TOKEN` with a GitHub Personal Access Token that has `read:packages` scope
      - This is needed to install `@sgedda/mockifyer` from GitHub Packages
      - Create token at: https://github.com/settings/tokens/new
@@ -47,11 +59,12 @@ Railway offers a free tier with automatic deployments from GitHub.
    - Initially set `MOCKIFYER_RECORD=true` to record mock data on the server
    - Make some API calls through your deployed app to record the responses
    - After mocks are recorded, set `MOCKIFYER_RECORD=false` to use the recorded mocks
-   - The mock data files will be created in the `mock-data` directory on the server
+   - The mock data files will be stored in the persistent volume at `/persisted/mock-data` (or your custom `MOCKIFYER_PATH`)
 
-5. **Deploy**
+6. **Deploy**
    - Railway will automatically deploy on every push to `main`
    - Or trigger manually from the Railway dashboard
+   - Mock data will persist in the volume across deployments
 
 ### Railway Auto-Deploy
 
@@ -113,7 +126,10 @@ Required environment variables:
 - `NODE_ENV` - Set to `production` for production
 - `MOCKIFYER_ENABLED` - Set to `true` to enable mockifyer
 - `MOCKIFYER_RECORD` - Set to `false` to use mocks (not record)
-- `MOCKIFYER_PATH` - Path to mock data (default: `./mock-data`)
+- `MOCKIFYER_PATH` - Path to mock data (optional)
+  - On Railway: Automatically uses `/persisted/mock-data` if volume is mounted, or set custom path
+  - Local development: Defaults to `persisted/mock-data`
+  - If not set, the app will auto-detect the appropriate path
 
 ## Accessing Your Deployed App
 

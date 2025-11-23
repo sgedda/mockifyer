@@ -690,8 +690,12 @@
                 </select>
             </div>
             <div class="form-group">
-                <label for="season-input">Season (optional):</label>
-                <input type="number" id="season-input" placeholder="e.g., 2024" value="2024">
+                <label for="standings-season-input">Season:</label>
+                <select id="standings-season-input">
+                    <option value="2021">2021</option>
+                    <option value="2022" selected>2022</option>
+                    <option value="2023">2023</option>
+                </select>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getStandings()">Get Standings</button>
@@ -1340,10 +1344,15 @@
         async function getStandings () {
             const button = event.target;
             const leagueId = document.getElementById('standings-league-input').value;
-            const season = document.getElementById('season-input').value || new Date().getFullYear();
+            const season = document.getElementById('standings-season-input').value;
 
             if (!leagueId) {
                 alert('Please select a league');
+                return;
+            }
+
+            if (!season) {
+                alert('Please select a season');
                 return;
             }
 
@@ -1540,6 +1549,7 @@
                 const response = await fetch(`${API_BASE}/api/mocks`);
                 const data = await response.json();
                 const files = data.files || [];
+                const mockDataPath = data.mockDataPath || '';
 
                 if (files.length === 0) {
                     listContainer.innerHTML = '<div style="padding: 10px; color: #666;">No mock files found</div>';
@@ -1586,12 +1596,37 @@
                         infoDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
                     }
 
-                    // Format filepath for display (make it relative if possible)
+                    // Format filepath for display (make it relative to the configured mock data path)
                     let displayPath = file.filePath || file.filename;
-                    // Try to make path relative if it's an absolute path
-                    displayPath = displayPath.replace(/^.*\/(mock-data|mockifyer)/, '$1');
+                    // If we have the mockDataPath from backend, use it to make the path relative
+                    if (mockDataPath && displayPath.startsWith(mockDataPath)) {
+                        displayPath = displayPath.substring(mockDataPath.length).replace(/^[/\\]+/, '');
+                        // If the path contains 'persisted', preserve that part
+                        if (mockDataPath.includes('persisted')) {
+                            displayPath = 'persisted/' + displayPath;
+                        }
+                    } else {
+                        // Fallback: try to find the actual directory structure
+                        const patterns = ['persisted/mock-data', 'mock-data'];
+                        let found = false;
+                        for (const pattern of patterns) {
+                            const index = displayPath.indexOf(pattern);
+                            if (index !== -1) {
+                                displayPath = displayPath.substring(index);
+                                found = true;
+                                break;
+                            }
+                        }
+                        // If no pattern found, try to extract just the filename and directory
+                        if (!found) {
+                            const parts = displayPath.split(/[/\\]/);
+                            const filename = parts[parts.length - 1];
+                            const dir = parts[parts.length - 2] || 'mock-data';
+                            displayPath = `${dir}/${filename}`;
+                        }
+                    }
                     const escapedPath = displayPath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                    
+
                     html += `
                         <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
                              onclick="viewMockFile('${file.filename}')"
