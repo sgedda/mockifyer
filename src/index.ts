@@ -18,6 +18,8 @@ class MockifyerClass {
   private mockAdapter?: MockAdapter;
   private mockDataCache: Map<string, CachedMockData> = new Map();
   private httpClient: HTTPClient;
+  private processingRequests: Set<string> = new Set();
+  private savingResponses: Set<string> = new Set();
 
   constructor(config: MockifyerConfig) {
     // Validate and normalize conflicting settings
@@ -69,8 +71,13 @@ class MockifyerClass {
 
   private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
     const requestKey = this.generateRequestKey(request);
-    console.log('[Mockifyer] requestKey:', requestKey);
-    console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
+    
+    console.log(`[Mockifyer] findBestMatchingMock called with:`, {
+      url: request.url,
+      method: request.method,
+      queryParams: request.queryParams,
+      requestKey
+    });
     
     // Try exact match first
     const exactMatch = this.mockDataCache.get(requestKey);
@@ -80,73 +87,85 @@ class MockifyerClass {
         console.log(`[Mockifyer] Cached mock file no longer exists: ${exactMatch.filePath}, removing from cache`);
         this.mockDataCache.delete(requestKey);
       } else {
-      console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
-      return exactMatch;
+        console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
+        return exactMatch;
       }
     }
 
-    console.log('[Mockifyer] useSimilarMatch:', this.config.useSimilarMatch);
     // If no exact match and useSimilarMatch is true, try to find a similar match
     if (this.config.useSimilarMatch) {
-      const requestUrl = new URL(request.url);
-      const requestPath = requestUrl.pathname;
+      console.log(`[Mockifyer] useSimilarMatch enabled, requiredParams config:`, this.config.similarMatchRequiredParams);
       
+      let requestPath: string;
+      try {
+        const requestUrl = new URL(request.url);
+        requestPath = requestUrl.pathname;
+      } catch (e) {
+        console.log('[Mockifyer] Failed to parse request URL:', request.url);
+        return undefined;
+      }
+      
+      // Find first matching path and method, return immediately
       for (const [key, cachedMock] of this.mockDataCache.entries()) {
         // Check if the file still exists - if not, skip this cached entry
         if (!fs.existsSync(cachedMock.filePath)) {
-          console.log(`[Mockifyer] Cached mock file no longer exists: ${cachedMock.filePath}, skipping`);
           continue;
         }
         
         const mockData = cachedMock.mockData;
-        const mockUrl = new URL(mockData.request.url);
-        const mockPath = mockUrl.pathname;
+        let mockPath: string;
+        try {
+          const mockUrl = new URL(mockData.request.url);
+          mockPath = mockUrl.pathname;
+        } catch (e) {
+          continue;
+        }
         
-        console.log('[Mockifyer] mockPath:', mockPath);
-        console.log('[Mockifyer] requestPath:', requestPath);
-        
-        // Only match on path and method, ignore query parameters
+        // Only match on path and method
         if (mockPath === requestPath && mockData.request.method === request.method) {
-          // If useSimilarMatchCheckResponse is true, make the actual request and compare
-          if (this.config.useSimilarMatchCheckResponse) {
+          // Check if required parameters match (if configured)
+          if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
             const requestParams = request.queryParams || {};
             const mockParams = mockData.request.queryParams || {};
             
-            console.log('[Mockifyer] requestParams:', requestParams);
-            console.log('[Mockifyer] mockParams:', mockParams);
+            console.log(`[Mockifyer] Checking required params for similar match:`, {
+              requiredParams: this.config.similarMatchRequiredParams,
+              requestParams,
+              mockParams
+            });
             
-            try {
-              // Make the actual request
-              const response = await this.httpClient.request({
-                method: request.method,
-                url: request.url,
-                params: requestParams
-              });
+            // Check if all required parameters match
+            const allRequiredParamsMatch = this.config.similarMatchRequiredParams.every(paramName => {
+              const requestValue = requestParams[paramName];
+              const mockValue = mockParams[paramName];
               
-              // Compare the actual response with mock data
-              const actualResponseStr = JSON.stringify(response.data);
-              const mockResponseStr = JSON.stringify(mockData.response.data);
-              
-              console.log('[Mockifyer] Comparing responses:', {
-                actual: actualResponseStr,
-                mock: mockResponseStr
-              });
-              
-              if (actualResponseStr === mockResponseStr) {
-                console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath})`);
-                return cachedMock;
-              } else {
-                console.log(`[Mockifyer] Similar path match found but response content differs: ${key}`);
-                continue;
+              // Both must be present and equal, or both must be absent
+              if (requestValue === undefined && mockValue === undefined) {
+                console.log(`[Mockifyer] Required param '${paramName}': both absent, OK`);
+                return true;
               }
-            } catch (error) {
-              console.error('[Mockifyer] Error making request for comparison:', error);
+              
+              // Convert to string for comparison (query params are usually strings)
+              const requestStr = String(requestValue || '');
+              const mockStr = String(mockValue || '');
+              const matches = requestStr === mockStr;
+              
+              console.log(`[Mockifyer] Required param '${paramName}': request='${requestStr}', mock='${mockStr}', match=${matches}`);
+              
+              return matches;
+            });
+            
+            if (!allRequiredParamsMatch) {
+              // Required parameter differs, skip this mock
+              console.log(`[Mockifyer] ❌ Similar path match found but required params differ, skipping: ${requestKey}`);
               continue;
             }
-          } else {
-            console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath})`);
-            return cachedMock;
+            
+            console.log(`[Mockifyer] ✅ All required params match for similar match`);
           }
+          
+          console.log(`[Mockifyer] Using similar mock match for ${requestKey} (matched path: ${mockPath}, method: ${request.method})`);
+          return cachedMock;
         }
       }
     }
@@ -262,8 +281,20 @@ class MockifyerClass {
           queryParams: config.params
         };
 
-        const cachedMock = await this.findBestMatchingMock(request);
-        if (cachedMock) {
+        const requestKey = this.generateRequestKey(request);
+        
+        // Prevent infinite loops - if we're already processing this request, skip
+        if (this.processingRequests.has(requestKey)) {
+          console.log(`[Mockifyer] ⚠️ Already processing ${requestKey}, skipping to prevent infinite loop`);
+          return config;
+        }
+        
+        console.log(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
+        this.processingRequests.add(requestKey);
+        
+        try {
+          const cachedMock = await this.findBestMatchingMock(request);
+          if (cachedMock) {
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
           const { mockData, filename, filePath } = cachedMock;
@@ -289,20 +320,32 @@ class MockifyerClass {
             request: {}
           };
 
-          console.log('[Mockifyer] Using existing mock in record mode (recordSameEndpoints=false), skipping real API call');
+            console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
+            
+            const result = {
+              ...config,
+              adapter: () => {
+                console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
+                return Promise.resolve(mockResponse);
+              }
+            } as any;
+            
+            // Remove from processing set immediately after creating the result
+            // This allows the same request to be made again later if needed
+            this.processingRequests.delete(requestKey);
+            
+            return result;
+          }
           
-          return {
-            ...config,
-            adapter: () => {
-              console.log('[Mockifyer] Adapter called in record mode, returning mock response');
-              return Promise.resolve(mockResponse);
-            }
-          } as any;
+          // No mock found - will make real API call (this is correct)
+          console.log(`[Mockifyer] ❌ No mock found for ${requestKey}, will make real API call`);
+          this.processingRequests.delete(requestKey);
+          return config;
+        } catch (error) {
+          console.error(`[Mockifyer] ❌ Error processing ${requestKey}:`, error);
+          this.processingRequests.delete(requestKey);
+          throw error;
         }
-        
-        // No mock found - will make real API call (this is correct)
-        console.log('[Mockifyer] No mock found, will make real API call in record mode');
-        return config;
       });
     } else {
       // recordSameEndpoints is true - always make real API calls, don't check for mocks
@@ -324,10 +367,14 @@ class MockifyerClass {
           return response;
         }
         
-        console.log('[Mockifyer] Recording response for:', {
+        const requestKey = this.generateRequestKey({
           method: response.config.method?.toUpperCase() || 'GET',
-          url: response.config.url
+          url: response.config.url || '',
+          headers: {},
+          queryParams: response.config.params || {}
         });
+        
+        console.log(`[Mockifyer] 📹 Recording response for: ${requestKey}`);
         this.saveResponse(response as HTTPResponse);
         return response;
       },
@@ -356,63 +403,201 @@ class MockifyerClass {
     );
   }
 
-  private async saveResponse(response: HTTPResponse): Promise<void> {
-    const request: StoredRequest = {
-      method: response.config.method?.toUpperCase() || 'GET',
-      url: response.config.url || '',
-      headers: response.config.headers as Record<string, string>,
-      data: response.config.data,
-      queryParams: response.config.params || {}
-    };
-
-    // Always check cache first, unless recordSameEndpoints is true
-    if (this.config.recordSameEndpoints !== true) {
-      const existingMock = await this.findBestMatchingMock(request);
-      if (existingMock) {
-        console.log(`[Mockifyer] Using existing mock for endpoint: ${request.url}`);
-        return;
+  private anonymizeHeaders(headers: Record<string, any>): Record<string, any> {
+    // Default headers to anonymize (common API key headers)
+    const defaultHeadersToAnonymize = [
+      'x-rapidapi-key',
+      'x-api-key',
+      'authorization',
+      'api-key',
+      'apikey',
+      'x-auth-token',
+      'x-access-token',
+      'bearer'
+    ];
+    
+    const headersToAnonymize = this.config.anonymizeHeaders !== undefined
+      ? this.config.anonymizeHeaders
+      : defaultHeadersToAnonymize;
+    
+    // If explicitly set to empty array, don't anonymize
+    if (headersToAnonymize.length === 0) {
+      return headers;
+    }
+    
+    const anonymized = { ...headers };
+    const lowerCaseHeadersToAnonymize = headersToAnonymize.map(h => h.toLowerCase());
+    
+    // Anonymize headers (case-insensitive)
+    for (const [key, value] of Object.entries(anonymized)) {
+      if (value && typeof value === 'string' && lowerCaseHeadersToAnonymize.includes(key.toLowerCase())) {
+        // Keep first 4 and last 4 characters if key is long enough, otherwise just show it's anonymized
+        if (value.length > 8) {
+          anonymized[key] = `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
+        } else {
+          anonymized[key] = '***ANONYMIZED***';
+        }
       }
     }
-
-    const storedResponse: StoredResponse = {
-      status: response.status,
-      data: response.data,
-      headers: response.headers as Record<string, string>
-    };
-
-    const mockData: MockData = {
-      request,
-      response: storedResponse,
-      timestamp: new Date().toISOString(),
-      scenario: this.config.scenarios?.default
-    };
-
-    // Format the datetime to be readable
-    const now = new Date();
-    const dateStr = now.toISOString()
-      .replace(/T/, '_')
-      .replace(/\..+/, '')
-      .replace(/:/g, '-');
-
-    // Create a safe filename from the URL
-    const urlSafe = request.url
-      .replace(/^https?:\/\//, '')
-      .replace(/[^a-zA-Z0-9]/g, '_');
-
-    const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-    const filePath = path.join(this.config.mockDataPath, filename);
     
-    // Add to cache immediately
-    const key = this.generateRequestKey(request);
-    this.mockDataCache.set(key, {
-      mockData,
-      filename,
-      filePath
-    });
-    console.log(`[Mockifyer] Added new mock to cache: ${key}`);
-    console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
+    return anonymized;
+  }
 
-    fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+  private anonymizeQueryParams(queryParams: Record<string, any>): Record<string, any> {
+    // Default query params to anonymize (common API key params)
+    const defaultParamsToAnonymize = [
+      'api_key',
+      'apikey',
+      'api-key',
+      'key',
+      'token',
+      'access_token',
+      'access-token',
+      'auth_token',
+      'auth-token',
+      'secret',
+      'password'
+    ];
+    
+    const paramsToAnonymize = this.config.anonymizeQueryParams !== undefined
+      ? this.config.anonymizeQueryParams
+      : defaultParamsToAnonymize;
+    
+    // If explicitly set to empty array, don't anonymize
+    if (paramsToAnonymize.length === 0) {
+      return queryParams;
+    }
+    
+    const anonymized = { ...queryParams };
+    const lowerCaseParamsToAnonymize = paramsToAnonymize.map(p => p.toLowerCase());
+    
+    // Anonymize query params (case-insensitive)
+    for (const [key, value] of Object.entries(anonymized)) {
+      if (value != null && typeof value === 'string' && lowerCaseParamsToAnonymize.includes(key.toLowerCase())) {
+        // Keep first 4 and last 4 characters if value is long enough, otherwise just show it's anonymized
+        if (value.length > 8) {
+          anonymized[key] = `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
+        } else {
+          anonymized[key] = '***ANONYMIZED***';
+        }
+      }
+    }
+    
+    return anonymized;
+  }
+
+  private async saveResponse(response: HTTPResponse): Promise<void> {
+    // Generate request key to check if we're already saving this response
+    const tempRequest: StoredRequest = {
+      method: response.config.method?.toUpperCase() || 'GET',
+      url: response.config.url || '',
+      headers: {},
+      queryParams: response.config.params || {}
+    };
+    const requestKey = this.generateRequestKey(tempRequest);
+    
+    // Prevent duplicate saves
+    if (this.savingResponses.has(requestKey)) {
+      console.log(`[Mockifyer] ⚠️ Already saving response for ${requestKey}, skipping duplicate save`);
+      return;
+    }
+    
+    this.savingResponses.add(requestKey);
+    
+    try {
+      // Extract headers as plain object (handle AxiosHeaders instances)
+      let originalHeaders: Record<string, any> = {};
+      if (response.config.headers) {
+        if (typeof (response.config.headers as any).toJSON === 'function') {
+          // AxiosHeaders instance
+          originalHeaders = (response.config.headers as any).toJSON();
+        } else if (typeof (response.config.headers as any).get === 'function') {
+          // Headers-like object with get method
+          const headersObj: Record<string, any> = {};
+          const headers = response.config.headers as any;
+          if (headers.forEach) {
+            headers.forEach((value: any, key: string) => {
+              headersObj[key] = value;
+            });
+          } else {
+            // Fallback: try to iterate
+            for (const key in headers) {
+              if (headers.hasOwnProperty(key)) {
+                headersObj[key] = headers[key];
+              }
+            }
+          }
+          originalHeaders = headersObj;
+        } else {
+          // Plain object
+          originalHeaders = response.config.headers as Record<string, any>;
+        }
+      }
+      
+      // Anonymize headers and query params before saving
+      const anonymizedHeaders = this.anonymizeHeaders(originalHeaders);
+      const anonymizedQueryParams = this.anonymizeQueryParams(response.config.params || {});
+      
+      const request: StoredRequest = {
+        method: response.config.method?.toUpperCase() || 'GET',
+        url: response.config.url || '',
+        headers: anonymizedHeaders,
+        data: response.config.data,
+        queryParams: anonymizedQueryParams
+      };
+
+      // Always check cache first, unless recordSameEndpoints is true
+      if (this.config.recordSameEndpoints !== true) {
+        const existingMock = await this.findBestMatchingMock(request);
+        if (existingMock) {
+          console.log(`[Mockifyer] Using existing mock for endpoint: ${request.url}`);
+          return;
+        }
+      }
+
+      const storedResponse: StoredResponse = {
+        status: response.status,
+        data: response.data,
+        headers: response.headers as Record<string, string>
+      };
+
+      const mockData: MockData = {
+        request,
+        response: storedResponse,
+        timestamp: new Date().toISOString(),
+        scenario: this.config.scenarios?.default
+      };
+
+      // Format the datetime to be readable
+      const now = new Date();
+      const dateStr = now.toISOString()
+        .replace(/T/, '_')
+        .replace(/\..+/, '')
+        .replace(/:/g, '-');
+
+      // Create a safe filename from the URL
+      const urlSafe = request.url
+        .replace(/^https?:\/\//, '')
+        .replace(/[^a-zA-Z0-9]/g, '_');
+
+      const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
+      const filePath = path.join(this.config.mockDataPath, filename);
+      
+      // Add to cache immediately
+      const key = this.generateRequestKey(request);
+      this.mockDataCache.set(key, {
+        mockData,
+        filename,
+        filePath
+      });
+      console.log(`[Mockifyer] Added new mock to cache: ${key}`);
+      console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
+
+      fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+    } finally {
+      // Remove from saving set after save completes
+      this.savingResponses.delete(requestKey);
+    }
   }
 
   public getHTTPClient(): HTTPClient {

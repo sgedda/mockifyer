@@ -11,6 +11,7 @@ export interface MockifyerConfig {
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
+  similarMatchRequiredParams?: string[]; // Query parameters that must match for similar match to be used (e.g., ['season', 'league'])
   dateManipulation?: {
     // Fixed date to use instead of current date
     fixedDate?: string | Date;
@@ -32,6 +33,10 @@ export interface MockifyerConfig {
   baseUrl?: string;
   defaultHeaders?: Record<string, string>;
   axiosInstance?: any;
+  /** Headers to anonymize when saving mock data (defaults to common API key headers). Set to empty array to disable. */
+  anonymizeHeaders?: string[];
+  /** Query parameters to anonymize when saving mock data (defaults to common API key params). Set to empty array to disable. */
+  anonymizeQueryParams?: string[];
 }
 
 export interface StoredRequest {
