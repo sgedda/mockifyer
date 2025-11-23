@@ -6,7 +6,8 @@ const router = express.Router();
 router.get('/current/:city', async (req: Request, res: Response) => {
   try {
     const { city } = req.params;
-    const result = await weatherService.getCurrentWeather(city);
+    const fullResponse = req.query.full === 'true' || req.query.full === '1';
+    const result = await weatherService.getCurrentWeather(city, fullResponse);
     
     // Log headers received from service
     console.log('[WeatherRoute] Current - Headers from service:', {
@@ -62,7 +63,8 @@ router.get('/forecast/:city', async (req: Request, res: Response) => {
   try {
     const { city } = req.params;
     const days = req.query.days ? parseInt(req.query.days as string, 10) : 3;
-    const result = await weatherService.getForecast(city, days);
+    const fullResponse = req.query.full === 'true' || req.query.full === '1';
+    const result = await weatherService.getForecast(city, days, fullResponse);
     
     // Log headers received from service
     console.log('[WeatherRoute] Forecast - Headers from service:', {

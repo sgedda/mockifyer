@@ -64,7 +64,7 @@ export class WeatherService {
     });
   }
 
-  async getCurrentWeather(city: string): Promise<{ data: WeatherData; headers: Record<string, string> }> {
+  async getCurrentWeather(city: string, fullResponse: boolean = false): Promise<{ data: WeatherData | any; headers: Record<string, string> }> {
     try {
       console.log('[WeatherService] Making current weather request:', {
         url: `${this.baseUrl}/current.json`,
@@ -97,8 +97,16 @@ export class WeatherService {
         xMockifyerHeader: response.headers?.['x-mockifyer'] || response.headers?.['X-Mockifyer'] || response.headers?.['X-MOCKIFYER']
       });
 
+      // Return full response if requested, otherwise return transformed data
+      if (fullResponse) {
+        return {
+          data: response.data,
+          headers: response.headers as Record<string, string>
+        };
+      }
+
       const weatherData: WeatherData = {
-        location: city,
+        location: response.data.location?.name || city, // Use actual location name from API
         temperature: response.data.current.temp_c,
         conditions: response.data.current.condition.text,
         timestamp: response.data.current.last_updated
@@ -121,7 +129,7 @@ export class WeatherService {
     }
   }
 
-  async getForecast(city: string, days: number = 3): Promise<{ data: WeatherData[]; headers: Record<string, string> }> {
+  async getForecast(city: string, days: number = 3, fullResponse: boolean = false): Promise<{ data: WeatherData[] | any; headers: Record<string, string> }> {
     try {
       console.log('[WeatherService] Making forecast request:', {
         url: `${this.baseUrl}/forecast.json`,
@@ -146,8 +154,17 @@ export class WeatherService {
         isMocked: response.headers?.['x-mockifyer'] === 'true'
       });
 
+      // Return full response if requested, otherwise return transformed data
+      if (fullResponse) {
+        return {
+          data: response.data,
+          headers: response.headers as Record<string, string>
+        };
+      }
+
+      const locationName = response.data.location?.name || city; // Use actual location name from API
       const forecastData: WeatherData[] = response.data.forecast.forecastday.map((day: any) => ({
-        location: city,
+        location: locationName,
         temperature: day.day.avgtemp_c,
         conditions: day.day.condition.text,
         timestamp: day.date

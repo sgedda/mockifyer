@@ -767,6 +767,13 @@
                 <label for="city-input">City Name:</label>
                 <input type="text" id="city-input" placeholder="e.g., London, New York, Tokyo" value="London">
             </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="current-weather-full-response"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Show full API response</span>
+                </label>
+            </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getCurrentWeather()">Get Current Weather</button>
                 <button onclick="deleteCurrentWeatherMock()"
@@ -792,6 +799,13 @@
                     <option value="5">5 days</option>
                     <option value="7">7 days</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="forecast-full-response"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Show full API response</span>
+                </label>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getForecast()">Get Forecast</button>
@@ -981,6 +995,7 @@
         async function getCurrentWeather () {
             const button = event.target;
             const city = document.getElementById('city-input').value.trim();
+            const fullResponse = document.getElementById('current-weather-full-response').checked;
 
             if (!city) {
                 alert('Please enter a city name');
@@ -990,8 +1005,9 @@
             button.disabled = true;
             button.innerHTML = '<span class="loading"></span> Loading...';
 
-            const result = await makeRequest(`${API_BASE}/api/weather/current/${encodeURIComponent(city)}`);
-            displayResponse('current-weather-response', result, `Current Weather for ${city}`);
+            const url = `${API_BASE}/api/weather/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
+            const result = await makeRequest(url);
+            displayResponse('current-weather-response', result, `Current Weather for ${city}${fullResponse ? ' (Full Response)' : ''}`);
 
             // Refresh mock files list in case a new mock was created
             if (result.success) {
@@ -1006,6 +1022,7 @@
             const button = event.target;
             const city = document.getElementById('forecast-city-input').value.trim();
             const days = document.getElementById('days-input').value;
+            const fullResponse = document.getElementById('forecast-full-response').checked;
 
             if (!city) {
                 alert('Please enter a city name');
@@ -1015,8 +1032,9 @@
             button.disabled = true;
             button.innerHTML = '<span class="loading"></span> Loading...';
 
-            const result = await makeRequest(`${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}`);
-            displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}`);
+            const url = `${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}${fullResponse ? '&full=true' : ''}`;
+            const result = await makeRequest(url);
+            displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}${fullResponse ? ' (Full Response)' : ''}`);
 
             // Refresh mock files list in case a new mock was created
             if (result.success) {
@@ -1696,6 +1714,257 @@
                 viewerContainer.appendChild(pre);
             } catch (error) {
                 viewerContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading file: ${error.message}</div>`;
+            }
+        }
+
+        // Edit a mock file
+        async function editMockFile (filename) {
+            try {
+                // Load the file data
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(`Error: ${data.error || 'Failed to load file'}`);
+                    return;
+                }
+
+                // Extract only response.data (the actual API response data)
+                // Mockifyer saves: response.data = the full API response
+                let responseDataToEdit;
+                if (data.data.response && data.data.response.data) {
+                    // response.data exists - this is the full API response
+                    responseDataToEdit = data.data.response.data;
+                } else {
+                    // Fallback: use empty object
+                    responseDataToEdit = {};
+                }
+
+                // Store original data for merging on save
+                const originalData = data.data;
+
+                // Create edit modal
+                const modal = document.createElement('div');
+                modal.id = 'edit-modal';
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 20px;
+                `;
+
+                const modalContent = document.createElement('div');
+                modalContent.style.cssText = `
+                    background: white;
+                    border-radius: 15px;
+                    padding: 25px;
+                    max-width: 90vw;
+                    max-height: 90vh;
+                    width: 1000px;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                `;
+
+                // Format JSON for editing (only the response data)
+                const jsonString = JSON.stringify(responseDataToEdit, null, 2);
+
+                modalContent.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <h2 style="color: #667eea; margin: 0 0 5px 0; font-size: 1.5em;">✏️ Edit Mock File: ${filename}</h2>
+                            <div style="font-size: 0.85em; color: #888; font-style: italic;">
+                                Editing: response.data (API response data - other fields preserved)
+                            </div>
+                        </div>
+                        <button id="close-edit-modal" style="background: #f5f5f5; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2em;">&times;</button>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <label style="margin-bottom: 8px; color: #666; font-weight: 500;">Response Data (JSON):</label>
+                        <textarea id="edit-json-content" style="
+                            flex: 1;
+                            font-family: 'Courier New', monospace;
+                            font-size: 0.9em;
+                            padding: 15px;
+                            border: 2px solid #e0e0e0;
+                            border-radius: 8px;
+                            resize: none;
+                            min-height: 400px;
+                            line-height: 1.5;
+                        ">${jsonString.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                        <div id="json-error" style="
+                            margin-top: 10px;
+                            padding: 10px;
+                            background: #ffebee;
+                            color: #c62828;
+                            border-radius: 6px;
+                            display: none;
+                            font-size: 0.9em;
+                        "></div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+                        <button id="cancel-edit" style="
+                            background: #f5f5f5;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 1em;
+                        ">Cancel</button>
+                        <button id="save-edit" style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 1em;
+                            font-weight: 500;
+                        ">💾 Save Changes</button>
+                    </div>
+                `;
+
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
+
+                const textarea = document.getElementById('edit-json-content');
+                const errorDiv = document.getElementById('json-error');
+                const saveButton = document.getElementById('save-edit');
+                const cancelButton = document.getElementById('cancel-edit');
+                const closeButton = document.getElementById('close-edit-modal');
+
+                // Real-time JSON validation
+                let validationTimeout;
+                textarea.addEventListener('input', () => {
+                    clearTimeout(validationTimeout);
+                    validationTimeout = setTimeout(() => {
+                        validateJSON(textarea.value, errorDiv);
+                    }, 500);
+                });
+
+                // Validate JSON function (any valid JSON is acceptable for response data)
+                function validateJSON (jsonString, errorElement) {
+                    if (!jsonString.trim()) {
+                        errorElement.style.display = 'none';
+                        saveButton.disabled = false;
+                        saveButton.style.opacity = '1';
+                        return true; // Empty is valid (will be saved as empty object/array)
+                    }
+
+                    try {
+                        const parsed = JSON.parse(jsonString);
+                        // Any valid JSON is acceptable (object, array, string, number, boolean, null)
+                        errorElement.style.display = 'none';
+                        saveButton.disabled = false;
+                        saveButton.style.opacity = '1';
+                        return true;
+                    } catch (e) {
+                        errorElement.textContent = `❌ Invalid JSON: ${e.message}`;
+                        errorElement.style.display = 'block';
+                        errorElement.style.background = '#ffebee';
+                        errorElement.style.color = '#c62828';
+                        saveButton.disabled = true;
+                        saveButton.style.opacity = '0.5';
+                        return false;
+                    }
+                }
+
+                // Initial validation
+                validateJSON(textarea.value, errorDiv);
+
+                // Save handler
+                saveButton.addEventListener('click', async () => {
+                    const jsonContent = textarea.value.trim();
+
+                    if (!validateJSON(jsonContent, errorDiv)) {
+                        return;
+                    }
+
+                    try {
+                        // Parse the response data (can be any valid JSON)
+                        let parsedResponseData;
+                        if (!jsonContent.trim()) {
+                            // Empty string means empty object/array - use empty array as default
+                            parsedResponseData = [];
+                        } else {
+                            parsedResponseData = JSON.parse(jsonContent);
+                        }
+
+                        saveButton.disabled = true;
+                        saveButton.textContent = '💾 Saving...';
+
+                        const saveResponse = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ responseData: parsedResponseData })
+                        });
+
+                        const saveData = await saveResponse.json();
+
+                        if (saveResponse.ok) {
+                            // Show success
+                            errorDiv.textContent = '✅ File saved successfully!';
+                            errorDiv.style.display = 'block';
+                            errorDiv.style.background = '#c8e6c9';
+                            errorDiv.style.color = '#2e7d32';
+
+                            // Close modal after a short delay
+                            setTimeout(() => {
+                                document.body.removeChild(modal);
+                                loadMockFiles();
+                                // Reload the viewer if it's showing this file
+                                viewMockFile(filename);
+                            }, 1000);
+                        } else {
+                            errorDiv.textContent = `❌ Error: ${saveData.error || saveData.details || 'Failed to save'}`;
+                            errorDiv.style.display = 'block';
+                            errorDiv.style.background = '#ffebee';
+                            errorDiv.style.color = '#c62828';
+                            saveButton.disabled = false;
+                            saveButton.textContent = '💾 Save Changes';
+                        }
+                    } catch (e) {
+                        errorDiv.textContent = `❌ Error: ${e.message}`;
+                        errorDiv.style.display = 'block';
+                        errorDiv.style.background = '#ffebee';
+                        errorDiv.style.color = '#c62828';
+                        saveButton.disabled = false;
+                        saveButton.textContent = '💾 Save Changes';
+                    }
+                });
+
+                // Cancel/Close handlers
+                const closeModal = () => {
+                    document.body.removeChild(modal);
+                };
+
+                cancelButton.addEventListener('click', closeModal);
+                closeButton.addEventListener('click', closeModal);
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        closeModal();
+                    }
+                });
+
+                // Escape key to close
+                const escapeHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        closeModal();
+                        document.removeEventListener('keydown', escapeHandler);
+                    }
+                };
+                document.addEventListener('keydown', escapeHandler);
+            } catch (error) {
+                alert(`Error loading file for editing: ${error.message}`);
             }
         }
 

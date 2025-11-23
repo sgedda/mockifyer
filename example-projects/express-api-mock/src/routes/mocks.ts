@@ -140,6 +140,84 @@ router.get('/:filename', (req: Request, res: Response) => {
   }
 });
 
+// Update a mock file (only updates response.data.response or response.data)
+router.put('/:filename', (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    const mockDataPath = getMockDataPath();
+    const filePath = path.join(mockDataPath, filename);
+
+    // Security: prevent directory traversal
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Mock file not found' });
+    }
+
+    // Validate that request body contains responseData
+    if (!req.body || req.body.responseData === undefined) {
+      return res.status(400).json({ error: 'Request body must contain responseData field' });
+    }
+
+    // Read the existing file to preserve all other data
+    const existingContent = fs.readFileSync(filePath, 'utf-8');
+    let existingData: any;
+    try {
+      existingData = JSON.parse(existingContent);
+    } catch (e) {
+      return res.status(400).json({ error: 'Existing file is not valid JSON' });
+    }
+
+    // Validate the responseData is valid JSON
+    let parsedResponseData;
+    try {
+      // If responseData is a string, parse it first
+      if (typeof req.body.responseData === 'string') {
+        parsedResponseData = JSON.parse(req.body.responseData);
+      } else {
+        parsedResponseData = req.body.responseData;
+      }
+    } catch (parseError: any) {
+      return res.status(400).json({ 
+        error: 'Invalid JSON', 
+        details: parseError.message,
+        message: 'The provided responseData is not valid JSON. Please check your syntax.'
+      });
+    }
+
+    // Ensure response structure exists
+    if (!existingData.response) {
+      existingData.response = { status: 200, data: {}, headers: {} };
+    }
+
+    // Update only response.data (the actual API response data)
+    // This preserves request, timestamp, scenario, and response.status/headers
+    existingData.response.data = parsedResponseData;
+
+    // Write the updated JSON to file with pretty formatting
+    const formattedJson = JSON.stringify(existingData, null, 2);
+    fs.writeFileSync(filePath, formattedJson, 'utf-8');
+    
+    const stats = fs.statSync(filePath);
+    
+    console.log(`[MocksRoute] Updated mock file: ${filename}`);
+    res.json({ 
+      success: true, 
+      message: `Mock file ${filename} updated successfully`,
+      filename,
+      metadata: {
+        size: stats.size,
+        modified: stats.mtime
+      }
+    });
+  } catch (error: any) {
+    console.error('[MocksRoute] Update - Error:', error);
+    res.status(500).json({ error: 'Failed to update mock file', details: error.message });
+  }
+});
+
 // Delete a mock file
 router.delete('/:filename', (req: Request, res: Response) => {
   try {
