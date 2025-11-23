@@ -1661,10 +1661,16 @@
                                         Size: ${fileSize} KB • Created: ${created}
                                     </div>
                                 </div>
-                                <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
-                                        style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); padding: 6px 12px; font-size: 0.9em; white-space: nowrap; margin-left: 10px;">
-                                    🗑️ Delete
-                                </button>
+                                <div style="display: flex; gap: 8px; margin-left: 10px;">
+                                    <button onclick="event.stopPropagation(); editMockFile('${file.filename}')" 
+                                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                        ✏️ Edit
+                                    </button>
+                                    <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
+                                            style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
