@@ -25,12 +25,13 @@ Railway offers a free tier with automatic deployments from GitHub.
    - Railway will use Railpack (Nixpacks) which reads `nixpacks.toml` configuration
    - The `nixpacks.toml` handles copying production files, regenerating lockfile, and building correctly
 
-4. **Create Persistent Volume (Recommended)**
+4. **Create Persistent Volume (Required for Data Persistence)**
    - Go to your Railway service → "Volumes" tab
    - Click "Add Volume"
    - Set the mount path to: `/persisted/mock-data`
    - This ensures mock data persists across deployments
-   - **Note**: The app will automatically detect and use the Railway volume at `/persisted/mock-data`
+   - **IMPORTANT**: Volumes are only available at runtime, not during build
+   - **IMPORTANT**: After creating the volume, you MUST set `MOCKIFYER_PATH=/persisted/mock-data` in environment variables (see step 5)
 
 5. **Set Environment Variables**
    - Go to the service settings → Variables
@@ -41,14 +42,13 @@ Railway offers a free tier with automatic deployments from GitHub.
      NODE_ENV=production
      MOCKIFYER_ENABLED=true
      MOCKIFYER_RECORD=true  # Set to true initially to record mocks
+     MOCKIFYER_PATH=/persisted/mock-data  # IMPORTANT: Set this to match your volume mount path
      GITHUB_TOKEN=your_github_token_with_read_packages_scope
      ```
-   - **Optional**: If you want to use a custom volume path, set:
-     ```
-     MOCKIFYER_PATH=/persisted/mock-data
-     ```
-     - If not set, the app will automatically use `/persisted/mock-data` when a Railway volume is detected
-     - For local development, it defaults to `persisted/mock-data`
+   - **CRITICAL**: Set `MOCKIFYER_PATH=/persisted/mock-data` to explicitly use the Railway volume
+     - This ensures the app uses the volume path even if auto-detection fails
+     - The path must match exactly the volume mount path you configured in step 4
+     - If not set, the app will try to auto-detect, but explicit is better
    - **Important**: Add `GITHUB_TOKEN` with a GitHub Personal Access Token that has `read:packages` scope
      - This is needed to install `@sgedda/mockifyer` from GitHub Packages
      - Create token at: https://github.com/settings/tokens/new

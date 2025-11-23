@@ -28,10 +28,10 @@ cmds = [
   "node --version",
   "npm run build",
   "mkdir -p mock-data || true",
-  "mkdir -p /persisted/mock-data || true",
   "mkdir -p public || true",
   "echo '{\"deployedDate\":\"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\"}' > public/build-info.json",
-  "if [ -d /persisted/mock-data ] && [ \"$(ls -A /persisted/mock-data 2>/dev/null)\" ]; then echo '✅ Railway volume directory (/persisted/mock-data) exists with files - preserving existing mocks'; ls -la /persisted/mock-data | head -5; elif [ -d mock-data ] && [ \"$(ls -A mock-data 2>/dev/null)\" ]; then echo '✅ Mock data directory exists with files - preserving existing mocks'; ls -la mock-data | head -5; else echo 'ℹ️  Mock data directory is empty or does not exist'; fi"
+  "echo 'ℹ️  Note: Railway volumes are only available at runtime, not during build phase'",
+  "echo 'ℹ️  The volume at /persisted/mock-data will be checked when the app starts'"
 ]
 
 [start]
