@@ -28,6 +28,8 @@ cmds = [
   "node --version",
   "npm run build",
   "mkdir -p mock-data || true",
+  "mkdir -p public || true",
+  "echo '{\"deployedDate\":\"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\"}' > public/build-info.json",
   "ls -la mock-data || echo 'Mock data directory check'"
 ]
 

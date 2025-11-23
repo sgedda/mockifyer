@@ -45,25 +45,81 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
     // Get mockifyer version from package.json (works for both local and published)
     let mockifyerVersion = 'unknown';
     try {
-      // Try to read from the local linked package (file:../../)
-      const mockifyerPackagePath = path.join(__dirname, '../../../package.json');
-      if (fs.existsSync(mockifyerPackagePath)) {
-        const mockifyerPackage = JSON.parse(fs.readFileSync(mockifyerPackagePath, 'utf-8'));
-        mockifyerVersion = mockifyerPackage?.version || 'unknown';
-      } else {
-        // Try to read from node_modules
-        const nodeModulesPath = path.join(__dirname, '../../node_modules/@sgedda/mockifyer/package.json');
-        if (fs.existsSync(nodeModulesPath)) {
-          const mockifyerPackage = JSON.parse(fs.readFileSync(nodeModulesPath, 'utf-8'));
-          mockifyerVersion = mockifyerPackage?.version || 'unknown';
+      // Try multiple paths to find the mockifyer package
+      const possiblePaths = [
+        // Production: node_modules from dist/
+        path.join(__dirname, '../../node_modules/@sgedda/mockifyer/package.json'),
+        // Production: node_modules from root
+        path.join(__dirname, '../../../node_modules/@sgedda/mockifyer/package.json'),
+        // Local development: linked package
+        path.join(__dirname, '../../../package.json'),
+        // Alternative: try require.resolve
+        (() => {
+          try {
+            return require.resolve('@sgedda/mockifyer/package.json');
+          } catch {
+            return null;
+          }
+        })()
+      ].filter(p => p !== null);
+      
+      for (const packagePath of possiblePaths) {
+        if (fs.existsSync(packagePath)) {
+          const mockifyerPackage = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
+          if (mockifyerPackage?.version) {
+            mockifyerVersion = mockifyerPackage.version;
+            break;
+          }
+        }
+      }
+      
+      // Fallback: try to read from this project's package.json dependencies
+      if (mockifyerVersion === 'unknown') {
+        const thisPackagePath = path.join(__dirname, '../../package.json');
+        if (fs.existsSync(thisPackagePath)) {
+          const thisPackage = JSON.parse(fs.readFileSync(thisPackagePath, 'utf-8'));
+          const depVersion = thisPackage.dependencies?.['@sgedda/mockifyer'] || 
+                           thisPackage.devDependencies?.['@sgedda/mockifyer'];
+          if (depVersion && depVersion !== 'file:../../') {
+            // Extract version from semver string (remove ^, ~, etc.)
+            mockifyerVersion = depVersion.replace(/^[\^~]/, '');
+          }
         }
       }
     } catch (e) {
       console.warn('[Status] Could not determine mockifyer version:', e);
     }
     
-    // Get deployment date from environment variable or use current time
-    const deployedDate = process.env.DEPLOYED_DATE || new Date().toISOString();
+    // Get deployment date from build-time file or environment variable
+    let deployedDate = process.env.DEPLOYED_DATE;
+    
+    if (!deployedDate) {
+      // Try to read from build-time file (created during Railway build)
+      const buildInfoPaths = [
+        path.join(__dirname, '../build-info.json'),  // From dist/
+        path.join(__dirname, '../../public/build-info.json'),  // From public/
+        path.join(process.cwd(), 'public/build-info.json')  // Absolute path
+      ];
+      
+      for (const buildInfoPath of buildInfoPaths) {
+        if (fs.existsSync(buildInfoPath)) {
+          try {
+            const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, 'utf-8'));
+            if (buildInfo.deployedDate) {
+              deployedDate = buildInfo.deployedDate;
+              break;
+            }
+          } catch (e) {
+            console.warn('[Status] Could not read build-info.json:', e);
+          }
+        }
+      }
+    }
+    
+    // Fallback to current time if nothing found (shouldn't happen in production)
+    if (!deployedDate) {
+      deployedDate = new Date().toISOString();
+    }
     
     res.json({
       mockifyerVersion,
