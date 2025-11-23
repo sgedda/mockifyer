@@ -576,6 +576,167 @@
             </div>
         </div>
 
+        <!-- Football Fixtures Card -->
+        <div class="card">
+            <h2>⚽ Football Fixtures</h2>
+            <div class="form-group">
+                <label for="fixtures-season-input">Season:</label>
+                <select id="fixtures-season-input">
+                    <option value="2021">2021</option>
+                    <option value="2022" selected>2022</option>
+                    <option value="2023">2023</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="team-id-input">Team (optional):</label>
+                <select id="team-id-input">
+                    <option value="">Select a team...</option>
+                    <optgroup label="Premier League">
+                        <option value="33">Manchester United</option>
+                        <option value="50">Manchester City</option>
+                        <option value="40">Liverpool</option>
+                        <option value="42">Arsenal</option>
+                        <option value="49">Chelsea</option>
+                        <option value="47">Tottenham</option>
+                        <option value="66">Aston Villa</option>
+                        <option value="51">Brighton</option>
+                    </optgroup>
+                    <optgroup label="La Liga">
+                        <option value="541">Barcelona</option>
+                        <option value="541">Real Madrid</option>
+                        <option value="548">Atletico Madrid</option>
+                        <option value="543">Sevilla</option>
+                        <option value="531">Valencia</option>
+                    </optgroup>
+                    <optgroup label="Bundesliga">
+                        <option value="157">Bayern Munich</option>
+                        <option value="165">Borussia Dortmund</option>
+                        <option value="173">RB Leipzig</option>
+                        <option value="161">Bayer Leverkusen</option>
+                    </optgroup>
+                    <optgroup label="Serie A">
+                        <option value="489">AC Milan</option>
+                        <option value="489">Inter Milan</option>
+                        <option value="487">Juventus</option>
+                        <option value="497">Napoli</option>
+                        <option value="502">Roma</option>
+                    </optgroup>
+                    <optgroup label="Ligue 1">
+                        <option value="85">Paris Saint-Germain</option>
+                        <option value="516">Monaco</option>
+                        <option value="523">Lyon</option>
+                        <option value="516">Marseille</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getFixtures()">Get Fixtures</button>
+                <button onclick="deleteFixturesMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-fixtures-message" style="margin-top: 10px;"></div>
+            <div id="fixtures-response"></div>
+        </div>
+
+        <!-- Football Standings Card -->
+        <div class="card">
+            <h2>🏆 League Standings</h2>
+            <div class="form-group">
+                <label for="standings-league-input">League:</label>
+                <select id="standings-league-input">
+                    <option value="">Select a league...</option>
+                    <optgroup label="Top 5 Leagues">
+                        <option value="39" selected>Premier League (England)</option>
+                        <option value="140">La Liga (Spain)</option>
+                        <option value="78">Bundesliga (Germany)</option>
+                        <option value="135">Serie A (Italy)</option>
+                        <option value="61">Ligue 1 (France)</option>
+                    </optgroup>
+                    <optgroup label="Other European Leagues">
+                        <option value="88">Eredivisie (Netherlands)</option>
+                        <option value="203">Süper Lig (Turkey)</option>
+                        <option value="94">Primeira Liga (Portugal)</option>
+                        <option value="144">Jupiler Pro League (Belgium)</option>
+                    </optgroup>
+                    <optgroup label="International Competitions">
+                        <option value="2">UEFA Champions League</option>
+                        <option value="3">UEFA Europa League</option>
+                        <option value="848">UEFA Conference League</option>
+                    </optgroup>
+                    <optgroup label="Other Leagues">
+                        <option value="253">MLS (USA)</option>
+                        <option value="71">Brasileirão (Brazil)</option>
+                        <option value="262">Liga MX (Mexico)</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="season-input">Season (optional):</label>
+                <input type="number" id="season-input" placeholder="e.g., 2024" value="2024">
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getStandings()">Get Standings</button>
+                <button onclick="deleteStandingsMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-standings-message" style="margin-top: 10px;"></div>
+            <div id="standings-response"></div>
+        </div>
+
+        <!-- Football Team Info Card -->
+        <div class="card">
+            <h2>👥 Team Information</h2>
+            <div class="form-group">
+                <label for="team-id-info-input">Team:</label>
+                <select id="team-id-info-input">
+                    <option value="">Select a team...</option>
+                    <optgroup label="Premier League">
+                        <option value="33" selected>Manchester United</option>
+                        <option value="50">Manchester City</option>
+                        <option value="40">Liverpool</option>
+                        <option value="42">Arsenal</option>
+                        <option value="49">Chelsea</option>
+                        <option value="47">Tottenham</option>
+                        <option value="66">Aston Villa</option>
+                        <option value="51">Brighton</option>
+                    </optgroup>
+                    <optgroup label="La Liga">
+                        <option value="541">Barcelona</option>
+                        <option value="541">Real Madrid</option>
+                        <option value="548">Atletico Madrid</option>
+                        <option value="543">Sevilla</option>
+                        <option value="531">Valencia</option>
+                    </optgroup>
+                    <optgroup label="Bundesliga">
+                        <option value="157">Bayern Munich</option>
+                        <option value="165">Borussia Dortmund</option>
+                        <option value="173">RB Leipzig</option>
+                        <option value="161">Bayer Leverkusen</option>
+                    </optgroup>
+                    <optgroup label="Serie A">
+                        <option value="489">AC Milan</option>
+                        <option value="489">Inter Milan</option>
+                        <option value="487">Juventus</option>
+                        <option value="497">Napoli</option>
+                        <option value="502">Roma</option>
+                    </optgroup>
+                    <optgroup label="Ligue 1">
+                        <option value="85">Paris Saint-Germain</option>
+                        <option value="516">Monaco</option>
+                        <option value="523">Lyon</option>
+                        <option value="516">Marseille</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getTeamInfo()">Get Team Info</button>
+                <button onclick="deleteTeamInfoMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-team-info-message" style="margin-top: 10px;"></div>
+            <div id="team-info-response"></div>
+        </div>
+
         <!-- Current Weather Card -->
         <div class="card">
             <h2>🌤️ Current Weather</h2>
@@ -819,6 +980,56 @@
             if (e.key === 'Enter') getForecast();
         });
 
+        // Filter teams based on selected league
+        function filterTeamsByLeague () {
+            const leagueSelect = document.getElementById('league-id-input');
+            const teamSelect = document.getElementById('team-id-input');
+            const selectedLeague = leagueSelect.value;
+
+            // Map league IDs to team optgroup labels (only for leagues that have teams listed)
+            const leagueToTeamGroup = {
+                '39': 'Premier League',
+                '140': 'La Liga',
+                '78': 'Bundesliga',
+                '135': 'Serie A',
+                '61': 'Ligue 1'
+            };
+
+            // Get all optgroups in the team select
+            const optgroups = teamSelect.querySelectorAll('optgroup');
+
+            if (!selectedLeague) {
+                // If no league selected, show all teams
+                optgroups.forEach(group => {
+                    group.style.display = '';
+                });
+                // Reset team selection
+                teamSelect.value = '';
+            } else {
+                // Get the team group name for the selected league
+                const targetGroup = leagueToTeamGroup[selectedLeague];
+
+                if (targetGroup) {
+                    // Hide all optgroups except the one matching the selected league
+                    optgroups.forEach(group => {
+                        if (group.label === targetGroup) {
+                            group.style.display = '';
+                        } else {
+                            group.style.display = 'none';
+                        }
+                    });
+                    // Reset team selection when league changes
+                    teamSelect.value = '';
+                } else {
+                    // If league not in map (other leagues), hide all teams since we don't have teams for them
+                    optgroups.forEach(group => {
+                        group.style.display = 'none';
+                    });
+                    teamSelect.value = '';
+                }
+            }
+        }
+
         // Load status on page load
         async function loadStatus () {
             const statusItems = document.getElementById('status-items');
@@ -971,6 +1182,177 @@
             }
         }
 
+        // Football Functions
+        async function getFixtures () {
+            const button = event.target;
+            const season = document.getElementById('fixtures-season-input').value;
+            const teamId = document.getElementById('team-id-input').value;
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            let url = `${API_BASE}/api/football/fixtures?`;
+            const params = [];
+            if (season) params.push(`season=${encodeURIComponent(season)}`);
+            if (teamId) params.push(`team=${encodeURIComponent(teamId)}`);
+            url += params.join('&');
+
+            const result = await makeRequest(url);
+            displayResponse('fixtures-response', result, 'Football Fixtures');
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Fixtures';
+        }
+
+        async function deleteFixturesMock () {
+            try {
+                // Get list of all mock files
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Find files matching fixtures endpoint
+                for (const file of files) {
+                    if (file.filename.includes('fixtures') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-fixtures-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-fixtures-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for fixtures.</div>';
+            } catch (error) {
+                document.getElementById('delete-fixtures-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        async function getStandings () {
+            const button = event.target;
+            const leagueId = document.getElementById('standings-league-input').value;
+            const season = document.getElementById('season-input').value || new Date().getFullYear();
+
+            if (!leagueId) {
+                alert('Please select a league');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/football/standings/${encodeURIComponent(leagueId)}?season=${encodeURIComponent(season)}`;
+            const result = await makeRequest(url);
+            displayResponse('standings-response', result, `League Standings (League ${leagueId})`);
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Standings';
+        }
+
+        async function deleteStandingsMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('standings') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-standings-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-standings-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for standings.</div>';
+            } catch (error) {
+                document.getElementById('delete-standings-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        async function getTeamInfo () {
+            const button = event.target;
+            const teamId = document.getElementById('team-id-info-input').value;
+
+            if (!teamId) {
+                alert('Please select a team');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/football/team/${encodeURIComponent(teamId)}`;
+            const result = await makeRequest(url);
+            displayResponse('team-info-response', result, `Team Information (ID: ${teamId})`);
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Team Info';
+        }
+
+        async function deleteTeamInfoMock () {
+            const teamId = document.getElementById('team-id-info-input').value;
+            if (!teamId) {
+                document.getElementById('delete-team-info-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">Please select a team first.</div>';
+                return;
+            }
+
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('teams') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-team-info-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-team-info-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for team info.</div>';
+            } catch (error) {
+                document.getElementById('delete-team-info-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
         // Load and display mock files
         async function loadMockFiles () {
             const listContainer = document.getElementById('mock-files-list');
@@ -990,6 +1372,9 @@
                 files.forEach(file => {
                     const fileSize = (file.size / 1024).toFixed(2);
                     const created = new Date(file.created).toLocaleString();
+                    // Escape HTML to prevent XSS
+                    const escapedEndpoint = file.endpoint ? file.endpoint.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
+                    const endpointDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
                     html += `
                         <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
                              onclick="viewMockFile('${file.filename}')"
@@ -998,6 +1383,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                                 <div style="flex: 1; min-width: 0;">
                                     <strong style="color: #667eea; display: block; word-break: break-word;">📄 ${file.filename}</strong>
+                                    ${endpointDisplay}
                                     <div style="font-size: 0.9em; color: #666; margin-top: 5px; word-break: break-word;">
                                         Size: ${fileSize} KB • Created: ${created}
                                     </div>
@@ -1092,5 +1478,7 @@
         loadMockFiles();
     </script>
 </body>
+
+</html>
 
 </html>

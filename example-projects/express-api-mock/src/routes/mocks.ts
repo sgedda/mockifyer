@@ -24,11 +24,41 @@ router.get('/', (req: Request, res: Response) => {
       .map(file => {
         const filePath = path.join(mockDataPath, file);
         const stats = fs.statSync(filePath);
+        
+        // Try to extract endpoint URL and query params from the mock file
+        let endpoint = null;
+        try {
+          const fileContent = fs.readFileSync(filePath, 'utf-8');
+          const mockData = JSON.parse(fileContent);
+          if (mockData.request && mockData.request.url) {
+            endpoint = mockData.request.url;
+            
+            // Add query parameters if they exist
+            if (mockData.request.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+              // Convert query params to URLSearchParams format (handles non-string values)
+              const params = new URLSearchParams();
+              Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
+                if (value != null) {
+                  params.append(key, String(value));
+                }
+              });
+              const queryString = params.toString();
+              if (queryString) {
+                endpoint += '?' + queryString;
+              }
+            }
+          }
+        } catch (error) {
+          // If file is corrupted or doesn't have expected structure, just skip endpoint
+          console.warn(`[MocksRoute] Could not extract endpoint from ${file}:`, error);
+        }
+        
         return {
           filename: file,
           size: stats.size,
           created: stats.birthtime,
-          modified: stats.mtime
+          modified: stats.mtime,
+          endpoint: endpoint
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime()); // Sort by most recent first
