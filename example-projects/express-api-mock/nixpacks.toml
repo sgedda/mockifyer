@@ -30,7 +30,7 @@ cmds = [
   "mkdir -p mock-data || true",
   "mkdir -p public || true",
   "echo '{\"deployedDate\":\"'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'\"}' > public/build-info.json",
-  "ls -la mock-data || echo 'Mock data directory check'"
+  "if [ -d mock-data ] && [ \"$(ls -A mock-data 2>/dev/null)\" ]; then echo '✅ Mock data directory exists with files - preserving existing mocks'; ls -la mock-data | head -5; else echo 'ℹ️  Mock data directory is empty or does not exist'; fi"
 ]
 
 [start]

@@ -6,4 +6,5 @@ coverage
 .env.local
 package-lock.json
 package-lock.prod.json
+# Note: mock-data is NOT ignored - it will be preserved across deployments
 
