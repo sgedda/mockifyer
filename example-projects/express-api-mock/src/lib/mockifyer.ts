@@ -5,7 +5,7 @@ import path from 'path';
 export function initializeMockifyer() {
   if (process.env.MOCKIFYER_ENABLED === 'true') {
     // Ensure we have an absolute path for mock data
-    const mockPath = process.env.MOCKIFYER_PATH || path.join(process.cwd(), 'mock-data');
+    const mockPath = process.env.MOCKIFYER_PATH || path.join(process.cwd(), '/persisted/mock-data');
     
     // Set the environment variable for other parts of the application
     process.env.MOCKIFYER_PATH = mockPath;
