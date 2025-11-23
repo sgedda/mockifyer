@@ -30,7 +30,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const files = fs.readdirSync(mockDataPath)
-      .filter(file => file.endsWith('.json'))
+      .filter(file => file.endsWith('.json') && file !== 'date-config.json')
       .map(file => {
         const filePath = path.join(mockDataPath, file);
         const stats = fs.statSync(filePath);
