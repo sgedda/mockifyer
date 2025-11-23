@@ -11,6 +11,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { weatherRouter } from './routes/weather';
+import { footballRouter } from './routes/football';
 import { mocksRouter } from './routes/mocks';
 
 const app = express();
@@ -25,6 +26,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/api/weather', weatherRouter);
+app.use('/api/football', footballRouter);
 app.use('/api/mocks', mocksRouter);
 
 // Health check endpoint

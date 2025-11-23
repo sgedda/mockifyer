@@ -21,11 +21,21 @@ This example project demonstrates how to use `mockifyer` to mock external API ca
    npm install
    ```
 
-2. Create a `.env` file in the root directory with your WeatherAPI key:
+2. Create a `.env` file in the root directory with your API keys:
    ```
-   WEATHER_API_KEY=your_api_key_here
+   WEATHER_API_KEY=your_weather_api_key_here
+   FOOTBALL_API_KEY=your_football_api_key_here
    PORT=3000
    ```
+
+   **Getting API Keys:**
+   - **WeatherAPI**: Sign up at https://www.weatherapi.com/ (free tier available)
+   - **Football API**: 
+     1. Go to https://rapidapi.com/api-sports/api/api-football
+     2. Sign up or log in to RapidAPI
+     3. Subscribe to the "Basic" plan (free tier with 100 requests/day)
+     4. Copy your API key from the dashboard
+     5. Add it to your `.env` file as `FOOTBALL_API_KEY`
 
 3. Run the development server:
    ```bash
@@ -44,7 +54,9 @@ This example project demonstrates how to use `mockifyer` to mock external API ca
 
 ## API Endpoints
 
-### Get Current Weather
+### Weather Endpoints
+
+#### Get Current Weather
 ```
 GET /api/weather/current/:city
 ```
@@ -81,6 +93,34 @@ Example response:
   }
 ]
 ```
+
+### Football Endpoints
+
+#### Get Fixtures
+```
+GET /api/football/fixtures?league=39&team=33&date=2024-03-16
+```
+
+Query parameters (all optional):
+- `league`: League ID (e.g., 39 for Premier League)
+- `team`: Team ID (e.g., 33 for Manchester United)
+- `date`: Date in YYYY-MM-DD format
+
+#### Get League Standings
+```
+GET /api/football/standings/:leagueId?season=2024
+```
+
+Example: `GET /api/football/standings/39?season=2024`
+
+#### Get Team Information
+```
+GET /api/football/team/:teamId
+```
+
+Example: `GET /api/football/team/33`
+
+**Note**: Football endpoints require a valid `FOOTBALL_API_KEY` from RapidAPI. Without it, you'll get 403 errors. You can still use mock mode to test without an API key.
 
 ## Web Dashboard
 
