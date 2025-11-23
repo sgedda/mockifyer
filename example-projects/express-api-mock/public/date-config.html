@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Date Configuration - Mockifyer Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .top-nav {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 15px 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background 0.2s ease;
+        }
+
+        .nav-links a:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .nav-links a.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+                margin-bottom: 20px;
+            }
+
+            .card {
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+
+            .top-nav {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .nav-links {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .nav-links a {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="top-nav">
+            <h2 style="color: #667eea; margin: 0;">🎭 Mockifyer Dashboard</h2>
+            <div class="nav-links">
+                <a href="index.html">🏠 Dashboard</a>
+                <a href="date-config.html" class="active">📅 Date Configuration</a>
+            </div>
+        </div>
+
+        <h1>📅 Date Manipulation Configuration</h1>
+
+        <div class="card">
+            <h2>Configure Date Manipulation</h2>
+            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+                Configure date manipulation for deterministic testing. Changes take effect immediately.
+            </p>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="date-config-enabled" style="width: 18px; height: 18px; cursor: pointer;"
+                        onchange="toggleDateConfig()">
+                    <span style="font-weight: 600;">Enable Date Manipulation</span>
+                </label>
+            </div>
+
+            <div id="date-config-options" style="display: none;">
+                <div class="form-group">
+                    <label>Configuration Type:</label>
+                    <select id="date-config-type" onchange="updateDateConfigUI()" style="margin-bottom: 15px;">
+                        <option value="fixed">Fixed Date</option>
+                        <option value="offset">Date Offset</option>
+                        <option value="timezone">Timezone Only</option>
+                    </select>
+                </div>
+
+                <!-- Fixed Date Option -->
+                <div id="date-config-fixed" style="display: none;">
+                    <div class="form-group">
+                        <label for="date-fixed-input">Fixed Date (ISO format):</label>
+                        <input type="datetime-local" id="date-fixed-input"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                    </div>
+                </div>
+
+                <!-- Offset Option -->
+                <div id="date-config-offset" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label for="date-offset-days">Days:</label>
+                            <input type="number" id="date-offset-days" value="0" min="0"
+                                style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label for="date-offset-hours">Hours:</label>
+                            <input type="number" id="date-offset-hours" value="0" min="0" max="23"
+                                style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label for="date-offset-minutes">Minutes:</label>
+                            <input type="number" id="date-offset-minutes" value="0" min="0" max="59"
+                                style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Offset Direction:</label>
+                        <select id="date-offset-sign"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                            <option value="+">Future (+)</option>
+                            <option value="-">Past (-)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Timezone Option -->
+                <div id="date-config-timezone" style="display: none;">
+                    <div class="form-group">
+                        <label for="date-timezone-input">Timezone:</label>
+                        <select id="date-timezone-input"
+                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                            <option value="">Select timezone...</option>
+                            <option value="UTC">UTC</option>
+                            <option value="America/New_York">America/New_York (EST/EDT)</option>
+                            <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                            <option value="Europe/London">Europe/London (GMT/BST)</option>
+                            <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+                            <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                            <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+                            <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 15px 0;">
+                    <strong>Current Effective Date:</strong>
+                    <div id="date-current-display"
+                        style="font-family: 'Courier New', monospace; margin-top: 5px; color: #1976d2;">
+                        Loading...
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button onclick="saveDateConfig()">💾 Save Configuration</button>
+                    <button onclick="loadDateConfig()"
+                        style="background: linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%);">🔄 Refresh</button>
+                    <button onclick="resetDateConfig()"
+                        style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">🔄 Reset to System
+                        Date</button>
+                </div>
+                <div id="date-config-message" style="margin-top: 10px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        // Date Configuration Functions
+        function toggleDateConfig() {
+            const enabled = document.getElementById('date-config-enabled').checked;
+            document.getElementById('date-config-options').style.display = enabled ? 'block' : 'none';
+            // Don't reload config when user manually toggles - only show/hide the UI
+            // loadDateConfig() will be called on page load or after saving
+        }
+
+        function updateDateConfigUI() {
+            const type = document.getElementById('date-config-type').value;
+            document.getElementById('date-config-fixed').style.display = type === 'fixed' ? 'block' : 'none';
+            document.getElementById('date-config-offset').style.display = type === 'offset' ? 'block' : 'none';
+            document.getElementById('date-config-timezone').style.display = type === 'timezone' ? 'block' : 'none';
+        }
+
+        async function loadDateConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/api/date-config`);
+                const config = await response.json();
+
+                // Update UI with current config
+                document.getElementById('date-config-enabled').checked = config.enabled || false;
+                // Show/hide options based on enabled state
+                document.getElementById('date-config-options').style.display = config.enabled ? 'block' : 'none';
+
+                if (config.fixedDate) {
+                    document.getElementById('date-config-type').value = 'fixed';
+                    // Convert ISO date to datetime-local format
+                    const date = new Date(config.fixedDate);
+                    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+                        .toISOString()
+                        .slice(0, 16);
+                    document.getElementById('date-fixed-input').value = localDate;
+                } else if (config.offset !== null && config.offset !== undefined) {
+                    document.getElementById('date-config-type').value = 'offset';
+                    document.getElementById('date-offset-days').value = config.offsetDays || 0;
+                    document.getElementById('date-offset-hours').value = config.offsetHours || 0;
+                    document.getElementById('date-offset-minutes').value = config.offsetMinutes || 0;
+                    document.getElementById('date-offset-sign').value = config.offsetSign || '+';
+                } else if (config.timezone) {
+                    document.getElementById('date-config-type').value = 'timezone';
+                    document.getElementById('date-timezone-input').value = config.timezone;
+                }
+
+                updateDateConfigUI();
+
+                // Update current date display
+                if (config.currentDate) {
+                    document.getElementById('date-current-display').textContent =
+                        `${config.currentDateFormatted} (${config.currentDate})`;
+                }
+            } catch (error) {
+                console.error('Error loading date config:', error);
+                document.getElementById('date-config-message').innerHTML =
+                    `<div style="color: #c62828;">Error loading configuration: ${error.message}</div>`;
+            }
+        }
+
+        async function saveDateConfig() {
+            try {
+                const enabled = document.getElementById('date-config-enabled').checked;
+                const type = document.getElementById('date-config-type').value;
+
+                let config = { enabled };
+
+                if (!enabled) {
+                    config = { enabled: false };
+                } else if (type === 'fixed') {
+                    const fixedInput = document.getElementById('date-fixed-input');
+                    if (!fixedInput.value) {
+                        alert('Please enter a fixed date');
+                        return;
+                    }
+                    // Convert datetime-local to ISO string
+                    const localDate = new Date(fixedInput.value);
+                    config.fixedDate = localDate.toISOString();
+                    const timezone = document.getElementById('date-timezone-input');
+                    if (timezone.value) {
+                        config.timezone = timezone.value;
+                    }
+                } else if (type === 'offset') {
+                    const days = parseInt(document.getElementById('date-offset-days').value, 10) || 0;
+                    const hours = parseInt(document.getElementById('date-offset-hours').value, 10) || 0;
+                    const minutes = parseInt(document.getElementById('date-offset-minutes').value, 10) || 0;
+                    const sign = document.getElementById('date-offset-sign').value;
+
+                    if (days === 0 && hours === 0 && minutes === 0) {
+                        alert('Please enter at least one offset value');
+                        return;
+                    }
+
+                    config.offsetDays = days;
+                    config.offsetHours = hours;
+                    config.offsetMinutes = minutes;
+                    config.offsetSign = sign;
+
+                    const timezone = document.getElementById('date-timezone-input');
+                    if (timezone.value) {
+                        config.timezone = timezone.value;
+                    }
+                } else if (type === 'timezone') {
+                    const timezone = document.getElementById('date-timezone-input');
+                    if (!timezone.value) {
+                        alert('Please select a timezone');
+                        return;
+                    }
+                    config.timezone = timezone.value;
+                }
+
+                const response = await fetch(`${API_BASE}/api/date-config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('date-config-message').innerHTML =
+                        `<div style="color: #2e7d32; background: #c8e6c9; padding: 10px; border-radius: 8px;">
+                            ✅ ${result.message || 'Configuration saved successfully!'}
+                        </div>`;
+                    // Update current date display
+                    if (result.config && result.config.currentDate) {
+                        document.getElementById('date-current-display').textContent =
+                            `${result.config.currentDateFormatted} (${result.config.currentDate})`;
+                    }
+                    // Reload config to show updated values
+                    setTimeout(() => loadDateConfig(), 500);
+                } else {
+                    document.getElementById('date-config-message').innerHTML =
+                        `<div style="color: #c62828; background: #ffebee; padding: 10px; border-radius: 8px;">
+                            ❌ Error: ${result.error || 'Failed to save configuration'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('date-config-message').innerHTML =
+                    `<div style="color: #c62828; background: #ffebee; padding: 10px; border-radius: 8px;">
+                        ❌ Error: ${error.message}
+                    </div>`;
+            }
+        }
+
+        async function resetDateConfig() {
+            if (!confirm('Are you sure you want to reset date manipulation to system date?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/date-config`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ enabled: false })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('date-config-message').innerHTML =
+                        `<div style="color: #2e7d32; background: #c8e6c9; padding: 10px; border-radius: 8px;">
+                            ✅ Date manipulation disabled. Using system date.
+                        </div>`;
+                    loadDateConfig();
+                } else {
+                    document.getElementById('date-config-message').innerHTML =
+                        `<div style="color: #c62828; background: #ffebee; padding: 10px; border-radius: 8px;">
+                            ❌ Error: ${result.error || 'Failed to reset configuration'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('date-config-message').innerHTML =
+                    `<div style="color: #c62828; background: #ffebee; padding: 10px; border-radius: 8px;">
+                        ❌ Error: ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Load date config when page loads
+        loadDateConfig();
+    </script>
+</body>
+
+</html>
+
