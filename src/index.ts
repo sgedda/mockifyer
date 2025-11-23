@@ -66,13 +66,26 @@ class MockifyerClass {
   }
 
   private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
+    // CRITICAL: Log the full request object to see what we have
+    console.log(`[Mockifyer] 🔍 findBestMatchingMock - FULL REQUEST OBJECT:`, JSON.stringify({
+      method: request.method,
+      url: request.url,
+      hasData: !!request.data,
+      dataType: typeof request.data,
+      data: request.data, // Include full data object
+      queryParams: request.queryParams
+    }, null, 2).substring(0, 500));
+    
     const requestKey = this.generateRequestKey(request);
     
     console.log(`[Mockifyer] findBestMatchingMock called with:`, {
       url: request.url,
       method: request.method,
       queryParams: request.queryParams,
-      requestKey
+      hasData: !!request.data,
+      dataType: typeof request.data,
+      dataPreview: request.data ? (typeof request.data === 'string' ? request.data.substring(0, 100) : JSON.stringify(request.data).substring(0, 100)) : 'undefined',
+      requestKey: requestKey.substring(0, 300) // Show more of the key
     });
     
     // Filter cache to only include existing files and clean up stale entries
@@ -96,7 +109,7 @@ class MockifyerClass {
     
     if (result) {
       if (requestKey === this.generateRequestKey(result.mockData.request)) {
-        console.log(`[Mockifyer] Using exact mock match for ${requestKey}`);
+        console.log(`[Mockifyer] ------ Using exact mock match for ${requestKey}`);
       } else {
         console.log(`[Mockifyer] Using similar mock match for ${requestKey}`);
       }
@@ -138,6 +151,33 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      // Debug: Log what we receive in the interceptor
+      console.log('[Mockifyer] 📥 Interceptor received config:', {
+        method: config.method,
+        url: config.url,
+        hasData: !!config.data,
+        dataType: typeof config.data,
+        dataIsString: typeof config.data === 'string',
+        dataIsObject: typeof config.data === 'object' && config.data !== null,
+        dataKeys: typeof config.data === 'object' && config.data !== null ? Object.keys(config.data) : 'N/A',
+        dataPreview: typeof config.data === 'string' 
+          ? config.data.substring(0, 100) 
+          : typeof config.data === 'object' 
+            ? JSON.stringify(config.data).substring(0, 100)
+            : String(config.data).substring(0, 100)
+      });
+
+      // CRITICAL: Log data before creating request to debug GraphQL
+      if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
+        console.log('[Mockifyer] 🚨 GRAPHQL DEBUG - config.data:', {
+          exists: !!config.data,
+          type: typeof config.data,
+          isString: typeof config.data === 'string',
+          isObject: typeof config.data === 'object' && config.data !== null,
+          value: config.data ? (typeof config.data === 'string' ? config.data.substring(0, 200) : JSON.stringify(config.data).substring(0, 200)) : 'UNDEFINED'
+        });
+      }
+
       const request: StoredRequest = {
         method: config.method || 'GET',
         url: config.url || '',
@@ -145,6 +185,48 @@ class MockifyerClass {
         data: config.data,
         queryParams: config.params
       };
+
+      // CRITICAL: Log request data after creation
+      if (request.method === 'POST' && request.url && request.url.includes('graphql')) {
+        console.log('[Mockifyer] 🚨 GRAPHQL DEBUG - request.data:', {
+          exists: !!request.data,
+          type: typeof request.data,
+          value: request.data ? (typeof request.data === 'string' ? request.data.substring(0, 200) : JSON.stringify(request.data).substring(0, 200)) : 'UNDEFINED'
+        });
+      }
+
+      // Debug logging for GraphQL requests
+      if (request.method === 'POST' && request.data) {
+        try {
+          let bodyData = request.data;
+          if (typeof request.data === 'string') {
+            try {
+              bodyData = JSON.parse(request.data);
+            } catch (e) {
+              // Not JSON
+            }
+          }
+          if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
+            console.log('[Mockifyer] 🔷 GraphQL Request (mock mode):', {
+              url: request.url,
+              query: bodyData.query.substring(0, 100) + '...',
+              variables: bodyData.variables,
+              variablesType: typeof bodyData.variables
+            });
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+
+      const requestKey = this.generateRequestKey(request);
+      console.log(`[Mockifyer] 🔑 Generated request key: ${requestKey.substring(0, 200)}${requestKey.length > 200 ? '...' : ''}`);
+      console.log(`[Mockifyer] 📊 Request details for key generation:`, {
+        method: request.method,
+        url: request.url,
+        hasData: !!request.data,
+        dataType: typeof request.data
+      });
 
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
@@ -205,13 +287,75 @@ class MockifyerClass {
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     if (this.config.recordSameEndpoints !== true) {
       this.httpClient.interceptors.request.use(async (config) => {
+        // CRITICAL: This log proves new code is running
+        console.log('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url);
+        
+        // CRITICAL DEBUG: Log what we receive
+        if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
+          console.log('[Mockifyer] 🚨 SETUPINTERCEPTORS - config received:', {
+            method: config.method,
+            url: config.url,
+            hasData: !!config.data,
+            dataType: typeof config.data,
+            dataValue: config.data ? (typeof config.data === 'string' ? config.data.substring(0, 200) : JSON.stringify(config.data).substring(0, 200)) : 'UNDEFINED',
+            allConfigKeys: Object.keys(config)
+          });
+        }
+
+        // CRITICAL: Log config.data BEFORE creating request
+        if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
+          console.log('[Mockifyer] 🚨 BEFORE creating request - config.data:', {
+            exists: !!config.data,
+            type: typeof config.data,
+            value: config.data ? (typeof config.data === 'string' ? config.data.substring(0, 300) : JSON.stringify(config.data).substring(0, 300)) : 'UNDEFINED',
+            allConfigKeys: Object.keys(config)
+          });
+        }
+
         const request: StoredRequest = {
           method: config.method || 'GET',
           url: config.url || '',
           headers: config.headers || {},
-          data: config.data,
+          data: config.data, // This should include the GraphQL query and variables
           queryParams: config.params
         };
+
+        // CRITICAL DEBUG: Log what we create
+        if (request.method === 'POST' && request.url && request.url.includes('graphql')) {
+          console.log('[Mockifyer] 🚨 AFTER creating request - request.data:', {
+            method: request.method,
+            url: request.url,
+            hasData: !!request.data,
+            dataType: typeof request.data,
+            dataValue: request.data ? (typeof request.data === 'string' ? request.data.substring(0, 300) : JSON.stringify(request.data).substring(0, 300)) : 'UNDEFINED',
+            fullRequest: JSON.stringify(request).substring(0, 500)
+          });
+        }
+
+        // Debug logging for GraphQL requests
+        if (request.method === 'POST' && request.data) {
+          try {
+            let bodyData = request.data;
+            if (typeof request.data === 'string') {
+              try {
+                bodyData = JSON.parse(request.data);
+              } catch (e) {
+                // Not JSON
+              }
+            }
+            if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
+              console.log('[Mockifyer] 🔷 GraphQL Request detected:', {
+                url: request.url,
+                query: bodyData.query.substring(0, 100) + '...',
+                variables: bodyData.variables,
+                variablesType: typeof bodyData.variables,
+                variablesKeys: bodyData.variables ? Object.keys(bodyData.variables) : []
+              });
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
 
         const requestKey = this.generateRequestKey(request);
         
@@ -222,6 +366,9 @@ class MockifyerClass {
         }
         
         console.log(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
+        if (request.method === 'POST' && request.data) {
+          console.log(`[Mockifyer] 📦 Request data type: ${typeof request.data}, isString: ${typeof request.data === 'string'}`);
+        }
         this.processingRequests.add(requestKey);
         
         try {
@@ -303,6 +450,7 @@ class MockifyerClass {
           method: response.config.method?.toUpperCase() || 'GET',
           url: response.config.url || '',
           headers: {},
+          data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
           queryParams: response.config.params || {}
         });
         
@@ -424,6 +572,7 @@ class MockifyerClass {
       method: response.config.method?.toUpperCase() || 'GET',
       url: response.config.url || '',
       headers: {},
+      data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
       queryParams: response.config.params || {}
     };
     const requestKey = this.generateRequestKey(tempRequest);

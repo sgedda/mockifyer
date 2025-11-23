@@ -49,7 +49,7 @@ describe('mock-matcher', () => {
       expect(key).toBe('GET:https://api.example.com/users');
     });
 
-    it('should handle POST requests', () => {
+    it('should handle POST requests without body', () => {
       const request: StoredRequest = {
         method: 'POST',
         url: 'https://api.example.com/users',
@@ -59,6 +59,142 @@ describe('mock-matcher', () => {
       
       const key = generateRequestKey(request);
       expect(key).toBe('POST:https://api.example.com/users');
+    });
+
+    it('should include body data in key for POST requests', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/users',
+        headers: {},
+        queryParams: {},
+        data: { name: 'John', age: 30 }
+      };
+      
+      const key = generateRequestKey(request);
+      expect(key).toContain('POST:https://api.example.com/users');
+      expect(key).toContain('|body:');
+    });
+
+    it('should generate different keys for GraphQL queries with different queries', () => {
+      const request1: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query { users { id name } }',
+          variables: {}
+        }
+      };
+      
+      const request2: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query { posts { id title } }',
+          variables: {}
+        }
+      };
+      
+      const key1 = generateRequestKey(request1);
+      const key2 = generateRequestKey(request2);
+      
+      expect(key1).not.toBe(key2);
+      expect(key1).toContain('gql:');
+      expect(key2).toContain('gql:');
+    });
+
+    it('should generate different keys for GraphQL queries with different variables', () => {
+      const request1: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query($id: ID!) { user(id: $id) { name } }',
+          variables: { id: '1' }
+        }
+      };
+      
+      const request2: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query($id: ID!) { user(id: $id) { name } }',
+          variables: { id: '2' }
+        }
+      };
+      
+      const key1 = generateRequestKey(request1);
+      const key2 = generateRequestKey(request2);
+      
+      expect(key1).not.toBe(key2);
+      expect(key1).toContain('vars:');
+      expect(key2).toContain('vars:');
+    });
+
+    it('should generate same key for GraphQL queries with same query and variables (normalized whitespace)', () => {
+      const request1: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query { users { id name } }',
+          variables: { page: 1 }
+        }
+      };
+      
+      const request2: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query {\n  users {\n    id\n    name\n  }\n}',
+          variables: { page: 1 }
+        }
+      };
+      
+      const key1 = generateRequestKey(request1);
+      const key2 = generateRequestKey(request2);
+      
+      // Should be the same after normalization
+      expect(key1).toBe(key2);
+    });
+
+    it('should handle stringified JSON GraphQL body', () => {
+      const request1: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query { users { id } }',
+          variables: { page: 1 }
+        }
+      };
+      
+      const request2: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: JSON.stringify({
+          query: 'query { users { id } }',
+          variables: { page: 1 }
+        })
+      };
+      
+      const key1 = generateRequestKey(request1);
+      const key2 = generateRequestKey(request2);
+      
+      // Should generate the same key whether body is object or stringified JSON
+      expect(key1).toBe(key2);
     });
 
     it('should handle requests without method', () => {
@@ -504,6 +640,155 @@ describe('mock-matcher', () => {
 
       const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
       expect(result).toBe(exactMock);
+    });
+
+    it('should find exact match for GraphQL request with same query and variables', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query ($page: Int) { characters(page: $page) { results { id name } } }',
+          variables: { page: 3 }
+        }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const mock: CachedMockData = {
+        mockData: {
+          request: {
+            method: 'POST',
+            url: 'https://api.example.com/graphql',
+            headers: {},
+            queryParams: {},
+            data: {
+              query: 'query ($page: Int) { characters(page: $page) { results { id name } } }',
+              variables: { page: 3 }
+            }
+          },
+          response: { status: 200, data: {}, headers: {} },
+          timestamp: new Date().toISOString()
+        },
+        filename: 'test.json',
+        filePath: '/test/test.json'
+      };
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
+      expect(result).toBe(mock);
+    });
+
+    it('should NOT match GraphQL request with different variables even if similar match is enabled', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query ($page: Int) { characters(page: $page) { results { id name } } }',
+          variables: { page: 3 }
+        }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const mock: CachedMockData = {
+        mockData: {
+          request: {
+            method: 'POST',
+            url: 'https://api.example.com/graphql',
+            headers: {},
+            queryParams: {},
+            data: {
+              query: 'query ($page: Int) { characters(page: $page) { results { id name } } }',
+              variables: { page: 1 } // Different variable value
+            }
+          },
+          response: { status: 200, data: {}, headers: {} },
+          timestamp: new Date().toISOString()
+        },
+        filename: 'test.json',
+        filePath: '/test/test.json'
+      };
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
+      expect(result).toBeUndefined(); // Should NOT match because variables differ
+    });
+
+    it('should NOT match GraphQL request with different query even if similar match is enabled', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query ($page: Int) { characters(page: $page) { results { id name } } }',
+          variables: { page: 3 }
+        }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const mock: CachedMockData = {
+        mockData: {
+          request: {
+            method: 'POST',
+            url: 'https://api.example.com/graphql',
+            headers: {},
+            queryParams: {},
+            data: {
+              query: 'query { users { id name } }', // Different query
+              variables: {}
+            }
+          },
+          response: { status: 200, data: {}, headers: {} },
+          timestamp: new Date().toISOString()
+        },
+        filename: 'test.json',
+        filePath: '/test/test.json'
+      };
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
+      expect(result).toBeUndefined(); // Should NOT match because query differs
+    });
+
+    it('should NOT use similar matching for GraphQL requests even when path matches', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query ($page: Int) { characters(page: $page) { results { id } } }',
+          variables: { page: 3 }
+        }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      // Mock with same URL but different query
+      const mock: CachedMockData = {
+        mockData: {
+          request: {
+            method: 'POST',
+            url: 'https://api.example.com/graphql',
+            headers: {},
+            queryParams: {},
+            data: {
+              query: 'query ($page: Int) { characters(page: $page) { results { name } } }',
+              variables: { page: 3 }
+            }
+          },
+          response: { status: 200, data: {}, headers: {} },
+          timestamp: new Date().toISOString()
+        },
+        filename: 'test.json',
+        filePath: '/test/test.json'
+      };
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
+      expect(result).toBeUndefined(); // Should NOT match even though URL and method match
     });
   });
 });
