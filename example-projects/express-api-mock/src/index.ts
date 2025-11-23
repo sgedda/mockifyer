@@ -13,6 +13,7 @@ import path from 'path';
 import { weatherRouter } from './routes/weather';
 import { footballRouter } from './routes/football';
 import { mocksRouter } from './routes/mocks';
+import { graphqlRouter } from './routes/graphql';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -28,6 +29,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use('/api/weather', weatherRouter);
 app.use('/api/football', footballRouter);
 app.use('/api/mocks', mocksRouter);
+app.use('/api/graphql', graphqlRouter);
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

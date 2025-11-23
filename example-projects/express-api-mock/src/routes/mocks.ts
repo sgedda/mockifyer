@@ -27,14 +27,37 @@ router.get('/', (req: Request, res: Response) => {
         
         // Try to extract endpoint URL and query params from the mock file
         let endpoint = null;
+        let graphqlInfo = null;
         try {
           const fileContent = fs.readFileSync(filePath, 'utf-8');
           const mockData = JSON.parse(fileContent);
           if (mockData.request && mockData.request.url) {
             endpoint = mockData.request.url;
             
-            // Add query parameters if they exist
-            if (mockData.request.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+            // Check if this is a GraphQL request
+            if (mockData.request.data) {
+              let bodyData = mockData.request.data;
+              
+              // If body is a string, try to parse it as JSON
+              if (typeof mockData.request.data === 'string') {
+                try {
+                  bodyData = JSON.parse(mockData.request.data);
+                } catch (e) {
+                  // Not JSON, skip GraphQL detection
+                }
+              }
+              
+              // Check if it's a GraphQL request (has a 'query' field)
+              if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
+                graphqlInfo = {
+                  query: bodyData.query,
+                  variables: bodyData.variables || null
+                };
+              }
+            }
+            
+            // Add query parameters if they exist (only for non-GraphQL requests)
+            if (!graphqlInfo && mockData.request.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
               // Convert query params to URLSearchParams format (handles non-string values)
               const params = new URLSearchParams();
               Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
@@ -58,7 +81,8 @@ router.get('/', (req: Request, res: Response) => {
           size: stats.size,
           created: stats.birthtime,
           modified: stats.mtime,
-          endpoint: endpoint
+          endpoint: endpoint,
+          graphqlInfo: graphqlInfo
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime()); // Sort by most recent first

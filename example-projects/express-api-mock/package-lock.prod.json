@@ -8,7 +8,7 @@
       "name": "express-api-mock-example",
       "version": "1.0.0",
       "dependencies": {
-        "@sgedda/mockifyer": "^1.3.0",
+        "@sgedda/mockifyer": "^1.5.0",
         "axios": "^1.6.7",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",

@@ -779,6 +779,39 @@
             <div id="forecast-response"></div>
         </div>
 
+        <!-- GraphQL Query Card -->
+        <div class="card">
+            <h2>🔷 GraphQL Query</h2>
+            <div class="form-group">
+                <label for="graphql-query-input">GraphQL Query:</label>
+                <textarea id="graphql-query-input" rows="8"
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
+                    placeholder="Enter your GraphQL query here...">query ($page: Int) {
+  characters(page: $page) {
+    results {
+      id
+      name
+      status
+      species
+    }
+  }
+}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="graphql-variables-input">Variables (JSON, optional):</label>
+                <textarea id="graphql-variables-input" rows="3"
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
+                    placeholder='{"page": 1}'>{"page": 3}</textarea>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="executeGraphQLQuery()">Execute Query</button>
+                <button onclick="deleteGraphQLMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-graphql-message" style="margin-top: 10px;"></div>
+            <div id="graphql-response"></div>
+        </div>
+
         <!-- Mock Files Browser Card -->
         <div class="card">
             <h2>📁 Mock Data Files</h2>
@@ -1353,6 +1386,86 @@
             }
         }
 
+        // GraphQL Functions
+        async function executeGraphQLQuery () {
+            const button = event.target;
+            const query = document.getElementById('graphql-query-input').value.trim();
+            const variablesText = document.getElementById('graphql-variables-input').value.trim();
+
+            if (!query) {
+                alert('Please enter a GraphQL query');
+                return;
+            }
+
+            let variables = {};
+            if (variablesText) {
+                try {
+                    variables = JSON.parse(variablesText);
+                } catch (error) {
+                    alert('Invalid JSON in variables field. Please check your syntax.');
+                    return;
+                }
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            try {
+                const result = await makeRequest(`${API_BASE}/api/graphql/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query, variables })
+                });
+                displayResponse('graphql-response', result, 'GraphQL Query Result');
+                if (result.success) {
+                    loadMockFiles();
+                }
+            } catch (error) {
+                displayResponse('graphql-response', {
+                    success: false,
+                    error: error.message,
+                    isMocked: false
+                }, 'GraphQL Query Error');
+            }
+
+            button.disabled = false;
+            button.textContent = 'Execute Query';
+        }
+
+        async function deleteGraphQLMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Find GraphQL mock files (they typically contain 'graphql' or the GraphQL API URL in the filename)
+                for (const file of files) {
+                    if (file.filename.includes('graphql') || file.filename.includes('rickandmortyapi')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-graphql-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-graphql-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No GraphQL mock file found.</div>';
+            } catch (error) {
+                document.getElementById('delete-graphql-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
         // Load and display mock files
         async function loadMockFiles () {
             const listContainer = document.getElementById('mock-files-list');
@@ -1372,9 +1485,42 @@
                 files.forEach(file => {
                     const fileSize = (file.size / 1024).toFixed(2);
                     const created = new Date(file.created).toLocaleString();
-                    // Escape HTML to prevent XSS
-                    const escapedEndpoint = file.endpoint ? file.endpoint.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
-                    const endpointDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
+                    
+                    let infoDisplay = '';
+                    
+                    // Display GraphQL info if available
+                    if (file.graphqlInfo) {
+                        const query = file.graphqlInfo.query || '';
+                        const variables = file.graphqlInfo.variables;
+                        
+                        // Truncate query for display (first 100 chars)
+                        const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+                        const escapedQuery = queryPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                        
+                        let variablesDisplay = '';
+                        if (variables) {
+                            try {
+                                const varsStr = JSON.stringify(variables, null, 2);
+                                const varsPreview = varsStr.length > 150 ? varsStr.substring(0, 150) + '...' : varsStr;
+                                const escapedVars = varsPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                                variablesDisplay = `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.05); padding: 4px 6px; border-radius: 4px;"><strong>Variables:</strong> ${escapedVars}</div>`;
+                            } catch (e) {
+                                // If variables can't be stringified, skip
+                            }
+                        }
+                        
+                        infoDisplay = `
+                            <div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace; background: rgba(102, 126, 234, 0.1); padding: 4px 6px; border-radius: 4px;">
+                                <strong style="color: #667eea;">🔷 GraphQL Query:</strong> ${escapedQuery}
+                            </div>
+                            ${variablesDisplay}
+                        `;
+                    } else {
+                        // Display endpoint for REST API requests
+                        const escapedEndpoint = file.endpoint ? file.endpoint.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
+                        infoDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
+                    }
+                    
                     html += `
                         <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
                              onclick="viewMockFile('${file.filename}')"
@@ -1383,7 +1529,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
                                 <div style="flex: 1; min-width: 0;">
                                     <strong style="color: #667eea; display: block; word-break: break-word;">📄 ${file.filename}</strong>
-                                    ${endpointDisplay}
+                                    ${infoDisplay}
                                     <div style="font-size: 0.9em; color: #666; margin-top: 5px; word-break: break-word;">
                                         Size: ${fileSize} KB • Created: ${created}
                                     </div>
