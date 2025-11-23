@@ -7,7 +7,6 @@ import { initializeDateManipulation } from './utils/date';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
-  findBestMatchingMock as findBestMatchingMockUtil,
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData 
 } from './utils/mock-matcher';
@@ -15,7 +14,6 @@ import {
 class MockifyerClass {
   private config: MockifyerConfig;
   private mockAdapter?: MockAdapter;
-  private mockDataCache: Map<string, CachedMockData> = new Map();
   private httpClient: HTTPClient;
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
@@ -88,63 +86,131 @@ class MockifyerClass {
       requestKey: requestKey.substring(0, 300) // Show more of the key
     });
     
-    // Filter cache to only include existing files and clean up stale entries
-    const validCache = new Map<string, CachedMockData>();
-    for (const [key, cachedMock] of this.mockDataCache.entries()) {
-      if (!fs.existsSync(cachedMock.filePath)) {
-        console.log(`[Mockifyer] Cached mock file no longer exists: ${cachedMock.filePath}, removing from cache`);
-        this.mockDataCache.delete(key);
-      } else {
-        validCache.set(key, cachedMock);
+    // Always read directly from files (no cache)
+    console.log('[Mockifyer] Reading directly from files (cache disabled)');
+    return this.findBestMatchingMockFromFiles(request);
+  }
+
+  /**
+   * Find best matching mock by reading directly from files (no cache, reads on each request)
+   */
+  private findBestMatchingMockFromFiles(request: StoredRequest): CachedMockData | undefined {
+    if (!fs.existsSync(this.config.mockDataPath)) {
+      console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
+      return undefined;
+    }
+
+    const files = fs.readdirSync(this.config.mockDataPath)
+      .filter(file => file.endsWith('.json'));
+
+    const requestKey = this.generateRequestKey(request);
+    let exactMatch: CachedMockData | undefined;
+    let similarMatch: CachedMockData | undefined;
+    
+    // Read files one by one and check for matches (no cache structure)
+    for (const file of files) {
+      try {
+        const filePath = path.join(this.config.mockDataPath, file);
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const mockData: MockData = JSON.parse(fileContent);
+        const mockKey = this.generateRequestKey(mockData.request);
+        
+        // Check for exact match
+        if (mockKey === requestKey) {
+          exactMatch = {
+            mockData,
+            filename: file,
+            filePath: filePath
+          };
+          break; // Exact match found, no need to continue
+        }
+        
+        // If no exact match yet and similar matching is enabled, check for similar match
+        if (!exactMatch && this.config.useSimilarMatch && !similarMatch) {
+          // Check if it's a GraphQL request - skip similar matching for GraphQL
+          const isGraphQL = ['POST', 'PUT', 'PATCH'].includes((request.method || 'GET').toUpperCase()) &&
+                           request.data &&
+                           (() => {
+                             try {
+                               let bodyData = request.data;
+                               if (typeof request.data === 'string') {
+                                 bodyData = JSON.parse(request.data);
+                               }
+                               return typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string';
+                             } catch {
+                               return false;
+                             }
+                           })();
+          
+          if (!isGraphQL) {
+            // Check if path and method match
+            try {
+              const requestUrl = new URL(request.url);
+              const mockUrl = new URL(mockData.request.url);
+              const requestPath = requestUrl.pathname;
+              const mockPath = mockUrl.pathname;
+              
+              if (mockPath === requestPath && 
+                  (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
+                
+                // Check if required parameters match (if configured)
+                if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
+                  const requestParams = request.queryParams || {};
+                  const mockParams = mockData.request.queryParams || {};
+                  const allRequiredMatch = this.config.similarMatchRequiredParams.every(paramName => {
+                    const requestValue = requestParams[paramName];
+                    const mockValue = mockParams[paramName];
+                    if (requestValue === undefined && mockValue === undefined) return true;
+                    return String(requestValue || '') === String(mockValue || '');
+                  });
+                  
+                  if (!allRequiredMatch) {
+                    continue; // Required parameter differs, skip this mock
+                  }
+                }
+                
+                similarMatch = {
+                  mockData,
+                  filename: file,
+                  filePath: filePath
+                };
+              }
+            } catch (e) {
+              // Invalid URL, skip
+              continue;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
     }
-    
-    // Use utility function to find best match
-    const config = {
-      useSimilarMatch: this.config.useSimilarMatch,
-      similarMatchRequiredParams: this.config.similarMatchRequiredParams
-    };
-    
-    const result = findBestMatchingMockUtil(request, validCache, config);
+
+    const result = exactMatch || similarMatch;
     
     if (result) {
-      if (requestKey === this.generateRequestKey(result.mockData.request)) {
-        console.log(`[Mockifyer] ------ Using exact mock match for ${requestKey}`);
+      if (exactMatch) {
+        console.log(`[Mockifyer] Using exact mock match (from file) for ${requestKey}`);
       } else {
-        console.log(`[Mockifyer] Using similar mock match for ${requestKey}`);
+        console.log(`[Mockifyer] Using similar mock match (from file) for ${requestKey}`);
       }
+    } else {
+      console.log(`[Mockifyer] No mock found in ${files.length} files for: ${requestKey}`);
     }
-    
+
     return result;
   }
 
   private loadMockData(): void {
     console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
-    if (fs.existsSync(this.config.mockDataPath)) {
-      const files = fs.readdirSync(this.config.mockDataPath);
-      console.log('[Mockifyer] Found files:', files);
-      
-      let loadedCount = 0;
-      files.forEach(file => {
-        if (file.endsWith('.json')) {
-          const filePath = path.join(this.config.mockDataPath, file);
-          const mockData: MockData = JSON.parse(
-            fs.readFileSync(filePath, 'utf-8')
-          );
-          const key = this.generateRequestKey(mockData.request);
-          console.log('[Mockifyer] Loading mock:', key, 'from file:', file);
-          this.mockDataCache.set(key, {
-            mockData,
-            filename: file,
-            filePath: filePath
-          });
-          loadedCount++;
-        }
-      });
-      console.log('[Mockifyer] Loaded', loadedCount, 'mock files into cache');
-      console.log('[Mockifyer] Cache size:', this.mockDataCache.size);
-    } else {
+    console.log('[Mockifyer] Cache disabled - will read from files on each request');
+    
+    if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
+    } else {
+      const files = fs.readdirSync(this.config.mockDataPath)
+        .filter(file => file.endsWith('.json'));
+      console.log('[Mockifyer] Found', files.length, 'mock files (will read on demand)');
     }
   }
 
@@ -664,17 +730,9 @@ class MockifyerClass {
       const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
       const filePath = path.join(this.config.mockDataPath, filename);
       
-      // Add to cache immediately
-      const key = this.generateRequestKey(request);
-      this.mockDataCache.set(key, {
-        mockData,
-        filename,
-        filePath
-      });
-      console.log(`[Mockifyer] Added new mock to cache: ${key}`);
-      console.log('[Mockifyer] mockDataCache:', this.mockDataCache);
-
+      // Write to file (no cache)
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+      console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
     } finally {
       // Remove from saving set after save completes
       this.savingResponses.delete(requestKey);
@@ -686,32 +744,20 @@ class MockifyerClass {
   }
 
   /**
-   * Reload mock data from the filesystem, clearing the cache first
-   * Useful when mock files are added, removed, or modified
+   * Reload mock data from the filesystem
+   * No-op since we don't use cache (files are read on each request)
    */
   public reloadMockData(): void {
-    console.log('[Mockifyer] Reloading mock data...');
-    this.mockDataCache.clear();
-    this.loadMockData();
+    console.log('[Mockifyer] Reload called - no cache to reload (files read on demand)');
   }
 
   /**
-   * Clear stale cache entries (remove entries where files no longer exist)
-   * Returns the number of entries removed
+   * Clear stale cache entries
+   * No-op since we don't use cache
    */
   public clearStaleCacheEntries(): number {
-    let removedCount = 0;
-    for (const [key, cachedMock] of this.mockDataCache.entries()) {
-      if (!fs.existsSync(cachedMock.filePath)) {
-        console.log(`[Mockifyer] Removing stale cache entry: ${key} (file: ${cachedMock.filename})`);
-        this.mockDataCache.delete(key);
-        removedCount++;
-      }
-    }
-    if (removedCount > 0) {
-      console.log(`[Mockifyer] Removed ${removedCount} stale cache entries`);
-    }
-    return removedCount;
+    console.log('[Mockifyer] Clear stale cache called - no cache to clear');
+    return 0;
   }
 }
 
