@@ -324,6 +324,25 @@
             color: #333;
         }
 
+        .github-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            color: #333;
+            transition: opacity 0.2s;
+        }
+
+        .github-link:hover {
+            opacity: 0.7;
+        }
+
+        .github-logo {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
         .status-value {
             padding: 4px 12px;
             border-radius: 15px;
@@ -1066,12 +1085,58 @@
         // Load status on page load
         async function loadStatus () {
             const statusItems = document.getElementById('status-items');
-            statusItems.innerHTML = `
-                <div class="status-item">
-                    <strong>💡 Tip:</strong>
-                    <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
-                </div>
-            `;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+
+                const deployedDateTime = data.deployedDate ? (() => {
+                    const date = new Date(data.deployedDate);
+                    const dateStr = date.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                    const timeStr = date.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    });
+                    return `${dateStr} at ${timeStr}`;
+                })() : 'Unknown';
+
+                const githubLogo = `
+                    <svg class="github-logo" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                `;
+
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>📦 Mockifyer:</strong>
+                        <span class="status-value enabled">v${data.mockifyerVersion || 'unknown'}</span>
+                    </div>
+                    <div class="status-item">
+                        <strong>🚀 Deployed:</strong>
+                        <span style="color: #666; font-size: 0.9em;">${deployedDateTime}</span>
+                    </div>
+                    <div class="status-item">
+                        <a href="${data.githubRepo || 'https://github.com/sgedda/mockifyer'}" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
+                            ${githubLogo}
+                            <span style="font-size: 0.9em;">GitHub</span>
+                        </a>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('[Dashboard] Error loading status:', error);
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>💡 Tip:</strong>
+                        <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
+                    </div>
+                `;
+            }
         }
 
         // Helper function to find a mock file by request parameters
@@ -1485,18 +1550,18 @@
                 files.forEach(file => {
                     const fileSize = (file.size / 1024).toFixed(2);
                     const created = new Date(file.created).toLocaleString();
-                    
+
                     let infoDisplay = '';
-                    
+
                     // Display GraphQL info if available
                     if (file.graphqlInfo) {
                         const query = file.graphqlInfo.query || '';
                         const variables = file.graphqlInfo.variables;
-                        
+
                         // Truncate query for display (first 100 chars)
                         const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
                         const escapedQuery = queryPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                        
+
                         let variablesDisplay = '';
                         if (variables) {
                             try {
@@ -1508,7 +1573,7 @@
                                 // If variables can't be stringified, skip
                             }
                         }
-                        
+
                         infoDisplay = `
                             <div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace; background: rgba(102, 126, 234, 0.1); padding: 4px 6px; border-radius: 4px;">
                                 <strong style="color: #667eea;">🔷 GraphQL Query:</strong> ${escapedQuery}
@@ -1520,7 +1585,7 @@
                         const escapedEndpoint = file.endpoint ? file.endpoint.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
                         infoDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
                     }
-                    
+
                     html += `
                         <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
                              onclick="viewMockFile('${file.filename}')"
