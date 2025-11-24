@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockifyer Test Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .nav-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .nav-header a {
+            color: white;
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 1.1em;
+            opacity: 0.9;
+            transition: opacity 0.3s ease;
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .nav-header a:hover {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .response-container {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .response-container.mocked {
+            background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+            border-left-color: #4caf50;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
+        }
+
+        .response-container.real-api {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-left-color: #ff9800;
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.2);
+        }
+
+        .response-container h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .mock-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: 700;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+            box-shadow: 0 2px 8px rgba(17, 153, 142, 0.4);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.9;
+                transform: scale(1.02);
+            }
+        }
+
+        .real-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: 700;
+            margin-left: 10px;
+            box-shadow: 0 2px 8px rgba(245, 87, 108, 0.4);
+        }
+
+        .mock-info {
+            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            border-left: 5px solid #2e7d32;
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+        }
+
+        .mock-info h4 {
+            color: #1b5e20;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1em;
+        }
+
+        .mock-info p {
+            color: #2e7d32;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        .real-api-info {
+            background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%);
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            border-left: 5px solid #f57c00;
+            box-shadow: 0 2px 8px rgba(245, 124, 0, 0.2);
+        }
+
+        .real-api-info h4 {
+            color: #e65100;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1em;
+        }
+
+        .real-api-info p {
+            color: #bf360c;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, .3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #ffebee;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+
+        .error h3 {
+            color: #f44336;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-ok {
+            background: #4caf50;
+        }
+
+        .status-error {
+            background: #f44336;
+        }
+
+        .emoji {
+            font-size: 1.2em;
+        }
+
+        .status-banner {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .status-banner h2 {
+            color: #667eea;
+            margin: 0;
+            font-size: 1.3em;
+        }
+
+        .status-banner .status-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95em;
+        }
+
+        .status-item strong {
+            color: #333;
+        }
+
+        .github-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            color: #333;
+            transition: opacity 0.2s;
+        }
+
+        .github-link:hover {
+            opacity: 0.7;
+        }
+
+        .github-logo {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        .status-value {
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .status-value.enabled {
+            background: #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .status-value.disabled {
+            background: #ffcdd2;
+            color: #c62828;
+        }
+
+        .status-value.recording {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+                margin-bottom: 20px;
+            }
+
+            .container {
+                max-width: 100%;
+            }
+
+            .card {
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+
+            .card h2 {
+                font-size: 1.2em;
+                margin-bottom: 15px;
+            }
+
+            .status-banner {
+                padding: 15px;
+                margin-bottom: 20px;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .status-banner h2 {
+                font-size: 1.1em;
+                margin-bottom: 10px;
+            }
+
+            .status-banner .status-items {
+                flex-direction: column;
+                gap: 10px;
+                width: 100%;
+            }
+
+            .status-item {
+                flex-wrap: wrap;
+            }
+
+            button {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 10px;
+                padding: 14px 20px;
+                font-size: 16px;
+            }
+
+            button:last-child {
+                margin-bottom: 0;
+            }
+
+            input,
+            select {
+                padding: 14px;
+                font-size: 16px;
+                /* Prevents zoom on iOS */
+            }
+
+            .form-group {
+                margin-bottom: 15px;
+            }
+
+            .response-container {
+                padding: 15px;
+                margin-top: 15px;
+            }
+
+            .response-container h3 {
+                font-size: 1em;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .mock-badge,
+            .real-badge {
+                margin-left: 0;
+                margin-top: 5px;
+                font-size: 0.85em;
+                padding: 6px 12px;
+            }
+
+            .mock-info,
+            .real-api-info {
+                padding: 12px;
+                font-size: 0.9em;
+            }
+
+            .mock-info h4,
+            .real-api-info h4 {
+                font-size: 1em;
+            }
+
+            .mock-info p,
+            .real-api-info p {
+                font-size: 0.85em;
+                word-break: break-word;
+            }
+
+            pre {
+                font-size: 12px;
+                padding: 12px;
+                overflow-x: auto;
+            }
+
+            /* Button containers - stack on mobile */
+            .card>div[style*="display: flex"] {
+                flex-direction: column;
+            }
+
+            .card>div[style*="display: flex"] button {
+                width: 100%;
+                margin-right: 0;
+            }
+
+            /* Mock files list mobile styles */
+            #mock-files-list>div {
+                gap: 12px;
+            }
+
+            #mock-files-list>div>div {
+                padding: 12px !important;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"] {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 12px !important;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"]>div {
+                width: 100%;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"]>div>strong {
+                display: block;
+                word-break: break-all;
+                font-size: 0.95em;
+                line-height: 1.4;
+                margin-bottom: 8px;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"]>div>div {
+                font-size: 0.85em;
+                line-height: 1.5;
+                word-break: break-word;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"] button {
+                width: 100%;
+                margin-top: 0;
+                margin-left: 0 !important;
+                padding: 12px 16px;
+                font-size: 0.95em;
+            }
+
+            /* Mock file viewer mobile */
+            #mock-file-viewer {
+                margin-top: 15px;
+            }
+
+            #mock-file-viewer>div:first-child {
+                padding: 12px !important;
+                margin-bottom: 12px !important;
+            }
+
+            #mock-file-viewer h3 {
+                font-size: 1em !important;
+                margin-bottom: 8px !important;
+                word-break: break-word;
+            }
+
+            #mock-file-viewer>div:first-child>div {
+                font-size: 0.75em !important;
+                line-height: 1.4 !important;
+                word-break: break-word;
+            }
+
+            #mock-file-viewer pre {
+                font-size: 0.75em;
+                padding: 10px;
+                max-height: 400px !important;
+                overflow-x: auto;
+                word-break: break-word;
+                white-space: pre-wrap;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .card {
+                padding: 12px;
+            }
+
+            .card h2 {
+                font-size: 1.1em;
+            }
+
+            .status-banner {
+                padding: 12px;
+            }
+
+            .response-container {
+                padding: 12px;
+            }
+
+            pre {
+                font-size: 11px;
+            }
+
+            /* Mock file viewer - extra small screens */
+            #mock-file-viewer h3 {
+                font-size: 0.9em !important;
+            }
+
+            #mock-file-viewer>div:first-child>div {
+                font-size: 0.7em !important;
+            }
+
+            #mock-file-viewer pre {
+                font-size: 0.7em;
+                padding: 8px;
+                max-height: 300px !important;
+            }
+
+            /* Mock files list - extra small screens */
+            #mock-files-list>div>div {
+                padding: 10px !important;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"]>div>strong {
+                font-size: 0.9em;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"]>div>div {
+                font-size: 0.8em;
+            }
+
+            #mock-files-list>div>div>div[style*="display: flex"] button {
+                padding: 10px 14px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="top-nav"
+            style="background: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 15px 25px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+            <h2 style="color: #667eea; margin: 0;">🎭 Mockifyer Dashboard</h2>
+            <div class="nav-links" style="display: flex; gap: 20px; align-items: center;">
+                <a href="index.html"
+                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.2s ease;">📖
+                    Introduction</a>
+                <a href="dashboard.html"
+                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; transition: background 0.2s ease;">📊
+                    Dashboard</a>
+                <a href="date-config.html"
+                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.2s ease;">📅
+                    Date Configuration</a>
+            </div>
+        </div>
+
+        <h1>🎭 Mockifyer Test Dashboard</h1>
+
+        <div class="status-banner" id="status-banner">
+            <h2>📊 Current Status</h2>
+            <div class="status-items" id="status-items">
+                <div class="status-item">
+                    <strong>Loading...</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Football Fixtures Card -->
+        <div class="card">
+            <h2>⚽ Football Fixtures</h2>
+            <div class="form-group">
+                <label for="fixtures-season-input">Season:</label>
+                <select id="fixtures-season-input">
+                    <option value="2021">2021</option>
+                    <option value="2022" selected>2022</option>
+                    <option value="2023">2023</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="team-id-input">Team (optional):</label>
+                <select id="team-id-input">
+                    <option value="">Select a team...</option>
+                    <optgroup label="Premier League">
+                        <option value="33">Manchester United</option>
+                        <option value="50">Manchester City</option>
+                        <option value="40">Liverpool</option>
+                        <option value="42">Arsenal</option>
+                        <option value="49">Chelsea</option>
+                        <option value="47">Tottenham</option>
+                        <option value="66">Aston Villa</option>
+                        <option value="51">Brighton</option>
+                    </optgroup>
+                    <optgroup label="La Liga">
+                        <option value="541">Barcelona</option>
+                        <option value="541">Real Madrid</option>
+                        <option value="548">Atletico Madrid</option>
+                        <option value="543">Sevilla</option>
+                        <option value="531">Valencia</option>
+                    </optgroup>
+                    <optgroup label="Bundesliga">
+                        <option value="157">Bayern Munich</option>
+                        <option value="165">Borussia Dortmund</option>
+                        <option value="173">RB Leipzig</option>
+                        <option value="161">Bayer Leverkusen</option>
+                    </optgroup>
+                    <optgroup label="Serie A">
+                        <option value="489">AC Milan</option>
+                        <option value="489">Inter Milan</option>
+                        <option value="487">Juventus</option>
+                        <option value="497">Napoli</option>
+                        <option value="502">Roma</option>
+                    </optgroup>
+                    <optgroup label="Ligue 1">
+                        <option value="85">Paris Saint-Germain</option>
+                        <option value="516">Monaco</option>
+                        <option value="523">Lyon</option>
+                        <option value="516">Marseille</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getFixtures()">Get Fixtures</button>
+                <button onclick="deleteFixturesMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-fixtures-message" style="margin-top: 10px;"></div>
+            <div id="fixtures-response"></div>
+        </div>
+
+        <!-- Football Standings Card -->
+        <div class="card">
+            <h2>🏆 League Standings</h2>
+            <div class="form-group">
+                <label for="standings-league-input">League:</label>
+                <select id="standings-league-input">
+                    <option value="">Select a league...</option>
+                    <optgroup label="Top 5 Leagues">
+                        <option value="39" selected>Premier League (England)</option>
+                        <option value="140">La Liga (Spain)</option>
+                        <option value="78">Bundesliga (Germany)</option>
+                        <option value="135">Serie A (Italy)</option>
+                        <option value="61">Ligue 1 (France)</option>
+                    </optgroup>
+                    <optgroup label="Other European Leagues">
+                        <option value="88">Eredivisie (Netherlands)</option>
+                        <option value="203">Süper Lig (Turkey)</option>
+                        <option value="94">Primeira Liga (Portugal)</option>
+                        <option value="144">Jupiler Pro League (Belgium)</option>
+                    </optgroup>
+                    <optgroup label="International Competitions">
+                        <option value="2">UEFA Champions League</option>
+                        <option value="3">UEFA Europa League</option>
+                        <option value="848">UEFA Conference League</option>
+                    </optgroup>
+                    <optgroup label="Other Leagues">
+                        <option value="253">MLS (USA)</option>
+                        <option value="71">Brasileirão (Brazil)</option>
+                        <option value="262">Liga MX (Mexico)</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="standings-season-input">Season:</label>
+                <select id="standings-season-input">
+                    <option value="2021">2021</option>
+                    <option value="2022" selected>2022</option>
+                    <option value="2023">2023</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getStandings()">Get Standings</button>
+                <button onclick="deleteStandingsMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-standings-message" style="margin-top: 10px;"></div>
+            <div id="standings-response"></div>
+        </div>
+
+        <!-- Football Team Info Card -->
+        <div class="card">
+            <h2>👥 Team Information</h2>
+            <div class="form-group">
+                <label for="team-id-info-input">Team:</label>
+                <select id="team-id-info-input">
+                    <option value="">Select a team...</option>
+                    <optgroup label="Premier League">
+                        <option value="33" selected>Manchester United</option>
+                        <option value="50">Manchester City</option>
+                        <option value="40">Liverpool</option>
+                        <option value="42">Arsenal</option>
+                        <option value="49">Chelsea</option>
+                        <option value="47">Tottenham</option>
+                        <option value="66">Aston Villa</option>
+                        <option value="51">Brighton</option>
+                    </optgroup>
+                    <optgroup label="La Liga">
+                        <option value="541">Barcelona</option>
+                        <option value="541">Real Madrid</option>
+                        <option value="548">Atletico Madrid</option>
+                        <option value="543">Sevilla</option>
+                        <option value="531">Valencia</option>
+                    </optgroup>
+                    <optgroup label="Bundesliga">
+                        <option value="157">Bayern Munich</option>
+                        <option value="165">Borussia Dortmund</option>
+                        <option value="173">RB Leipzig</option>
+                        <option value="161">Bayer Leverkusen</option>
+                    </optgroup>
+                    <optgroup label="Serie A">
+                        <option value="489">AC Milan</option>
+                        <option value="489">Inter Milan</option>
+                        <option value="487">Juventus</option>
+                        <option value="497">Napoli</option>
+                        <option value="502">Roma</option>
+                    </optgroup>
+                    <optgroup label="Ligue 1">
+                        <option value="85">Paris Saint-Germain</option>
+                        <option value="516">Monaco</option>
+                        <option value="523">Lyon</option>
+                        <option value="516">Marseille</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getTeamInfo()">Get Team Info</button>
+                <button onclick="deleteTeamInfoMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-team-info-message" style="margin-top: 10px;"></div>
+            <div id="team-info-response"></div>
+        </div>
+
+        <!-- Current Weather Card -->
+        <div class="card">
+            <h2>🌤️ Current Weather</h2>
+            <div class="form-group">
+                <label for="city-input">City Name:</label>
+                <input type="text" id="city-input" placeholder="e.g., London, New York, Tokyo" value="London">
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="current-weather-full-response"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Show full API response</span>
+                </label>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getCurrentWeather()">Get Current Weather</button>
+                <button onclick="deleteCurrentWeatherMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-message" style="margin-top: 10px;"></div>
+            <div id="current-weather-response"></div>
+        </div>
+
+        <!-- Forecast Card -->
+        <div class="card">
+            <h2>📅 Weather Forecast</h2>
+            <div class="form-group">
+                <label for="forecast-city-input">City Name:</label>
+                <input type="text" id="forecast-city-input" placeholder="e.g., London, New York, Tokyo" value="London">
+            </div>
+            <div class="form-group">
+                <label for="days-input">Number of Days:</label>
+                <select id="days-input">
+                    <option value="1">1 day</option>
+                    <option value="2">2 days</option>
+                    <option value="3" selected>3 days</option>
+                    <option value="5">5 days</option>
+                    <option value="7">7 days</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="forecast-full-response"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Show full API response</span>
+                </label>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getForecast()">Get Forecast</button>
+                <button onclick="deleteForecastMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-forecast-message" style="margin-top: 10px;"></div>
+            <div id="forecast-response"></div>
+        </div>
+
+        <!-- GraphQL Query Card -->
+        <div class="card">
+            <h2>🔷 GraphQL Query</h2>
+            <div class="form-group">
+                <label for="graphql-query-input">GraphQL Query:</label>
+                <textarea id="graphql-query-input" rows="8"
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
+                    placeholder="Enter your GraphQL query here...">query ($page: Int) {
+  characters(page: $page) {
+    results {
+      id
+      name
+      status
+      species
+    }
+  }
+}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="graphql-variables-input">Variables (JSON, optional):</label>
+                <textarea id="graphql-variables-input" rows="3"
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
+                    placeholder='{"page": 1}'>{"page": 3}</textarea>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="executeGraphQLQuery()">Execute Query</button>
+                <button onclick="deleteGraphQLMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-graphql-message" style="margin-top: 10px;"></div>
+            <div id="graphql-response"></div>
+        </div>
+
+        <!-- Mock Files Browser Card -->
+        <div class="card">
+            <h2>📁 Mock Data Files</h2>
+            <button onclick="loadMockFiles()" style="margin-bottom: 15px;">Refresh List</button>
+            <div id="mock-files-list"></div>
+            <div id="mock-file-viewer" style="margin-top: 20px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        async function makeRequest (url, options = {}) {
+            const startTime = performance.now();
+            try {
+                const response = await fetch(url, options);
+                const endTime = performance.now();
+                const responseTime = Math.round(endTime - startTime);
+                const data = await response.json();
+                // Check for mock header (case-insensitive)
+                const mockHeader = response.headers.get('x-mockifyer') ||
+                    response.headers.get('X-Mockifyer') ||
+                    response.headers.get('X-MOCKIFYER');
+                const isMocked = mockHeader === 'true';
+
+                console.log('[Dashboard] Response headers:', Object.fromEntries(response.headers.entries()));
+                console.log('[Dashboard] Mock header value:', mockHeader);
+                console.log('[Dashboard] Is mocked:', isMocked);
+
+                return {
+                    success: response.ok,
+                    data,
+                    status: response.status,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    isMocked: isMocked,
+                    mockTimestamp: response.headers.get('x-mockifyer-timestamp') || response.headers.get('X-Mockifyer-Timestamp'),
+                    mockFilename: response.headers.get('x-mockifyer-filename') || response.headers.get('X-Mockifyer-Filename'),
+                    mockFilepath: response.headers.get('x-mockifyer-filepath') || response.headers.get('X-Mockifyer-Filepath'),
+                    responseTime: responseTime
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message,
+                    isMocked: false
+                };
+            }
+        }
+
+        function displayResponse (containerId, result, title) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            if (!result) return;
+
+            const responseDiv = document.createElement('div');
+            const containerClass = result.success
+                ? (result.isMocked ? 'mocked' : 'real-api')
+                : 'error';
+            responseDiv.className = `response-container ${containerClass}`;
+
+            const titleEl = document.createElement('h3');
+            const statusText = result.isMocked
+                ? '<span class="mock-badge">🎭 USING MOCK DATA</span>'
+                : '<span class="real-badge">🌐 REAL API CALL</span>';
+            titleEl.innerHTML = `
+                <span class="status-indicator ${result.success ? 'status-ok' : 'status-error'}"></span>
+                ${title}
+                ${statusText}
+            `;
+            titleEl.style.fontSize = '1.3em';
+            titleEl.style.marginBottom = '20px';
+            responseDiv.appendChild(titleEl);
+
+            // Add a prominent banner at the top
+            const banner = document.createElement('div');
+            banner.style.cssText = `
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                font-weight: 700;
+                font-size: 1.1em;
+                text-align: center;
+                ${result.isMocked
+                    ? 'background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);'
+                    : 'background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);'}
+            `;
+            banner.innerHTML = result.isMocked
+                ? '🎭 This response came from MOCK DATA - No external API call was made!'
+                : '🌐 This response came from REAL API - External API call was made!';
+            responseDiv.insertBefore(banner, titleEl);
+
+            if (result.success) {
+                if (result.isMocked && result.mockTimestamp) {
+                    const mockInfo = document.createElement('div');
+                    mockInfo.className = 'mock-info';
+
+                    let fileInfo = '';
+                    if (result.mockFilename) {
+                        // Try to make path relative if it's an absolute path
+                        let displayPath = result.mockFilepath || result.mockFilename;
+                        // Remove common workspace patterns to make it more readable
+                        displayPath = displayPath.replace(/^.*\/(mock-data|mockifyer)/, '$1');
+                        fileInfo = `
+                            <p><strong>📁 Mock File Name:</strong> <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-weight: 600;">${result.mockFilename}</code></p>
+                            <p><strong>📂 File Path:</strong> <code style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 4px; word-break: break-all; font-family: 'Courier New', monospace; font-size: 0.9em;">${displayPath}</code></p>
+                        `;
+                    }
+
+                    mockInfo.innerHTML = `
+                        <h4>✨ Mockifyer Information - Using Mock Data 🎭</h4>
+                        <p><strong>📅 Mock Created:</strong> ${new Date(result.mockTimestamp).toLocaleString()}</p>
+                        <p><strong>⚡ Response Time:</strong> ${result.responseTime}ms (mocked - instant!)</p>
+                        <p><strong>✅ Status Code:</strong> ${result.status}</p>
+                        <p><strong>💾 Source:</strong> Mock data file</p>
+                        ${fileInfo}
+                    `;
+                    responseDiv.appendChild(mockInfo);
+                } else {
+                    const realInfo = document.createElement('div');
+                    realInfo.className = 'real-api-info';
+                    realInfo.innerHTML = `
+                        <h4>🌐 Real API Call Information - Using External API</h4>
+                        <p><strong>⏱️ Response Time:</strong> ${result.responseTime}ms</p>
+                        <p><strong>✅ Status Code:</strong> ${result.status}</p>
+                        <p><strong>🌍 Source:</strong> External API (WeatherAPI)</p>
+                        <p><strong>💡 Tip:</strong> Enable MOCKIFYER_ENABLED=true to use mock data</p>
+                    `;
+                    responseDiv.appendChild(realInfo);
+                }
+
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(result.data, null, 2);
+                responseDiv.appendChild(pre);
+            } else {
+                const errorDiv = document.createElement('div');
+                errorDiv.innerHTML = `<p><strong>Error:</strong> ${result.error || JSON.stringify(result.data, null, 2)}</p>`;
+                responseDiv.appendChild(errorDiv);
+            }
+
+            container.appendChild(responseDiv);
+        }
+
+        async function getCurrentWeather () {
+            const button = event.target;
+            const city = document.getElementById('city-input').value.trim();
+            const fullResponse = document.getElementById('current-weather-full-response').checked;
+
+            if (!city) {
+                alert('Please enter a city name');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/weather/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
+            const result = await makeRequest(url);
+            displayResponse('current-weather-response', result, `Current Weather for ${city}${fullResponse ? ' (Full Response)' : ''}`);
+
+            // Refresh mock files list in case a new mock was created
+            if (result.success) {
+                loadMockFiles();
+            }
+
+            button.disabled = false;
+            button.textContent = 'Get Current Weather';
+        }
+
+        async function getForecast () {
+            const button = event.target;
+            const city = document.getElementById('forecast-city-input').value.trim();
+            const days = document.getElementById('days-input').value;
+            const fullResponse = document.getElementById('forecast-full-response').checked;
+
+            if (!city) {
+                alert('Please enter a city name');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}${fullResponse ? '&full=true' : ''}`;
+            const result = await makeRequest(url);
+            displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}${fullResponse ? ' (Full Response)' : ''}`);
+
+            // Refresh mock files list in case a new mock was created
+            if (result.success) {
+                loadMockFiles();
+            }
+
+            button.disabled = false;
+            button.textContent = 'Get Forecast';
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('city-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getCurrentWeather();
+        });
+
+        document.getElementById('forecast-city-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getForecast();
+        });
+
+        // Filter teams based on selected league
+        function filterTeamsByLeague () {
+            const leagueSelect = document.getElementById('league-id-input');
+            const teamSelect = document.getElementById('team-id-input');
+            const selectedLeague = leagueSelect.value;
+
+            // Map league IDs to team optgroup labels (only for leagues that have teams listed)
+            const leagueToTeamGroup = {
+                '39': 'Premier League',
+                '140': 'La Liga',
+                '78': 'Bundesliga',
+                '135': 'Serie A',
+                '61': 'Ligue 1'
+            };
+
+            // Get all optgroups in the team select
+            const optgroups = teamSelect.querySelectorAll('optgroup');
+
+            if (!selectedLeague) {
+                // If no league selected, show all teams
+                optgroups.forEach(group => {
+                    group.style.display = '';
+                });
+                // Reset team selection
+                teamSelect.value = '';
+            } else {
+                // Get the team group name for the selected league
+                const targetGroup = leagueToTeamGroup[selectedLeague];
+
+                if (targetGroup) {
+                    // Hide all optgroups except the one matching the selected league
+                    optgroups.forEach(group => {
+                        if (group.label === targetGroup) {
+                            group.style.display = '';
+                        } else {
+                            group.style.display = 'none';
+                        }
+                    });
+                    // Reset team selection when league changes
+                    teamSelect.value = '';
+                } else {
+                    // If league not in map (other leagues), hide all teams since we don't have teams for them
+                    optgroups.forEach(group => {
+                        group.style.display = 'none';
+                    });
+                    teamSelect.value = '';
+                }
+            }
+        }
+
+        // Load status on page load
+        async function loadStatus () {
+            const statusItems = document.getElementById('status-items');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/status`);
+                const data = await response.json();
+
+                const deployedDateTime = data.deployedDate ? (() => {
+                    const date = new Date(data.deployedDate);
+                    const dateStr = date.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                    const timeStr = date.toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: true
+                    });
+                    return `${dateStr} at ${timeStr}`;
+                })() : 'Unknown';
+
+                const githubLogo = `
+                    <svg class="github-logo" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                `;
+
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>📦 Mockifyer:</strong>
+                        <span class="status-value enabled">v${data.mockifyerVersion || 'unknown'}</span>
+                    </div>
+                    <div class="status-item">
+                        <strong>🚀 Deployed:</strong>
+                        <span style="color: #666; font-size: 0.9em;">${deployedDateTime}</span>
+                    </div>
+                    <div class="status-item">
+                        <a href="${data.githubRepo || 'https://github.com/sgedda/mockifyer'}" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
+                            ${githubLogo}
+                            <span style="font-size: 0.9em;">GitHub</span>
+                        </a>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('[Dashboard] Error loading status:', error);
+                statusItems.innerHTML = `
+                    <div class="status-item">
+                        <strong>💡 Tip:</strong>
+                        <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Helper function to find a mock file by request parameters
+        async function findMockFileByParams (endpointType, city, days = null) {
+            try {
+                // Get list of all mock files
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Search through mock files to find a match
+                for (const file of files) {
+                    try {
+                        const fileResponse = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`);
+                        const fileData = await fileResponse.json();
+
+                        if (!fileData.data || !fileData.data.request) continue;
+
+                        const request = fileData.data.request;
+                        const url = request.url || '';
+                        const queryParams = request.queryParams || {};
+
+                        // Check if this is the right endpoint type
+                        const isCurrentWeather = endpointType === 'current' && url.includes('/current.json');
+                        const isForecast = endpointType === 'forecast' && url.includes('/forecast.json');
+
+                        if (!isCurrentWeather && !isForecast) continue;
+
+                        // Check if city matches (case-insensitive)
+                        const mockCity = queryParams.q;
+                        if (!mockCity || mockCity.toLowerCase() !== city.toLowerCase()) continue;
+
+                        // For forecast, check if days match (if specified)
+                        if (endpointType === 'forecast' && days !== null) {
+                            const mockDays = queryParams.days;
+                            if (mockDays !== days.toString()) continue;
+                        }
+
+                        // Found a match!
+                        return file.filename;
+                    } catch (error) {
+                        // Skip files that can't be read
+                        console.warn(`[DeleteMock] Could not read file ${file.filename}:`, error);
+                        continue;
+                    }
+                }
+
+                return null; // No match found
+            } catch (error) {
+                console.error('[DeleteMock] Error finding mock file:', error);
+                throw error;
+            }
+        }
+
+        // Delete mock for current weather
+        async function deleteCurrentWeatherMock () {
+            const city = document.getElementById('city-input').value.trim();
+            if (!city) {
+                alert('Please enter a city name first');
+                return;
+            }
+
+            try {
+                // Find the mock file by searching through mock files
+                const filename = await findMockFileByParams('current', city);
+
+                if (!filename) {
+                    document.getElementById('delete-message').innerHTML =
+                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                    return;
+                }
+
+                const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const deleteData = await deleteResult.json();
+
+                if (deleteResult.ok) {
+                    document.getElementById('delete-message').innerHTML =
+                        `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                            <strong>✅ Deleted:</strong> ${deleteData.filename}
+                        </div>`;
+                    // Refresh mock files list
+                    loadMockFiles();
+                } else {
+                    document.getElementById('delete-message').innerHTML =
+                        `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                            <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('delete-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Delete mock for forecast
+        async function deleteForecastMock () {
+            const city = document.getElementById('forecast-city-input').value.trim();
+            if (!city) {
+                alert('Please enter a city name first');
+                return;
+            }
+
+            try {
+                const days = document.getElementById('days-input').value;
+                // Find the mock file by searching through mock files
+                const filename = await findMockFileByParams('forecast', city, days);
+
+                if (!filename) {
+                    document.getElementById('delete-forecast-message').innerHTML =
+                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                    return;
+                }
+
+                const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const deleteData = await deleteResult.json();
+
+                if (deleteResult.ok) {
+                    document.getElementById('delete-forecast-message').innerHTML =
+                        `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                            <strong>✅ Deleted:</strong> ${deleteData.filename}
+                        </div>`;
+                    // Refresh mock files list
+                    loadMockFiles();
+                } else {
+                    document.getElementById('delete-forecast-message').innerHTML =
+                        `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                            <strong>❌ Error:</strong> ${deleteData.error || 'Failed to delete'}
+                        </div>`;
+                }
+            } catch (error) {
+                document.getElementById('delete-forecast-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Football Functions
+        async function getFixtures () {
+            const button = event.target;
+            const season = document.getElementById('fixtures-season-input').value;
+            const teamId = document.getElementById('team-id-input').value;
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            let url = `${API_BASE}/api/football/fixtures?`;
+            const params = [];
+            if (season) params.push(`season=${encodeURIComponent(season)}`);
+            if (teamId) params.push(`team=${encodeURIComponent(teamId)}`);
+            url += params.join('&');
+
+            const result = await makeRequest(url);
+            displayResponse('fixtures-response', result, 'Football Fixtures');
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Fixtures';
+        }
+
+        async function deleteFixturesMock () {
+            try {
+                // Get list of all mock files
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Find files matching fixtures endpoint
+                for (const file of files) {
+                    if (file.filename.includes('fixtures') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-fixtures-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-fixtures-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for fixtures.</div>';
+            } catch (error) {
+                document.getElementById('delete-fixtures-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        async function getStandings () {
+            const button = event.target;
+            const leagueId = document.getElementById('standings-league-input').value;
+            const season = document.getElementById('standings-season-input').value;
+
+            if (!leagueId) {
+                alert('Please select a league');
+                return;
+            }
+
+            if (!season) {
+                alert('Please select a season');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/football/standings/${encodeURIComponent(leagueId)}?season=${encodeURIComponent(season)}`;
+            const result = await makeRequest(url);
+            displayResponse('standings-response', result, `League Standings (League ${leagueId})`);
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Standings';
+        }
+
+        async function deleteStandingsMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('standings') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-standings-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-standings-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for standings.</div>';
+            } catch (error) {
+                document.getElementById('delete-standings-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        async function getTeamInfo () {
+            const button = event.target;
+            const teamId = document.getElementById('team-id-info-input').value;
+
+            if (!teamId) {
+                alert('Please select a team');
+                return;
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            const url = `${API_BASE}/api/football/team/${encodeURIComponent(teamId)}`;
+            const result = await makeRequest(url);
+            displayResponse('team-info-response', result, `Team Information (ID: ${teamId})`);
+            if (result.success) {
+                loadMockFiles();
+            }
+            button.disabled = false;
+            button.textContent = 'Get Team Info';
+        }
+
+        async function deleteTeamInfoMock () {
+            const teamId = document.getElementById('team-id-info-input').value;
+            if (!teamId) {
+                document.getElementById('delete-team-info-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">Please select a team first.</div>';
+                return;
+            }
+
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('teams') && file.filename.includes('football')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-team-info-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-team-info-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for team info.</div>';
+            } catch (error) {
+                document.getElementById('delete-team-info-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // GraphQL Functions
+        // Date Demo function
+        async function getDateDemo () {
+            const responseDiv = document.getElementById('date-demo-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const result = await makeRequest(`${API_BASE}/api/date-demo`);
+
+                if (result.success) {
+                    const data = result.data;
+                    const diff = data.difference;
+
+                    // Determine if dates are different
+                    const isDifferent = diff.milliseconds !== 0;
+                    const diffColor = isDifferent ? '#f57c00' : '#2e7d32';
+                    const diffIcon = isDifferent ? '⚠️' : '✅';
+                    const diffText = isDifferent
+                        ? `Dates differ by ${Math.abs(diff.days)} day(s), ${Math.abs(diff.hours % 24)} hour(s), ${Math.abs(diff.minutes % 60)} minute(s)`
+                        : 'Dates are the same (no manipulation configured)';
+
+                    responseDiv.innerHTML = `
+                        <div class="response-container">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${diffIcon} Date Comparison</h3>
+                                <div style="font-size: 0.9em; opacity: 0.95;">${diffText}</div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                                    <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">📅 Manipulated Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.manipulated.iso}</div>
+                                        <div><strong>Local:</strong> ${data.manipulated.local}</div>
+                                        <div><strong>UTC:</strong> ${data.manipulated.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.manipulated.timestamp}</div>
+                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9;">
+                                            <strong>Components:</strong><br>
+                                            ${data.manipulated.year}-${String(data.manipulated.month).padStart(2, '0')}-${String(data.manipulated.day).padStart(2, '0')} 
+                                            ${String(data.manipulated.hours).padStart(2, '0')}:${String(data.manipulated.minutes).padStart(2, '0')}:${String(data.manipulated.seconds).padStart(2, '0')}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                                    <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">🖥️ System Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
+                                        <div><strong>ISO:</strong> ${data.system.iso}</div>
+                                        <div><strong>Local:</strong> ${data.system.local}</div>
+                                        <div><strong>UTC:</strong> ${data.system.utc}</div>
+                                        <div><strong>Timestamp:</strong> ${data.system.timestamp}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid ${diffColor};">
+                                <h4 style="margin: 0 0 10px 0; color: ${diffColor}; font-size: 1em;">📊 Difference</h4>
+                                <div style="font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.8;">
+                                    <div><strong>Milliseconds:</strong> ${diff.milliseconds.toLocaleString()}</div>
+                                    <div><strong>Seconds:</strong> ${diff.seconds.toLocaleString()}</div>
+                                    <div><strong>Minutes:</strong> ${diff.minutes.toLocaleString()}</div>
+                                    <div><strong>Hours:</strong> ${diff.hours.toLocaleString()}</div>
+                                    <div><strong>Days:</strong> ${diff.days.toLocaleString()}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="background: #e8f5e9; padding: 12px; border-radius: 8px; margin-top: 15px; font-size: 0.9em; color: #2e7d32;">
+                                <strong>💡 Note:</strong> ${data.note}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to get date information'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function executeGraphQLQuery () {
+            const button = event.target;
+            const query = document.getElementById('graphql-query-input').value.trim();
+            const variablesText = document.getElementById('graphql-variables-input').value.trim();
+
+            if (!query) {
+                alert('Please enter a GraphQL query');
+                return;
+            }
+
+            let variables = {};
+            if (variablesText) {
+                try {
+                    variables = JSON.parse(variablesText);
+                } catch (error) {
+                    alert('Invalid JSON in variables field. Please check your syntax.');
+                    return;
+                }
+            }
+
+            button.disabled = true;
+            button.innerHTML = '<span class="loading"></span> Loading...';
+
+            try {
+                const result = await makeRequest(`${API_BASE}/api/graphql/query`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query, variables })
+                });
+                displayResponse('graphql-response', result, 'GraphQL Query Result');
+                if (result.success) {
+                    loadMockFiles();
+                }
+            } catch (error) {
+                displayResponse('graphql-response', {
+                    success: false,
+                    error: error.message,
+                    isMocked: false
+                }, 'GraphQL Query Error');
+            }
+
+            button.disabled = false;
+            button.textContent = 'Execute Query';
+        }
+
+        async function deleteGraphQLMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Find GraphQL mock files (they typically contain 'graphql' or the GraphQL API URL in the filename)
+                for (const file of files) {
+                    if (file.filename.includes('graphql') || file.filename.includes('rickandmortyapi')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-graphql-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-graphql-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No GraphQL mock file found.</div>';
+            } catch (error) {
+                document.getElementById('delete-graphql-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
+        // Load and display mock files
+        async function loadMockFiles () {
+            const listContainer = document.getElementById('mock-files-list');
+            listContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks`);
+                const data = await response.json();
+                const files = data.files || [];
+                const mockDataPath = data.mockDataPath || '';
+
+                if (files.length === 0) {
+                    listContainer.innerHTML = '<div style="padding: 10px; color: #666;">No mock files found</div>';
+                    return;
+                }
+
+                let html = '<div style="display: grid; gap: 10px;">';
+                files.forEach(file => {
+                    const fileSize = (file.size / 1024).toFixed(2);
+                    const created = new Date(file.created).toLocaleString();
+
+                    let infoDisplay = '';
+
+                    // Display GraphQL info if available
+                    if (file.graphqlInfo) {
+                        const query = file.graphqlInfo.query || '';
+                        const variables = file.graphqlInfo.variables;
+
+                        // Truncate query for display (first 100 chars)
+                        const queryPreview = query.length > 100 ? query.substring(0, 100) + '...' : query;
+                        const escapedQuery = queryPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
+                        let variablesDisplay = '';
+                        if (variables) {
+                            try {
+                                const varsStr = JSON.stringify(variables, null, 2);
+                                const varsPreview = varsStr.length > 150 ? varsStr.substring(0, 150) + '...' : varsStr;
+                                const escapedVars = varsPreview.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                                variablesDisplay = `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace; background: rgba(0,0,0,0.05); padding: 4px 6px; border-radius: 4px;"><strong>Variables:</strong> ${escapedVars}</div>`;
+                            } catch (e) {
+                                // If variables can't be stringified, skip
+                            }
+                        }
+
+                        infoDisplay = `
+                            <div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace; background: rgba(102, 126, 234, 0.1); padding: 4px 6px; border-radius: 4px;">
+                                <strong style="color: #667eea;">🔷 GraphQL Query:</strong> ${escapedQuery}
+                            </div>
+                            ${variablesDisplay}
+                        `;
+                    } else {
+                        // Display endpoint for REST API requests
+                        const escapedEndpoint = file.endpoint ? file.endpoint.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '';
+                        infoDisplay = escapedEndpoint ? `<div style="font-size: 0.75em; color: #888; margin-top: 3px; word-break: break-all; font-family: monospace;">${escapedEndpoint}</div>` : '';
+                    }
+
+                    // Format filepath for display (make it relative to the configured mock data path)
+                    let displayPath = file.filePath || file.filename;
+                    // If we have the mockDataPath from backend, use it to make the path relative
+                    if (mockDataPath && displayPath.startsWith(mockDataPath)) {
+                        displayPath = displayPath.substring(mockDataPath.length).replace(/^[/\\]+/, '');
+                        // If the path contains 'persisted', preserve that part
+                        if (mockDataPath.includes('persisted')) {
+                            displayPath = 'persisted/' + displayPath;
+                        }
+                    } else {
+                        // Fallback: try to find the actual directory structure
+                        const patterns = ['persisted/mock-data', 'mock-data'];
+                        let found = false;
+                        for (const pattern of patterns) {
+                            const index = displayPath.indexOf(pattern);
+                            if (index !== -1) {
+                                displayPath = displayPath.substring(index);
+                                found = true;
+                                break;
+                            }
+                        }
+                        // If no pattern found, try to extract just the filename and directory
+                        if (!found) {
+                            const parts = displayPath.split(/[/\\]/);
+                            const filename = parts[parts.length - 1];
+                            const dir = parts[parts.length - 2] || 'mock-data';
+                            displayPath = `${dir}/${filename}`;
+                        }
+                    }
+                    const escapedPath = displayPath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
+                    html += `
+                        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
+                             onclick="viewMockFile('${file.filename}')"
+                             onmouseover="this.style.background='#e9ecef'" 
+                             onmouseout="this.style.background='#f8f9fa'">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <strong style="color: #667eea; display: block; word-break: break-word;">📄 ${file.filename}</strong>
+                                    ${infoDisplay}
+                                    <div style="font-size: 0.75em; color: #999; margin-top: 3px; word-break: break-all; font-family: monospace; font-style: italic;">
+                                        📂 ${escapedPath}
+                                    </div>
+                                    <div style="font-size: 0.9em; color: #666; margin-top: 5px; word-break: break-word;">
+                                        Size: ${fileSize} KB • Created: ${created}
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px; margin-left: 10px;">
+                                    <button onclick="event.stopPropagation(); editMockFile('${file.filename}')" 
+                                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                        ✏️ Edit
+                                    </button>
+                                    <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
+                                            style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                listContainer.innerHTML = html;
+            } catch (error) {
+                listContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading files: ${error.message}</div>`;
+            }
+        }
+
+        // View a specific mock file
+        async function viewMockFile (filename) {
+            const viewerContainer = document.getElementById('mock-file-viewer');
+            viewerContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
+                const data = await response.json();
+
+                const pre = document.createElement('pre');
+                pre.textContent = JSON.stringify(data.data, null, 2);
+                pre.style.cssText = `
+                    max-height: 500px;
+                    overflow: auto;
+                    background: #1e1e1e;
+                    color: #d4d4d4;
+                    padding: 15px;
+                    border-radius: 8px;
+                    font-family: 'Courier New', monospace;
+                    font-size: 0.9em;
+                    line-height: 1.5;
+                    margin: 0;
+                    border: 1px solid #3e3e3e;
+                    word-break: break-word;
+                    overflow-wrap: break-word;
+                `;
+
+                viewerContainer.innerHTML = `
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);">
+                        <h3 style="color: white; margin: 0 0 10px 0; font-size: 1.2em; word-break: break-word;">📄 ${data.filename}</h3>
+                        <div style="font-size: 0.9em; color: rgba(255, 255, 255, 0.9); line-height: 1.5;">
+                            <div style="margin-bottom: 4px;">Size: ${(data.metadata.size / 1024).toFixed(2)} KB</div>
+                            <div style="margin-bottom: 4px;">Created: ${new Date(data.metadata.created).toLocaleString()}</div>
+                            <div>Modified: ${new Date(data.metadata.modified).toLocaleString()}</div>
+                        </div>
+                    </div>
+                `;
+                viewerContainer.appendChild(pre);
+            } catch (error) {
+                viewerContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading file: ${error.message}</div>`;
+            }
+        }
+
+        // Edit a mock file
+        async function editMockFile (filename) {
+            try {
+                // Load the file data
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(`Error: ${data.error || 'Failed to load file'}`);
+                    return;
+                }
+
+                // Extract only response.data (the actual API response data)
+                // Mockifyer saves: response.data = the full API response
+                let responseDataToEdit;
+                if (data.data.response && data.data.response.data) {
+                    // response.data exists - this is the full API response
+                    responseDataToEdit = data.data.response.data;
+                } else {
+                    // Fallback: use empty object
+                    responseDataToEdit = {};
+                }
+
+                // Store original data for merging on save
+                const originalData = data.data;
+
+                // Create edit modal
+                const modal = document.createElement('div');
+                modal.id = 'edit-modal';
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.7);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 20px;
+                `;
+
+                const modalContent = document.createElement('div');
+                modalContent.style.cssText = `
+                    background: white;
+                    border-radius: 15px;
+                    padding: 25px;
+                    max-width: 90vw;
+                    max-height: 90vh;
+                    width: 1000px;
+                    display: flex;
+                    flex-direction: column;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                `;
+
+                // Format JSON for editing (only the response data)
+                const jsonString = JSON.stringify(responseDataToEdit, null, 2);
+
+                modalContent.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div>
+                            <h2 style="color: #667eea; margin: 0 0 5px 0; font-size: 1.5em;">✏️ Edit Mock File: ${filename}</h2>
+                            <div style="font-size: 0.85em; color: #888; font-style: italic;">
+                                Editing: response.data (API response data - other fields preserved)
+                            </div>
+                        </div>
+                        <button id="close-edit-modal" style="background: #f5f5f5; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 1.2em;">&times;</button>
+                    </div>
+                    <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <label style="margin-bottom: 8px; color: #666; font-weight: 500;">Response Data (JSON):</label>
+                        <textarea id="edit-json-content" style="
+                            flex: 1;
+                            font-family: 'Courier New', monospace;
+                            font-size: 0.9em;
+                            padding: 15px;
+                            border: 2px solid #e0e0e0;
+                            border-radius: 8px;
+                            resize: none;
+                            min-height: 400px;
+                            line-height: 1.5;
+                        ">${jsonString.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                        <div id="json-error" style="
+                            margin-top: 10px;
+                            padding: 10px;
+                            background: #ffebee;
+                            color: #c62828;
+                            border-radius: 6px;
+                            display: none;
+                            font-size: 0.9em;
+                        "></div>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+                        <button id="cancel-edit" style="
+                            background: #f5f5f5;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 1em;
+                        ">Cancel</button>
+                        <button id="save-edit" style="
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 1em;
+                            font-weight: 500;
+                        ">💾 Save Changes</button>
+                    </div>
+                `;
+
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
+
+                const textarea = document.getElementById('edit-json-content');
+                const errorDiv = document.getElementById('json-error');
+                const saveButton = document.getElementById('save-edit');
+                const cancelButton = document.getElementById('cancel-edit');
+                const closeButton = document.getElementById('close-edit-modal');
+
+                // Real-time JSON validation
+                let validationTimeout;
+                textarea.addEventListener('input', () => {
+                    clearTimeout(validationTimeout);
+                    validationTimeout = setTimeout(() => {
+                        validateJSON(textarea.value, errorDiv);
+                    }, 500);
+                });
+
+                // Validate JSON function (any valid JSON is acceptable for response data)
+                function validateJSON (jsonString, errorElement) {
+                    if (!jsonString.trim()) {
+                        errorElement.style.display = 'none';
+                        saveButton.disabled = false;
+                        saveButton.style.opacity = '1';
+                        return true; // Empty is valid (will be saved as empty object/array)
+                    }
+
+                    try {
+                        const parsed = JSON.parse(jsonString);
+                        // Any valid JSON is acceptable (object, array, string, number, boolean, null)
+                        errorElement.style.display = 'none';
+                        saveButton.disabled = false;
+                        saveButton.style.opacity = '1';
+                        return true;
+                    } catch (e) {
+                        errorElement.textContent = `❌ Invalid JSON: ${e.message}`;
+                        errorElement.style.display = 'block';
+                        errorElement.style.background = '#ffebee';
+                        errorElement.style.color = '#c62828';
+                        saveButton.disabled = true;
+                        saveButton.style.opacity = '0.5';
+                        return false;
+                    }
+                }
+
+                // Initial validation
+                validateJSON(textarea.value, errorDiv);
+
+                // Save handler
+                saveButton.addEventListener('click', async () => {
+                    const jsonContent = textarea.value.trim();
+
+                    if (!validateJSON(jsonContent, errorDiv)) {
+                        return;
+                    }
+
+                    try {
+                        // Parse the response data (can be any valid JSON)
+                        let parsedResponseData;
+                        if (!jsonContent.trim()) {
+                            // Empty string means empty object/array - use empty array as default
+                            parsedResponseData = [];
+                        } else {
+                            parsedResponseData = JSON.parse(jsonContent);
+                        }
+
+                        saveButton.disabled = true;
+                        saveButton.textContent = '💾 Saving...';
+
+                        const saveResponse = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ responseData: parsedResponseData })
+                        });
+
+                        const saveData = await saveResponse.json();
+
+                        if (saveResponse.ok) {
+                            // Show success
+                            errorDiv.textContent = '✅ File saved successfully!';
+                            errorDiv.style.display = 'block';
+                            errorDiv.style.background = '#c8e6c9';
+                            errorDiv.style.color = '#2e7d32';
+
+                            // Close modal after a short delay
+                            setTimeout(() => {
+                                document.body.removeChild(modal);
+                                loadMockFiles();
+                                // Reload the viewer if it's showing this file
+                                viewMockFile(filename);
+                            }, 1000);
+                        } else {
+                            errorDiv.textContent = `❌ Error: ${saveData.error || saveData.details || 'Failed to save'}`;
+                            errorDiv.style.display = 'block';
+                            errorDiv.style.background = '#ffebee';
+                            errorDiv.style.color = '#c62828';
+                            saveButton.disabled = false;
+                            saveButton.textContent = '💾 Save Changes';
+                        }
+                    } catch (e) {
+                        errorDiv.textContent = `❌ Error: ${e.message}`;
+                        errorDiv.style.display = 'block';
+                        errorDiv.style.background = '#ffebee';
+                        errorDiv.style.color = '#c62828';
+                        saveButton.disabled = false;
+                        saveButton.textContent = '💾 Save Changes';
+                    }
+                });
+
+                // Cancel/Close handlers
+                const closeModal = () => {
+                    document.body.removeChild(modal);
+                };
+
+                cancelButton.addEventListener('click', closeModal);
+                closeButton.addEventListener('click', closeModal);
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        closeModal();
+                    }
+                });
+
+                // Escape key to close
+                const escapeHandler = (e) => {
+                    if (e.key === 'Escape') {
+                        closeModal();
+                        document.removeEventListener('keydown', escapeHandler);
+                    }
+                };
+                document.addEventListener('keydown', escapeHandler);
+            } catch (error) {
+                alert(`Error loading file for editing: ${error.message}`);
+            }
+        }
+
+        // Delete a mock file from the list
+        async function deleteMockFile (filename) {
+            try {
+                const response = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Show success message
+                    const listContainer = document.getElementById('mock-files-list');
+                    listContainer.innerHTML = `
+                        <div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32; margin-bottom: 10px;">
+                            ✅ Deleted: ${data.filename}
+                        </div>
+                    `;
+                    // Reload the list
+                    loadMockFiles();
+                    // Clear viewer
+                    document.getElementById('mock-file-viewer').innerHTML = '';
+                } else {
+                    alert(`Error: ${data.error || 'Failed to delete'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // Load status when page loads
+        loadStatus();
+        // Load mock files when page loads
+        loadMockFiles();
+    </script>
+</body>
+
+</html>
