@@ -54,7 +54,8 @@ export class WeatherService {
         failOnMissingMock: false,
         recordSameEndpoints: process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true',
         useSimilarMatch: process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true',
-        useSimilarMatchCheckResponse: process.env.MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE === 'true'
+        useSimilarMatchCheckResponse: process.env.MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE === 'true',
+        similarMatchRequiredParams: ['days'] // Require 'days' parameter to match for forecast requests
       });
     } else {
       this.httpClient = setupMockifyer({
