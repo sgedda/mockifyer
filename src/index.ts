@@ -115,8 +115,14 @@ class MockifyerClass {
         const mockData: MockData = JSON.parse(fileContent);
         
         // Skip files that don't have a valid request property
-        if (!mockData || !mockData.request || typeof mockData.request !== 'object' || mockData.request === null) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${file}`);
+        // Check for null explicitly since typeof null === 'object' in JavaScript
+        if (!mockData || !mockData.request || mockData.request === null || typeof mockData.request !== 'object') {
+          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${file}`, {
+            hasMockData: !!mockData,
+            hasRequest: !!mockData?.request,
+            requestType: typeof mockData?.request,
+            requestIsNull: mockData?.request === null
+          });
           continue;
         }
         
@@ -127,15 +133,42 @@ class MockifyerClass {
           continue;
         }
         
+        // Double-check that request is actually an object before calling generateRequestKey
+        if (typeof mockData.request !== 'object' || mockData.request === null || mockData.request === undefined) {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request is not a valid object): ${file}`, {
+            requestType: typeof mockData.request,
+            requestIsNull: mockData.request === null,
+            requestIsUndefined: mockData.request === undefined
+          });
+          continue;
+        }
+        
+        // Final safety check - ensure request has method property (required by generateRequestKey)
+        if (!mockData.request || mockData.request.method === undefined) {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing method): ${file}`, {
+            hasRequest: !!mockData.request,
+            hasMethod: mockData.request?.method !== undefined
+          });
+          continue;
+        }
+        
         let mockKey: string;
         try {
+          // One more defensive check right before calling
+          if (!mockData.request || typeof mockData.request !== 'object') {
+            throw new Error(`Request is invalid: ${typeof mockData.request}`);
+          }
           mockKey = this.generateRequestKey(mockData.request);
         } catch (error: any) {
           // Log more details about the error to help debug
           console.warn(`[Mockifyer] Error generating key for mock file ${file}:`, {
             error: error?.message || error,
             requestUrl: mockData.request?.url,
-            requestMethod: mockData.request?.method
+            requestMethod: mockData.request?.method,
+            requestType: typeof mockData.request,
+            requestIsNull: mockData.request === null,
+            requestIsUndefined: mockData.request === undefined,
+            requestKeys: mockData.request ? Object.keys(mockData.request) : 'N/A'
           });
           continue;
         }
