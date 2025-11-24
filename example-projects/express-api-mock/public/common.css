@@ -1,0 +1,334 @@
+/* Common Styles for Mockifyer Dashboard */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh;
+    padding: 20px;
+    line-height: 1.6;
+    color: #e0e0e0;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Navigation Styles */
+.top-nav {
+    background: rgba(30, 30, 46, 0.95);
+    border-radius: 12px;
+    padding: 12px 20px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    flex-wrap: nowrap;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.nav-brand {
+    color: #8b9aff;
+    font-size: 1.3em;
+    font-weight: 700;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.nav-brand:hover {
+    opacity: 0.8;
+}
+
+.menu-toggle {
+    display: none;
+    background: none !important;
+    border: none !important;
+    font-size: 1.5em;
+    color: #8b9aff;
+    cursor: pointer;
+    padding: 5px 10px !important;
+    border-radius: 5px;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+    margin-left: auto;
+    margin-right: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    width: auto !important;
+}
+
+.menu-toggle:hover {
+    background: rgba(139, 154, 255, 0.2);
+}
+
+.nav-links {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.nav-links a {
+    color: #8b9aff;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    font-size: 0.95em;
+    white-space: nowrap;
+}
+
+.nav-links a:hover {
+    background: rgba(139, 154, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+.nav-links a.active {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+}
+
+/* Common Card Styles */
+.card {
+    background: rgba(30, 30, 46, 0.8);
+    border-radius: 15px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    transition: transform 0.3s ease;
+    border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card h2 {
+    color: #8b9aff;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+}
+
+/* Common Heading Styles */
+h1 {
+    color: white;
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 2.5em;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Form Styles */
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: #e0e0e0;
+    font-weight: 600;
+}
+
+input,
+select {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid rgba(102, 126, 234, 0.3);
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
+    background: rgba(20, 20, 35, 0.8);
+    color: #e0e0e0;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(25, 25, 40, 0.9);
+}
+
+/* Button Styles */
+button:not(.menu-toggle) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    margin-right: 10px;
+    margin-top: 10px;
+}
+
+button:not(.menu-toggle):hover {
+    transform: scale(1.05);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+button:not(.menu-toggle):active {
+    transform: scale(0.98);
+}
+
+button:not(.menu-toggle):disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Loading Spinner */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(102, 126, 234, .3);
+    border-radius: 50%;
+    border-top-color: #667eea;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Code Block Styles */
+pre {
+    background: #2d2d2d;
+    color: #f8f8f2;
+    padding: 15px;
+    border-radius: 8px;
+    overflow-x: auto;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-overflow-scrolling: touch;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    max-width: 100%;
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .top-nav {
+        flex-wrap: nowrap;
+        align-items: center;
+        padding: 10px 15px;
+        margin-bottom: 20px;
+    }
+
+    .nav-brand {
+        font-size: 1.1em;
+        order: 1;
+        flex: 0 1 auto;
+        min-width: 0;
+    }
+
+    .menu-toggle {
+        display: block;
+        order: 2;
+        margin-left: auto;
+    }
+
+    .nav-links {
+        order: 3;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(30, 30, 46, 0.98);
+        border-radius: 12px;
+        margin-top: 10px;
+        flex-direction: column;
+        padding: 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        display: none;
+        gap: 5px;
+        z-index: 1000;
+        border: 1px solid rgba(102, 126, 234, 0.2);
+    }
+
+    .nav-links.mobile-open {
+        display: flex;
+    }
+
+    .nav-links a {
+        width: 100%;
+        text-align: center;
+        padding: 12px 18px;
+    }
+
+    h1 {
+        font-size: 1.5em;
+        margin-bottom: 20px;
+        line-height: 1.3;
+    }
+
+    .card {
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+
+    button:not(.menu-toggle) {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 10px;
+        padding: 14px 20px;
+        font-size: 16px;
+    }
+
+    button:not(.menu-toggle):last-child {
+        margin-bottom: 0;
+    }
+
+    input,
+    select {
+        padding: 14px;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    pre {
+        font-size: 12px;
+        padding: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.3em;
+    }
+
+    .card {
+        padding: 12px;
+    }
+
+    .card h2 {
+        font-size: 1.1em;
+    }
+
+    pre {
+        font-size: 11px;
+        padding: 10px;
+    }
+}
+
