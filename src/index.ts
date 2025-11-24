@@ -302,12 +302,15 @@ class MockifyerClass {
         });
       }
 
+      // Anonymize query params before matching (same as when saving)
+      const anonymizedQueryParams = this.anonymizeQueryParams(config.params || {});
+      
       const request: StoredRequest = {
         method: config.method || 'GET',
         url: config.url || '',
         headers: config.headers || {},
         data: config.data,
-        queryParams: config.params
+        queryParams: anonymizedQueryParams
       };
 
       // CRITICAL: Log request data after creation
@@ -436,12 +439,15 @@ class MockifyerClass {
           });
         }
 
+        // Anonymize query params before matching (same as when saving)
+        const anonymizedQueryParams = this.anonymizeQueryParams(config.params || {});
+        
         const request: StoredRequest = {
           method: config.method || 'GET',
           url: config.url || '',
           headers: config.headers || {},
           data: config.data, // This should include the GraphQL query and variables
-          queryParams: config.params
+          queryParams: anonymizedQueryParams
         };
 
         // CRITICAL DEBUG: Log what we create
@@ -677,10 +683,12 @@ class MockifyerClass {
     
     // Anonymize query params (case-insensitive)
     for (const [key, value] of Object.entries(anonymized)) {
-      if (value != null && typeof value === 'string' && lowerCaseParamsToAnonymize.includes(key.toLowerCase())) {
+      if (value != null && lowerCaseParamsToAnonymize.includes(key.toLowerCase())) {
+        // Convert to string first, then anonymize
+        const stringValue = String(value);
         // Keep first 4 and last 4 characters if value is long enough, otherwise just show it's anonymized
-        if (value.length > 8) {
-          anonymized[key] = `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
+        if (stringValue.length > 8) {
+          anonymized[key] = `${stringValue.substring(0, 4)}...${stringValue.substring(stringValue.length - 4)}`;
         } else {
           anonymized[key] = '***ANONYMIZED***';
         }

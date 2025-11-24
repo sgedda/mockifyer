@@ -47,9 +47,19 @@ export function generateRequestKey(request: StoredRequest): string {
   
   const normalizedMethod = (request.method || 'GET').toUpperCase();
   const normalizedUrl = (request.url || '').toLowerCase();
-  const queryString = request.queryParams 
-    ? new URLSearchParams(request.queryParams as Record<string, string>).toString() 
-    : '';
+  
+  // Normalize query params: convert all values to strings and sort keys
+  let queryString = '';
+  if (request.queryParams && Object.keys(request.queryParams).length > 0) {
+    // Convert all values to strings to ensure consistent matching
+    const normalizedParams: Record<string, string> = {};
+    for (const [key, value] of Object.entries(request.queryParams)) {
+      if (value !== undefined && value !== null) {
+        normalizedParams[key] = String(value);
+      }
+    }
+    queryString = new URLSearchParams(normalizedParams).toString();
+  }
   
   let key = `${normalizedMethod}:${normalizedUrl}${queryString ? '?' + queryString : ''}`;
   
