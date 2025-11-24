@@ -115,12 +115,24 @@ class MockifyerClass {
         const mockData: MockData = JSON.parse(fileContent);
         
         // Skip files that don't have a valid request property
-        if (!mockData || !mockData.request) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (missing request): ${file}`);
+        if (!mockData || !mockData.request || typeof mockData.request !== 'object') {
+          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${file}`);
           continue;
         }
         
-        const mockKey = this.generateRequestKey(mockData.request);
+        // Additional safety check - ensure request has required properties
+        if (!mockData.request.url) {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing url): ${file}`);
+          continue;
+        }
+        
+        let mockKey: string;
+        try {
+          mockKey = this.generateRequestKey(mockData.request);
+        } catch (error) {
+          console.warn(`[Mockifyer] Error generating key for mock file ${file}:`, error);
+          continue;
+        }
         
         // Check for exact match
         if (mockKey === requestKey) {
