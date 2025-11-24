@@ -379,8 +379,13 @@
             padding: 15px;
             border-radius: 8px;
             overflow-x: auto;
+            overflow-y: auto;
             font-size: 14px;
             line-height: 1.5;
+            -webkit-overflow-scrolling: touch;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-width: 100%;
         }
 
         .loading {
@@ -505,6 +510,38 @@
         .status-value.recording {
             background: rgba(255, 152, 0, 0.3);
             color: #ffb74d;
+        }
+
+        /* Tablet Responsive Styles */
+        @media (max-width: 1024px) {
+            .container {
+                max-width: 100%;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .status-banner {
+                padding: 18px;
+            }
+
+            .status-banner .status-items {
+                gap: 15px;
+            }
+
+            button:not(.menu-toggle) {
+                padding: 11px 25px;
+                font-size: 15px;
+            }
+
+            .response-container {
+                padding: 18px;
+            }
+
+            pre {
+                font-size: 13px;
+            }
         }
 
         /* Mobile Responsive Styles */
@@ -2051,6 +2088,11 @@
 
                 // Create edit modal
                 const isMobile = window.innerWidth <= 900;
+
+                // Prevent body scrolling when modal is open
+                const originalBodyOverflow = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+
                 const modal = document.createElement('div');
                 modal.id = 'edit-modal';
                 modal.style.cssText = `
@@ -2059,28 +2101,29 @@
                     left: 0;
                     right: 0;
                     bottom: 0;
-                    background: rgba(0, 0, 0, 0.7);
+                    background: ${isMobile ? 'rgba(30, 30, 46, 1)' : 'rgba(0, 0, 0, 0.7)'};
                     display: flex;
-                    align-items: ${isMobile ? 'flex-start' : 'center'};
+                    align-items: ${isMobile ? 'stretch' : 'center'};
                     justify-content: center;
                     z-index: 1000;
-                    padding: ${isMobile ? '10px' : '20px'};
-                    overflow-y: auto;
+                    padding: ${isMobile ? '0' : '20px'};
+                    overflow-y: ${isMobile ? 'auto' : 'auto'};
                 `;
 
                 const modalContent = document.createElement('div');
                 modalContent.style.cssText = `
                     background: rgba(30, 30, 46, 0.95);
-                    border-radius: ${isMobile ? '12px 12px 0 0' : '15px'};
+                    border-radius: ${isMobile ? '0' : '15px'};
                     padding: ${isMobile ? '15px' : '25px'};
                     padding-bottom: ${isMobile ? '70px' : '25px'};
-                    max-width: 90vw;
-                    max-height: ${isMobile ? 'calc(100vh - 20px)' : '90vh'};
+                    max-width: ${isMobile ? '100%' : '90vw'};
+                    max-height: ${isMobile ? '100vh' : '90vh'};
                     width: ${isMobile ? '100%' : '1000px'};
+                    height: ${isMobile ? '100vh' : 'auto'};
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-                    border: 1px solid rgba(102, 126, 234, 0.3);
+                    box-shadow: ${isMobile ? 'none' : '0 20px 60px rgba(0, 0, 0, 0.6)'};
+                    border: ${isMobile ? 'none' : '1px solid rgba(102, 126, 234, 0.3)'};
                     color: #e0e0e0;
                     ${isMobile ? 'margin-top: 0; overflow-y: auto;' : ''}
                 `;
@@ -2171,16 +2214,21 @@
                     const currentIsMobile = window.innerWidth <= 900;
                     const buttonContainer = modalContent.querySelector('div:last-child');
 
-                    // Update modal alignment
-                    modal.style.alignItems = currentIsMobile ? 'flex-start' : 'center';
-                    modal.style.padding = currentIsMobile ? '10px' : '20px';
+                    // Update modal alignment and background
+                    modal.style.alignItems = currentIsMobile ? 'stretch' : 'center';
+                    modal.style.padding = currentIsMobile ? '0' : '20px';
+                    modal.style.background = currentIsMobile ? 'rgba(30, 30, 46, 1)' : 'rgba(0, 0, 0, 0.7)';
 
                     // Update modal content styles
-                    modalContent.style.borderRadius = currentIsMobile ? '12px 12px 0 0' : '15px';
+                    modalContent.style.borderRadius = currentIsMobile ? '0' : '15px';
                     modalContent.style.padding = currentIsMobile ? '15px' : '25px';
                     modalContent.style.paddingBottom = currentIsMobile ? '70px' : '25px';
-                    modalContent.style.maxHeight = currentIsMobile ? 'calc(100vh - 20px)' : '90vh';
+                    modalContent.style.maxHeight = currentIsMobile ? '100vh' : '90vh';
+                    modalContent.style.maxWidth = currentIsMobile ? '100%' : '90vw';
                     modalContent.style.width = currentIsMobile ? '100%' : '1000px';
+                    modalContent.style.height = currentIsMobile ? '100vh' : 'auto';
+                    modalContent.style.border = currentIsMobile ? 'none' : '1px solid rgba(102, 126, 234, 0.3)';
+                    modalContent.style.boxShadow = currentIsMobile ? 'none' : '0 20px 60px rgba(0, 0, 0, 0.6)';
                     if (currentIsMobile) {
                         modalContent.style.marginTop = '0';
                         modalContent.style.overflowY = 'auto';
@@ -2348,6 +2396,8 @@
 
                             // Close modal after a short delay
                             setTimeout(() => {
+                                // Restore body scrolling
+                                document.body.style.overflow = originalBodyOverflow;
                                 document.body.removeChild(modal);
                                 loadMockFiles();
                                 // Reload the viewer if it's showing this file
@@ -2375,6 +2425,8 @@
                 const closeModal = () => {
                     clearTimeout(resizeTimeout);
                     window.removeEventListener('resize', resizeHandler);
+                    // Restore body scrolling
+                    document.body.style.overflow = originalBodyOverflow;
                     document.body.removeChild(modal);
                 };
 

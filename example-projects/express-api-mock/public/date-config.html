@@ -255,6 +255,43 @@
             transform: scale(0.98);
         }
 
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-overflow-scrolling: touch;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            max-width: 100%;
+        }
+
+        /* Tablet Responsive Styles */
+        @media (max-width: 1024px) {
+            .container {
+                max-width: 100%;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            button {
+                padding: 11px 25px;
+                font-size: 15px;
+            }
+
+            /* Offset inputs - better spacing on tablets */
+            #date-offset-grid {
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 12px !important;
+            }
+        }
+
         @media (max-width: 768px) {
             body {
                 padding: 10px;
@@ -271,9 +308,76 @@
                 margin-bottom: 15px;
             }
 
+            .form-group {
+                margin-bottom: 12px;
+            }
+
+            input,
+            select {
+                padding: 14px;
+                font-size: 16px;
+                /* Prevents zoom on iOS */
+            }
+
+            button {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 10px;
+                padding: 14px 20px;
+            }
+
+            button:last-child {
+                margin-bottom: 0;
+            }
+
+            /* Offset inputs - stack on mobile */
+            #date-offset-grid {
+                grid-template-columns: 1fr !important;
+                gap: 10px !important;
+            }
+
             /* Date demo - stack columns on mobile */
             #date-demo-grid {
                 grid-template-columns: 1fr !important;
+            }
+
+            /* Response containers */
+            pre {
+                font-size: 12px;
+                padding: 12px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                word-wrap: break-word;
+                white-space: pre-wrap;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 1.3em;
+            }
+
+            .card {
+                padding: 12px;
+            }
+
+            .card h2 {
+                font-size: 1.2em;
+            }
+
+            input,
+            select {
+                padding: 12px;
+            }
+
+            button {
+                padding: 12px 18px;
+                font-size: 15px;
+            }
+
+            pre {
+                font-size: 11px;
+                padding: 10px;
             }
         }
     </style>
@@ -295,7 +399,7 @@
 
         <div class="card">
             <h2>Configure Date Manipulation</h2>
-            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
                 Configure date manipulation for deterministic testing. Changes take effect immediately.
             </p>
 
@@ -328,7 +432,8 @@
 
                 <!-- Offset Option -->
                 <div id="date-config-offset" style="display: none;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <div id="date-offset-grid"
+                        style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                         <div class="form-group">
                             <label for="date-offset-days">Days:</label>
                             <input type="number" id="date-offset-days" value="0" min="0"
@@ -398,7 +503,7 @@
         <!-- Date Manipulation Demo Card -->
         <div class="card">
             <h2>📊 Date Manipulation Demo</h2>
-            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
                 This endpoint demonstrates how date manipulation works. Compare the manipulated date (used by Mockifyer)
                 with the system date.
             </p>
@@ -411,7 +516,7 @@
         <!-- Date Example Data Card -->
         <div class="card">
             <h2>📋 Example Data with Date Manipulation</h2>
-            <p style="color: #666; margin-bottom: 20px; font-size: 0.95em;">
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
                 This endpoint returns example data (subscriptions, events, activity) where all dates are calculated
                 relative to the manipulated date. Change the date configuration above and see how the data changes!
             </p>
@@ -650,47 +755,47 @@
                         : 'Dates are the same (no manipulation configured)';
 
                     responseDiv.innerHTML = `
-                        <div class="response-container" style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div class="response-container" style="background: rgba(30, 30, 46, 0.8); padding: 20px; border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.2);">
                             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
                                 <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${diffIcon} Date Comparison</h3>
                                 <div style="font-size: 0.9em; opacity: 0.95;">${diffText}</div>
                             </div>
                             
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;" id="date-demo-grid">
-                                <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
-                                    <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">📅 Manipulated Date</h4>
-                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
-                                        <div><strong>ISO:</strong> ${data.manipulated.iso}</div>
-                                        <div><strong>Local:</strong> ${data.manipulated.local}</div>
-                                        <div><strong>UTC:</strong> ${data.manipulated.utc}</div>
-                                        <div><strong>Timestamp:</strong> ${data.manipulated.timestamp}</div>
-                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9;">
-                                            <strong>Components:</strong><br>
+                                <div style="background: rgba(33, 150, 243, 0.15); padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
+                                    <h4 style="margin: 0 0 10px 0; color: #8b9aff; font-size: 1em;">📅 Manipulated Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6; color: #e0e0e0;">
+                                        <div><strong style="color: #a78bfa;">ISO:</strong> ${data.manipulated.iso}</div>
+                                        <div><strong style="color: #a78bfa;">Local:</strong> ${data.manipulated.local}</div>
+                                        <div><strong style="color: #a78bfa;">UTC:</strong> ${data.manipulated.utc}</div>
+                                        <div><strong style="color: #a78bfa;">Timestamp:</strong> ${data.manipulated.timestamp}</div>
+                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(102, 126, 234, 0.3);">
+                                            <strong style="color: #a78bfa;">Components:</strong><br>
                                             ${data.manipulated.year}-${String(data.manipulated.month).padStart(2, '0')}-${String(data.manipulated.day).padStart(2, '0')} 
                                             ${String(data.manipulated.hours).padStart(2, '0')}:${String(data.manipulated.minutes).padStart(2, '0')}:${String(data.manipulated.seconds).padStart(2, '0')}
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
-                                    <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">🖥️ System Date</h4>
-                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6;">
-                                        <div><strong>ISO:</strong> ${data.system.iso}</div>
-                                        <div><strong>Local:</strong> ${data.system.local}</div>
-                                        <div><strong>UTC:</strong> ${data.system.utc}</div>
-                                        <div><strong>Timestamp:</strong> ${data.system.timestamp}</div>
+                                <div style="background: rgba(255, 152, 0, 0.15); padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                                    <h4 style="margin: 0 0 10px 0; color: #ffb74d; font-size: 1em;">🖥️ System Date</h4>
+                                    <div style="font-family: 'Courier New', monospace; font-size: 0.85em; line-height: 1.6; color: #e0e0e0;">
+                                        <div><strong style="color: #ffcc80;">ISO:</strong> ${data.system.iso}</div>
+                                        <div><strong style="color: #ffcc80;">Local:</strong> ${data.system.local}</div>
+                                        <div><strong style="color: #ffcc80;">UTC:</strong> ${data.system.utc}</div>
+                                        <div><strong style="color: #ffcc80;">Timestamp:</strong> ${data.system.timestamp}</div>
                                     </div>
                                 </div>
                             </div>
                             
-                            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; border-left: 4px solid ${diffColor};">
-                                <h4 style="margin: 0 0 10px 0; color: ${diffColor}; font-size: 1em;">📊 Difference</h4>
-                                <div style="font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.8;">
-                                    <div><strong>Milliseconds:</strong> ${diff.milliseconds.toLocaleString()}</div>
-                                    <div><strong>Seconds:</strong> ${diff.seconds.toLocaleString()}</div>
-                                    <div><strong>Minutes:</strong> ${diff.minutes.toLocaleString()}</div>
-                                    <div><strong>Hours:</strong> ${diff.hours.toLocaleString()}</div>
-                                    <div><strong>Days:</strong> ${diff.days.toLocaleString()}</div>
+                            <div style="background: rgba(20, 20, 35, 0.8); padding: 15px; border-radius: 8px; border-left: 4px solid ${diffColor};">
+                                <h4 style="margin: 0 0 10px 0; color: ${diffColor === '#f57c00' ? '#ff9800' : '#81c784'}; font-size: 1em;">📊 Difference</h4>
+                                <div style="font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.8; color: #e0e0e0;">
+                                    <div><strong style="color: #a78bfa;">Milliseconds:</strong> ${diff.milliseconds.toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">Seconds:</strong> ${diff.seconds.toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">Minutes:</strong> ${diff.minutes.toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">Hours:</strong> ${diff.hours.toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">Days:</strong> ${diff.days.toLocaleString()}</div>
                                 </div>
                             </div>
                             
@@ -718,7 +823,7 @@
 
                 if (response.ok) {
                     responseDiv.innerHTML = `
-                        <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <div style="background: rgba(30, 30, 46, 0.8); padding: 20px; border-radius: 8px; border: 1px solid rgba(102, 126, 234, 0.2);">
                             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
                                 <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${data.message}</h3>
                                 <div style="font-size: 0.9em; opacity: 0.95;">
@@ -727,100 +832,100 @@
                             </div>
 
                             <!-- Subscription Example -->
-                            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
-                                <h4 style="margin: 0 0 10px 0; color: #1976d2; font-size: 1em;">💳 Subscription Example</h4>
-                                <div style="font-size: 0.9em; line-height: 1.8;">
-                                    <div><strong>Status:</strong> <span style="color: #81c784; font-weight: 600;">${data.examples.subscription.status.toUpperCase()}</span></div>
-                                    <div><strong>Start Date:</strong> ${new Date(data.examples.subscription.startDate).toLocaleString()}</div>
-                                    <div><strong>End Date:</strong> ${new Date(data.examples.subscription.endDate).toLocaleString()}</div>
-                                    <div><strong>Days Active:</strong> ${data.examples.subscription.daysActive} days</div>
-                                    <div><strong>Days Remaining:</strong> ${data.examples.subscription.daysRemaining} days</div>
-                                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #90caf9; font-size: 0.85em; color: #666; font-style: italic;">
+                            <div style="background: rgba(33, 150, 243, 0.15); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                                <h4 style="margin: 0 0 10px 0; color: #8b9aff; font-size: 1em;">💳 Subscription Example</h4>
+                                <div style="font-size: 0.9em; line-height: 1.8; color: #e0e0e0;">
+                                    <div><strong style="color: #a78bfa;">Status:</strong> <span style="color: #81c784; font-weight: 600;">${data.examples.subscription.status.toUpperCase()}</span></div>
+                                    <div><strong style="color: #a78bfa;">Start Date:</strong> ${new Date(data.examples.subscription.startDate).toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">End Date:</strong> ${new Date(data.examples.subscription.endDate).toLocaleString()}</div>
+                                    <div><strong style="color: #a78bfa;">Days Active:</strong> ${data.examples.subscription.daysActive} days</div>
+                                    <div><strong style="color: #a78bfa;">Days Remaining:</strong> ${data.examples.subscription.daysRemaining} days</div>
+                                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(102, 126, 234, 0.3); font-size: 0.85em; color: #aaa; font-style: italic;">
                                         ${data.examples.subscription.note}
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Events Example -->
-                            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
-                                <h4 style="margin: 0 0 10px 0; color: #e65100; font-size: 1em;">📅 Events Example</h4>
+                            <div style="background: rgba(255, 152, 0, 0.15); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ff9800;">
+                                <h4 style="margin: 0 0 10px 0; color: #ffb74d; font-size: 1em;">📅 Events Example</h4>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">Upcoming Event</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Name:</strong> ${data.examples.events.upcoming.name}</div>
-                                            <div><strong>Date:</strong> ${data.examples.events.upcoming.formatted}</div>
-                                            <div><strong>Days Until:</strong> ${data.examples.events.upcoming.daysUntil} days</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #ffcc80;">Upcoming Event</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #ffcc80;">Name:</strong> ${data.examples.events.upcoming.name}</div>
+                                            <div><strong style="color: #ffcc80;">Date:</strong> ${data.examples.events.upcoming.formatted}</div>
+                                            <div><strong style="color: #ffcc80;">Days Until:</strong> ${data.examples.events.upcoming.daysUntil} days</div>
                                         </div>
                                     </div>
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">Past Event</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Name:</strong> ${data.examples.events.past.name}</div>
-                                            <div><strong>Date:</strong> ${data.examples.events.past.formatted}</div>
-                                            <div><strong>Days Ago:</strong> ${data.examples.events.past.daysAgo} days</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #ffcc80;">Past Event</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #ffcc80;">Name:</strong> ${data.examples.events.past.name}</div>
+                                            <div><strong style="color: #ffcc80;">Date:</strong> ${data.examples.events.past.formatted}</div>
+                                            <div><strong style="color: #ffcc80;">Days Ago:</strong> ${data.examples.events.past.daysAgo} days</div>
                                         </div>
                                     </div>
                                 </div>
-                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffcc80; font-size: 0.85em; color: #666; font-style: italic;">
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 152, 0, 0.3); font-size: 0.85em; color: #aaa; font-style: italic;">
                                     ${data.examples.events.note}
                                 </div>
                             </div>
 
                             <!-- User Activity Example -->
-                            <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #9c27b0;">
-                                <h4 style="margin: 0 0 10px 0; color: #7b1fa2; font-size: 1em;">👤 User Activity Example</h4>
+                            <div style="background: rgba(156, 39, 176, 0.15); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #9c27b0;">
+                                <h4 style="margin: 0 0 10px 0; color: #ba68c8; font-size: 1em;">👤 User Activity Example</h4>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">Last Login</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Time:</strong> ${data.examples.userActivity.lastLogin.formatted}</div>
-                                            <div><strong>Hours Ago:</strong> ${data.examples.userActivity.lastLogin.hoursAgo} hours</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #ce93d8;">Last Login</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #ce93d8;">Time:</strong> ${data.examples.userActivity.lastLogin.formatted}</div>
+                                            <div><strong style="color: #ce93d8;">Hours Ago:</strong> ${data.examples.userActivity.lastLogin.hoursAgo} hours</div>
                                         </div>
                                     </div>
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">Next Billing</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Time:</strong> ${data.examples.userActivity.nextBilling.formatted}</div>
-                                            <div><strong>Hours Until:</strong> ${data.examples.userActivity.nextBilling.hoursUntil} hours</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #ce93d8;">Next Billing</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #ce93d8;">Time:</strong> ${data.examples.userActivity.nextBilling.formatted}</div>
+                                            <div><strong style="color: #ce93d8;">Hours Until:</strong> ${data.examples.userActivity.nextBilling.hoursUntil} hours</div>
                                         </div>
                                     </div>
                                 </div>
-                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #ce93d8; font-size: 0.85em; color: #666; font-style: italic;">
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(156, 39, 176, 0.3); font-size: 0.85em; color: #aaa; font-style: italic;">
                                     ${data.examples.userActivity.note}
                                 </div>
                             </div>
 
                             <!-- Date Ranges Example -->
-                            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
+                            <div style="background: rgba(76, 175, 80, 0.15); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4caf50;">
                                 <h4 style="margin: 0 0 10px 0; color: #81c784; font-size: 1em;">📆 Date Ranges Example</h4>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">This Week</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Start:</strong> ${new Date(data.examples.dateRanges.thisWeek.start).toLocaleDateString()}</div>
-                                            <div><strong>End:</strong> ${new Date(data.examples.dateRanges.thisWeek.end).toLocaleDateString()}</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #a5d6a7;">This Week</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #a5d6a7;">Start:</strong> ${new Date(data.examples.dateRanges.thisWeek.start).toLocaleDateString()}</div>
+                                            <div><strong style="color: #a5d6a7;">End:</strong> ${new Date(data.examples.dateRanges.thisWeek.end).toLocaleDateString()}</div>
                                         </div>
                                     </div>
                                     <div>
-                                        <div style="font-weight: 600; margin-bottom: 5px;">This Month</div>
-                                        <div style="font-size: 0.9em; line-height: 1.6;">
-                                            <div><strong>Start:</strong> ${new Date(data.examples.dateRanges.thisMonth.start).toLocaleDateString()}</div>
-                                            <div><strong>End:</strong> ${new Date(data.examples.dateRanges.thisMonth.end).toLocaleDateString()}</div>
+                                        <div style="font-weight: 600; margin-bottom: 5px; color: #a5d6a7;">This Month</div>
+                                        <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
+                                            <div><strong style="color: #a5d6a7;">Start:</strong> ${new Date(data.examples.dateRanges.thisMonth.start).toLocaleDateString()}</div>
+                                            <div><strong style="color: #a5d6a7;">End:</strong> ${new Date(data.examples.dateRanges.thisMonth.end).toLocaleDateString()}</div>
                                         </div>
                                     </div>
                                 </div>
-                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #a5d6a7; font-size: 0.85em; color: #666; font-style: italic;">
+                                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(76, 175, 80, 0.3); font-size: 0.85em; color: #aaa; font-style: italic;">
                                     ${data.examples.dateRanges.thisWeek.note}
                                 </div>
                             </div>
 
                             <!-- Explanation -->
-                            <div style="background: #fff9c4; padding: 15px; border-radius: 8px; border-left: 4px solid #fbc02d;">
-                                <h4 style="margin: 0 0 10px 0; color: #f57f17; font-size: 1em;">💡 ${data.explanation.title}</h4>
-                                <div style="font-size: 0.9em; line-height: 1.6; color: #5d4037;">
+                            <div style="background: rgba(251, 192, 45, 0.15); padding: 15px; border-radius: 8px; border-left: 4px solid #fbc02d;">
+                                <h4 style="margin: 0 0 10px 0; color: #ffd54f; font-size: 1em;">💡 ${data.explanation.title}</h4>
+                                <div style="font-size: 0.9em; line-height: 1.6; color: #e0e0e0;">
                                     <p style="margin: 0 0 10px 0;">${data.explanation.description}</p>
-                                    <p style="margin: 0;"><strong>Use Case:</strong> ${data.explanation.useCase}</p>
+                                    <p style="margin: 0;"><strong style="color: #ffd54f;">Use Case:</strong> ${data.explanation.useCase}</p>
                                 </div>
                             </div>
                         </div>

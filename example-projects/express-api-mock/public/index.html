@@ -224,6 +224,7 @@
             border-radius: 5px;
             overflow-x: auto;
             border: 1px solid rgba(102, 126, 234, 0.2);
+            -webkit-overflow-scrolling: touch;
         }
 
         .code-block code {
@@ -231,6 +232,8 @@
             font-size: 0.95em;
             color: #e0e0e0;
             white-space: pre;
+            display: block;
+            min-width: fit-content;
         }
 
         .feature-grid {
@@ -270,17 +273,84 @@
             text-decoration: underline;
         }
 
+        @media (max-width: 1024px) {
+            .feature-grid {
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 15px;
+            }
+        }
+
         @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+
+            header {
+                padding: 30px 15px;
+            }
+
             header h1 {
                 font-size: 2.5em;
             }
 
+            header p {
+                font-size: 1.1em;
+            }
+
             .section {
-                padding: 25px;
+                padding: 25px 20px;
+            }
+
+            .section h2 {
+                font-size: 1.6em;
+            }
+
+            .section h3 {
+                font-size: 1.3em;
+            }
+
+            .code-block {
+                padding: 15px;
+                margin: 15px 0;
+            }
+
+            .code-block code {
+                font-size: 0.85em;
             }
 
             .feature-grid {
                 grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .feature-card {
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 2em;
+            }
+
+            header p {
+                font-size: 1em;
+            }
+
+            .section {
+                padding: 20px 15px;
+            }
+
+            .section h2 {
+                font-size: 1.4em;
+            }
+
+            .code-block {
+                padding: 12px;
+            }
+
+            .code-block code {
+                font-size: 0.8em;
             }
         }
     </style>
