@@ -51,11 +51,22 @@ export class FootballService {
     }
     
     // Initialize mockifyer if enabled
-    const mockDataPath = process.env.MOCKIFYER_PATH 
-      ? (path.isAbsolute(process.env.MOCKIFYER_PATH) 
-          ? process.env.MOCKIFYER_PATH 
-          : path.join(process.cwd(), process.env.MOCKIFYER_PATH))
-      : path.join(process.cwd(), 'mock-data');
+    // Use the same path resolution logic as initializeMockifyer() to ensure consistency
+    let mockDataPath: string;
+    
+    if (process.env.MOCKIFYER_PATH) {
+      // Use explicitly set path (Railway volume path from env var)
+      mockDataPath = path.isAbsolute(process.env.MOCKIFYER_PATH) 
+        ? process.env.MOCKIFYER_PATH 
+        : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
+    } else if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted/mock-data')) {
+      // On Railway, check for volume at /persisted/mock-data
+      mockDataPath = '/persisted/mock-data';
+      console.log('[FootballService] Detected Railway environment, using volume path:', mockDataPath);
+    } else {
+      // Local development fallback
+      mockDataPath = path.join(process.cwd(), 'persisted', 'mock-data');
+    }
     
     console.log('[FootballService] Mock data path:', {
       envPath: process.env.MOCKIFYER_PATH,
