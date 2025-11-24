@@ -14,9 +14,10 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
             padding: 20px;
+            color: #e0e0e0;
         }
 
         .container {
@@ -24,27 +25,139 @@
             margin: 0 auto;
         }
 
-        .nav-header {
-            text-align: center;
-            margin-bottom: 20px;
+        .top-nav {
+            background: rgba(30, 30, 46, 0.95);
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: relative;
+            flex-wrap: nowrap;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
-        .nav-header a {
-            color: white;
+        .nav-brand {
+            color: #8b9aff;
+            font-size: 1.3em;
+            font-weight: 700;
             text-decoration: none;
-            margin: 0 15px;
-            font-size: 1.1em;
-            opacity: 0.9;
-            transition: opacity 0.3s ease;
-            display: inline-block;
-            padding: 8px 16px;
-            border-radius: 5px;
-            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
         }
 
-        .nav-header a:hover {
-            opacity: 1;
-            background: rgba(255, 255, 255, 0.2);
+        .nav-brand:hover {
+            opacity: 0.8;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none !important;
+            border: none !important;
+            font-size: 1.5em;
+            color: #8b9aff;
+            cursor: pointer;
+            padding: 5px 10px !important;
+            border-radius: 5px;
+            transition: background 0.2s ease;
+            flex-shrink: 0;
+            margin-left: auto;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            width: auto !important;
+        }
+
+        .menu-toggle:hover {
+            background: rgba(139, 154, 255, 0.2);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: #8b9aff;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 10px 18px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            font-size: 0.95em;
+            white-space: nowrap;
+        }
+
+        .nav-links a:hover {
+            background: rgba(139, 154, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .nav-links a.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .top-nav {
+                flex-wrap: nowrap;
+                align-items: center;
+                padding: 10px 15px;
+                margin-bottom: 20px;
+            }
+
+            .nav-brand {
+                font-size: 1.1em;
+            }
+
+            .menu-toggle {
+                display: block;
+                order: 2;
+                margin-left: auto;
+                margin-right: 0 !important;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                width: auto !important;
+            }
+
+            .nav-brand {
+                order: 1;
+                flex: 0 1 auto;
+                min-width: 0;
+            }
+
+            .nav-links {
+                order: 3;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: rgba(255, 255, 255, 0.98);
+                border-radius: 12px;
+                margin-top: 10px;
+                flex-direction: column;
+                padding: 10px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+                display: none;
+                gap: 5px;
+                z-index: 1000;
+            }
+
+            .nav-links.mobile-open {
+                display: flex;
+            }
+
+            .nav-links a {
+                width: 100%;
+                text-align: center;
+                padding: 12px 18px;
+            }
         }
 
         h1 {
@@ -56,12 +169,13 @@
         }
 
         .card {
-            background: white;
+            background: rgba(30, 30, 46, 0.8);
             border-radius: 15px;
             padding: 25px;
             margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
             transition: transform 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
         .card:hover {
@@ -69,7 +183,7 @@
         }
 
         .card h2 {
-            color: #667eea;
+            color: #8b9aff;
             margin-bottom: 20px;
             font-size: 1.5em;
         }
@@ -81,7 +195,7 @@
         label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: #e0e0e0;
             font-weight: 600;
         }
 
@@ -89,19 +203,22 @@
         select {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid rgba(102, 126, 234, 0.3);
             border-radius: 8px;
             font-size: 16px;
             transition: border-color 0.3s ease;
+            background: rgba(20, 20, 35, 0.8);
+            color: #e0e0e0;
         }
 
         input:focus,
         select:focus {
             outline: none;
             border-color: #667eea;
+            background: rgba(25, 25, 40, 0.9);
         }
 
-        button {
+        button:not(.menu-toggle) {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
@@ -115,16 +232,16 @@
             margin-top: 10px;
         }
 
-        button:hover {
+        button:not(.menu-toggle):hover {
             transform: scale(1.05);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
 
-        button:active {
+        button:not(.menu-toggle):active {
             transform: scale(0.98);
         }
 
-        button:disabled {
+        button:not(.menu-toggle):disabled {
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
@@ -133,26 +250,27 @@
         .response-container {
             margin-top: 20px;
             padding: 20px;
-            background: #f8f9fa;
+            background: rgba(20, 20, 35, 0.6);
             border-radius: 10px;
             border-left: 4px solid #667eea;
             transition: all 0.3s ease;
+            color: #e0e0e0;
         }
 
         .response-container.mocked {
-            background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
             border-left-color: #4caf50;
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
         }
 
         .response-container.real-api {
-            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.2) 0%, rgba(255, 152, 0, 0.1) 100%);
             border-left-color: #ff9800;
-            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.2);
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.3);
         }
 
         .response-container h3 {
-            color: #667eea;
+            color: #8b9aff;
             margin-bottom: 15px;
             display: flex;
             align-items: center;
@@ -204,7 +322,7 @@
         }
 
         .mock-info {
-            background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.3) 0%, rgba(76, 175, 80, 0.2) 100%);
             padding: 18px;
             border-radius: 10px;
             margin-top: 15px;
@@ -282,7 +400,7 @@
         }
 
         .error {
-            background: #ffebee;
+            background: rgba(244, 67, 54, 0.2);
             border-left-color: #f44336;
             color: #c62828;
         }
@@ -312,11 +430,12 @@
         }
 
         .status-banner {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 30, 46, 0.8);
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(102, 126, 234, 0.2);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -325,7 +444,7 @@
         }
 
         .status-banner h2 {
-            color: #667eea;
+            color: #8b9aff;
             margin: 0;
             font-size: 1.3em;
         }
@@ -344,7 +463,7 @@
         }
 
         .status-item strong {
-            color: #333;
+            color: #e0e0e0;
         }
 
         .github-link {
@@ -352,7 +471,7 @@
             align-items: center;
             gap: 6px;
             text-decoration: none;
-            color: #333;
+            color: #e0e0e0;
             transition: opacity 0.2s;
         }
 
@@ -374,18 +493,18 @@
         }
 
         .status-value.enabled {
-            background: #c8e6c9;
-            color: #2e7d32;
+            background: rgba(76, 175, 80, 0.3);
+            color: #81c784;
         }
 
         .status-value.disabled {
-            background: #ffcdd2;
-            color: #c62828;
+            background: rgba(244, 67, 54, 0.3);
+            color: #ef5350;
         }
 
         .status-value.recording {
-            background: #fff3e0;
-            color: #e65100;
+            background: rgba(255, 152, 0, 0.3);
+            color: #ffb74d;
         }
 
         /* Mobile Responsive Styles */
@@ -395,8 +514,9 @@
             }
 
             h1 {
-                font-size: 1.8em;
+                font-size: 1.5em;
                 margin-bottom: 20px;
+                line-height: 1.3;
             }
 
             .container {
@@ -435,7 +555,7 @@
                 flex-wrap: wrap;
             }
 
-            button {
+            button:not(.menu-toggle) {
                 width: 100%;
                 margin-right: 0;
                 margin-bottom: 10px;
@@ -513,7 +633,7 @@
 
             /* Mock files list mobile styles */
             #mock-files-list>div {
-                gap: 12px;
+                gap: 8px;
             }
 
             #mock-files-list>div>div {
@@ -545,11 +665,11 @@
             }
 
             #mock-files-list>div>div>div[style*="display: flex"] button {
-                width: 100%;
+                width: auto;
                 margin-top: 0;
                 margin-left: 0 !important;
-                padding: 12px 16px;
-                font-size: 0.95em;
+                padding: 4px 8px;
+                font-size: 0.75em;
             }
 
             /* Mock file viewer mobile */
@@ -647,20 +767,14 @@
 
 <body>
     <div class="container">
-        <div class="top-nav"
-            style="background: rgba(255, 255, 255, 0.95); border-radius: 12px; padding: 15px 25px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
-            <h2 style="color: #667eea; margin: 0;">🎭 Mockifyer Dashboard</h2>
-            <div class="nav-links" style="display: flex; gap: 20px; align-items: center;">
-                <a href="index.html"
-                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.2s ease;">📖
-                    Introduction</a>
-                <a href="dashboard.html"
-                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; transition: background 0.2s ease;">📊
-                    Dashboard</a>
-                <a href="date-config.html"
-                    style="color: #667eea; text-decoration: none; font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: background 0.2s ease;">📅
-                    Date Configuration</a>
-            </div>
+        <div class="top-nav">
+            <a href="index.html" class="nav-brand">🎭 Mockifyer</a>
+            <button class="menu-toggle" onclick="toggleMobileMenu()" aria-label="Toggle menu">☰</button>
+            <nav class="nav-links" id="navLinks">
+                <a href="index.html">Introduction</a>
+                <a href="dashboard.html" class="active">Dashboard</a>
+                <a href="date-config.html">Date Config</a>
+            </nav>
         </div>
 
         <h1>🎭 Mockifyer Test Dashboard</h1>
@@ -916,7 +1030,7 @@
             <div class="form-group">
                 <label for="graphql-variables-input">Variables (JSON, optional):</label>
                 <textarea id="graphql-variables-input" rows="3"
-                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
+                    style="width: 100%; padding: 12px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical; background: rgba(20, 20, 35, 0.8); color: #e0e0e0;"
                     placeholder='{"page": 1}'>{"page": 3}</textarea>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -938,6 +1052,29 @@
     </div>
 
     <script>
+        function toggleMobileMenu () {
+            const navLinks = document.getElementById('navLinks');
+            navLinks.classList.toggle('mobile-open');
+        }
+
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function (event) {
+            const nav = document.querySelector('.top-nav');
+            const navLinks = document.getElementById('navLinks');
+
+            if (!nav.contains(event.target) && navLinks.classList.contains('mobile-open')) {
+                navLinks.classList.remove('mobile-open');
+            }
+        });
+
+        // Close mobile menu when clicking a link
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', function () {
+                const navLinks = document.getElementById('navLinks');
+                navLinks.classList.remove('mobile-open');
+            });
+        });
+
         const API_BASE = window.location.origin;
 
         async function makeRequest (url, options = {}) {
@@ -1234,7 +1371,7 @@
                 statusItems.innerHTML = `
                     <div class="status-item">
                         <strong>💡 Tip:</strong>
-                        <span style="color: #666; font-size: 0.9em;">Make a request to see if it's mocked!</span>
+                        <span style="color: #aaa; font-size: 0.9em;">Make a request to see if it's mocked!</span>
                     </div>
                 `;
             }
@@ -1306,7 +1443,7 @@
 
                 if (!filename) {
                     document.getElementById('delete-message').innerHTML =
-                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                        '<div style="padding: 10px; background: rgba(255, 152, 0, 0.2); border-radius: 8px; color: #ffb74d; border: 1px solid rgba(255, 152, 0, 0.3);">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
                     return;
                 }
 
@@ -1351,7 +1488,7 @@
 
                 if (!filename) {
                     document.getElementById('delete-forecast-message').innerHTML =
-                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
+                        '<div style="padding: 10px; background: rgba(255, 152, 0, 0.2); border-radius: 8px; color: #ffb74d; border: 1px solid rgba(255, 152, 0, 0.3);">No mock file found for this request. Make sure you\'re using a mocked response.</div>';
                     return;
                 }
 
@@ -1718,7 +1855,7 @@
         // Load and display mock files
         async function loadMockFiles () {
             const listContainer = document.getElementById('mock-files-list');
-            listContainer.innerHTML = '<div style="padding: 10px;">Loading...</div>';
+            listContainer.innerHTML = '<div style="padding: 10px; color: #e0e0e0;">Loading...</div>';
 
             try {
                 const response = await fetch(`${API_BASE}/api/mocks`);
@@ -1731,7 +1868,7 @@
                     return;
                 }
 
-                let html = '<div style="display: grid; gap: 10px;">';
+                let html = '<div style="display: grid; gap: 8px;">';
                 files.forEach(file => {
                     const fileSize = (file.size / 1024).toFixed(2);
                     const created = new Date(file.created).toLocaleString();
@@ -1803,28 +1940,32 @@
                     const escapedPath = displayPath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
                     html += `
-                        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea; cursor: pointer;" 
+                        <div style="padding: 12px; background: rgba(30, 30, 46, 0.6); border-radius: 6px; border-left: 3px solid #667eea; cursor: pointer; transition: background 0.2s; border: 1px solid rgba(102, 126, 234, 0.2);" 
                              onclick="viewMockFile('${file.filename}')"
-                             onmouseover="this.style.background='#e9ecef'" 
-                             onmouseout="this.style.background='#f8f9fa'">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                             onmouseover="this.style.background='rgba(40, 40, 56, 0.8)'" 
+                             onmouseout="this.style.background='rgba(30, 30, 46, 0.6)'">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
                                 <div style="flex: 1; min-width: 0;">
-                                    <strong style="color: #667eea; display: block; word-break: break-word;">📄 ${file.filename}</strong>
+                                    <strong style="color: #8b9aff; display: block; word-break: break-word; font-size: 0.95em; margin-bottom: 4px;">📄 ${file.filename}</strong>
                                     ${infoDisplay}
-                                    <div style="font-size: 0.75em; color: #999; margin-top: 3px; word-break: break-all; font-family: monospace; font-style: italic;">
+                                    <div style="font-size: 0.7em; color: #999; margin-top: 4px; word-break: break-all; font-family: monospace; font-style: italic;">
                                         📂 ${escapedPath}
                                     </div>
-                                    <div style="font-size: 0.9em; color: #666; margin-top: 5px; word-break: break-word;">
-                                        Size: ${fileSize} KB • Created: ${created}
+                                    <div style="font-size: 0.8em; color: #aaa; margin-top: 4px; word-break: break-word;">
+                                        ${fileSize} KB • ${created}
                                     </div>
                                 </div>
-                                <div style="display: flex; gap: 8px; margin-left: 10px;">
+                                <div style="display: flex; gap: 4px; flex-shrink: 0; align-items: flex-start;">
                                     <button onclick="event.stopPropagation(); editMockFile('${file.filename}')" 
-                                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 4px 8px; font-size: 0.75em; white-space: nowrap; border-radius: 4px; cursor: pointer; transition: opacity 0.2s;"
+                                            onmouseover="this.style.opacity='0.9'" 
+                                            onmouseout="this.style.opacity='1'">
                                         ✏️ Edit
                                     </button>
                                     <button onclick="event.stopPropagation(); deleteMockFile('${file.filename}')" 
-                                            style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white; border: none; padding: 6px 12px; font-size: 0.9em; white-space: nowrap; border-radius: 4px; cursor: pointer;">
+                                            style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); color: white; border: none; padding: 4px 8px; font-size: 0.75em; white-space: nowrap; border-radius: 4px; cursor: pointer; transition: opacity 0.2s;"
+                                            onmouseover="this.style.opacity='0.9'" 
+                                            onmouseout="this.style.opacity='1'">
                                         🗑️ Delete
                                     </button>
                                 </div>
@@ -1835,7 +1976,7 @@
                 html += '</div>';
                 listContainer.innerHTML = html;
             } catch (error) {
-                listContainer.innerHTML = `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">Error loading files: ${error.message}</div>`;
+                listContainer.innerHTML = `<div style="padding: 10px; background: rgba(244, 67, 54, 0.2); border-radius: 8px; color: #ef5350; border: 1px solid rgba(244, 67, 54, 0.3);">Error loading files: ${error.message}</div>`;
             }
         }
 
@@ -1927,7 +2068,7 @@
 
                 const modalContent = document.createElement('div');
                 modalContent.style.cssText = `
-                    background: white;
+                    background: rgba(30, 30, 46, 0.95);
                     border-radius: 15px;
                     padding: 25px;
                     max-width: 90vw;
@@ -1935,7 +2076,9 @@
                     width: 1000px;
                     display: flex;
                     flex-direction: column;
-                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+                    border: 1px solid rgba(102, 126, 234, 0.3);
+                    color: #e0e0e0;
                 `;
 
                 // Format JSON for editing (only the response data)

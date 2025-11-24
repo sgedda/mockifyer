@@ -14,47 +14,139 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
             padding: 20px;
             line-height: 1.6;
+            color: #e0e0e0;
         }
 
         .top-nav {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 30, 46, 0.95);
             border-radius: 12px;
-            padding: 15px 25px;
+            padding: 12px 20px;
             margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 15px;
+            position: relative;
+            flex-wrap: nowrap;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .nav-brand {
+            color: #8b9aff;
+            font-size: 1.3em;
+            font-weight: 700;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .nav-brand:hover {
+            opacity: 0.8;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            color: #8b9aff;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.2s ease;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .menu-toggle:hover {
+            background: rgba(139, 154, 255, 0.2);
         }
 
         .nav-links {
             display: flex;
-            gap: 20px;
+            gap: 8px;
             align-items: center;
         }
 
         .nav-links a {
-            color: #667eea;
+            color: #8b9aff;
             text-decoration: none;
             font-weight: 600;
-            padding: 8px 16px;
+            padding: 10px 18px;
             border-radius: 8px;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
+            font-size: 0.95em;
+            white-space: nowrap;
         }
 
         .nav-links a:hover {
-            background: rgba(102, 126, 234, 0.1);
+            background: rgba(139, 154, 255, 0.2);
+            transform: translateY(-1px);
         }
 
         .nav-links a.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .top-nav {
+                flex-wrap: nowrap;
+                align-items: center;
+                padding: 10px 15px;
+                margin-bottom: 20px;
+            }
+
+            .nav-brand {
+                font-size: 1.1em;
+            }
+
+            .menu-toggle {
+                display: block;
+                order: 2;
+                margin-left: auto;
+            }
+
+            .nav-brand {
+                order: 1;
+                flex: 0 1 auto;
+                min-width: 0;
+            }
+
+            .nav-links {
+                order: 3;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: rgba(30, 30, 46, 0.98);
+                border-radius: 12px;
+                margin-top: 10px;
+                flex-direction: column;
+                padding: 10px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+                display: none;
+                gap: 5px;
+                z-index: 1000;
+                border: 1px solid rgba(102, 126, 234, 0.2);
+            }
+
+            .nav-links.mobile-open {
+                display: flex;
+            }
+
+            .nav-links a {
+                width: 100%;
+                text-align: center;
+                padding: 12px 18px;
+            }
         }
 
         .container {
@@ -83,15 +175,16 @@
         }
 
         .section {
-            background: white;
+            background: rgba(30, 30, 46, 0.8);
             border-radius: 15px;
             padding: 40px;
             margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
         .section h2 {
-            color: #667eea;
+            color: #8b9aff;
             margin-bottom: 20px;
             font-size: 2em;
             border-bottom: 3px solid #667eea;
@@ -99,7 +192,7 @@
         }
 
         .section h3 {
-            color: #764ba2;
+            color: #a78bfa;
             margin-top: 25px;
             margin-bottom: 15px;
             font-size: 1.5em;
@@ -107,7 +200,7 @@
 
         .section p {
             margin-bottom: 15px;
-            color: #333;
+            color: #e0e0e0;
             font-size: 1.1em;
         }
 
@@ -119,23 +212,24 @@
 
         .section li {
             margin-bottom: 10px;
-            color: #555;
+            color: #ccc;
             font-size: 1.05em;
         }
 
         .code-block {
-            background: #f5f5f5;
+            background: rgba(20, 20, 35, 0.8);
             border-left: 4px solid #667eea;
             padding: 20px;
             margin: 20px 0;
             border-radius: 5px;
             overflow-x: auto;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
         .code-block code {
             font-family: 'Courier New', monospace;
             font-size: 0.95em;
-            color: #333;
+            color: #e0e0e0;
             white-space: pre;
         }
 
@@ -147,26 +241,27 @@
         }
 
         .feature-card {
-            background: #f8f9fa;
+            background: rgba(30, 30, 46, 0.6);
             padding: 25px;
             border-radius: 10px;
             border-left: 4px solid #667eea;
+            border: 1px solid rgba(102, 126, 234, 0.2);
         }
 
         .feature-card h4 {
-            color: #667eea;
+            color: #8b9aff;
             margin-bottom: 10px;
             font-size: 1.3em;
         }
 
         .feature-card p {
-            color: #666;
+            color: #ccc;
             font-size: 1em;
             margin: 0;
         }
 
         .section a {
-            color: #667eea;
+            color: #8b9aff;
             font-weight: bold;
             text-decoration: none;
         }
@@ -194,12 +289,13 @@
 <body>
     <div class="container">
         <div class="top-nav">
-            <h2 style="color: #667eea; margin: 0;">🎭 Mockifyer</h2>
-            <div class="nav-links">
-                <a href="index.html" class="active">📖 Introduction</a>
-                <a href="dashboard.html">📊 Dashboard</a>
-                <a href="date-config.html">📅 Date Config</a>
-            </div>
+            <a href="index.html" class="nav-brand">🎭 Mockifyer</a>
+            <button class="menu-toggle" onclick="toggleMobileMenu()" aria-label="Toggle menu">☰</button>
+            <nav class="nav-links" id="navLinks">
+                <a href="index.html" class="active">Introduction</a>
+                <a href="dashboard.html">Dashboard</a>
+                <a href="date-config.html">Date Config</a>
+            </nav>
         </div>
 
         <header>
@@ -449,6 +545,31 @@ const subscription = {
             </ol>
         </div>
     </div>
+    <script>
+        function toggleMobileMenu () {
+            const navLinks = document.getElementById('navLinks');
+            navLinks.classList.toggle('mobile-open');
+        }
+
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', function (event) {
+            const nav = document.querySelector('.top-nav');
+            const navLinks = document.getElementById('navLinks');
+            const menuToggle = document.querySelector('.menu-toggle');
+
+            if (!nav.contains(event.target) && navLinks.classList.contains('mobile-open')) {
+                navLinks.classList.remove('mobile-open');
+            }
+        });
+
+        // Close mobile menu when clicking a link
+        document.querySelectorAll('.nav-links a').forEach(link => {
+            link.addEventListener('click', function () {
+                const navLinks = document.getElementById('navLinks');
+                navLinks.classList.remove('mobile-open');
+            });
+        });
+    </script>
 </body>
 
 </html>
