@@ -113,6 +113,13 @@ class MockifyerClass {
         const filePath = path.join(this.config.mockDataPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
+        
+        // Skip files that don't have a valid request property
+        if (!mockData || !mockData.request) {
+          console.warn(`[Mockifyer] Skipping invalid mock file (missing request): ${file}`);
+          continue;
+        }
+        
         const mockKey = this.generateRequestKey(mockData.request);
         
         // Check for exact match

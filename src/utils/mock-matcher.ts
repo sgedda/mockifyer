@@ -41,6 +41,10 @@ function hashObject(obj: any): string {
  * Generates a unique key for a request based on method, URL, query parameters, and body data
  */
 export function generateRequestKey(request: StoredRequest): string {
+  if (!request) {
+    throw new Error('generateRequestKey: request is undefined or null');
+  }
+  
   const normalizedMethod = (request.method || 'GET').toUpperCase();
   const normalizedUrl = (request.url || '').toLowerCase();
   const queryString = request.queryParams 
