@@ -9,6 +9,7 @@ A Node.js package for mocking and recording API calls, with special support for 
 - Date manipulation utilities for testing
 - Support for timezone handling
 - Environment variable configuration
+- **Easy data discovery**: All captured API responses are stored as searchable JSON files in your project, making it easy to discover what data was captured, where it comes from, and explore all available mock data directly in your IDE
 
 ## Installation
 
@@ -36,6 +37,42 @@ const response = await axios.get('https://api.example.com/data');
 const currentDate = getCurrentDate();
 console.log(currentDate.toISOString()); // 2024-01-01T00:00:00.000Z
 ```
+
+## Data Discovery
+
+One of the key benefits of mockifyer is how easy it makes discovering and exploring all the data that was captured during recording. Every API response is automatically saved as a structured JSON file in your `mock-data` directory, making it simple to:
+
+- **Discover all captured data**: Browse through all recorded API responses in one place
+- **See where data comes from**: Each file is named with the timestamp, HTTP method, and endpoint URL (e.g., `2025-11-23_10-53-52_GET_v3_football_api_sports_io_standings.json`)
+- **Explore available data**: Each mock file contains the complete request (URL, method, headers, query params) and response (status, data, headers) data
+- **Search within your IDE**: Since all mocks are stored as JSON files in your project, you can use your IDE's built-in search functionality to quickly find specific endpoints, response data, or API calls
+
+### Mock File Structure
+
+Each mock file contains:
+- **Request information**: Method, URL, headers, query parameters, and request body
+- **Response data**: Status code, response body, and response headers
+- **Metadata**: Timestamp of when the response was captured and optional scenario information
+
+Example mock file:
+```json
+{
+  "request": {
+    "method": "GET",
+    "url": "https://api.example.com/data",
+    "headers": {},
+    "queryParams": {}
+  },
+  "response": {
+    "status": 200,
+    "data": { /* response data */ },
+    "headers": { /* response headers */ }
+  },
+  "timestamp": "2025-11-23T10:53:52.000Z"
+}
+```
+
+This structure makes it easy to understand what data is available, trace where it came from, and reuse it in your tests or development workflow.
 
 ## Date Configuration
 
