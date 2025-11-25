@@ -34,9 +34,12 @@ setupMockifyer({
 const response = await axios.get('https://api.example.com/data');
 
 // Use date manipulation in tests
+// IMPORTANT: Use getCurrentDate() instead of new Date() for date manipulation to work
 const currentDate = getCurrentDate();
 console.log(currentDate.toISOString()); // 2024-01-01T00:00:00.000Z
 ```
+
+**Important:** For date manipulation to work, you must use Mockifyer's `getCurrentDate()` function instead of `new Date()`. The `getCurrentDate()` function respects your date manipulation settings (fixed date, offset, timezone), while `new Date()` always returns the system date.
 
 ## Data Discovery
 

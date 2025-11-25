@@ -17,6 +17,7 @@ import { graphqlRouter } from './routes/graphql';
 import { dateConfigRouter } from './routes/date-config';
 import { dateDemoRouter } from './routes/date-demo';
 import { dateExampleRouter } from './routes/date-example';
+import { eventsRouter } from './routes/events';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -36,6 +37,7 @@ app.use('/api/graphql', graphqlRouter);
 app.use('/api/date-config', dateConfigRouter);
 app.use('/api/date-demo', dateDemoRouter);
 app.use('/api/date-example', dateExampleRouter);
+app.use('/api/events', eventsRouter);
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

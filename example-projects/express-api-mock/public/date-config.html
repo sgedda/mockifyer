@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Configurations - Mockifyer</title>
+    <title>Date Configuration - Mockifyer</title>
     <link rel="stylesheet" href="common.css">
     <style>
         /* Date-config-specific styles */
@@ -48,10 +48,17 @@
     <div class="container">
         <div id="navigation-container"></div>
 
-        <h1>⚙️ Configurations</h1>
+        <h1>📅 Date Configuration</h1>
+
+        <div style="text-align: center; margin-bottom: 20px;">
+            <a href="playground.html"
+                style="display: inline-block; padding: 12px 24px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3);">
+                ← Back to Playground
+            </a>
+        </div>
 
         <div class="card">
-            <h2>Configure Date Manipulation</h2>
+            <h2>🔧 Interactive Date Configuration</h2>
             <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
                 Configure date manipulation for deterministic testing. Changes take effect immediately.
             </p>
@@ -160,6 +167,17 @@
                 This endpoint demonstrates how date manipulation works. Compare the manipulated date (used by Mockifyer)
                 with the system date.
             </p>
+            <div
+                style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
+                <strong style="color: #1976d2;">🔑 Important:</strong> For date manipulation to work, your code must use
+                Mockifyer's <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">getCurrentDate()</code>
+                function instead of <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">new Date()</code>.
+                This endpoint uses <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">getCurrentDate()</code>
+                to get the manipulated date.
+            </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getDateDemo()">🔄 Get Date Info</button>
             </div>
@@ -173,6 +191,14 @@
                 This endpoint returns example data (subscriptions, events, activity) where all dates are calculated
                 relative to the manipulated date. Change the date configuration above and see how the data changes!
             </p>
+            <div
+                style="background: rgba(33, 150, 243, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #2196f3;">
+                <strong style="color: #1976d2;">🔑 Important:</strong> This endpoint uses <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">getCurrentDate()</code>
+                from Mockifyer to calculate all dates. Using <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">new Date()</code>
+                would ignore date manipulation settings.
+            </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                 <button onclick="getDateExample()">🔄 Get Example Data</button>
             </div>

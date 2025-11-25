@@ -498,6 +498,21 @@
 
         <h1>🎭 Mockifyer Playground</h1>
 
+        <div style="text-align: center; margin-bottom: 20px;">
+            <a href="config-reference.html"
+                style="display: inline-block; padding: 12px 24px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3);"
+                onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.transform='translateY(-1px)'"
+                onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(0)'">
+                ⚙️ View Settings
+            </a>
+            <a href="date-config.html"
+                style="display: inline-block; padding: 12px 24px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3); margin-left: 10px;"
+                onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.transform='translateY(-1px)'"
+                onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(0)'">
+                📅 Configure Date Manipulation
+            </a>
+        </div>
+
         <div class="status-banner" id="status-banner">
             <h2>📊 Current Status</h2>
             <div class="status-items" id="status-items">
@@ -761,6 +776,47 @@
             <div id="graphql-response"></div>
         </div>
 
+        <!-- Date-Filtered Events Card -->
+        <div class="card">
+            <h2>📅 Date-Filtered Events</h2>
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
+                This endpoint demonstrates how date manipulation affects data filtering. Events are filtered based on
+                the manipulated date from Mockifyer using <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">getCurrentDate()</code>.
+                Change the date configuration to see how the filtered results change!
+            </p>
+            <div
+                style="background: rgba(102, 126, 234, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #667eea;">
+                <div
+                    style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="color: #b8c5ff;">Current Date Used:</strong>
+                        <span id="events-current-date"
+                            style="color: #e0e0e0; font-family: 'Courier New', monospace; margin-left: 8px;">Loading...</span>
+                    </div>
+                    <a href="date-config.html"
+                        style="color: #8b9aff; text-decoration: none; font-weight: 600; padding: 6px 12px; background: rgba(102, 126, 234, 0.2); border-radius: 6px; transition: all 0.2s ease;"
+                        onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.color='#9fa8da'"
+                        onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.color='#8b9aff'">
+                        ⚙️ Configure Date
+                    </a>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="events-filter-input">Filter:</label>
+                <select id="events-filter-input">
+                    <option value="">All Events</option>
+                    <option value="upcoming">Upcoming Events</option>
+                    <option value="past">Past Events</option>
+                    <option value="today">Today's Events</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getFilteredEvents()">Get Filtered Events</button>
+            </div>
+            <div id="events-response"></div>
+        </div>
+
         <!-- Mock Files Browser Card -->
         <div class="card">
             <h2>📁 Mock Data Files</h2>
@@ -777,6 +833,25 @@
         document.getElementById('navigation-container').innerHTML = renderNavigation('playground.html');
 
         const API_BASE = window.location.origin;
+
+        // Load current date for events section on page load
+        (async function () {
+            try {
+                const response = await fetch(`${API_BASE}/api/date-config`);
+                const config = await response.json();
+                const dateDisplay = document.getElementById('events-current-date');
+                if (dateDisplay && config.currentDateFormatted) {
+                    dateDisplay.textContent = config.currentDateFormatted;
+                    dateDisplay.style.color = '#fff';
+                }
+            } catch (error) {
+                const dateDisplay = document.getElementById('events-current-date');
+                if (dateDisplay) {
+                    dateDisplay.textContent = 'Error loading date';
+                    dateDisplay.style.color = '#ef5350';
+                }
+            }
+        })();
 
         async function makeRequest (url, options = {}) {
             const startTime = performance.now();
@@ -1468,6 +1543,122 @@
                     `;
                 } else {
                     responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to get date information'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Events Functions
+        async function getFilteredEvents () {
+            const responseDiv = document.getElementById('events-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            const filter = document.getElementById('events-filter-input').value;
+            const filterParam = filter ? `?filter=${encodeURIComponent(filter)}` : '';
+
+            try {
+                const result = await makeRequest(`${API_BASE}/api/events/filtered${filterParam}`);
+
+                if (result.success) {
+                    const data = result.data;
+                    const diff = data.currentDate.difference;
+                    const isDifferent = diff.milliseconds !== 0;
+
+                    let eventsHtml = '';
+                    if (data.events && data.events.length > 0) {
+                        eventsHtml = data.events.map(event => {
+                            const eventDate = new Date(event.date);
+                            // Much clearer, more vibrant colors for better visibility
+                            let statusColor, statusBg, borderColor, titleColor;
+                            if (event.status === 'upcoming') {
+                                statusColor = '#66bb6a'; // Vibrant green
+                                statusBg = 'rgba(102, 187, 106, 0.25)';
+                                borderColor = '#66bb6a';
+                                titleColor = '#81c784'; // Lighter green for title
+                            } else if (event.status === 'today') {
+                                statusColor = '#ffa726'; // Vibrant orange
+                                statusBg = 'rgba(255, 167, 38, 0.25)';
+                                borderColor = '#ffa726';
+                                titleColor = '#ffb74d'; // Lighter orange for title
+                            } else {
+                                statusColor = '#78909c'; // Blue-grey for past
+                                statusBg = 'rgba(120, 144, 156, 0.2)';
+                                borderColor = '#78909c';
+                                titleColor = '#90a4ae'; // Lighter blue-grey for title
+                            }
+
+                            return `
+                                <div style="background: ${statusBg}; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${borderColor}; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                        <h4 style="margin: 0; color: ${titleColor}; font-size: 1.1em; font-weight: 700;">${event.title}</h4>
+                                        <span style="background: ${statusColor}; color: white; padding: 6px 14px; border-radius: 6px; font-size: 0.8em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                            ${event.status}
+                                        </span>
+                                    </div>
+                                    <div style="color: #ccc; font-size: 0.9em; margin-bottom: 8px;">
+                                        <strong style="color: #b8c5ff;">📍 Location:</strong> <span style="color: #e0e0e0;">${event.location}</span>
+                                    </div>
+                                    <div style="color: #ccc; font-size: 0.9em; margin-bottom: 8px;">
+                                        <strong style="color: #b8c5ff;">📅 Date:</strong> <span style="color: #e0e0e0;">${eventDate.toLocaleString()}</span>
+                                        <span style="color: ${statusColor}; font-weight: 700; margin-left: 8px; padding: 2px 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">${event.relativeTime}</span>
+                                    </div>
+                                    <div style="color: #ccc; font-size: 0.9em;">
+                                        <strong style="color: #b8c5ff;">📝 Description:</strong> <span style="color: #e0e0e0;">${event.description}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        eventsHtml = '<div style="padding: 20px; text-align: center; color: #aaa;">No events found matching the filter.</div>';
+                    }
+
+                    responseDiv.innerHTML = `
+                        <div class="response-container ${result.isMocked ? 'mocked' : 'real-api'}">
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px; color: white;">
+                                <h3 style="margin: 0 0 10px 0; font-size: 1.1em;">${data.message}</h3>
+                                <div style="font-size: 0.9em; opacity: 0.95;">
+                                    Filter: <strong>${data.filter}</strong> | 
+                                    Showing ${data.filteredCount} of ${data.totalEvents} events
+                                </div>
+                            </div>
+
+                            <div style="background: rgba(102, 126, 234, 0.15); padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                                <h4 style="margin: 0 0 12px 0; color: #9fa8da; font-size: 1.05em; font-weight: 600;">📅 Current Date Information</h4>
+                                <div style="font-size: 0.95em; line-height: 1.9; color: #e0e0e0;">
+                                    <div style="margin-bottom: 8px;"><strong style="color: #b8c5ff;">Manipulated Date:</strong> <span style="color: #fff;">${data.currentDate.manipulatedFormatted}</span></div>
+                                    <div style="margin-bottom: 8px;"><strong style="color: #b8c5ff;">System Date:</strong> <span style="color: #fff;">${data.currentDate.systemFormatted}</span></div>
+                                    ${isDifferent ? `
+                                        <div style="color: #ffb74d; margin-top: 8px; padding: 8px; background: rgba(255, 152, 0, 0.15); border-radius: 4px;">
+                                            <strong>⚠️ Difference:</strong> ${diff.days} day(s) 
+                                            (${diff.days > 0 ? 'future' : 'past'})
+                                        </div>
+                                    ` : `
+                                        <div style="color: #81c784; margin-top: 8px; padding: 8px; background: rgba(76, 175, 80, 0.15); border-radius: 4px;">
+                                            <strong>✅ Dates match</strong> (no manipulation configured)
+                                        </div>
+                                    `}
+                                </div>
+                            </div>
+
+                            <div style="margin-bottom: 15px;">
+                                <h4 style="margin: 0 0 15px 0; color: #9fa8da; font-size: 1.1em; font-weight: 600;">📋 Events</h4>
+                                ${eventsHtml}
+                            </div>
+
+                            <div style="background: rgba(76, 175, 80, 0.15); padding: 15px; border-radius: 8px; margin-top: 15px; font-size: 0.95em; color: #c8e6c9; border-left: 4px solid #4caf50;">
+                                <strong style="color: #81c784; font-size: 1.05em;">💡 ${data.explanation.title}:</strong> <span style="color: #e0e0e0;">${data.explanation.description}</span>
+                                <div style="margin-top: 10px; color: #c8e6c9;">
+                                    ${data.explanation.note}
+                                </div>
+                                <div style="margin-top: 12px; padding: 12px; background: rgba(33, 150, 243, 0.2); border-radius: 6px; border-left: 3px solid #42a5f5;">
+                                    <strong style="color: #64b5f6; font-size: 1em;">🔑 Important:</strong> <span style="color: #e0e0e0;">For date manipulation to work, your code must use Mockifyer's </span><code style="background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', monospace; color: #90caf9; font-weight: 600;">getCurrentDate()</code><span style="color: #e0e0e0;"> function instead of </span><code style="background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', monospace; color: #ef5350; font-weight: 600;">new Date()</code><span style="color: #e0e0e0;">. This endpoint uses </span><code style="background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; font-family: 'Courier New', monospace; color: #90caf9; font-weight: 600;">getCurrentDate()</code><span style="color: #e0e0e0;"> to filter events based on the manipulated date.</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to fetch events'}</div>`;
                 }
             } catch (error) {
                 responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;

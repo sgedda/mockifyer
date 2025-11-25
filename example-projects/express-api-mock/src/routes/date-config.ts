@@ -58,14 +58,46 @@ router.get('/', (req: Request, res: Response) => {
       config.offsetMinutes = Math.floor((absOffset % (60 * 60 * 1000)) / (60 * 1000));
       config.offsetSign = offset < 0 ? '-' : '+';
       config.enabled = true;
+    } else if (config.enabled && (config.offset !== null && config.offset !== undefined)) {
+      // If config file has offset but env vars don't, set env vars from config file
+      // This ensures getCurrentDate() works correctly after server restart
+      process.env.MOCKIFYER_DATE_OFFSET = config.offset.toString();
+      delete process.env.MOCKIFYER_DATE;
+    } else if (config.enabled && (config.offsetDays !== undefined || config.offsetHours !== undefined || config.offsetMinutes !== undefined)) {
+      // If we only have days/hours/minutes but not offset in ms, calculate it
+      const days = parseInt(config.offsetDays || 0, 10);
+      const hours = parseInt(config.offsetHours || 0, 10);
+      const minutes = parseInt(config.offsetMinutes || 0, 10);
+      const sign = config.offsetSign === '-' ? -1 : 1;
+      const offsetMs = sign * (
+        days * 24 * 60 * 60 * 1000 +
+        hours * 60 * 60 * 1000 +
+        minutes * 60 * 1000
+      );
+      config.offset = offsetMs;
+      process.env.MOCKIFYER_DATE_OFFSET = offsetMs.toString();
+      delete process.env.MOCKIFYER_DATE;
+    } else if (config.fixedDate && config.enabled) {
+      // If config file has fixedDate but env vars don't, set env vars from config file
+      process.env.MOCKIFYER_DATE = config.fixedDate;
+      delete process.env.MOCKIFYER_DATE_OFFSET;
+    } else if (!config.enabled) {
+      // If disabled, clear env vars
+      delete process.env.MOCKIFYER_DATE;
+      delete process.env.MOCKIFYER_DATE_OFFSET;
     }
 
     if (process.env.MOCKIFYER_TIMEZONE) {
       config.timezone = process.env.MOCKIFYER_TIMEZONE;
       config.enabled = true;
+    } else if (config.timezone && config.enabled) {
+      // If config file has timezone but env vars don't, set env vars from config file
+      process.env.MOCKIFYER_TIMEZONE = config.timezone;
+    } else if (!config.enabled) {
+      delete process.env.MOCKIFYER_TIMEZONE;
     }
 
-    // Get current effective date
+    // Get current effective date (now that env vars are set correctly)
     const currentDate = getCurrentDate();
     config.currentDate = currentDate.toISOString();
     config.currentDateFormatted = currentDate.toLocaleString();

@@ -387,6 +387,7 @@ const response = await axios.get('https://api.example.com/data', {
                 <code>import { getCurrentDate } from '@sgedda/mockifyer';
 
 // Get the manipulated date (fixed, offset, or system date)
+// IMPORTANT: Use getCurrentDate() instead of new Date() for date manipulation to work
 const currentDate = getCurrentDate();
 
 // Use in your tests
@@ -395,6 +396,13 @@ const subscription = {
   endDate: new Date(currentDate.getTime() + 30 * 24 * 60 * 60 * 1000)
 };</code>
             </div>
+            <p
+                style="background: rgba(33, 150, 243, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3; margin: 15px 0;">
+                <strong style="color: #1976d2;">🔑 Important:</strong> For date manipulation to work, you must use
+                Mockifyer's <code>getCurrentDate()</code> function instead of <code>new Date()</code>. The
+                <code>getCurrentDate()</code> function respects your date manipulation settings (fixed date, offset,
+                timezone), while <code>new Date()</code> always returns the system date.
+            </p>
             <p>Configure dates via:</p>
             <ul>
                 <li><strong>Fixed Date:</strong> Always return a specific date</li>

@@ -7,7 +7,7 @@ function renderNavigation(activePage) {
     const pages = [
         { href: 'getting-started.html', label: 'Getting Started' },
         { href: 'playground.html', label: 'Playground' },
-        { href: 'date-config.html', label: 'Configurations' }
+        { href: 'config-reference.html', label: 'Settings' }
     ];
 
     const navLinks = pages.map(page => {
