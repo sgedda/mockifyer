@@ -34,11 +34,30 @@
             #date-demo-grid {
                 grid-template-columns: 1fr !important;
             }
+
+            /* Fixed date input - make more compact on mobile */
+            #date-fixed-input {
+                font-size: 16px !important;
+                /* Prevents zoom on iOS */
+                max-width: 100%;
+                box-sizing: border-box;
+            }
         }
 
         @media (max-width: 480px) {
             .card h2 {
                 font-size: 1.2em;
+            }
+
+            /* Fixed date input - even more compact on small phones */
+            #date-fixed-input {
+                font-size: 14px !important;
+                padding: 10px !important;
+            }
+
+            /* Make form groups more compact */
+            .form-group label {
+                font-size: 0.9em;
             }
         }
     </style>
@@ -84,9 +103,9 @@
                 <!-- Fixed Date Option -->
                 <div id="date-config-fixed" style="display: none;">
                     <div class="form-group">
-                        <label for="date-fixed-input">Fixed Date (ISO format):</label>
+                        <label for="date-fixed-input">Fixed Date:</label>
                         <input type="datetime-local" id="date-fixed-input"
-                            style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                            style="width: 100%; max-width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; box-sizing: border-box; font-size: 16px;">
                     </div>
                 </div>
 
