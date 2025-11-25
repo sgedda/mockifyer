@@ -5,9 +5,9 @@
 
 function renderNavigation(activePage) {
     const pages = [
-        { href: 'index.html', label: 'Introduction' },
-        { href: 'dashboard.html', label: 'Dashboard' },
-        { href: 'date-config.html', label: 'Date Config' }
+        { href: 'getting-started.html', label: 'Getting Started' },
+        { href: 'playground.html', label: 'Playground' },
+        { href: 'date-config.html', label: 'Configurations' }
     ];
 
     const navLinks = pages.map(page => {

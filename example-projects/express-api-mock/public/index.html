@@ -239,20 +239,22 @@
                 <li>📅 <strong>Date manipulation:</strong> Test time-dependent features with fixed or offset dates</li>
                 <li>🔄 <strong>Easy recording:</strong> Automatically capture real API responses for later use</li>
                 <li>🌐 <strong>Works with any HTTP client:</strong> Supports Axios, Fetch, and more</li>
-                <li>🔍 <strong>Easy data discovery:</strong> All captured API responses are stored as searchable JSON files in your project, making it easy to discover what data was captured, where it comes from, and explore all available mock data directly in your IDE</li>
+                <li>🔍 <strong>Easy data discovery:</strong> All captured API responses are stored as searchable JSON
+                    files in your project, making it easy to discover what data was captured, where it comes from, and
+                    explore all available mock data directly in your IDE</li>
             </ul>
         </div>
 
         <div class="section">
-            <h2>Dashboard Demo</h2>
+            <h2>Playground</h2>
             <p>
-                The <a href="dashboard.html">Dashboard Demo</a> is an interactive example application that demonstrates
+                The <a href="playground.html">Playground</a> is an interactive example application that demonstrates
                 Mockifyer's capabilities in a real-world scenario.
             </p>
 
-            <h3>Purpose of the Demo</h3>
+            <h3>Purpose of the Playground</h3>
             <p>
-                The dashboard showcases how Mockifyer works with actual API integrations:
+                The playground showcases how Mockifyer works with actual API integrations:
             </p>
             <ul>
                 <li><strong>Weather API Integration:</strong> See how weather data is mocked and recorded</li>
@@ -366,7 +368,8 @@ const response = await axios.get('https://api.example.com/data', {
                 <li>Saves responses as JSON files with descriptive names (timestamp, method, and endpoint URL)</li>
                 <li>Anonymizes sensitive data (API keys, tokens) by default</li>
                 <li>Organizes files by timestamp and endpoint</li>
-                <li>Creates searchable JSON files in your project, making it easy to discover all captured data, see where it comes from, and explore available mock data directly in your IDE</li>
+                <li>Creates searchable JSON files in your project, making it easy to discover all captured data, see
+                    where it comes from, and explore available mock data directly in your IDE</li>
             </ul>
 
             <h3>🔄 Mocking Mode</h3>
@@ -426,37 +429,51 @@ const subscription = {
         <div class="section">
             <h2>Who is Mockifyer For?</h2>
             <p>
-                Mockifyer is designed for <strong>teams needing deterministic API responses</strong> for reliable, predictable development and testing workflows.
+                Mockifyer is designed for <strong>teams needing deterministic API responses</strong> for reliable,
+                predictable development and testing workflows.
             </p>
 
             <h3>🎯 Perfect For:</h3>
             <div class="feature-grid">
                 <div class="feature-card">
                     <h4>🧪 Testing Teams</h4>
-                    <p>Create realistic unit and integration tests with real API response data. No more flaky tests due to external API inconsistencies or rate limits.</p>
+                    <p>Create realistic unit and integration tests with real API response data. No more flaky tests due
+                        to external API inconsistencies or rate limits.</p>
                 </div>
                 <div class="feature-card">
                     <h4>🔍 Data Discovery Teams</h4>
-                    <p>Discover and explore all data captured from APIs. All mock files are searchable JSON files in your project, making it easy to find what data is available, where it comes from, and explore it directly in your IDE.</p>
+                    <p>Discover and explore all data captured from APIs. All mock files are searchable JSON files in
+                        your project, making it easy to find what data is available, where it comes from, and explore it
+                        directly in your IDE.</p>
                 </div>
                 <div class="feature-card">
                     <h4>📱 UI/UX Teams</h4>
-                    <p>Run your app with predefined data to see how it looks for different predictable scenarios. Test time-dependent UI states like "1 hour before departure" or "payment pending for 3 days" with consistent, reproducible data.</p>
+                    <p>Run your app with predefined data to see how it looks for different predictable scenarios. Test
+                        time-dependent UI states like "1 hour before departure" or "payment pending for 3 days" with
+                        consistent, reproducible data.</p>
                 </div>
                 <div class="feature-card">
                     <h4>🚀 Development Teams</h4>
-                    <p>Work offline, develop features independently, and test edge cases without depending on external APIs or worrying about rate limits.</p>
+                    <p>Work offline, develop features independently, and test edge cases without depending on external
+                        APIs or worrying about rate limits.</p>
                 </div>
             </div>
 
             <h3>Key Benefits for Your Team</h3>
             <ul>
-                <li><strong>Deterministic Testing:</strong> Same inputs always produce the same outputs - no surprises, no flaky tests</li>
-                <li><strong>Realistic Test Data:</strong> Use actual API responses captured from real endpoints, not synthetic mock data</li>
-                <li><strong>Searchable Data:</strong> All captured API responses are stored as JSON files in your project, fully searchable in your IDE</li>
-                <li><strong>Predictable Scenarios:</strong> Test specific time-based or state-based scenarios with predefined data (e.g., "show how the app looks 1 hour before departure", "display payment pending state")</li>
-                <li><strong>Data Discovery:</strong> Easily discover what data was captured, where it comes from, and explore all available mock data</li>
-                <li><strong>No External Dependencies:</strong> Run tests and demos without internet connection or external API access</li>
+                <li><strong>Deterministic Testing:</strong> Same inputs always produce the same outputs - no surprises,
+                    no flaky tests</li>
+                <li><strong>Realistic Test Data:</strong> Use actual API responses captured from real endpoints, not
+                    synthetic mock data</li>
+                <li><strong>Searchable Data:</strong> All captured API responses are stored as JSON files in your
+                    project, fully searchable in your IDE</li>
+                <li><strong>Predictable Scenarios:</strong> Test specific time-based or state-based scenarios with
+                    predefined data (e.g., "show how the app looks 1 hour before departure", "display payment pending
+                    state")</li>
+                <li><strong>Data Discovery:</strong> Easily discover what data was captured, where it comes from, and
+                    explore all available mock data</li>
+                <li><strong>No External Dependencies:</strong> Run tests and demos without internet connection or
+                    external API access</li>
             </ul>
         </div>
 
@@ -475,7 +492,8 @@ const subscription = {
             <ul>
                 <li>Write deterministic unit and integration tests with realistic API response data</li>
                 <li>Test edge cases by editing mock files</li>
-                <li>Test time-dependent features with date manipulation (e.g., "1 hour before departure", "payment pending for 3 days")</li>
+                <li>Test time-dependent features with date manipulation (e.g., "1 hour before departure", "payment
+                    pending for 3 days")</li>
                 <li>Run tests in CI/CD without external API dependencies</li>
                 <li>Discover and search through all captured API data directly in your IDE</li>
             </ul>
@@ -483,7 +501,8 @@ const subscription = {
             <h3>Demo & Staging</h3>
             <ul>
                 <li>Create consistent demo environments with predictable data</li>
-                <li>Show specific scenarios by using curated mock data (e.g., "show how the app looks 1 hour before departure")</li>
+                <li>Show specific scenarios by using curated mock data (e.g., "show how the app looks 1 hour before
+                    departure")</li>
                 <li>Test with production-like data without production costs</li>
                 <li>Run your app with predefined data to visualize different states and scenarios</li>
             </ul>
@@ -492,14 +511,15 @@ const subscription = {
         <div class="section">
             <h2>Next Steps</h2>
             <ol>
-                <li><strong>Try the Dashboard:</strong> <a href="dashboard.html">Explore the interactive demo</a> to see
+                <li><strong>Get Started:</strong> Follow the <a href="getting-started.html">Getting Started guide</a> to
+                    set up Mockifyer in your Node.js service</li>
+                <li><strong>Try the Playground:</strong> <a href="playground.html">Explore the interactive demo</a> to
+                    see
                     Mockifyer in action</li>
                 <li><strong>Read the Documentation:</strong> Check out the <a href="https://github.com/sgedda/mockifyer"
                         target="_blank">GitHub repository</a> for detailed docs</li>
-                <li><strong>Install in Your Project:</strong> Add Mockifyer to your codebase and start recording mocks
-                </li>
-                <li><strong>Configure Date Manipulation:</strong> Use the <a href="date-config.html">Date
-                        Configuration</a> page to test date features</li>
+                <li><strong>Configure Settings:</strong> Use the <a href="date-config.html">Configurations</a> page to
+                    test date features and other settings</li>
             </ol>
         </div>
     </div>

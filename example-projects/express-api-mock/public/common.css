@@ -44,10 +44,33 @@ body {
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+    transition: all 0.2s ease;
+    padding: 8px 12px;
+    border-radius: 8px;
+    position: relative;
+}
+
+.nav-brand::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 12px;
+    right: 12px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(139, 154, 255, 0.3), transparent);
+    opacity: 0;
+    transition: opacity 0.2s ease;
 }
 
 .nav-brand:hover {
-    opacity: 0.8;
+    color: #a78bfa;
+    background: rgba(139, 154, 255, 0.1);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.nav-brand:hover::after {
+    opacity: 1;
 }
 
 .menu-toggle {

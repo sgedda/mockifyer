@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Getting Started - Mockifyer</title>
+    <link rel="stylesheet" href="common.css">
+    <style>
+        /* Page-specific styles for Getting Started page */
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            padding: 40px 20px;
+        }
+
+        header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        header p {
+            font-size: 1.2em;
+            opacity: 0.95;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .section {
+            background: rgba(30, 30, 46, 0.8);
+            border-radius: 15px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .section h2 {
+            color: #8b9aff;
+            margin-bottom: 20px;
+            font-size: 2em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .section h3 {
+            color: #a78bfa;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .section p {
+            margin-bottom: 15px;
+            color: #e0e0e0;
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+
+        .section ul,
+        .section ol {
+            margin-left: 30px;
+            margin-bottom: 20px;
+        }
+
+        .section li {
+            margin-bottom: 10px;
+            color: #ccc;
+            font-size: 1.05em;
+            line-height: 1.6;
+        }
+
+        .code-block {
+            background: rgba(20, 20, 35, 0.8);
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .code-block code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            color: #e0e0e0;
+            white-space: pre;
+            display: block;
+            min-width: fit-content;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 0.9em;
+        }
+
+        .step {
+            margin-bottom: 30px;
+            padding-left: 10px;
+        }
+
+        .step h4 {
+            color: #8b9aff;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+        }
+
+        .what-to-expect {
+            background: rgba(76, 175, 80, 0.1);
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+
+        .what-to-expect h4 {
+            color: #4caf50;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .what-to-expect ul {
+            margin-left: 20px;
+        }
+
+        .what-to-expect li {
+            color: #e0e0e0;
+            margin-bottom: 8px;
+        }
+
+        .platform-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .platform-tab {
+            padding: 10px 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border: none;
+            border-radius: 5px;
+            color: #8b9aff;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+        }
+
+        .platform-tab:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+
+        .platform-tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .platform-content {
+            display: none;
+        }
+
+        .platform-content.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+
+            header {
+                padding: 30px 15px;
+            }
+
+            header h1 {
+                font-size: 2.5em;
+            }
+
+            header p {
+                font-size: 1.1em;
+            }
+
+            .section {
+                padding: 25px 20px;
+            }
+
+            .section h2 {
+                font-size: 1.6em;
+            }
+
+            .section h3 {
+                font-size: 1.3em;
+            }
+
+            .code-block {
+                padding: 15px;
+                margin: 15px 0;
+            }
+
+            .code-block code {
+                font-size: 0.85em;
+            }
+
+            .platform-tabs {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div id="navigation-container"></div>
+
+        <header>
+            <h1>🚀 Getting Started</h1>
+            <p>Get up and running with Mockifyer in minutes. Learn the simplest way to record and replay API calls.</p>
+        </header>
+
+        <div class="section">
+            <h2>Quick Start</h2>
+            <p>
+                Mockifyer works by intercepting HTTP requests made by your application. In its simplest form, you just
+                need to:
+            </p>
+            <ol>
+                <li>Install the package</li>
+                <li>Initialize Mockifyer before making any HTTP calls</li>
+                <li>Use your HTTP client as normal - Mockifyer handles the rest!</li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>Platform Guides</h2>
+            <div class="platform-tabs">
+                <button class="platform-tab active" onclick="showPlatform('node-service')">Node Service</button>
+                <button class="platform-tab" onclick="showPlatform('coming-soon')" disabled
+                    style="opacity: 0.5; cursor: not-allowed;">React Native (Coming Soon)</button>
+            </div>
+
+            <div id="node-service" class="platform-content active">
+                <h3>Node Service</h3>
+                <p>
+                    Perfect for Node.js services, Express APIs, and backend applications. Mockifyer integrates
+                    seamlessly with Axios, Fetch, and other HTTP clients.
+                </p>
+
+                <div class="step">
+                    <h4><span class="step-number">1</span>Install Mockifyer</h4>
+                    <div class="code-block">
+                        <code>npm install @sgedda/mockifyer</code>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">2</span>Initialize Mockifyer</h4>
+                    <p>
+                        <strong>Option A - Direct Usage:</strong> Use the HTTP client returned by
+                        <code>setupMockifyer</code> directly:
+                    </p>
+                    <div class="code-block">
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer';
+import path from 'path';
+
+// Setup Mockifyer - returns an HTTP client you can use directly
+const axios = setupMockifyer({
+  mockDataPath: path.join(__dirname, 'mock-data'),
+  recordMode: process.env.MOCKIFYER_RECORD === 'true'
+});
+
+// Use it like normal axios
+const response = await axios.get('https://api.example.com/users');
+// Your API calls will be automatically intercepted!</code>
+                    </div>
+                    <p>
+                        <strong>Option B - Global Axios (Environment Variables):</strong> Patch global axios using
+                        environment variables:
+                    </p>
+                    <div class="code-block">
+                        <code>// Set environment variables
+process.env.MOCKIFYER_ENABLED = 'true';
+process.env.MOCKIFYER_PATH = './mock-data';
+process.env.MOCKIFYER_RECORD = 'true';
+
+// Import and initialize (must be before axios import)
+import { initializeMockifyer } from '@sgedda/mockifyer';
+initializeMockifyer();
+
+// Now import axios - it's automatically patched
+import axios from 'axios';
+
+// Use axios normally - requests are intercepted
+const response = await axios.get('https://api.example.com/users');</code>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">3</span>Record API Responses (Optional)</h4>
+                    <p>
+                        To capture real API responses for later use, enable recording mode:
+                    </p>
+                    <div class="code-block">
+                        <code>// Set environment variable or pass recordMode: true
+process.env.MOCKIFYER_RECORD = 'true';
+
+// Or in setupMockifyer config:
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true  // Enable recording
+});
+
+// Make your API calls - responses will be saved automatically
+const response = await axios.get('https://api.example.com/users');
+// Response is saved to: mock-data/2025-11-23_10-53-52_GET_api_example_com_users.json</code>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">4</span>Use Mocked Responses</h4>
+                    <p>
+                        Once you've recorded responses, disable recording mode to use the saved mocks:
+                    </p>
+                    <div class="code-block">
+                        <code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false  // Use saved mocks instead of recording
+});
+
+// This call will use the saved mock instead of making a real API call
+const response = await axios.get('https://api.example.com/users');
+// ✅ Instant response from mock file, no network call!</code>
+                    </div>
+                </div>
+
+                <div class="what-to-expect">
+                    <h4>✨ What to Expect</h4>
+                    <ul>
+                        <li><strong>Mock Files Created:</strong> When recording, JSON files are automatically created in
+                            your <code>mock-data</code> directory</li>
+                        <li><strong>Descriptive Filenames:</strong> Files are named with timestamp, method, and endpoint
+                            (e.g., <code>2025-11-23_10-53-52_GET_api_example_com_users.json</code>)</li>
+                        <li><strong>Searchable Data:</strong> All mock files are JSON files in your project, fully
+                            searchable in your IDE</li>
+                        <li><strong>Complete Request/Response:</strong> Each file contains the full request (URL,
+                            method, headers, params) and response (status, data, headers)</li>
+                        <li><strong>Instant Responses:</strong> When using mocks, responses are instant with no network
+                            latency</li>
+                    </ul>
+                </div>
+
+                <h3>Complete Example</h3>
+                <p>Here's a complete example showing both recording and replay:</p>
+                <div class="code-block">
+                    <code>import { setupMockifyer } from '@sgedda/mockifyer';
+import path from 'path';
+
+async function main() {
+  // Step 1: Record API responses
+  console.log('Recording API calls...');
+  const recordAxios = setupMockifyer({
+    recordMode: true,
+    mockDataPath: path.join(__dirname, 'mock-data')
+  });
+
+  // Make a real API call - response will be saved automatically
+  const response1 = await recordAxios.get('https://jsonplaceholder.typicode.com/posts/1');
+  console.log('Recorded:', response1.data);
+  // File saved: mock-data/2025-11-23_10-53-52_GET_jsonplaceholder_typicode_com_posts_1.json
+
+  // Step 2: Use recorded mocks
+  console.log('Using recorded mocks...');
+  const mockAxios = setupMockifyer({
+    recordMode: false,
+    mockDataPath: path.join(__dirname, 'mock-data')
+  });
+
+  // This uses the saved mock instead of making a real API call
+  const response2 = await mockAxios.get('https://jsonplaceholder.typicode.com/posts/1');
+  console.log('From mock:', response2.data); // Same data, instant response!
+}
+
+main();</code>
+                </div>
+
+                <h3>Environment Variables</h3>
+                <p>You can also configure Mockifyer using environment variables:</p>
+                <div class="code-block">
+                    <code># Enable Mockifyer
+MOCKIFYER_ENABLED=true
+
+# Path to mock data directory
+MOCKIFYER_PATH=./mock-data
+
+# Enable recording mode
+MOCKIFYER_RECORD=true</code>
+                </div>
+                <p>
+                    Then initialize with minimal config:
+                </p>
+                <div class="code-block">
+                    <code>import { initializeMockifyer } from '@sgedda/mockifyer';
+
+// Reads configuration from environment variables
+initializeMockifyer();</code>
+                </div>
+            </div>
+
+            <div id="coming-soon" class="platform-content">
+                <h3>Coming Soon</h3>
+                <p>
+                    React Native and other platform guides will be available soon. For now, Mockifyer works best with
+                    Node.js services and backend applications.
+                </p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Next Steps</h2>
+            <ul>
+                <li><strong>Try the Playground:</strong> <a href="playground.html">Explore the interactive demo</a> to
+                    see Mockifyer in action</li>
+                <li><strong>Read the Documentation:</strong> Check out the <a href="index.html">Introduction page</a>
+                    for more details</li>
+                <li><strong>Configure Settings:</strong> Learn about <a href="date-config.html">configuration
+                        options</a> including date manipulation for testing time-dependent functionality</li>
+                <li><strong>Explore Examples:</strong> See the <a href="https://github.com/sgedda/mockifyer"
+                        target="_blank">GitHub repository</a> for more examples</li>
+            </ul>
+        </div>
+    </div>
+    <script src="navigation.js"></script>
+    <script src="common.js"></script>
+    <script>
+        // Render navigation
+        document.getElementById('navigation-container').innerHTML = renderNavigation('getting-started.html');
+
+        // Platform tab switching
+        function showPlatform (platformId) {
+            // Hide all platform contents
+            document.querySelectorAll('.platform-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.platform-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected platform content
+            const selectedContent = document.getElementById(platformId);
+            if (selectedContent) {
+                selectedContent.classList.add('active');
+            }
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+
+</html>
