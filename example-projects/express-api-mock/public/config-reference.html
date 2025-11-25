@@ -39,10 +39,18 @@
             line-height: 1.6;
         }
 
+        .table-wrapper {
+            overflow-x: auto;
+            margin-bottom: 20px;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 8px;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin-bottom: 0;
+            min-width: 600px;
         }
 
         table thead tr {
@@ -53,11 +61,20 @@
             padding: 12px;
             text-align: left;
             border: 1px solid rgba(102, 126, 234, 0.3);
+            white-space: nowrap;
         }
 
         table td {
             padding: 12px;
             border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        table td:first-child {
+            white-space: nowrap;
+        }
+
+        table td:nth-child(2) {
+            white-space: nowrap;
         }
 
         code {
@@ -84,16 +101,74 @@
 
         @media (max-width: 768px) {
             .section {
-                padding: 25px 20px;
+                padding: 25px 15px;
+            }
+
+            .table-wrapper {
+                margin-left: -15px;
+                margin-right: -15px;
+                padding: 0 15px;
             }
 
             table {
-                font-size: 0.9em;
+                font-size: 0.85em;
+                min-width: 500px;
             }
 
             table th,
             table td {
-                padding: 8px;
+                padding: 10px 8px;
+            }
+
+            table th:first-child,
+            table td:first-child {
+                position: sticky;
+                left: 0;
+                background: rgba(20, 20, 35, 0.95);
+                z-index: 1;
+            }
+
+            table thead th:first-child {
+                background: rgba(102, 126, 234, 0.3);
+            }
+
+            h2 {
+                font-size: 1.5em;
+            }
+
+            h3 {
+                font-size: 1.2em;
+            }
+
+            h4 {
+                font-size: 1.1em;
+            }
+
+            pre {
+                font-size: 0.8em;
+                padding: 12px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .section {
+                padding: 20px 10px;
+            }
+
+            .table-wrapper {
+                margin-left: -10px;
+                margin-right: -10px;
+                padding: 0 10px;
+            }
+
+            table {
+                font-size: 0.8em;
+                min-width: 450px;
+            }
+
+            table th,
+            table td {
+                padding: 8px 6px;
             }
         }
     </style>
@@ -102,6 +177,15 @@
 <body>
     <div class="container">
         <div id="navigation-container"></div>
+
+        <div style="margin-bottom: 20px;">
+            <a href="playground.html"
+                style="display: inline-flex; align-items: center; gap: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; padding: 8px 16px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3);"
+                onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.transform='translateY(-1px)'"
+                onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(0)'">
+                ← Back to Playground
+            </a>
+        </div>
 
         <h1>⚙️ Settings</h1>
 
@@ -114,223 +198,383 @@
 
             <div style="margin-bottom: 30px;">
                 <h3>Basic Configuration</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>mockDataPath</code></td>
-                            <td>string</td>
-                            <td>Path where mock data files are stored and loaded from</td>
-                            <td><code>MOCKIFYER_PATH</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>recordMode</code></td>
-                            <td>boolean</td>
-                            <td>When true, records real API responses to mock files. When false, uses existing mocks
-                            </td>
-                            <td><code>MOCKIFYER_RECORD_MODE</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>failOnMissingMock</code></td>
-                            <td>boolean</td>
-                            <td>When true, throws error if no mock found. Automatically false when recordMode is true
-                            </td>
-                            <td><code>MOCKIFYER_AUTO_MOCK</code></td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>mockDataPath</code></td>
+                                <td>string</td>
+                                <td>Path where mock data files are stored and loaded from</td>
+                                <td><code>MOCKIFYER_PATH</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>recordMode</code></td>
+                                <td>boolean</td>
+                                <td>When true, records real API responses to mock files. When false, uses existing mocks
+                                </td>
+                                <td><code>MOCKIFYER_RECORD_MODE</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>failOnMissingMock</code></td>
+                                <td>boolean</td>
+                                <td>When true, throws error if no mock found. Automatically false when recordMode is
+                                    true
+                                </td>
+                                <td><code>MOCKIFYER_AUTO_MOCK</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div style="margin-bottom: 30px;">
                 <h3>Recording Options</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>recordSameEndpoints</code></td>
-                            <td>boolean</td>
-                            <td>When true, allows recording multiple responses for the same endpoint</td>
-                            <td><code>MOCKIFYER_RECORD_SAME_ENDPOINTS</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>anonymizeHeaders</code></td>
-                            <td>string[]</td>
-                            <td>Headers to anonymize when saving mocks (defaults to common API key headers). Empty array
-                                to disable</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>anonymizeQueryParams</code></td>
-                            <td>string[]</td>
-                            <td>Query params to anonymize when saving mocks (defaults to common API key params). Empty
-                                array to disable</td>
-                            <td>-</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>recordSameEndpoints</code></td>
+                                <td>boolean</td>
+                                <td>When true, allows recording multiple responses for the same endpoint</td>
+                                <td><code>MOCKIFYER_RECORD_SAME_ENDPOINTS</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>anonymizeHeaders</code></td>
+                                <td>string[]</td>
+                                <td>Headers to anonymize when saving mocks (defaults to common API key headers). Empty
+                                    array
+                                    to disable</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>anonymizeQueryParams</code></td>
+                                <td>string[]</td>
+                                <td>Query params to anonymize when saving mocks (defaults to common API key params).
+                                    Empty
+                                    array to disable</td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div style="margin-bottom: 30px;">
                 <h3>Matching Options</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>useSimilarMatch</code></td>
-                            <td>boolean</td>
-                            <td>When true, tries to find similar path matches when exact match fails</td>
-                            <td><code>MOCKIFYER_USE_SIMILAR_MATCH</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>useSimilarMatchCheckResponse</code></td>
-                            <td>boolean</td>
-                            <td>When true, verifies response content matches before using similar path match</td>
-                            <td><code>MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>similarMatchRequiredParams</code></td>
-                            <td>string[]</td>
-                            <td>Query parameters that must match for similar match (e.g., ['season', 'league'])</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>requestMatching</code></td>
-                            <td>object</td>
-                            <td>Configure request matching:
-                                <code>{ headers: string[], ignoreQueryParams: string[] }</code>
-                            </td>
-                            <td>-</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>useSimilarMatch</code></td>
+                                <td>boolean</td>
+                                <td>When true, tries to find similar path matches when exact match fails</td>
+                                <td><code>MOCKIFYER_USE_SIMILAR_MATCH</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>useSimilarMatchCheckResponse</code></td>
+                                <td>boolean</td>
+                                <td>When true, verifies response content matches before using similar path match</td>
+                                <td><code>MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>similarMatchRequiredParams</code></td>
+                                <td>string[]</td>
+                                <td>Query parameters that must match for similar match (e.g., ['season', 'league'])</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>requestMatching</code></td>
+                                <td>object</td>
+                                <td>Configure request matching:
+                                    <code>{ headers: string[], ignoreQueryParams: string[] }</code>
+                                </td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div style="margin-bottom: 30px;">
                 <h3>Date Manipulation</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>dateManipulation.fixedDate</code></td>
-                            <td>string | Date</td>
-                            <td>Fixed date to use instead of current date (ISO format)</td>
-                            <td><code>MOCKIFYER_DATE</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>dateManipulation.offset</code></td>
-                            <td>number</td>
-                            <td>Offset in milliseconds from current date (positive = future, negative = past)</td>
-                            <td><code>MOCKIFYER_DATE_OFFSET</code></td>
-                        </tr>
-                        <tr>
-                            <td><code>dateManipulation.timezone</code></td>
-                            <td>string</td>
-                            <td>Timezone for date operations (e.g., 'America/New_York')</td>
-                            <td><code>MOCKIFYER_TIMEZONE</code></td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>dateManipulation.fixedDate</code></td>
+                                <td>string | Date</td>
+                                <td>Fixed date to use instead of current date (ISO format)</td>
+                                <td><code>MOCKIFYER_DATE</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>dateManipulation.offset</code></td>
+                                <td>number</td>
+                                <td>Offset in milliseconds from current date (positive = future, negative = past)</td>
+                                <td><code>MOCKIFYER_DATE_OFFSET</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>dateManipulation.timezone</code></td>
+                                <td>string</td>
+                                <td>Timezone for date operations (e.g., 'America/New_York')</td>
+                                <td><code>MOCKIFYER_TIMEZONE</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div style="margin-bottom: 30px;">
                 <h3>HTTP Client Options</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>httpClientType</code></td>
-                            <td>'axios' | 'fetch'</td>
-                            <td>Type of HTTP client to use (default: 'axios')</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>baseUrl</code></td>
-                            <td>string</td>
-                            <td>Base URL for HTTP client</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>defaultHeaders</code></td>
-                            <td>Record&lt;string, string&gt;</td>
-                            <td>Default headers to include in all requests</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>axiosInstance</code></td>
-                            <td>AxiosInstance</td>
-                            <td>Custom Axios instance to use</td>
-                            <td>-</td>
-                        </tr>
-                        <tr>
-                            <td><code>useGlobalAxios</code></td>
-                            <td>boolean</td>
-                            <td>When true, patches global axios instance</td>
-                            <td>-</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>httpClientType</code></td>
+                                <td>'axios' | 'fetch'</td>
+                                <td>Type of HTTP client to use (default: 'axios')</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>baseUrl</code></td>
+                                <td>string</td>
+                                <td>Base URL for HTTP client</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>defaultHeaders</code></td>
+                                <td>Record&lt;string, string&gt;</td>
+                                <td>Default headers to include in all requests</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>axiosInstance</code></td>
+                                <td>AxiosInstance</td>
+                                <td>Custom Axios instance to use</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>useGlobalAxios</code></td>
+                                <td>boolean</td>
+                                <td>When true, patches global axios instance</td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div style="margin-bottom: 30px;">
                 <h3>Scenarios</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Option</th>
-                            <th>Type</th>
-                            <th>Description</th>
-                            <th>Env Var</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td><code>scenarios</code></td>
-                            <td>object</td>
-                            <td>Scenario configuration: <code>{ default: string, [key: string]: string }</code></td>
-                            <td><code>MOCKIFYER_SCENARIO</code></td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Env Var</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>scenarios</code></td>
+                                <td>object</td>
+                                <td>Scenario configuration: <code>{ default: string, [key: string]: string }</code></td>
+                                <td><code>MOCKIFYER_SCENARIO</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 30px;">
+                <h3>💡 Realistic Examples</h3>
+                <p style="color: #aaa; margin-bottom: 20px;">
+                    Here are practical examples based on the playground endpoints you can try:
+                </p>
+
+                <!-- Example 1: Recording Weather API -->
+                <div
+                    style="background: rgba(33, 150, 243, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #2196f3; margin-bottom: 20px;">
+                    <h4 style="color: #64b5f6; margin-bottom: 10px;">🌤️ Example 1: Recording Weather API Responses</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Record real weather API responses for different cities to use in your tests:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,  // Enable recording
+  failOnMissingMock: false,  // Allow real API calls when no mock exists
+  anonymizeHeaders: ['x-rapidapi-key'],  // Hide your API key in saved mocks
+  anonymizeQueryParams: ['appid']  // Hide API key in query params
+})
+
+// Now make API calls - they'll be saved as mocks
+await axios.get('https://api.openweathermap.org/data/2.5/weather?q=London&appid=YOUR_KEY')
+await axios.get('https://api.openweathermap.org/data/2.5/weather?q=NewYork&appid=YOUR_KEY')</code></pre>
+                </div>
+
+                <!-- Example 2: Date Manipulation for Events -->
+                <div
+                    style="background: rgba(76, 175, 80, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #4caf50; margin-bottom: 20px;">
+                    <h4 style="color: #81c784; margin-bottom: 10px;">📅 Example 2: Testing Events with Date Manipulation
+                    </h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Test how your events filtering works with different dates without waiting:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  dateManipulation: {
+    offset: 665 * 24 * 60 * 60 * 1000  // 665 days in the future
+  }
+})
+
+// In your code, use getCurrentDate() instead of new Date()
+import { getCurrentDate } from '@sgedda/mockifyer';
+const currentDate = getCurrentDate();  // Returns date 665 days in future
+const filteredEvents = events.filter(e => e.date > currentDate);</code></pre>
+                </div>
+
+                <!-- Example 3: Similar Match for Football Standings -->
+                <div
+                    style="background: rgba(255, 152, 0, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #ff9800; margin-bottom: 20px;">
+                    <h4 style="color: #ffb74d; margin-bottom: 10px;">⚽ Example 3: Flexible Matching for Football
+                        Standings</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Use similar match to handle different league IDs while ensuring season matches:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  useSimilarMatch: true,
+  useSimilarMatchCheckResponse: true,  // Verify response structure matches
+  similarMatchRequiredParams: ['season'],  // Season must match exactly
+  requestMatching: {
+    ignoreQueryParams: ['timestamp', 'cache']  // Ignore cache-busting params
+  }
+})
+
+// These will match if season matches, even with different league IDs:
+// /standings?league=39&season=2022 → matches mock for league=140&season=2022
+// /standings?league=39&season=2023 → won't match (different season)</code></pre>
+                </div>
+
+                <!-- Example 4: Testing Different Scenarios -->
+                <div
+                    style="background: rgba(156, 39, 176, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #9c27b0; margin-bottom: 20px;">
+                    <h4 style="color: #ba68c8; margin-bottom: 10px;">🎭 Example 4: Testing Different Scenarios</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Test different API response scenarios (success, error, empty) easily:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  scenarios: {
+    default: 'success',
+    'api-error': 'error-response',
+    'no-data': 'empty-response'
+  }
+})
+
+// Switch scenarios via environment variable:
+// MOCKIFYER_SCENARIO=api-error  // Use error response mocks
+// MOCKIFYER_SCENARIO=no-data    // Use empty response mocks
+// MOCKIFYER_SCENARIO=success    // Use normal response mocks</code></pre>
+                </div>
+
+                <!-- Example 5: Strict Testing Mode -->
+                <div
+                    style="background: rgba(244, 67, 54, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #f44336; margin-bottom: 20px;">
+                    <h4 style="color: #ef5350; margin-bottom: 10px;">🔒 Example 5: Strict Testing Mode</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Fail fast if mocks are missing - perfect for CI/CD pipelines:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  failOnMissingMock: true,  // Throw error if mock not found
+  useSimilarMatch: false,    // Require exact matches only
+  dateManipulation: {
+    fixedDate: '2024-12-25T12:00:00Z'  // Deterministic dates for tests
+  }
+})
+
+// Perfect for unit/integration tests where you want:
+// - Predictable, deterministic responses
+// - Failures if mocks are missing (catch missing test data)
+// - No accidental real API calls</code></pre>
+                </div>
+
+                <!-- Example 6: GraphQL with Variables -->
+                <div
+                    style="background: rgba(102, 126, 234, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 20px;">
+                    <h4 style="color: #8b9aff; margin-bottom: 10px;">🔷 Example 6: GraphQL Query Matching</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Mockifyer automatically handles GraphQL queries with variables:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true
+})
+
+// GraphQL queries are normalized and matched by:
+// - Query structure (normalized)
+// - Variables (hashed)
+// - Endpoint URL
+
+// These will be matched correctly:
+// Query with page=1 → saved as mock
+// Query with page=3 → uses same mock (if structure matches)
+// Different query structure → creates new mock</code></pre>
+                </div>
             </div>
 
             <div
                 style="background: rgba(102, 126, 234, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #667eea; margin-bottom: 30px;">
-                <h3 style="color: #8b9aff; margin-bottom: 10px;">💡 Example Configuration</h3>
+                <h3 style="color: #8b9aff; margin-bottom: 10px;">📋 Complete Configuration Example</h3>
+                <p style="color: #aaa; margin-bottom: 15px; font-size: 0.95em;">
+                    Here's a comprehensive example combining multiple options:
+                </p>
                 <pre><code>setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: false,
