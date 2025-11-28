@@ -34,6 +34,14 @@ class MockifyerClass {
       config.failOnMissingMock = false;
     }
     
+    // Auto-enable useSimilarMatch if similarMatchRequiredParams is set
+    if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
+      if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
+        console.log('[Mockifyer-Fetch] Auto-enabling useSimilarMatch because similarMatchRequiredParams is set');
+        config.useSimilarMatch = true;
+      }
+    }
+    
     this.config = config;
     this.ensureMockDataDirectory();
     
@@ -80,6 +88,8 @@ class MockifyerClass {
       .filter(file => file.endsWith('.json'));
 
     const requestKey = this.generateRequestKey(request);
+    console.log('[Mockifyer-Fetch] findBestMatchingMockFromFiles - requestKey:', requestKey);
+    console.log('[Mockifyer-Fetch] findBestMatchingMockFromFiles - request.queryParams:', request.queryParams);
     let exactMatch: CachedMockData | undefined;
     let similarMatch: CachedMockData | undefined;
     
@@ -94,8 +104,10 @@ class MockifyerClass {
         }
         
         const mockKey = this.generateRequestKey(mockData.request);
+        console.log(`[Mockifyer-Fetch] Checking mock file ${file}: mockKey="${mockKey}", mock.queryParams:`, mockData.request.queryParams);
         
         if (mockKey === requestKey) {
+          console.log('[Mockifyer-Fetch] ✅ Exact match found:', file);
           exactMatch = { mockData, filename: file, filePath };
           break;
         }
@@ -106,6 +118,40 @@ class MockifyerClass {
             const mockUrl = new URL(mockData.request.url);
             if (mockUrl.pathname === requestUrl.pathname && 
                 (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
+              
+              // Check if required parameters match (if configured)
+              if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
+                const requestParams = request.queryParams || {};
+                const mockParams = mockData.request.queryParams || {};
+                
+                console.log('[Mockifyer-Fetch] Checking similarMatchRequiredParams:', {
+                  requiredParams: this.config.similarMatchRequiredParams,
+                  requestParams,
+                  mockParams,
+                  requestUrl: request.url,
+                  mockUrl: mockData.request.url
+                });
+                
+                const allRequiredMatch = this.config.similarMatchRequiredParams.every((paramName: string) => {
+                  const requestValue = requestParams[paramName];
+                  const mockValue = mockParams[paramName];
+                  const matches = requestValue === undefined && mockValue === undefined 
+                    ? true 
+                    : String(requestValue || '') === String(mockValue || '');
+                  
+                  console.log(`[Mockifyer-Fetch] Param "${paramName}": request="${requestValue}" vs mock="${mockValue}" => ${matches ? 'MATCH' : 'NO MATCH'}`);
+                  
+                  return matches;
+                });
+                
+                if (!allRequiredMatch) {
+                  console.log('[Mockifyer-Fetch] ❌ Similar match rejected: required params do not match');
+                  continue; // Required parameter differs, skip this mock
+                }
+                
+                console.log('[Mockifyer-Fetch] ✅ All required params match, using similar match');
+              }
+              
               similarMatch = { mockData, filename: file, filePath };
             }
           } catch (e) {
@@ -135,7 +181,9 @@ class MockifyerClass {
     this.httpClient.interceptors.request.use(async (config: any) => {
       // Normalize empty params: treat {} the same as undefined for consistent matching
       const rawParams = config.params || {};
+      console.log('[Mockifyer-Fetch] setupMockResponses - rawParams:', rawParams);
       const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
+      console.log('[Mockifyer-Fetch] setupMockResponses - anonymizedQueryParams:', anonymizedQueryParams);
       const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
         ? anonymizedQueryParams 
         : undefined;
@@ -148,6 +196,7 @@ class MockifyerClass {
         queryParams: normalizedParams
       };
 
+      console.log('[Mockifyer-Fetch] setupMockResponses - request.queryParams:', request.queryParams);
       const requestKey = this.generateRequestKey(request);
       const cachedMock = await this.findBestMatchingMock(request);
       

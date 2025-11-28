@@ -34,6 +34,14 @@ class MockifyerClass {
       config.failOnMissingMock = false;
     }
     
+    // Auto-enable useSimilarMatch if similarMatchRequiredParams is set
+    if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
+      if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
+        console.log('[Mockifyer] Auto-enabling useSimilarMatch because similarMatchRequiredParams is set');
+        config.useSimilarMatch = true;
+      }
+    }
+    
     this.config = config;
     this.ensureMockDataDirectory();
     
@@ -229,16 +237,33 @@ class MockifyerClass {
                 if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
                   const requestParams = request.queryParams || {};
                   const mockParams = mockData.request.queryParams || {};
+                  
+                  console.log('[Mockifyer] Checking similarMatchRequiredParams:', {
+                    requiredParams: this.config.similarMatchRequiredParams,
+                    requestParams,
+                    mockParams,
+                    requestUrl: request.url,
+                    mockUrl: mockData.request.url
+                  });
+                  
                   const allRequiredMatch = this.config.similarMatchRequiredParams.every(paramName => {
                     const requestValue = requestParams[paramName];
                     const mockValue = mockParams[paramName];
-                    if (requestValue === undefined && mockValue === undefined) return true;
-                    return String(requestValue || '') === String(mockValue || '');
+                    const matches = requestValue === undefined && mockValue === undefined 
+                      ? true 
+                      : String(requestValue || '') === String(mockValue || '');
+                    
+                    console.log(`[Mockifyer] Param "${paramName}": request="${requestValue}" vs mock="${mockValue}" => ${matches ? 'MATCH' : 'NO MATCH'}`);
+                    
+                    return matches;
                   });
                   
                   if (!allRequiredMatch) {
+                    console.log('[Mockifyer] ❌ Similar match rejected: required params do not match');
                     continue; // Required parameter differs, skip this mock
                   }
+                  
+                  console.log('[Mockifyer] ✅ All required params match, using similar match');
                 }
                 
                 similarMatch = {
@@ -592,8 +617,32 @@ class MockifyerClass {
               } else {
                 console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any)['x-mockifyer']);
               }
+              
               // CRITICAL: Mark this as a mock response so response interceptor can detect it
               (mockResponse.config as any).__mockifyer_isMock = true;
+              
+              // CRITICAL: Store headers in config to preserve them if axios strips them from response
+              // Extract headers as plain object to avoid AxiosHeaders serialization issues
+              let preservedHeaders: Record<string, string> = {};
+              if (mockResponse.headers) {
+                if (typeof (mockResponse.headers as any).toJSON === 'function') {
+                  preservedHeaders = (mockResponse.headers as any).toJSON();
+                } else if (typeof (mockResponse.headers as any).forEach === 'function') {
+                  (mockResponse.headers as any).forEach((value: string, key: string) => {
+                    if (value !== undefined && value !== null) {
+                      preservedHeaders[key.toLowerCase()] = String(value);
+                    }
+                  });
+                } else if (typeof mockResponse.headers === 'object') {
+                  Object.entries(mockResponse.headers).forEach(([key, value]) => {
+                    if (value !== undefined && value !== null) {
+                      preservedHeaders[key.toLowerCase()] = String(value);
+                    }
+                  });
+                }
+              }
+              (mockResponse.config as any).__mockifyer_headers = preservedHeaders;
+              
               return Promise.resolve(mockResponse);
             }
           } as any;
@@ -685,9 +734,18 @@ class MockifyerClass {
         }
         
         // Check if this is a mocked response - if so, don't record it
-        // Headers can be AxiosHeaders instance or plain object, and keys might be lowercase
-        let isMocked = false;
-        if (response.headers) {
+        // First check the flag set by the adapter
+        let isMocked = !!(response.config as any).__mockifyer_isMock;
+        console.log(`[Mockifyer] 🔍 Checking if response is mocked (local axios):`, {
+          hasConfig: !!response.config,
+          hasMockFlag: !!(response.config as any).__mockifyer_isMock,
+          hasHeaders: !!response.headers,
+          headersType: typeof response.headers,
+          hasGetMethod: typeof (response.headers as any)?.get === 'function'
+        });
+        
+        // If not already marked as mock, check headers
+        if (!isMocked && response.headers) {
           console.log(`[Mockifyer] 🔍 Checking headers for x-mockifyer. Headers type: ${typeof response.headers}, isFunction: ${typeof (response.headers as any).get === 'function'}`);
           
           if (typeof (response.headers as any).get === 'function') {
@@ -695,6 +753,14 @@ class MockifyerClass {
             const headerValue = (response.headers as any).get('x-mockifyer');
             isMocked = headerValue === 'true';
             console.log(`[Mockifyer] 🔍 AxiosHeaders.get('x-mockifyer'): ${headerValue}, isMocked: ${isMocked}`);
+          } else if (typeof (response.headers as any).forEach === 'function') {
+            // AxiosHeaders instance but without get method - use forEach
+            (response.headers as any).forEach((value: string, key: string) => {
+              if (key.toLowerCase() === 'x-mockifyer') {
+                console.log(`[Mockifyer] 🔍 Found x-mockifyer via forEach: ${value}`);
+                isMocked = value === 'true';
+              }
+            });
           } else if (typeof response.headers === 'object' && !Array.isArray(response.headers)) {
             // Plain object - check case-insensitively (axios normalizes headers to lowercase)
             const headers = response.headers as any;
@@ -708,9 +774,11 @@ class MockifyerClass {
               console.log(`[Mockifyer] 🔍 No x-mockifyer header found in headers. Available keys:`, headerKeys.slice(0, 10));
             }
           }
-        } else {
+        } else if (!isMocked) {
           console.log(`[Mockifyer] 🔍 No headers object found in response`);
         }
+        
+        console.log(`[Mockifyer] 🔍 Final isMocked check result (local axios): ${isMocked}`);
         
         if (isMocked) {
           console.log('[Mockifyer] ✅ Skipping recording - this is a mocked response');
@@ -1145,17 +1213,36 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // The interceptors from BaseHTTPClient need to be added to global axios
       
       // Apply request interceptors from BaseHTTPClient directly to global axios
+      console.log('[Mockifyer] Checking request interceptors:', {
+        hasRequestInterceptors: !!baseClient.requestInterceptors,
+        interceptorCount: baseClient.requestInterceptors?.length || 0,
+        recordMode: config.recordMode,
+        useGlobalAxios: config.useGlobalAxios
+      });
+      
       if (baseClient.requestInterceptors && baseClient.requestInterceptors.length > 0) {
-        baseClient.requestInterceptors.forEach((interceptor: any) => {
+        console.log('[Mockifyer] ✅ Found', baseClient.requestInterceptors.length, 'request interceptors, adding to global axios');
+        baseClient.requestInterceptors.forEach((interceptor: any, index: number) => {
           if (interceptor.onFulfilled) {
+            console.log(`[Mockifyer] Adding request interceptor ${index + 1} to global axios`);
             globalAxios.interceptors.request.use(
               async (config: any) => {
-                return await interceptor.onFulfilled(config);
+                console.log(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} called for:`, config.url);
+                const result = await interceptor.onFulfilled(config);
+                console.log(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} result:`, {
+                  url: result.url,
+                  hasAdapter: !!(result as any).adapter,
+                  hasMockResponse: !!(result as any).__mockResponse
+                });
+                return result;
               },
               interceptor.onRejected
             );
           }
         });
+        console.log('[Mockifyer] ✅ Request interceptors added to global axios');
+      } else {
+        console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
       }
       
       // CRITICAL: Add response interceptor directly to global axios for recording
@@ -1179,21 +1266,44 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               }
               
               // Check if this is a mocked response - if so, don't record it
-              let isMocked = false;
-              if (axiosResponse.headers) {
+              // First check the flag set by the adapter
+              let isMocked = !!(axiosResponse.config as any).__mockifyer_isMock;
+              console.log('[Mockifyer] 🔍 Checking if response is mocked:', {
+                hasConfig: !!axiosResponse.config,
+                hasMockFlag: !!(axiosResponse.config as any).__mockifyer_isMock,
+                hasHeaders: !!axiosResponse.headers,
+                headersType: typeof axiosResponse.headers,
+                hasGetMethod: typeof axiosResponse.headers?.get === 'function',
+                headersKeys: axiosResponse.headers ? (typeof axiosResponse.headers.forEach === 'function' ? 'AxiosHeaders (forEach)' : Object.keys(axiosResponse.headers)) : 'none'
+              });
+              
+              // If not already marked as mock, check headers
+              if (!isMocked && axiosResponse.headers) {
                 if (typeof axiosResponse.headers.get === 'function') {
                   // AxiosHeaders instance - use get method (case-insensitive)
                   const headerValue = axiosResponse.headers.get('x-mockifyer');
+                  console.log('[Mockifyer] 🔍 AxiosHeaders.get("x-mockifyer"):', headerValue);
                   isMocked = headerValue === 'true';
+                } else if (typeof axiosResponse.headers.forEach === 'function') {
+                  // AxiosHeaders instance but without get method - use forEach
+                  axiosResponse.headers.forEach((value: string, key: string) => {
+                    if (key.toLowerCase() === 'x-mockifyer') {
+                      console.log('[Mockifyer] 🔍 Found x-mockifyer via forEach:', value);
+                      isMocked = value === 'true';
+                    }
+                  });
                 } else if (typeof axiosResponse.headers === 'object' && !Array.isArray(axiosResponse.headers)) {
                   // Plain object - check case-insensitively
                   const headers = axiosResponse.headers as any;
                   const mockifyerKey = Object.keys(headers).find(key => key.toLowerCase() === 'x-mockifyer');
+                  console.log('[Mockifyer] 🔍 Plain object headers, mockifyerKey:', mockifyerKey, 'value:', mockifyerKey ? headers[mockifyerKey] : 'not found');
                   if (mockifyerKey && headers[mockifyerKey] === 'true') {
                     isMocked = true;
                   }
                 }
               }
+              
+              console.log('[Mockifyer] 🔍 Final isMocked check result:', isMocked);
               
               if (isMocked) {
                 console.log('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');

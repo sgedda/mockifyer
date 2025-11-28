@@ -21,6 +21,9 @@
   },
   "dependencies": {
     "@sgedda/mockifyer": "file:../../",
+    "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
+    "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
+    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
     "axios": "^1.6.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

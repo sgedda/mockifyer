@@ -5,7 +5,6 @@ const router = express.Router();
 
 router.get('/current/:city', async (req: Request, res: Response) => {
   try {
-    console.log('QQQQQ req', req);
     const { city } = req.params;
     const fullResponse = req.query.full === 'true' || req.query.full === '1';
     const result = await getCurrentWeather(city, fullResponse);
