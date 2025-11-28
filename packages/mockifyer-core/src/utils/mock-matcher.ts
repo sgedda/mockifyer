@@ -9,6 +9,7 @@ export interface CachedMockData {
 export interface MockMatchingConfig {
   useSimilarMatch?: boolean;
   similarMatchRequiredParams?: string[];
+  similarMatchIgnoreAllQueryParams?: boolean;
 }
 
 /**
@@ -279,6 +280,11 @@ export function findBestMatchingMock(
       // Check if path and method match
       if (mockPath === requestPath && 
           (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
+        
+        // If ignoreAllQueryParams is set, skip query param checking entirely
+        if (config.similarMatchIgnoreAllQueryParams) {
+          return cachedMock;
+        }
         
         // Check if required parameters match (if configured)
         if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {

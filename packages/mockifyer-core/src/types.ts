@@ -11,7 +11,8 @@ export interface MockifyerConfig {
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
-  similarMatchRequiredParams?: string[]; // Query parameters that must match for similar match to be used (e.g., ['season', 'league'])
+  similarMatchRequiredParams?: string[]; // Query parameters that must match for similar match to be used (e.g., ['season', 'league']). If not set, all query params are ignored by default.
+  similarMatchIgnoreAllQueryParams?: boolean; // When true, explicitly ignore all query parameters when matching (matches on path and method only). This is the default behavior when similarMatchRequiredParams is not set, but this flag makes it explicit.
   dateManipulation?: {
     // Fixed date to use instead of current date
     fixedDate?: string | Date;

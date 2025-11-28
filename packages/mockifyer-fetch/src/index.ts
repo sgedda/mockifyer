@@ -34,10 +34,31 @@ class MockifyerClass {
       config.failOnMissingMock = false;
     }
     
-    // Auto-enable useSimilarMatch if similarMatchRequiredParams is set
+    // Validate conflicting similar match settings
+    if (config.similarMatchIgnoreAllQueryParams && 
+        config.similarMatchRequiredParams && 
+        config.similarMatchRequiredParams.length > 0) {
+      console.warn(
+        '[Mockifyer-Fetch] Warning: Both similarMatchIgnoreAllQueryParams and similarMatchRequiredParams are set. ' +
+        'similarMatchIgnoreAllQueryParams takes precedence and all query parameters will be ignored. ' +
+        'similarMatchRequiredParams will be ignored.'
+      );
+      // Clear similarMatchRequiredParams to avoid confusion
+      config.similarMatchRequiredParams = undefined;
+    }
+    
+    // Auto-enable useSimilarMatch if similarMatchRequiredParams is set (and not ignored)
     if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
       if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
         console.log('[Mockifyer-Fetch] Auto-enabling useSimilarMatch because similarMatchRequiredParams is set');
+        config.useSimilarMatch = true;
+      }
+    }
+    
+    // Auto-enable useSimilarMatch if similarMatchIgnoreAllQueryParams is set
+    if (config.similarMatchIgnoreAllQueryParams) {
+      if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
+        console.log('[Mockifyer-Fetch] Auto-enabling useSimilarMatch because similarMatchIgnoreAllQueryParams is set');
         config.useSimilarMatch = true;
       }
     }
@@ -119,8 +140,11 @@ class MockifyerClass {
             if (mockUrl.pathname === requestUrl.pathname && 
                 (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
               
-              // Check if required parameters match (if configured)
-              if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
+              // If ignoreAllQueryParams is set, skip query param checking entirely
+              if (this.config.similarMatchIgnoreAllQueryParams) {
+                console.log('[Mockifyer-Fetch] ✅ Ignoring all query params, using similar match (path and method only)');
+              } else if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
+                // Check if required parameters match (if configured)
                 const requestParams = request.queryParams || {};
                 const mockParams = mockData.request.queryParams || {};
                 
@@ -150,6 +174,9 @@ class MockifyerClass {
                 }
                 
                 console.log('[Mockifyer-Fetch] ✅ All required params match, using similar match');
+              } else {
+                // No query param restrictions - match on path and method only (default behavior)
+                console.log('[Mockifyer-Fetch] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
               }
               
               similarMatch = { mockData, filename: file, filePath };

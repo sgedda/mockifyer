@@ -31,9 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `similarMatchIgnoreAllQueryParams` configuration option to explicitly ignore all query parameters when using similar matching
+- Auto-enable `useSimilarMatch` when `similarMatchRequiredParams` or `similarMatchIgnoreAllQueryParams` is set
+- Conflict resolution: `similarMatchIgnoreAllQueryParams` takes precedence over `similarMatchRequiredParams` when both are set (with warning)
 - Date manipulation documentation in README.md
 - New example file `examples/date-example.ts` showing date manipulation features
 - Mock data example for API testing
+
+### Changed
+- Improved documentation for similar matching options in config-reference.html
+- Clarified default behavior: when neither `similarMatchRequiredParams` nor `similarMatchIgnoreAllQueryParams` is set, all query params are ignored by default
 
 ## [1.0.0] - 2024-03-16
 
