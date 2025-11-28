@@ -452,6 +452,22 @@
                 padding: 12px;
             }
 
+            .team-info-wrapper {
+                flex-direction: column;
+            }
+
+            .team-json-container {
+                min-width: 100%;
+                width: 100%;
+            }
+
+            .team-logo-container {
+                min-width: 100%;
+                max-width: 100%;
+                order: -1;
+                /* Show logo first on mobile */
+            }
+
             .response-container {
                 padding: 12px;
             }
@@ -682,7 +698,7 @@
             'football-fixtures': {
                 name: 'Football Fixtures',
                 icon: '⚽',
-                apiPath: '/api/football/fixtures',
+                apiPath: '/api/football-unified/fixtures',
                 method: 'GET',
                 fields: [
                     {
@@ -717,14 +733,14 @@
                 buildUrl: (params) => {
                     const season = params.season || '2022';
                     const team = params.team ? `&team=${params.team}` : '';
-                    return `${API_BASE}/api/football/fixtures?season=${season}${team}`;
+                    return `${API_BASE}/api/football-unified/fixtures?season=${season}${team}`;
                 },
                 buildTitle: (params) => `Football Fixtures${params.season ? ` - Season ${params.season}` : ''}`
             },
             'football-standings': {
                 name: 'League Standings',
                 icon: '🏆',
-                apiPath: '/api/football/standings',
+                apiPath: '/api/football-unified/standings',
                 method: 'GET',
                 fields: [
                     {
@@ -755,14 +771,14 @@
                 buildUrl: (params) => {
                     const league = params.league || '39';
                     const season = params.season || '2022';
-                    return `${API_BASE}/api/football/standings?league=${league}&season=${season}`;
+                    return `${API_BASE}/api/football-unified/standings/${league}?season=${season}`;
                 },
                 buildTitle: (params) => `League Standings${params.season ? ` - Season ${params.season}` : ''}`
             },
             'football-team': {
                 name: 'Team Information',
                 icon: '👥',
-                apiPath: '/api/football/team',
+                apiPath: '/api/football-unified/team',
                 method: 'GET',
                 fields: [
                     {
@@ -782,14 +798,14 @@
                 ],
                 buildUrl: (params) => {
                     const team = params.team || '33';
-                    return `${API_BASE}/api/football/team/${team}`;
+                    return `${API_BASE}/api/football-unified/team/${team}`;
                 },
                 buildTitle: () => 'Team Information'
             },
             'graphql': {
                 name: 'GraphQL Query',
                 icon: '🔷',
-                apiPath: '/api/graphql/query',
+                apiPath: '/api/graphql-unified/query',
                 method: 'POST',
                 fields: [
                     {
@@ -818,7 +834,7 @@
                         defaultValue: '{"page": 3}'
                     }
                 ],
-                buildUrl: () => `${API_BASE}/api/graphql/query`,
+                buildUrl: () => `${API_BASE}/api/graphql-unified/query`,
                 buildTitle: () => 'GraphQL Query Result',
                 buildBody: (params) => ({
                     query: params.query,
@@ -1300,9 +1316,83 @@
                     responseDiv.appendChild(realInfo);
                 }
 
-                const pre = document.createElement('pre');
-                pre.textContent = JSON.stringify(result.data, null, 2);
-                responseDiv.appendChild(pre);
+                // Check if this is team information with a logo
+                const isTeamInfo = result.endpointId === 'football-team' ||
+                    (result.data && typeof result.data === 'object' && 'logo' in result.data);
+                const teamLogo = isTeamInfo && result.data?.logo ? result.data.logo : null;
+
+                if (teamLogo) {
+                    // Create a flex container for JSON and logo
+                    const contentWrapper = document.createElement('div');
+                    contentWrapper.style.cssText = `
+                        display: flex;
+                        gap: 20px;
+                        align-items: flex-start;
+                        flex-wrap: wrap;
+                    `;
+
+                    // JSON on the left
+                    const jsonContainer = document.createElement('div');
+                    jsonContainer.style.cssText = `
+                        flex: 1;
+                        min-width: 300px;
+                    `;
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(result.data, null, 2);
+                    jsonContainer.appendChild(pre);
+                    contentWrapper.appendChild(jsonContainer);
+
+                    // Logo on the right
+                    const logoContainer = document.createElement('div');
+                    logoContainer.style.cssText = `
+                        flex-shrink: 0;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        padding: 20px;
+                        background: rgba(255, 255, 255, 0.05);
+                        border-radius: 12px;
+                        min-width: 200px;
+                        max-width: 300px;
+                    `;
+
+                    const logoImg = document.createElement('img');
+                    logoImg.src = teamLogo;
+                    logoImg.alt = result.data?.name || 'Team Logo';
+                    logoImg.style.cssText = `
+                        max-width: 100%;
+                        height: auto;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                        background: white;
+                        padding: 10px;
+                    `;
+
+                    // Add team name below logo if available
+                    if (result.data?.name) {
+                        const teamName = document.createElement('div');
+                        teamName.textContent = result.data.name;
+                        teamName.style.cssText = `
+                            margin-top: 15px;
+                            font-weight: 600;
+                            font-size: 1.1em;
+                            text-align: center;
+                            color: inherit;
+                        `;
+                        logoContainer.appendChild(logoImg);
+                        logoContainer.appendChild(teamName);
+                    } else {
+                        logoContainer.appendChild(logoImg);
+                    }
+
+                    contentWrapper.appendChild(logoContainer);
+                    responseDiv.appendChild(contentWrapper);
+                } else {
+                    // Regular JSON display without logo
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(result.data, null, 2);
+                    responseDiv.appendChild(pre);
+                }
             } else {
                 const errorDiv = document.createElement('div');
                 errorDiv.innerHTML = `<p><strong>Error:</strong> ${result.error || JSON.stringify(result.data, null, 2)}</p>`;
@@ -2080,7 +2170,7 @@
             button.innerHTML = '<span class="loading"></span> Loading...';
 
             try {
-                const result = await makeRequest(`${API_BASE}/api/graphql/query`, {
+                const result = await makeRequest(`${API_BASE}/api/graphql-unified/query`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

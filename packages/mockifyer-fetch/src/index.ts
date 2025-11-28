@@ -134,14 +134,30 @@ class MockifyerClass {
         }
         
         if (!exactMatch && this.config.useSimilarMatch && !similarMatch) {
-          try {
-            const requestUrl = new URL(request.url);
-            const mockUrl = new URL(mockData.request.url);
-            if (mockUrl.pathname === requestUrl.pathname && 
-                (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-              
-              // If ignoreAllQueryParams is set, skip query param checking entirely
-              if (this.config.similarMatchIgnoreAllQueryParams) {
+          // Check if it's a GraphQL request - skip similar matching for GraphQL
+          const isGraphQL = ['POST', 'PUT', 'PATCH'].includes((request.method || 'GET').toUpperCase()) &&
+                           request.data &&
+                           (() => {
+                             try {
+                               let bodyData = request.data;
+                               if (typeof request.data === 'string') {
+                                 bodyData = JSON.parse(request.data);
+                               }
+                               return typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string';
+                             } catch {
+                               return false;
+                             }
+                           })();
+          
+          if (!isGraphQL) {
+            try {
+              const requestUrl = new URL(request.url);
+              const mockUrl = new URL(mockData.request.url);
+              if (mockUrl.pathname === requestUrl.pathname && 
+                  (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
+                
+                // If ignoreAllQueryParams is set, skip query param checking entirely
+                if (this.config.similarMatchIgnoreAllQueryParams) {
                 console.log('[Mockifyer-Fetch] ✅ Ignoring all query params, using similar match (path and method only)');
               } else if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
                 // Check if required parameters match (if configured)
@@ -179,10 +195,13 @@ class MockifyerClass {
                 console.log('[Mockifyer-Fetch] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
               }
               
-              similarMatch = { mockData, filename: file, filePath };
+                similarMatch = { mockData, filename: file, filePath };
+              }
+            } catch (e) {
+              continue;
             }
-          } catch (e) {
-            continue;
+          } else {
+            console.log('[Mockifyer-Fetch] ⚠️ Skipping similar match for GraphQL request - GraphQL requires exact body match (query + variables)');
           }
         }
       } catch (error) {
