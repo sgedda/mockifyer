@@ -7,6 +7,9 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
+    "test:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
+    "test:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
+    "test:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/fetch/fetch-auto-mock.ts",
     "test:watch": "jest --watch",
     "prepare": "npm run build",
     "release:patch": "npm version patch && git push && git push --tags",
@@ -27,13 +30,21 @@
   "devDependencies": {
     "@types/jest": "^29.5.14",
     "@types/node": "^20.11.24",
+    "axios": "^1.6.7",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.6",
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "axios": "^1.6.7",
     "axios-mock-adapter": "^1.22.0"
+  },
+  "peerDependencies": {
+    "axios": "^1.6.0 || ^1.7.0"
+  },
+  "peerDependenciesMeta": {
+    "axios": {
+      "optional": false
+    }
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

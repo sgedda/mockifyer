@@ -1,0 +1,32 @@
+{
+  "name": "@sgedda/mockifyer-fetch",
+  "version": "1.5.2",
+  "description": "Mockifyer for Fetch - API mocking and logging utility for storing and replaying API responses",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "mock",
+    "api",
+    "testing",
+    "http",
+    "intercept",
+    "fetch"
+  ],
+  "author": "sgedda",
+  "license": "MIT",
+  "dependencies": {
+    "@sgedda/mockifyer-core": "file:../mockifyer-core"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgedda/mockifyer.git"
+  }
+}
+

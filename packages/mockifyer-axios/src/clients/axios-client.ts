@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { BaseHTTPClient } from './base-http-client';
-import { HTTPRequestConfig, HTTPResponse } from '../types/http-client';
+import { BaseHTTPClient } from '@sgedda/mockifyer-core';
+import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 
 export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private instance: AxiosInstance;

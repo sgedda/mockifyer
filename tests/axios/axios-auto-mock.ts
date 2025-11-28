@@ -1,7 +1,7 @@
-import { setupMockifyer } from '../src';
+import { setupMockifyer } from '../../dist';
 import axios, { AxiosError } from 'axios';
 
-const mockDataPath = process.env.MOCKIFYER_PATH || './examples/mock-data';
+const mockDataPath = process.env.MOCKIFYER_PATH || './tests/axios/mock-data';
 const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
 const isRecordMode = process.env.MOCKIFYER_RECORD === 'true';
 

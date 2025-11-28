@@ -86,11 +86,20 @@ export function initializeMockifyer() {
       useGlobalAxios: true
     });
 
+    // Initialize Mockifyer for fetch
+    const fetchInstance = setupMockifyer({
+      mockDataPath: mockPath,
+      recordMode: process.env.MOCKIFYER_RECORD === 'true',
+      failOnMissingMock: false, // Set to false in record mode
+      httpClientType: 'fetch',
+      useGlobalFetch: true  // Patches global fetch
+    });
+
     // Log the axios instance to verify it's properly configured
     console.log('[Mockifyer] Axios instance configured:', {
       hasMockifyer: !!(instance as any).__mockifyer
     });
 
-    return instance;
+    return {instance, fetchInstance};
   }
 } 

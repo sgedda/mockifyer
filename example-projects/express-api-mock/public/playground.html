@@ -710,6 +710,39 @@
             <div id="current-weather-response"></div>
         </div>
 
+        <!-- Weather with Fetch Card -->
+        <div class="card">
+            <h2>🌤️ Weather (Using Fetch)</h2>
+            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
+                This endpoint uses <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">fetch</code>
+                instead of <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">axios</code>,
+                demonstrating that Mockifyer works with both HTTP clients. It uses a separate Mockifyer instance
+                configured with <code
+                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">httpClientType: 'fetch'</code>.
+            </p>
+            <div class="form-group">
+                <label for="weather-fetch-city-input">City Name:</label>
+                <input type="text" id="weather-fetch-city-input" placeholder="e.g., London, New York, Tokyo"
+                    value="London">
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="weather-fetch-full-response"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span>Show full API response</span>
+                </label>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="getWeatherFetch()">Get Weather (Fetch)</button>
+                <button onclick="deleteWeatherFetchMock()"
+                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
+            </div>
+            <div id="delete-weather-fetch-message" style="margin-top: 10px;"></div>
+            <div id="weather-fetch-response"></div>
+        </div>
+
         <!-- Forecast Card -->
         <div class="card">
             <h2>📅 Weather Forecast</h2>
@@ -1010,6 +1043,68 @@
             button.textContent = 'Get Current Weather';
         }
 
+        // Weather Fetch Functions
+        async function getWeatherFetch () {
+            const city = document.getElementById('weather-fetch-city-input').value.trim();
+            const fullResponse = document.getElementById('weather-fetch-full-response').checked;
+
+            if (!city) {
+                document.getElementById('weather-fetch-response').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">Please enter a city name.</div>';
+                return;
+            }
+
+            const responseDiv = document.getElementById('weather-fetch-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const url = `${API_BASE}/api/weather-fetch/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
+                const result = await makeRequest(url);
+
+                if (result.success) {
+                    displayResponse('weather-fetch-response', result, 'Weather Data (Using Fetch)');
+                    if (result.success) {
+                        loadMockFiles();
+                    }
+                } else {
+                    responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to fetch weather data'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function deleteWeatherFetchMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('weather') && file.filename.includes('fetch')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-weather-fetch-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-weather-fetch-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for weather fetch.</div>';
+            } catch (error) {
+                document.getElementById('delete-weather-fetch-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
         async function getForecast () {
             const button = event.target;
             const city = document.getElementById('forecast-city-input').value.trim();
@@ -1040,6 +1135,10 @@
         // Allow Enter key to submit
         document.getElementById('city-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') getCurrentWeather();
+        });
+
+        document.getElementById('weather-fetch-city-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') getWeatherFetch();
         });
 
         document.getElementById('forecast-city-input').addEventListener('keypress', (e) => {

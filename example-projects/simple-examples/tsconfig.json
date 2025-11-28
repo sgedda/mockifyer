@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      "@sgedda/mockifyer-core": ["../../packages/mockifyer-core/src/index.ts"],
+      "@sgedda/mockifyer-core/*": ["../../packages/mockifyer-core/src/*"],
+      "@sgedda/mockifyer-axios": ["../../packages/mockifyer-axios/src/index.ts"],
+      "@sgedda/mockifyer-axios/*": ["../../packages/mockifyer-axios/src/*"],
+      "@sgedda/mockifyer-fetch": ["../../packages/mockifyer-fetch/src/index.ts"],
+      "@sgedda/mockifyer-fetch/*": ["../../packages/mockifyer-fetch/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"],
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs"
+    },
+    "require": ["tsconfig-paths/register"]
+  }
+}
+

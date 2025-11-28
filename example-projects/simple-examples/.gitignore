@@ -1,0 +1,7 @@
+node_modules/
+dist/
+mock-data/
+*.log
+.env
+.DS_Store
+

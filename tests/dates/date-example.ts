@@ -1,4 +1,4 @@
-import { setupMockifyer, getCurrentDate } from '../src';
+import { setupMockifyer, getCurrentDate } from '../../src';
 
 async function runDateExamples() {
   // Example 1: Using current date (baseline)

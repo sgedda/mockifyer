@@ -1,5 +1,5 @@
-import { BaseHTTPClient } from './base-http-client';
-import { HTTPRequestConfig, HTTPResponse } from '../types/http-client';
+import { BaseHTTPClient } from '@sgedda/mockifyer-core';
+import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
@@ -124,4 +124,5 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       baseUrl: this.baseUrl
     };
   }
-} 
+}
+

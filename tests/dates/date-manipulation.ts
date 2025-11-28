@@ -1,4 +1,4 @@
-import { setupMockifyer, getCurrentDate } from '../src';
+import { setupMockifyer, getCurrentDate } from '../../src';
 import path from 'path';
 
 // Example 1: Using a fixed date

@@ -1,5 +1,3 @@
-import { HTTPClientType } from './clients/http-client-factory';
-
 export interface MockifyerConfig {
   mockDataPath: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
@@ -31,7 +29,6 @@ export interface MockifyerConfig {
     ignoreQueryParams?: string[];
   };
   // HTTP client configuration
-  httpClientType?: HTTPClientType;
   baseUrl?: string;
   defaultHeaders?: Record<string, string>;
   axiosInstance?: any;
@@ -73,4 +70,5 @@ export const ENV_VARS = {
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',
   MOCK_USE_SIMILAR_MATCH: 'MOCKIFYER_USE_SIMILAR_MATCH',
   MOCK_USE_SIMILAR_MATCH_CHECK_RESPONSE: 'MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE'
-} as const; 
+} as const;
+

@@ -7,14 +7,14 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation } from './utils/date';
-import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
-import { HTTPClient, HTTPResponse } from './types/http-client';
+import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from '@sgedda/mockifyer-core';
+import { initializeDateManipulation } from '@sgedda/mockifyer-core';
+import { AxiosHTTPClient } from './clients/axios-client';
+import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData 
-} from './utils/mock-matcher';
+} from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -38,15 +38,7 @@ class MockifyerClass {
     this.ensureMockDataDirectory();
     
     // Create HTTP client based on configuration
-    const httpClientConfig: HTTPClientConfig = {
-      type: config.httpClientType || 'axios',
-      baseUrl: config.baseUrl,
-      defaultHeaders: config.defaultHeaders,
-      axiosInstance: config.axiosInstance
-    };
-    
-    console.log('[Mockifyer] httpClientConfig', httpClientConfig);
-    this.httpClient = createHTTPClient(httpClientConfig);
+    this.httpClient = new AxiosHTTPClient(config.axiosInstance);
     console.log('this.httpClient', this.httpClient);
     
     console.log('[Mockifyer] record mode:', config.recordMode);
@@ -165,7 +157,22 @@ class MockifyerClass {
           if (!mockData.request || typeof mockData.request !== 'object') {
             throw new Error(`Request is invalid: ${typeof mockData.request}`);
           }
-          mockKey = this.generateRequestKey(mockData.request);
+          // Normalize empty queryParams from mock files: treat {} the same as undefined
+          const qp = mockData.request.queryParams;
+          const normalizedQueryParams = qp && Object.keys(qp).length > 0 ? qp : undefined;
+          
+          // Normalize URL: remove trailing ? if params are empty (axios might add it)
+          let normalizedMockUrl = mockData.request.url || '';
+          if (normalizedMockUrl.endsWith('?') && !normalizedQueryParams) {
+            normalizedMockUrl = normalizedMockUrl.slice(0, -1);
+          }
+          
+          const normalizedMockRequest: StoredRequest = {
+            ...mockData.request,
+            url: normalizedMockUrl,
+            queryParams: normalizedQueryParams
+          };
+          mockKey = this.generateRequestKey(normalizedMockRequest);
         } catch (error: any) {
           // Log more details about the error to help debug
           console.warn(`[Mockifyer] Error generating key for mock file ${file}:`, {
@@ -310,14 +317,26 @@ class MockifyerClass {
       }
 
       // Anonymize query params before matching (same as when saving)
-      const anonymizedQueryParams = this.anonymizeQueryParams(config.params || {});
+      // Normalize empty params: treat {} the same as undefined
+      const rawParams = config.params || {};
+      const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
+      // Normalize empty params object to undefined for consistent matching
+      const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
+        ? anonymizedQueryParams 
+        : undefined;
+      
+      // Normalize URL: remove trailing ? if params are empty (axios might add it)
+      let normalizedUrl = config.url || '';
+      if (normalizedUrl.endsWith('?') && !normalizedParams) {
+        normalizedUrl = normalizedUrl.slice(0, -1);
+      }
       
       const request: StoredRequest = {
         method: config.method || 'GET',
-        url: config.url || '',
+        url: normalizedUrl,
         headers: config.headers || {},
         data: config.data,
-        queryParams: anonymizedQueryParams
+        queryParams: normalizedParams
       };
 
       // CRITICAL: Log request data after creation
@@ -377,52 +396,33 @@ class MockifyerClass {
         console.log('[Mockifyer] Returning mock response with headers:', Object.keys(responseHeaders));
         console.log('[Mockifyer] Mock headers:', responseHeaders);
         
-        // For fetch clients, set __mockResponse. For axios clients, set adapter
-        if (this.config.httpClientType === 'fetch') {
-          // Create HTTPResponse format for fetch client
-          const mockResponse = {
-            data: mockData.response.data,
-            status: mockData.response.status,
-            statusText: 'OK',
-            headers: responseHeaders,
-            config: config as any
-          };
-          
-          console.log('[Mockifyer] 📦 Setting __mockResponse for fetch client in setupMockResponses');
-          
-          return {
-            ...config,
-            __mockResponse: Promise.resolve(mockResponse)
-          } as any;
-        } else {
-          // Axios client - use adapter
-          const axiosHeaders = new AxiosHeaders();
-          Object.entries(responseHeaders).forEach(([key, value]) => {
-            axiosHeaders.set(key, value);
-          });
-          
-          const mockResponse: AxiosResponse = {
-            data: mockData.response.data,
-            status: mockData.response.status,
-            statusText: 'OK',
-            headers: axiosHeaders,
-            config: config as any,
-            request: {}
-          };
-          
-          console.log('[Mockifyer] AxiosHeaders keys:', Array.from(axiosHeaders.keys()));
-          console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
-          
-          return {
-            ...config,
-            adapter: () => {
-              console.log('[Mockifyer] Adapter called, returning mock response');
-              console.log('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
-              console.log('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
-              return Promise.resolve(mockResponse);
-            }
-          } as any;
-        }
+        // Axios client - use adapter
+        const axiosHeaders = new AxiosHeaders();
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          axiosHeaders.set(key, value);
+        });
+        
+        const mockResponse: AxiosResponse = {
+          data: mockData.response.data,
+          status: mockData.response.status,
+          statusText: 'OK',
+          headers: axiosHeaders,
+          config: config as any,
+          request: {}
+        };
+        
+        console.log('[Mockifyer] AxiosHeaders keys:', Array.from(axiosHeaders.keys()));
+        console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
+        
+        return {
+          ...config,
+          adapter: () => {
+            console.log('[Mockifyer] Adapter called, returning mock response');
+            console.log('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
+            console.log('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
+            return Promise.resolve(mockResponse);
+          }
+        } as any;
       }
 
       if (this.config.failOnMissingMock) {
@@ -562,67 +562,30 @@ class MockifyerClass {
           // But keep it in the set briefly to prevent loops if the mock response triggers another request
           // We'll delete it when the mock response is actually returned (in BaseHTTPClient)
           
-          // For fetch clients, set __mockResponse. For axios clients, set adapter
-          if (this.config.httpClientType === 'fetch') {
-            // Create HTTPResponse format for fetch client
-            const mockResponse = {
-              data: mockData.response.data,
-              status: mockData.response.status,
-              statusText: 'OK', // StoredResponse doesn't have statusText, use default
-              headers: mockData.response.headers || {},
-              config: config as any
-            };
-            
-            // Add mockifyer headers
-            mockResponse.headers['x-mockifyer'] = 'true';
-            mockResponse.headers['x-mockifyer-timestamp'] = mockData.timestamp;
-            mockResponse.headers['x-mockifyer-filename'] = filename;
-            mockResponse.headers['x-mockifyer-filepath'] = filePath;
-            
-            console.log(`[Mockifyer] 📦 Setting __mockResponse for fetch client`);
-            
-            // Store requestKey on config for cleanup
-            const returnConfig = {
-              ...config,
-              __mockResponse: Promise.resolve(mockResponse),
-              __mockifyer_requestKey: requestKey
-            } as any;
-            
-            // For mocks, delete immediately since performRequest won't be called
-            this.processingRequests.delete(requestKey);
-            
-            return returnConfig;
-          } else {
-            // Axios client - use adapter
-            const axiosHeaders = new AxiosHeaders();
-            const responseHeaders = {
-              ...mockData.response.headers,
-              'x-mockifyer': 'true',
-              'x-mockifyer-timestamp': mockData.timestamp,
-              'x-mockifyer-filename': filename,
-              'x-mockifyer-filepath': filePath
-            };
-            Object.entries(responseHeaders).forEach(([key, value]) => {
-              axiosHeaders.set(key, value);
-            });
-
-            const mockResponse: AxiosResponse = {
-              data: mockData.response.data,
-              status: mockData.response.status,
-              statusText: 'OK',
-              headers: axiosHeaders,
-              config: config as any,
-              request: {}
-            };
-            
-            return {
-              ...config,
-              adapter: () => {
-                console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
-                return Promise.resolve(mockResponse);
+          // Axios client - use adapter
+          const mockResponse: AxiosResponse = {
+            data: mockData.response.data,
+            status: mockData.response.status,
+            statusText: 'OK',
+            headers: axiosHeaders,
+            config: config as any,
+            request: {}
+          };
+          
+          return {
+            ...config,
+            adapter: () => {
+              console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
+              console.log(`[Mockifyer] 📦 Mock response headers:`, mockResponse.headers);
+              console.log(`[Mockifyer] 📦 Mock response headers type:`, typeof mockResponse.headers);
+              if (typeof (mockResponse.headers as any).get === 'function') {
+                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any).get('x-mockifyer'));
+              } else {
+                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any)['x-mockifyer']);
               }
-            } as any;
-          }
+              return Promise.resolve(mockResponse);
+            }
+          } as any;
           }
           
           // No mock found - will make real API call (this is correct)
@@ -632,27 +595,23 @@ class MockifyerClass {
             method: config.method,
             hasParams: !!config.params,
             params: config.params,
-            httpClientType: this.config.httpClientType,
+            // httpClientType removed - axios only
             allKeys: Object.keys(config)
           });
           // CRITICAL: Don't delete from processingRequests here - wait until after performRequest completes
-          // This prevents infinite loops when useGlobalFetch: true and performRequest calls patched fetch
           // We'll delete it in the response interceptor after the request completes
           
           // CRITICAL: Always preserve params - they're needed for performRequest to add them to the URL
           const returnConfig = { ...config };
-          // Explicitly preserve params for fetch clients - even if undefined, preserve the property
-          if (this.config.httpClientType === 'fetch') {
-            // Always preserve params property, even if it's undefined
-            returnConfig.params = config.params;
-            console.log(`[Mockifyer] Return config has params:`, !!returnConfig.params, returnConfig.params);
-            if (!returnConfig.params) {
-              console.warn(`[Mockifyer] ⚠️ WARNING: params are missing from config! Original config had:`, {
-                hasParams: !!config.params,
-                params: config.params,
-                allKeys: Object.keys(config)
-              });
-            }
+          // Always preserve params property, even if it's undefined
+          returnConfig.params = config.params;
+          console.log(`[Mockifyer] Return config has params:`, !!returnConfig.params, returnConfig.params);
+          if (!returnConfig.params) {
+            console.warn(`[Mockifyer] ⚠️ WARNING: params are missing from config! Original config had:`, {
+              hasParams: !!config.params,
+              params: config.params,
+              allKeys: Object.keys(config)
+            });
           }
           // Store requestKey on config so response interceptor can clean it up
           (returnConfig as any).__mockifyer_requestKey = requestKey;
@@ -670,12 +629,17 @@ class MockifyerClass {
 
     // Add response interceptor to record responses (only for real API calls)
     // Skip recording if this is a mocked response (has x-mockifyer header)
-    this.httpClient.interceptors.response.use(
+    // CRITICAL: When useGlobalAxios is true, interceptors are added to global axios instead
+    // So we only register on httpClient when useGlobalAxios is false
+    if (!this.config.useGlobalAxios) {
+      this.httpClient.interceptors.response.use(
       (response) => {
         console.log('[Mockifyer] 🎯 Response interceptor called!', {
           url: response.config?.url,
           status: response.status,
-          hasConfig: !!response.config
+          hasConfig: !!response.config,
+          headersType: typeof response.headers,
+          hasHeaders: !!response.headers
         });
         
         // CRITICAL: Clean up processingRequests after request completes
@@ -687,25 +651,70 @@ class MockifyerClass {
         }
         
         // Check if this is a mocked response - if so, don't record it
-        const isMocked = response.headers && (
-          (typeof (response.headers as any).get === 'function' && (response.headers as any).get('x-mockifyer') === 'true') ||
-          (typeof response.headers === 'object' && !Array.isArray(response.headers) && (response.headers as any)['x-mockifyer'] === 'true')
-        );
-        
-        if (isMocked) {
-          console.log('[Mockifyer] Skipping recording - this is a mocked response');
-          return response;
+        // Headers can be AxiosHeaders instance or plain object, and keys might be lowercase
+        let isMocked = false;
+        if (response.headers) {
+          console.log(`[Mockifyer] 🔍 Checking headers for x-mockifyer. Headers type: ${typeof response.headers}, isFunction: ${typeof (response.headers as any).get === 'function'}`);
+          
+          if (typeof (response.headers as any).get === 'function') {
+            // AxiosHeaders instance - use get method (case-insensitive)
+            const headerValue = (response.headers as any).get('x-mockifyer');
+            isMocked = headerValue === 'true';
+            console.log(`[Mockifyer] 🔍 AxiosHeaders.get('x-mockifyer'): ${headerValue}, isMocked: ${isMocked}`);
+          } else if (typeof response.headers === 'object' && !Array.isArray(response.headers)) {
+            // Plain object - check case-insensitively (axios normalizes headers to lowercase)
+            const headers = response.headers as any;
+            const headerKeys = Object.keys(headers);
+            console.log(`[Mockifyer] 🔍 Plain object headers. Keys:`, headerKeys.slice(0, 15));
+            const mockifyerKey = headerKeys.find(key => key.toLowerCase() === 'x-mockifyer');
+            if (mockifyerKey) {
+              isMocked = headers[mockifyerKey] === 'true';
+              console.log(`[Mockifyer] 🔍 Found x-mockifyer header with key "${mockifyerKey}": ${headers[mockifyerKey]}, isMocked: ${isMocked}`);
+            } else {
+              console.log(`[Mockifyer] 🔍 No x-mockifyer header found in headers. Available keys:`, headerKeys.slice(0, 10));
+            }
+          }
+        } else {
+          console.log(`[Mockifyer] 🔍 No headers object found in response`);
         }
         
-        const requestKeyForRecording = this.generateRequestKey({
-          method: response.config.method?.toUpperCase() || 'GET',
-          url: response.config.url || '',
-          headers: {},
-          data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
-          queryParams: response.config.params || {}
-        });
+        if (isMocked) {
+          console.log('[Mockifyer] ✅ Skipping recording - this is a mocked response');
+          return response;
+        } else {
+          console.log('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
+        }
+        
+        // Use the request key from the request interceptor if available
+        // This ensures we use the same key that was used for matching
+        let requestKeyForRecording = (response.config as any).__mockifyer_requestKey;
+        
+        // Fallback: generate key if not stored (shouldn't happen, but safety check)
+        if (!requestKeyForRecording) {
+          // Normalize empty params: treat {} the same as undefined for consistent matching
+          const rawParams = response.config.params || {};
+          const normalizedParams = rawParams && Object.keys(rawParams).length > 0 ? rawParams : undefined;
+          
+          // Normalize URL: remove trailing ? if params are empty (axios might add it)
+          let normalizedUrl = response.config.url || '';
+          if (normalizedUrl.endsWith('?') && !normalizedParams) {
+            normalizedUrl = normalizedUrl.slice(0, -1);
+          }
+          
+          requestKeyForRecording = this.generateRequestKey({
+            method: response.config.method?.toUpperCase() || 'GET',
+            url: normalizedUrl,
+            headers: {},
+            data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
+            queryParams: normalizedParams
+          });
+        }
         
         console.log(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
+        
+        // Store the request key on the response config so saveResponse can use it
+        (response.config as any).__mockifyer_requestKey = requestKeyForRecording;
+        
         this.saveResponse(response as HTTPResponse);
         return response;
       },
@@ -722,26 +731,46 @@ class MockifyerClass {
         
         if (error.response) {
           // Check if this is a mocked error response
-          const isMocked = error.response.headers && (
-            (typeof (error.response.headers as any).get === 'function' && (error.response.headers as any).get('x-mockifyer') === 'true') ||
-            (typeof error.response.headers === 'object' && !Array.isArray(error.response.headers) && (error.response.headers as any)['x-mockifyer'] === 'true')
-          );
+          // Headers can be AxiosHeaders instance or plain object, and keys might be lowercase
+          let isMocked = false;
+          if (error.response.headers) {
+            if (typeof (error.response.headers as any).get === 'function') {
+              // AxiosHeaders instance - use get method (case-insensitive)
+              isMocked = (error.response.headers as any).get('x-mockifyer') === 'true';
+            } else if (typeof error.response.headers === 'object' && !Array.isArray(error.response.headers)) {
+              // Plain object - check case-insensitively (axios normalizes headers to lowercase)
+              const headers = error.response.headers as any;
+              isMocked = Object.keys(headers).some(key => 
+                key.toLowerCase() === 'x-mockifyer' && headers[key] === 'true'
+              );
+            }
+          }
           
           if (isMocked) {
             console.log('[Mockifyer] Skipping recording - this is a mocked error response');
             return Promise.reject(error);
           }
           
+          // Use the request key from the request interceptor if available
+          const errorRequestKey = (error.config as any)?.__mockifyer_requestKey;
+          if (errorRequestKey && error.response?.config) {
+            (error.response.config as any).__mockifyer_requestKey = errorRequestKey;
+          }
+          
           console.log('[Mockifyer] Recording error response for:', {
             method: error.response.config.method?.toUpperCase() || 'GET',
             url: error.response.config.url,
-            status: error.response.status
+            status: error.response.status,
+            requestKey: errorRequestKey || 'not found'
           });
           this.saveResponse(error.response as HTTPResponse);
         }
         return Promise.reject(error);
       }
     );
+    } else {
+      console.log('[Mockifyer] ⚠️ useGlobalAxios is true, response interceptor will be added to global axios instead');
+    }
   }
 
   private anonymizeHeaders(headers: Record<string, any>): Record<string, any> {
@@ -830,19 +859,81 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
-    // Generate request key to check if we're already saving this response
-    const tempRequest: StoredRequest = {
+    // CRITICAL SAFETY CHECK: Don't save mocked responses
+    // This is a final safeguard in case the interceptor check is bypassed
+    let isMocked = false;
+    if (response.headers) {
+      if (typeof (response.headers as any).get === 'function') {
+        isMocked = (response.headers as any).get('x-mockifyer') === 'true';
+      } else if (typeof response.headers === 'object' && !Array.isArray(response.headers)) {
+        const headers = response.headers as any;
+        const mockifyerKey = Object.keys(headers).find(key => key.toLowerCase() === 'x-mockifyer');
+        if (mockifyerKey && headers[mockifyerKey] === 'true') {
+          isMocked = true;
+        }
+      }
+    }
+    
+    if (isMocked) {
+      console.log('[Mockifyer] 🛡️ saveResponse: Blocked saving mocked response (safety check)');
+      return;
+    }
+    
+    // Use the request key from the request interceptor if available
+    // This ensures we use the same key that was used for matching
+    let requestKey = (response.config as any).__mockifyer_requestKey;
+    
+    // Fallback: generate key if not stored (shouldn't happen, but safety check)
+    if (!requestKey) {
+      console.warn(`[Mockifyer] ⚠️ requestKey not found in config, generating fallback key. This should not happen!`);
+      
+      // CRITICAL: Use the same normalization logic as the request interceptor
+      // Anonymize query params before matching (same as when saving)
+      const rawParams = response.config.params || {};
+      const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
+      // Normalize empty params object to undefined for consistent matching
+      const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
+        ? anonymizedQueryParams 
+        : undefined;
+      
+      // Normalize URL: remove trailing ? if params are empty (axios might add it)
+      let normalizedUrl = response.config.url || '';
+      if (normalizedUrl.endsWith('?') && !normalizedParams) {
+        normalizedUrl = normalizedUrl.slice(0, -1);
+      }
+      
+      const tempRequest: StoredRequest = {
+        method: response.config.method?.toUpperCase() || 'GET',
+        url: normalizedUrl,
+        headers: {}, // Headers are not part of the key
+        data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
+        queryParams: normalizedParams
+      };
+      requestKey = this.generateRequestKey(tempRequest);
+      console.log(`[Mockifyer] Generated fallback requestKey: ${requestKey.substring(0, 200)}`);
+    }
+    
+    // Prevent duplicate saves
+    // CRITICAL: Check if we're already saving this exact request key
+    if (this.savingResponses.has(requestKey)) {
+      console.log(`[Mockifyer] ⚠️ Already saving response for ${requestKey}, skipping duplicate save`);
+      return;
+    }
+    
+    // CRITICAL: Also check if a file with this request key already exists
+    // This prevents creating duplicate files even if the Set check fails (e.g., after restart)
+    const existingMock = await this.findBestMatchingMock({
       method: response.config.method?.toUpperCase() || 'GET',
       url: response.config.url || '',
       headers: {},
-      data: response.config.data, // CRITICAL: Include data for POST requests (GraphQL)
-      queryParams: response.config.params || {}
-    };
-    const requestKey = this.generateRequestKey(tempRequest);
+      data: response.config.data,
+      queryParams: response.config.params && Object.keys(response.config.params).length > 0 
+        ? response.config.params 
+        : undefined
+    });
     
-    // Prevent duplicate saves
-    if (this.savingResponses.has(requestKey)) {
-      console.log(`[Mockifyer] ⚠️ Already saving response for ${requestKey}, skipping duplicate save`);
+    if (existingMock) {
+      console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
       return;
     }
     
@@ -880,14 +971,25 @@ class MockifyerClass {
       
       // Anonymize headers and query params before saving
       const anonymizedHeaders = this.anonymizeHeaders(originalHeaders);
-      const anonymizedQueryParams = this.anonymizeQueryParams(response.config.params || {});
+      // Normalize empty params: treat {} the same as undefined for consistent matching
+      const rawParams = response.config.params || {};
+      const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
+      const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
+        ? anonymizedQueryParams 
+        : undefined;
+      
+      // Normalize URL: remove trailing ? if params are empty (axios might add it)
+      let normalizedUrl = response.config.url || '';
+      if (normalizedUrl.endsWith('?') && !normalizedParams) {
+        normalizedUrl = normalizedUrl.slice(0, -1);
+      }
       
       const request: StoredRequest = {
         method: response.config.method?.toUpperCase() || 'GET',
-        url: response.config.url || '',
+        url: normalizedUrl,
         headers: anonymizedHeaders,
         data: response.config.data,
-        queryParams: anonymizedQueryParams
+        queryParams: normalizedParams
       };
 
       // Always check cache first, unless recordSameEndpoints is true
@@ -966,7 +1068,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   const httpClient = mockifyer.getHTTPClient();
   
   // If useGlobalAxios is true, patch the global axios instance
-  if (config.useGlobalAxios && config.httpClientType !== 'fetch') {
+  if (config.useGlobalAxios) {
     const axiosInstance = (httpClient as any).instance;
     const baseClient = httpClient as any;
     
@@ -1059,6 +1161,25 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                     config: axiosResponse.config || {}
                   };
                   
+                  // CRITICAL: Check if this is a mocked response BEFORE calling the interceptor
+                  // This prevents recording mocked responses when useGlobalAxios is true
+                  let isMocked = false;
+                  if (httpResponse.headers) {
+                    const mockifyerKey = Object.keys(httpResponse.headers).find(key => 
+                      key.toLowerCase() === 'x-mockifyer'
+                    );
+                    if (mockifyerKey && httpResponse.headers[mockifyerKey] === 'true') {
+                      isMocked = true;
+                      console.log(`[Mockifyer] 🔍 Global axios interceptor: Found mocked response, skipping interceptor call`);
+                    }
+                  }
+                  
+                  // If mocked, skip calling the interceptor (which would record it)
+                  if (isMocked) {
+                    console.log('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
+                    return axiosResponse;
+                  }
+                  
                   // Call the Mockifyer interceptor with HTTPResponse format
                   const result = await interceptor.onFulfilled(httpResponse);
                   
@@ -1136,169 +1257,6 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
     }
   }
   
-  // If httpClientType is 'fetch', always store original fetch (even if not patching global)
-  // This prevents issues when multiple instances exist or when global fetch is patched elsewhere
-  if (config.httpClientType === 'fetch') {
-    // Store original fetch BEFORE any patching happens
-    // CRITICAL: Always get the TRUE original fetch, not a patched one
-    // If another instance already stored it globally, use that. Otherwise, use current global.fetch
-    let originalFetch: typeof fetch;
-    if ((global as any).__mockifyer_original_fetch) {
-      // Another instance already stored the original - use it
-      originalFetch = (global as any).__mockifyer_original_fetch;
-      console.log('[Mockifyer] ✅ Using original fetch from global store (already set by another instance)');
-    } else {
-      // This is the first instance - store the current global.fetch as original
-      originalFetch = global.fetch;
-      (global as any).__mockifyer_original_fetch = originalFetch;
-      console.log('[Mockifyer] ✅ Stored original fetch globally (first instance)');
-    }
-    
-    // Store original fetch in FetchHTTPClient so performRequest can use it
-    // This prevents infinite recursion when performRequest calls fetch()
-    const fetchClient = httpClient as any;
-    if (fetchClient && typeof fetchClient.performRequest === 'function') {
-      fetchClient._originalFetch = originalFetch;
-      console.log('[Mockifyer] ✅ Set _originalFetch on FetchHTTPClient:', {
-        hasOriginalFetch: !!fetchClient._originalFetch,
-        originalFetchType: typeof fetchClient._originalFetch,
-        useGlobalFetch: config.useGlobalFetch,
-        isFunction: typeof fetchClient._originalFetch === 'function'
-      });
-    } else {
-      console.warn('[Mockifyer] ⚠️ Could not set _originalFetch - fetchClient or performRequest not found');
-    }
-    
-    // Only patch global fetch if useGlobalFetch is true
-    if (config.useGlobalFetch) {
-      // Store reference to mockifyer instance for accessing processingRequests
-      const mockifyerInstance = mockifyer;
-      const originalFetchForPatched = (global as any).__mockifyer_original_fetch || originalFetch;
-      
-      // Replace global fetch with a wrapper that uses Mockifyer's HTTPClient
-      global.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-        // Convert fetch arguments to HTTPClient format
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-        const method = init?.method || 'GET';
-        const headers = init?.headers || {};
-        const body = init?.body;
-        
-        console.log(`[Mockifyer] 🔍 Patched fetch CALLED with URL:`, url.replace(/([?&]key=)[^&]*/, '$1***'));
-        console.log(`[Mockifyer] 🔍 Patched fetch URL has search params:`, url.includes('?'));
-        
-        // CRITICAL: Check if this request is already being processed to prevent infinite loops
-        // Generate a simple request key from URL and method (matching the format used in interceptor)
-        const simpleRequestKey = `${method}:${url}`;
-        const isProcessing = (mockifyerInstance as any).processingRequests?.has(simpleRequestKey);
-        if (isProcessing) {
-          console.log(`[Mockifyer] 🔄 Patched fetch: Request ${simpleRequestKey} already processing, using _originalFetch directly to prevent loop`);
-          // Use original fetch directly to bypass interceptors and prevent loop
-          const response = await originalFetchForPatched(input, init);
-          return response;
-        }
-        
-        // CRITICAL: Extract query parameters from URL if they exist
-        // This is important because performRequest() adds params to the URL, and when it calls
-        // the patched fetch(), we need to extract those params back out so they're preserved
-        let params: Record<string, string> | undefined = undefined;
-        let baseUrl = url;
-        try {
-          const urlObj = new URL(url);
-          if (urlObj.search) {
-            params = {};
-            urlObj.searchParams.forEach((value, key) => {
-              params![key] = value;
-            });
-            // Remove params from URL since we'll pass them separately
-            urlObj.search = '';
-            baseUrl = urlObj.toString();
-            console.log(`[Mockifyer] 🔍 Patched fetch: Extracted params from URL:`, params);
-            console.log(`[Mockifyer] 🔍 Patched fetch: Base URL without params:`, baseUrl);
-          } else {
-            console.log(`[Mockifyer] ⚠️ Patched fetch: URL has NO search params to extract!`);
-          }
-        } catch (error) {
-          // URL parsing failed, use URL as-is
-          console.warn(`[Mockifyer] ⚠️ Could not parse URL to extract params:`, error);
-        }
-        
-        // Convert Headers object to plain object if needed
-        let headersObj: Record<string, string> = {};
-        if (headers instanceof Headers) {
-          headers.forEach((value, key) => {
-            headersObj[key] = value;
-          });
-        } else if (Array.isArray(headers)) {
-          headers.forEach(([key, value]) => {
-            headersObj[key] = value;
-          });
-        } else {
-          headersObj = headers as Record<string, string>;
-        }
-        
-        try {
-          // Use Mockifyer's HTTPClient - this will go through interceptors and record if in record mode
-          // CRITICAL: Pass params separately so they're preserved through the interceptor chain
-          const requestConfig = {
-            url: baseUrl, // Use base URL without query params since we pass params separately
-            method: method as any,
-            headers: headersObj,
-            params: params, // Pass params separately so they're preserved
-            data: body ? (typeof body === 'string' ? (body.startsWith('{') || body.startsWith('[') ? JSON.parse(body) : body) : body) : undefined
-          };
-          
-          console.log(`[Mockifyer] 🔍 Patched fetch: Request config:`, {
-            url: requestConfig.url,
-            method: requestConfig.method,
-            hasParams: !!requestConfig.params,
-            params: requestConfig.params,
-            paramsCount: params ? Object.keys(params).length : 0
-          });
-          
-          const response = await httpClient.request(requestConfig);
-          
-          // Convert HTTPResponse to fetch Response
-          const responseHeaders = new Headers();
-          Object.entries(response.headers || {}).forEach(([key, value]) => {
-            responseHeaders.set(key, String(value));
-          });
-          
-          // Handle response data - if it's already a string, use it directly, otherwise stringify
-          const responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-          
-          return new Response(responseBody, {
-            status: response.status,
-            statusText: response.statusText || '',
-            headers: responseHeaders
-          });
-        } catch (error: any) {
-          // Handle errors
-          if (error.response) {
-            const responseHeaders = new Headers();
-            Object.entries(error.response.headers || {}).forEach(([key, value]) => {
-              responseHeaders.set(key, String(value));
-            });
-            
-            const errorBody = typeof error.response.data === 'string' 
-              ? error.response.data 
-              : JSON.stringify(error.response.data);
-            
-            return new Response(errorBody, {
-              status: error.response.status,
-              statusText: error.response.statusText || '',
-              headers: responseHeaders
-            });
-          }
-          throw error;
-        }
-      } as typeof fetch;
-      
-      console.log('[Mockifyer] Global fetch function patched');
-    } else {
-      console.log('[Mockifyer] Fetch client created with original fetch stored (global fetch not patched)');
-    }
-  }
-  
   // Extend the HTTPClient with cache management methods
   // Use direct property assignment to preserve prototype chain and method binding
   const extendedClient = httpClient as MockifyerInstance;
@@ -1316,11 +1274,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   return extendedClient;
 }
 
-// Re-export date utilities and types
-export * from './utils/date';
-export * from './types';
-export * from './clients/http-client-factory';
-export * from './types/http-client';
+// Re-export types and utilities from core
+export * from '@sgedda/mockifyer-core';
 
 // Re-export axios types for convenience (but users should import axios directly)
 export type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosHeaders } from 'axios'; 

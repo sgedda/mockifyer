@@ -1,0 +1,32 @@
+{
+  "name": "@sgedda/mockifyer-core",
+  "version": "1.5.2",
+  "description": "Core utilities and types for Mockifyer",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "mock",
+    "api",
+    "testing",
+    "http",
+    "intercept"
+  ],
+  "author": "sgedda",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgedda/mockifyer.git"
+  }
+}
+

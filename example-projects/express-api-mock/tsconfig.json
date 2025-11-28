@@ -12,7 +12,8 @@
     "types": ["node", "jest"],
     "baseUrl": ".",
     "paths": {
-      "@sgedda/mockifyer": ["../../src"]
+      "@sgedda/mockifyer": ["../../src"],
+      "@sgedda/mockifyer/*": ["../../src/*"]
     }
   },
   "include": ["src/**/*"],

@@ -11,6 +11,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { weatherRouter } from './routes/weather';
+import { test } from './routes/test';
+import { weatherFetchRouter } from './routes/weather-fetch';
 import { footballRouter } from './routes/football';
 import { mocksRouter } from './routes/mocks';
 import { graphqlRouter } from './routes/graphql';
@@ -18,6 +20,7 @@ import { dateConfigRouter } from './routes/date-config';
 import { dateDemoRouter } from './routes/date-demo';
 import { dateExampleRouter } from './routes/date-example';
 import { eventsRouter } from './routes/events';
+import { setupMockifyer } from '@sgedda/mockifyer';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -30,7 +33,9 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
+app.use('/api', test);
 app.use('/api/weather', weatherRouter);
+app.use('/api/weather-fetch', weatherFetchRouter);
 app.use('/api/football', footballRouter);
 app.use('/api/mocks', mocksRouter);
 app.use('/api/graphql', graphqlRouter);
@@ -38,6 +43,7 @@ app.use('/api/date-config', dateConfigRouter);
 app.use('/api/date-demo', dateDemoRouter);
 app.use('/api/date-example', dateExampleRouter);
 app.use('/api/events', eventsRouter);
+
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {
