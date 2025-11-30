@@ -37,6 +37,27 @@ export interface MockifyerConfig {
   anonymizeHeaders?: string[];
   /** Query parameters to anonymize when saving mock data (defaults to common API key params). Set to empty array to disable. */
   anonymizeQueryParams?: string[];
+  /** Database provider configuration - NOT YET AVAILABLE FOR USE
+   * 
+   * ⚠️ Database providers (SQLite, Memory, Expo) are not yet available for use.
+   * Only the filesystem provider is currently supported.
+   * 
+   * This configuration option exists for future use. Setting databaseProvider.type
+   * to anything other than 'filesystem' (or undefined) will result in an error.
+   * 
+   * Future support planned for:
+   * - 'sqlite': SQLite database storage
+   * - 'memory': In-memory storage for testing
+   * - 'expo-filesystem': React Native/Expo filesystem storage
+   */
+  databaseProvider?: {
+    /** Type of database provider: 'filesystem' (default), 'sqlite', 'memory' (in-memory), or 'expo-filesystem' (for React Native/Expo) */
+    type?: 'filesystem' | 'sqlite' | 'memory' | 'expo-filesystem';
+    /** Path for the provider (directory for filesystem/expo-filesystem, file path for SQLite, ignored for memory) */
+    path?: string;
+    /** Additional provider-specific options */
+    options?: Record<string, any>;
+  };
 }
 
 export interface StoredRequest {
