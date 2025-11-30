@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockifyer Dashboard</title>
+    <link rel="stylesheet" href="common.css">
+    <style>
+        .dashboard-header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            padding: 30px 20px;
+        }
+
+        .dashboard-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-header p {
+            color: #a0a0a0;
+            font-size: 1.1em;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            background: rgba(20, 20, 35, 0.8);
+            color: #e0e0e0;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(25, 25, 40, 0.9);
+        }
+
+        .mock-file-item {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mock-file-item:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+        }
+
+        .mock-file-item.selected {
+            border-left-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .mock-file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .mock-file-name {
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+
+        .mock-file-meta {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .mock-file-endpoint {
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        #editor-card {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+
+        #editor-card .editor-container {
+            width: 100%;
+        }
+
+        .editor-panel {
+            width: 100%;
+        }
+
+        .editor-panel {
+            background: rgba(20, 20, 35, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .editor-panel h3 {
+            color: #8b9aff;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .json-editor {
+            width: 100%;
+            min-height: 400px;
+            background: rgba(10, 10, 20, 0.9);
+            color: #e0e0e0;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .json-editor:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            font-size: 0.95em;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(102, 126, 234, 0.2);
+            color: #8b9aff;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(30, 30, 46, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: 700;
+            color: #8b9aff;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border-left: 4px solid #f44336;
+            color: #ffcdd2;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 4px solid #4caf50;
+            color: #c8e6c9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #8b9aff;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #a0a0a0;
+        }
+
+        .empty-state h3 {
+            color: #8b9aff;
+            margin-bottom: 10px;
+        }
+
+        .editor-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .toggle-btn {
+            padding: 8px 16px;
+            border: none;
+            background: rgba(102, 126, 234, 0.2);
+            color: #8b9aff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.2s ease;
+        }
+
+        .toggle-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .toggle-btn.active:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .field-editor {
+            display: none;
+        }
+
+        .field-editor.active {
+            display: block;
+        }
+
+        .json-editor-container {
+            display: none;
+        }
+
+        .json-editor-container.active {
+            display: block;
+        }
+
+        .field-group {
+            margin-bottom: 20px;
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 3px solid rgba(102, 126, 234, 0.5);
+        }
+
+        .field-group.nested {
+            margin-left: 20px;
+            border-left-color: rgba(139, 154, 255, 0.3);
+        }
+
+        .field-group.collapsible {
+            cursor: pointer;
+        }
+
+        .field-group-content {
+            margin-top: 10px;
+        }
+
+        .field-group-content.collapsed {
+            display: none;
+        }
+
+        .field-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 0.95em;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapse-icon {
+            font-size: 0.9em;
+            transition: transform 0.2s ease;
+            color: #667eea;
+            min-width: 20px;
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .field-label .field-key {
+            font-family: 'Courier New', monospace;
+            color: #a78bfa;
+        }
+
+        .field-label .field-type {
+            font-size: 0.8em;
+            color: #666;
+            background: rgba(102, 126, 234, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .field-input {
+            width: 100%;
+            padding: 10px;
+            background: rgba(10, 10, 20, 0.9);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .field-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(15, 15, 25, 0.95);
+        }
+
+        .field-input[type="number"] {
+            font-family: 'Courier New', monospace;
+        }
+
+        .field-input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .field-group-content {
+            margin-top: 10px;
+        }
+
+        .field-group-content.collapsed {
+            display: none;
+        }
+
+        .collapse-icon {
+            font-size: 0.9em;
+            transition: transform 0.2s ease;
+            color: #667eea;
+            min-width: 20px;
+            display: inline-block;
+            cursor: pointer;
+            user-select: none;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .collapse-icon:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .array-item {
+            background: rgba(30, 30, 46, 0.4);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid rgba(139, 154, 255, 0.4);
+        }
+
+        .array-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+
+        .add-field-btn {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .add-field-btn:hover {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .remove-btn {
+            background: rgba(244, 67, 54, 0.2);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .remove-btn:hover {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        /* Request Flow Styles */
+        .request-flow-section {
+            margin-top: 20px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .view-toggle button {
+            background: rgba(102, 126, 234, 0.3);
+            color: #8b9aff;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+
+        .view-toggle button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            padding-left: 30px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #667eea;
+            border: 3px solid #1a1a2e;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+        }
+
+        .request-card {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .request-card:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+            border-left-color: #8b9aff;
+        }
+
+        .request-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sequence-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9em;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .method-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .method-get {
+            background: #10b981;
+            color: white;
+        }
+
+        .method-post {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .method-put {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .method-delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .method-patch {
+            background: #8b5cf6;
+            color: white;
+        }
+
+        .request-url {
+            flex: 1;
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            word-break: break-all;
+            min-width: 200px;
+        }
+
+        .request-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85em;
+            color: #a0a0a0;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .source-file {
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .flow-view {
+            display: none;
+        }
+
+        .flow-view.active {
+            display: block;
+        }
+
+        .list-item {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 60px 80px 1fr 200px 150px;
+            gap: 15px;
+            align-items: center;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .list-item:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+        }
+
+        @media (max-width: 768px) {
+            .list-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>🎭 Mockifyer Dashboard</h1>
+            <p>View and manage your mock data</p>
+            <div style="margin-top: 20px;">
+                <a href="/request-flow.html" class="btn btn-secondary"
+                    style="text-decoration: none; display: inline-block;">🔄 View Request Flow</a>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="card">
+            <h2>📊 Statistics</h2>
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="stat-total">-</div>
+                    <div class="stat-label">Total Mocks</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="stat-size">-</div>
+                    <div class="stat-label">Total Size</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="stat-endpoints">-</div>
+                    <div class="stat-label">Unique Endpoints</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mock Files Browser -->
+        <div class="card">
+            <h2>📁 Mock Files</h2>
+            <input type="text" class="search-box" id="search-box"
+                placeholder="🔍 Search by filename, endpoint, or method..." onkeyup="filterFiles()">
+            <div id="mock-files-list"></div>
+        </div>
+
+        <!-- Editor -->
+        <div class="card" id="editor-card" style="display: none;">
+            <h2>✏️ Edit Mock Data</h2>
+            <div id="editor-message"></div>
+            <div class="editor-container">
+                <div class="editor-panel">
+                    <h3>Request <span style="color: #666; font-size: 0.8em; font-weight: normal;">(Read-only)</span>
+                    </h3>
+                    <textarea class="json-editor" id="request-editor" readonly></textarea>
+                </div>
+                <div class="editor-panel">
+                    <h3>Response Data</h3>
+                    <div class="editor-toggle">
+                        <button class="toggle-btn active" id="field-toggle" onclick="switchEditor('field')">📝 Field
+                            Editor</button>
+                        <button class="toggle-btn" id="json-toggle" onclick="switchEditor('json')">📄 JSON
+                            Editor</button>
+                    </div>
+
+                    <!-- Field Editor -->
+                    <div class="field-editor active" id="field-editor">
+                        <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                            <button class="btn btn-small btn-secondary" onclick="expandAllGroups()">📂 Expand
+                                All</button>
+                            <button class="btn btn-small btn-secondary" onclick="collapseAllGroups()">📁 Collapse
+                                All</button>
+                        </div>
+                        <div id="field-editor-content"></div>
+                    </div>
+
+                    <!-- JSON Editor -->
+                    <div class="json-editor-container" id="json-editor-container">
+                        <textarea class="json-editor" id="response-editor"></textarea>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="saveMock()">💾 Save Changes</button>
+                        <button class="btn btn-secondary" id="format-btn" onclick="formatJSON('response-editor')"
+                            style="display: none;">✨ Format JSON</button>
+                        <button class="btn btn-danger" onclick="deleteMock()">🗑️ Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let mockFiles = [];
+        let selectedFile = null;
+        let currentResponseData = null; // For JSON editor: response.data
+        let currentResponseObject = null; // For field editor: entire response object
+        let editorMode = 'field'; // 'field' or 'json'
+
+        // Load mock files on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadMockFiles();
+            loadStats();
+            // Refresh every 5 seconds
+            setInterval(() => {
+                loadMockFiles();
+                loadStats();
+            }, 5000);
+        });
+
+        async function loadMockFiles () {
+            try {
+                const response = await fetch('/api/mocks');
+                const data = await response.json();
+                mockFiles = data.files || [];
+                renderMockFiles();
+            } catch (error) {
+                console.error('Error loading mock files:', error);
+                document.getElementById('mock-files-list').innerHTML =
+                    '<div class="error-message">Failed to load mock files: ' + error.message + '</div>';
+            }
+        }
+
+        async function loadStats () {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                document.getElementById('stat-total').textContent = data.totalFiles || 0;
+                document.getElementById('stat-size').textContent = formatBytes(data.totalSize || 0);
+                document.getElementById('stat-endpoints').textContent = Object.keys(data.endpoints || {}).length;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        function renderMockFiles () {
+            const container = document.getElementById('mock-files-list');
+            const searchTerm = document.getElementById('search-box').value.toLowerCase();
+
+            if (mockFiles.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No mock files found</h3><p>Start recording API calls to see mock data here.</p></div>';
+                return;
+            }
+
+            const filtered = mockFiles.filter(file => {
+                if (!searchTerm) return true;
+                const search = searchTerm.toLowerCase();
+                return file.filename.toLowerCase().includes(search) ||
+                    (file.endpoint && file.endpoint.toLowerCase().includes(search)) ||
+                    file.filename.toLowerCase().includes(search);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No files match your search</h3></div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(file => `
+                <div class="mock-file-item ${selectedFile === file.filename ? 'selected' : ''}" 
+                     onclick="selectFile('${file.filename}')">
+                    <div class="mock-file-header">
+                        <div class="mock-file-name">${escapeHtml(file.filename)}</div>
+                        <div class="mock-file-meta">${formatBytes(file.size)} • ${formatDate(file.modified)}</div>
+                    </div>
+                    ${file.endpoint ? `<div class="mock-file-endpoint">${escapeHtml(file.endpoint)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function selectFile (filename) {
+            selectedFile = filename;
+            renderMockFiles();
+
+            try {
+                const response = await fetch(`/api/mocks/${filename}`);
+                const data = await response.json();
+
+                // Request is read-only - just display it
+                document.getElementById('request-editor').value = JSON.stringify(data.data.request, null, 2);
+
+                // Store full response object (needed for saving)
+                currentResponseObject = data.data.response || { status: 200, data: {}, headers: {} };
+
+                // Store only response.data for both editors (what we actually edit)
+                currentResponseData = currentResponseObject.data || {};
+
+                // Update JSON editor with response.data
+                document.getElementById('response-editor').value = JSON.stringify(currentResponseData, null, 2);
+
+                // Update field editor with only response.data (not status, headers, etc.)
+                renderFieldEditor(currentResponseData);
+
+                // Show editor card
+                const editorCard = document.getElementById('editor-card');
+                if (editorCard) {
+                    editorCard.style.display = 'block';
+                    editorCard.scrollIntoView({ behavior: 'smooth' });
+                }
+                document.getElementById('editor-message').innerHTML = '';
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Failed to load file: ' + error.message + '</div>';
+            }
+        }
+
+
+        function switchEditor (mode) {
+            editorMode = mode;
+
+            if (mode === 'field') {
+                document.getElementById('field-toggle').classList.add('active');
+                document.getElementById('json-toggle').classList.remove('active');
+                document.getElementById('field-editor').classList.add('active');
+                document.getElementById('json-editor-container').classList.remove('active');
+                document.getElementById('format-btn').style.display = 'none';
+
+                // Sync JSON editor (response.data) to field editor (show only response.data)
+                try {
+                    const jsonData = JSON.parse(document.getElementById('response-editor').value);
+                    currentResponseData = jsonData;
+                    // Update the data field of the response object for saving
+                    if (!currentResponseObject) {
+                        currentResponseObject = { status: 200, data: {}, headers: {} };
+                    }
+                    currentResponseObject.data = jsonData;
+                    // Render only response.data in field editor
+                    renderFieldEditor(currentResponseData);
+                } catch (e) {
+                    // Invalid JSON, keep current field editor
+                    if (currentResponseData) {
+                        renderFieldEditor(currentResponseData);
+                    }
+                }
+            } else {
+                document.getElementById('json-toggle').classList.add('active');
+                document.getElementById('field-toggle').classList.remove('active');
+                document.getElementById('field-editor').classList.remove('active');
+                document.getElementById('json-editor-container').classList.add('active');
+                document.getElementById('format-btn').style.display = 'inline-block';
+
+                // Sync field editor (response.data) to JSON editor
+                try {
+                    const fieldData = collectFieldEditorData();
+                    // Extract only the 'response' field from the collected data
+                    const responseField = fieldData.response !== undefined ? fieldData.response : fieldData;
+                    currentResponseData = responseField;
+                    // Update the data field of the response object for saving
+                    if (!currentResponseObject) {
+                        currentResponseObject = { status: 200, data: {}, headers: {} };
+                    }
+                    currentResponseObject.data = responseField;
+                    // Update JSON editor with only the response field
+                    document.getElementById('response-editor').value = JSON.stringify(responseField, null, 2);
+                } catch (e) {
+                    console.error('Error syncing field editor:', e);
+                }
+            }
+        }
+
+        function renderFieldEditor (data, parentKey = '', level = 0) {
+            const container = document.getElementById('field-editor-content');
+
+            if (!data || typeof data !== 'object') {
+                container.innerHTML = '<div class="empty-state"><p>No data to edit</p></div>';
+                return;
+            }
+
+            // At top level (level 0), only show the 'response' field and its subfields
+            if (level === 0 && !Array.isArray(data) && data.response !== undefined) {
+                // Only render the 'response' field, using 'response' as the parent key
+                const responseData = data.response;
+                if (Array.isArray(responseData)) {
+                    container.innerHTML = renderArrayFields(responseData, 'response', level);
+                } else if (responseData && typeof responseData === 'object') {
+                    // Render the response object fields directly, but with 'response' as parent key
+                    container.innerHTML = renderObjectFields(responseData, 'response', level);
+                } else {
+                    // Primitive value - wrap in object with 'response' key
+                    container.innerHTML = renderObjectFields({ response: responseData }, parentKey, level);
+                }
+                return;
+            }
+
+            if (Array.isArray(data)) {
+                container.innerHTML = renderArrayFields(data, parentKey, level);
+            } else {
+                container.innerHTML = renderObjectFields(data, parentKey, level);
+            }
+        }
+
+        function renderObjectFields (obj, parentKey = '', level = 0) {
+            let html = '';
+            const isNested = level > 0;
+            const shouldCollapse = level > 0; // Collapse nested groups by default
+
+            for (const [key, value] of Object.entries(obj)) {
+                const fieldId = parentKey ? `${parentKey}.${key}` : key;
+                const valueType = getValueType(value);
+                const isComplex = valueType === 'object' || valueType === 'array';
+                const groupId = `group-${fieldId.replace(/[\.\[\]]/g, '-')}`;
+
+                html += `<div class="field-group ${isNested ? 'nested' : ''}">`;
+                html += `<div class="field-label" style="cursor: ${isComplex ? 'pointer' : 'default'};" ${isComplex ? `onclick="toggleGroup('${groupId}')"` : ''}>`;
+                if (isComplex) {
+                    html += `<span class="collapse-icon ${shouldCollapse ? 'collapsed' : ''}" onclick="event.stopPropagation(); toggleGroup('${groupId}')">▼</span>`;
+                } else {
+                    html += `<span class="collapse-icon" style="opacity: 0; cursor: default;">▼</span>`;
+                }
+                html += `<span class="field-key">${escapeHtml(key)}</span>`;
+                html += `<span class="field-type">${valueType}</span>`;
+                html += `</div>`;
+
+                if (isComplex) {
+                    html += `<div class="field-group-content ${shouldCollapse ? 'collapsed' : ''}" id="${groupId}">`;
+                }
+
+                if (valueType === 'object') {
+                    html += renderObjectFields(value, fieldId, level + 1);
+                } else if (valueType === 'array') {
+                    html += renderArrayFields(value, fieldId, level + 1);
+                } else {
+                    html += renderInputField(fieldId, value, valueType);
+                }
+
+                if (isComplex) {
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            }
+
+            return html;
+        }
+
+        function renderArrayFields (arr, parentKey = '', level = 0) {
+            let html = `<div class="array-container">`;
+            const shouldCollapse = level > 0; // Collapse nested arrays by default
+
+            arr.forEach((item, index) => {
+                const fieldId = `${parentKey}[${index}]`;
+                const valueType = getValueType(item);
+                const isComplex = valueType === 'object' || valueType === 'array';
+                const itemId = `array-item-${fieldId.replace(/[\.\[\]]/g, '-')}`;
+
+                html += `<div class="array-item">`;
+                html += `<div class="field-label" style="cursor: ${isComplex ? 'pointer' : 'default'};" ${isComplex ? `onclick="toggleGroup('${itemId}')"` : ''}>`;
+                if (isComplex) {
+                    html += `<span class="collapse-icon ${shouldCollapse ? 'collapsed' : ''}" onclick="event.stopPropagation(); toggleGroup('${itemId}')">▼</span>`;
+                } else {
+                    html += `<span class="collapse-icon" style="opacity: 0; cursor: default;">▼</span>`;
+                }
+                html += `<span>Item ${index + 1}</span>`;
+                html += `<span class="field-type">${valueType}</span>`;
+                html += `<button class="btn btn-small remove-btn" onclick="event.stopPropagation(); removeArrayItem('${parentKey}', ${index})">Remove</button>`;
+                html += `</div>`;
+
+                if (isComplex) {
+                    html += `<div class="field-group-content ${shouldCollapse ? 'collapsed' : ''}" id="${itemId}">`;
+                }
+
+                if (valueType === 'object') {
+                    html += renderObjectFields(item, fieldId, level + 1);
+                } else if (valueType === 'array') {
+                    html += renderArrayFields(item, fieldId, level + 1);
+                } else {
+                    html += renderInputField(fieldId, item, valueType);
+                }
+
+                if (isComplex) {
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            });
+
+            html += `<button class="btn btn-small add-field-btn" onclick="addArrayItem('${parentKey}')">+ Add Item</button>`;
+            html += `</div>`;
+
+            return html;
+        }
+
+        function toggleGroup (groupId) {
+            const content = document.getElementById(groupId);
+            if (!content) return;
+
+            const isCollapsed = content.classList.contains('collapsed');
+            const group = content.closest('.field-group, .array-item');
+            const icon = group?.querySelector('.collapse-icon');
+
+            if (isCollapsed) {
+                content.classList.remove('collapsed');
+                if (icon) icon.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+                if (icon) icon.classList.add('collapsed');
+            }
+        }
+
+        function expandAllGroups () {
+            document.querySelectorAll('.field-group-content.collapsed').forEach(content => {
+                content.classList.remove('collapsed');
+                const group = content.closest('.field-group, .array-item');
+                const icon = group?.querySelector('.collapse-icon');
+                if (icon) icon.classList.remove('collapsed');
+            });
+        }
+
+        function collapseAllGroups () {
+            document.querySelectorAll('.field-group-content:not(.collapsed)').forEach(content => {
+                content.classList.add('collapsed');
+                const group = content.closest('.field-group, .array-item');
+                const icon = group?.querySelector('.collapse-icon');
+                if (icon) icon.classList.add('collapsed');
+            });
+        }
+
+        function renderInputHandler (event) {
+            // Only toggle if clicking on the label, not on inputs
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'BUTTON') {
+                return;
+            }
+            const group = event.currentTarget;
+            const content = group.querySelector('.field-group-content');
+            if (content) {
+                toggleGroup(content.id);
+            }
+        }
+
+        function renderInputField (fieldId, value, type) {
+            let input = '';
+
+            if (type === 'boolean') {
+                input = `<input type="checkbox" id="${fieldId}" ${value ? 'checked' : ''} onchange="updateFieldValue('${fieldId}', this.checked)" onclick="event.stopPropagation()">`;
+            } else if (type === 'number') {
+                input = `<input type="number" class="field-input" id="${fieldId}" value="${value}" onchange="updateFieldValue('${fieldId}', parseFloat(this.value) || 0)" onclick="event.stopPropagation()">`;
+            } else if (type === 'string' && (value.length > 100 || value.includes('\n'))) {
+                input = `<textarea class="field-input" id="${fieldId}" rows="4" onchange="updateFieldValue('${fieldId}', this.value)" onclick="event.stopPropagation()">${escapeHtml(value)}</textarea>`;
+            } else {
+                input = `<input type="text" class="field-input" id="${fieldId}" value="${escapeHtml(String(value))}" onchange="updateFieldValue('${fieldId}', this.value)" onclick="event.stopPropagation()">`;
+            }
+
+            return input;
+        }
+
+        function getValueType (value) {
+            if (value === null) return 'null';
+            if (Array.isArray(value)) return 'array';
+            return typeof value;
+        }
+
+        function updateFieldValue (fieldId, newValue) {
+            const keys = fieldId.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            // Navigate to parent
+            for (let i = 0; i < keys.length - 1; i++) {
+                const key = keys[i];
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            // Update value
+            const lastKey = keys[keys.length - 1];
+            if (Array.isArray(current)) {
+                current[parseInt(lastKey)] = newValue;
+            } else {
+                current[lastKey] = newValue;
+            }
+
+            // Sync to JSON editor if in JSON mode
+            if (editorMode === 'json') {
+                document.getElementById('response-editor').value = JSON.stringify(currentResponseData, null, 2);
+            }
+        }
+
+        function collectFieldEditorData () {
+            // Collect all field values from the form
+            const inputs = document.querySelectorAll('#field-editor-content input, #field-editor-content textarea');
+            // Use currentResponseData (only response.data) for field editor
+            const data = JSON.parse(JSON.stringify(currentResponseData || {})); // Deep clone
+
+            inputs.forEach(input => {
+                const fieldId = input.id;
+                if (!fieldId) return;
+
+                const keys = fieldId.split(/[\.\[\]]/).filter(k => k !== '');
+                let current = data;
+
+                // Navigate to parent
+                for (let i = 0; i < keys.length - 1; i++) {
+                    const key = keys[i];
+                    if (Array.isArray(current)) {
+                        current = current[parseInt(key)];
+                    } else {
+                        current = current[key];
+                    }
+                }
+
+                // Set value
+                const lastKey = keys[keys.length - 1];
+                let value = input.type === 'checkbox' ? input.checked : input.value;
+
+                // Type conversion
+                if (input.type === 'number') {
+                    value = parseFloat(value) || 0;
+                }
+
+                if (Array.isArray(current)) {
+                    current[parseInt(lastKey)] = value;
+                } else {
+                    current[lastKey] = value;
+                }
+            });
+
+            // Only return the 'response' field if it exists, otherwise return the whole data
+            if (data.response !== undefined) {
+                return { response: data.response };
+            }
+            return data;
+        }
+
+        function removeArrayItem (parentKey, index) {
+            const keys = parentKey.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            for (const key of keys) {
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            if (Array.isArray(current)) {
+                current.splice(index, 1);
+                renderFieldEditor(currentResponseData);
+            }
+        }
+
+        function addArrayItem (parentKey) {
+            const keys = parentKey.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            for (const key of keys) {
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            if (Array.isArray(current)) {
+                // Determine type from existing items or default to empty object
+                const newItem = current.length > 0 ?
+                    (typeof current[0] === 'object' ? {} : '') :
+                    {};
+                current.push(newItem);
+                renderFieldEditor(currentResponseData);
+            }
+        }
+
+        async function saveMock () {
+            if (!selectedFile) return;
+
+            let responseData;
+
+            try {
+                if (editorMode === 'field') {
+                    // Collect field editor data, then extract only the 'response' field
+                    const fieldData = collectFieldEditorData();
+                    responseData = fieldData.response !== undefined ? fieldData.response : fieldData;
+                } else {
+                    // Parse from JSON editor - should only contain response.data
+                    const responseEditor = document.getElementById('response-editor');
+                    const parsed = JSON.parse(responseEditor.value);
+
+                    // Safeguard: if someone manually edited JSON to include full response object,
+                    // extract only the data field
+                    if (parsed && typeof parsed === 'object' && 'data' in parsed && ('status' in parsed || 'headers' in parsed)) {
+                        // This looks like a full response object, extract only data
+                        responseData = parsed.data || {};
+                    } else {
+                        // Normal case: JSON editor contains only response.data
+                        responseData = parsed;
+                    }
+                }
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Invalid JSON: ' + error.message + '</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/mocks/${selectedFile}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ responseData })
+                });
+
+                if (response.ok) {
+                    document.getElementById('editor-message').innerHTML =
+                        '<div class="success-message">✓ Mock file saved successfully!</div>';
+                    loadMockFiles();
+                    setTimeout(() => {
+                        document.getElementById('editor-message').innerHTML = '';
+                    }, 3000);
+                } else {
+                    const error = await response.json();
+                    document.getElementById('editor-message').innerHTML =
+                        '<div class="error-message">Failed to save: ' + (error.details || error.error) + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Error saving file: ' + error.message + '</div>';
+            }
+        }
+
+        async function deleteMock () {
+            if (!selectedFile) return;
+            if (!confirm(`Are you sure you want to delete ${selectedFile}?`)) return;
+
+            try {
+                const response = await fetch(`/api/mocks/${selectedFile}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    document.getElementById('editor-card').style.display = 'none';
+                    selectedFile = null;
+                    loadMockFiles();
+                    loadStats();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to delete: ' + (error.details || error.error));
+                }
+            } catch (error) {
+                alert('Error deleting file: ' + error.message);
+            }
+        }
+
+        function formatJSON (editorId) {
+            const editor = document.getElementById(editorId);
+            try {
+                const parsed = JSON.parse(editor.value);
+                editor.value = JSON.stringify(parsed, null, 2);
+            } catch (error) {
+                alert('Invalid JSON: ' + error.message);
+            }
+        }
+
+        function filterFiles () {
+            renderMockFiles();
+        }
+
+        function formatBytes (bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatDate (date) {
+            return new Date(date).toLocaleString();
+        }
+
+        function escapeHtml (text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>

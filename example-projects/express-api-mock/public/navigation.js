@@ -7,6 +7,8 @@ function renderNavigation(activePage) {
     const pages = [
         { href: 'getting-started.html', label: 'Getting Started' },
         { href: 'playground.html', label: 'Playground' },
+        { href: 'request-flow.html', label: 'Request Flow' },
+        { href: 'roadmap.html', label: 'Roadmap' },
         { href: 'config-reference.html', label: 'Settings' }
     ];
 
