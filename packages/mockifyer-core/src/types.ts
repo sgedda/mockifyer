@@ -51,11 +51,11 @@ export interface MockifyerConfig {
    * - 'expo-filesystem': React Native/Expo filesystem storage
    */
   databaseProvider?: {
-    /** Type of database provider: 'filesystem' (default), 'sqlite', 'memory' (in-memory), or 'expo-filesystem' (for React Native/Expo) */
-    type?: 'filesystem' | 'sqlite' | 'memory' | 'expo-filesystem';
+    /** Type of database provider: 'filesystem' (default), 'sqlite', 'memory' (in-memory), 'expo-filesystem' (for React Native/Expo), or 'hybrid' (device + project folder) */
+    type?: 'filesystem' | 'sqlite' | 'memory' | 'expo-filesystem' | 'hybrid';
     /** Path for the provider (directory for filesystem/expo-filesystem, file path for SQLite, ignored for memory) */
     path?: string;
-    /** Additional provider-specific options */
+    /** Additional provider-specific options (e.g., metroPort for hybrid provider) */
     options?: Record<string, any>;
   };
 }

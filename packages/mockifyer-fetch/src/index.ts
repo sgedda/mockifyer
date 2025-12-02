@@ -1,6 +1,17 @@
 // Fetch-only Mockifyer implementation
-import fs from 'fs';
-import path from 'path';
+// Conditionally import fs - will be undefined in React Native
+let fs: typeof import('fs') | undefined;
+let path: typeof import('path') | undefined;
+
+try {
+  // Try to require fs and path - will fail in React Native where they're stubbed
+  fs = require('fs');
+  path = require('path');
+} catch (e) {
+  // fs/path not available (React Native environment)
+  fs = undefined;
+  path = undefined;
+}
 
 // Import from core package
 import {
@@ -12,7 +23,9 @@ import {
   HTTPResponse,
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
-  initializeDateManipulation
+  initializeDateManipulation,
+  DatabaseProvider,
+  createProvider
 } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
@@ -22,16 +35,19 @@ class MockifyerClass {
   private httpClient: HTTPClient;
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
+  private databaseProvider?: DatabaseProvider;
 
   constructor(config: MockifyerConfig) {
-    // Validate database provider - only filesystem is currently supported
-    if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'filesystem') {
-      throw new Error(
-        `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
-        `Only 'filesystem' provider is currently supported. ` +
-        `Database providers (SQLite, Memory, Expo) are planned for future releases. ` +
-        `Please remove the databaseProvider configuration or set type to 'filesystem' (or undefined).`
-      );
+    // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
+    if (config.databaseProvider && config.databaseProvider.type) {
+      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory'];
+      if (!supportedTypes.includes(config.databaseProvider.type)) {
+        throw new Error(
+          `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
+          `Supported types: ${supportedTypes.join(', ')}. ` +
+          `Please use one of the supported provider types.`
+        );
+      }
     }
     
     // Validate and normalize conflicting settings
@@ -74,7 +90,24 @@ class MockifyerClass {
     }
     
     this.config = config;
-    this.ensureMockDataDirectory();
+    
+    // Initialize database provider if specified
+    if (config.databaseProvider && config.databaseProvider.type) {
+      console.log(`[Mockifyer-Fetch] Initializing database provider: ${config.databaseProvider.type}`);
+      this.databaseProvider = createProvider(config.databaseProvider.type, config.databaseProvider);
+      const initResult = this.databaseProvider.initialize();
+      // Handle async initialization (expo-filesystem provider has async initialize)
+      if (initResult instanceof Promise) {
+        initResult.catch((error) => {
+          console.error('[Mockifyer-Fetch] Error initializing database provider:', error);
+        });
+      }
+      console.log(`[Mockifyer-Fetch] Database provider initialized: ${config.databaseProvider.type}`);
+    } else {
+      // Fallback to Node.js filesystem
+      console.log('[Mockifyer-Fetch] No database provider specified, using Node.js filesystem');
+      this.ensureMockDataDirectory();
+    }
     
     // Create fetch HTTP client
     this.httpClient = new FetchHTTPClient({ 
@@ -86,14 +119,18 @@ class MockifyerClass {
     if(!config.recordSameEndpoints) {
       this.loadMockData();
     }
-    if (!config.recordMode) {
-      this.setupMockResponses();
-    } else {
-      this.setupInterceptors();
-    }
+    // Always set up mock response interceptor (to use existing mocks)
+    this.setupMockResponses();
+    
+    // Set up response interceptor to save responses when recordMode is enabled
+    this.setupResponseInterceptor();
   }
 
   private ensureMockDataDirectory(): void {
+    // Only use fs if available (Node.js environment) and no database provider is set
+    if (!fs || this.databaseProvider) {
+      return;
+    }
     if (!fs.existsSync(this.config.mockDataPath)) {
       fs.mkdirSync(this.config.mockDataPath, { recursive: true });
     }
@@ -104,13 +141,93 @@ class MockifyerClass {
   }
 
   private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
+    // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
+    const requestUrl = request?.url || '';
+    if (requestUrl.includes('/mockifyer-save') || 
+        requestUrl.includes('/mockifyer-clear') || 
+        requestUrl.includes('/mockifyer-sync')) {
+      console.log('[Mockifyer-Fetch] ⚠️ Skipping findBestMatchingMock - request URL is a sync endpoint:', requestUrl);
+      return undefined;
+    }
+    
     const requestKey = this.generateRequestKey(request);
     
-    // Always read directly from files (no cache)
+    // CRITICAL: Also check requestKey for sync endpoint URLs (defense in depth)
+    if (requestKey.includes('/mockifyer-save') || 
+        requestKey.includes('/mockifyer-clear') || 
+        requestKey.includes('/mockifyer-sync')) {
+      console.log('[Mockifyer-Fetch] ⚠️ Skipping findBestMatchingMock - requestKey contains sync endpoint');
+      return undefined;
+    }
+    
+    // Use database provider if available, otherwise fallback to filesystem
+    if (this.databaseProvider) {
+      console.log('[Mockifyer-Fetch] findBestMatchingMock - Using database provider');
+      return await this.findBestMatchingMockFromProvider(request);
+    }
+    
+    console.log('[Mockifyer-Fetch] findBestMatchingMock - No database provider, using filesystem fallback');
+    // Fallback to Node.js filesystem
     return this.findBestMatchingMockFromFiles(request);
   }
 
+  private async findBestMatchingMockFromProvider(request: StoredRequest): Promise<CachedMockData | undefined> {
+    if (!this.databaseProvider) {
+      console.log('[Mockifyer-Fetch] findBestMatchingMockFromProvider - No database provider');
+      return undefined;
+    }
+
+    // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
+    const requestUrl = request?.url || '';
+    if (requestUrl.includes('/mockifyer-save') || 
+        requestUrl.includes('/mockifyer-clear') || 
+        requestUrl.includes('/mockifyer-sync')) {
+      console.log('[Mockifyer-Fetch] ⚠️ Skipping findBestMatchingMockFromProvider - request URL is a sync endpoint:', requestUrl);
+      return undefined;
+    }
+
+    const requestKey = this.generateRequestKey(request);
+    
+    // CRITICAL: Also check requestKey for sync endpoint URLs (defense in depth)
+    if (requestKey.includes('/mockifyer-save') || 
+        requestKey.includes('/mockifyer-clear') || 
+        requestKey.includes('/mockifyer-sync')) {
+      console.log('[Mockifyer-Fetch] ⚠️ Skipping findBestMatchingMockFromProvider - requestKey contains sync endpoint');
+      return undefined;
+    }
+    
+    console.log('[Mockifyer-Fetch] findBestMatchingMockFromProvider - Looking for requestKey:', requestKey);
+    console.log('[Mockifyer-Fetch] findBestMatchingMockFromProvider - Provider type:', this.config.databaseProvider?.type);
+    
+    // Try exact match first
+    const exactMatch = await this.databaseProvider.findExactMatch(request, requestKey);
+    if (exactMatch) {
+      console.log('[Mockifyer-Fetch] ✅ Exact match found via provider:', exactMatch.filename);
+      return exactMatch;
+    }
+    console.log('[Mockifyer-Fetch] ⚠️ No exact match found via provider');
+
+    // Try similar match if enabled
+    if (this.config.useSimilarMatch) {
+      console.log('[Mockifyer-Fetch] Trying similar match...');
+      const similarMatches = await this.databaseProvider.findAllForSimilarMatch(request);
+      if (similarMatches && similarMatches.length > 0) {
+        console.log('[Mockifyer-Fetch] ✅ Similar match found via provider:', similarMatches[0].filename);
+        // Return first similar match
+        return similarMatches[0];
+      }
+      console.log('[Mockifyer-Fetch] ⚠️ No similar match found via provider');
+    }
+
+    return undefined;
+  }
+
   private findBestMatchingMockFromFiles(request: StoredRequest): CachedMockData | undefined {
+    // Only use fs if available (Node.js environment)
+    // This method should never be called when using a database provider
+    if (!fs || !path) {
+      return undefined;
+    }
     if (!fs.existsSync(this.config.mockDataPath)) {
       return undefined;
     }
@@ -126,7 +243,7 @@ class MockifyerClass {
     
     for (const file of files) {
       try {
-        const filePath = path.join(this.config.mockDataPath, file);
+        const filePath = path!.join(this.config.mockDataPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -223,6 +340,10 @@ class MockifyerClass {
   }
 
   private loadMockData(): void {
+    // Skip if using database provider or fs not available
+    if (this.databaseProvider || !fs) {
+      return;
+    }
     console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
@@ -235,6 +356,17 @@ class MockifyerClass {
 
   private setupMockResponses(): void {
     this.httpClient.interceptors.request.use(async (config: any) => {
+      // CRITICAL: Completely bypass Mockifyer interception for sync endpoints
+      // This prevents any Mockifyer processing (mocking, saving, etc.) for these endpoints
+      const url = config.url || '';
+      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+        console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer interception for sync endpoint:', url);
+        // Mark this request to completely skip Mockifyer processing
+        (config as any).__mockifyer_skip_save = true;
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+      
       // Normalize empty params: treat {} the same as undefined for consistent matching
       const rawParams = config.params || {};
       console.log('[Mockifyer-Fetch] setupMockResponses - rawParams:', rawParams);
@@ -254,6 +386,10 @@ class MockifyerClass {
 
       console.log('[Mockifyer-Fetch] setupMockResponses - request.queryParams:', request.queryParams);
       const requestKey = this.generateRequestKey(request);
+      
+      // Store request key for response interceptor
+      (config as any).__mockifyer_requestKey = requestKey;
+      
       const cachedMock = await this.findBestMatchingMock(request);
       
       if (cachedMock) {
@@ -276,7 +412,8 @@ class MockifyerClass {
         
         return {
           ...config,
-          __mockResponse: Promise.resolve(mockResponse)
+          __mockResponse: Promise.resolve(mockResponse),
+          __mockifyer_requestKey: requestKey
         } as any;
       }
 
@@ -288,78 +425,105 @@ class MockifyerClass {
     });
   }
 
-  private setupInterceptors(): void {
-    if (this.config.recordSameEndpoints !== true) {
-      this.httpClient.interceptors.request.use(async (config: any) => {
-        const anonymizedQueryParams = this.anonymizeQueryParams(config.params || {});
-        
-        const request: StoredRequest = {
-          method: config.method || 'GET',
-          url: config.url || '',
-          headers: config.headers || {},
-          data: config.data,
-          queryParams: anonymizedQueryParams
-        };
-
-        const requestKey = this.generateRequestKey(request);
-        
-        if (this.processingRequests.has(requestKey)) {
-          return config;
-        }
-        
-        this.processingRequests.add(requestKey);
-        
-        try {
-          const cachedMock = await this.findBestMatchingMock(request);
-          if (cachedMock) {
-            const { mockData, filename, filePath } = cachedMock;
-            const responseHeaders = {
-              ...mockData.response.headers,
-              'x-mockifyer': 'true',
-              'x-mockifyer-timestamp': mockData.timestamp,
-              'x-mockifyer-filename': filename,
-              'x-mockifyer-filepath': filePath
-            };
-            
-            const mockResponse = {
-              data: mockData.response.data,
-              status: mockData.response.status,
-              statusText: 'OK',
-              headers: responseHeaders,
-              config: config as any
-            };
-            
-            this.processingRequests.delete(requestKey);
-            
-            return {
-              ...config,
-              __mockResponse: Promise.resolve(mockResponse),
-              __mockifyer_requestKey: requestKey
-            } as any;
-          }
-        } catch (error) {
-          this.processingRequests.delete(requestKey);
-          throw error;
-        }
-        
-        (config as any).__mockifyer_requestKey = requestKey;
-        return config;
-      });
-    }
-
+  private setupResponseInterceptor(): void {
     this.httpClient.interceptors.response.use(
       async (response: any) => {
+        // CRITICAL: Check for skip flag FIRST (set by request interceptor for sync endpoints)
+        // This completely bypasses Mockifyer interception for sync endpoints
+        if ((response.config as any).__mockifyer_skip_save || (response.config as any).__mockifyer_bypass) {
+          console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer - sync endpoint (skip/bypass flag):', response.config?.url);
+          return response;
+        }
+        
+        // CRITICAL: Skip Mockifyer sync endpoints to prevent infinite loops
+        // Check multiple ways to get the URL in case response.config is undefined
+        const url = response.config?.url || response.request?.responseURL || response.url || (response as any).config?.url || '';
+        
+        // CRITICAL: Check URL FIRST before any other processing
+        if (url && (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync'))) {
+          console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer - sync endpoint detected (URL check):', url);
+          // Mark as bypassed to prevent any further processing
+          (response.config as any).__mockifyer_skip_save = true;
+          (response.config as any).__mockifyer_bypass = true;
+          return response;
+        }
+        
+        // Clean up processing requests tracking
         const requestKey = (response.config as any).__mockifyer_requestKey;
         if (requestKey) {
           this.processingRequests.delete(requestKey);
         }
         
+        // CRITICAL: Check response data for Metro rejection messages (defense in depth)
+        // This catches any responses that might have gotten through
+        try {
+          let responseDataStr = '';
+          let responseDataObj: any = null;
+          
+          if (typeof response.data === 'string') {
+            responseDataStr = response.data;
+            try {
+              responseDataObj = JSON.parse(response.data);
+            } catch (e) {
+              // Not JSON, that's fine
+            }
+          } else if (response.data) {
+            // Try to stringify, but handle circular references
+            try {
+              responseDataStr = JSON.stringify(response.data);
+              responseDataObj = response.data;
+            } catch (stringifyError) {
+              // If stringify fails, try to get a string representation
+              responseDataStr = String(response.data);
+            }
+          }
+          
+          // CRITICAL: Check for Metro rejection message
+          const hasRejectionMessage = responseDataStr && (
+            responseDataStr.includes('Cannot save Mockifyer sync endpoint') ||
+            responseDataStr.includes('Cannot save Mockifyer sync endpoint requests')
+          );
+          
+          const hasRejectionInObject = responseDataObj && (
+            (responseDataObj.error && typeof responseDataObj.error === 'string' && 
+             responseDataObj.error.includes('Cannot save Mockifyer sync endpoint')) ||
+            (responseDataObj.success === false && responseDataObj.error)
+          );
+          
+          if (hasRejectionMessage || hasRejectionInObject) {
+            console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer - Metro rejection message detected');
+            return response;
+          }
+          
+          // CRITICAL: Check for sync endpoint URLs in response data
+          if (responseDataStr && (
+              responseDataStr.includes('/mockifyer-save') || 
+              responseDataStr.includes('/mockifyer-clear') || 
+              responseDataStr.includes('/mockifyer-sync'))) {
+            console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer - sync endpoint in response data');
+            return response;
+          }
+        } catch (e) {
+          // Ignore errors - continue processing
+          console.warn('[Mockifyer-Fetch] Error checking response data:', e);
+        }
+        
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
         if (isMocked) {
+          console.log('[Mockifyer-Fetch] Response is mocked, skipping save');
           return response;
         }
         
-        await this.saveResponse(response);
+        // Only save if recordMode is enabled
+        if (this.config.recordMode) {
+          console.log('[Mockifyer-Fetch] ✅ recordMode enabled, saving response');
+          console.log('[Mockifyer-Fetch] Response URL:', response.config?.url);
+          console.log('[Mockifyer-Fetch] Response status:', response.status);
+          await this.saveResponse(response);
+        } else {
+          console.log('[Mockifyer-Fetch] ⚠️ recordMode disabled, not saving response');
+          console.log('[Mockifyer-Fetch] Current config.recordMode:', this.config.recordMode);
+        }
         return response;
       },
       async (error: any) => {
@@ -373,6 +537,55 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
+    // CRITICAL: Check for bypass flags FIRST - if set, completely skip processing
+    if ((response.config as any).__mockifyer_skip_save || (response.config as any).__mockifyer_bypass) {
+      console.log('[Mockifyer-Fetch] ⚠️ saveResponse: BLOCKING - bypass flag set');
+      return;
+    }
+    
+    // CRITICAL: Skip saving responses from Mockifyer sync endpoints FIRST
+    // Check multiple ways to get the URL in case response.config is undefined
+    const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
+    if (url && (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync'))) {
+      console.log('[Mockifyer-Fetch] ⚠️ saveResponse: BLOCKING - sync endpoint detected:', url);
+      return;
+    }
+    
+      // CRITICAL: Check response data for sync endpoint references and Metro rejection messages
+      // This is a defense-in-depth measure
+      try {
+        let responseDataStr = '';
+        if (typeof response.data === 'string') {
+          responseDataStr = response.data;
+        } else if (response.data) {
+          try {
+            responseDataStr = JSON.stringify(response.data);
+          } catch (stringifyError) {
+            responseDataStr = String(response.data);
+          }
+        }
+      
+        // CRITICAL: Check for Metro rejection message
+      if (responseDataStr && responseDataStr.includes('Cannot save Mockifyer sync endpoint')) {
+        console.log('[Mockifyer-Fetch] ⚠️ saveResponse: BLOCKING - contains Metro rejection message');
+        console.log('[Mockifyer-Fetch] Response data preview:', responseDataStr.substring(0, 200));
+        return;
+      }
+      
+      // CRITICAL: Check for sync endpoint URLs in response data
+      if (responseDataStr && (
+          responseDataStr.includes('/mockifyer-save') || 
+          responseDataStr.includes('/mockifyer-clear') || 
+          responseDataStr.includes('/mockifyer-sync'))) {
+        console.log('[Mockifyer-Fetch] ⚠️ saveResponse: BLOCKING - response data contains sync endpoint references');
+        console.log('[Mockifyer-Fetch] Response data preview:', responseDataStr.substring(0, 200));
+        return;
+      }
+    } catch (e) {
+      // Ignore JSON stringify errors
+      console.warn('[Mockifyer-Fetch] Error checking response data in saveResponse:', e);
+    }
+    
     // Normalize empty params: treat {} the same as undefined for consistent matching
     const rawParams = response.config.params || {};
     const normalizedParams = rawParams && Object.keys(rawParams).length > 0 ? rawParams : undefined;
@@ -386,19 +599,13 @@ class MockifyerClass {
     });
     
     if (this.savingResponses.has(requestKey)) {
+      console.log('[Mockifyer-Fetch] ⚠️ saveResponse: Already saving this response, skipping:', requestKey);
       return;
     }
     
     this.savingResponses.add(requestKey);
     
     try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
-      const domain = urlParts[0].replace(/\./g, '_');
-      const urlPathPart = urlParts.slice(1).join('_') || 'root';
-      const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
-      const filePath = path.join(this.config.mockDataPath, filename);
-      
       // Normalize empty params: treat {} the same as undefined for consistent matching
       const rawParams = response.config.params || {};
       const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
@@ -422,8 +629,32 @@ class MockifyerClass {
         timestamp: new Date().toISOString()
       };
       
-      fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-      console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+      // Use database provider if available, otherwise fallback to filesystem
+      if (this.databaseProvider) {
+        console.log(`[Mockifyer-Fetch] saveResponse - Saving mock using ${this.config.databaseProvider?.type} provider`);
+        console.log(`[Mockifyer-Fetch] saveResponse - Mock data path: ${(this.databaseProvider as any).mockDataPath || (this.databaseProvider as any).getMockDataPath?.() || 'unknown'}`);
+        console.log(`[Mockifyer-Fetch] saveResponse - Request URL: ${mockData.request.url}`);
+        console.log(`[Mockifyer-Fetch] saveResponse - Request method: ${mockData.request.method}`);
+        try {
+          await this.databaseProvider.save(mockData);
+          console.log(`[Mockifyer] ✅ Saved new mock using ${this.config.databaseProvider?.type} provider`);
+        } catch (error) {
+          console.error(`[Mockifyer-Fetch] ❌ Error saving mock using ${this.config.databaseProvider?.type} provider:`, error);
+          throw error;
+        }
+      } else if (fs && path) {
+        // Fallback to Node.js filesystem (only if fs/path are available)
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
+        const domain = urlParts[0].replace(/\./g, '_');
+        const urlPathPart = urlParts.slice(1).join('_') || 'root';
+        const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
+        const filePath = path.join(this.config.mockDataPath, filename);
+        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+        console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+      } else {
+        console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
+      }
     } finally {
       this.savingResponses.delete(requestKey);
     }
@@ -482,18 +713,47 @@ class MockifyerClass {
     return this.httpClient;
   }
 
-  reloadMockData(): void {
-    this.loadMockData();
+  async reloadMockData(syncFromProject: boolean = true): Promise<void> {
+    // If provider has a reload method, use it (for ExpoFileSystemProvider with caching)
+    // For HybridProvider, this will also sync files from project folder to device
+    if (this.databaseProvider && typeof (this.databaseProvider as any).reload === 'function') {
+      console.log('[Mockifyer-Fetch] 🔄 Reloading mock data via provider...');
+      if (syncFromProject && typeof (this.databaseProvider as any).reload === 'function') {
+        // Pass syncFromProject flag if provider supports it (HybridProvider)
+        await (this.databaseProvider as any).reload(syncFromProject);
+      } else {
+        await (this.databaseProvider as any).reload();
+      }
+      console.log('[Mockifyer-Fetch] ✅ Mock data reloaded - new files will be used on next request');
+    } else {
+      // Fallback: try to load mock data if method exists
+      if (typeof (this as any).loadMockData === 'function') {
+        (this as any).loadMockData();
+      } else {
+        console.log('[Mockifyer-Fetch] ℹ️ Reload called - files are read on-demand (no cache to reload)');
+      }
+    }
   }
 
   clearStaleCacheEntries(): number {
     return 0; // No cache in fetch implementation
   }
+
+  async clearAllMocks(): Promise<void> {
+    if (this.databaseProvider && typeof this.databaseProvider.clearAll === 'function') {
+      console.log('[Mockifyer-Fetch] Clearing all mocks from provider...');
+      await this.databaseProvider.clearAll();
+      console.log('[Mockifyer-Fetch] ✅ All mocks cleared');
+    } else {
+      console.warn('[Mockifyer-Fetch] Provider does not support clearAll()');
+    }
+  }
 }
 
 export interface MockifyerInstance extends HTTPClient {
-  reloadMockData: () => void;
+  reloadMockData: () => Promise<void>;
   clearStaleCacheEntries: () => number;
+  clearAllMocks: () => Promise<void>;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -529,6 +789,12 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       const method = init?.method || 'GET';
       const headers = init?.headers || {};
       const body = init?.body;
+      
+      // Skip Mockifyer sync endpoints to prevent infinite loops
+      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+        console.log('[Mockifyer-Fetch] ⚠️ Bypassing Mockifyer for sync endpoint:', url);
+        return await originalFetchForPatched(input, init);
+      }
       
       const simpleRequestKey = `${method}:${url}`;
       const isProcessing = (mockifyerInstance as any).processingRequests?.has(simpleRequestKey);
@@ -613,12 +879,16 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   }
   
   const extendedClient = httpClient as MockifyerInstance;
-  extendedClient.reloadMockData = () => mockifyer.reloadMockData();
+  extendedClient.reloadMockData = async () => await mockifyer.reloadMockData();
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
+  extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   
   return extendedClient;
 }
 
 // Re-export types from core
 export * from '@sgedda/mockifyer-core';
+
+// Export React Native helpers
+export * from './react-native';
 

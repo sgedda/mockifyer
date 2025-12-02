@@ -102,6 +102,13 @@ export class MemoryProvider implements DatabaseProvider {
   }
 
   /**
+   * Clear all stored mocks (alias for clear() to match DatabaseProvider interface)
+   */
+  clearAll(): void {
+    this.clear();
+  }
+
+  /**
    * Get the number of stored mocks
    */
   size(): number {

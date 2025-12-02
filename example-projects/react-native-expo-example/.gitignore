@@ -1,0 +1,31 @@
+# Expo
+.expo/
+dist/
+web-build/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# macOS
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+
+# Generated files
+assets/mock-data.ts
+assets/mock-data-types.d.ts
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+

@@ -9,6 +9,8 @@ export interface DatabaseProviderConfig {
   path?: string;
   /** Additional provider-specific options */
   options?: Record<string, any>;
+  /** Metro port for hybrid provider (defaults to 8081) */
+  metroPort?: number;
 }
 
 /**
@@ -49,6 +51,11 @@ export interface DatabaseProvider {
    * Close/cleanup resources if needed
    */
   close?(): Promise<void> | void;
+
+  /**
+   * Clear all stored mocks (optional - not all providers support this)
+   */
+  clearAll?(): Promise<void> | void;
 }
 
 

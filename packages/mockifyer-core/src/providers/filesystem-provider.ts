@@ -7,24 +7,43 @@ import { DatabaseProvider, DatabaseProviderConfig } from './types';
 /**
  * Filesystem-based provider (current default implementation)
  * Stores mock data as JSON files in a directory
+ * 
+ * Note: This provider requires Node.js fs module and will not work in React Native.
+ * For React Native, use ExpoFileSystemProvider instead.
  */
 export class FilesystemProvider implements DatabaseProvider {
   private mockDataPath: string;
+  private fsAvailable: boolean;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
       throw new Error('FilesystemProvider requires a path in config');
     }
     this.mockDataPath = config.path;
+    // Check if fs is available (will be false in React Native where fs is stubbed)
+    this.fsAvailable = typeof fs !== 'undefined' && typeof fs.existsSync === 'function';
+    
+    if (!this.fsAvailable) {
+      console.warn('[Mockifyer] FilesystemProvider: Node.js fs module is not available. ' +
+        'This provider requires Node.js environment. For React Native, use ExpoFileSystemProvider.');
+    }
   }
 
   initialize(): void {
+    if (!this.fsAvailable) {
+      throw new Error('FilesystemProvider requires Node.js fs module. ' +
+        'For React Native, use ExpoFileSystemProvider instead.');
+    }
     if (!fs.existsSync(this.mockDataPath)) {
       fs.mkdirSync(this.mockDataPath, { recursive: true });
     }
   }
 
   save(mockData: MockData): void {
+    if (!this.fsAvailable) {
+      throw new Error('FilesystemProvider requires Node.js fs module. ' +
+        'For React Native, use ExpoFileSystemProvider instead.');
+    }
     // Format the datetime to be readable
     const now = new Date();
     const dateStr = now.toISOString()
@@ -46,7 +65,7 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
-    if (!fs.existsSync(this.mockDataPath)) {
+    if (!this.fsAvailable || !fs.existsSync(this.mockDataPath)) {
       return undefined;
     }
 
@@ -81,7 +100,7 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   findAllForSimilarMatch(request: StoredRequest): CachedMockData[] {
-    if (!fs.existsSync(this.mockDataPath)) {
+    if (!this.fsAvailable || !fs.existsSync(this.mockDataPath)) {
       return [];
     }
 
@@ -134,7 +153,7 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   getAll(): MockData[] {
-    if (!fs.existsSync(this.mockDataPath)) {
+    if (!this.fsAvailable || !fs.existsSync(this.mockDataPath)) {
       return [];
     }
 

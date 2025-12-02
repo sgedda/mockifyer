@@ -1,0 +1,289 @@
+#!/usr/bin/env node
+
+/**
+ * Sync mock files from project folder to React Native device/simulator
+ * 
+ * This script syncs mock files from the project's mock-data folder back to
+ * the device/simulator so they can be used by the app.
+ * 
+ * Usage:
+ *   npm run sync:to-device
+ * 
+ * Options:
+ *   --ios     Try iOS Simulator first (default on macOS)
+ *   --android Try Android Emulator first
+ *   --http    Try HTTP endpoint (requires app to be running with sync server)
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+
+const PROJECT_ROOT = path.join(__dirname, '..');
+const MOCK_DATA_PATH = path.join(PROJECT_ROOT, 'mock-data');
+const METRO_PORT = process.env.METRO_PORT || '8081';
+
+interface SyncResult {
+  success: boolean;
+  method: string;
+  filesSynced: number;
+  error?: string;
+}
+
+/**
+ * Sync to iOS Simulator
+ */
+async function syncToIOSSimulator(): Promise<SyncResult> {
+  if (process.platform !== 'darwin') {
+    return { success: false, method: 'ios', filesSynced: 0, error: 'iOS sync only works on macOS' };
+  }
+
+  try {
+    const homeDir = process.env.HOME || process.env.USERPROFILE;
+    if (!homeDir) {
+      return { success: false, method: 'ios', filesSynced: 0, error: 'Cannot find home directory' };
+    }
+
+    // Check if source directory exists
+    if (!fs.existsSync(MOCK_DATA_PATH)) {
+      return { success: false, method: 'ios', filesSynced: 0, error: `Source directory not found: ${MOCK_DATA_PATH}` };
+    }
+
+    // Find booted simulator
+    const bootedOutput = execSync('xcrun simctl list devices booted', { encoding: 'utf-8' });
+    const deviceMatch = bootedOutput.match(/\(([A-F0-9-]+)\)/);
+    
+    if (!deviceMatch) {
+      return { success: false, method: 'ios', filesSynced: 0, error: 'No booted iOS simulator found' };
+    }
+
+    const deviceId = deviceMatch[1];
+    const simulatorDataPath = path.join(
+      homeDir,
+      'Library/Developer/CoreSimulator/Devices',
+      deviceId,
+      'data/Containers/Data/Application'
+    );
+
+    if (!fs.existsSync(simulatorDataPath)) {
+      return { success: false, method: 'ios', filesSynced: 0, error: 'Simulator data path not found' };
+    }
+
+    // Find app directory containing Documents
+    const appDirs = fs.readdirSync(simulatorDataPath);
+    let found = false;
+    let filesSynced = 0;
+
+    for (const appDir of appDirs) {
+      const documentsPath = path.join(simulatorDataPath, appDir, 'Documents');
+      
+      if (fs.existsSync(documentsPath)) {
+        const deviceMockDataPath = path.join(documentsPath, 'mock-data');
+        
+        // Create mock-data directory if it doesn't exist
+        if (!fs.existsSync(deviceMockDataPath)) {
+          fs.mkdirSync(deviceMockDataPath, { recursive: true });
+          console.log(`[Sync] Created mock-data directory: ${deviceMockDataPath}`);
+        }
+        
+        console.log(`[Sync] Found Documents directory in simulator: ${documentsPath}`);
+        
+        // Copy files from project to device
+        const files = fs.readdirSync(MOCK_DATA_PATH);
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const src = path.join(MOCK_DATA_PATH, file);
+            const dest = path.join(deviceMockDataPath, file);
+            fs.copyFileSync(src, dest);
+            console.log(`  ✓ Synced: ${file}`);
+            filesSynced++;
+          }
+        }
+        
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      return { success: false, method: 'ios', filesSynced: 0, error: 'Documents directory not found in simulator' };
+    }
+
+    return { success: true, method: 'ios', filesSynced };
+  } catch (error: any) {
+    return { success: false, method: 'ios', filesSynced: 0, error: error.message };
+  }
+}
+
+/**
+ * Sync to Android Emulator
+ */
+async function syncToAndroid(): Promise<SyncResult> {
+  try {
+    // Check if adb is available
+    execSync('adb version', { stdio: 'ignore' });
+  } catch {
+    return { success: false, method: 'android', filesSynced: 0, error: 'adb not found' };
+  }
+
+  try {
+    // Check if source directory exists
+    if (!fs.existsSync(MOCK_DATA_PATH)) {
+      return { success: false, method: 'android', filesSynced: 0, error: `Source directory not found: ${MOCK_DATA_PATH}` };
+    }
+
+    // Get package name from app.json or use default
+    const appJsonPath = path.join(PROJECT_ROOT, 'app.json');
+    let packageName = 'com.yourcompany.yourapp';
+    
+    if (fs.existsSync(appJsonPath)) {
+      const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf-8'));
+      packageName = appJson.expo?.android?.package || packageName;
+    }
+
+    const devicePath = `/data/data/${packageName}/files/mock-data`;
+
+    // Create directory on device if it doesn't exist
+    try {
+      execSync(`adb shell mkdir -p ${devicePath}`, { stdio: 'pipe' });
+    } catch (error: any) {
+      // Directory might already exist, that's fine
+    }
+
+    // Push files to device
+    const files = fs.readdirSync(MOCK_DATA_PATH).filter(f => f.endsWith('.json'));
+    let filesSynced = 0;
+
+    for (const file of files) {
+      const src = path.join(MOCK_DATA_PATH, file);
+      const dest = `${devicePath}/${file}`;
+      
+      try {
+        execSync(`adb push "${src}" "${dest}"`, { stdio: 'pipe' });
+        console.log(`  ✓ Synced: ${file}`);
+        filesSynced++;
+      } catch (error: any) {
+        console.warn(`  ⚠️ Failed to sync ${file}: ${error.message}`);
+      }
+    }
+
+    if (filesSynced === 0) {
+      return { success: false, method: 'android', filesSynced: 0, error: 'No files were synced' };
+    }
+
+    return { success: true, method: 'android', filesSynced };
+  } catch (error: any) {
+    return { success: false, method: 'android', filesSynced: 0, error: error.message };
+  }
+}
+
+/**
+ * Sync via Metro HTTP endpoint
+ * Note: This requires the app to expose an endpoint to receive files
+ * Currently not fully implemented - use iOS Simulator or Android adb instead
+ */
+async function syncToHTTP(): Promise<SyncResult> {
+  return { 
+    success: false, 
+    method: 'http', 
+    filesSynced: 0, 
+    error: 'HTTP sync to device not yet implemented. Use --ios or --android instead.' 
+  };
+}
+
+/**
+ * Main sync function
+ */
+async function syncToDevice(): Promise<void> {
+  console.log('🔄 Syncing mock files from project folder to device...\n');
+  console.log(`📁 Source: ${MOCK_DATA_PATH}\n`);
+
+  // Check if source directory exists
+  if (!fs.existsSync(MOCK_DATA_PATH)) {
+    console.log(`❌ Source directory not found: ${MOCK_DATA_PATH}`);
+    console.log('\n💡 Tips:');
+    console.log('   - Make sure you have mock files in ./mock-data/');
+    console.log('   - Run the app first to generate some mocks');
+    console.log('   - Or copy mock files manually to ./mock-data/');
+    process.exit(1);
+  }
+
+  const files = fs.readdirSync(MOCK_DATA_PATH).filter(f => f.endsWith('.json'));
+  if (files.length === 0) {
+    console.log(`⚠️  No JSON files found in ${MOCK_DATA_PATH}`);
+    console.log('\n💡 Tips:');
+    console.log('   - Make sure you have mock files in ./mock-data/');
+    console.log('   - Run the app first to generate some mocks');
+    process.exit(1);
+  }
+
+  console.log(`Found ${files.length} mock file(s) to sync\n`);
+
+  const args = process.argv.slice(2);
+  const preferIOS = args.includes('--ios') || (!args.includes('--android') && process.platform === 'darwin');
+  const preferAndroid = args.includes('--android');
+  const preferHTTP = args.includes('--http');
+
+  let result: SyncResult | null = null;
+
+  // Try methods in order of preference
+  if (preferHTTP) {
+    console.log('Trying HTTP endpoint...');
+    result = await syncToHTTP();
+  } else if (preferAndroid) {
+    console.log('Trying Android Emulator...');
+    result = await syncToAndroid();
+    if (!result.success && process.platform === 'darwin') {
+      console.log('Trying iOS Simulator...');
+      result = await syncToIOSSimulator();
+    }
+  } else if (preferIOS || process.platform === 'darwin') {
+    console.log('Trying iOS Simulator...');
+    result = await syncToIOSSimulator();
+    if (!result.success) {
+      console.log('Trying Android Emulator...');
+      result = await syncToAndroid();
+    }
+  } else {
+    console.log('Trying Android Emulator...');
+    result = await syncToAndroid();
+  }
+
+  // Try HTTP as fallback
+  if (!result || !result.success) {
+    console.log('Trying HTTP endpoint...');
+    const httpResult = await syncToHTTP();
+    if (httpResult.success) {
+      result = httpResult;
+    }
+  }
+
+  // Report results
+  console.log('');
+  if (result && result.success) {
+    console.log(`✅ Successfully synced ${result.filesSynced} file(s) to device using ${result.method}`);
+    console.log(`📱 Files are now available on the device`);
+    console.log(`\n💡 Tip: Restart your app to load the synced mock files`);
+  } else {
+    console.log('❌ Failed to sync mock files to device');
+    if (result) {
+      console.log(`   Method: ${result.method}`);
+      console.log(`   Error: ${result.error || 'Unknown error'}`);
+    }
+    console.log('\n💡 Tips:');
+    console.log('   - Make sure your app is running in development mode');
+    console.log('   - For iOS: Ensure simulator is booted');
+    console.log('   - For Android: Ensure emulator is running and adb is connected');
+    console.log('   - Try: npm run sync:to-device -- --ios (for iOS)');
+    console.log('   - Try: npm run sync:to-device -- --android (for Android)');
+    console.log('   - Try: npm run sync:to-device -- --http (for HTTP endpoint)');
+    process.exit(1);
+  }
+}
+
+// Run sync
+syncToDevice().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});
+

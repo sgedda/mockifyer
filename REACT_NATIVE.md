@@ -140,31 +140,121 @@ setupMockifyer({
 3. **Use Metro bundler**: Import JSON files directly - they'll be bundled with your app
 4. **Development only**: Use mockifyer primarily for development/testing, not production
 
-## Example: Complete React Native Setup
+## Recommended: Conditional Setup (Development + Production)
 
-### Using Expo FileSystem Provider
+**Best Practice**: Use Expo FileSystem provider in development (Metro) and Memory provider with bundled TypeScript file in production builds.
+
+### Complete Workflow
+
+1. **Development**: Record mocks using Expo FileSystem provider
+2. **Build**: Generate TypeScript file from recorded mocks
+3. **Production**: Use Memory provider with bundled file
+
+### Step 1: Setup Conditional Initialization
 
 ```typescript
 // mockifyer-setup.ts
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { MemoryProvider } from '@sgedda/mockifyer-core';
+import { MockData } from '@sgedda/mockifyer-core';
+
+// Lazy load bundled data (only in production)
+let bundledMockData: MockData[] | null = null;
+
+async function loadBundledMockData(): Promise<MockData[]> {
+  if (bundledMockData) return bundledMockData;
+  
+  try {
+    const module = await import('../assets/mock-data');
+    bundledMockData = Array.isArray(module.mockData) 
+      ? module.mockData 
+      : [module.mockData];
+    return bundledMockData;
+  } catch (error) {
+    console.warn('[Mockifyer] Could not load bundled mock data:', error);
+    return [];
+  }
+}
 
 export async function initializeMockifyer() {
-  // Only enable in development
-  if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
+  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
+  if (!isEnabled) return;
+
+  if (__DEV__) {
+    // DEVELOPMENT: Expo FileSystem Provider (can record)
     await setupMockifyer({
       mockDataPath: 'mock-data',
       databaseProvider: {
         type: 'expo-filesystem',
         path: 'mock-data',
       },
-      recordMode: true, // Can record API responses!
+      recordMode: process.env.MOCKIFYER_RECORD === 'true',
     });
+    console.log('[Mockifyer] Development: Using Expo FileSystem provider');
+  } else {
+    // PRODUCTION: Memory Provider with bundled data
+    const provider = new MemoryProvider({});
+    await provider.initialize();
 
-    console.log('[Mockifyer] Initialized with Expo FileSystem provider');
+    const mockDataArray = await loadBundledMockData();
+    if (mockDataArray.length === 0) {
+      console.warn('[Mockifyer] No bundled mock data found');
+      return;
+    }
+
+    for (const mockData of mockDataArray) {
+      await provider.save(mockData);
+    }
+
+    await setupMockifyer({
+      mockDataPath: './mock-data',
+      databaseProvider: { type: 'memory' },
+      recordMode: false,
+    });
+    console.log(`[Mockifyer] Production: Loaded ${mockDataArray.length} mocks from bundle`);
   }
 }
+```
 
-// Call this in your App.tsx (make it async)
+### Step 2: Create Build Script
+
+```typescript
+// scripts/generate-build-data.ts
+import { generateStaticDataFile } from '@sgedda/mockifyer-core/utils/build-utils';
+import path from 'path';
+
+generateStaticDataFile({
+  mockDataPath: path.join(__dirname, '../mock-data'),
+  outputPath: path.join(__dirname, '../assets/mock-data.ts'),
+  format: 'typescript',
+  variableName: 'mockData',
+  transform: (data) => ({
+    request: data.request,
+    response: data.response,
+    timestamp: data.timestamp,
+    scenario: data.scenario
+  })
+});
+```
+
+### Step 3: Add to package.json
+
+```json
+{
+  "scripts": {
+    "dev": "react-native start",
+    "dev:record": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true react-native start",
+    "generate:build-data": "ts-node scripts/generate-build-data.ts",
+    "prebuild": "npm run generate:build-data",
+    "build:ios": "npm run generate:build-data && react-native run-ios",
+    "build:android": "npm run generate:build-data && react-native run-android"
+  }
+}
+```
+
+### Step 4: Use in App.tsx
+
+```typescript
 // App.tsx
 import { useEffect } from 'react';
 import { initializeMockifyer } from './mockifyer-setup';
@@ -178,43 +268,66 @@ export default function App() {
 }
 ```
 
-### Using Memory Provider
+### Workflow Summary
+
+**Development (Metro):**
+- Uses `__DEV__ === true`
+- Expo FileSystem provider
+- Can record new mocks
+- Files stored on device
+
+**Production Build:**
+- Uses `__DEV__ === false`
+- Memory provider
+- Loads from bundled `mock-data.ts`
+- No filesystem dependency
+- Faster (in-memory access)
+
+## Alternative: Simple Setup Examples
+
+### Using Expo FileSystem Provider Only
+
+```typescript
+// mockifyer-setup.ts
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+export async function initializeMockifyer() {
+  if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
+    await setupMockifyer({
+      mockDataPath: 'mock-data',
+      databaseProvider: {
+        type: 'expo-filesystem',
+        path: 'mock-data',
+      },
+      recordMode: true,
+    });
+  }
+}
+```
+
+### Using Memory Provider Only
 
 ```typescript
 // mockifyer-setup.ts
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 import { MemoryProvider } from '@sgedda/mockifyer-core';
-
-// Import your mock data files (bundled with Metro)
 import userMock from './mocks/user.json';
 import postsMock from './mocks/posts.json';
 
-let provider: MemoryProvider | null = null;
-
 export function initializeMockifyer() {
-  // Only enable in development
   if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
-    provider = new MemoryProvider({});
+    const provider = new MemoryProvider({});
     provider.initialize();
-
-    // Pre-load mock data
     provider.save(userMock);
     provider.save(postsMock);
 
     setupMockifyer({
       mockDataPath: './mock-data',
-      databaseProvider: {
-        type: 'memory',
-      },
-      recordMode: false, // Can't record without filesystem
+      databaseProvider: { type: 'memory' },
+      recordMode: false,
     });
-
-    console.log('[Mockifyer] Initialized with memory provider');
   }
 }
-
-// Call this in your App.tsx or index.js
-initializeMockifyer();
 ```
 
 ## File Access During Development
