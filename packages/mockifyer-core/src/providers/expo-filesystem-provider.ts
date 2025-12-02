@@ -276,9 +276,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   }
 
   async findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> {
-    console.log(`[ExpoFileSystemProvider] 🔍 findExactMatch called for requestKey: ${requestKey}`);
-    console.log(`[ExpoFileSystemProvider] 📊 Current cache size: ${this.fileCache.size}`);
-    
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
@@ -293,21 +290,18 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           
           // If file hasn't changed, return cached result
           if (currentMtime === cachedMtime) {
-            console.log(`[ExpoFileSystemProvider] ✅ Using cached match: ${cached.content.filename} (mtime: ${cachedMtime})`);
             return cached.content;
           } else {
             // File has been modified, clear cache entry and re-read
-            console.log(`[ExpoFileSystemProvider] 🔄 File modified (${cached.content.filename}), clearing cache entry (cached: ${cachedMtime}, current: ${currentMtime})`);
             this.fileCache.delete(requestKey);
           }
         } else {
           // File no longer exists, clear cache
-          console.log(`[ExpoFileSystemProvider] 🔄 File deleted (${cached.content.filename}), clearing cache entry`);
           this.fileCache.delete(requestKey);
         }
       } catch (error) {
         // Error checking file, clear cache and re-read
-        console.warn(`[ExpoFileSystemProvider] ⚠️ Error checking cached file, clearing cache:`, error);
+        console.warn(`[ExpoFileSystemProvider] Error checking cached file, clearing cache:`, error);
         this.fileCache.delete(requestKey);
       }
     }
@@ -316,7 +310,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     if (requestUrl.includes('/mockifyer-save') || 
         requestUrl.includes('/mockifyer-clear') || 
         requestUrl.includes('/mockifyer-sync')) {
-      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping findExactMatch - request URL is a sync endpoint: ${requestUrl}`);
       return undefined;
     }
     
@@ -324,15 +317,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     if (requestKey.includes('/mockifyer-save') || 
         requestKey.includes('/mockifyer-clear') || 
         requestKey.includes('/mockifyer-sync')) {
-      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping findExactMatch - requestKey contains sync endpoint`);
       return undefined;
     }
     
-    console.log(`[ExpoFileSystemProvider] findExactMatch - Looking for requestKey: ${requestKey}`);
-    console.log(`[ExpoFileSystemProvider] findExactMatch - Mock data path: ${this.mockDataPath}`);
-    
     const files = await this.listMockFiles();
-    console.log(`[ExpoFileSystemProvider] findExactMatch - Found ${files.length} mock files`);
     
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
@@ -347,14 +335,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
             fileContent.includes('/mockifyer-clear') || 
             fileContent.includes('/mockifyer-sync') ||
             fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
           continue;
         }
         
         const mockData: MockData = JSON.parse(fileContent);
         
         if (!mockData?.request || typeof mockData.request !== 'object') {
-          console.log(`[ExpoFileSystemProvider] Skipping ${file} - invalid request object`);
           continue;
         }
         
@@ -363,13 +349,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         if (requestUrl.includes('/mockifyer-save') || 
             requestUrl.includes('/mockifyer-clear') || 
             requestUrl.includes('/mockifyer-sync')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
           continue;
         }
 
         // Generate key for this mock and compare with requested key
         const mockKey = generateRequestKey(mockData.request);
-        console.log(`[ExpoFileSystemProvider] Checking ${file}: mockKey="${mockKey}" vs requestKey="${requestKey}"`);
         if (mockKey === requestKey) {
           // Get file modification time
           let fileMtime = 0;

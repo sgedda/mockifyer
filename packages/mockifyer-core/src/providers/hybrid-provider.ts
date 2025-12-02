@@ -57,7 +57,6 @@ export class HybridProvider implements DatabaseProvider {
     // CRITICAL: Never save Mockifyer sync endpoint requests to prevent infinite loops
     const url = mockData.request.url || '';
     if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
-      console.log(`[HybridProvider] ⚠️ Skipping save for Mockifyer sync endpoint: ${url}`);
       return;
     }
     
@@ -77,8 +76,6 @@ export class HybridProvider implements DatabaseProvider {
         responseDataObj.error.includes('Cannot save Mockifyer sync endpoint');
       
       if (hasRejectionMessage || hasRejectionInObject) {
-        console.log(`[HybridProvider] ⚠️ BLOCKING save - response contains Metro rejection message`);
-        console.log(`[HybridProvider] Response data preview:`, responseDataStr.substring(0, 200));
         return;
       }
       
@@ -86,8 +83,6 @@ export class HybridProvider implements DatabaseProvider {
       if (responseDataStr.includes('/mockifyer-save') || 
           responseDataStr.includes('/mockifyer-clear') || 
           responseDataStr.includes('/mockifyer-sync')) {
-        console.log(`[HybridProvider] ⚠️ BLOCKING save - response data contains sync endpoint references`);
-        console.log(`[HybridProvider] Response data preview:`, responseDataStr.substring(0, 200));
         return;
       }
     } catch (e) {
@@ -95,28 +90,21 @@ export class HybridProvider implements DatabaseProvider {
       console.warn(`[HybridProvider] Error checking response data:`, e);
     }
     
-    console.log(`[HybridProvider] save - Starting save for URL: ${mockData.request.url}`);
-    
     // Save to device first (primary storage)
     try {
-      console.log(`[HybridProvider] save - Saving to device filesystem...`);
       await this.deviceProvider.save(mockData);
-      console.log(`[HybridProvider] ✅ Successfully saved to device filesystem`);
     } catch (error) {
-      console.error(`[HybridProvider] ❌ Error saving to device filesystem:`, error);
+      console.error(`[HybridProvider] Error saving to device filesystem:`, error);
       throw error; // Re-throw device save errors
     }
     
     // Also save to project folder via Metro HTTP endpoint
     try {
-      console.log(`[HybridProvider] save - Attempting to save to project folder via Metro...`);
       await this.saveToProjectFolder(mockData);
-      console.log(`[HybridProvider] ✅ Successfully saved to project folder`);
     } catch (error) {
       // Don't fail if Metro endpoint is unavailable (e.g., Metro not running)
       // Device save already succeeded, so we just log a warning
-      console.warn('[HybridProvider] ⚠️ Failed to save to project folder via Metro:', error);
-      console.warn('[HybridProvider] File saved to device only. Make sure Metro is running for project folder sync.');
+      console.warn('[HybridProvider] Failed to save to project folder via Metro:', error);
     }
   }
 
@@ -187,8 +175,6 @@ export class HybridProvider implements DatabaseProvider {
       throw new Error('Fetch function not available. Cannot save to project folder.');
     }
     
-    console.log('[HybridProvider] saveToProjectFolder - Using original fetch to completely bypass Mockifyer');
-    console.log('[HybridProvider] saveToProjectFolder - Fetch type:', originalFetch ? 'original (bypasses Mockifyer)' : 'fallback (may be intercepted)');
     
     // CRITICAL: Use originalFetch directly - this returns a native Response object
     // Native Response objects do NOT go through axios interceptors, so they're completely bypassed
@@ -215,13 +201,10 @@ export class HybridProvider implements DatabaseProvider {
       return;
     }
     
-    // If file was skipped (already exists), that's fine - just log it
+    // If file was skipped (already exists), that's fine
     if (result.skipped) {
-      console.log(`[HybridProvider] ℹ️ File already exists, skipped: ${result.filename || 'unknown'} (${result.reason || 'unknown reason'})`);
       return;
     }
-
-    console.log(`[HybridProvider] ✅ Saved to project folder: ${result.filename || 'unknown'}`);
   }
 
   /**
@@ -263,8 +246,6 @@ export class HybridProvider implements DatabaseProvider {
    * Clear all mocks from both device and project folder
    */
   async clearAll(): Promise<void> {
-    console.log(`[HybridProvider] clearAll - Clearing mocks from device and project folder`);
-    
     // Clear device filesystem
     if (this.deviceProvider.clearAll) {
       await this.deviceProvider.clearAll();
@@ -281,8 +262,6 @@ export class HybridProvider implements DatabaseProvider {
         return;
       }
       
-      console.log('[HybridProvider] clearAll - Using original fetch to bypass Mockifyer');
-      
       const response = await originalFetch(`${this.metroUrl}/mockifyer-clear`, {
         method: 'POST',
         headers: {
@@ -296,8 +275,6 @@ export class HybridProvider implements DatabaseProvider {
       
       if (!response.ok) {
         console.warn(`[HybridProvider] Failed to clear project folder via Metro: ${response.status}`);
-      } else {
-        console.log(`[HybridProvider] ✅ Cleared project folder via Metro`);
       }
     } catch (error) {
       console.warn('[HybridProvider] Failed to clear project folder via Metro:', error);
@@ -312,11 +289,9 @@ export class HybridProvider implements DatabaseProvider {
     // If syncFromProject is true, sync files from project folder to device first
     if (syncFromProject) {
       try {
-        console.log('[HybridProvider] 🔄 Syncing files from project folder to device...');
         await this.syncFromProjectFolder();
-        console.log('[HybridProvider] ✅ Sync from project folder complete');
       } catch (error) {
-        console.warn('[HybridProvider] ⚠️ Failed to sync from project folder:', error);
+        console.warn('[HybridProvider] Failed to sync from project folder:', error);
         // Continue with reload even if sync fails
       }
     }
@@ -347,11 +322,8 @@ export class HybridProvider implements DatabaseProvider {
       }
       
       if (!result.files || result.files.length === 0) {
-        console.log('[HybridProvider] ℹ️ No files to sync from project folder');
         return;
       }
-      
-      console.log(`[HybridProvider] 📥 Received ${result.files.length} file(s) from project folder`);
       
       // Save each file to device
       let savedCount = 0;
@@ -360,13 +332,10 @@ export class HybridProvider implements DatabaseProvider {
           // Save to device using the device provider
           await this.deviceProvider.save(fileData.content);
           savedCount++;
-          console.log(`[HybridProvider] ✅ Synced: ${fileData.filename}`);
         } catch (error) {
-          console.warn(`[HybridProvider] ⚠️ Failed to save ${fileData.filename}:`, error);
+          console.warn(`[HybridProvider] Failed to save ${fileData.filename}:`, error);
         }
       }
-      
-      console.log(`[HybridProvider] ✅ Successfully synced ${savedCount}/${result.files.length} file(s) to device`);
     } catch (error: any) {
       // Don't throw - Metro might not be running or endpoint might not be available
       console.warn('[HybridProvider] ⚠️ Failed to sync from project folder via Metro:', error.message);
