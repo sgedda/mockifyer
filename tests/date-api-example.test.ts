@@ -1,47 +1,26 @@
-import { setupMockifyer, getCurrentDate } from '../src';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const sinon = require('sinon');
+import { setupMockifyer, getCurrentDate, resetDateManipulation } from '../src';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 
 describe('Date-based API Examples', () => {
-  const fixedBaseTime = new Date('2024-01-01T00:00:00.000Z').getTime();
   let mock: MockAdapter;
-  let originalNow: () => number;
-  let RealDate: DateConstructor;
 
   beforeEach(() => {
-    // Store original Date
-    RealDate = global.Date;
-    
-    // Mock Date constructor and Date.now
-    const MockDate = class extends RealDate {
-      constructor();
-      constructor(value: string | number | Date);
-      constructor(year: number, month: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number);
-      constructor(...args: any[]) {
-        if (args.length === 0) {
-          super(fixedBaseTime);
-        } else {
-          super(...(args as [any]));
-        }
-      }
-      
-      static now() {
-        return fixedBaseTime;
-      }
-    } as DateConstructor;
-    
-    global.Date = MockDate;
-    originalNow = Date.now;
-    Date.now = jest.fn(() => fixedBaseTime);
+    resetDateManipulation();
+    // Clear any environment variables that might affect tests
+    delete process.env.MOCKIFYER_DATE;
+    delete process.env.MOCKIFYER_DATE_OFFSET;
+    delete process.env.MOCKIFYER_TIMEZONE;
 
     // Setup axios mock
     mock = new MockAdapter(axios);
   });
 
   afterEach(() => {
-    // Restore original Date and Date.now
-    global.Date = RealDate;
-    Date.now = originalNow;
+    // Restore all clocks set by setupMockifyer
+    resetDateManipulation();
     mock.restore();
   });
 

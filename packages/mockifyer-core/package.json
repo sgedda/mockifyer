@@ -25,6 +25,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "@types/sinon": "^17.0.4",
+    "sinon": "^17.0.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },
@@ -36,4 +38,3 @@
     "url": "git+https://github.com/sgedda/mockifyer.git"
   }
 }
-
