@@ -11,7 +11,6 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { weatherRouter } from './routes/weather';
-import { test } from './routes/test';
 import { weatherFetchRouter } from './routes/weather-fetch';
 import { weatherUnifiedRouter } from './routes/weather-unified';
 import { footballRouter } from './routes/football';
@@ -36,7 +35,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
-app.use('/api', test);
 app.use('/api/weather', weatherRouter);
 app.use('/api/weather-fetch', weatherFetchRouter);
 app.use('/api/weather-unified', weatherUnifiedRouter);

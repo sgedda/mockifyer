@@ -89,18 +89,6 @@ export async function main() {
       console.log('Status:', response3.status);
       console.log('Status Text:', response3.statusText);
       console.log('Headers:', response3.headers);
-      
-      const params = new URLSearchParams({
-          key: apiKey,
-          q: 'London'
-      });
-    const response = await fetch(`https://api.weatherapi.com/v1/current.json?${params.toString()}`);
-    console.log('ÖÖÖÖresponse', response);
-    const data = await response.json();
-    console.log('Response:', data);
-    console.log('Status:', response.status);
-    console.log('Status Text:', response.statusText);
-    console.log('Headers:', response.headers);
     } catch (error) {
       if (error instanceof Error) {
         console.error('Error:', error.message);

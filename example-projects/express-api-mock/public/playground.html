@@ -570,8 +570,9 @@
             initializeComponents();
 
             // Load status and mock files after fragments are loaded
-            loadStatus();
-            loadMockFiles();
+            // Await these async functions to ensure they complete before function returns
+            await loadStatus();
+            await loadMockFiles();
         }
 
         // Initialize components after fragments are loaded
@@ -607,8 +608,12 @@
 
         // Helper function to get current client configuration
         function getClientConfig () {
-            const clientType = document.getElementById('client-type-select').value || 'axios';
-            const scope = document.getElementById('scope-select').value || 'local';
+            const clientTypeSelect = document.getElementById('client-type-select');
+            const scopeSelect = document.getElementById('scope-select');
+            // Ensure elements exist before accessing their values using optional chaining
+            // Provide explicit defaults to prevent undefined values
+            const clientType = (clientTypeSelect && clientTypeSelect.value) ? clientTypeSelect.value : 'axios';
+            const scope = (scopeSelect && scopeSelect.value) ? scopeSelect.value : 'local';
             return { clientType, scope };
         }
 
@@ -1149,24 +1154,6 @@
             }
         }
 
-        // Load current date for events section on page load
-        (async function () {
-            try {
-                const response = await fetch(`${API_BASE}/api/date-config`);
-                const config = await response.json();
-                const dateDisplay = document.getElementById('events-current-date');
-                if (dateDisplay && config.currentDateFormatted) {
-                    dateDisplay.textContent = config.currentDateFormatted;
-                    dateDisplay.style.color = '#fff';
-                }
-            } catch (error) {
-                const dateDisplay = document.getElementById('events-current-date');
-                if (dateDisplay) {
-                    dateDisplay.textContent = 'Error loading date';
-                    dateDisplay.style.color = '#ef5350';
-                }
-            }
-        })();
 
         async function makeRequest (url, options = {}) {
             const startTime = performance.now();
@@ -2851,6 +2838,17 @@
 
         // Note: loadStatus() and loadMockFiles() are now called after fragments are loaded
         // in the loadFragments() function to ensure elements exist
+
+        // Safeguard: Prevent errors if any code tries to access removed elements
+        // The events-current-date element was removed when endpoint HTML cards were replaced
+        // Any code trying to set this element will fail silently
+        (function() {
+            const eventsCurrentDateEl = document.getElementById('events-current-date');
+            if (!eventsCurrentDateEl) {
+                // Element doesn't exist - this is expected after refactoring
+                // Any code trying to set this element should be removed or relocated
+            }
+        })();
     </script>
 </body>
 

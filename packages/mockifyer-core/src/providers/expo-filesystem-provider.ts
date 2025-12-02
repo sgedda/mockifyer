@@ -231,6 +231,15 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   }
 
   async save(mockData: MockData): Promise<void> {
+    // CRITICAL: Never save sync endpoint requests - they should never be mocked
+    const requestUrl = mockData?.request?.url || '';
+    if (requestUrl.includes('/mockifyer-save') || 
+        requestUrl.includes('/mockifyer-clear') || 
+        requestUrl.includes('/mockifyer-sync')) {
+      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping save - request URL is a sync endpoint: ${requestUrl}`);
+      return;
+    }
+    
     console.log(`[ExpoFileSystemProvider] save - Saving mock data to: ${this.mockDataPath}`);
     
     // Format the datetime to be readable
@@ -498,7 +507,27 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       try {
         const filePath = this.mockDataPath + '/' + file;
         const fileContent = await this.FileSystem.readAsStringAsync(filePath);
+        
+        // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
+        if (fileContent.includes('/mockifyer-save') || 
+            fileContent.includes('/mockifyer-clear') || 
+            fileContent.includes('/mockifyer-sync') ||
+            fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
+          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
+          continue;
+        }
+        
         const mockData: MockData = JSON.parse(fileContent);
+        
+        // CRITICAL: Also check the parsed mockData for sync endpoint URLs
+        const requestUrl = mockData.request?.url || '';
+        if (requestUrl.includes('/mockifyer-save') || 
+            requestUrl.includes('/mockifyer-clear') || 
+            requestUrl.includes('/mockifyer-sync')) {
+          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
+          continue;
+        }
+        
         results.push(mockData);
       } catch (error) {
         console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
