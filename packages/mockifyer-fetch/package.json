@@ -12,6 +12,13 @@
     "./react-native": {
       "types": "./dist/react-native.d.ts",
       "default": "./dist/react-native.js"
+    },
+    "./metro-config": {
+      "types": "./dist/metro-config.d.ts",
+      "default": "./dist/metro-config.js"
+    },
+    "./metro-polyfills/empty-module": {
+      "default": "./metro-polyfills/empty-module.js"
     }
   },
   "scripts": {

@@ -2,9 +2,10 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 const mockSyncMiddleware = require('./metro-sync-middleware');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
 
 // Get the default Metro config
-const config = getDefaultConfig(__dirname);
+let config = getDefaultConfig(__dirname);
 
 // Add watchFolders to include the monorepo packages
 // This allows Metro to watch for changes in the packages
@@ -29,7 +30,10 @@ config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, '../../node_modules'),
 ];
 
-// Custom resolver to handle @babel/runtime and Node.js built-ins
+// Configure Metro for Mockifyer (stubs Node.js built-ins: fs, path, assert, util)
+config = configureMetroForMockifyer(config);
+
+// Custom resolver to handle @babel/runtime (preserved after Mockifyer config)
 const defaultResolver = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Handle @babel/runtime resolution - always resolve from project node_modules
@@ -44,19 +48,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     }
   }
   
-  // Handle Node.js built-in modules - return empty module stub for React Native bundle
-  // Note: In development, filesystem provider uses Node.js fs (Metro runs on Node.js)
-  // In production builds, Memory provider is used (no fs needed)
-  // Metro needs these stubbed so it can bundle the code without errors
-  const nodeBuiltins = ['fs', 'path', 'crypto', 'stream', 'util', 'events', 'buffer', 'process'];
-  if (nodeBuiltins.includes(moduleName)) {
-    return {
-      filePath: path.resolve(__dirname, 'metro-polyfills', 'empty-module.js'),
-      type: 'sourceFile',
-    };
-  }
-  
-  // Use default resolution for other modules
+  // Use default resolution (includes Mockifyer's Node.js built-in stubs)
   if (defaultResolver) {
     return defaultResolver(context, moduleName, platform);
   }

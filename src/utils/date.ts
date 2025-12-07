@@ -1,25 +1,26 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 
-// Sinon is optional - may not be available in React Native production builds
+// @sinonjs/fake-timers is optional - may not be available in React Native production builds
 // We'll try to import it lazily when needed
-let sinon: typeof import('sinon') | null = null;
-let clock: any = null; // sinon.SinonFakeTimers | null, but using any for React Native compatibility
+// Using @sinonjs/fake-timers directly instead of sinon (much smaller, ~200KB vs 5MB+)
+let FakeTimers: typeof import('@sinonjs/fake-timers') | null = null;
+let clock: any = null; // FakeTimers.InstalledClock | null, but using any for React Native compatibility
 let currentConfig: MockifyerConfig | null = null;
 
 /**
- * Try to load Sinon (may not be available in React Native)
+ * Try to load @sinonjs/fake-timers (may not be available in React Native)
  */
-function tryLoadSinon(): typeof import('sinon') | null {
-  if (sinon) {
-    return sinon;
+function tryLoadFakeTimers(): typeof import('@sinonjs/fake-timers') | null {
+  if (FakeTimers) {
+    return FakeTimers;
   }
   
   try {
-    // Try to require sinon (works in Node.js and some React Native setups)
-    sinon = require('sinon');
-    return sinon;
+    // Try to require @sinonjs/fake-timers (works in Node.js and React Native)
+    FakeTimers = require('@sinonjs/fake-timers');
+    return FakeTimers;
   } catch (error) {
-    // Sinon not available (e.g., React Native production build)
+    // Fake timers not available (e.g., React Native production build)
     // Date manipulation will still work via fallback in getCurrentDate()
     return null;
   }
@@ -42,12 +43,18 @@ function getTimezoneOffset(targetTimezone: string): number {
 }
 
 /**
- * Initialize date manipulation with the given config using Sinon fake timers
+ * Initialize date manipulation with the given config using fake timers
  */
 export function initializeDateManipulation(config: MockifyerConfig): void {
   // Restore any existing clock first
+  // Use try-catch because fake timers may throw if clock is already restored
   if (clock) {
-    clock.restore();
+    try {
+      clock.uninstall();
+    } catch (error) {
+      // Clock may have been restored externally (e.g., in tests)
+      // Ignore the error and continue
+    }
     clock = null;
   }
 
@@ -102,58 +109,48 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
     }
   }
 
-  // Set up Sinon fake timers if we have a target time
-  // Note: Sinon may not be available in React Native production builds
-  // If Sinon isn't available, date manipulation will still work via getCurrentDate() fallback
+  // Set up fake timers if we have a target time
+  // Note: @sinonjs/fake-timers may not be available in React Native production builds
+  // If fake timers aren't available, date manipulation will still work via getCurrentDate() fallback
   if (targetTime !== undefined) {
-    const sinonLib = tryLoadSinon();
+    const fakeTimersLib = tryLoadFakeTimers();
     
-    if (sinonLib) {
-      // Try to restore any existing fake timers first (e.g., from tests)
-      // This prevents "Can't install fake timers twice" errors
+    if (fakeTimersLib) {
+      // Try to install fake timers with the target time
+      // If timers are already installed, this will throw an error which we'll catch
       try {
-        clock = sinonLib.useFakeTimers({
+        clock = fakeTimersLib.install({
           now: targetTime,
           toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate']
         });
       } catch (error: any) {
-        // If there's already a clock installed, try to restore it
-        if (error.message && error.message.includes('fake timers twice')) {
-          // Try to access and restore the existing clock using @sinonjs/fake-timers
+        // If timers are already installed (e.g., from tests), try to uninstall first
+        if (error.message && (error.message.includes('fake timers') || error.message.includes('already installed'))) {
           try {
-            const FakeTimers = require('@sinonjs/fake-timers');
-            // Get all installed clocks and uninstall them
-            // @sinonjs/fake-timers stores clocks in a WeakMap, but we can try to uninstall
-            // by creating a new timers instance and checking for existing ones
-            const timers = FakeTimers.withGlobal(global);
-            // Try to uninstall any existing timers
-            // This is a workaround - we create a temporary clock to get access to uninstall
-            const tempTimers = FakeTimers.install({ now: Date.now() });
+            // Try to uninstall by creating a temporary clock and uninstalling it
+            // This is a workaround since @sinonjs/fake-timers doesn't expose a way to check if timers are installed
+            const tempTimers = fakeTimersLib.install({ now: Date.now() });
             tempTimers.uninstall();
-          } catch (uninstallError) {
-            // If that doesn't work, try using sandbox
-            try {
-              const sandbox = sinonLib.createSandbox();
-              sandbox.restore();
-            } catch (sandboxError) {
-              // If sandbox doesn't work either, we're out of options
-              // The test should restore the clock before calling setupMockifyer
-            }
+            // Now try installing again with the target time
+            clock = fakeTimersLib.install({
+              now: targetTime,
+              toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate']
+            });
+          } catch (retryError) {
+            // For React Native or other environments where fake timers fail, fall back silently
+            // Date manipulation will still work via getCurrentDate() fallback
+            console.warn('[Mockifyer] Could not set up fake timers. Date manipulation will use fallback method.');
+            clock = null;
           }
-          // Now try again
-          clock = sinonLib.useFakeTimers({
-            now: targetTime,
-            toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate']
-          });
         } else {
-          // For React Native or other environments where Sinon fails, fall back silently
+          // For React Native or other environments where fake timers fail, fall back silently
           // Date manipulation will still work via getCurrentDate() fallback
-          console.warn('[Mockifyer] Could not set up Sinon fake timers. Date manipulation will use fallback method.');
+          console.warn('[Mockifyer] Could not set up fake timers. Date manipulation will use fallback method.');
           clock = null;
         }
       }
     } else {
-      // Sinon not available (e.g., React Native production build)
+      // Fake timers not available (e.g., React Native production build)
       // Date manipulation will still work via getCurrentDate() fallback
       clock = null;
     }
@@ -162,10 +159,10 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
 
 /**
  * Get the current date taking into account any date manipulation settings
- * With Sinon fake timers, new Date() and Date.now() will return the fake time
+ * With fake timers, new Date() and Date.now() will return the fake time
  */
 export function getCurrentDate(): Date {
-  // If Sinon clock is active, new Date() will return the fake time
+  // If fake timers clock is active, new Date() will return the fake time
   if (clock) {
     return new Date();
   }
@@ -225,9 +222,9 @@ export function getCurrentDate(): Date {
 export function resetDateManipulation(): void {
   if (clock) {
     try {
-      clock.restore();
+      clock.uninstall();
     } catch (error) {
-      // Clock may have been restored externally or Sinon may not be available
+      // Clock may have been restored externally or fake timers may not be available
       // Ignore the error and continue
     }
     clock = null;

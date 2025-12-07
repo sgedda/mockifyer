@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sinon = require('sinon');
 import { setupMockifyer, getCurrentDate, resetDateManipulation } from '../src';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';

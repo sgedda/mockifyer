@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sinon = require('sinon');
 import { setupMockifyer, getCurrentDate, resetDateManipulation } from '../src';
 
 describe('Date Manipulation', () => {
