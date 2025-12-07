@@ -1164,11 +1164,11 @@ class MockifyerClass {
       };
 
       // Generate or reuse sessionId
-      const now = Date.now();
-      if (!this.currentSessionId || (now - this.sessionStartTime) > this.SESSION_TIMEOUT_MS) {
+      const nowTimestamp = Date.now();
+      if (!this.currentSessionId || (nowTimestamp - this.sessionStartTime) > this.SESSION_TIMEOUT_MS) {
         // Generate new session ID
-        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
-        this.sessionStartTime = now;
+        this.currentSessionId = `session-${nowTimestamp}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = nowTimestamp;
       }
 
       const mockData: MockData = {

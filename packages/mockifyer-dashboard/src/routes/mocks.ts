@@ -51,41 +51,40 @@ router.get('/', (req: Request, res: Response) => {
           } else if (mockData.data && mockData.data.sessionId) {
             sessionId = mockData.data.sessionId;
           }
+          
+          // Check if this is a GraphQL request
+          if (mockData.request.data) {
+            let bodyData = mockData.request.data;
             
-            // Check if this is a GraphQL request
-            if (mockData.request.data) {
-              let bodyData = mockData.request.data;
-              
-              // If body is a string, try to parse it as JSON
-              if (typeof mockData.request.data === 'string') {
-                try {
-                  bodyData = JSON.parse(mockData.request.data);
-                } catch (e) {
-                  // Not JSON, skip GraphQL detection
-                }
-              }
-              
-              // Check if it's a GraphQL request (has a 'query' field)
-              if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-                graphqlInfo = {
-                  query: bodyData.query,
-                  variables: bodyData.variables || null
-                };
+            // If body is a string, try to parse it as JSON
+            if (typeof mockData.request.data === 'string') {
+              try {
+                bodyData = JSON.parse(mockData.request.data);
+              } catch (e) {
+                // Not JSON, skip GraphQL detection
               }
             }
             
-            // Add query parameters if they exist (only for non-GraphQL requests)
-            if (!graphqlInfo && mockData.request.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-              const params = new URLSearchParams();
-              Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-                if (value != null) {
-                  params.append(key, String(value));
-                }
-              });
-              const queryString = params.toString();
-              if (queryString) {
-                endpoint += '?' + queryString;
+            // Check if it's a GraphQL request (has a 'query' field)
+            if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
+              graphqlInfo = {
+                query: bodyData.query,
+                variables: bodyData.variables || null
+              };
+            }
+          }
+          
+          // Add query parameters if they exist (only for non-GraphQL requests)
+          if (!graphqlInfo && mockData.request.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+            const params = new URLSearchParams();
+            Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
+              if (value != null) {
+                params.append(key, String(value));
               }
+            });
+            const queryString = params.toString();
+            if (queryString) {
+              endpoint += '?' + queryString;
             }
           }
         } catch (error) {
