@@ -1,27 +1,39 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
+import fs from 'fs';
+import path from 'path';
 
-// @sinonjs/fake-timers is optional - may not be available in React Native production builds
-// We'll try to import it lazily when needed
-// Using @sinonjs/fake-timers directly instead of sinon (much smaller, ~200KB vs 5MB+)
-let FakeTimers: typeof import('@sinonjs/fake-timers') | null = null;
-let clock: any = null; // FakeTimers.InstalledClock | null, but using any for React Native compatibility
 let currentConfig: MockifyerConfig | null = null;
 
 /**
- * Try to load @sinonjs/fake-timers (may not be available in React Native)
+ * Try to load date config from date-config.json file in mock data directory
  */
-function tryLoadFakeTimers(): typeof import('@sinonjs/fake-timers') | null {
-  if (FakeTimers) {
-    return FakeTimers;
-  }
-  
+function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
   try {
-    // Try to require @sinonjs/fake-timers (works in Node.js and React Native)
-    FakeTimers = require('@sinonjs/fake-timers');
-    return FakeTimers;
+    // Try to detect mock data path if not provided
+    let configPath: string;
+    if (mockDataPath) {
+      configPath = path.join(mockDataPath, 'date-config.json');
+    } else {
+      // Try common locations
+      const possiblePaths = [
+        './mock-data/date-config.json',
+        './persisted/mock-data/date-config.json',
+        path.join(process.cwd(), 'mock-data', 'date-config.json'),
+        path.join(process.cwd(), 'persisted', 'mock-data', 'date-config.json'),
+      ];
+      
+      configPath = possiblePaths.find(p => fs.existsSync(p)) || '';
+    }
+
+    if (!configPath || !fs.existsSync(configPath)) {
+      return null;
+    }
+
+    const fileContent = fs.readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(fileContent);
+    return config.dateManipulation ? { dateManipulation: config.dateManipulation } : null;
   } catch (error) {
-    // Fake timers not available (e.g., React Native production build)
-    // Date manipulation will still work via fallback in getCurrentDate()
+    // Silently fail - file might not exist or be invalid
     return null;
   }
 }
@@ -43,131 +55,27 @@ function getTimezoneOffset(targetTimezone: string): number {
 }
 
 /**
- * Initialize date manipulation with the given config using fake timers
+ * Initialize date manipulation with the given config
+ * Note: For global Date manipulation (new Date(), Date.now()), use Sinon or Jest fake timers
+ * This function stores the config for use by getCurrentDate()
  */
 export function initializeDateManipulation(config: MockifyerConfig): void {
-  // Restore any existing clock first
-  // Use try-catch because fake timers may throw if clock is already restored
-  if (clock) {
-    try {
-      clock.uninstall();
-    } catch (error) {
-      // Clock may have been restored externally (e.g., in tests)
-      // Ignore the error and continue
-    }
-    clock = null;
-  }
-
   currentConfig = config;
 
-  // Check environment variables first (they take precedence)
-  const envDate = process.env[ENV_VARS.MOCK_DATE];
-  const envOffset = process.env[ENV_VARS.MOCK_DATE_OFFSET];
-  const envTimezone = process.env[ENV_VARS.MOCK_TIMEZONE];
-
-  let targetTime: number | undefined;
-
-  // Environment variables take precedence over config
-  if (envDate) {
-    targetTime = new Date(envDate).getTime();
-  } else if (envOffset) {
-    const offset = parseInt(envOffset, 10);
-    if (!isNaN(offset)) {
-      targetTime = Date.now() + offset;
-    }
-  } else if (currentConfig?.dateManipulation) {
-    const { dateManipulation } = currentConfig;
-
-    if (dateManipulation.fixedDate) {
-      targetTime = typeof dateManipulation.fixedDate === 'string' 
-        ? new Date(dateManipulation.fixedDate).getTime()
-        : dateManipulation.fixedDate.getTime();
-    } else if (dateManipulation.offset !== undefined) {
-      targetTime = Date.now() + dateManipulation.offset;
-    }
-  }
-
-  // Handle timezone
-  const timezone = envTimezone || currentConfig?.dateManipulation?.timezone;
-  if (timezone) {
-    if (targetTime !== undefined) {
-      // Apply timezone offset to the target time
-      const timezoneOffset = getTimezoneOffset(timezone);
-      targetTime = targetTime + timezoneOffset;
-    } else {
-      // If only timezone is set (no fixedDate or offset), calculate current time in that timezone
-      try {
-        const now = new Date();
-        const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-        const targetTimeInTimezone = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
-        const timezoneOffset = targetTimeInTimezone.getTime() - utcTime;
-        targetTime = Date.now() + timezoneOffset;
-      } catch (error) {
-        // Invalid timezone - don't set up clock, fall back to manual calculation in getCurrentDate
-        console.warn(`Invalid timezone: ${timezone}. Using system timezone instead.`);
-      }
-    }
-  }
-
-  // Set up fake timers if we have a target time
-  // Note: @sinonjs/fake-timers may not be available in React Native production builds
-  // If fake timers aren't available, date manipulation will still work via getCurrentDate() fallback
-  if (targetTime !== undefined) {
-    const fakeTimersLib = tryLoadFakeTimers();
-    
-    if (fakeTimersLib) {
-      // Try to install fake timers with the target time
-      // If timers are already installed, this will throw an error which we'll catch
-      try {
-        clock = fakeTimersLib.install({
-          now: targetTime,
-          toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate']
-        });
-      } catch (error: any) {
-        // If timers are already installed (e.g., from tests), try to uninstall first
-        if (error.message && (error.message.includes('fake timers') || error.message.includes('already installed'))) {
-          try {
-            // Try to uninstall by creating a temporary clock and uninstalling it
-            // This is a workaround since @sinonjs/fake-timers doesn't expose a way to check if timers are installed
-            const tempTimers = fakeTimersLib.install({ now: Date.now() });
-            tempTimers.uninstall();
-            // Now try installing again with the target time
-            clock = fakeTimersLib.install({
-              now: targetTime,
-              toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate']
-            });
-          } catch (retryError) {
-            // For React Native or other environments where fake timers fail, fall back silently
-            // Date manipulation will still work via getCurrentDate() fallback
-            console.warn('[Mockifyer] Could not set up fake timers. Date manipulation will use fallback method.');
-            clock = null;
-          }
-        } else {
-          // For React Native or other environments where fake timers fail, fall back silently
-          // Date manipulation will still work via getCurrentDate() fallback
-          console.warn('[Mockifyer] Could not set up fake timers. Date manipulation will use fallback method.');
-          clock = null;
-        }
-      }
-    } else {
-      // Fake timers not available (e.g., React Native production build)
-      // Date manipulation will still work via getCurrentDate() fallback
-      clock = null;
-    }
-  }
+  // Config is stored and used by getCurrentDate() to return manipulated dates
+  // For global Date manipulation (new Date(), Date.now()), use Sinon or Jest fake timers
+  // See documentation for examples
 }
 
 /**
  * Get the current date taking into account any date manipulation settings
- * With fake timers, new Date() and Date.now() will return the fake time
+ * 
+ * Note: This function returns a manipulated date object, but does NOT affect
+ * global Date() or Date.now(). For global date manipulation, use Sinon or Jest fake timers.
+ * See documentation for examples.
  */
 export function getCurrentDate(): Date {
-  // If fake timers clock is active, new Date() will return the fake time
-  if (clock) {
-    return new Date();
-  }
-
-  // Check environment variables first (fallback for when clock isn't set)
+  // Check environment variables first (they take precedence)
   const envDate = process.env[ENV_VARS.MOCK_DATE];
   const envOffset = process.env[ENV_VARS.MOCK_DATE_OFFSET];
   const envTimezone = process.env[ENV_VARS.MOCK_TIMEZONE];
@@ -184,12 +92,21 @@ export function getCurrentDate(): Date {
     }
   }
 
-  // If no config is set, return actual current date
-  if (!currentConfig?.dateManipulation) {
-    return new Date();
+  // Try to get date manipulation from current config
+  let dateManipulation = currentConfig?.dateManipulation;
+
+  // If no config, try to load from date-config.json file
+  if (!dateManipulation) {
+    const fileConfig = loadDateConfigFromFile(currentConfig?.mockDataPath);
+    if (fileConfig?.dateManipulation) {
+      dateManipulation = fileConfig.dateManipulation;
+    }
   }
 
-  const { dateManipulation } = currentConfig;
+  // If still no config, return actual current date
+  if (!dateManipulation) {
+    return new Date();
+  }
 
   // Use config settings if no environment variables are set
   if (dateManipulation.fixedDate) {
@@ -217,18 +134,11 @@ export function getCurrentDate(): Date {
 }
 
 /**
- * Reset any date manipulation settings and restore real timers
+ * Reset any date manipulation settings
+ * Note: This does NOT restore fake timers if you're using Sinon/Jest fake timers
+ * You need to restore those separately (clock.restore() or jest.useRealTimers())
  */
 export function resetDateManipulation(): void {
-  if (clock) {
-    try {
-      clock.uninstall();
-    } catch (error) {
-      // Clock may have been restored externally or fake timers may not be available
-      // Ignore the error and continue
-    }
-    clock = null;
-  }
   currentConfig = null;
 }
 

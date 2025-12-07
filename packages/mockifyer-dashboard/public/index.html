@@ -670,6 +670,91 @@
             </div>
         </div>
 
+        <!-- Date Manipulation -->
+        <div class="card">
+            <h2>📅 Date Manipulation</h2>
+            <p style="color: #a0a0a0; margin-bottom: 20px;">
+                Control the date returned by <code>getCurrentDate()</code>. Changes are saved to
+                <code>date-config.json</code>.
+            </p>
+            <div id="date-config-container">
+                <!-- Tab-style mode switcher -->
+                <div
+                    style="display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid rgba(20, 20, 35, 0.8);">
+                    <button type="button" id="date-mode-fixed-btn"
+                        style="padding: 12px 24px; background: rgba(25, 25, 40, 0.8); border: none; border-bottom: 3px solid #667eea; color: #e0e0e0; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s;">
+                        Fixed Date
+                    </button>
+                    <button type="button" id="date-mode-offset-btn"
+                        style="padding: 12px 24px; background: rgba(20, 20, 35, 0.6); border: none; border-bottom: 3px solid transparent; color: #a0a0a0; cursor: pointer; font-weight: 500; font-size: 14px; transition: all 0.2s;">
+                        Offset from Current
+                    </button>
+                </div>
+
+                <!-- Fixed Date Section -->
+                <div id="fixed-date-section" style="display: block;">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Fixed
+                            Date</label>
+                        <input type="datetime-local" id="fixed-date-input" class="search-box"
+                            style="margin-bottom: 0; width: 100%; max-width: 300px;">
+                        <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                            Set a specific date and time
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Offset Section -->
+                <div id="offset-section" style="display: none;">
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Offset from
+                            Current Time</label>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <select id="offset-direction" class="search-box"
+                                style="margin-bottom: 0; width: 100px; padding: 12px 15px;">
+                                <option value="future">Future</option>
+                                <option value="past">Past</option>
+                            </select>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="number" id="offset-days" class="search-box"
+                                    style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0" min="0">
+                                <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">d</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="number" id="offset-hours" class="search-box"
+                                    style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0" min="0"
+                                    max="23">
+                                <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">h</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <input type="number" id="offset-minutes" class="search-box"
+                                    style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0" min="0"
+                                    max="59">
+                                <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">m</label>
+                            </div>
+                        </div>
+                        <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                            Add time to current date
+                        </small>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Current Date
+                        (getCurrentDate())</label>
+                    <div id="current-date-display"
+                        style="padding: 10px; background: rgba(20, 20, 35, 0.6); border-radius: 8px; color: #8b9aff; font-family: monospace;">
+                        Loading...
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-primary" onclick="saveDateConfig()">💾 Save Date Config</button>
+                    <button class="btn btn-secondary" onclick="clearDateConfig()">🔄 Clear</button>
+                </div>
+                <div id="date-config-message" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+
         <!-- Mock Files Browser -->
         <div class="card">
             <h2>📁 Mock Files</h2>
@@ -736,10 +821,91 @@
         window.addEventListener('DOMContentLoaded', () => {
             loadMockFiles();
             loadStats();
+            loadDateConfig();
+
+            // Track when user is editing date inputs
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+            const dateModeFixedBtn = document.getElementById('date-mode-fixed-btn');
+            const dateModeOffsetBtn = document.getElementById('date-mode-offset-btn');
+            const fixedDateSection = document.getElementById('fixed-date-section');
+            const offsetSection = document.getElementById('offset-section');
+
+            // Handle date mode switching
+            function updateDateModeUI (isFixedMode) {
+                // Update button styles
+                if (isFixedMode) {
+                    dateModeFixedBtn.style.background = 'rgba(25, 25, 40, 0.8)';
+                    dateModeFixedBtn.style.color = '#e0e0e0';
+                    dateModeFixedBtn.style.borderBottomColor = '#667eea';
+                    dateModeFixedBtn.style.fontWeight = '600';
+
+                    dateModeOffsetBtn.style.background = 'rgba(20, 20, 35, 0.6)';
+                    dateModeOffsetBtn.style.color = '#a0a0a0';
+                    dateModeOffsetBtn.style.borderBottomColor = 'transparent';
+                    dateModeOffsetBtn.style.fontWeight = '500';
+
+                    // Show/hide sections
+                    fixedDateSection.style.display = 'block';
+                    offsetSection.style.display = 'none';
+
+                    // Clear offset inputs
+                    offsetDaysInput.value = '';
+                    offsetHoursInput.value = '';
+                    offsetMinutesInput.value = '';
+                } else {
+                    dateModeFixedBtn.style.background = 'rgba(20, 20, 35, 0.6)';
+                    dateModeFixedBtn.style.color = '#a0a0a0';
+                    dateModeFixedBtn.style.borderBottomColor = 'transparent';
+                    dateModeFixedBtn.style.fontWeight = '500';
+
+                    dateModeOffsetBtn.style.background = 'rgba(25, 25, 40, 0.8)';
+                    dateModeOffsetBtn.style.color = '#e0e0e0';
+                    dateModeOffsetBtn.style.borderBottomColor = '#667eea';
+                    dateModeOffsetBtn.style.fontWeight = '600';
+
+                    // Show/hide sections
+                    fixedDateSection.style.display = 'none';
+                    offsetSection.style.display = 'block';
+
+                    // Clear fixed date input
+                    fixedDateInput.value = '';
+                }
+            }
+
+            // Make updateDateModeUI accessible globally
+            window.updateDateModeUI = updateDateModeUI;
+
+            dateModeFixedBtn.addEventListener('click', () => updateDateModeUI(true));
+            dateModeOffsetBtn.addEventListener('click', () => updateDateModeUI(false));
+            updateDateModeUI(true); // Initial state - fixed date mode
+
+            const dateInputs = [fixedDateInput, offsetDaysInput, offsetHoursInput, offsetMinutesInput];
+            dateInputs.forEach(input => {
+                if (input) {
+                    input.addEventListener('focus', () => {
+                        isUserEditingDate = true;
+                    });
+                    input.addEventListener('blur', () => {
+                        // Small delay to allow save button click to register
+                        setTimeout(() => {
+                            isUserEditingDate = false;
+                        }, 200);
+                    });
+                    input.addEventListener('input', () => {
+                        isUserEditingDate = true;
+                    });
+                }
+            });
+
             // Refresh every 5 seconds
             setInterval(() => {
                 loadMockFiles();
                 loadStats();
+                loadDateConfig();
             }, 5000);
         });
 
@@ -1308,6 +1474,240 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Date Config Functions
+        let dateConfigLastLoaded = null; // Track last loaded config to detect changes
+        let isUserEditingDate = false; // Track if user is currently editing
+        let updateDateModeUI = null; // Will be set in DOMContentLoaded
+
+        async function loadDateConfig (forceUpdate = false) {
+            try {
+                const response = await fetch('/api/date-config');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Date config API error:', response.status, errorText);
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText.substring(0, 200)}`);
+                }
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Date config API returned non-JSON:', contentType, text.substring(0, 200));
+                    throw new Error(`Expected JSON but got ${contentType}`);
+                }
+                const data = await response.json();
+
+                const fixedDateInput = document.getElementById('fixed-date-input');
+                const offsetDaysInput = document.getElementById('offset-days');
+                const offsetHoursInput = document.getElementById('offset-hours');
+                const offsetMinutesInput = document.getElementById('offset-minutes');
+                const currentDateDisplay = document.getElementById('current-date-display');
+
+                // Check if config has changed (only update inputs if config changed or forced)
+                const configChanged = JSON.stringify(data.dateManipulation) !== JSON.stringify(dateConfigLastLoaded);
+
+                // Only update inputs if config changed, forced, or user is not editing
+                if (forceUpdate || (configChanged && !isUserEditingDate)) {
+                    const dateModeFixedBtn = document.getElementById('date-mode-fixed-btn');
+
+                    if (data.dateManipulation) {
+                        if (data.dateManipulation.fixedDate) {
+                            // Set fixed date mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(true);
+
+                            // Convert ISO string (UTC) to datetime-local format (local timezone)
+                            const date = new Date(data.dateManipulation.fixedDate);
+                            // Format as YYYY-MM-DDTHH:mm for datetime-local input
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            fixedDateInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+                        } else if (data.dateManipulation.offset !== undefined) {
+                            // Set offset mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(false);
+
+                            // Convert milliseconds to days, hours, minutes
+                            const totalMs = Math.abs(data.dateManipulation.offset);
+                            const totalMinutes = Math.floor(totalMs / (1000 * 60));
+                            const days = Math.floor(totalMinutes / (60 * 24));
+                            const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+                            const minutes = totalMinutes % 60;
+
+                            // Set direction based on sign
+                            const directionSelect = document.getElementById('offset-direction');
+                            if (directionSelect) {
+                                directionSelect.value = data.dateManipulation.offset >= 0 ? 'future' : 'past';
+                            }
+
+                            offsetDaysInput.value = days || '';
+                            offsetHoursInput.value = hours || '';
+                            offsetMinutesInput.value = minutes || '';
+                        } else {
+                            // No config - default to fixed date mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(true);
+                            fixedDateInput.value = '';
+                        }
+                    } else {
+                        // No config - default to fixed date mode
+                        if (window.updateDateModeUI) window.updateDateModeUI(true);
+                        fixedDateInput.value = '';
+                    }
+
+                    // Update last loaded config
+                    dateConfigLastLoaded = data.dateManipulation;
+                }
+
+                // Always update the current date display
+                if (currentDateDisplay) {
+                    currentDateDisplay.textContent = data.currentDate || new Date().toISOString();
+                }
+            } catch (error) {
+                console.error('Error loading date config:', error);
+                const currentDateDisplay = document.getElementById('current-date-display');
+                if (currentDateDisplay) {
+                    currentDateDisplay.textContent = 'Error: ' + (error.message || 'Failed to load date config');
+                    currentDateDisplay.style.color = '#f44336';
+                }
+            }
+        }
+
+        async function saveDateConfig () {
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+            const fixedDateSection = document.getElementById('fixed-date-section');
+
+            // Determine which mode is selected (check which section is visible)
+            const isFixedMode = fixedDateSection && fixedDateSection.style.display !== 'none';
+
+            let fixedDate = null;
+            let offset = null;
+
+            if (isFixedMode) {
+                // Fixed date mode - only save fixed date
+                fixedDate = fixedDateInput.value;
+                if (fixedDate) {
+                    // Convert datetime-local to ISO string
+                    const localDate = new Date(fixedDate);
+                    if (isNaN(localDate.getTime())) {
+                        showDateMessage('Invalid date format', 'error');
+                        return;
+                    }
+                    // Convert to ISO string (UTC)
+                    fixedDate = localDate.toISOString();
+                }
+            } else {
+                // Offset mode - only save offset
+                const days = parseInt(offsetDaysInput.value, 10) || 0;
+                const hours = parseInt(offsetHoursInput.value, 10) || 0;
+                const minutes = parseInt(offsetMinutesInput.value, 10) || 0;
+                const direction = offsetDirectionSelect.value || 'future';
+
+                // Calculate offset in milliseconds from days, hours, minutes
+                if (days !== 0 || hours !== 0 || minutes !== 0) {
+                    const totalMs = (days * 24 * 60 * 60 * 1000) +
+                        (hours * 60 * 60 * 1000) +
+                        (minutes * 60 * 1000);
+                    // Apply direction (negative for past, positive for future)
+                    offset = direction === 'past' ? -totalMs : totalMs;
+                }
+            }
+
+            // Build request body
+            const requestBody = {
+                fixedDate: fixedDate || null,
+                offset: offset !== null ? offset : null
+            };
+
+            try {
+                const response = await fetch('/api/date-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText.substring(0, 100)}`);
+                }
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showDateMessage('Date config saved successfully!', 'success');
+                    isUserEditingDate = false; // User finished editing
+                    // Reload the config to refresh all inputs with saved values (force update)
+                    await loadDateConfig(true);
+                } else {
+                    showDateMessage('Failed to save: ' + (data.details || data.error), 'error');
+                }
+            } catch (error) {
+                showDateMessage('Error saving date config: ' + error.message, 'error');
+            }
+        }
+
+        async function clearDateConfig () {
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+
+            // Reset to fixed date mode
+            if (window.updateDateModeUI) window.updateDateModeUI(true);
+
+            fixedDateInput.value = '';
+            offsetDaysInput.value = '';
+            offsetHoursInput.value = '';
+            offsetMinutesInput.value = '';
+
+            if (offsetDirectionSelect) {
+                offsetDirectionSelect.value = 'future';
+            }
+
+            try {
+                const response = await fetch('/api/date-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fixedDate: null,
+                        offset: null,
+                        timezone: null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showDateMessage('Date config cleared!', 'success');
+                    if (data.currentDate) {
+                        document.getElementById('current-date-display').textContent = data.currentDate;
+                    }
+                } else {
+                    showDateMessage('Failed to clear: ' + (data.details || data.error), 'error');
+                }
+            } catch (error) {
+                showDateMessage('Error clearing date config: ' + error.message, 'error');
+            }
+        }
+
+        function showDateMessage (message, type) {
+            const messageDiv = document.getElementById('date-config-message');
+            messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
+            messageDiv.textContent = message;
+            messageDiv.style.display = 'block';
+
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
         }
     </script>
 </body>

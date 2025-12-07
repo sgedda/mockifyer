@@ -23,9 +23,6 @@
   ],
   "author": "sgedda",
   "license": "MIT",
-  "optionalDependencies": {
-    "@sinonjs/fake-timers": "^11.3.1"
-  },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "ts-node": "^10.9.2",

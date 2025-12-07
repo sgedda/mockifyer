@@ -1,115 +1,68 @@
-# Testing with Sinon and Mockifyer
+# Deterministic Dates with Sinon Fake Timers and Mockifyer
 
-Mockifyer handles API mocking, while Sinon provides powerful spying, stubbing, and mocking capabilities for functions and methods. Together, they provide a comprehensive testing solution.
+Mockifyer provides `getCurrentDate()` for getting manipulated dates, but for **deterministic dates** where `new Date()` and `Date.now()` return fake time globally, you can use Sinon fake timers alongside Mockifyer in Node.js environments.
 
-## Why Use Sinon?
+## Why Use Fake Timers?
 
-Mockifyer is excellent for mocking external APIs, but what about testing your internal code? That's where Sinon comes in.
+Mockifyer's `getCurrentDate()` returns manipulated dates, but it doesn't affect global `Date()` or `Date.now()`. If your code uses `new Date()` or `Date.now()` directly, you'll need fake timers to make those return deterministic dates.
 
-**Common testing scenarios where Sinon helps:**
+**Use fake timers when:**
+- Your code calls `new Date()` or `Date.now()` directly
+- You need `setTimeout`/`setInterval` to work with fake time
+- You want deterministic dates across your entire application
+- You're testing time-dependent logic
 
-- **Verify function calls:** Did your function call another function with the right arguments?
-- **Prevent side effects:** Stop functions from sending emails, writing files, or making network calls during tests
-- **Control behavior:** Make functions return specific values or throw errors for testing edge cases
-- **Test interactions:** Verify that multiple functions were called in the correct order
-- **Mock dependencies:** Replace third-party libraries or modules with test doubles
+## Using Sinon Fake Timers (Node.js)
 
-**Example scenario:** Your code fetches user data from an API (Mockifyer mocks this), then processes it and sends a notification email. You want to verify the email function was called, but you don't want to actually send emails during tests. Sinon lets you spy on the email function and verify it was called correctly.
-
-**Without Sinon:** You'd have to manually track function calls, create wrapper functions, or accept side effects in your tests.
-
-**With Sinon:** One line of code to spy on a function, verify calls, and prevent side effects.
-
-## When Sinon Works
-
-**Sinon works in:**
-- ✅ **Node.js environments** - Backend services, Express APIs, CLI tools
-- ✅ **Test environments** - Jest, Mocha, Vitest running in Node.js
-- ✅ **Development servers** - Any Node.js-based development environment
-
-**Sinon does NOT work in:**
-- ❌ **React Native** - Sinon relies on Node.js built-in modules (like `assert`) that aren't available in React Native
-- ❌ **Browser production builds** - Limited runtime capabilities
-- ❌ **Mobile app runtimes** - Hermes/JSC don't support Sinon's requirements
-
-**Important:** Mockifyer works everywhere (including React Native), but Sinon is Node.js-only. For React Native testing:
-- Use **Mockifyer** for API mocking ✅
-- Use **Jest's built-in mocking** (`jest.fn()`, `jest.spyOn()`) for function spying/stubbing ✅
-- Do NOT use Sinon in React Native ❌
-
-## When to Use Sinon with Mockifyer
-
-**Mockifyer is for:**
-- ✅ Mocking HTTP requests/responses (API calls)
-- ✅ Recording and replaying API responses
-- ✅ Date manipulation for time-dependent tests
-
-**Sinon is for:**
-- ✅ Spying on function calls
-- ✅ Stubbing methods and functions
-- ✅ Mocking objects and modules
-- ✅ Verifying function call counts and arguments
-- ✅ Controlling function behavior (return values, throwing errors)
-
-## Installation
+### Installation
 
 ```bash
 npm install --save-dev sinon @types/sinon
 ```
 
-## Basic Usage
+### Setting Up in Your Service
 
-### Example: Spying on Functions Called by API Responses
+Here's how to set up Sinon fake timers alongside Mockifyer in your service:
 
 ```typescript
 import sinon from 'sinon';
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { useFakeTimers } from 'sinon';
+import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-fetch';
 
-describe('User Service', () => {
-  let mockifyer: any;
-  let processUserSpy: sinon.SinonSpy;
-
-  beforeEach(() => {
-    // Setup Mockifyer for API mocking
-    mockifyer = setupMockifyer({
-      mockDataPath: './mock-data',
-      recordMode: false,
-    });
-
-    // Use Sinon to spy on a function
-    processUserSpy = sinon.spy(userService, 'processUser');
-  });
-
-  afterEach(() => {
-    // Restore Sinon spies/stubs
-    sinon.restore();
-    mockifyer.reset();
-  });
-
-  it('should process user data from API response', async () => {
-    // Mockifyer handles the API call
-    const response = await fetch('https://api.example.com/users/1');
-    const userData = await response.json();
-
-    // Call the function that processes the data
-    userService.processUser(userData);
-
-    // Use Sinon to verify the function was called correctly
-    expect(processUserSpy.calledOnce).toBe(true);
-    expect(processUserSpy.calledWith(userData)).toBe(true);
-  });
+// Initialize Mockifyer with date manipulation
+const mockifyer = setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  dateManipulation: {
+    fixedDate: '2024-12-25T00:00:00.000Z', // Mockifyer's date config
+  },
 });
+
+// Setup Sinon fake timers for global Date manipulation
+const fixedDate = '2024-12-25T00:00:00.000Z';
+const clock = useFakeTimers({
+  now: new Date(fixedDate), // Same date as Mockifyer
+  toFake: ['Date', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'],
+});
+
+// Now both new Date() and getCurrentDate() return the same fake date
+const globalDate = new Date(); // Returns 2024-12-25 (from Sinon)
+const mockifyerDate = getCurrentDate(); // Returns 2024-12-25 (from Mockifyer)
+
+// When done, restore real timers
+// clock.restore();
 ```
 
-### Example: Stubbing Methods with Mockifyer
+### Example: Testing Time Progression
 
 ```typescript
 import sinon from 'sinon';
+import { useFakeTimers } from 'sinon';
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-describe('Order Processing', () => {
+describe('Subscription Expiration', () => {
   let mockifyer: any;
-  let emailServiceStub: sinon.SinonStub;
+  let clock: sinon.SinonFakeTimers;
 
   beforeEach(() => {
     mockifyer = setupMockifyer({
@@ -117,84 +70,47 @@ describe('Order Processing', () => {
       recordMode: false,
     });
 
-    // Stub the email service to prevent actual emails
-    emailServiceStub = sinon.stub(emailService, 'sendEmail').resolves(true);
+    // Start at a fixed date
+    clock = useFakeTimers({
+      now: new Date('2024-12-25T00:00:00.000Z'),
+    });
   });
 
   afterEach(() => {
-    sinon.restore();
+    clock.restore();
   });
 
-  it('should send email after successful order', async () => {
-    // Mockifyer mocks the API call
-    const orderResponse = await fetch('https://api.example.com/orders', {
-      method: 'POST',
-      body: JSON.stringify({ items: [...] }),
-    });
+  it('should handle subscription expiration', async () => {
+    // API call mocked by Mockifyer
+    const response = await fetch('https://api.example.com/subscription/1');
+    const subscription = await response.json();
 
-    // Sinon stub prevents actual email sending
-    await orderService.processOrder(await orderResponse.json());
+    // Current date is controlled by Sinon
+    const currentDate = new Date(); // 2024-12-25
+    expect(subscription.expiresAt > currentDate).toBe(true);
 
-    // Verify email was "sent" (stubbed)
-    expect(emailServiceStub.calledOnce).toBe(true);
-  });
-});
-```
+    // Advance time by 30 days
+    clock.tick(30 * 24 * 60 * 60 * 1000);
+    const futureDate = new Date(); // Now 2025-01-24
 
-### Example: Combining Date Manipulation with Sinon Spies
-
-```typescript
-import sinon from 'sinon';
-import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-core';
-
-describe('Subscription Service', () => {
-  let mockifyer: any;
-  let notifyUserSpy: sinon.SinonSpy;
-
-  beforeEach(() => {
-    mockifyer = setupMockifyer({
-      mockDataPath: './mock-data',
-      dateManipulation: {
-        fixedDate: '2024-12-25T00:00:00.000Z', // Christmas
-      },
-    });
-
-    notifyUserSpy = sinon.spy(notificationService, 'notifyUser');
-  });
-
-  afterEach(() => {
-    sinon.restore();
-  });
-
-  it('should notify user when subscription expires', async () => {
-    // Mockifyer handles date manipulation
-    const currentDate = getCurrentDate(); // Returns fixed date
-
-    // Mockifyer handles API call
-    const subscription = await fetch('https://api.example.com/subscription/1');
-
-    // Check if subscription is expired using manipulated date
-    if (subscription.expiresAt < currentDate) {
-      notificationService.notifyUser('subscription_expired');
+    // Check expiration logic
+    if (subscription.expiresAt < futureDate) {
+      expect(subscription.status).toBe('expired');
     }
-
-    // Verify notification was sent
-    expect(notifyUserSpy.calledWith('subscription_expired')).toBe(true);
   });
 });
 ```
 
-## Advanced Patterns
-
-### Mocking External Modules
+### Example: Testing Scheduled Tasks
 
 ```typescript
 import sinon from 'sinon';
+import { useFakeTimers } from 'sinon';
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-describe('Payment Processing', () => {
+describe('Scheduled Tasks', () => {
   let mockifyer: any;
-  let paymentGatewayMock: sinon.SinonStub;
+  let clock: sinon.SinonFakeTimers;
 
   beforeEach(() => {
     mockifyer = setupMockifyer({
@@ -202,154 +118,105 @@ describe('Payment Processing', () => {
       recordMode: false,
     });
 
-    // Mock an external payment gateway module
-    paymentGatewayMock = sinon.stub(paymentGateway, 'charge').resolves({
-      success: true,
-      transactionId: 'tx_123',
+    clock = useFakeTimers({
+      now: Date.now(),
     });
   });
 
   afterEach(() => {
-    sinon.restore();
+    clock.restore();
   });
 
-  it('should process payment after API call', async () => {
-    // Mockifyer mocks the order API
-    const order = await fetch('https://api.example.com/orders/1');
+  it('should execute scheduled task at correct time', async () => {
+    let taskExecuted = false;
 
-    // Sinon mocks the payment gateway
-    const paymentResult = await paymentGateway.charge(order.total);
+    // Schedule a task to run in 1 hour
+    setTimeout(async () => {
+      const response = await fetch('https://api.example.com/scheduled-task');
+      const data = await response.json();
+      taskExecuted = true;
+      expect(data.status).toBe('completed');
+    }, 60 * 60 * 1000);
 
-    expect(paymentResult.success).toBe(true);
-    expect(paymentGatewayMock.calledOnce).toBe(true);
+    // Fast-forward 1 hour
+    await clock.tickAsync(60 * 60 * 1000);
+
+    expect(taskExecuted).toBe(true);
   });
 });
 ```
 
-### Verifying Call Order
+
+## Example: Using in a Service
+
+Here's a complete example of setting up deterministic dates in a service:
 
 ```typescript
 import sinon from 'sinon';
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { useFakeTimers } from 'sinon';
+import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-fetch';
 
-describe('Data Synchronization', () => {
-  let mockifyer: any;
-  let fetchSpy: sinon.SinonSpy;
-  let processSpy: sinon.SinonSpy;
-  let saveSpy: sinon.SinonSpy;
+// Service setup
+const fixedDate = '2024-12-25T00:00:00.000Z';
 
-  beforeEach(() => {
-    mockifyer = setupMockifyer({
-      mockDataPath: './mock-data',
-      recordMode: false,
-    });
-
-    fetchSpy = sinon.spy(dataService, 'fetchData');
-    processSpy = sinon.spy(dataService, 'processData');
-    saveSpy = sinon.spy(dataService, 'saveData');
-  });
-
-  afterEach(() => {
-    sinon.restore();
-  });
-
-  it('should call methods in correct order', async () => {
-    await dataService.sync();
-
-    // Verify call order using Sinon
-    sinon.assert.callOrder(fetchSpy, processSpy, saveSpy);
-  });
+// Initialize Mockifyer
+const mockifyer = setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  dateManipulation: {
+    fixedDate: fixedDate,
+  },
 });
+
+// Setup Sinon fake timers for global Date manipulation
+const clock = useFakeTimers({
+  now: new Date(fixedDate),
+  toFake: ['Date', 'setTimeout', 'setInterval'],
+});
+
+// Your service code can now use deterministic dates
+function checkSubscriptionStatus(subscription: any) {
+  // Both methods return the same fake date
+  const currentDate = new Date(); // From Sinon - returns 2024-12-25
+  const mockifyerDate = getCurrentDate(); // From Mockifyer - returns 2024-12-25
+  
+  if (subscription.expiresAt < currentDate) {
+    return 'expired';
+  }
+  return 'active';
+}
+
+// Advance time if needed
+clock.tick(30 * 24 * 60 * 60 * 1000); // 30 days later
+const futureDate = new Date(); // Now returns 2025-01-24
+
+// When done, restore real timers
+// clock.restore();
 ```
+
+## When Sinon Works
+
+**Sinon fake timers work in:**
+- ✅ Node.js environments (backend, CLI tools)
+- ✅ Jest/Mocha/Vitest running in Node.js
+- ❌ React Native (not recommended - use Mockifyer's `getCurrentDate()` instead)
+- ❌ Browser production builds (not recommended - use Mockifyer's `getCurrentDate()` instead)
 
 ## Best Practices
 
-1. **Use Mockifyer for HTTP**: Let Mockifyer handle all API mocking
-2. **Use Sinon for Functions**: Use Sinon for spying/stubbing internal functions
-3. **Clean Up**: Always restore Sinon spies/stubs in `afterEach`
-4. **Separate Concerns**: Mockifyer = external APIs, Sinon = internal code
-5. **Combine When Needed**: Use both together for comprehensive test coverage
-
-## Common Patterns
-
-### Pattern 1: API Mocking + Function Spying
-```typescript
-// Mockifyer: Mock API calls
-// Sinon: Spy on functions that use API data
-```
-
-### Pattern 2: Date Manipulation + Function Verification
-```typescript
-// Mockifyer: Manipulate dates
-// Sinon: Verify time-dependent function behavior
-```
-
-### Pattern 3: External Service Mocking
-```typescript
-// Mockifyer: Mock your API
-// Sinon: Mock third-party libraries/services
-```
-
-## React Native Alternative
-
-Since Sinon doesn't work in React Native, use Jest's built-in mocking instead:
-
-```typescript
-// React Native - Use Jest instead of Sinon
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-
-describe('User Service', () => {
-  let mockifyer: any;
-  let processUserSpy: jest.SpyInstance;
-
-  beforeEach(() => {
-    // Mockifyer handles API mocking (works in React Native!)
-    mockifyer = setupMockifyer({
-      mockDataPath: './mock-data',
-      recordMode: false,
-    });
-
-    // Jest spies on internal functions (works in React Native!)
-    processUserSpy = jest.spyOn(userService, 'processUser');
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  it('should process user data from API response', async () => {
-    // Mockifyer mocks the API call
-    const response = await fetch('https://api.example.com/users/1');
-    const userData = await response.json();
-
-    // Call the function
-    userService.processUser(userData);
-
-    // Jest verifies the function was called
-    expect(processUserSpy).toHaveBeenCalledTimes(1);
-    expect(processUserSpy).toHaveBeenCalledWith(userData);
-  });
-});
-```
-
-**Jest equivalents for Sinon:**
-- `sinon.spy()` → `jest.spyOn()` or `jest.fn()`
-- `sinon.stub()` → `jest.spyOn().mockImplementation()` or `jest.fn()`
-- `sinon.mock()` → `jest.mock()`
-- `spy.calledOnce` → `expect(spy).toHaveBeenCalledTimes(1)`
-- `spy.calledWith(...)` → `expect(spy).toHaveBeenCalledWith(...)`
+1. **Use Mockifyer's `getCurrentDate()`** when you can - it's simpler and works everywhere
+2. **Use Sinon fake timers** when your code uses `new Date()` or `Date.now()` directly in Node.js
+3. **Keep dates in sync** - use the same date for Mockifyer config and fake timers
+4. **Clean up** - always restore fake timers when done (`clock.restore()`)
+5. **For React Native/Browser**: Use Mockifyer's `getCurrentDate()` instead of fake timers
 
 ## Summary
 
-- **Mockifyer**: Handles HTTP/API mocking and date manipulation (works everywhere!)
-- **Sinon**: Handles function spying, stubbing, and method mocking (Node.js only)
-- **Jest**: Built-in mocking for React Native (use instead of Sinon)
-- **Together**: Comprehensive testing solution covering both external APIs and internal code
+- **Mockifyer's `getCurrentDate()`**: Returns manipulated dates, doesn't affect global `Date()` - works everywhere
+- **Sinon fake timers**: Global date manipulation for Node.js environments only
+- **Together**: Use Mockifyer for API mocking and Sinon fake timers for deterministic global dates in Node.js
 
 **Environment Guide:**
-- **Node.js/Backend**: Mockifyer + Sinon ✅
-- **React Native**: Mockifyer + Jest ✅
-- **Browser**: Mockifyer + Jest ✅
-
-Both tools complement each other perfectly - Mockifyer for external dependencies (APIs), Sinon/Jest for internal code behavior.
-
+- **Node.js/Backend**: Mockifyer + Sinon fake timers ✅
+- **React Native**: Mockifyer's `getCurrentDate()` only ✅
+- **Browser**: Mockifyer's `getCurrentDate()` only ✅
