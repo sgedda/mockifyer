@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
