@@ -79,6 +79,7 @@ export interface MockData {
   response: StoredResponse;
   timestamp: string;
   scenario?: string;
+  sessionId?: string; // Unique identifier for grouping related requests
 }
 
 // Environment variable names

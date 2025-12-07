@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
+import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
@@ -13,6 +14,8 @@ function getMockDataPath(): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const mockDataPath = getMockDataPath();
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
     
     if (!fs.existsSync(mockDataPath)) {
       return res.json({
@@ -22,12 +25,26 @@ router.get('/', (req: Request, res: Response) => {
         domains: {},
         methods: {},
         statusCodes: {},
-        recentActivity: []
+        recentActivity: [],
+        scenario: currentScenario
       });
     }
 
-    const files = fs.readdirSync(mockDataPath)
-      .filter(file => file.endsWith('.json') && file !== 'date-config.json');
+    if (!fs.existsSync(scenarioPath)) {
+      return res.json({
+        totalFiles: 0,
+        totalSize: 0,
+        endpoints: [],
+        domains: {},
+        methods: {},
+        statusCodes: {},
+        recentActivity: [],
+        scenario: currentScenario
+      });
+    }
+
+    const files = fs.readdirSync(scenarioPath)
+      .filter(file => file.endsWith('.json'));
 
     let totalSize = 0;
     const endpoints: Record<string, number> = {};
@@ -37,7 +54,7 @@ router.get('/', (req: Request, res: Response) => {
     const recentActivity: Array<{ filename: string; modified: Date }> = [];
 
     files.forEach(file => {
-      const filePath = path.join(mockDataPath, file);
+      const filePath = path.join(scenarioPath, file);
       const stats = fs.statSync(filePath);
       totalSize += stats.size;
       
@@ -97,7 +114,8 @@ router.get('/', (req: Request, res: Response) => {
       recentActivity: recentActivity.slice(0, 10).map(item => ({
         filename: item.filename,
         modified: item.modified.toISOString()
-      }))
+      })),
+      scenario: currentScenario
     });
   } catch (error: any) {
     console.error('[StatsRoute] Error:', error);

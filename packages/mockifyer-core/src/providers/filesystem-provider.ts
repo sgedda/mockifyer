@@ -3,6 +3,7 @@ import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder } from '../utils/scenario';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -37,6 +38,17 @@ export class FilesystemProvider implements DatabaseProvider {
     if (!fs.existsSync(this.mockDataPath)) {
       fs.mkdirSync(this.mockDataPath, { recursive: true });
     }
+    // Ensure scenario folder exists
+    const currentScenario = getCurrentScenario(this.mockDataPath);
+    ensureScenarioFolder(this.mockDataPath, currentScenario);
+  }
+
+  /**
+   * Get the scenario-specific path for mock files
+   */
+  private getScenarioPath(): string {
+    const currentScenario = getCurrentScenario(this.mockDataPath);
+    return getScenarioFolderPath(this.mockDataPath, currentScenario);
   }
 
   save(mockData: MockData): void {
@@ -57,11 +69,14 @@ export class FilesystemProvider implements DatabaseProvider {
       .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const filePath = path.join(this.mockDataPath, filename);
+    const scenarioPath = this.getScenarioPath();
+    ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
+    const filePath = path.join(scenarioPath, filename);
     
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-    console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+    const currentScenario = getCurrentScenario(this.mockDataPath);
+    console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
   }
 
   findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
@@ -69,12 +84,17 @@ export class FilesystemProvider implements DatabaseProvider {
       return undefined;
     }
 
-    const files = fs.readdirSync(this.mockDataPath)
+    const scenarioPath = this.getScenarioPath();
+    if (!fs.existsSync(scenarioPath)) {
+      return undefined;
+    }
+
+    const files = fs.readdirSync(scenarioPath)
       .filter(file => file.endsWith('.json'));
 
     for (const file of files) {
       try {
-        const filePath = path.join(this.mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -104,14 +124,19 @@ export class FilesystemProvider implements DatabaseProvider {
       return [];
     }
 
-    const files = fs.readdirSync(this.mockDataPath)
+    const scenarioPath = this.getScenarioPath();
+    if (!fs.existsSync(scenarioPath)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(scenarioPath)
       .filter(file => file.endsWith('.json'));
 
     const results: CachedMockData[] = [];
 
     for (const file of files) {
       try {
-        const filePath = path.join(this.mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -157,14 +182,19 @@ export class FilesystemProvider implements DatabaseProvider {
       return [];
     }
 
-    const files = fs.readdirSync(this.mockDataPath)
+    const scenarioPath = this.getScenarioPath();
+    if (!fs.existsSync(scenarioPath)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(scenarioPath)
       .filter(file => file.endsWith('.json'));
 
     const results: MockData[] = [];
 
     for (const file of files) {
       try {
-        const filePath = path.join(this.mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         results.push(mockData);

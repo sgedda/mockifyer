@@ -1,6 +1,8 @@
-import { MockData, StoredRequest } from '../types';
+import { MockData, StoredRequest, ENV_VARS } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig } from './types';
+
+const DEFAULT_SCENARIO = 'default';
 
 /**
  * Expo FileSystem provider for React Native/Expo applications
@@ -18,6 +20,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   private watchEnabled: boolean = false;
   private watchIntervalMs: number = 2000; // Check every 2 seconds
   private onFilesChanged?: () => void;
+  private currentScenario: string = DEFAULT_SCENARIO;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
@@ -43,6 +46,87 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
   }
 
+  /**
+   * Get current scenario (async version for Expo FileSystem)
+   * Tries local config first, then Metro endpoint as fallback
+   */
+  private async getCurrentScenario(): Promise<string> {
+    // Check environment variable first
+    const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
+    if (envScenario) {
+      return envScenario;
+    }
+
+    // Try to load from local scenario-config.json
+    try {
+      const configPath = this.mockDataPath + '/scenario-config.json';
+      const configInfo = await this.FileSystem.getInfoAsync(configPath);
+      if (configInfo.exists) {
+        const fileContent = await this.FileSystem.readAsStringAsync(configPath);
+        const config = JSON.parse(fileContent);
+        if (config.currentScenario) {
+          return config.currentScenario;
+        }
+      }
+    } catch (error) {
+      // Silently fail - file might not exist or be invalid
+    }
+
+    // Try to fetch from Metro endpoint (for React Native dev mode)
+    // This allows dashboard changes to be picked up by the app
+    try {
+      const metroPort = process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081;
+      const metroUrl = `http://localhost:${metroPort}/mockifyer-scenario-config`;
+      
+      // Use fetch if available (React Native has global fetch)
+      if (typeof fetch !== 'undefined') {
+        const response = await fetch(metroUrl);
+        if (response.ok) {
+          const data = await response.json() as { success?: boolean; currentScenario?: string };
+          if (data.success && data.currentScenario) {
+            // Save to local config for future use
+            const configPath = this.mockDataPath + '/scenario-config.json';
+            const config = {
+              currentScenario: data.currentScenario,
+              updatedAt: new Date().toISOString()
+            };
+            await this.FileSystem.writeAsStringAsync(
+              configPath,
+              JSON.stringify(config, null, 2)
+            );
+            console.log(`[ExpoFileSystemProvider] Synced scenario config from Metro: ${data.currentScenario}`);
+            return data.currentScenario;
+          }
+        }
+      }
+    } catch (error) {
+      // Silently fail - Metro might not be available or endpoint might not exist
+      console.debug('[ExpoFileSystemProvider] Could not fetch scenario config from Metro:', error);
+    }
+
+    return DEFAULT_SCENARIO;
+  }
+
+  /**
+   * Get scenario folder path
+   */
+  private getScenarioPath(scenario?: string): string {
+    const scenarioName = scenario || this.currentScenario;
+    return this.mockDataPath + '/' + scenarioName;
+  }
+
+  /**
+   * Ensure scenario folder exists
+   */
+  private async ensureScenarioFolder(scenario?: string): Promise<string> {
+    const scenarioPath = this.getScenarioPath(scenario);
+    const dirInfo = await this.FileSystem.getInfoAsync(scenarioPath);
+    if (!dirInfo.exists) {
+      await this.FileSystem.makeDirectoryAsync(scenarioPath, { intermediates: true });
+    }
+    return scenarioPath;
+  }
+
   async initialize(): Promise<void> {
     // Get the document directory path
     const documentDir = this.FileSystem.documentDirectory;
@@ -63,6 +147,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
     
     this.mockDataPath = fullPath;
+    
+    // Get current scenario and ensure scenario folder exists
+    this.currentScenario = await this.getCurrentScenario();
+    await this.ensureScenarioFolder();
+    console.log(`[Mockifyer] Using scenario: ${this.currentScenario}`);
     
     // Start file watching if enabled
     if (this.watchEnabled) {
@@ -113,9 +202,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         hasChanges = true;
       } else {
         // Check for modified files
+        const scenarioPath = this.getScenarioPath();
         for (const file of files) {
           try {
-            const filePath = this.mockDataPath + '/' + file;
+            const filePath = scenarioPath + '/' + file;
             const fileInfo = await this.FileSystem.getInfoAsync(filePath);
             
             if (fileInfo.exists && fileInfo.modificationTime) {
@@ -137,9 +227,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         this.fileModTimes.clear();
         
         // Update modification times for current files
+        const scenarioPath = this.getScenarioPath();
         for (const file of files) {
           try {
-            const filePath = this.mockDataPath + '/' + file;
+            const filePath = scenarioPath + '/' + file;
             const fileInfo = await this.FileSystem.getInfoAsync(filePath);
             if (fileInfo.exists && fileInfo.modificationTime) {
               this.fileModTimes.set(file, fileInfo.modificationTime);
@@ -155,10 +246,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         }
       } else {
         // Update modification times even if no changes (for initial population)
+        const scenarioPath = this.getScenarioPath();
         for (const file of files) {
           if (!this.fileModTimes.has(file)) {
             try {
-              const filePath = this.mockDataPath + '/' + file;
+              const filePath = scenarioPath + '/' + file;
               const fileInfo = await this.FileSystem.getInfoAsync(filePath);
               if (fileInfo.exists && fileInfo.modificationTime) {
                 this.fileModTimes.set(file, fileInfo.modificationTime);
@@ -194,9 +286,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       console.log(`[ExpoFileSystemProvider] 🔄 Reload found ${files.length} mock files`);
       
       // Log all files found for debugging
+      const scenarioPath = this.getScenarioPath();
       for (const file of files) {
         try {
-          const filePath = this.mockDataPath + '/' + file;
+          const filePath = scenarioPath + '/' + file;
           const fileInfo = await this.FileSystem.getInfoAsync(filePath);
           if (fileInfo.exists && fileInfo.modificationTime) {
             this.fileModTimes.set(file, fileInfo.modificationTime);
@@ -255,10 +348,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const filePath = this.mockDataPath + '/' + filename;
+    const scenarioPath = await this.ensureScenarioFolder();
+    const filePath = scenarioPath + '/' + filename;
     
     console.log(`[ExpoFileSystemProvider] save - File path: ${filePath}`);
-    console.log(`[ExpoFileSystemProvider] save - Filename: ${filename}`);
+    console.log(`[ExpoFileSystemProvider] save - Filename: ${this.currentScenario}/${filename}`);
     
     // Write to file (async)
     try {
@@ -330,13 +424,14 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
     
     const files = await this.listMockFiles();
+    const scenarioPath = this.getScenarioPath();
     
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
     
     for (const file of files) {
       try {
-        const filePath = this.mockDataPath + '/' + file;
+        const filePath = scenarioPath + '/' + file;
         const fileContent = await this.FileSystem.readAsStringAsync(filePath);
         
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
@@ -435,11 +530,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
     
     const files = await this.listMockFiles();
+    const scenarioPath = this.getScenarioPath();
     const results: CachedMockData[] = [];
 
     for (const file of files) {
       try {
-        const filePath = this.mockDataPath + '/' + file;
+        const filePath = scenarioPath + '/' + file;
         const fileContent = await this.FileSystem.readAsStringAsync(filePath);
         
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
@@ -501,11 +597,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
   async getAll(): Promise<MockData[]> {
     const files = await this.listMockFiles();
+    const scenarioPath = this.getScenarioPath();
     const results: MockData[] = [];
 
     for (const file of files) {
       try {
-        const filePath = this.mockDataPath + '/' + file;
+        const filePath = scenarioPath + '/' + file;
         const fileContent = await this.FileSystem.readAsStringAsync(filePath);
         
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
@@ -542,16 +639,17 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    */
   private async listMockFiles(): Promise<string[]> {
     try {
-      console.log(`[ExpoFileSystemProvider] listMockFiles - Reading directory: ${this.mockDataPath}`);
-      const dirInfo = await this.FileSystem.getInfoAsync(this.mockDataPath);
+      const scenarioPath = this.getScenarioPath();
+      console.log(`[ExpoFileSystemProvider] listMockFiles - Reading directory: ${scenarioPath}`);
+      const dirInfo = await this.FileSystem.getInfoAsync(scenarioPath);
       if (!dirInfo.exists || !dirInfo.isDirectory) {
-        console.log(`[ExpoFileSystemProvider] listMockFiles - Directory does not exist or is not a directory`);
+        console.log(`[ExpoFileSystemProvider] listMockFiles - Scenario directory does not exist: ${scenarioPath}`);
         return [];
       }
-
-      const files = await this.FileSystem.readDirectoryAsync(this.mockDataPath);
+      
+      const files = await this.FileSystem.readDirectoryAsync(scenarioPath);
       const jsonFiles = files.filter((file: string) => file.endsWith('.json'));
-      console.log(`[ExpoFileSystemProvider] listMockFiles - Found ${jsonFiles.length} JSON files:`, jsonFiles);
+      console.log(`[ExpoFileSystemProvider] listMockFiles - Found ${jsonFiles.length} JSON files in scenario "${this.currentScenario}":`, jsonFiles);
       return jsonFiles;
     } catch (error) {
       console.warn(`[Mockifyer] Failed to list mock files:`, error);
@@ -581,8 +679,9 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       const files = await this.listMockFiles();
       console.log(`[ExpoFileSystemProvider] clearAll - Deleting ${files.length} mock files`);
       
+      const scenarioPath = this.getScenarioPath();
       for (const file of files) {
-        const filePath = this.mockDataPath + '/' + file;
+        const filePath = scenarioPath + '/' + file;
         try {
           await this.FileSystem.deleteAsync(filePath, { idempotent: true });
           console.log(`[ExpoFileSystemProvider] ✅ Deleted: ${file}`);

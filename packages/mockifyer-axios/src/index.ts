@@ -7,8 +7,7 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from '@sgedda/mockifyer-core';
-import { initializeDateManipulation } from '@sgedda/mockifyer-core';
+import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
@@ -22,6 +21,9 @@ class MockifyerClass {
   private httpClient: HTTPClient;
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
+  private currentSessionId: string | null = null;
+  private sessionStartTime: number = 0;
+  private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
@@ -95,6 +97,9 @@ class MockifyerClass {
     if (!fs.existsSync(this.config.mockDataPath)) {
       fs.mkdirSync(this.config.mockDataPath, { recursive: true });
     }
+    // Ensure scenario folder exists
+    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    ensureScenarioFolder(this.config.mockDataPath, currentScenario);
   }
 
   private generateRequestKey(request: StoredRequest): string {
@@ -138,7 +143,15 @@ class MockifyerClass {
       return undefined;
     }
 
-    const files = fs.readdirSync(this.config.mockDataPath)
+    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+    
+    if (!fs.existsSync(scenarioPath)) {
+      console.log(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
+      return undefined;
+    }
+
+    const files = fs.readdirSync(scenarioPath)
       .filter(file => file.endsWith('.json'));
 
     const requestKey = this.generateRequestKey(request);
@@ -148,7 +161,7 @@ class MockifyerClass {
     // Read files one by one and check for matches (no cache structure)
     for (const file of files) {
       try {
-        const filePath = path.join(this.config.mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -342,9 +355,15 @@ class MockifyerClass {
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     } else {
-      const files = fs.readdirSync(this.config.mockDataPath)
-        .filter(file => file.endsWith('.json'));
-      console.log('[Mockifyer] Found', files.length, 'mock files (will read on demand)');
+      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+      if (fs.existsSync(scenarioPath)) {
+        const files = fs.readdirSync(scenarioPath)
+          .filter(file => file.endsWith('.json'));
+        console.log(`[Mockifyer] Found ${files.length} mock files in scenario "${currentScenario}" (will read on demand)`);
+      } else {
+        console.log(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
+      }
     }
   }
 
@@ -1144,11 +1163,20 @@ class MockifyerClass {
         headers: response.headers as Record<string, string>
       };
 
+      // Generate or reuse sessionId
+      const now = Date.now();
+      if (!this.currentSessionId || (now - this.sessionStartTime) > this.SESSION_TIMEOUT_MS) {
+        // Generate new session ID
+        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = now;
+      }
+
       const mockData: MockData = {
         request,
         response: storedResponse,
         timestamp: new Date().toISOString(),
-        scenario: this.config.scenarios?.default
+        scenario: this.config.scenarios?.default,
+        sessionId: this.currentSessionId
       };
 
       // Format the datetime to be readable
@@ -1164,11 +1192,14 @@ class MockifyerClass {
         .replace(/[^a-zA-Z0-9]/g, '_');
 
       const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-      const filePath = path.join(this.config.mockDataPath, filename);
+      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+      ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+      const filePath = path.join(scenarioPath, filename);
       
       // Write to file (no cache)
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-      console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+      console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
     } finally {
       // Remove from saving set after save completes
       this.savingResponses.delete(requestKey);
@@ -1206,6 +1237,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   console.log('[Mockifyer] ⚡⚡⚡ setupMockifyer called:', config);
   // Initialize date manipulation
   initializeDateManipulation(config);
+  initializeScenario(config);
 
   const mockifyer = new MockifyerClass(config);
   const httpClient = mockifyer.getHTTPClient();

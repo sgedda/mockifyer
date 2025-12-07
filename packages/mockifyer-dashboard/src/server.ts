@@ -4,6 +4,7 @@ import { mocksRouter } from './routes/mocks';
 import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
+import { scenarioConfigRouter } from './routes/scenario-config';
 
 export function createServer(publicDir: string, mockDataPath: string): express.Application {
   const app = express();
@@ -28,9 +29,10 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
   app.use('/api/stats', statsRouter);
   app.use('/api/health', healthRouter);
   app.use('/api/date-config', dateConfigRouter);
+  app.use('/api/scenario-config', scenarioConfigRouter);
   
   // Log route registration (for debugging)
-  console.log('[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config');
+  console.log('[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config');
 
   // Serve static files
   app.use(express.static(publicDir));

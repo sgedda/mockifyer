@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
+import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
@@ -15,25 +16,41 @@ function getMockDataPath(): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const mockDataPath = getMockDataPath();
+    // Allow scenario to be specified via query parameter, otherwise use current scenario
+    const requestedScenario = req.query.scenario as string | undefined;
+    const scenario = requestedScenario || getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     
     if (!fs.existsSync(mockDataPath)) {
-      return res.json({ files: [], mockDataPath });
+      return res.json({ files: [], mockDataPath, scenario });
     }
 
-    const files = fs.readdirSync(mockDataPath)
-      .filter(file => file.endsWith('.json') && file !== 'date-config.json')
+    if (!fs.existsSync(scenarioPath)) {
+      return res.json({ files: [], mockDataPath, scenario });
+    }
+
+    const files = fs.readdirSync(scenarioPath)
+      .filter(file => file.endsWith('.json'))
       .map(file => {
-        const filePath = path.join(mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const stats = fs.statSync(filePath);
         
         // Try to extract endpoint URL and query params from the mock file
         let endpoint = null;
         let graphqlInfo = null;
+        let sessionId = null;
         try {
           const fileContent = fs.readFileSync(filePath, 'utf-8');
           const mockData = JSON.parse(fileContent);
           if (mockData.request && mockData.request.url) {
             endpoint = mockData.request.url;
+          }
+          // Extract sessionId if available
+          if (mockData.sessionId) {
+            sessionId = mockData.sessionId;
+          } else if (mockData.data && mockData.data.sessionId) {
+            sessionId = mockData.data.sessionId;
+          }
             
             // Check if this is a GraphQL request
             if (mockData.request.data) {
@@ -83,12 +100,13 @@ router.get('/', (req: Request, res: Response) => {
           created: stats.birthtime,
           modified: stats.mtime,
           endpoint: endpoint,
-          graphqlInfo: graphqlInfo
+          graphqlInfo: graphqlInfo,
+          sessionId: sessionId
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime()); // Sort by most recent first
 
-    res.json({ files, mockDataPath });
+    res.json({ files, mockDataPath, scenario });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
     res.status(500).json({ error: 'Failed to list mock files', details: error.message });
@@ -100,10 +118,12 @@ router.get('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -135,10 +155,12 @@ router.put('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -213,10 +235,12 @@ router.delete('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -243,10 +267,12 @@ router.post('/:filename/duplicate', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -262,7 +288,7 @@ router.post('/:filename/duplicate', (req: Request, res: Response) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const baseName = filename.replace(/\.json$/, '');
     const newFilename = `${timestamp}_${baseName}_copy.json`;
-    const newFilePath = path.join(mockDataPath, newFilename);
+    const newFilePath = path.join(scenarioPath, newFilename);
     
     // Update timestamp in the data
     mockData.timestamp = new Date().toISOString();

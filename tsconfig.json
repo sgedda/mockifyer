@@ -10,7 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "rootDir": "./src",
     "lib": ["es2019", "dom"],
-    "types": ["node", "jest", "sinon"]
+    "types": ["node", "jest"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/*.test.ts"]

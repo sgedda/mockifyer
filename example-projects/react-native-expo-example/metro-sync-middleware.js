@@ -17,6 +17,40 @@ const { execSync } = require('child_process');
 
 const PROJECT_ROOT = __dirname;
 const MOCK_DATA_PATH = path.join(PROJECT_ROOT, 'mock-data');
+const DEFAULT_SCENARIO = 'default';
+
+/**
+ * Get current scenario from scenario-config.json
+ */
+function getCurrentScenario() {
+  // Check environment variable first
+  if (process.env.MOCKIFYER_SCENARIO) {
+    return process.env.MOCKIFYER_SCENARIO;
+  }
+
+  // Try to load from scenario-config.json
+  try {
+    const configPath = path.join(MOCK_DATA_PATH, 'scenario-config.json');
+    if (fs.existsSync(configPath)) {
+      const fileContent = fs.readFileSync(configPath, 'utf-8');
+      const config = JSON.parse(fileContent);
+      if (config.currentScenario) {
+        return config.currentScenario;
+      }
+    }
+  } catch (error) {
+    // Silently fail - file might not exist or be invalid
+  }
+
+  return DEFAULT_SCENARIO;
+}
+
+/**
+ * Get scenario folder path
+ */
+function getScenarioPath(scenario) {
+  return path.join(MOCK_DATA_PATH, scenario || getCurrentScenario());
+}
 
 // Track last sync time to avoid duplicate syncs
 let lastSyncTime = Date.now();
@@ -66,25 +100,30 @@ async function syncFromIOSSimulator() {
     let filesSynced = 0;
     const syncedFiles = [];
 
+    // Get current scenario
+    const currentScenario = getCurrentScenario();
+    const scenarioPath = getScenarioPath(currentScenario);
+    
     for (const appDir of appDirs) {
-      const documentsPath = path.join(simulatorDataPath, appDir, 'Documents', 'mock-data');
+      // Check for scenario folder in simulator
+      const documentsPath = path.join(simulatorDataPath, appDir, 'Documents', 'mock-data', currentScenario);
       
       if (fs.existsSync(documentsPath)) {
-        // Ensure project mock-data directory exists
-        fs.mkdirSync(MOCK_DATA_PATH, { recursive: true });
+        // Ensure project scenario directory exists
+        fs.mkdirSync(scenarioPath, { recursive: true });
         
-        // Get list of files in simulator
+        // Get list of files in simulator scenario folder
         const simulatorFiles = fs.readdirSync(documentsPath).filter(f => f.endsWith('.json'));
         
-        // Get list of files in project (to check if sync needed)
-        const projectFiles = fs.existsSync(MOCK_DATA_PATH) 
-          ? fs.readdirSync(MOCK_DATA_PATH).filter(f => f.endsWith('.json'))
+        // Get list of files in project scenario folder (to check if sync needed)
+        const projectFiles = fs.existsSync(scenarioPath) 
+          ? fs.readdirSync(scenarioPath).filter(f => f.endsWith('.json'))
           : [];
         
         // Sync files that are new or modified
         for (const file of simulatorFiles) {
           const src = path.join(documentsPath, file);
-          const dest = path.join(MOCK_DATA_PATH, file);
+          const dest = path.join(scenarioPath, file);
           
           let shouldSync = false;
           if (!fs.existsSync(dest)) {
@@ -140,8 +179,10 @@ function saveMockToProjectFolder(mockData) {
       return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
     }
     
-    // Ensure directory exists
-    fs.mkdirSync(MOCK_DATA_PATH, { recursive: true });
+    // Get current scenario and ensure scenario folder exists
+    const currentScenario = getCurrentScenario();
+    const scenarioPath = getScenarioPath(currentScenario);
+    fs.mkdirSync(scenarioPath, { recursive: true });
 
     // Format the datetime to be readable
     const now = new Date();
@@ -156,7 +197,7 @@ function saveMockToProjectFolder(mockData) {
       .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const filePath = path.join(MOCK_DATA_PATH, filename);
+    const filePath = path.join(scenarioPath, filename);
 
     // Check if file already exists - skip saving if it does
     if (fs.existsSync(filePath)) {
@@ -167,8 +208,8 @@ function saveMockToProjectFolder(mockData) {
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
     
-    console.log(`[MockSync] ✅ Saved mock to project folder: ${filename}`);
-    return { success: true, filename };
+    console.log(`[MockSync] ✅ Saved mock to project folder: ${currentScenario}/${filename}`);
+    return { success: true, filename, scenario: currentScenario };
   } catch (error) {
     console.error(`[MockSync] ❌ Error saving mock to project folder:`, error);
     return { success: false, error: error.message };
@@ -176,19 +217,22 @@ function saveMockToProjectFolder(mockData) {
 }
 
 /**
- * Clear all mock files from project folder
+ * Clear all mock files from project folder (current scenario)
  */
 function clearMockFiles() {
   try {
-    if (!fs.existsSync(MOCK_DATA_PATH)) {
-      return { success: true, filesDeleted: 0, message: 'Mock data directory does not exist' };
+    const currentScenario = getCurrentScenario();
+    const scenarioPath = getScenarioPath(currentScenario);
+    
+    if (!fs.existsSync(scenarioPath)) {
+      return { success: true, filesDeleted: 0, message: `Scenario directory does not exist: ${currentScenario}` };
     }
 
-    const files = fs.readdirSync(MOCK_DATA_PATH).filter(f => f.endsWith('.json'));
+    const files = fs.readdirSync(scenarioPath).filter(f => f.endsWith('.json'));
     let filesDeleted = 0;
 
     for (const file of files) {
-      const filePath = path.join(MOCK_DATA_PATH, file);
+      const filePath = path.join(scenarioPath, file);
       try {
         fs.unlinkSync(filePath);
         filesDeleted++;
@@ -207,6 +251,28 @@ function clearMockFiles() {
 }
 
 /**
+ * Sync scenario-config.json from project folder to device
+ */
+function syncScenarioConfig(deviceDocumentsPath) {
+  try {
+    const projectConfigPath = path.join(MOCK_DATA_PATH, 'scenario-config.json');
+    const deviceConfigPath = path.join(deviceDocumentsPath, 'scenario-config.json');
+    
+    if (fs.existsSync(projectConfigPath)) {
+      // Copy scenario-config.json to device
+      fs.mkdirSync(deviceDocumentsPath, { recursive: true });
+      fs.copyFileSync(projectConfigPath, deviceConfigPath);
+      console.log(`[MockSync] ✅ Synced scenario-config.json to device`);
+      return { success: true };
+    }
+    return { success: false, message: 'scenario-config.json not found in project folder' };
+  } catch (error) {
+    console.error(`[MockSync] ❌ Error syncing scenario-config.json:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Metro middleware function - provides REST API for mock sync
  * 
  * Endpoints:
@@ -214,6 +280,8 @@ function clearMockFiles() {
  *   POST /mockifyer-clear - Clear all mock files from project folder
  *   GET /mockifyer-sync - Trigger sync and return result (legacy polling-based sync)
  *   GET /mockifyer-sync/status - Get sync status
+ *   GET /mockifyer-scenario-config - Get scenario config from project folder
+ *   POST /mockifyer-scenario-config - Sync scenario config to device
  */
 function mockSyncMiddleware(req, res, next) {
   const url = req.url.split('?')[0]; // Remove query params
@@ -269,13 +337,20 @@ function mockSyncMiddleware(req, res, next) {
         return;
       }
 
-      // Read all JSON files from project folder
-      const files = fs.readdirSync(MOCK_DATA_PATH).filter(f => f.endsWith('.json'));
+      // Read all JSON files from project scenario folder
+      const currentScenario = getCurrentScenario();
+      const scenarioPath = getScenarioPath(currentScenario);
+      
+      if (!fs.existsSync(scenarioPath)) {
+        return res.json({ files: [], scenario: currentScenario });
+      }
+      
+      const files = fs.readdirSync(scenarioPath).filter(f => f.endsWith('.json'));
       const fileData = [];
 
       for (const file of files) {
         try {
-          const filePath = path.join(MOCK_DATA_PATH, file);
+          const filePath = path.join(scenarioPath, file);
           const content = fs.readFileSync(filePath, 'utf-8');
           const mockData = JSON.parse(content);
           const stats = fs.statSync(filePath);
@@ -295,6 +370,7 @@ function mockSyncMiddleware(req, res, next) {
         success: true,
         files: fileData,
         count: fileData.length,
+        scenario: currentScenario,
       }));
       
       console.log(`[MockSync] 📤 Sent ${fileData.length} mock file(s) to device for sync`);
@@ -320,6 +396,70 @@ function mockSyncMiddleware(req, res, next) {
       timestamp: new Date().toISOString(),
     }));
     console.log('[MockSync] 🔄 Reload signal sent to app');
+    return;
+  }
+
+  // Handle scenario config endpoints
+  if (url === '/mockifyer-scenario-config' && req.method === 'GET') {
+    try {
+      const configPath = path.join(MOCK_DATA_PATH, 'scenario-config.json');
+      if (fs.existsSync(configPath)) {
+        const fileContent = fs.readFileSync(configPath, 'utf-8');
+        const config = JSON.parse(fileContent);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          success: true,
+          currentScenario: config.currentScenario || DEFAULT_SCENARIO,
+        }));
+      } else {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          success: true,
+          currentScenario: DEFAULT_SCENARIO,
+        }));
+      }
+    } catch (error) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({
+        success: false,
+        error: error.message,
+      }));
+    }
+    return;
+  }
+
+  if (url === '/mockifyer-scenario-config' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        const { scenario } = JSON.parse(body);
+        const currentScenario = scenario || DEFAULT_SCENARIO;
+        const configPath = path.join(MOCK_DATA_PATH, 'scenario-config.json');
+        const config = {
+          currentScenario,
+          updatedAt: new Date().toISOString()
+        };
+        fs.mkdirSync(MOCK_DATA_PATH, { recursive: true });
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          success: true,
+          currentScenario,
+        }));
+      } catch (error) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          success: false,
+          error: error.message,
+        }));
+      }
+    });
     return;
   }
 

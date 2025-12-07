@@ -25,7 +25,11 @@ import {
   CachedMockData,
   initializeDateManipulation,
   DatabaseProvider,
-  createProvider
+  createProvider,
+  getCurrentScenario,
+  getScenarioFolderPath,
+  ensureScenarioFolder,
+  initializeScenario
 } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
@@ -36,6 +40,9 @@ class MockifyerClass {
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
   private databaseProvider?: DatabaseProvider;
+  private currentSessionId: string | null = null;
+  private sessionStartTime: number = 0;
+  private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
@@ -210,7 +217,14 @@ class MockifyerClass {
       return undefined;
     }
 
-    const files = fs.readdirSync(this.config.mockDataPath)
+    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+    
+    if (!fs.existsSync(scenarioPath)) {
+      return undefined;
+    }
+
+    const files = fs.readdirSync(scenarioPath)
       .filter(file => file.endsWith('.json'));
 
     const requestKey = this.generateRequestKey(request);
@@ -219,7 +233,7 @@ class MockifyerClass {
     
     for (const file of files) {
       try {
-        const filePath = path!.join(this.config.mockDataPath, file);
+        const filePath = path!.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -550,6 +564,14 @@ class MockifyerClass {
         ? anonymizedQueryParams 
         : undefined;
       
+      // Generate or reuse sessionId
+      const now = Date.now();
+      if (!this.currentSessionId || (now - this.sessionStartTime) > this.SESSION_TIMEOUT_MS) {
+        // Generate new session ID
+        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = now;
+      }
+
       const mockData: MockData = {
         request: {
           method: response.config.method?.toUpperCase() || 'GET',
@@ -563,7 +585,8 @@ class MockifyerClass {
           data: response.data,
           headers: response.headers
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        sessionId: this.currentSessionId
       };
       
       // Use database provider if available, otherwise fallback to filesystem
@@ -581,9 +604,12 @@ class MockifyerClass {
         const domain = urlParts[0].replace(/\./g, '_');
         const urlPathPart = urlParts.slice(1).join('_') || 'root';
         const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
-        const filePath = path.join(this.config.mockDataPath, filename);
+        const currentScenario = getCurrentScenario(this.config.mockDataPath);
+        const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+        ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+        const filePath = path.join(scenarioPath, filename);
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+        console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
       } else {
         console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
       }
@@ -684,6 +710,7 @@ export interface MockifyerInstance extends HTTPClient {
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   initializeDateManipulation(config);
+  initializeScenario(config);
 
   const mockifyer = new MockifyerClass(config);
   const httpClient = mockifyer.getHTTPClient();
