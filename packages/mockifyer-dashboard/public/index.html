@@ -698,6 +698,204 @@
             vertical-align: middle;
         }
 
+        /* Network Inspector Styles */
+        .network-logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .network-logs-table thead {
+            background: rgba(102, 126, 234, 0.2);
+            border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .network-logs-table th {
+            padding: 12px 15px;
+            text-align: left;
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-right: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .network-logs-table th:last-child {
+            border-right: none;
+        }
+
+        .network-logs-table tbody tr {
+            border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .network-logs-table tbody tr:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .network-logs-table tbody tr.expanded {
+            background: rgba(102, 126, 234, 0.15);
+        }
+
+        .network-logs-table tbody tr.hidden {
+            display: none;
+        }
+
+        .network-logs-table td {
+            padding: 12px 15px;
+            color: #e0e0e0;
+            font-size: 0.9em;
+            vertical-align: middle;
+            border-right: 1px solid rgba(102, 126, 234, 0.05);
+        }
+
+        .network-logs-table td:last-child {
+            border-right: none;
+        }
+
+        .network-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .network-status-2xx {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .network-status-3xx {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .network-status-4xx {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .network-status-5xx {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .network-method {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-align: center;
+        }
+
+        .network-method-get {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .network-method-post {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+        }
+
+        .network-method-put {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .network-method-delete {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .network-method-patch {
+            background: rgba(139, 92, 246, 0.2);
+            color: #8b5cf6;
+        }
+
+        .network-url {
+            font-family: 'Courier New', monospace;
+            color: #8b9aff;
+            word-break: break-all;
+            max-width: 500px;
+        }
+
+        .network-duration {
+            color: #10b981;
+            font-family: 'Courier New', monospace;
+        }
+
+        .network-time {
+            color: #a0a0a0;
+            font-size: 0.85em;
+        }
+
+        .network-size {
+            color: #a0a0a0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .network-details {
+            background: rgba(10, 10, 20, 0.8);
+            padding: 20px;
+            border-top: 2px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .network-details-section {
+            margin-bottom: 20px;
+        }
+
+        .network-details-section h4 {
+            color: #8b9aff;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .network-details-content {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #e0e0e0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .network-details-json {
+            color: #e0e0e0;
+        }
+
+        @media (max-width: 768px) {
+            .network-logs-table {
+                font-size: 0.85em;
+            }
+
+            .network-logs-table th,
+            .network-logs-table td {
+                padding: 8px 10px;
+            }
+
+            .network-url {
+                max-width: 200px;
+            }
+        }
+
         .graph-session {
             margin-bottom: 40px;
         }
@@ -1188,6 +1386,12 @@
                         <span>Request Flow</span>
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="network-inspector">
+                        <span class="nav-link-icon">🌐</span>
+                        <span>Network Inspector</span>
+                    </a>
+                </li>
             </ul>
         </nav>
 
@@ -1274,8 +1478,10 @@
                             <!-- Field Editor -->
                             <div class="field-editor active" id="field-editor">
                                 <div style="margin-bottom: 15px; display: flex; gap: 10px;">
-                                    <button class="btn btn-small btn-secondary" onclick="expandAllGroups()">📂 Expand All</button>
-                                    <button class="btn btn-small btn-secondary" onclick="collapseAllGroups()">📁 Collapse All</button>
+                                    <button class="btn btn-small btn-secondary" onclick="expandAllGroups()">📂 Expand
+                                        All</button>
+                                    <button class="btn btn-small btn-secondary" onclick="collapseAllGroups()">📁
+                                        Collapse All</button>
                                 </div>
                                 <div id="field-editor-content"></div>
                             </div>
@@ -1488,6 +1694,76 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Network Inspector Page -->
+            <div id="network-inspector-page" class="page">
+                <div class="page-header">
+                    <h2>🌐 Network Inspector</h2>
+                    <p>View network requests in a DevTools-style log</p>
+                </div>
+
+                <!-- Controls -->
+                <div class="card">
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn btn-secondary" onclick="refreshNetworkLogs()"
+                            style="display: flex; align-items: center; gap: 8px;">
+                            <span>🔄</span>
+                            <span>Refresh</span>
+                        </button>
+                        <input type="text" id="network-search" class="search-box"
+                            placeholder="🔍 Filter by URL, method, or status..."
+                            style="flex: 1; min-width: 200px; margin: 0;" oninput="filterNetworkLogs()">
+                        <select id="network-method-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Methods</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                        <select id="network-status-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Status</option>
+                            <option value="200">200 OK</option>
+                            <option value="201">201 Created</option>
+                            <option value="400">400 Bad Request</option>
+                            <option value="401">401 Unauthorized</option>
+                            <option value="404">404 Not Found</option>
+                            <option value="500">500 Server Error</option>
+                        </select>
+                        <select id="network-scenario-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Scenarios</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Network Logs Table -->
+                <div class="card">
+                    <div id="network-logs-container" style="overflow-x: auto;">
+                        <table class="network-logs-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 80px;">Status</th>
+                                    <th style="width: 100px;">Method</th>
+                                    <th style="min-width: 300px;">URL</th>
+                                    <th style="width: 120px;">Duration</th>
+                                    <th style="width: 150px;">Time</th>
+                                    <th style="width: 100px;">Size</th>
+                                </tr>
+                            </thead>
+                            <tbody id="network-logs-body">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                                        <div class="loading">Loading network logs...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1562,6 +1838,8 @@
                 loadRequestFlow();
             } else if (pageId === 'scenario-management') {
                 loadScenarioFiles();
+            } else if (pageId === 'network-inspector') {
+                loadNetworkLogs();
             }
         }
 
@@ -1633,19 +1911,41 @@
                             fetch(`/api/mocks/${file.filename}`)
                                 .then(res => res.json())
                                 .then(mockData => {
-                                    if (mockData.data && mockData.data.request) {
+                                    // Debug: log structure for POST requests
+                                    if (file.filename.toLowerCase().includes('post')) {
+                                        console.log('[RequestFlow] POST file structure:', {
+                                            filename: file.filename,
+                                            hasData: !!mockData.data,
+                                            hasRequest: !!(mockData.data && mockData.data.request),
+                                            method: mockData.data?.request?.method,
+                                            url: mockData.data?.request?.url,
+                                            fullStructure: mockData
+                                        });
+                                    }
+
+                                    // Handle both structures: mockData.request (direct) and mockData.data.request (nested)
+                                    const request = mockData.data?.request || mockData.request;
+                                    const response = mockData.data?.response || mockData.response;
+                                    const timestamp = mockData.data?.timestamp || mockData.timestamp || file.modified;
+                                    const sessionId = mockData.data?.sessionId || mockData.sessionId || 'default';
+                                    const scenario = mockData.data?.scenario || mockData.scenario;
+
+                                    if (request) {
                                         return {
                                             filename: file.filename,
-                                            method: mockData.data.request.method || 'GET',
-                                            url: mockData.data.request.url,
-                                            timestamp: mockData.data.timestamp || file.modified,
-                                            status: mockData.data.response?.status || 200,
-                                            sessionId: mockData.data.sessionId || 'default',
-                                            scenario: mockData.data.scenario,
+                                            method: request.method || 'GET',
+                                            url: request.url,
+                                            timestamp: timestamp,
+                                            status: response?.status || 200,
+                                            sessionId: sessionId,
+                                            scenario: scenario,
                                             source: file.filename,
                                             duration: 'N/A'
                                         };
                                     }
+
+                                    // Debug: log files that don't have request
+                                    console.warn('[RequestFlow] File without request structure:', file.filename, mockData);
                                     return null;
                                 })
                                 .catch(err => {
@@ -3177,6 +3477,341 @@
             } catch (error) {
                 showScenarioMessage('Error creating scenario: ' + error.message, 'error');
             }
+        }
+
+        // Network Inspector Functions
+        let networkLogs = [];
+        let filteredNetworkLogs = [];
+
+        async function loadNetworkLogs () {
+            try {
+                const response = await fetch('/api/mocks');
+                const data = await response.json();
+                const files = data.files || [];
+
+                // Load scenario filter options
+                await loadNetworkScenarioFilter();
+
+                // Load details for each file
+                networkLogs = [];
+                const promises = files.map(file =>
+                    fetch(`/api/mocks/${file.filename}`)
+                        .then(res => res.json())
+                        .then(mockData => {
+                            // Handle both structures: mockData.request (direct) and mockData.data.request (nested)
+                            const request = mockData.data?.request || mockData.request;
+                            const response = mockData.data?.response || mockData.response || {};
+                            const timestamp = mockData.data?.timestamp || mockData.timestamp || file.modified;
+                            const sessionId = mockData.data?.sessionId || mockData.sessionId;
+                            const scenario = mockData.data?.scenario || mockData.scenario || 'default';
+                            const duration = mockData.data?.duration || mockData.data?.responseTime || mockData.duration || 'N/A';
+
+                            // Debug: log POST requests to see structure
+                            if (file.filename.toLowerCase().includes('post') || request?.method === 'POST') {
+                                console.log('[NetworkInspector] POST file structure:', {
+                                    filename: file.filename,
+                                    hasData: !!mockData.data,
+                                    hasRequest: !!request,
+                                    method: request?.method,
+                                    url: request?.url,
+                                    fullStructure: mockData
+                                });
+                            }
+
+                            if (request) {
+                                // Calculate response size
+                                let size = 'N/A';
+                                if (response.data) {
+                                    const sizeBytes = JSON.stringify(response.data).length;
+                                    size = formatBytes(sizeBytes);
+                                }
+
+                                const logEntry = {
+                                    filename: file.filename,
+                                    method: request.method || 'GET',
+                                    url: request.url || '',
+                                    status: response.status || 200,
+                                    duration: duration,
+                                    timestamp: timestamp,
+                                    size: size,
+                                    scenario: scenario,
+                                    sessionId: sessionId,
+                                    request: request,
+                                    response: response,
+                                    headers: request.headers || {},
+                                    queryParams: request.queryParams || {}
+                                };
+
+                                // Debug: log first entry to see structure
+                                if (networkLogs.length === 0) {
+                                    console.log('[NetworkInspector] First network log entry:', logEntry);
+                                }
+
+                                return logEntry;
+                            }
+
+                            // Debug: log files that don't have request
+                            console.warn('[NetworkInspector] File without request structure:', file.filename, mockData);
+                            return null;
+                        })
+                        .catch(err => {
+                            console.error('Error loading mock:', err);
+                            return null;
+                        })
+                );
+
+                const results = await Promise.all(promises);
+                networkLogs = results.filter(log => log !== null);
+
+                // Sort by timestamp (newest first)
+                networkLogs.sort((a, b) => {
+                    const timeA = new Date(a.timestamp).getTime();
+                    const timeB = new Date(b.timestamp).getTime();
+                    return timeB - timeA;
+                });
+
+                filteredNetworkLogs = [...networkLogs];
+                renderNetworkLogs();
+            } catch (error) {
+                console.error('Error loading network logs:', error);
+                const tbody = document.getElementById('network-logs-body');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;">Failed to load network logs: ' + error.message + '</td></tr>';
+                }
+            }
+        }
+
+        async function loadNetworkScenarioFilter () {
+            try {
+                const response = await fetch('/api/scenario-config');
+                const data = await response.json();
+                const scenarioFilter = document.getElementById('network-scenario-filter');
+                if (scenarioFilter) {
+                    const currentValue = scenarioFilter.value;
+                    scenarioFilter.innerHTML = '<option value="">All Scenarios</option>';
+                    if (data.scenarios && data.scenarios.length > 0) {
+                        data.scenarios.forEach(scenario => {
+                            const option = document.createElement('option');
+                            option.value = scenario;
+                            option.textContent = scenario;
+                            if (scenario === data.currentScenario) {
+                                option.selected = true;
+                            }
+                            scenarioFilter.appendChild(option);
+                        });
+                    }
+                    if (currentValue) {
+                        scenarioFilter.value = currentValue;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading scenarios:', error);
+            }
+        }
+
+        function filterNetworkLogs () {
+            const searchQuery = (document.getElementById('network-search')?.value || '').toLowerCase();
+            const methodFilter = document.getElementById('network-method-filter')?.value || '';
+            const statusFilter = document.getElementById('network-status-filter')?.value || '';
+            const scenarioFilter = document.getElementById('network-scenario-filter')?.value || '';
+
+            filteredNetworkLogs = networkLogs.filter(log => {
+                // Search filter
+                if (searchQuery) {
+                    const matchesSearch =
+                        log.url.toLowerCase().includes(searchQuery) ||
+                        log.method.toLowerCase().includes(searchQuery) ||
+                        String(log.status).includes(searchQuery);
+                    if (!matchesSearch) return false;
+                }
+
+                // Method filter
+                if (methodFilter && log.method !== methodFilter) {
+                    return false;
+                }
+
+                // Status filter
+                if (statusFilter && String(log.status) !== statusFilter) {
+                    return false;
+                }
+
+                // Scenario filter
+                if (scenarioFilter && log.scenario !== scenarioFilter) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            renderNetworkLogs();
+        }
+
+        function renderNetworkLogs () {
+            const tbody = document.getElementById('network-logs-body');
+            if (!tbody) return;
+
+            if (filteredNetworkLogs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #a0a0a0;">No network logs found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filteredNetworkLogs.map((log, index) => {
+                const statusClass = getStatusClass(log.status);
+                const methodClass = `network-method-${log.method.toLowerCase()}`;
+                const durationDisplay = typeof log.duration === 'number' ? `${log.duration}ms` : log.duration;
+                const timeDisplay = formatDate(new Date(log.timestamp));
+                // Use index as ID to avoid special character issues
+                const logId = `network-log-${index}`;
+
+                return `
+                    <tr class="network-log-row" data-log-index="${index}" onclick="window.toggleNetworkLogDetails(${index})" style="cursor: pointer;">
+                        <td>
+                            <span class="network-status ${statusClass}">${log.status}</span>
+                        </td>
+                        <td>
+                            <span class="network-method ${methodClass}">${log.method}</span>
+                        </td>
+                        <td>
+                            <div class="network-url" title="${escapeHtml(log.url)}">${escapeHtml(log.url)}</div>
+                        </td>
+                        <td>
+                            <span class="network-duration">${durationDisplay}</span>
+                        </td>
+                        <td>
+                            <span class="network-time">${timeDisplay}</span>
+                        </td>
+                        <td>
+                            <span class="network-size">${log.size}</span>
+                        </td>
+                    </tr>
+                    <tr class="network-details-row" id="${logId}" style="display: none;">
+                        <td colspan="6">
+                            <div class="network-details">
+                                <div class="network-details-section">
+                                    <h4>Request Headers</h4>
+                                    <div class="network-details-content">${formatHeaders(log.headers || log.request?.headers || {})}</div>
+                                </div>
+                                ${Object.keys(log.queryParams || log.request?.queryParams || {}).length > 0 ? `
+                                <div class="network-details-section">
+                                    <h4>Query Parameters</h4>
+                                    <div class="network-details-content">${formatQueryParams(log.queryParams || log.request?.queryParams || {})}</div>
+                                </div>
+                                ` : ''}
+                                ${(log.request?.data !== undefined && log.request?.data !== null) ? `
+                                <div class="network-details-section">
+                                    <h4>Request Body</h4>
+                                    <div class="network-details-content network-details-json">${formatJSON(log.request.data)}</div>
+                                </div>
+                                ` : ''}
+                                <div class="network-details-section">
+                                    <h4>Response Headers</h4>
+                                    <div class="network-details-content">${formatHeaders(log.response?.headers || {})}</div>
+                                </div>
+                                <div class="network-details-section">
+                                    <h4>Response Body</h4>
+                                    <div class="network-details-content network-details-json">${formatJSON(log.response?.data || {})}</div>
+                                </div>
+                                ${log.sessionId ? `
+                                <div class="network-details-section">
+                                    <h4>Session Info</h4>
+                                    <div class="network-details-content">Session ID: ${escapeHtml(log.sessionId)}</div>
+                                </div>
+                                ` : ''}
+                                <div class="network-details-section">
+                                    <h4>Debug Info</h4>
+                                    <div class="network-details-content" style="font-size: 0.8em; color: #888;">
+                                        Filename: ${escapeHtml(log.filename)}<br>
+                                        Has request: ${!!log.request}<br>
+                                        Has response: ${!!log.response}<br>
+                                        Request keys: ${log.request ? Object.keys(log.request).join(', ') : 'none'}<br>
+                                        Response keys: ${log.response ? Object.keys(log.response).join(', ') : 'none'}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Make function globally accessible for onclick handlers
+        window.toggleNetworkLogDetails = function (index) {
+            console.log('toggleNetworkLogDetails called with index:', index);
+            const logId = `network-log-${index}`;
+            const row = document.querySelector(`.network-log-row[data-log-index="${index}"]`);
+            const detailsRow = document.getElementById(logId);
+
+            console.log('Elements found:', {
+                index,
+                logId,
+                rowFound: !!row,
+                detailsRowFound: !!detailsRow,
+                detailsRowHTML: detailsRow ? detailsRow.innerHTML.substring(0, 200) : 'N/A'
+            });
+
+            if (!row || !detailsRow) {
+                console.error('Could not find row or details:', { index, logId, row: !!row, detailsRow: !!detailsRow });
+                return;
+            }
+
+            const isExpanded = detailsRow.style.display !== 'none' && detailsRow.style.display !== '';
+            console.log('Current state:', { isExpanded, display: detailsRow.style.display });
+
+            // Close all other expanded rows
+            document.querySelectorAll('.network-details-row').forEach(r => {
+                r.style.display = 'none';
+            });
+            document.querySelectorAll('.network-log-row').forEach(r => {
+                r.classList.remove('expanded');
+            });
+
+            // Toggle current row
+            if (!isExpanded) {
+                detailsRow.style.display = 'table-row';
+                row.classList.add('expanded');
+                console.log('Expanded row. Details content:', detailsRow.innerHTML.substring(0, 500));
+            } else {
+                console.log('Collapsed row');
+            }
+        };
+
+        function getStatusClass (status) {
+            if (status >= 200 && status < 300) return 'network-status-2xx';
+            if (status >= 300 && status < 400) return 'network-status-3xx';
+            if (status >= 400 && status < 500) return 'network-status-4xx';
+            if (status >= 500) return 'network-status-5xx';
+            return 'network-status-2xx';
+        }
+
+        function formatHeaders (headers) {
+            if (!headers || Object.keys(headers).length === 0) {
+                return 'No headers';
+            }
+            return Object.entries(headers)
+                .map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(String(value))}`)
+                .join('\n');
+        }
+
+        function formatQueryParams (params) {
+            if (!params || Object.keys(params).length === 0) {
+                return 'No query parameters';
+            }
+            return Object.entries(params)
+                .map(([key, value]) => `${escapeHtml(key)}=${escapeHtml(String(value))}`)
+                .join('\n');
+        }
+
+        function formatJSON (data) {
+            if (!data) return 'No data';
+            try {
+                return JSON.stringify(data, null, 2);
+            } catch (e) {
+                return String(data);
+            }
+        }
+
+        function refreshNetworkLogs () {
+            loadNetworkLogs();
         }
     </script>
 </body>

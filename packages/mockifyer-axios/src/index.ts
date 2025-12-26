@@ -7,7 +7,7 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario } from '@sgedda/mockifyer-core';
+import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
@@ -24,6 +24,7 @@ class MockifyerClass {
   private currentSessionId: string | null = null;
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  private testGenerator?: TestGenerator;
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
@@ -76,6 +77,12 @@ class MockifyerClass {
     }
     
     this.config = config;
+    
+    // Initialize test generator if test generation is enabled
+    if (config.generateTests?.enabled) {
+      this.testGenerator = new TestGenerator();
+    }
+    
     this.ensureMockDataDirectory();
     
     // Create HTTP client based on configuration
@@ -1200,10 +1207,96 @@ class MockifyerClass {
       // Write to file (no cache)
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
       console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+      
+      // Generate test if enabled
+      if (this.config.generateTests?.enabled && this.testGenerator) {
+        await this.generateTestForMock(mockData);
+      }
     } finally {
       // Remove from saving set after save completes
       this.savingResponses.delete(requestKey);
     }
+  }
+
+  /**
+   * Generates test file for a mock
+   */
+  private async generateTestForMock(mockData: MockData): Promise<void> {
+    if (!this.testGenerator || !fs || !path) {
+      return;
+    }
+
+    try {
+      const options: TestGenerationOptions = {
+        framework: this.config.generateTests?.framework || 'jest',
+        outputPath: this.config.generateTests?.outputPath || './tests/generated',
+        testPattern: this.config.generateTests?.testPattern || '{endpoint}.test.ts',
+        includeSetup: this.config.generateTests?.includeSetup !== false,
+        groupBy: this.config.generateTests?.groupBy || 'file',
+        httpClientType: 'axios'
+      };
+
+      const testCode = this.testGenerator.generateTest(mockData, options);
+      const testFilePath = this.testGenerator.determineTestFilePath(mockData, options);
+      
+      // Ensure test directory exists
+      const testDir = path.dirname(testFilePath);
+      if (!fs.existsSync(testDir)) {
+        fs.mkdirSync(testDir, { recursive: true });
+      }
+
+      // Check if test file already exists
+      if (fs.existsSync(testFilePath)) {
+        // Extract test info to check if test already exists
+        const testInfo = this.testGenerator.analyzeMock(mockData, 'axios');
+        const testName = this.generateTestNameFromInfo(testInfo);
+        
+        // Check if test already exists
+        const existingContent = fs.readFileSync(testFilePath, 'utf-8');
+        if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
+          console.log(`[Mockifyer] Test already exists in ${testFilePath}, skipping generation`);
+          return;
+        }
+        
+        // Extract test code without imports and describe wrapper
+        const testMatch = testCode.match(/it\('.*?', async \(\) => \{[\s\S]*?\}\);?/);
+        if (testMatch) {
+          // Append test to existing describe block
+          const newTest = testMatch[0];
+          const updatedContent = existingContent.replace(
+            /(\s+)(\}\);?\s*)$/,
+            `$1${newTest}\n$1$2`
+          );
+          fs.writeFileSync(testFilePath, updatedContent);
+          console.log(`[Mockifyer] ✅ Appended test to existing file: ${testFilePath}`);
+        }
+      } else {
+        // Create new test file
+        fs.writeFileSync(testFilePath, testCode);
+        console.log(`[Mockifyer] ✅ Generated test: ${testFilePath}`);
+      }
+    } catch (error) {
+      console.error('[Mockifyer] ❌ Error generating test:', error);
+      // Don't throw - test generation failure shouldn't break mock saving
+    }
+  }
+
+  /**
+   * Helper to generate test name from test info
+   */
+  private generateTestNameFromInfo(testInfo: any): string {
+    const method = testInfo.method.toUpperCase();
+    const endpoint = testInfo.endpoint;
+    
+    if (testInfo.isGraphQL && testInfo.graphQLQuery) {
+      const operationMatch = testInfo.graphQLQuery.match(/(?:query|mutation|subscription)\s+(\w+)/);
+      if (operationMatch) {
+        return `should execute ${operationMatch[1]} query`;
+      }
+      return 'should execute GraphQL query';
+    }
+    
+    return `should ${method} ${endpoint}`;
   }
 
   public getHTTPClient(): HTTPClient {

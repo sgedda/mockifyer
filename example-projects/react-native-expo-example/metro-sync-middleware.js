@@ -160,6 +160,147 @@ async function syncFromIOSSimulator() {
 }
 
 /**
+ * Get test generation config from environment or defaults
+ */
+function getTestGenerationConfig() {
+  // Check if test generation is enabled via environment variable
+  const enabled = process.env.MOCKIFYER_GENERATE_TESTS === 'true' || process.env.MOCKIFYER_GENERATE_TESTS === '1';
+  if (!enabled) {
+    return null;
+  }
+
+  return {
+    enabled: true,
+    framework: process.env.MOCKIFYER_TEST_FRAMEWORK || 'jest',
+    outputPath: process.env.MOCKIFYER_TEST_OUTPUT_PATH || './tests/generated',
+    testPattern: process.env.MOCKIFYER_TEST_PATTERN || '{endpoint}.test.ts',
+    includeSetup: process.env.MOCKIFYER_TEST_INCLUDE_SETUP !== 'false',
+    groupBy: process.env.MOCKIFYER_TEST_GROUP_BY || 'endpoint',
+    httpClientType: 'fetch',
+    uniqueTestsPerEndpoint: process.env.MOCKIFYER_UNIQUE_TESTS_PER_ENDPOINT === 'true',
+  };
+}
+
+/**
+ * Generate test file for a mock (runs in Metro/Node.js where fs is available)
+ */
+function generateTestForMock(mockData, testConfig) {
+  try {
+    // Try to require TestGenerator from mockifyer-core
+    let TestGenerator;
+    try {
+      // Try to load from dist (built version) - use absolute path to ensure it works
+      let mockifyerCore;
+      try {
+        // First try the package name (works if installed via npm)
+        mockifyerCore = require('@sgedda/mockifyer-core');
+      } catch (e) {
+        // Fallback: try relative path (for local file: dependencies)
+        const corePath = path.join(__dirname, '../../packages/mockifyer-core/dist/index.js');
+        if (fs.existsSync(corePath)) {
+          mockifyerCore = require(corePath);
+        } else {
+          throw new Error(`Could not find mockifyer-core at ${corePath}`);
+        }
+      }
+      
+      TestGenerator = mockifyerCore?.TestGenerator;
+      
+      if (!TestGenerator) {
+        // Try to load directly from test-generator file
+        const testGeneratorPath = path.join(__dirname, '../../packages/mockifyer-core/dist/utils/test-generator.js');
+        if (fs.existsSync(testGeneratorPath)) {
+          const testGeneratorModule = require(testGeneratorPath);
+          TestGenerator = testGeneratorModule.TestGenerator;
+        }
+      }
+    } catch (e) {
+      console.log(`[MockSync] ⚠️ Could not load TestGenerator: ${e.message}`);
+      console.log(`[MockSync] 💡 Stack: ${e.stack}`);
+      return false;
+    }
+
+    if (!TestGenerator) {
+      console.log('[MockSync] ⚠️ TestGenerator not available');
+      return false;
+    }
+    
+    console.log('[MockSync] ✅ TestGenerator loaded successfully');
+
+    const generator = new TestGenerator();
+    
+    const options = {
+      framework: testConfig.framework,
+      outputPath: testConfig.outputPath,
+      testPattern: testConfig.testPattern,
+      includeSetup: testConfig.includeSetup,
+      groupBy: testConfig.groupBy,
+      httpClientType: testConfig.httpClientType,
+      uniqueTestsPerEndpoint: testConfig.uniqueTestsPerEndpoint,
+      // Don't pass mockDataPath - let the test generator use the default relative path
+      // Tests are generated in tests/generated/... so they need ../../../mock-data
+      // mockDataPath: './mock-data', // REMOVED - generator now always uses ../../../mock-data
+    };
+
+    // Extract test info to check endpoint
+    const testInfo = generator.analyzeMock(mockData, options.httpClientType || 'fetch');
+    const testFilePath = generator.determineTestFilePath(mockData, options);
+    
+    // Resolve to absolute path
+    const absoluteTestPath = path.resolve(testFilePath);
+    const testDir = path.dirname(absoluteTestPath);
+
+    // If uniqueTestsPerEndpoint is enabled, check if a test file already exists for this endpoint
+    // (method + pathname, ignoring query parameters)
+    if (options.uniqueTestsPerEndpoint && fs.existsSync(absoluteTestPath)) {
+      console.log(`[MockSync] ✅ Test file already exists for endpoint ${testInfo.method} ${testInfo.endpoint}, skipping generation (uniqueTestsPerEndpoint enabled)`);
+      return true;
+    }
+
+    // Ensure test directory exists
+    if (!fs.existsSync(testDir)) {
+      fs.mkdirSync(testDir, { recursive: true });
+    }
+
+    const testCode = generator.generateTest(mockData, options);
+
+    // Check if test file already exists
+    if (fs.existsSync(absoluteTestPath)) {
+      // Extract test info to check if test already exists
+      const testName = `${testInfo.method} ${testInfo.endpoint}`;
+      
+      const existingContent = fs.readFileSync(absoluteTestPath, 'utf-8');
+      if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
+        console.log(`[MockSync] ✅ Test already exists in ${absoluteTestPath}, skipping generation`);
+        return true;
+      }
+      
+      // Append test to existing file
+      const testMatch = testCode.match(/it\('.*?', async \(\) => \{[\s\S]*?\}\);?/);
+      if (testMatch) {
+        const newTest = testMatch[0];
+        const updatedContent = existingContent.replace(
+          /(\s+)(\}\);?\s*)$/,
+          `$1${newTest}\n$1$2`
+        );
+        fs.writeFileSync(absoluteTestPath, updatedContent);
+        console.log(`[MockSync] ✅ Appended test to existing file: ${absoluteTestPath}`);
+        return true;
+      }
+    } else {
+      // Create new test file
+      fs.writeFileSync(absoluteTestPath, testCode);
+      console.log(`[MockSync] ✅ Generated test: ${absoluteTestPath}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[MockSync] ❌ Error generating test:`, error);
+    return false;
+  }
+}
+
+/**
  * Save mock data directly to project folder
  * Called by HybridProvider when saving mocks
  */
@@ -209,6 +350,13 @@ function saveMockToProjectFolder(mockData) {
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
     
     console.log(`[MockSync] ✅ Saved mock to project folder: ${currentScenario}/${filename}`);
+    
+    // Generate test file if enabled
+    const testConfig = getTestGenerationConfig();
+    if (testConfig) {
+      generateTestForMock(mockData, testConfig);
+    }
+    
     return { success: true, filename, scenario: currentScenario };
   } catch (error) {
     console.error(`[MockSync] ❌ Error saving mock to project folder:`, error);

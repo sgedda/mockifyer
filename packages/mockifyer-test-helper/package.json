@@ -1,0 +1,32 @@
+{
+  "name": "@sgedda/mockifyer-test-helper",
+  "version": "1.0.0",
+  "description": "Test helper utilities for Mockifyer - auto-setup and realistic data",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mockifyer",
+    "testing",
+    "test-helper",
+    "auto-setup"
+  ],
+  "author": "sgedda",
+  "license": "MIT",
+  "dependencies": {
+    "@sgedda/mockifyer-fetch": "file:../mockifyer-fetch",
+    "@sgedda/mockifyer-core": "file:../mockifyer-core"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "@sgedda/mockifyer-fetch": "^1.0.0",
+    "@sgedda/mockifyer-core": "^1.0.0"
+  }
+}
+

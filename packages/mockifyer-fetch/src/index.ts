@@ -29,7 +29,9 @@ import {
   getCurrentScenario,
   getScenarioFolderPath,
   ensureScenarioFolder,
-  initializeScenario
+  initializeScenario,
+  TestGenerator,
+  TestGenerationOptions
 } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
@@ -43,6 +45,7 @@ class MockifyerClass {
   private currentSessionId: string | null = null;
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  private testGenerator?: TestGenerator;
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
@@ -94,7 +97,29 @@ class MockifyerClass {
       }
     }
     
-    this.config = config;
+    // Store config BEFORE any modifications
+    this.config = { ...config }; // Create a copy to avoid mutations
+    
+    // Initialize test generator if test generation is enabled
+    console.log('[Mockifyer-Fetch] HÖHÖHÖ 🔧 Constructor - Full config received:', JSON.stringify({
+      generateTests: config.generateTests,
+      recordMode: config.recordMode,
+      mockDataPath: config.mockDataPath,
+      databaseProvider: config.databaseProvider?.type
+    }, null, 2));
+    console.log('[Mockifyer-Fetch] 🔧 Constructor - generateTests config:', JSON.stringify(config.generateTests, null, 2));
+    console.log('[Mockifyer-Fetch] 🔧 Constructor - config.generateTests?.enabled:', config.generateTests?.enabled);
+    
+    if (config.generateTests?.enabled) {
+      console.log('[Mockifyer-Fetch] ✅ Initializing test generator...');
+      this.testGenerator = new TestGenerator();
+      console.log('[Mockifyer-Fetch] ✅ Test generator initialized:', !!this.testGenerator);
+    } else {
+      console.log('[Mockifyer-Fetch] ⚠️ Test generation NOT enabled in config');
+      console.log('[Mockifyer-Fetch] ⚠️ Debug - config.generateTests:', config.generateTests);
+      console.log('[Mockifyer-Fetch] ⚠️ Debug - typeof config.generateTests:', typeof config.generateTests);
+      console.log('[Mockifyer-Fetch] ⚠️ Debug - config keys:', Object.keys(config));
+    }
     
     // Initialize database provider if specified
     if (config.databaseProvider && config.databaseProvider.type) {
@@ -213,14 +238,29 @@ class MockifyerClass {
     if (!fs || !path) {
       return undefined;
     }
-    if (!fs.existsSync(this.config.mockDataPath)) {
+    const resolvedMockDataPath = path.resolve(this.config.mockDataPath);
+    console.log('[Mockifyer-Fetch] 📁 Mock data path:', {
+      original: this.config.mockDataPath,
+      resolved: resolvedMockDataPath,
+      exists: fs.existsSync(resolvedMockDataPath)
+    });
+    
+    if (!fs.existsSync(resolvedMockDataPath)) {
+      console.warn('[Mockifyer-Fetch] ⚠️ Mock data path does not exist:', resolvedMockDataPath);
       return undefined;
     }
 
-    const currentScenario = getCurrentScenario(this.config.mockDataPath);
-    const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+    const currentScenario = getCurrentScenario(resolvedMockDataPath);
+    const scenarioPath = getScenarioFolderPath(resolvedMockDataPath, currentScenario);
+    
+    console.log('[Mockifyer-Fetch] 📁 Scenario path:', {
+      scenario: currentScenario,
+      path: scenarioPath,
+      exists: fs.existsSync(scenarioPath)
+    });
     
     if (!fs.existsSync(scenarioPath)) {
+      console.warn('[Mockifyer-Fetch] ⚠️ Scenario path does not exist:', scenarioPath);
       return undefined;
     }
 
@@ -230,6 +270,14 @@ class MockifyerClass {
     const requestKey = this.generateRequestKey(request);
     let exactMatch: CachedMockData | undefined;
     let similarMatch: CachedMockData | undefined;
+    
+    console.log('[Mockifyer-Fetch] 🔍 Searching for mock:', {
+      requestKey,
+      useSimilarMatch: this.config.useSimilarMatch,
+      similarMatchIgnoreAllQueryParams: this.config.similarMatchIgnoreAllQueryParams,
+      filesCount: files.length,
+      files: files.slice(0, 5) // Show first 5 files for debugging
+    });
     
     for (const file of files) {
       try {
@@ -244,6 +292,7 @@ class MockifyerClass {
         const mockKey = this.generateRequestKey(mockData.request);
         
         if (mockKey === requestKey) {
+          console.log('[Mockifyer-Fetch] ✅ Exact match found:', file);
           exactMatch = { mockData, filename: file, filePath };
           break;
         }
@@ -268,12 +317,52 @@ class MockifyerClass {
             try {
               const requestUrl = new URL(request.url);
               const mockUrl = new URL(mockData.request.url);
-              if (mockUrl.pathname === requestUrl.pathname && 
-                  (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
+              
+              // Check if pathnames match (exact or pattern-based)
+              const requestPathname = requestUrl.pathname;
+              const mockPathname = mockUrl.pathname;
+              const methodMatch = (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase();
+              
+              // Check for exact pathname match
+              const exactPathnameMatch = mockPathname === requestPathname;
+              
+              // Check for pattern-based match (e.g., /posts/71 matches /posts/17 when similarMatchIgnoreAllQueryParams is true)
+              // This allows matching paths with different IDs when we're ignoring query params
+              let patternMatch = false;
+              if (this.config.similarMatchIgnoreAllQueryParams && !exactPathnameMatch && methodMatch) {
+                // Extract base path by removing the last segment (ID)
+                // /posts/71 -> /posts, /users/2/todos -> /users/2
+                const requestSegments = requestPathname.split('/').filter(s => s);
+                const mockSegments = mockPathname.split('/').filter(s => s);
+                
+                // Match if base paths are the same (same number of segments, all but last match)
+                if (requestSegments.length === mockSegments.length && requestSegments.length > 0) {
+                  const requestBase = requestSegments.slice(0, -1);
+                  const mockBase = mockSegments.slice(0, -1);
+                  patternMatch = requestBase.join('/') === mockBase.join('/');
+                }
+              }
+              
+              const pathnameMatch = exactPathnameMatch || patternMatch;
+              
+              console.log('[Mockifyer-Fetch] 🔍 Checking similar match:', {
+                file,
+                requestPathname,
+                mockPathname,
+                requestMethod: (request.method || 'GET').toUpperCase(),
+                mockMethod: (mockData.request.method || 'GET').toUpperCase(),
+                exactPathnameMatch,
+                patternMatch,
+                pathnameMatch,
+                methodMatch
+              });
+              
+              if (pathnameMatch && methodMatch) {
                 
                 // If ignoreAllQueryParams is set, skip query param checking entirely
                 if (this.config.similarMatchIgnoreAllQueryParams) {
                   // Ignore all query params, match on path and method only
+                  console.log('[Mockifyer-Fetch] ✅ Similar match found (ignoring query params):', file);
                 } else if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
                   // Check if required parameters match (if configured)
                   const requestParams = request.queryParams || {};
@@ -351,6 +440,22 @@ class MockifyerClass {
       (config as any).__mockifyer_requestKey = requestKey;
       
       const cachedMock = await this.findBestMatchingMock(request);
+      
+      if (!cachedMock) {
+        console.log('[Mockifyer-Fetch] ⚠️ No mock found for request:', {
+          method: request.method,
+          url: request.url,
+          queryParams: request.queryParams,
+          requestKey: requestKey,
+          mockDataPath: this.config.mockDataPath,
+          hasDatabaseProvider: !!this.databaseProvider
+        });
+      } else {
+        console.log('[Mockifyer-Fetch] ✅ Mock found:', {
+          filename: cachedMock.filename,
+          url: request.url
+        });
+      }
       
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
@@ -475,7 +580,10 @@ class MockifyerClass {
         if (this.config.recordMode) {
           console.log('[Mockifyer-Fetch] ✅ recordMode enabled, saving response');
           console.log('[Mockifyer-Fetch] Response URL:', response.config?.url);
+          console.log('[Mockifyer-Fetch] Response method:', response.config?.method);
           console.log('[Mockifyer-Fetch] Response status:', response.status);
+          console.log('[Mockifyer-Fetch] Response config.data:', response.config?.data);
+          console.log('[Mockifyer-Fetch] Response config exists:', !!response.config);
           await this.saveResponse(response);
         } else {
           console.log('[Mockifyer-Fetch] ⚠️ recordMode disabled, not saving response');
@@ -494,8 +602,22 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
+    console.log('[Mockifyer-Fetch] 💾 saveResponse called');
+    console.log('[Mockifyer-Fetch] 💾 Config at saveResponse:', {
+      generateTestsEnabled: this.config.generateTests?.enabled,
+      hasGenerateTests: !!this.config.generateTests,
+      recordMode: this.config.recordMode,
+      hasDatabaseProvider: !!this.databaseProvider
+    });
+    console.log('[Mockifyer-Fetch] saveResponse - response.config:', response.config ? {
+      url: response.config.url,
+      method: response.config.method,
+      hasData: !!response.config.data,
+      dataType: typeof response.config.data
+    } : 'NO CONFIG');
+    
     // CRITICAL: Check for bypass flags FIRST - if set, completely skip processing
-    if ((response.config as any).__mockifyer_skip_save || (response.config as any).__mockifyer_bypass) {
+    if ((response.config as any)?.__mockifyer_skip_save || (response.config as any)?.__mockifyer_bypass) {
       console.log('[Mockifyer-Fetch] ⚠️ saveResponse: BLOCKING - bypass flag set');
       return;
     }
@@ -574,27 +696,58 @@ class MockifyerClass {
 
       const mockData: MockData = {
         request: {
-          method: response.config.method?.toUpperCase() || 'GET',
-          url: response.config.url || '',
-          headers: this.anonymizeHeaders(response.config.headers || {}),
-          data: response.config.data,
+          method: response.config?.method?.toUpperCase() || 'GET',
+          url: response.config?.url || '',
+          headers: this.anonymizeHeaders(response.config?.headers || {}),
+          data: response.config?.data,
           queryParams: normalizedParams
         },
         response: {
           status: response.status,
           data: response.data,
-          headers: response.headers
+          headers: response.headers || {}
         },
         timestamp: new Date().toISOString(),
         sessionId: this.currentSessionId
       };
       
+      console.log('[Mockifyer-Fetch] Saving mock data:', {
+        method: mockData.request.method,
+        url: mockData.request.url,
+        hasRequestData: !!mockData.request.data,
+        responseStatus: mockData.response.status,
+        provider: this.config.databaseProvider?.type || 'filesystem'
+      });
+      
       // Use database provider if available, otherwise fallback to filesystem
       if (this.databaseProvider) {
         try {
+          console.log('[Mockifyer-Fetch] 💾 Saving mock via database provider...');
           await this.databaseProvider.save(mockData);
+          console.log('[Mockifyer-Fetch] ✅ Successfully saved mock using provider');
+          
+          // Generate test if enabled (try to write test files even with database provider)
+          // In React Native Metro bundler (Node.js), fs/path are available for writing test files
+          console.log('[Mockifyer-Fetch] 🔍 Checking test generation config...');
+          console.log('[Mockifyer-Fetch] 🔍 this.config.generateTests:', JSON.stringify(this.config.generateTests, null, 2));
+          console.log('[Mockifyer-Fetch] 🔍 this.config.generateTests?.enabled:', this.config.generateTests?.enabled);
+          
+          if (this.config.generateTests?.enabled) {
+            console.log('[Mockifyer-Fetch] 🔧 Test generation enabled, attempting to generate test...');
+            console.log('[Mockifyer-Fetch] 🔧 Test generator available:', !!this.testGenerator);
+            console.log('[Mockifyer-Fetch] 🔧 fs available:', !!fs);
+            console.log('[Mockifyer-Fetch] 🔧 path available:', !!path);
+            await this.generateTestForMock(mockData);
+          } else {
+            console.log('[Mockifyer-Fetch] ⚠️ Test generation NOT enabled - skipping');
+            console.log('[Mockifyer-Fetch] ⚠️ Config check:', {
+              hasGenerateTests: !!this.config.generateTests,
+              enabled: this.config.generateTests?.enabled,
+              fullConfig: JSON.stringify(this.config.generateTests)
+            });
+          }
         } catch (error) {
-          console.error(`[Mockifyer-Fetch] Error saving mock using ${this.config.databaseProvider?.type} provider:`, error);
+          console.error(`[Mockifyer-Fetch] ❌ Error saving mock using ${this.config.databaseProvider?.type} provider:`, error);
           throw error;
         }
       } else if (fs && path) {
@@ -610,12 +763,178 @@ class MockifyerClass {
         const filePath = path.join(scenarioPath, filename);
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
         console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+        
+        // Generate test if enabled
+        if (this.config.generateTests?.enabled && this.testGenerator) {
+          await this.generateTestForMock(mockData);
+        }
       } else {
         console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
       }
     } finally {
       this.savingResponses.delete(requestKey);
     }
+  }
+
+  /**
+   * Simple path resolution fallback for React Native (when path module is stubbed)
+   */
+  private resolvePath(...parts: string[]): string {
+    if (path && typeof path.resolve === 'function') {
+      return path.resolve(...parts);
+    }
+    // Fallback: simple string-based path resolution
+    const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '.';
+    const joined = parts
+      .filter(p => p)
+      .join('/')
+      .replace(/\/+/g, '/')
+      .replace(/^\.\//, '');
+    
+    if (joined.startsWith('/')) {
+      return joined;
+    }
+    return `${cwd}/${joined}`.replace(/\/+/g, '/');
+  }
+
+  /**
+   * Simple dirname fallback for React Native (when path module is stubbed)
+   */
+  private dirname(filePath: string): string {
+    if (path && typeof path.dirname === 'function') {
+      return path.dirname(filePath);
+    }
+    // Fallback: extract directory from path string
+    const lastSlash = filePath.lastIndexOf('/');
+    if (lastSlash <= 0) {
+      return '.';
+    }
+    return filePath.substring(0, lastSlash);
+  }
+
+  /**
+   * Generates test file for a mock
+   */
+  private async generateTestForMock(mockData: MockData): Promise<void> {
+    if (!this.testGenerator) {
+      return;
+    }
+    
+    // Check if fs is available for writing test files
+    // In React Native runtime, fs is not available, but in Metro bundler (Node.js) it should be
+    // Try to require it dynamically if not already available
+    let testFs = fs;
+    
+    if (!testFs) {
+      try {
+        testFs = require('fs');
+        console.log('[Mockifyer] ✅ Found fs module for test generation');
+      } catch (e) {
+        console.log('[Mockifyer] ⚠️ Test generation skipped: fs not available');
+        console.log('[Mockifyer] 💡 Tip: Test generation requires Node.js fs module.');
+        console.log('[Mockifyer] 💡 In React Native, tests are generated in Metro bundler (Node.js environment).');
+        return;
+      }
+    }
+    
+    // Use the available fs - ensure it's defined and has required methods
+    if (!testFs || typeof testFs.writeFileSync !== 'function' || typeof testFs.mkdirSync !== 'function') {
+      console.log('[Mockifyer] ⚠️ Test generation skipped: fs module missing required methods');
+      console.log('[Mockifyer] 💡 fs.writeFileSync:', typeof testFs?.writeFileSync);
+      console.log('[Mockifyer] 💡 fs.mkdirSync:', typeof testFs?.mkdirSync);
+      return;
+    }
+    
+    const fsToUse = testFs;
+
+    try {
+      const options: TestGenerationOptions = {
+        framework: this.config.generateTests?.framework || 'jest',
+        outputPath: this.config.generateTests?.outputPath || './tests/generated',
+        testPattern: this.config.generateTests?.testPattern || '{endpoint}.test.ts',
+        includeSetup: this.config.generateTests?.includeSetup !== false,
+        groupBy: this.config.generateTests?.groupBy || 'file',
+        httpClientType: 'fetch'
+      };
+
+      console.log('[Mockifyer] 📝 Test generation options:', JSON.stringify(options, null, 2));
+      
+      const testCode = this.testGenerator.generateTest(mockData, options);
+      const testFilePath = this.testGenerator.determineTestFilePath(mockData, options);
+      
+      console.log('[Mockifyer] 📝 Generated test file path:', testFilePath);
+      
+      // Resolve to absolute path (relative to process.cwd() which should be project root in Metro)
+      // Use our fallback path resolution that works even when path module is stubbed
+      const absoluteTestPath = this.resolvePath(testFilePath);
+      console.log('[Mockifyer] 📝 Final absolute test path:', absoluteTestPath);
+      
+      // Ensure test directory exists
+      const testDir = this.dirname(absoluteTestPath);
+      console.log('[Mockifyer] 📝 Test directory:', testDir);
+      
+      if (!fsToUse.existsSync(testDir)) {
+        console.log('[Mockifyer] 📝 Creating test directory:', testDir);
+        fsToUse.mkdirSync(testDir, { recursive: true });
+      }
+
+      // Check if test file already exists
+      if (fsToUse.existsSync(absoluteTestPath)) {
+        console.log('[Mockifyer] 📝 Test file already exists, checking if test needs to be appended...');
+        // Extract test info to check if test already exists
+        const testInfo = this.testGenerator.analyzeMock(mockData, 'fetch');
+        const testName = this.generateTestNameFromInfo(testInfo);
+        
+        // Check if test already exists
+        const existingContent = fsToUse.readFileSync(absoluteTestPath, 'utf-8');
+        if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
+          console.log(`[Mockifyer] ✅ Test already exists in ${absoluteTestPath}, skipping generation`);
+          return;
+        }
+        
+        // Extract test code without imports and describe wrapper
+        const testMatch = testCode.match(/it\('.*?', async \(\) => \{[\s\S]*?\}\);?/);
+        if (testMatch) {
+          // Append test to existing describe block
+          const newTest = testMatch[0];
+          const updatedContent = existingContent.replace(
+            /(\s+)(\}\);?\s*)$/,
+            `$1${newTest}\n$1$2`
+          );
+          fsToUse.writeFileSync(absoluteTestPath, updatedContent);
+          console.log(`[Mockifyer] ✅ Appended test to existing file: ${absoluteTestPath}`);
+        }
+      } else {
+        // Create new test file
+        console.log('[Mockifyer] 📝 Creating new test file...');
+        fsToUse.writeFileSync(absoluteTestPath, testCode);
+        console.log(`[Mockifyer] ✅ Generated test: ${absoluteTestPath}`);
+        console.log(`[Mockifyer] ✅ Test file size: ${fsToUse.statSync(absoluteTestPath).size} bytes`);
+      }
+    } catch (error: any) {
+      console.error('[Mockifyer] ❌ Error generating test:', error);
+      console.error('[Mockifyer] ❌ Error stack:', error?.stack);
+      console.error('[Mockifyer] ❌ Error message:', error?.message);
+      // Don't throw - test generation failure shouldn't break mock saving
+    }
+  }
+
+  /**
+   * Helper to generate test name from test info
+   */
+  private generateTestNameFromInfo(testInfo: any): string {
+    const method = testInfo.method.toUpperCase();
+    const endpoint = testInfo.endpoint;
+    
+    if (testInfo.isGraphQL && testInfo.graphQLQuery) {
+      const operationMatch = testInfo.graphQLQuery.match(/(?:query|mutation|subscription)\s+(\w+)/);
+      if (operationMatch) {
+        return `should execute ${operationMatch[1]} query`;
+      }
+      return 'should execute GraphQL query';
+    }
+    
+    return `should ${method} ${endpoint}`;
   }
 
   private anonymizeHeaders(headers: Record<string, any>): Record<string, any> {
@@ -709,8 +1028,45 @@ export interface MockifyerInstance extends HTTPClient {
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+  console.log('[Mockifyer-Fetch] 🚀 setupMockifyer called with config:', JSON.stringify({
+    generateTests: config.generateTests,
+    recordMode: config.recordMode,
+    mockDataPath: config.mockDataPath,
+    databaseProvider: config.databaseProvider?.type
+  }, null, 2));
+  
+  // Set environment variables for Metro middleware to read test generation config
+  // This allows Metro middleware (which runs in Node.js) to generate tests
+  // when Hybrid Provider saves mocks via Metro endpoint
+  if (config.generateTests?.enabled) {
+    process.env.MOCKIFYER_GENERATE_TESTS = 'true';
+    if (config.generateTests.framework) {
+      process.env.MOCKIFYER_TEST_FRAMEWORK = config.generateTests.framework;
+    }
+    if (config.generateTests.outputPath) {
+      process.env.MOCKIFYER_TEST_OUTPUT_PATH = config.generateTests.outputPath;
+    }
+    if (config.generateTests.testPattern) {
+      process.env.MOCKIFYER_TEST_PATTERN = config.generateTests.testPattern;
+    }
+    if (config.generateTests.includeSetup === false) {
+      process.env.MOCKIFYER_TEST_INCLUDE_SETUP = 'false';
+    }
+    if (config.generateTests.groupBy) {
+      process.env.MOCKIFYER_TEST_GROUP_BY = config.generateTests.groupBy;
+    }
+    if (config.generateTests.uniqueTestsPerEndpoint) {
+      process.env.MOCKIFYER_UNIQUE_TESTS_PER_ENDPOINT = 'true';
+    }
+  }
+  
   initializeDateManipulation(config);
   initializeScenario(config);
+  
+  console.log('[Mockifyer-Fetch] 🚀 After initializeScenario - config:', JSON.stringify({
+    generateTests: config.generateTests,
+    recordMode: config.recordMode
+  }, null, 2));
 
   const mockifyer = new MockifyerClass(config);
   const httpClient = mockifyer.getHTTPClient();
@@ -792,9 +1148,23 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         const response = await httpClient.request(requestConfig);
         
         const responseHeaders = new Headers();
-        Object.entries(response.headers || {}).forEach(([key, value]) => {
-          responseHeaders.set(key, String(value));
-        });
+        // Copy all headers from response, ensuring x-mockifyer header is included if present
+        if (response.headers) {
+          Object.entries(response.headers).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) {
+              responseHeaders.set(key, String(value));
+            }
+          });
+          // Debug: Verify x-mockifyer header is present
+          if (response.headers['x-mockifyer']) {
+            console.log('[Mockifyer-Fetch] ✅ x-mockifyer header found in response:', response.headers['x-mockifyer']);
+          } else {
+            console.warn('[Mockifyer-Fetch] ⚠️ x-mockifyer header NOT found in response.headers');
+            console.warn('[Mockifyer-Fetch] Available headers:', Object.keys(response.headers));
+          }
+        } else {
+          console.warn('[Mockifyer-Fetch] ⚠️ response.headers is undefined/null');
+        }
         
         const responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
         

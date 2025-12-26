@@ -17,6 +17,14 @@
       "types": "./dist/metro-config.d.ts",
       "default": "./dist/metro-config.js"
     },
+    "./metro-sync-middleware": {
+      "types": "./dist/metro-sync-middleware.d.ts",
+      "default": "./dist/metro-sync-middleware.js"
+    },
+    "./test-generation-hook": {
+      "types": "./dist/test-generation-hook.d.ts",
+      "default": "./dist/test-generation-hook.js"
+    },
     "./metro-polyfills/empty-module": {
       "default": "./metro-polyfills/empty-module.js"
     }

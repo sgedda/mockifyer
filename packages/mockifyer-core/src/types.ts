@@ -58,6 +58,23 @@ export interface MockifyerConfig {
     /** Additional provider-specific options (e.g., metroPort for hybrid provider) */
     options?: Record<string, any>;
   };
+  /** Test generation configuration */
+  generateTests?: {
+    /** Enable automatic test generation when mocks are saved */
+    enabled?: boolean;
+    /** Test framework to use: 'jest' (default), 'vitest', or 'mocha' */
+    framework?: 'jest' | 'vitest' | 'mocha';
+    /** Output path for generated tests (default: './tests/generated') */
+    outputPath?: string;
+    /** Test file naming pattern with placeholders: {endpoint}, {method}, {scenario} (default: '{endpoint}.test.ts') */
+    testPattern?: string;
+    /** Include setup code in generated tests (default: true) */
+    includeSetup?: boolean;
+    /** Group tests by: 'endpoint', 'scenario', or 'file' (default: 'file') */
+    groupBy?: 'endpoint' | 'scenario' | 'file';
+    /** If true, only generate one test per endpoint (method + pathname), ignoring query parameters (default: false) */
+    uniqueTestsPerEndpoint?: boolean;
+  };
 }
 
 export interface StoredRequest {

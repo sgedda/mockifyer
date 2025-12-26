@@ -58,14 +58,29 @@ export async function initializeMockifyer() {
   if (__DEV__) {
     // DEVELOPMENT MODE (Metro bundler)
     // Use Expo FileSystem provider - can record and read from device filesystem
-    await setupMockifyer({
+    const mockifyerConfig = {
       mockDataPath: 'mock-data',
       databaseProvider: {
-        type: 'filesystem',
+        type: 'expo-filesystem' as const, // Use expo-filesystem for React Native
         path: 'mock-data',
       },
+      generateTests: {
+        enabled: true,
+        framework: 'jest' as const,
+        outputPath: './tests/generated', // Relative to project root (where Metro runs)
+        groupBy: 'endpoint' as const
+      },
       recordMode: process.env.MOCKIFYER_RECORD === 'true', // Enable recording if needed
-    });
+      useGlobalFetch: true,
+    };
+    
+    console.log('[Mockifyer Setup] 📝 Config being passed to setupMockifyer:', JSON.stringify({
+      generateTests: mockifyerConfig.generateTests,
+      recordMode: mockifyerConfig.recordMode,
+      databaseProvider: mockifyerConfig.databaseProvider?.type
+    }, null, 2));
+    
+    await setupMockifyer(mockifyerConfig);
 
     console.log('[Mockifyer] Development mode: Using Expo FileSystem provider');
     if (process.env.MOCKIFYER_RECORD === 'true') {

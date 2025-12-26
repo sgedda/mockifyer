@@ -1,7 +1,7 @@
 // Learn more https://docs.expo.dev/guides/customizing-metro
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
-const mockSyncMiddleware = require('./metro-sync-middleware');
+const { createMockSyncMiddleware, startAutoSync } = require('@sgedda/mockifyer-fetch/metro-sync-middleware');
 const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
 
 // Get the default Metro config
@@ -68,13 +68,26 @@ config.transformer = {
 };
 
 // Add mock sync middleware
+// Test generation is configured here since files are saved in Metro middleware (Node.js environment)
+const mockSyncMiddleware = createMockSyncMiddleware({
+  projectRoot: __dirname,
+  mockDataPath: 'mock-data',
+  testGeneration: {
+    enabled: process.env.MOCKIFYER_GENERATE_TESTS === 'true',
+    framework: 'jest',
+    outputPath: './tests/generated',
+    groupBy: 'endpoint',
+    uniqueTestsPerEndpoint: true,
+  },
+});
+
 config.server = {
   ...config.server,
   enhanceMiddleware: (middleware) => {
     // Add mock sync middleware before default middleware
     return (req, res, next) => {
       // Try mock sync middleware first
-      mockSyncMiddleware.middleware(req, res, (err) => {
+      mockSyncMiddleware(req, res, (err) => {
         if (err) {
           return next(err);
         }
@@ -89,7 +102,10 @@ config.server = {
 
 // Start auto-sync in development (syncs every 5 seconds)
 if (process.env.NODE_ENV !== 'production') {
-  mockSyncMiddleware.startAutoSync(5000);
+  startAutoSync(5000, {
+    projectRoot: __dirname,
+    mockDataPath: 'mock-data',
+  });
 }
 
 module.exports = config;

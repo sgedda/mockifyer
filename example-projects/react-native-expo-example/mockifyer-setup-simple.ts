@@ -36,7 +36,7 @@ export async function initializeMockifyer() {
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode: recordMode,
-    // Pass watch options through config
+    // Pass watch options and test generation through config
     config: __DEV__ ? {
       databaseProvider: {
         type: 'hybrid',
@@ -48,6 +48,12 @@ export async function initializeMockifyer() {
             console.log('[Mockifyer] 📁 Mock files changed - will use new files on next request');
           },
         },
+      },
+      generateTests: {
+        enabled: true,
+        framework: 'jest',
+        outputPath: './tests/generated', // Relative to project root (where Metro runs)
+        groupBy: 'endpoint'
       },
     } : {},
   });
