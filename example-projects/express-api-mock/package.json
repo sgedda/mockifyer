@@ -20,7 +20,6 @@
     "postinstall": "npm run build"
   },
   "dependencies": {
-    "@sgedda/mockifyer": "file:../../",
     "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
     "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
     "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
