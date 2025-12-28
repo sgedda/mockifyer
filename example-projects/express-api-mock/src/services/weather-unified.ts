@@ -1,6 +1,4 @@
-import { HTTPClient } from '@sgedda/mockifyer-core';
-import { setupMockifyer as setupMockifyerAxios } from '@sgedda/mockifyer-axios';
-import { setupMockifyer as setupMockifyerFetch } from '@sgedda/mockifyer-fetch';
+import { HTTPClient, setupMockifyer } from '@sgedda/mockifyer';
 import axios from 'axios';
 import path from 'path';
 
@@ -85,14 +83,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
   }
 
   // Initialize Mockifyer (this patches global axios/fetch if scope is global)
-  if (clientType === 'axios') {
-    console.log('setupMockifyerAxios', config);
-    setupMockifyerAxios(config);
-  } else if (clientType === 'fetch') {
-    setupMockifyerFetch(config);
-  } else {
-    throw new Error(`Unsupported clientType: ${clientType}`);
-  }
+  setupMockifyer(config);
   
   // Mark as initialized
   initializedCache.add(cacheKey);
@@ -152,14 +143,7 @@ function getHTTPClient(clientType: 'axios' | 'fetch'): HTTPClient {
   }
 
   // Create HTTP client for local scope
-  let httpClient: HTTPClient;
-  if (clientType === 'axios') {
-    httpClient = setupMockifyerAxios(config);
-  } else if (clientType === 'fetch') {
-    httpClient = setupMockifyerFetch(config);
-  } else {
-    throw new Error(`Unsupported clientType: ${clientType}`);
-  }
+  const httpClient: HTTPClient = setupMockifyer(config);
   
   // Cache the client
   clientCache.set(cacheKey, httpClient);
