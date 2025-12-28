@@ -1,5 +1,4 @@
-import { setupMockifyer } from '@sgedda/mockifyer';
-import { HTTPClient } from '@sgedda/mockifyer/types/http-client';
+import { setupMockifyer, HTTPClient } from '@sgedda/mockifyer';
 
 const mockDataPath = process.env.MOCKIFYER_PATH || './tests/fetch/mock-data';
 const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';

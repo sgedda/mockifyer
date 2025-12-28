@@ -1,5 +1,5 @@
 import { setupMockifyer } from '@sgedda/mockifyer';
-import { HTTPClient } from '@sgedda/mockifyer/types/http-client';
+import { HTTPClient } from '@sgedda/mockifyer';
 import path from 'path';
 
 export async function getCurrentWeather(city: string = 'London', fullResponse: boolean = false): Promise<{ data: any; headers: Record<string, string> }> {
