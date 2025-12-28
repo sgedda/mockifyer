@@ -59,49 +59,71 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
     const fs = require('fs');
     const path = require('path');
     
-    // Get mockifyer version from package.json (works for both local and published)
+    // Get mockifyer version from separated packages (works for both local and published)
     let mockifyerVersion = 'unknown';
+    const packageVersions: Record<string, string> = {};
+    
     try {
-      // Try multiple paths to find the mockifyer package
-      const possiblePaths = [
-        // Production: node_modules from dist/
-        path.join(__dirname, '../../node_modules/@sgedda/mockifyer/package.json'),
-        // Production: node_modules from root
-        path.join(__dirname, '../../../node_modules/@sgedda/mockifyer/package.json'),
-        // Local development: linked package
-        path.join(__dirname, '../../../package.json'),
-        // Alternative: try require.resolve
-        (() => {
-          try {
-            return require.resolve('@sgedda/mockifyer/package.json');
-          } catch {
-            return null;
-          }
-        })()
-      ].filter(p => p !== null);
+      // Try to find versions from separated packages (check core, axios, and fetch)
+      const packagesToCheck = ['@sgedda/mockifyer-core', '@sgedda/mockifyer-axios', '@sgedda/mockifyer-fetch'];
       
-      for (const packagePath of possiblePaths) {
-        if (fs.existsSync(packagePath)) {
-          const mockifyerPackage = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
-          if (mockifyerPackage?.version) {
-            mockifyerVersion = mockifyerPackage.version;
-            break;
+      for (const packageName of packagesToCheck) {
+        const possiblePaths = [
+          // Production: node_modules from dist/
+          path.join(__dirname, `../../node_modules/${packageName}/package.json`),
+          // Production: node_modules from root
+          path.join(__dirname, `../../../node_modules/${packageName}/package.json`),
+          // Local development: linked packages
+          path.join(__dirname, `../../../packages/${packageName.replace('@sgedda/mockifyer-', 'mockifyer-')}/package.json`),
+          // Alternative: try require.resolve
+          (() => {
+            try {
+              return require.resolve(`${packageName}/package.json`);
+            } catch {
+              return null;
+            }
+          })()
+        ].filter(p => p !== null);
+        
+        for (const packagePath of possiblePaths) {
+          if (fs.existsSync(packagePath)) {
+            const mockifyerPackage = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
+            if (mockifyerPackage?.version) {
+              const shortName = packageName.replace('@sgedda/mockifyer-', '');
+              packageVersions[shortName] = mockifyerPackage.version;
+              break;
+            }
           }
         }
       }
       
       // Fallback: try to read from this project's package.json dependencies
-      if (mockifyerVersion === 'unknown') {
+      if (Object.keys(packageVersions).length === 0) {
         const thisPackagePath = path.join(__dirname, '../../package.json');
         if (fs.existsSync(thisPackagePath)) {
           const thisPackage = JSON.parse(fs.readFileSync(thisPackagePath, 'utf-8'));
-          const depVersion = thisPackage.dependencies?.['@sgedda/mockifyer'] || 
-                           thisPackage.devDependencies?.['@sgedda/mockifyer'];
-          if (depVersion && depVersion !== 'file:../../') {
-            // Extract version from semver string (remove ^, ~, etc.)
-            mockifyerVersion = depVersion.replace(/^[\^~]/, '');
+          // Check for separated packages
+          for (const packageName of packagesToCheck) {
+            const depVersion = thisPackage.dependencies?.[packageName] || 
+                             thisPackage.devDependencies?.[packageName];
+            if (depVersion && depVersion !== 'file:../../') {
+              // Extract version from semver string (remove ^, ~, file:, etc.)
+              const version = depVersion.replace(/^[\^~]/, '').replace(/^file:.*/, '').trim();
+              if (version && !version.startsWith('file:') && version.match(/^\d+\.\d+\.\d+/)) {
+                const shortName = packageName.replace('@sgedda/mockifyer-', '');
+                packageVersions[shortName] = version;
+              }
+            }
           }
         }
+      }
+      
+      // Format version string
+      if (Object.keys(packageVersions).length > 0) {
+        const versions = Object.entries(packageVersions)
+          .map(([name, version]) => `${name}@${version}`)
+          .join(', ');
+        mockifyerVersion = versions;
       }
     } catch (e) {
       console.warn('[Status] Could not determine mockifyer version:', e);

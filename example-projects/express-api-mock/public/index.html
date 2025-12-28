@@ -302,24 +302,48 @@
             <h2>How to Use Mockifyer in Your Codebase</h2>
 
             <h3>1. Installation</h3>
+            <p>Install the packages you need based on your HTTP client:</p>
             <div class="code-block">
-                <code>npm install @sgedda/mockifyer</code>
+                <code># For Axios
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
+
+# For Fetch
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
+
+# For both Axios and Fetch
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios @sgedda/mockifyer-fetch</code>
             </div>
 
             <h3>2. Basic Setup</h3>
             <p>Initialize Mockifyer at the very beginning of your application, before any HTTP client imports:</p>
             <div class="code-block">
-                <code>import { setupMockifyer } from '@sgedda/mockifyer';
+                <code>// For Axios
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
 // Initialize before any other imports that use HTTP clients
 setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  failOnMissingMock: false
+  failOnMissingMock: false,
+  useGlobalAxios: true
 });
 
 // Now import your HTTP client (Axios, etc.)
 import axios from 'axios';</code>
+            </div>
+            <p>Or for Fetch:</p>
+            <div class="code-block">
+                <code>// For Fetch
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  failOnMissingMock: false,
+  useGlobalFetch: true
+});
+
+// Now use fetch() - it's automatically patched</code>
             </div>
 
             <h3>3. Environment Configuration</h3>
@@ -388,7 +412,7 @@ const response = await axios.get('https://api.example.com/data', {
             <h3>📅 Date Manipulation</h3>
             <p>Test time-dependent features with deterministic dates:</p>
             <div class="code-block">
-                <code>import { getCurrentDate } from '@sgedda/mockifyer';
+                <code>import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 // Get the manipulated date (fixed, offset, or system date)
 // IMPORTANT: Use getCurrentDate() instead of new Date() for date manipulation to work
@@ -414,6 +438,35 @@ const subscription = {
                 <li><strong>Timezone:</strong> Handle dates in specific timezones</li>
                 <li><strong>Environment Variables:</strong> MOCKIFYER_DATE, MOCKIFYER_DATE_OFFSET, MOCKIFYER_TIMEZONE
                 </li>
+            </ul>
+
+            <h3>🧪 Automatic Test Generation</h3>
+            <p>Generate unit tests automatically when recording mocks:</p>
+            <div class="code-block">
+                <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  useGlobalAxios: true,
+  generateTests: {
+    enabled: true,
+    framework: 'jest', // 'jest' | 'vitest' | 'mocha'
+    outputPath: './tests/generated',
+    groupBy: 'endpoint'
+  }
+});
+
+// Make API calls - tests are generated automatically!</code>
+            </div>
+            <p>Features:</p>
+            <ul>
+                <li>✅ <strong>Automatic generation</strong> - Tests created when mocks are saved</li>
+                <li>✅ <strong>Multiple frameworks</strong> - Jest, Vitest, and Mocha support</li>
+                <li>✅ <strong>Realistic data</strong> - Uses recorded real API responses</li>
+                <li>✅ <strong>Zero setup</strong> - Generated tests include all setup code</li>
+                <li>✅ <strong>Test helper</strong> - Use <code>@sgedda/mockifyer-test-helper</code> for
+                    zero-configuration test setup</li>
             </ul>
 
             <h3>🔍 Advanced Features</h3>

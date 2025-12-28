@@ -262,19 +262,27 @@
 
                 <div class="step">
                     <h4><span class="step-number">1</span>Install Mockifyer</h4>
+                    <p>Install the packages you need based on your HTTP client:</p>
                     <div class="code-block">
-                        <code>npm install @sgedda/mockifyer</code>
+                        <code># For Axios
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
+
+# For Fetch
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
+
+# For both Axios and Fetch
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios @sgedda/mockifyer-fetch</code>
                     </div>
                 </div>
 
                 <div class="step">
                     <h4><span class="step-number">2</span>Initialize Mockifyer</h4>
                     <p>
-                        <strong>Option A - Direct Usage:</strong> Use the HTTP client returned by
+                        <strong>Option A - Direct Usage with Axios:</strong> Use the HTTP client returned by
                         <code>setupMockifyer</code> directly:
                     </p>
                     <div class="code-block">
-                        <code>import { setupMockifyer } from '@sgedda/mockifyer';
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
 // Setup Mockifyer - returns an HTTP client you can use directly
@@ -288,24 +296,39 @@ const response = await axios.get('https://api.example.com/users');
 // Your API calls will be automatically intercepted!</code>
                     </div>
                     <p>
-                        <strong>Option B - Global Axios (Environment Variables):</strong> Patch global axios using
-                        environment variables:
+                        <strong>Option B - Global Axios Patching:</strong> Patch global axios to intercept all axios calls:
                     </p>
                     <div class="code-block">
-                        <code>// Set environment variables
-process.env.MOCKIFYER_ENABLED = 'true';
-process.env.MOCKIFYER_PATH = './mock-data';
-process.env.MOCKIFYER_RECORD = 'true';
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
-// Import and initialize (must be before axios import)
-import { initializeMockifyer } from '@sgedda/mockifyer';
-initializeMockifyer();
+// Initialize before importing axios
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  useGlobalAxios: true  // Patch global axios
+});
 
 // Now import axios - it's automatically patched
 import axios from 'axios';
 
 // Use axios normally - requests are intercepted
 const response = await axios.get('https://api.example.com/users');</code>
+                    </div>
+                    <p>
+                        <strong>Option C - Fetch:</strong> For fetch-based applications:
+                    </p>
+                    <div class="code-block">
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+// Initialize before using fetch
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  useGlobalFetch: true  // Patch global fetch
+});
+
+// Use fetch() normally - requests are intercepted
+const response = await fetch('https://api.example.com/users');</code>
                     </div>
                 </div>
 
@@ -315,7 +338,9 @@ const response = await axios.get('https://api.example.com/users');</code>
                         To capture real API responses for later use, enable recording mode:
                     </p>
                     <div class="code-block">
-                        <code>// Set environment variable or pass recordMode: true
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+// Set environment variable or pass recordMode: true
 process.env.MOCKIFYER_RECORD = 'true';
 
 // Or in setupMockifyer config:
@@ -336,7 +361,9 @@ const response = await axios.get('https://api.example.com/users');
                         Once you've recorded responses, disable recording mode to use the saved mocks:
                     </p>
                     <div class="code-block">
-                        <code>setupMockifyer({
+                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: false  // Use saved mocks instead of recording
 });
@@ -364,9 +391,9 @@ const response = await axios.get('https://api.example.com/users');
                 </div>
 
                 <h3>Complete Example</h3>
-                <p>Here's a complete example showing both recording and replay:</p>
+                <p>Here's a complete example showing both recording and replay with Axios:</p>
                 <div class="code-block">
-                    <code>import { setupMockifyer } from '@sgedda/mockifyer';
+                    <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
 async function main() {
@@ -410,13 +437,17 @@ MOCKIFYER_PATH=./mock-data
 MOCKIFYER_RECORD=true</code>
                 </div>
                 <p>
-                    Then initialize with minimal config:
+                    Then initialize with minimal config (for Axios):
                 </p>
                 <div class="code-block">
-                    <code>import { initializeMockifyer } from '@sgedda/mockifyer';
+                    <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
-// Reads configuration from environment variables
-initializeMockifyer();</code>
+// Reads configuration from environment variables and patches global axios
+setupMockifyer({
+  mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
+  recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  useGlobalAxios: true
+});</code>
                 </div>
             </div>
 
@@ -430,10 +461,10 @@ initializeMockifyer();</code>
                 <div class="step">
                     <h4><span class="step-number">1</span>Install Dependencies</h4>
                     <div class="code-block">
-                        <code>npm install @sgedda/mockifyer-fetch expo-file-system</code>
+                        <code>npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch expo-file-system</code>
                     </div>
                     <p>
-                        <code>expo-file-system</code> is required for the Expo FileSystem provider used in React Native.
+                        <code>@sgedda/mockifyer-core</code> is required as a dependency. <code>expo-file-system</code> is required for the Expo FileSystem provider used in React Native.
                     </p>
                 </div>
 
@@ -782,7 +813,8 @@ npx @sgedda/mockifyer-dashboard \\
             <div class="code-block">
                 <code>import sinon from 'sinon';
 import { useFakeTimers } from 'sinon';
-import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-fetch';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 // Initialize Mockifyer with date manipulation
 const mockifyer = setupMockifyer({
@@ -868,6 +900,273 @@ function checkSubscriptionStatus(subscription: any) {
                     href="https://github.com/sgedda/mockifyer/blob/main/packages/mockifyer-core/TESTING_WITH_SINON.md"
                     target="_blank">Testing with Sinon and Mockifyer guide</a> for detailed examples, patterns, and
                 best practices.
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>🧪 Automatic Test Generation</h2>
+            <p>
+                Mockifyer can automatically generate unit tests when recording mocks. This feature creates test files
+                that use your recorded mock data, ensuring tests are always in sync with your mocks.
+            </p>
+
+            <h3>Features</h3>
+            <ul>
+                <li>✅ <strong>Automatic test generation</strong> - Tests created when mocks are saved</li>
+                <li>✅ <strong>Multiple frameworks</strong> - Supports Jest, Vitest, and Mocha</li>
+                <li>✅ <strong>Realistic data</strong> - Uses recorded real API responses</li>
+                <li>✅ <strong>Zero setup</strong> - Generated tests include all setup code</li>
+                <li>✅ <strong>Smart grouping</strong> - Organize tests by endpoint, scenario, or file</li>
+                <li>✅ <strong>GraphQL support</strong> - Automatically detects and handles GraphQL requests</li>
+            </ul>
+
+            <h3>Enable Test Generation</h3>
+            <p>
+                Enable test generation in your Mockifyer configuration:
+            </p>
+            <div class="code-block">
+                <code>import { setupMockifyer } from '@sgedda/mockifyer-axios'; // or @sgedda/mockifyer-fetch
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  useGlobalAxios: true, // or useGlobalFetch: true
+  
+  // Enable test generation
+  generateTests: {
+    enabled: true,
+    framework: 'jest', // 'jest' | 'vitest' | 'mocha'
+    outputPath: './tests/generated',
+    testPattern: '{endpoint}.test.ts',
+    includeSetup: true,
+    groupBy: 'endpoint' // 'endpoint' | 'scenario' | 'file'
+  }
+});</code>
+            </div>
+
+            <h3>How It Works</h3>
+            <div class="step">
+                <h4><span class="step-number">1</span>Record Mocks</h4>
+                <p>
+                    Make API calls in your application while recording mode is enabled:
+                </p>
+                <div class="code-block">
+                    <code>// Your app code
+const response = await fetch('https://api.example.com/users/1');
+const user = await response.json();</code>
+                </div>
+                <p>
+                    When Mockifyer saves the mock, it automatically generates a test file.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">2</span>Generated Test</h4>
+                <p>
+                    Mockifyer creates a test file with realistic assertions:
+                </p>
+                <div class="code-block">
+                    <code>// tests/generated/api/users/1.test.ts - AUTO-GENERATED
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+describe('/api/users/1', () => {
+  let mockifyer: any;
+
+  beforeAll(() => {
+    mockifyer = setupMockifyer({
+      mockDataPath: './mock-data',
+      recordMode: false,
+      useGlobalFetch: true,
+      scenario: 'default'
+    });
+  });
+
+  it('should GET /api/users/1', async () => {
+    const response = await fetch('https://api.example.com/users/1');
+    const data = await response.json();
+    
+    expect(response.status).toBe(200);
+    expect(data).toEqual({
+      id: 1,
+      name: 'John Doe',
+      email: 'john@example.com'
+    });
+  });
+});</code>
+                </div>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">3</span>Run Tests</h4>
+                <p>
+                    Run your generated tests:
+                </p>
+                <div class="code-block">
+                    <code>npm test
+# ✅ Tests pass - uses mock, no real API call!</code>
+                </div>
+            </div>
+
+            <h3>Configuration Options</h3>
+            <div class="what-to-expect">
+                <h4>generateTests.enabled</h4>
+                <p>Enable or disable test generation.</p>
+                <div class="code-block">
+                    <code>generateTests: {
+  enabled: true // Default: false
+}</code>
+                </div>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>generateTests.framework</h4>
+                <p>Test framework to use.</p>
+                <div class="code-block">
+                    <code>generateTests: {
+  framework: 'jest' // 'jest' | 'vitest' | 'mocha'
+}</code>
+                </div>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>generateTests.outputPath</h4>
+                <p>Where to save generated tests.</p>
+                <div class="code-block">
+                    <code>generateTests: {
+  outputPath: './tests/generated' // Default: './tests/generated'
+}</code>
+                </div>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>generateTests.groupBy</h4>
+                <p>How to organize tests.</p>
+                <ul>
+                    <li><code>'endpoint'</code> → <code>tests/generated/api/users/1.test.ts</code></li>
+                    <li><code>'scenario'</code> → <code>tests/generated/scenarios/happy-path/api/users/1.test.ts</code></li>
+                    <li><code>'file'</code> → <code>tests/generated/api_users_1.test.ts</code></li>
+                </ul>
+            </div>
+
+            <h3>GraphQL Support</h3>
+            <p>
+                GraphQL requests are automatically detected and handled:
+            </p>
+            <div class="code-block">
+                <code>// Generated test for GraphQL
+describe('/graphql', () => {
+  it('should execute GetUsers query', async () => {
+    const response = await fetch('https://api.example.com/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query GetUsers($limit: Int) {
+          users(limit: $limit) {
+            id
+            name
+          }
+        }`,
+        variables: { limit: 10 }
+      })
+    });
+    const data = await response.json();
+    
+    expect(response.status).toBe(200);
+    expect(data.data.users).toBeDefined();
+  });
+});</code>
+            </div>
+
+            <h3>Using Test Helper for Zero Setup</h3>
+            <p>
+                Combine with <code>@sgedda/mockifyer-test-helper</code> for complete automation:
+            </p>
+            <div class="code-block">
+                <code>// Install test helper
+npm install @sgedda/mockifyer-test-helper</code>
+            </div>
+            <div class="code-block">
+                <code>// jest.setup.ts
+import { jestSetup } from '@sgedda/mockifyer-test-helper';
+
+jestSetup(); // Auto-setup for all tests - zero configuration!</code>
+            </div>
+            <div class="code-block">
+                <code>// Your tests - zero setup!
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import App from '../App';
+
+describe('App Component', () => {
+  it('should display posts', async () => {
+    const { getByText } = render(&lt;App /&gt;);
+    
+    fireEvent.press(getByText('Load Posts'));
+    
+    // Uses REALISTIC data from recorded API calls!
+    await waitFor(() => {
+      expect(getByText('sunt aut facere repellat')).toBeTruthy();
+    });
+  });
+});</code>
+            </div>
+
+            <h3>Scenario Switching in Tests</h3>
+            <p>
+                Use different scenarios in your tests:
+            </p>
+            <div class="code-block">
+                <code>import { useScenario } from '@sgedda/mockifyer-test-helper';
+
+describe('Different scenarios', () => {
+  it('should handle empty state', () => {
+    useScenario('empty-posts');
+    
+    const { getByText } = render(&lt;App /&gt;);
+    fireEvent.press(getByText('Load Posts'));
+    
+    expect(getByText('No posts available')).toBeTruthy();
+  });
+
+  it('should handle errors', () => {
+    useScenario('error-500');
+    
+    const { getByText } = render(&lt;App /&gt;);
+    fireEvent.press(getByText('Load Posts'));
+    
+    expect(getByText('Something went wrong')).toBeTruthy();
+  });
+});</code>
+            </div>
+
+            <h3>Complete Workflow</h3>
+            <div class="code-block">
+                <code># 1. Record mocks with test generation enabled
+MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+
+# 2. Make API calls in your app
+# → Mocks saved
+# → Tests generated automatically
+
+# 3. Run generated tests
+npm test tests/generated
+
+# 4. Tests pass with realistic data!</code>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>✨ Benefits</h4>
+                <ul>
+                    <li><strong>Instant test coverage</strong> - Tests generated automatically</li>
+                    <li><strong>Always in sync</strong> - Tests match recorded mocks</li>
+                    <li><strong>Realistic data</strong> - Uses real API responses</li>
+                    <li><strong>Zero boilerplate</strong> - Setup code included</li>
+                    <li><strong>Faster development</strong> - No manual test writing</li>
+                </ul>
+            </div>
+
+            <p>
+                <strong>Learn More:</strong> See the complete <a
+                    href="config-reference.html#test-generation">Test Generation Configuration</a> reference.
             </p>
         </div>
 

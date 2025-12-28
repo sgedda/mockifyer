@@ -414,6 +414,150 @@
             </div>
 
             <div style="margin-bottom: 30px;">
+                <h3 id="test-generation">Test Generation</h3>
+                <p style="color: #aaa; margin-bottom: 15px; font-size: 0.95em;">
+                    Automatically generate unit tests when recording mocks. Tests are created with realistic data from your recorded API responses.
+                </p>
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Option</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                                <th>Default</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>generateTests.enabled</code></td>
+                                <td>boolean</td>
+                                <td>Enable or disable automatic test generation when mocks are saved</td>
+                                <td><code>false</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>generateTests.framework</code></td>
+                                <td>'jest' | 'vitest' | 'mocha'</td>
+                                <td>Test framework to use for generated tests</td>
+                                <td><code>'jest'</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>generateTests.outputPath</code></td>
+                                <td>string</td>
+                                <td>Directory where generated test files will be saved (relative to project root)</td>
+                                <td><code>'./tests/generated'</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>generateTests.testPattern</code></td>
+                                <td>string</td>
+                                <td>File naming pattern with placeholders: <code>{endpoint}</code>, <code>{method}</code>, <code>{scenario}</code></td>
+                                <td><code>'{endpoint}.test.ts'</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>generateTests.includeSetup</code></td>
+                                <td>boolean</td>
+                                <td>Include Mockifyer setup code in generated tests</td>
+                                <td><code>true</code></td>
+                            </tr>
+                            <tr>
+                                <td><code>generateTests.groupBy</code></td>
+                                <td>'endpoint' | 'scenario' | 'file'</td>
+                                <td>How to organize generated test files:
+                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                        <li><code>'endpoint'</code> - Group by endpoint path</li>
+                                        <li><code>'scenario'</code> - Group by scenario name</li>
+                                        <li><code>'file'</code> - Single file per mock</li>
+                                    </ul>
+                                </td>
+                                <td><code>'file'</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div
+                    style="background: rgba(33, 150, 243, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #2196f3; margin-top: 20px;">
+                    <h4 style="color: #64b5f6; margin-bottom: 10px;">🧪 Example: Enable Test Generation</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Generate Jest tests automatically when recording mocks:
+                    </p>
+                    <pre><code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  useGlobalAxios: true,
+  generateTests: {
+    enabled: true,
+    framework: 'jest',
+    outputPath: './tests/generated',
+    testPattern: '{endpoint}.test.ts',
+    includeSetup: true,
+    groupBy: 'endpoint'
+  }
+});
+
+// Make API calls - tests are generated automatically!
+const response = await axios.get('https://api.example.com/users/1');
+// → Mock saved
+// → Test generated at tests/generated/api/users/1.test.ts</code></pre>
+                </div>
+                <div
+                    style="background: rgba(76, 175, 80, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #4caf50; margin-top: 20px;">
+                    <h4 style="color: #81c784; margin-bottom: 10px;">📝 Example: Generated Test File</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Example of a generated test file:
+                    </p>
+                    <pre><code>// tests/generated/api/users/1.test.ts - AUTO-GENERATED
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+describe('/api/users/1', () => {
+  let mockifyer: any;
+
+  beforeAll(() => {
+    mockifyer = setupMockifyer({
+      mockDataPath: './mock-data',
+      recordMode: false,
+      useGlobalAxios: true,
+      scenario: 'default'
+    });
+  });
+
+  it('should GET /api/users/1', async () => {
+    const response = await axios.get('https://api.example.com/users/1');
+    
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({
+      id: 1,
+      name: 'John Doe',
+      email: 'john@example.com'
+    });
+  });
+});</code></pre>
+                </div>
+                <div
+                    style="background: rgba(156, 39, 176, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #9c27b0; margin-top: 20px;">
+                    <h4 style="color: #ba68c8; margin-bottom: 10px;">🔧 Example: Using Test Helper</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Combine with <code>@sgedda/mockifyer-test-helper</code> for zero-configuration test setup:
+                    </p>
+                    <pre><code>// Install test helper
+npm install @sgedda/mockifyer-test-helper
+
+// jest.setup.ts
+import { jestSetup } from '@sgedda/mockifyer-test-helper';
+
+jestSetup(); // Auto-setup for all tests - zero configuration!
+
+// Your tests - zero setup!
+describe('My Component', () => {
+  it('works with realistic data', () => {
+    // Test code - Mockifyer auto-setup, realistic data ready!
+  });
+});</code></pre>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 30px;">
                 <h3>Scenarios</h3>
                 <div class="table-wrapper">
                     <table>
@@ -480,7 +624,7 @@ await axios.get('https://api.openweathermap.org/data/2.5/weather?q=NewYork&appid
 })
 
 // In your code, use getCurrentDate() instead of new Date()
-import { getCurrentDate } from '@sgedda/mockifyer';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 const currentDate = getCurrentDate();  // Returns date 665 days in future
 const filteredEvents = events.filter(e => e.date > currentDate);</code></pre>
                 </div>
