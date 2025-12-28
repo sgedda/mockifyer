@@ -196,7 +196,7 @@ button:not(.menu-toggle) {
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
     margin-right: 10px;
-    margin-top: 10px;
+    margin-top: 0px;
 }
 
 button:not(.menu-toggle):hover {

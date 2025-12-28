@@ -452,6 +452,22 @@
                 padding: 12px;
             }
 
+            .team-info-wrapper {
+                flex-direction: column;
+            }
+
+            .team-json-container {
+                min-width: 100%;
+                width: 100%;
+            }
+
+            .team-logo-container {
+                min-width: 100%;
+                max-width: 100%;
+                order: -1;
+                /* Show logo first on mobile */
+            }
+
             .response-container {
                 padding: 12px;
             }
@@ -498,332 +514,20 @@
 
         <h1>🎭 Mockifyer Playground</h1>
 
-        <div style="text-align: center; margin-bottom: 20px;">
-            <a href="config-reference.html"
-                style="display: inline-block; padding: 12px 24px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3);"
-                onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.transform='translateY(-1px)'"
-                onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(0)'">
-                ⚙️ View Settings
-            </a>
-            <a href="date-config.html"
-                style="display: inline-block; padding: 12px 24px; background: rgba(102, 126, 234, 0.2); border-radius: 8px; color: #8b9aff; text-decoration: none; font-weight: 600; transition: all 0.2s ease; border: 1px solid rgba(102, 126, 234, 0.3); margin-left: 10px;"
-                onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.transform='translateY(-1px)'"
-                onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(0)'">
-                📅 Configure Date Manipulation
-            </a>
-        </div>
+        <!-- Header Links -->
+        <div id="header-links-container"></div>
 
-        <div class="status-banner" id="status-banner">
-            <h2>📊 Current Status</h2>
-            <div class="status-items" id="status-items">
-                <div class="status-item">
-                    <strong>Loading...</strong>
-                </div>
-            </div>
-        </div>
+        <!-- Status Banner -->
+        <div id="status-banner-container"></div>
 
-        <!-- Football Fixtures Card -->
-        <div class="card">
-            <h2>⚽ Football Fixtures</h2>
-            <div class="form-group">
-                <label for="fixtures-season-input">Season:</label>
-                <select id="fixtures-season-input">
-                    <option value="2021">2021</option>
-                    <option value="2022" selected>2022</option>
-                    <option value="2023">2023</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="team-id-input">Team (optional):</label>
-                <select id="team-id-input">
-                    <option value="">Select a team...</option>
-                    <optgroup label="Premier League">
-                        <option value="33">Manchester United</option>
-                        <option value="50">Manchester City</option>
-                        <option value="40">Liverpool</option>
-                        <option value="42">Arsenal</option>
-                        <option value="49">Chelsea</option>
-                        <option value="47">Tottenham</option>
-                        <option value="66">Aston Villa</option>
-                        <option value="51">Brighton</option>
-                    </optgroup>
-                    <optgroup label="La Liga">
-                        <option value="541">Barcelona</option>
-                        <option value="541">Real Madrid</option>
-                        <option value="548">Atletico Madrid</option>
-                        <option value="543">Sevilla</option>
-                        <option value="531">Valencia</option>
-                    </optgroup>
-                    <optgroup label="Bundesliga">
-                        <option value="157">Bayern Munich</option>
-                        <option value="165">Borussia Dortmund</option>
-                        <option value="173">RB Leipzig</option>
-                        <option value="161">Bayer Leverkusen</option>
-                    </optgroup>
-                    <optgroup label="Serie A">
-                        <option value="489">AC Milan</option>
-                        <option value="489">Inter Milan</option>
-                        <option value="487">Juventus</option>
-                        <option value="497">Napoli</option>
-                        <option value="502">Roma</option>
-                    </optgroup>
-                    <optgroup label="Ligue 1">
-                        <option value="85">Paris Saint-Germain</option>
-                        <option value="516">Monaco</option>
-                        <option value="523">Lyon</option>
-                        <option value="516">Marseille</option>
-                    </optgroup>
-                </select>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getFixtures()">Get Fixtures</button>
-                <button onclick="deleteFixturesMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-fixtures-message" style="margin-top: 10px;"></div>
-            <div id="fixtures-response"></div>
-        </div>
+        <!-- Client Configuration Card -->
+        <div id="client-config-container"></div>
 
-        <!-- Football Standings Card -->
-        <div class="card">
-            <h2>🏆 League Standings</h2>
-            <div class="form-group">
-                <label for="standings-league-input">League:</label>
-                <select id="standings-league-input">
-                    <option value="">Select a league...</option>
-                    <optgroup label="Top 5 Leagues">
-                        <option value="39" selected>Premier League (England)</option>
-                        <option value="140">La Liga (Spain)</option>
-                        <option value="78">Bundesliga (Germany)</option>
-                        <option value="135">Serie A (Italy)</option>
-                        <option value="61">Ligue 1 (France)</option>
-                    </optgroup>
-                    <optgroup label="Other European Leagues">
-                        <option value="88">Eredivisie (Netherlands)</option>
-                        <option value="203">Süper Lig (Turkey)</option>
-                        <option value="94">Primeira Liga (Portugal)</option>
-                        <option value="144">Jupiler Pro League (Belgium)</option>
-                    </optgroup>
-                    <optgroup label="International Competitions">
-                        <option value="2">UEFA Champions League</option>
-                        <option value="3">UEFA Europa League</option>
-                        <option value="848">UEFA Conference League</option>
-                    </optgroup>
-                    <optgroup label="Other Leagues">
-                        <option value="253">MLS (USA)</option>
-                        <option value="71">Brasileirão (Brazil)</option>
-                        <option value="262">Liga MX (Mexico)</option>
-                    </optgroup>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="standings-season-input">Season:</label>
-                <select id="standings-season-input">
-                    <option value="2021">2021</option>
-                    <option value="2022" selected>2022</option>
-                    <option value="2023">2023</option>
-                </select>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getStandings()">Get Standings</button>
-                <button onclick="deleteStandingsMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-standings-message" style="margin-top: 10px;"></div>
-            <div id="standings-response"></div>
-        </div>
-
-        <!-- Football Team Info Card -->
-        <div class="card">
-            <h2>👥 Team Information</h2>
-            <div class="form-group">
-                <label for="team-id-info-input">Team:</label>
-                <select id="team-id-info-input">
-                    <option value="">Select a team...</option>
-                    <optgroup label="Premier League">
-                        <option value="33" selected>Manchester United</option>
-                        <option value="50">Manchester City</option>
-                        <option value="40">Liverpool</option>
-                        <option value="42">Arsenal</option>
-                        <option value="49">Chelsea</option>
-                        <option value="47">Tottenham</option>
-                        <option value="66">Aston Villa</option>
-                        <option value="51">Brighton</option>
-                    </optgroup>
-                    <optgroup label="La Liga">
-                        <option value="541">Barcelona</option>
-                        <option value="541">Real Madrid</option>
-                        <option value="548">Atletico Madrid</option>
-                        <option value="543">Sevilla</option>
-                        <option value="531">Valencia</option>
-                    </optgroup>
-                    <optgroup label="Bundesliga">
-                        <option value="157">Bayern Munich</option>
-                        <option value="165">Borussia Dortmund</option>
-                        <option value="173">RB Leipzig</option>
-                        <option value="161">Bayer Leverkusen</option>
-                    </optgroup>
-                    <optgroup label="Serie A">
-                        <option value="489">AC Milan</option>
-                        <option value="489">Inter Milan</option>
-                        <option value="487">Juventus</option>
-                        <option value="497">Napoli</option>
-                        <option value="502">Roma</option>
-                    </optgroup>
-                    <optgroup label="Ligue 1">
-                        <option value="85">Paris Saint-Germain</option>
-                        <option value="516">Monaco</option>
-                        <option value="523">Lyon</option>
-                        <option value="516">Marseille</option>
-                    </optgroup>
-                </select>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getTeamInfo()">Get Team Info</button>
-                <button onclick="deleteTeamInfoMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-team-info-message" style="margin-top: 10px;"></div>
-            <div id="team-info-response"></div>
-        </div>
-
-        <!-- Current Weather Card -->
-        <div class="card">
-            <h2>🌤️ Current Weather</h2>
-            <div class="form-group">
-                <label for="city-input">City Name:</label>
-                <input type="text" id="city-input" placeholder="e.g., London, New York, Tokyo" value="London">
-            </div>
-            <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="current-weather-full-response"
-                        style="width: 18px; height: 18px; cursor: pointer;">
-                    <span>Show full API response</span>
-                </label>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getCurrentWeather()">Get Current Weather</button>
-                <button onclick="deleteCurrentWeatherMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-message" style="margin-top: 10px;"></div>
-            <div id="current-weather-response"></div>
-        </div>
-
-        <!-- Forecast Card -->
-        <div class="card">
-            <h2>📅 Weather Forecast</h2>
-            <div class="form-group">
-                <label for="forecast-city-input">City Name:</label>
-                <input type="text" id="forecast-city-input" placeholder="e.g., London, New York, Tokyo" value="London">
-            </div>
-            <div class="form-group">
-                <label for="days-input">Number of Days:</label>
-                <select id="days-input">
-                    <option value="1">1 day</option>
-                    <option value="2">2 days</option>
-                    <option value="3" selected>3 days</option>
-                    <option value="5">5 days</option>
-                    <option value="7">7 days</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="forecast-full-response"
-                        style="width: 18px; height: 18px; cursor: pointer;">
-                    <span>Show full API response</span>
-                </label>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getForecast()">Get Forecast</button>
-                <button onclick="deleteForecastMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-forecast-message" style="margin-top: 10px;"></div>
-            <div id="forecast-response"></div>
-        </div>
-
-        <!-- GraphQL Query Card -->
-        <div class="card">
-            <h2>🔷 GraphQL Query</h2>
-            <div class="form-group">
-                <label for="graphql-query-input">GraphQL Query:</label>
-                <textarea id="graphql-query-input" rows="8"
-                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical;"
-                    placeholder="Enter your GraphQL query here...">query ($page: Int) {
-  characters(page: $page) {
-    results {
-      id
-      name
-      status
-      species
-    }
-  }
-}</textarea>
-            </div>
-            <div class="form-group">
-                <label for="graphql-variables-input">Variables (JSON, optional):</label>
-                <textarea id="graphql-variables-input" rows="3"
-                    style="width: 100%; padding: 12px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; resize: vertical; background: rgba(20, 20, 35, 0.8); color: #e0e0e0;"
-                    placeholder='{"page": 1}'>{"page": 3}</textarea>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="executeGraphQLQuery()">Execute Query</button>
-                <button onclick="deleteGraphQLMock()"
-                    style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">Delete Mock</button>
-            </div>
-            <div id="delete-graphql-message" style="margin-top: 10px;"></div>
-            <div id="graphql-response"></div>
-        </div>
-
-        <!-- Date-Filtered Events Card -->
-        <div class="card">
-            <h2>📅 Date-Filtered Events</h2>
-            <p style="color: #aaa; margin-bottom: 20px; font-size: 0.95em;">
-                This endpoint demonstrates how date manipulation affects data filtering. Events are filtered based on
-                the manipulated date from Mockifyer using <code
-                    style="background: rgba(0,0,0,0.1); padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace;">getCurrentDate()</code>.
-                Change the date configuration to see how the filtered results change!
-            </p>
-            <div
-                style="background: rgba(102, 126, 234, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 3px solid #667eea;">
-                <div
-                    style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div>
-                        <strong style="color: #b8c5ff;">Current Date Used:</strong>
-                        <span id="events-current-date"
-                            style="color: #e0e0e0; font-family: 'Courier New', monospace; margin-left: 8px;">Loading...</span>
-                    </div>
-                    <a href="date-config.html"
-                        style="color: #8b9aff; text-decoration: none; font-weight: 600; padding: 6px 12px; background: rgba(102, 126, 234, 0.2); border-radius: 6px; transition: all 0.2s ease;"
-                        onmouseover="this.style.background='rgba(102, 126, 234, 0.3)'; this.style.color='#9fa8da'"
-                        onmouseout="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.color='#8b9aff'">
-                        ⚙️ Configure Date
-                    </a>
-                </div>
-            </div>
-            <div class="form-group">
-                <label for="events-filter-input">Filter:</label>
-                <select id="events-filter-input">
-                    <option value="">All Events</option>
-                    <option value="upcoming">Upcoming Events</option>
-                    <option value="past">Past Events</option>
-                    <option value="today">Today's Events</option>
-                </select>
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="getFilteredEvents()">Get Filtered Events</button>
-            </div>
-            <div id="events-response"></div>
-        </div>
+        <!-- Unified Endpoint Tester Card -->
+        <div id="endpoint-tester-container"></div>
 
         <!-- Mock Files Browser Card -->
-        <div class="card">
-            <h2>📁 Mock Data Files</h2>
-            <button onclick="loadMockFiles()" style="margin-bottom: 15px;">Refresh List</button>
-            <div id="mock-files-list"></div>
-            <div id="mock-file-viewer" style="margin-top: 20px;"></div>
-        </div>
+        <div id="mock-files-browser-container"></div>
     </div>
 
     <script src="navigation.js"></script>
@@ -834,29 +538,634 @@
 
         const API_BASE = window.location.origin;
 
-        // Load current date for events section on page load
-        (async function () {
+        // Helper function to load HTML fragments
+        async function loadFragment (containerId, fragmentPath) {
             try {
-                const response = await fetch(`${API_BASE}/api/date-config`);
-                const config = await response.json();
-                const dateDisplay = document.getElementById('events-current-date');
-                if (dateDisplay && config.currentDateFormatted) {
-                    dateDisplay.textContent = config.currentDateFormatted;
-                    dateDisplay.style.color = '#fff';
+                const response = await fetch(fragmentPath);
+                const html = await response.text();
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = html;
                 }
             } catch (error) {
-                const dateDisplay = document.getElementById('events-current-date');
-                if (dateDisplay) {
-                    dateDisplay.textContent = 'Error loading date';
-                    dateDisplay.style.color = '#ef5350';
+                console.error(`Error loading fragment ${fragmentPath}:`, error);
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = `<div style="color: #f44336; padding: 10px;">Error loading fragment: ${fragmentPath}</div>`;
                 }
             }
-        })();
+        }
+
+        // Load all HTML fragments
+        async function loadFragments () {
+            await Promise.all([
+                loadFragment('header-links-container', 'fragments/header-links.html'),
+                loadFragment('status-banner-container', 'fragments/status-banner.html'),
+                loadFragment('client-config-container', 'fragments/client-config.html'),
+                loadFragment('endpoint-tester-container', 'fragments/endpoint-tester.html'),
+                loadFragment('mock-files-browser-container', 'fragments/mock-files-browser.html')
+            ]);
+
+            // Initialize components after fragments are loaded
+            initializeComponents();
+
+            // Load status and mock files after fragments are loaded
+            // Await these async functions to ensure they complete before function returns
+            await loadStatus();
+            await loadMockFiles();
+        }
+
+        // Initialize components after fragments are loaded
+        function initializeComponents () {
+            // Initialize client config dropdowns
+            const clientTypeSelect = document.getElementById('client-type-select');
+            const scopeSelect = document.getElementById('scope-select');
+
+            if (clientTypeSelect) {
+                clientTypeSelect.addEventListener('change', updateConfigDisplay);
+            }
+            if (scopeSelect) {
+                scopeSelect.addEventListener('change', updateConfigDisplay);
+            }
+
+            // Initial display update
+            updateConfigDisplay();
+
+            // Initialize endpoint selector
+            const endpointSelect = document.getElementById('endpoint-select');
+            if (endpointSelect) {
+                endpointSelect.addEventListener('change', renderEndpointForm);
+                renderEndpointForm(); // Initial render
+            }
+        }
+
+        // Load fragments when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadFragments);
+        } else {
+            loadFragments();
+        }
+
+        // Helper function to get current client configuration
+        function getClientConfig () {
+            const clientTypeSelect = document.getElementById('client-type-select');
+            const scopeSelect = document.getElementById('scope-select');
+            // Ensure elements exist before accessing their values using optional chaining
+            // Provide explicit defaults to prevent undefined values
+            const clientType = (clientTypeSelect && clientTypeSelect.value) ? clientTypeSelect.value : 'axios';
+            const scope = (scopeSelect && scopeSelect.value) ? scopeSelect.value : 'local';
+            return { clientType, scope };
+        }
+
+        // Update display when dropdowns change
+        function updateConfigDisplay () {
+            const { clientType, scope } = getClientConfig();
+            const display = document.getElementById('current-config-display');
+            if (display) {
+                display.textContent = `${clientType.charAt(0).toUpperCase() + clientType.slice(1)} + ${scope.charAt(0).toUpperCase() + scope.slice(1)}`;
+            }
+        }
+
+        // Note: Initialization moved to initializeComponents() which is called after fragments load
+
+        // Endpoint configurations
+        const endpointConfigs = {
+            'weather-current': {
+                name: 'Current Weather',
+                icon: '🌤️',
+                apiPath: '/api/weather-unified/current',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'city',
+                        label: 'City Name',
+                        type: 'text',
+                        placeholder: 'e.g., London, New York, Tokyo',
+                        defaultValue: 'London',
+                        required: true
+                    },
+                    {
+                        id: 'full-response',
+                        label: 'Show full API response',
+                        type: 'checkbox',
+                        defaultValue: false
+                    }
+                ],
+                buildUrl: (params) => {
+                    const city = encodeURIComponent(params.city || 'London');
+                    const full = params['full-response'] ? '?full=true' : '';
+                    return `${API_BASE}/api/weather-unified/current/${city}${full}`;
+                },
+                buildTitle: (params) => `Current Weather for ${params.city || 'Unknown'}`
+            },
+            'weather-forecast': {
+                name: 'Weather Forecast',
+                icon: '📅',
+                apiPath: '/api/weather-unified/forecast',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'city',
+                        label: 'City Name',
+                        type: 'text',
+                        placeholder: 'e.g., London, New York, Tokyo',
+                        defaultValue: 'London',
+                        required: true
+                    },
+                    {
+                        id: 'days',
+                        label: 'Number of Days',
+                        type: 'select',
+                        options: [
+                            { value: '1', label: '1 day' },
+                            { value: '2', label: '2 days' },
+                            { value: '3', label: '3 days', selected: true },
+                            { value: '5', label: '5 days' },
+                            { value: '7', label: '7 days' }
+                        ],
+                        defaultValue: '3'
+                    },
+                    {
+                        id: 'full-response',
+                        label: 'Show full API response',
+                        type: 'checkbox',
+                        defaultValue: false
+                    }
+                ],
+                buildUrl: (params) => {
+                    const city = encodeURIComponent(params.city || 'London');
+                    const days = params.days || '3';
+                    const full = params['full-response'] ? '&full=true' : '';
+                    return `${API_BASE}/api/weather-unified/forecast/${city}?days=${days}${full}`;
+                },
+                buildTitle: (params) => `${params.days || '3'}-Day Forecast for ${params.city || 'Unknown'}`
+            },
+            'football-fixtures': {
+                name: 'Football Fixtures',
+                icon: '⚽',
+                apiPath: '/api/football-unified/fixtures',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'season',
+                        label: 'Season',
+                        type: 'select',
+                        options: [
+                            { value: '2021', label: '2021' },
+                            { value: '2022', label: '2022', selected: true },
+                            { value: '2023', label: '2023' }
+                        ],
+                        defaultValue: '2022'
+                    },
+                    {
+                        id: 'team',
+                        label: 'Team (optional)',
+                        type: 'select',
+                        options: [
+                            { value: '', label: 'Select a team...', selected: true },
+                            { value: '33', label: 'Manchester United', group: 'Premier League' },
+                            { value: '50', label: 'Manchester City', group: 'Premier League' },
+                            { value: '40', label: 'Liverpool', group: 'Premier League' },
+                            { value: '42', label: 'Arsenal', group: 'Premier League' },
+                            { value: '49', label: 'Chelsea', group: 'Premier League' },
+                            { value: '47', label: 'Tottenham', group: 'Premier League' },
+                            { value: '66', label: 'Aston Villa', group: 'Premier League' },
+                            { value: '51', label: 'Brighton', group: 'Premier League' }
+                        ],
+                        defaultValue: ''
+                    }
+                ],
+                buildUrl: (params) => {
+                    const season = params.season || '2022';
+                    const team = params.team ? `&team=${params.team}` : '';
+                    return `${API_BASE}/api/football-unified/fixtures?season=${season}${team}`;
+                },
+                buildTitle: (params) => `Football Fixtures${params.season ? ` - Season ${params.season}` : ''}`
+            },
+            'football-standings': {
+                name: 'League Standings',
+                icon: '🏆',
+                apiPath: '/api/football-unified/standings',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'league',
+                        label: 'League',
+                        type: 'select',
+                        options: [
+                            { value: '39', label: 'Premier League (England)', selected: true },
+                            { value: '140', label: 'La Liga (Spain)' },
+                            { value: '78', label: 'Bundesliga (Germany)' },
+                            { value: '135', label: 'Serie A (Italy)' },
+                            { value: '61', label: 'Ligue 1 (France)' }
+                        ],
+                        defaultValue: '39'
+                    },
+                    {
+                        id: 'season',
+                        label: 'Season',
+                        type: 'select',
+                        options: [
+                            { value: '2021', label: '2021' },
+                            { value: '2022', label: '2022', selected: true },
+                            { value: '2023', label: '2023' }
+                        ],
+                        defaultValue: '2022'
+                    }
+                ],
+                buildUrl: (params) => {
+                    const league = params.league || '39';
+                    const season = params.season || '2022';
+                    return `${API_BASE}/api/football-unified/standings/${league}?season=${season}`;
+                },
+                buildTitle: (params) => `League Standings${params.season ? ` - Season ${params.season}` : ''}`
+            },
+            'football-team': {
+                name: 'Team Information',
+                icon: '👥',
+                apiPath: '/api/football-unified/team',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'team',
+                        label: 'Team',
+                        type: 'select',
+                        options: [
+                            { value: '33', label: 'Manchester United', group: 'Premier League', selected: true },
+                            { value: '50', label: 'Manchester City', group: 'Premier League' },
+                            { value: '40', label: 'Liverpool', group: 'Premier League' },
+                            { value: '42', label: 'Arsenal', group: 'Premier League' },
+                            { value: '49', label: 'Chelsea', group: 'Premier League' },
+                            { value: '47', label: 'Tottenham', group: 'Premier League' }
+                        ],
+                        defaultValue: '33'
+                    }
+                ],
+                buildUrl: (params) => {
+                    const team = params.team || '33';
+                    return `${API_BASE}/api/football-unified/team/${team}`;
+                },
+                buildTitle: () => 'Team Information'
+            },
+            'graphql': {
+                name: 'GraphQL Query',
+                icon: '🔷',
+                apiPath: '/api/graphql-unified/query',
+                method: 'POST',
+                fields: [
+                    {
+                        id: 'query',
+                        label: 'GraphQL Query',
+                        type: 'textarea',
+                        rows: 8,
+                        placeholder: 'Enter your GraphQL query here...',
+                        defaultValue: `query ($page: Int) {
+  characters(page: $page) {
+    results {
+      id
+      name
+      status
+      species
+    }
+  }
+}`
+                    },
+                    {
+                        id: 'variables',
+                        label: 'Variables (JSON, optional)',
+                        type: 'textarea',
+                        rows: 3,
+                        placeholder: '{"page": 1}',
+                        defaultValue: '{"page": 3}'
+                    }
+                ],
+                buildUrl: () => `${API_BASE}/api/graphql-unified/query`,
+                buildTitle: () => 'GraphQL Query Result',
+                buildBody: (params) => ({
+                    query: params.query,
+                    variables: params.variables ? JSON.parse(params.variables) : {}
+                })
+            },
+            'events': {
+                name: 'Date-Filtered Events',
+                icon: '📅',
+                apiPath: '/api/events/filtered',
+                method: 'GET',
+                fields: [
+                    {
+                        id: 'filter',
+                        label: 'Filter',
+                        type: 'select',
+                        options: [
+                            { value: '', label: 'All Events', selected: true },
+                            { value: 'upcoming', label: 'Upcoming Events' },
+                            { value: 'past', label: 'Past Events' },
+                            { value: 'today', label: "Today's Events" }
+                        ],
+                        defaultValue: ''
+                    }
+                ],
+                buildUrl: (params) => {
+                    const filter = params.filter ? `?filter=${params.filter}` : '';
+                    return `${API_BASE}/api/events/filtered${filter}`;
+                },
+                buildTitle: (params) => {
+                    const filterText = params.filter ? ` - ${params.filter.charAt(0).toUpperCase() + params.filter.slice(1)}` : '';
+                    return `Date-Filtered Events${filterText}`;
+                }
+            }
+        };
+
+        // Render form fields based on selected endpoint
+        function renderEndpointForm () {
+            const endpointSelect = document.getElementById('endpoint-select');
+            const formContainer = document.getElementById('endpoint-form-fields');
+            const endpointNameDisplay = document.getElementById('selected-endpoint-name');
+
+            if (!endpointSelect || !formContainer) return;
+
+            const selectedEndpoint = endpointSelect.value;
+            const config = endpointConfigs[selectedEndpoint];
+
+            if (!config) return;
+
+            // Update endpoint name display
+            if (endpointNameDisplay) {
+                endpointNameDisplay.textContent = `${config.icon} ${config.name}`;
+            }
+
+            // Clear form container
+            formContainer.innerHTML = '';
+
+            // Render form fields
+            config.fields.forEach(field => {
+                const formGroup = document.createElement('div');
+                formGroup.className = 'form-group';
+
+                if (field.type === 'checkbox') {
+                    const label = document.createElement('label');
+                    label.style.cssText = 'display: flex; align-items: center; gap: 8px; cursor: pointer;';
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `endpoint-field-${field.id}`;
+                    checkbox.checked = field.defaultValue || false;
+                    checkbox.style.cssText = 'width: 18px; height: 18px; cursor: pointer;';
+
+                    const span = document.createElement('span');
+                    span.textContent = field.label;
+
+                    label.appendChild(checkbox);
+                    label.appendChild(span);
+                    formGroup.appendChild(label);
+                } else if (field.type === 'textarea') {
+                    const label = document.createElement('label');
+                    label.textContent = field.label;
+                    label.setAttribute('for', `endpoint-field-${field.id}`);
+
+                    const textarea = document.createElement('textarea');
+                    textarea.id = `endpoint-field-${field.id}`;
+                    textarea.rows = field.rows || 4;
+                    textarea.placeholder = field.placeholder || '';
+                    textarea.value = field.defaultValue || '';
+                    textarea.style.cssText = 'width: 100%; padding: 12px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px; font-family: "Courier New", monospace; resize: vertical; background: rgba(20, 20, 35, 0.8); color: #e0e0e0;';
+
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(textarea);
+                } else if (field.type === 'select') {
+                    const label = document.createElement('label');
+                    label.textContent = field.label;
+                    label.setAttribute('for', `endpoint-field-${field.id}`);
+
+                    const select = document.createElement('select');
+                    select.id = `endpoint-field-${field.id}`;
+                    select.style.cssText = 'width: 100%; padding: 12px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; font-size: 14px; cursor: pointer;';
+
+                    // Group options if needed
+                    const groups = {};
+                    field.options.forEach(opt => {
+                        if (opt.group) {
+                            if (!groups[opt.group]) {
+                                groups[opt.group] = [];
+                            }
+                            groups[opt.group].push(opt);
+                        } else {
+                            if (!groups['_default']) {
+                                groups['_default'] = [];
+                            }
+                            groups['_default'].push(opt);
+                        }
+                    });
+
+                    Object.keys(groups).forEach(groupName => {
+                        if (groupName !== '_default') {
+                            const optgroup = document.createElement('optgroup');
+                            optgroup.label = groupName;
+                            groups[groupName].forEach(opt => {
+                                const option = document.createElement('option');
+                                option.value = opt.value;
+                                option.textContent = opt.label;
+                                if (opt.selected) option.selected = true;
+                                optgroup.appendChild(option);
+                            });
+                            select.appendChild(optgroup);
+                        } else {
+                            groups[groupName].forEach(opt => {
+                                const option = document.createElement('option');
+                                option.value = opt.value;
+                                option.textContent = opt.label;
+                                if (opt.selected) option.selected = true;
+                                select.appendChild(option);
+                            });
+                        }
+                    });
+
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(select);
+                } else {
+                    // Text input
+                    const label = document.createElement('label');
+                    label.textContent = field.label;
+                    label.setAttribute('for', `endpoint-field-${field.id}`);
+
+                    const input = document.createElement('input');
+                    input.type = field.type || 'text';
+                    input.id = `endpoint-field-${field.id}`;
+                    input.placeholder = field.placeholder || '';
+                    input.value = field.defaultValue || '';
+                    input.required = field.required || false;
+                    input.style.cssText = 'width: 100%; padding: 12px; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; font-size: 14px;';
+
+                    // Add Enter key support for text inputs
+                    if (field.type === 'text') {
+                        input.addEventListener('keypress', (e) => {
+                            if (e.key === 'Enter') {
+                                executeEndpointRequest();
+                            }
+                        });
+                    }
+
+                    formGroup.appendChild(label);
+                    formGroup.appendChild(input);
+                }
+
+                formContainer.appendChild(formGroup);
+            });
+        }
+
+        // Unified endpoint request handler
+        async function executeEndpointRequest () {
+            const endpointSelect = document.getElementById('endpoint-select');
+            const executeButton = document.getElementById('execute-button');
+            const responseContainer = document.getElementById('unified-response');
+
+            if (!endpointSelect || !responseContainer) return;
+
+            const selectedEndpoint = endpointSelect.value;
+            const config = endpointConfigs[selectedEndpoint];
+
+            if (!config) {
+                alert('Invalid endpoint selected');
+                return;
+            }
+
+            // Collect form values
+            const params = {};
+            config.fields.forEach(field => {
+                const fieldElement = document.getElementById(`endpoint-field-${field.id}`);
+                if (fieldElement) {
+                    if (field.type === 'checkbox') {
+                        params[field.id] = fieldElement.checked;
+                    } else {
+                        params[field.id] = fieldElement.value;
+                    }
+                }
+            });
+
+            // Validate required fields
+            const requiredFields = config.fields.filter(f => f.required);
+            for (const field of requiredFields) {
+                if (!params[field.id] || params[field.id].trim() === '') {
+                    alert(`Please fill in the required field: ${field.label}`);
+                    return;
+                }
+            }
+
+            // Disable button and show loading
+            if (executeButton) {
+                executeButton.disabled = true;
+                executeButton.innerHTML = '<span class="loading"></span> Loading...';
+            }
+
+            try {
+                const url = config.buildUrl(params);
+                const title = config.buildTitle(params);
+
+                let options = {
+                    method: config.method || 'GET'
+                };
+
+                // Add body for POST requests
+                if (config.method === 'POST' && config.buildBody) {
+                    options.headers = {
+                        'Content-Type': 'application/json'
+                    };
+                    options.body = JSON.stringify(config.buildBody(params));
+                }
+
+                const result = await makeRequest(url, options);
+
+                // Add endpoint info to result
+                result.endpointName = `${config.icon} ${config.name}`;
+                result.endpointId = selectedEndpoint;
+
+                displayResponse('unified-response', result, title);
+
+                // Refresh mock files list in case a new mock was created
+                if (result.success) {
+                    loadMockFiles();
+                }
+            } catch (error) {
+                displayResponse('unified-response', {
+                    success: false,
+                    error: error.message,
+                    isMocked: false,
+                    endpointName: `${config.icon} ${config.name}`,
+                    endpointId: selectedEndpoint
+                }, 'Request Error');
+            } finally {
+                if (executeButton) {
+                    executeButton.disabled = false;
+                    executeButton.textContent = 'Execute Request';
+                }
+            }
+        }
+
+        // Delete mock for current endpoint
+        async function deleteEndpointMock () {
+            const endpointSelect = document.getElementById('endpoint-select');
+            const messageContainer = document.getElementById('delete-endpoint-message');
+
+            if (!endpointSelect || !messageContainer) return;
+
+            const selectedEndpoint = endpointSelect.value;
+            const config = endpointConfigs[selectedEndpoint];
+
+            if (!config) return;
+
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                // Try to find and delete mock files related to this endpoint
+                let deleted = false;
+                for (const file of files) {
+                    const filename = file.filename.toLowerCase();
+                    const apiPath = config.apiPath.toLowerCase();
+
+                    // Match based on API path patterns
+                    if (filename.includes(apiPath.split('/').pop()) ||
+                        filename.includes(selectedEndpoint.replace('-', ''))) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            messageContainer.innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            deleted = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!deleted) {
+                    messageContainer.innerHTML =
+                        '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for this endpoint.</div>';
+                }
+            } catch (error) {
+                messageContainer.innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
+        }
+
 
         async function makeRequest (url, options = {}) {
             const startTime = performance.now();
             try {
-                const response = await fetch(url, options);
+                // Add clientType and scope query parameters to the URL
+                const { clientType, scope } = getClientConfig();
+                const urlObj = new URL(url);
+                urlObj.searchParams.set('clientType', clientType);
+                urlObj.searchParams.set('scope', scope);
+                const finalUrl = urlObj.toString();
+
+                const response = await fetch(finalUrl, options);
                 const endTime = performance.now();
                 const responseTime = Math.round(endTime - startTime);
                 const data = await response.json();
@@ -870,6 +1179,10 @@
                 console.log('[Dashboard] Mock header value:', mockHeader);
                 console.log('[Dashboard] Is mocked:', isMocked);
 
+                // Extract client configuration from headers (use different variable names to avoid conflict)
+                const responseClientType = response.headers.get('x-client-type') || 'axios';
+                const responseScope = response.headers.get('x-scope') || 'local';
+
                 return {
                     success: response.ok,
                     data,
@@ -879,7 +1192,9 @@
                     mockTimestamp: response.headers.get('x-mockifyer-timestamp') || response.headers.get('X-Mockifyer-Timestamp'),
                     mockFilename: response.headers.get('x-mockifyer-filename') || response.headers.get('X-Mockifyer-Filename'),
                     mockFilepath: response.headers.get('x-mockifyer-filepath') || response.headers.get('X-Mockifyer-Filepath'),
-                    responseTime: responseTime
+                    responseTime: responseTime,
+                    clientType: responseClientType,
+                    scope: responseScope
                 };
             } catch (error) {
                 return {
@@ -906,9 +1221,16 @@
             const statusText = result.isMocked
                 ? '<span class="mock-badge">🎭 USING MOCK DATA</span>'
                 : '<span class="real-badge">🌐 REAL API CALL</span>';
+
+            // Add endpoint info if available
+            const endpointInfo = result.endpointName
+                ? `<span style="color: #8b9aff; font-size: 0.85em; font-weight: 500; margin-left: 10px;">${result.endpointName}</span>`
+                : '';
+
             titleEl.innerHTML = `
                 <span class="status-indicator ${result.success ? 'status-ok' : 'status-error'}"></span>
                 ${title}
+                ${endpointInfo}
                 ${statusText}
             `;
             titleEl.style.fontSize = '1.3em';
@@ -928,9 +1250,18 @@
                     ? 'background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);'
                     : 'background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);'}
             `;
-            banner.innerHTML = result.isMocked
-                ? '🎭 This response came from MOCK DATA - No external API call was made!'
-                : '🌐 This response came from REAL API - External API call was made!';
+            // Build banner message with client configuration if available
+            let mockMessage = '🎭 This response came from MOCK DATA - No external API call was made!';
+            let realMessage = '🌐 This response came from REAL API - External API call was made!';
+
+            if (result.clientType && result.scope) {
+                const clientDisplay = result.clientType.charAt(0).toUpperCase() + result.clientType.slice(1);
+                const scopeDisplay = result.scope.charAt(0).toUpperCase() + result.scope.slice(1);
+                mockMessage = `🎭 This response came from MOCK DATA (${clientDisplay} + ${scopeDisplay}) - No external API call was made!`;
+                realMessage = `🌐 This response came from REAL API (${clientDisplay} + ${scopeDisplay}) - External API call was made!`;
+            }
+
+            banner.innerHTML = result.isMocked ? mockMessage : realMessage;
             responseDiv.insertBefore(banner, titleEl);
 
             if (result.success) {
@@ -972,9 +1303,83 @@
                     responseDiv.appendChild(realInfo);
                 }
 
-                const pre = document.createElement('pre');
-                pre.textContent = JSON.stringify(result.data, null, 2);
-                responseDiv.appendChild(pre);
+                // Check if this is team information with a logo
+                const isTeamInfo = result.endpointId === 'football-team' ||
+                    (result.data && typeof result.data === 'object' && 'logo' in result.data);
+                const teamLogo = isTeamInfo && result.data?.logo ? result.data.logo : null;
+
+                if (teamLogo) {
+                    // Create a flex container for JSON and logo
+                    const contentWrapper = document.createElement('div');
+                    contentWrapper.style.cssText = `
+                        display: flex;
+                        gap: 20px;
+                        align-items: flex-start;
+                        flex-wrap: wrap;
+                    `;
+
+                    // JSON on the left
+                    const jsonContainer = document.createElement('div');
+                    jsonContainer.style.cssText = `
+                        flex: 1;
+                        min-width: 300px;
+                    `;
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(result.data, null, 2);
+                    jsonContainer.appendChild(pre);
+                    contentWrapper.appendChild(jsonContainer);
+
+                    // Logo on the right
+                    const logoContainer = document.createElement('div');
+                    logoContainer.style.cssText = `
+                        flex-shrink: 0;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        padding: 20px;
+                        background: rgba(255, 255, 255, 0.05);
+                        border-radius: 12px;
+                        min-width: 200px;
+                        max-width: 300px;
+                    `;
+
+                    const logoImg = document.createElement('img');
+                    logoImg.src = teamLogo;
+                    logoImg.alt = result.data?.name || 'Team Logo';
+                    logoImg.style.cssText = `
+                        max-width: 100%;
+                        height: auto;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                        background: white;
+                        padding: 10px;
+                    `;
+
+                    // Add team name below logo if available
+                    if (result.data?.name) {
+                        const teamName = document.createElement('div');
+                        teamName.textContent = result.data.name;
+                        teamName.style.cssText = `
+                            margin-top: 15px;
+                            font-weight: 600;
+                            font-size: 1.1em;
+                            text-align: center;
+                            color: inherit;
+                        `;
+                        logoContainer.appendChild(logoImg);
+                        logoContainer.appendChild(teamName);
+                    } else {
+                        logoContainer.appendChild(logoImg);
+                    }
+
+                    contentWrapper.appendChild(logoContainer);
+                    responseDiv.appendChild(contentWrapper);
+                } else {
+                    // Regular JSON display without logo
+                    const pre = document.createElement('pre');
+                    pre.textContent = JSON.stringify(result.data, null, 2);
+                    responseDiv.appendChild(pre);
+                }
             } else {
                 const errorDiv = document.createElement('div');
                 errorDiv.innerHTML = `<p><strong>Error:</strong> ${result.error || JSON.stringify(result.data, null, 2)}</p>`;
@@ -997,7 +1402,7 @@
             button.disabled = true;
             button.innerHTML = '<span class="loading"></span> Loading...';
 
-            const url = `${API_BASE}/api/weather/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
+            const url = `${API_BASE}/api/weather-unified/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
             const result = await makeRequest(url);
             displayResponse('current-weather-response', result, `Current Weather for ${city}${fullResponse ? ' (Full Response)' : ''}`);
 
@@ -1008,6 +1413,68 @@
 
             button.disabled = false;
             button.textContent = 'Get Current Weather';
+        }
+
+        // Weather Fetch Functions
+        async function getWeatherFetch () {
+            const city = document.getElementById('weather-fetch-city-input').value.trim();
+            const fullResponse = document.getElementById('weather-fetch-full-response').checked;
+
+            if (!city) {
+                document.getElementById('weather-fetch-response').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">Please enter a city name.</div>';
+                return;
+            }
+
+            const responseDiv = document.getElementById('weather-fetch-response');
+            responseDiv.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                const url = `${API_BASE}/api/weather-unified/current/${encodeURIComponent(city)}${fullResponse ? '?full=true' : ''}`;
+                const result = await makeRequest(url);
+
+                if (result.success) {
+                    displayResponse('weather-fetch-response', result, 'Weather Data (Using Fetch)');
+                    if (result.success) {
+                        loadMockFiles();
+                    }
+                } else {
+                    responseDiv.innerHTML = `<div class="error">Error: ${result.error || 'Failed to fetch weather data'}</div>`;
+                }
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function deleteWeatherFetchMock () {
+            try {
+                const listResponse = await fetch(`${API_BASE}/api/mocks`);
+                const listData = await listResponse.json();
+                const files = listData.files || [];
+
+                for (const file of files) {
+                    if (file.filename.includes('weather') && file.filename.includes('fetch')) {
+                        const deleteResult = await fetch(`${API_BASE}/api/mocks/${encodeURIComponent(file.filename)}`, {
+                            method: 'DELETE'
+                        });
+                        if (deleteResult.ok) {
+                            document.getElementById('delete-weather-fetch-message').innerHTML =
+                                `<div style="padding: 10px; background: #c8e6c9; border-radius: 8px; color: #2e7d32;">
+                                    <strong>✅ Deleted:</strong> ${file.filename}
+                                </div>`;
+                            loadMockFiles();
+                            return;
+                        }
+                    }
+                }
+                document.getElementById('delete-weather-fetch-message').innerHTML =
+                    '<div style="padding: 10px; background: #fff3e0; border-radius: 8px; color: #e65100;">No mock file found for weather fetch.</div>';
+            } catch (error) {
+                document.getElementById('delete-weather-fetch-message').innerHTML =
+                    `<div style="padding: 10px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <strong>❌ Error:</strong> ${error.message}
+                    </div>`;
+            }
         }
 
         async function getForecast () {
@@ -1024,7 +1491,7 @@
             button.disabled = true;
             button.innerHTML = '<span class="loading"></span> Loading...';
 
-            const url = `${API_BASE}/api/weather/forecast/${encodeURIComponent(city)}?days=${days}${fullResponse ? '&full=true' : ''}`;
+            const url = `${API_BASE}/api/weather-unified/forecast/${encodeURIComponent(city)}?days=${days}${fullResponse ? '&full=true' : ''}`;
             const result = await makeRequest(url);
             displayResponse('forecast-response', result, `${days}-Day Forecast for ${city}${fullResponse ? ' (Full Response)' : ''}`);
 
@@ -1037,14 +1504,8 @@
             button.textContent = 'Get Forecast';
         }
 
-        // Allow Enter key to submit
-        document.getElementById('city-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') getCurrentWeather();
-        });
-
-        document.getElementById('forecast-city-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') getForecast();
-        });
+        // Allow Enter key to submit in unified form (handled dynamically in renderEndpointForm)
+        // Old individual endpoint listeners removed - now handled by unified interface
 
         // Filter teams based on selected league
         function filterTeamsByLeague () {
@@ -1100,6 +1561,11 @@
         async function loadStatus () {
             const statusItems = document.getElementById('status-items');
 
+            if (!statusItems) {
+                console.warn('[Dashboard] status-items element not found, skipping status load');
+                return;
+            }
+
             try {
                 const response = await fetch(`${API_BASE}/api/status`);
                 const data = await response.json();
@@ -1144,12 +1610,14 @@
                 `;
             } catch (error) {
                 console.error('[Dashboard] Error loading status:', error);
-                statusItems.innerHTML = `
+                if (statusItems) {
+                    statusItems.innerHTML = `
                     <div class="status-item">
                         <strong>💡 Tip:</strong>
                         <span style="color: #aaa; font-size: 0.9em;">Make a request to see if it's mocked!</span>
                     </div>
                 `;
+                }
             }
         }
 
@@ -1689,7 +2157,7 @@
             button.innerHTML = '<span class="loading"></span> Loading...';
 
             try {
-                const result = await makeRequest(`${API_BASE}/api/graphql/query`, {
+                const result = await makeRequest(`${API_BASE}/api/graphql-unified/query`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1747,6 +2215,12 @@
         // Load and display mock files
         async function loadMockFiles () {
             const listContainer = document.getElementById('mock-files-list');
+
+            if (!listContainer) {
+                console.warn('[Dashboard] mock-files-list element not found, skipping mock files load');
+                return;
+            }
+
             listContainer.innerHTML = '<div style="padding: 10px; color: #e0e0e0;">Loading...</div>';
 
             try {
@@ -2362,10 +2836,19 @@
             }
         }
 
-        // Load status when page loads
-        loadStatus();
-        // Load mock files when page loads
-        loadMockFiles();
+        // Note: loadStatus() and loadMockFiles() are now called after fragments are loaded
+        // in the loadFragments() function to ensure elements exist
+
+        // Safeguard: Prevent errors if any code tries to access removed elements
+        // The events-current-date element was removed when endpoint HTML cards were replaced
+        // Any code trying to set this element will fail silently
+        (function() {
+            const eventsCurrentDateEl = document.getElementById('events-current-date');
+            if (!eventsCurrentDateEl) {
+                // Element doesn't exist - this is expected after refactoring
+                // Any code trying to set this element should be removed or relocated
+            }
+        })();
     </script>
 </body>
 

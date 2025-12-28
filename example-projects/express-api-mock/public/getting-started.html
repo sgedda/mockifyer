@@ -250,8 +250,7 @@
             <h2>Platform Guides</h2>
             <div class="platform-tabs">
                 <button class="platform-tab active" onclick="showPlatform('node-service')">Node Service</button>
-                <button class="platform-tab" onclick="showPlatform('coming-soon')" disabled
-                    style="opacity: 0.5; cursor: not-allowed;">React Native (Coming Soon)</button>
+                <button class="platform-tab" onclick="showPlatform('react-native')">React Native</button>
             </div>
 
             <div id="node-service" class="platform-content active">
@@ -421,13 +420,455 @@ initializeMockifyer();</code>
                 </div>
             </div>
 
-            <div id="coming-soon" class="platform-content">
-                <h3>Coming Soon</h3>
+            <div id="react-native" class="platform-content">
+                <h3>React Native / Expo</h3>
                 <p>
-                    React Native and other platform guides will be available soon. For now, Mockifyer works best with
-                    Node.js services and backend applications.
+                    Mockifyer works seamlessly with React Native and Expo applications. It supports both development
+                    (with recording) and production (with bundled mocks) modes.
+                </p>
+
+                <div class="step">
+                    <h4><span class="step-number">1</span>Install Dependencies</h4>
+                    <div class="code-block">
+                        <code>npm install @sgedda/mockifyer-fetch expo-file-system</code>
+                    </div>
+                    <p>
+                        <code>expo-file-system</code> is required for the Expo FileSystem provider used in React Native.
+                    </p>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">2</span>Configure Metro Bundler</h4>
+                    <p>
+                        <strong>Why is this needed?</strong> Mockifyer uses Node.js built-in modules like
+                        <code>fs</code> and
+                        <code>path</code> for filesystem operations. These modules don't exist in React Native, so Metro
+                        bundler will fail when trying to bundle Mockifyer code that imports them.
+                    </p>
+                    <p>
+                        The Metro configuration stubs these modules with empty placeholders, allowing Metro to bundle
+                        successfully. At runtime, Mockifyer detects that these modules aren't available and gracefully
+                        falls
+                        back to React Native-compatible providers (like Expo FileSystem).
+                    </p>
+                    <p>
+                        <strong>Without this configuration, you'll see errors like:</strong>
+                    </p>
+                    <div class="code-block">
+                        <code>Error: Unable to resolve module "fs" from "packages/mockifyer-core/src/providers/filesystem-provider.ts"
+Error: Unable to resolve module "path" from "packages/mockifyer-fetch/src/index.ts"</code>
+                    </div>
+                    <p>
+                        <strong>Solution:</strong> Use the provided helper function to automatically configure Metro:
+                    </p>
+                    <div class="code-block">
+                        <code>// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+const config = getDefaultConfig(__dirname);
+module.exports = configureMetroForMockifyer(config);</code>
+                    </div>
+                    <p>
+                        This helper automatically stubs <code>fs</code>, <code>path</code>, <code>assert</code>, and
+                        <code>util</code> modules that Mockifyer and its dependencies use. It preserves your existing
+                        Metro configuration and has zero impact on your bundle size (Metro config runs at build time,
+                        not runtime).
+                    </p>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">3</span>Initialize Mockifyer</h4>
+                    <p>
+                        Use the React Native helper function for automatic provider selection:
+                    </p>
+                    <div class="code-block">
+                        <code>// mockifyer-setup.ts
+import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
+
+export async function initializeMockifyer() {
+  return await setupMockifyerForReactNative({
+    isDev: __DEV__, // Pass React Native's __DEV__ variable
+    mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data', // For production builds
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  });
+}</code>
+                    </div>
+                    <p>
+                        Then initialize in your app:
+                    </p>
+                    <div class="code-block">
+                        <code>// App.tsx
+import { useEffect } from 'react';
+import { initializeMockifyer } from './mockifyer-setup';
+
+export default function App() {
+  useEffect(() => {
+    initializeMockifyer();
+  }, []);
+
+  // Your app code...
+}</code>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">4</span>Development Mode (Recording)</h4>
+                    <p>
+                        In development, Mockifyer uses the Expo FileSystem provider and can record API responses:
+                    </p>
+                    <div class="code-block">
+                        <code>// Start with recording enabled
+MOCKIFYER_RECORD=true npm start
+
+// Or in your setup:
+setupMockifyerForReactNative({
+  isDev: true,
+  mockDataPath: 'mock-data',
+  recordMode: true, // Enable recording
+});
+
+// Make API calls - responses are saved automatically
+const response = await fetch('https://api.example.com/users');
+// Saved to device filesystem: FileSystem.documentDirectory + 'mock-data/'</code>
+                    </div>
+                    <p>
+                        <strong>Hybrid Provider:</strong> In development, you can use the Hybrid Provider to save mocks
+                        to both device filesystem AND your project folder simultaneously. See the example project for
+                        details.
+                    </p>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">5</span>Production Mode (Bundled Mocks)</h4>
+                    <p>
+                        For production builds, generate a TypeScript bundle from your recorded mocks:
+                    </p>
+                    <div class="code-block">
+                        <code># Generate bundle from recorded mocks
+npm run generate:build-data
+# Or use CLI directly:
+npx @sgedda/mockifyer-core generate-bundle \\
+  --input ./mock-data \\
+  --output ./assets/mock-data.ts \\
+  --format typescript</code>
+                    </div>
+                    <p>
+                        The helper automatically uses the Memory provider with bundled data in production:
+                    </p>
+                    <div class="code-block">
+                        <code>// In production (isDev: false), automatically uses:
+// - Memory provider
+// - Bundled TypeScript file (./assets/mock-data.ts)
+// - No filesystem access needed</code>
+                    </div>
+                </div>
+
+                <div class="what-to-expect">
+                    <h4>✨ What to Expect</h4>
+                    <ul>
+                        <li><strong>Development:</strong> Uses Expo FileSystem provider - mocks saved to device
+                            filesystem</li>
+                        <li><strong>Production:</strong> Uses Memory provider with bundled TypeScript file - no
+                            filesystem needed</li>
+                        <li><strong>Automatic Switching:</strong> Provider selection is automatic based on
+                            <code>isDev</code> flag
+                        </li>
+                        <li><strong>Metro Config:</strong> Helper function handles all Metro configuration automatically
+                        </li>
+                        <li><strong>Zero Bundle Impact:</strong> Metro config runs at build time, not included in bundle
+                        </li>
+                    </ul>
+                </div>
+
+                <h3>Complete Example</h3>
+                <p>Here's a complete React Native setup:</p>
+                <div class="code-block">
+                    <code>// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+module.exports = configureMetroForMockifyer(getDefaultConfig(__dirname));
+
+// mockifyer-setup.ts
+import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
+
+export async function initializeMockifyer() {
+  return await setupMockifyerForReactNative({
+    isDev: __DEV__,
+    mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data',
+    recordMode: __DEV__ && process.env.MOCKIFYER_RECORD === 'true',
+  });
+}
+
+// App.tsx
+import { useEffect } from 'react';
+import { initializeMockifyer } from './mockifyer-setup';
+
+export default function App() {
+  useEffect(() => {
+    initializeMockifyer().then(() => {
+      console.log('Mockifyer initialized');
+    });
+  }, []);
+
+  const fetchData = async () => {
+    const response = await fetch('https://api.example.com/users');
+    const data = await response.json();
+    console.log('Data:', data);
+  };
+
+  return (
+    // Your app UI...
+  );
+}</code>
+                </div>
+
+                <h3>Additional Resources</h3>
+                <ul>
+                    <li><strong>Metro Configuration:</strong> See <a
+                            href="https://github.com/sgedda/mockifyer/blob/main/packages/mockifyer-fetch/METRO_CONFIG.md"
+                            target="_blank">METRO_CONFIG.md</a> for detailed Metro setup</li>
+                    <li><strong>Example Project:</strong> Check out the <a
+                            href="https://github.com/sgedda/mockifyer/tree/main/example-projects/react-native-expo-example"
+                            target="_blank">React Native Expo example</a> for a complete working setup</li>
+                    <li><strong>Date Manipulation:</strong> Date manipulation works in React Native via
+                        <code>getCurrentDate()</code> - see documentation for details
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Using the Dashboard</h2>
+            <p>
+                The Mockifyer Dashboard is a web interface for viewing, editing, and managing your mock data files.
+                It provides a visual way to explore all your recorded API responses.
+            </p>
+
+            <div class="step">
+                <h4><span class="step-number">1</span>Start the Dashboard</h4>
+                <p>
+                    Run the dashboard using <code>npx</code> (no installation needed):
+                </p>
+                <div class="code-block">
+                    <code># Auto-detect mock data path
+npx @sgedda/mockifyer-dashboard
+
+# Or specify the path explicitly
+npx @sgedda/mockifyer-dashboard --path ./mock-data
+
+# Custom port (default is 3001)
+npx @sgedda/mockifyer-dashboard --port 8080</code>
+                </div>
+                <p>
+                    The dashboard will automatically open in your browser at <code>http://localhost:3001</code>.
                 </p>
             </div>
+
+            <div class="step">
+                <h4><span class="step-number">2</span>Browse Your Mocks</h4>
+                <p>
+                    The dashboard displays all your mock files with:
+                </p>
+                <ul>
+                    <li><strong>Endpoint URL</strong> - The API endpoint that was called</li>
+                    <li><strong>HTTP Method</strong> - GET, POST, PUT, DELETE, etc.</li>
+                    <li><strong>File Size</strong> - Size of the mock file</li>
+                    <li><strong>Last Modified</strong> - When the mock was recorded</li>
+                    <li><strong>Search & Filter</strong> - Find specific mocks quickly</li>
+                </ul>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">3</span>Edit Mock Data</h4>
+                <p>
+                    Click any mock file to view and edit it:
+                </p>
+                <ul>
+                    <li><strong>View Request Details</strong> - See the full request (URL, headers, query params, body)
+                    </li>
+                    <li><strong>Edit Response Data</strong> - Modify the response using the built-in JSON editor</li>
+                    <li><strong>Save Changes</strong> - Save edited mocks back to the file</li>
+                    <li><strong>Delete Mocks</strong> - Remove unwanted mock files</li>
+                </ul>
+                <p>
+                    Changes are saved directly to your mock files, so they're immediately available to your application.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">4</span>View Statistics</h4>
+                <p>
+                    The dashboard provides insights into your mock data:
+                </p>
+                <ul>
+                    <li><strong>Total Files</strong> - Number of recorded mocks</li>
+                    <li><strong>Total Size</strong> - Combined size of all mock files</li>
+                    <li><strong>Most Used Endpoints</strong> - See which APIs you call most frequently</li>
+                    <li><strong>HTTP Methods Distribution</strong> - Breakdown by GET, POST, etc.</li>
+                    <li><strong>Status Codes Distribution</strong> - See response status code patterns</li>
+                </ul>
+            </div>
+
+            <h3>React Native Integration</h3>
+            <p>
+                For React Native projects, the dashboard works seamlessly with Metro's sync middleware:
+            </p>
+            <div class="code-block">
+                <code># Terminal 1: Start Metro bundler
+npm start
+
+# Terminal 2: Start Dashboard
+npx @sgedda/mockifyer-dashboard --path ./mock-data</code>
+            </div>
+            <p>
+                When using the Hybrid Provider in development, mocks saved by your app automatically sync to your
+                project folder, and the dashboard picks them up instantly. No manual sync needed!
+            </p>
+
+            <h3>Dashboard Options</h3>
+            <div class="code-block">
+                <code># Available options
+npx @sgedda/mockifyer-dashboard \\
+  --path ./mock-data      # Path to mock data directory
+  --port 8080             # Custom port (default: 3001)
+  --host 0.0.0.0          # Bind to all interfaces (for remote access)
+  --no-open               # Don't open browser automatically</code>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>✨ Dashboard Features</h4>
+                <ul>
+                    <li><strong>Real-time Updates</strong> - See new mocks as they're recorded</li>
+                    <li><strong>JSON Editor</strong> - Edit mock responses with syntax highlighting</li>
+                    <li><strong>Search & Filter</strong> - Quickly find specific endpoints or methods</li>
+                    <li><strong>Request Flow Visualization</strong> - See how requests relate to each other</li>
+                    <li><strong>Statistics Dashboard</strong> - Understand your API usage patterns</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Deterministic Dates with Sinon Fake Timers</h2>
+            <p>
+                Mockifyer provides <code>getCurrentDate()</code> for getting manipulated dates, but for
+                <strong>deterministic dates</strong> where <code>new Date()</code> and <code>Date.now()</code> return
+                fake time globally, you can use Sinon fake timers alongside Mockifyer in Node.js environments.
+            </p>
+
+            <h3>Why Use Fake Timers?</h3>
+            <p>
+                Mockifyer's <code>getCurrentDate()</code> returns manipulated dates, but it doesn't affect global
+                <code>Date()</code> or <code>Date.now()</code>. If your code uses <code>new Date()</code> or
+                <code>Date.now()</code> directly, you'll need fake timers to make those return deterministic dates.
+            </p>
+            <p>
+                <strong>Use fake timers when:</strong>
+            </p>
+            <ul>
+                <li>Your code calls <code>new Date()</code> or <code>Date.now()</code> directly</li>
+                <li>You need <code>setTimeout</code>/<code>setInterval</code> to work with fake time</li>
+                <li>You want deterministic dates across your entire application</li>
+                <li>You're testing time-dependent logic</li>
+            </ul>
+
+            <h3>Setting Up Sinon Fake Timers</h3>
+            <p>
+                Here's how to set up Sinon fake timers alongside Mockifyer in your service:
+            </p>
+            <div class="code-block">
+                <code>import sinon from 'sinon';
+import { useFakeTimers } from 'sinon';
+import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-fetch';
+
+// Initialize Mockifyer with date manipulation
+const mockifyer = setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  dateManipulation: {
+    fixedDate: '2024-12-25T00:00:00.000Z',
+  },
+});
+
+// Setup Sinon fake timers for global Date manipulation
+const fixedDate = '2024-12-25T00:00:00.000Z';
+const clock = useFakeTimers({
+  now: new Date(fixedDate), // Same date as Mockifyer
+  toFake: ['Date', 'setTimeout', 'setInterval'],
+});
+
+// Now both new Date() and getCurrentDate() return the same fake date
+const globalDate = new Date(); // Returns 2024-12-25 (from Sinon)
+const mockifyerDate = getCurrentDate(); // Returns 2024-12-25 (from Mockifyer)
+
+// Your service code can use deterministic dates
+function checkSubscriptionStatus(subscription: any) {
+  const currentDate = new Date(); // Uses fake time
+  if (subscription.expiresAt < currentDate) {
+    return 'expired';
+  }
+  return 'active';
+}
+
+// When done, restore real timers
+// clock.restore();</code>
+            </div>
+
+            <h3>When to Use What</h3>
+            <p>
+                <strong>Mockifyer's <code>getCurrentDate()</code>:</strong>
+            </p>
+            <ul>
+                <li>✅ Returns manipulated dates</li>
+                <li>✅ Works everywhere (Node.js, React Native, Browser)</li>
+                <li>❌ Doesn't affect global <code>Date()</code> or <code>Date.now()</code></li>
+            </ul>
+
+            <p>
+                <strong>Sinon/Jest fake timers:</strong>
+            </p>
+            <ul>
+                <li>✅ Makes <code>new Date()</code> and <code>Date.now()</code> return fake time globally</li>
+                <li>✅ Controls <code>setTimeout</code>/<code>setInterval</code></li>
+                <li>✅ Allows time progression (<code>clock.tick()</code> or <code>jest.advanceTimersByTime()</code>)
+                </li>
+                <li>✅ Perfect for deterministic dates across your entire application</li>
+            </ul>
+
+            <p>
+                <strong>Environment compatibility:</strong>
+            </p>
+            <ul>
+                <li><strong>Node.js:</strong> Use Sinon fake timers</li>
+                <li><strong>React Native:</strong> Use Mockifyer's <code>getCurrentDate()</code> instead</li>
+                <li><strong>Browser:</strong> Use Mockifyer's <code>getCurrentDate()</code> instead</li>
+            </ul>
+
+            <div class="what-to-expect">
+                <h4>✨ Best Practices</h4>
+                <ul>
+                    <li><strong>Use Mockifyer's <code>getCurrentDate()</code>:</strong> When you can - it's simpler and
+                        works everywhere</li>
+                    <li><strong>Use Sinon fake timers:</strong> When your code uses <code>new Date()</code> or
+                        <code>Date.now()</code> directly in Node.js
+                    </li>
+                    <li><strong>Keep dates in sync:</strong> Use the same date for Mockifyer config and fake timers</li>
+                    <li><strong>Clean up:</strong> Always restore fake timers when done (<code>clock.restore()</code>)
+                    </li>
+                    <li><strong>For React Native/Browser:</strong> Use Mockifyer's <code>getCurrentDate()</code> instead
+                    </li>
+                </ul>
+            </div>
+
+            <p>
+                <strong>Learn More:</strong> See the complete <a
+                    href="https://github.com/sgedda/mockifyer/blob/main/packages/mockifyer-core/TESTING_WITH_SINON.md"
+                    target="_blank">Testing with Sinon and Mockifyer guide</a> for detailed examples, patterns, and
+                best practices.
+            </p>
         </div>
 
         <div class="section">
@@ -435,10 +876,16 @@ initializeMockifyer();</code>
             <ul>
                 <li><strong>Try the Playground:</strong> <a href="playground.html">Explore the interactive demo</a> to
                     see Mockifyer in action</li>
+                <li><strong>Use the Dashboard:</strong> Start the dashboard to visually explore and manage your mock
+                    data</li>
                 <li><strong>Read the Documentation:</strong> Check out the <a href="index.html">Introduction page</a>
                     for more details</li>
-                <li><strong>View Settings:</strong> Check out the <a href="config-reference.html">Settings</a> page to see all available configuration options</li>
-                <li><strong>Configure Date Manipulation:</strong> Learn about <a href="date-config.html">date manipulation</a> for testing time-dependent functionality</li>
+                <li><strong>View Settings:</strong> Check out the <a href="config-reference.html">Settings</a> page to
+                    see all available configuration options</li>
+                <li><strong>Configure Date Manipulation:</strong> Learn about <a href="date-config.html">date
+                        manipulation</a> for testing time-dependent functionality</li>
+                <li><strong>Advanced Testing:</strong> Combine Mockifyer with Sinon for comprehensive testing (see
+                    section above)</li>
                 <li><strong>Explore Examples:</strong> See the <a href="https://github.com/sgedda/mockifyer"
                         target="_blank">GitHub repository</a> for more examples</li>
             </ul>

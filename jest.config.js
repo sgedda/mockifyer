@@ -6,11 +6,8 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/', '/example-projects/', '/examples/'],
   moduleFileExtensions: ['ts', 'js'],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  globals: {
-    'ts-jest': {
+    '^.+\\.ts$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
-    },
+    }],
   },
 }; 

@@ -12,10 +12,12 @@ export interface HTTPClientConfig {
 }
 
 export function createHTTPClient(config: HTTPClientConfig = {}): HTTPClient {
+  console.log('[Mockifyer] ⚡⚡⚡ Creating HTTPClient with config:', config);
   const { type = 'axios', baseUrl, defaultHeaders, axiosInstance } = config;
 
   switch (type) {
     case 'fetch':
+      console.log('[HTTPClientFactory] Creating FetchHTTPClient with config:', config);
       return new FetchHTTPClient({ baseUrl, defaultHeaders });
     case 'axios':
     default:

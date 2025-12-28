@@ -8,6 +8,8 @@ export interface MockifyerConfig {
    * Note: This is automatically set to false when recordMode is true, as real API calls are needed for recording. */
   failOnMissingMock?: boolean;
   useGlobalAxios?: boolean;
+  /** When true and httpClientType is 'fetch', patches the global fetch function to use Mockifyer */
+  useGlobalFetch?: boolean;
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match

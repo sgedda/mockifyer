@@ -11,6 +11,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
+    console.log('[AxiosHTTPClient] ⚡⚡⚡ performRequest called:', config);
     const axiosConfig: AxiosRequestConfig = {
       ...config,
       headers: config.headers,

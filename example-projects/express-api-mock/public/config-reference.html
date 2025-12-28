@@ -303,7 +303,17 @@
                             <tr>
                                 <td><code>similarMatchRequiredParams</code></td>
                                 <td>string[]</td>
-                                <td>Query parameters that must match for similar match (e.g., ['season', 'league'])</td>
+                                <td>Query parameters that must match for similar match (e.g., ['season', 'league']). If
+                                    not set, all query params are ignored by default.</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td><code>similarMatchIgnoreAllQueryParams</code></td>
+                                <td>boolean</td>
+                                <td>When true, explicitly ignore all query parameters when matching (matches on path and
+                                    method only). This is the default behavior when similarMatchRequiredParams is not
+                                    set, but this flag makes it explicit. If both this and similarMatchRequiredParams
+                                    are set, this takes precedence.</td>
                                 <td>-</td>
                             </tr>
                             <tr>
@@ -499,6 +509,29 @@ const filteredEvents = events.filter(e => e.date > currentDate);</code></pre>
 // /standings?league=39&season=2023 → won't match (different season)</code></pre>
                 </div>
 
+                <!-- Example 3b: Ignore All Query Params -->
+                <div
+                    style="background: rgba(255, 152, 0, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #ff9800; margin-bottom: 20px;">
+                    <h4 style="color: #ffb74d; margin-bottom: 10px;">🌐 Example 3b: Ignore All Query Parameters</h4>
+                    <p style="color: #e0e0e0; margin-bottom: 10px; font-size: 0.95em;">
+                        Match requests based on path and method only, ignoring all query parameters:
+                    </p>
+                    <pre><code>setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: false,
+  useSimilarMatch: true,
+  similarMatchIgnoreAllQueryParams: true  // Ignore all query params
+})
+
+// These will all match the same mock (path/method only):
+// /api/users?page=1&limit=10 → matches mock for /api/users?page=2&limit=20
+// /api/users?sort=name → matches mock for /api/users?sort=date
+// /api/users → matches mock for /api/users?any=params
+
+// Note: You can also achieve this by not setting similarMatchRequiredParams
+// (default behavior), but this flag makes it explicit.</code></pre>
+                </div>
+
                 <!-- Example 4: Testing Different Scenarios -->
                 <div
                     style="background: rgba(156, 39, 176, 0.1); padding: 20px; border-radius: 8px; border-left: 4px solid #9c27b0; margin-bottom: 20px;">
@@ -581,7 +614,8 @@ const filteredEvents = events.filter(e => e.date > currentDate);</code></pre>
   failOnMissingMock: false,
   useSimilarMatch: true,
   useSimilarMatchCheckResponse: true,
-  similarMatchRequiredParams: ['season', 'league'],
+  similarMatchRequiredParams: ['season', 'league'],  // Only these params must match
+  // similarMatchIgnoreAllQueryParams: true,  // Alternative: ignore all query params
   dateManipulation: {
     fixedDate: '2024-01-01T00:00:00Z'
   },

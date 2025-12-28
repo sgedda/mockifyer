@@ -1,0 +1,41 @@
+{
+  "name": "@sgedda/mockifyer-axios",
+  "version": "1.6.0",
+  "description": "Mockifyer for Axios - API mocking and logging utility for storing and replaying API responses",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "mock",
+    "api",
+    "testing",
+    "http",
+    "intercept",
+    "axios"
+  ],
+  "author": "sgedda",
+  "license": "MIT",
+  "dependencies": {
+    "@sgedda/mockifyer-core": "file:../mockifyer-core",
+    "axios-mock-adapter": "^1.22.0"
+  },
+  "peerDependencies": {
+    "axios": "^1.6.0 || ^1.7.0"
+  },
+  "peerDependenciesMeta": {
+    "axios": {
+      "optional": false
+    }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgedda/mockifyer.git"
+  }
+}
+

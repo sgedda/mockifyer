@@ -221,6 +221,19 @@ Mockifyer can be configured using the following environment variables:
    MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE=true
    ```
 
+## Advanced Testing with Sinon
+
+Mockifyer handles HTTP/API mocking, but you can combine it with [Sinon](https://sinonjs.org/) for comprehensive testing:
+
+- **Mockifyer**: Mocks external APIs and handles date manipulation
+- **Sinon**: Spies on functions, stubs methods, and mocks internal modules
+
+Together, they provide complete test coverage for both external dependencies and internal code.
+
+See [Testing with Sinon and Mockifyer](./packages/mockifyer-core/TESTING_WITH_SINON.md) for detailed examples and patterns.
+
+**Note:** Sinon is optional - Mockifyer works perfectly on its own. Add Sinon only if you need advanced spying/stubbing capabilities.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

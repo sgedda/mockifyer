@@ -17,6 +17,8 @@ export class WeatherService {
   constructor() {
     this.apiKey = process.env.WEATHER_API_KEY || '';
     this.baseUrl = 'https://api.weatherapi.com/v1';
+    console.log('[WeatherService] API Key:', this.apiKey);
+    console.log('[WeatherService] Base URL:', this.baseUrl);
     
     if (!this.apiKey) {
       console.warn('[WeatherService] WARNING: WEATHER_API_KEY is not set! API calls will fail.');
@@ -118,9 +120,9 @@ export class WeatherService {
 
       const weatherData: WeatherData = {
         location: response.data.location?.name || city, // Use actual location name from API
-        temperature: response.data.current.temp_c,
-        conditions: response.data.current.condition.text,
-        timestamp: response.data.current.last_updated
+        temperature: response.data.current?.temp_c,
+        conditions: response.data.current?.condition?.text,
+        timestamp: response.data.current?.last_updated
       };
 
       return {

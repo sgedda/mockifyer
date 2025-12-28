@@ -1,6 +1,6 @@
 {
-  "watch": ["src"],
+  "watch": ["src", "../../src"],
   "ext": ".ts,.js",
-  "ignore": ["src/**/*.test.ts", "mock-data/**/*"],
-  "exec": "ts-node -r tsconfig-paths/register src/index.ts"
+  "ignore": ["src/**/*.test.ts", "mock-data/**/*", "../../src/**/*.test.ts"],
+  "exec": "ts-node -r tsconfig-paths/register -P tsconfig.json src/index.ts"
 } 

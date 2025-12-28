@@ -1,4 +1,9 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosHeaders } from 'axios';
+// Use require to get the user's axios instance (from peerDependency)
+// This ensures we use the same axios instance the user imports
+const axios = require('axios');
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+// AxiosHeaders is used as a value (new AxiosHeaders()), so import it normally
+import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
@@ -40,7 +45,9 @@ class MockifyerClass {
       axiosInstance: config.axiosInstance
     };
     
+    console.log('[Mockifyer] httpClientConfig', httpClientConfig);
     this.httpClient = createHTTPClient(httpClientConfig);
+    console.log('this.httpClient', this.httpClient);
     
     console.log('[Mockifyer] record mode:', config.recordMode);
     if(!config.recordSameEndpoints) {
@@ -367,37 +374,55 @@ class MockifyerClass {
           'x-mockifyer-filepath': filePath
         };
 
-        // Return a mock response using adapter (axios-specific)
-        // The adapter bypasses the actual HTTP call and returns a mock response
-        // Use AxiosHeaders to ensure headers are properly preserved
-        const axiosHeaders = new AxiosHeaders();
-        Object.entries(responseHeaders).forEach(([key, value]) => {
-          axiosHeaders.set(key, value);
-        });
-        
-        const mockResponse: AxiosResponse = {
-          data: mockData.response.data,
-          status: mockData.response.status,
-          statusText: 'OK',
-          headers: axiosHeaders,
-          config: config as any, // AxiosResponse expects InternalAxiosRequestConfig
-          request: {}
-        };
-        
         console.log('[Mockifyer] Returning mock response with headers:', Object.keys(responseHeaders));
         console.log('[Mockifyer] Mock headers:', responseHeaders);
-        console.log('[Mockifyer] AxiosHeaders keys:', Array.from(axiosHeaders.keys()));
-        console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
         
-        return {
-          ...config,
-          adapter: () => {
-            console.log('[Mockifyer] Adapter called, returning mock response');
-            console.log('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
-            console.log('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
-            return Promise.resolve(mockResponse);
-          }
-        } as any;
+        // For fetch clients, set __mockResponse. For axios clients, set adapter
+        if (this.config.httpClientType === 'fetch') {
+          // Create HTTPResponse format for fetch client
+          const mockResponse = {
+            data: mockData.response.data,
+            status: mockData.response.status,
+            statusText: 'OK',
+            headers: responseHeaders,
+            config: config as any
+          };
+          
+          console.log('[Mockifyer] 📦 Setting __mockResponse for fetch client in setupMockResponses');
+          
+          return {
+            ...config,
+            __mockResponse: Promise.resolve(mockResponse)
+          } as any;
+        } else {
+          // Axios client - use adapter
+          const axiosHeaders = new AxiosHeaders();
+          Object.entries(responseHeaders).forEach(([key, value]) => {
+            axiosHeaders.set(key, value);
+          });
+          
+          const mockResponse: AxiosResponse = {
+            data: mockData.response.data,
+            status: mockData.response.status,
+            statusText: 'OK',
+            headers: axiosHeaders,
+            config: config as any,
+            request: {}
+          };
+          
+          console.log('[Mockifyer] AxiosHeaders keys:', Array.from(axiosHeaders.keys()));
+          console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
+          
+          return {
+            ...config,
+            adapter: () => {
+              console.log('[Mockifyer] Adapter called, returning mock response');
+              console.log('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
+              console.log('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
+              return Promise.resolve(mockResponse);
+            }
+          } as any;
+        }
       }
 
       if (this.config.failOnMissingMock) {
@@ -415,7 +440,11 @@ class MockifyerClass {
     if (this.config.recordSameEndpoints !== true) {
       this.httpClient.interceptors.request.use(async (config) => {
         // CRITICAL: This log proves new code is running
-        console.log('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url);
+        console.log('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url, {
+          hasParams: !!config.params,
+          params: config.params,
+          allKeys: Object.keys(config)
+        });
         
         // CRITICAL DEBUG: Log what we receive
         if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
@@ -492,7 +521,14 @@ class MockifyerClass {
         // Prevent infinite loops - if we're already processing this request, skip
         if (this.processingRequests.has(requestKey)) {
           console.log(`[Mockifyer] ⚠️ Already processing ${requestKey}, skipping to prevent infinite loop`);
-          return config;
+          // CRITICAL: Preserve all config properties including params when returning early
+          const returnConfig = { ...config };
+          // Explicitly preserve params - they might be lost in the spread
+          if (config.params) {
+            returnConfig.params = config.params;
+            console.log(`[Mockifyer] Preserved params in early return:`, returnConfig.params);
+          }
+          return returnConfig;
         }
         
         console.log(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
@@ -520,36 +556,107 @@ class MockifyerClass {
             axiosHeaders.set(key, value);
           });
 
-          const mockResponse: AxiosResponse = {
-            data: mockData.response.data,
-            status: mockData.response.status,
-            statusText: 'OK',
-            headers: axiosHeaders,
-            config: config as any,
-            request: {}
-          };
-
-            console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
+          console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
+          
+          // For mocks, we can delete immediately since performRequest() won't be called
+          // But keep it in the set briefly to prevent loops if the mock response triggers another request
+          // We'll delete it when the mock response is actually returned (in BaseHTTPClient)
+          
+          // For fetch clients, set __mockResponse. For axios clients, set adapter
+          if (this.config.httpClientType === 'fetch') {
+            // Create HTTPResponse format for fetch client
+            const mockResponse = {
+              data: mockData.response.data,
+              status: mockData.response.status,
+              statusText: 'OK', // StoredResponse doesn't have statusText, use default
+              headers: mockData.response.headers || {},
+              config: config as any
+            };
             
-            const result = {
+            // Add mockifyer headers
+            mockResponse.headers['x-mockifyer'] = 'true';
+            mockResponse.headers['x-mockifyer-timestamp'] = mockData.timestamp;
+            mockResponse.headers['x-mockifyer-filename'] = filename;
+            mockResponse.headers['x-mockifyer-filepath'] = filePath;
+            
+            console.log(`[Mockifyer] 📦 Setting __mockResponse for fetch client`);
+            
+            // Store requestKey on config for cleanup
+            const returnConfig = {
+              ...config,
+              __mockResponse: Promise.resolve(mockResponse),
+              __mockifyer_requestKey: requestKey
+            } as any;
+            
+            // For mocks, delete immediately since performRequest won't be called
+            this.processingRequests.delete(requestKey);
+            
+            return returnConfig;
+          } else {
+            // Axios client - use adapter
+            const axiosHeaders = new AxiosHeaders();
+            const responseHeaders = {
+              ...mockData.response.headers,
+              'x-mockifyer': 'true',
+              'x-mockifyer-timestamp': mockData.timestamp,
+              'x-mockifyer-filename': filename,
+              'x-mockifyer-filepath': filePath
+            };
+            Object.entries(responseHeaders).forEach(([key, value]) => {
+              axiosHeaders.set(key, value);
+            });
+
+            const mockResponse: AxiosResponse = {
+              data: mockData.response.data,
+              status: mockData.response.status,
+              statusText: 'OK',
+              headers: axiosHeaders,
+              config: config as any,
+              request: {}
+            };
+            
+            return {
               ...config,
               adapter: () => {
                 console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
                 return Promise.resolve(mockResponse);
               }
             } as any;
-            
-            // Remove from processing set immediately after creating the result
-            // This allows the same request to be made again later if needed
-            this.processingRequests.delete(requestKey);
-            
-            return result;
+          }
           }
           
           // No mock found - will make real API call (this is correct)
           console.log(`[Mockifyer] ❌ No mock found for ${requestKey}, will make real API call`);
-          this.processingRequests.delete(requestKey);
-          return config;
+          console.log(`[Mockifyer] Returning config with params:`, {
+            url: config.url,
+            method: config.method,
+            hasParams: !!config.params,
+            params: config.params,
+            httpClientType: this.config.httpClientType,
+            allKeys: Object.keys(config)
+          });
+          // CRITICAL: Don't delete from processingRequests here - wait until after performRequest completes
+          // This prevents infinite loops when useGlobalFetch: true and performRequest calls patched fetch
+          // We'll delete it in the response interceptor after the request completes
+          
+          // CRITICAL: Always preserve params - they're needed for performRequest to add them to the URL
+          const returnConfig = { ...config };
+          // Explicitly preserve params for fetch clients - even if undefined, preserve the property
+          if (this.config.httpClientType === 'fetch') {
+            // Always preserve params property, even if it's undefined
+            returnConfig.params = config.params;
+            console.log(`[Mockifyer] Return config has params:`, !!returnConfig.params, returnConfig.params);
+            if (!returnConfig.params) {
+              console.warn(`[Mockifyer] ⚠️ WARNING: params are missing from config! Original config had:`, {
+                hasParams: !!config.params,
+                params: config.params,
+                allKeys: Object.keys(config)
+              });
+            }
+          }
+          // Store requestKey on config so response interceptor can clean it up
+          (returnConfig as any).__mockifyer_requestKey = requestKey;
+          return returnConfig;
         } catch (error) {
           console.error(`[Mockifyer] ❌ Error processing ${requestKey}:`, error);
           this.processingRequests.delete(requestKey);
@@ -565,6 +672,20 @@ class MockifyerClass {
     // Skip recording if this is a mocked response (has x-mockifyer header)
     this.httpClient.interceptors.response.use(
       (response) => {
+        console.log('[Mockifyer] 🎯 Response interceptor called!', {
+          url: response.config?.url,
+          status: response.status,
+          hasConfig: !!response.config
+        });
+        
+        // CRITICAL: Clean up processingRequests after request completes
+        // This prevents infinite loops when useGlobalFetch: true
+        const requestKey = (response.config as any).__mockifyer_requestKey;
+        if (requestKey) {
+          this.processingRequests.delete(requestKey);
+          console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
+        }
+        
         // Check if this is a mocked response - if so, don't record it
         const isMocked = response.headers && (
           (typeof (response.headers as any).get === 'function' && (response.headers as any).get('x-mockifyer') === 'true') ||
@@ -576,7 +697,7 @@ class MockifyerClass {
           return response;
         }
         
-        const requestKey = this.generateRequestKey({
+        const requestKeyForRecording = this.generateRequestKey({
           method: response.config.method?.toUpperCase() || 'GET',
           url: response.config.url || '',
           headers: {},
@@ -584,11 +705,21 @@ class MockifyerClass {
           queryParams: response.config.params || {}
         });
         
-        console.log(`[Mockifyer] 📹 Recording response for: ${requestKey}`);
+        console.log(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
         this.saveResponse(response as HTTPResponse);
         return response;
       },
       (error) => {
+        // CRITICAL: Clean up processingRequests after request fails
+        // This prevents infinite loops when useGlobalFetch: true
+        if (error.config) {
+          const requestKey = (error.config as any).__mockifyer_requestKey;
+          if (requestKey) {
+            this.processingRequests.delete(requestKey);
+            console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
+          }
+        }
+        
         if (error.response) {
           // Check if this is a mocked error response
           const isMocked = error.response.headers && (
@@ -760,13 +891,7 @@ class MockifyerClass {
       };
 
       // Always check cache first, unless recordSameEndpoints is true
-      if (this.config.recordSameEndpoints !== true) {
-        const existingMock = await this.findBestMatchingMock(request);
-        if (existingMock) {
-          console.log(`[Mockifyer] Using existing mock for endpoint: ${request.url}`);
-          return;
-        }
-      }
+
 
       const storedResponse: StoredResponse = {
         status: response.status,
@@ -833,21 +958,369 @@ export interface MockifyerInstance extends HTTPClient {
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+  console.log('[Mockifyer] ⚡⚡⚡ setupMockifyer called:', config);
   // Initialize date manipulation
   initializeDateManipulation(config);
 
   const mockifyer = new MockifyerClass(config);
   const httpClient = mockifyer.getHTTPClient();
   
+  // If useGlobalAxios is true, patch the global axios instance
+  if (config.useGlobalAxios && config.httpClientType !== 'fetch') {
+    const axiosInstance = (httpClient as any).instance;
+    const baseClient = httpClient as any;
+    
+    if (axiosInstance) {
+      // CRITICAL: Use the axios instance passed by the user if provided
+      // This ensures we use the EXACT same axios instance the user imports
+      // If not provided, fall back to require('axios') which should resolve to the user's axios
+      let globalAxios: any;
+      
+      if (config.axiosInstance) {
+        // User explicitly passed axios instance - use it!
+        globalAxios = config.axiosInstance;
+        console.log('[Mockifyer] ✅ Using axios instance passed in config.axiosInstance');
+      } else {
+        // Try to get axios from require (should resolve to user's axios via peerDependency)
+        try {
+          const axiosModule = require('axios');
+          globalAxios = axiosModule.default || axiosModule;
+          console.log('[Mockifyer] Using axios from require("axios") (peerDependency)');
+        } catch (e) {
+          // Fallback to imported axios (shouldn't happen if peerDependency is set up correctly)
+          console.warn('[Mockifyer] Could not require axios, using imported instance:', e);
+          globalAxios = axios;
+        }
+      }
+      
+      console.log('[Mockifyer] Global axios instance:', {
+        hasInterceptors: !!globalAxios?.interceptors,
+        interceptorsType: typeof globalAxios?.interceptors,
+        axiosType: typeof globalAxios,
+        currentInterceptorCount: (globalAxios.interceptors.response as any).handlers?.length || 0
+      });
+      
+      // CRITICAL: When useGlobalAxios is true, requests go through global axios,
+      // so we need to add interceptors DIRECTLY to global axios, not to axiosInstance
+      // The interceptors from BaseHTTPClient need to be added to global axios
+      
+      // Apply request interceptors from BaseHTTPClient directly to global axios
+      if (baseClient.requestInterceptors && baseClient.requestInterceptors.length > 0) {
+        baseClient.requestInterceptors.forEach((interceptor: any) => {
+          if (interceptor.onFulfilled) {
+            globalAxios.interceptors.request.use(
+              async (config: any) => {
+                return await interceptor.onFulfilled(config);
+              },
+              interceptor.onRejected
+            );
+          }
+        });
+      }
+      
+      // Apply response interceptors from BaseHTTPClient directly to global axios
+      // CRITICAL: Add interceptors directly to global axios so they're called when axios.get() is used
+      if (baseClient.responseInterceptors && baseClient.responseInterceptors.length > 0) {
+        console.log('[Mockifyer] Adding response interceptors directly to global axios:', baseClient.responseInterceptors.length);
+        baseClient.responseInterceptors.forEach((interceptor: any, index: number) => {
+          if (interceptor.onFulfilled) {
+            console.log(`[Mockifyer] Adding response interceptor ${index} to global axios`);
+            // Use the same pattern as user's example - simple function declaration
+            const interceptorId = globalAxios.interceptors.response.use(
+              async function(axiosResponse: any) {
+                console.log('[Mockifyer] 🎯🎯🎯 Global axios response interceptor called!', {
+                  url: axiosResponse.config?.url,
+                  status: axiosResponse.status
+                });
+                
+                try {
+                  // Convert Axios response to HTTPResponse format expected by Mockifyer interceptor
+                  const httpResponse: HTTPResponse = {
+                    data: axiosResponse.data,
+                    status: axiosResponse.status,
+                    statusText: axiosResponse.statusText || 'OK',
+                    headers: (() => {
+                      const headers: Record<string, string> = {};
+                      if (axiosResponse.headers) {
+                        if (typeof axiosResponse.headers.forEach === 'function') {
+                          // AxiosHeaders instance
+                          axiosResponse.headers.forEach((value: string, key: string) => {
+                            headers[key.toLowerCase()] = String(value);
+                          });
+                        } else {
+                          // Plain object
+                          Object.entries(axiosResponse.headers).forEach(([key, value]) => {
+                            headers[key.toLowerCase()] = String(value);
+                          });
+                        }
+                      }
+                      return headers;
+                    })(),
+                    config: axiosResponse.config || {}
+                  };
+                  
+                  // Call the Mockifyer interceptor with HTTPResponse format
+                  const result = await interceptor.onFulfilled(httpResponse);
+                  
+                  // Mockifyer interceptor returns HTTPResponse, but axios expects AxiosResponse
+                  // So we need to merge the result back into the original axiosResponse
+                  // Keep all original axiosResponse properties, only update what Mockifyer modified
+                  if (result && typeof result === 'object') {
+                    // Update data, status, statusText if modified
+                    if (result.data !== undefined) axiosResponse.data = result.data;
+                    if (result.status !== undefined) axiosResponse.status = result.status;
+                    if (result.statusText !== undefined) axiosResponse.statusText = result.statusText;
+                    
+                    // Update headers if modified
+                    if (result.headers && typeof result.headers === 'object') {
+                      if (typeof axiosResponse.headers.forEach === 'function') {
+                        // AxiosHeaders - update it
+                        Object.entries(result.headers).forEach(([key, value]) => {
+                          axiosResponse.headers.set(key, String(value));
+                        });
+                      } else {
+                        // Plain object - merge
+                        axiosResponse.headers = {
+                          ...axiosResponse.headers,
+                          ...result.headers
+                        };
+                      }
+                    }
+                  }
+                  
+                  // Return the axiosResponse (axios expects AxiosResponse format)
+                  return axiosResponse;
+                } catch (error) {
+                  console.error('[Mockifyer] Error in response interceptor:', error);
+                  throw error;
+                }
+              },
+              async function(error: any) {
+                if (interceptor.onRejected) {
+                  return await interceptor.onRejected(error);
+                }
+                return Promise.reject(error);
+              }
+            );
+            console.log(`[Mockifyer] Interceptor registered with ID: ${interceptorId}`);
+          }
+        });
+        console.log('[Mockifyer] ✅ Response interceptors added to global axios');
+        
+        // Verify interceptors are registered
+        const handlers = (globalAxios.interceptors.response as any).handlers || [];
+        console.log('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
+      }
+      
+      // Copy adapter if it exists (for mock responses)
+      if (axiosInstance.defaults && axiosInstance.defaults.adapter) {
+        axios.defaults.adapter = axiosInstance.defaults.adapter;
+      }
+      
+      console.log('[Mockifyer] Global axios configured with interceptors');
+    } else {
+      // Fallback: replace global axios methods with our client methods
+      axios.get = function(url: string, config?: any) {
+        return httpClient.get(url, config);
+      } as any;
+      
+      axios.post = function(url: string, data?: any, config?: any) {
+        return httpClient.post(url, data, config);
+      } as any;
+      
+      axios.request = function(config: any) {
+        return httpClient.request(config);
+      } as any;
+      
+      console.log('[Mockifyer] Global axios methods patched');
+    }
+  }
+  
+  // If httpClientType is 'fetch', always store original fetch (even if not patching global)
+  // This prevents issues when multiple instances exist or when global fetch is patched elsewhere
+  if (config.httpClientType === 'fetch') {
+    // Store original fetch BEFORE any patching happens
+    // CRITICAL: Always get the TRUE original fetch, not a patched one
+    // If another instance already stored it globally, use that. Otherwise, use current global.fetch
+    let originalFetch: typeof fetch;
+    if ((global as any).__mockifyer_original_fetch) {
+      // Another instance already stored the original - use it
+      originalFetch = (global as any).__mockifyer_original_fetch;
+      console.log('[Mockifyer] ✅ Using original fetch from global store (already set by another instance)');
+    } else {
+      // This is the first instance - store the current global.fetch as original
+      originalFetch = global.fetch;
+      (global as any).__mockifyer_original_fetch = originalFetch;
+      console.log('[Mockifyer] ✅ Stored original fetch globally (first instance)');
+    }
+    
+    // Store original fetch in FetchHTTPClient so performRequest can use it
+    // This prevents infinite recursion when performRequest calls fetch()
+    const fetchClient = httpClient as any;
+    if (fetchClient && typeof fetchClient.performRequest === 'function') {
+      fetchClient._originalFetch = originalFetch;
+      console.log('[Mockifyer] ✅ Set _originalFetch on FetchHTTPClient:', {
+        hasOriginalFetch: !!fetchClient._originalFetch,
+        originalFetchType: typeof fetchClient._originalFetch,
+        useGlobalFetch: config.useGlobalFetch,
+        isFunction: typeof fetchClient._originalFetch === 'function'
+      });
+    } else {
+      console.warn('[Mockifyer] ⚠️ Could not set _originalFetch - fetchClient or performRequest not found');
+    }
+    
+    // Only patch global fetch if useGlobalFetch is true
+    if (config.useGlobalFetch) {
+      // Store reference to mockifyer instance for accessing processingRequests
+      const mockifyerInstance = mockifyer;
+      const originalFetchForPatched = (global as any).__mockifyer_original_fetch || originalFetch;
+      
+      // Replace global fetch with a wrapper that uses Mockifyer's HTTPClient
+      global.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        // Convert fetch arguments to HTTPClient format
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        const method = init?.method || 'GET';
+        const headers = init?.headers || {};
+        const body = init?.body;
+        
+        console.log(`[Mockifyer] 🔍 Patched fetch CALLED with URL:`, url.replace(/([?&]key=)[^&]*/, '$1***'));
+        console.log(`[Mockifyer] 🔍 Patched fetch URL has search params:`, url.includes('?'));
+        
+        // CRITICAL: Check if this request is already being processed to prevent infinite loops
+        // Generate a simple request key from URL and method (matching the format used in interceptor)
+        const simpleRequestKey = `${method}:${url}`;
+        const isProcessing = (mockifyerInstance as any).processingRequests?.has(simpleRequestKey);
+        if (isProcessing) {
+          console.log(`[Mockifyer] 🔄 Patched fetch: Request ${simpleRequestKey} already processing, using _originalFetch directly to prevent loop`);
+          // Use original fetch directly to bypass interceptors and prevent loop
+          const response = await originalFetchForPatched(input, init);
+          return response;
+        }
+        
+        // CRITICAL: Extract query parameters from URL if they exist
+        // This is important because performRequest() adds params to the URL, and when it calls
+        // the patched fetch(), we need to extract those params back out so they're preserved
+        let params: Record<string, string> | undefined = undefined;
+        let baseUrl = url;
+        try {
+          const urlObj = new URL(url);
+          if (urlObj.search) {
+            params = {};
+            urlObj.searchParams.forEach((value, key) => {
+              params![key] = value;
+            });
+            // Remove params from URL since we'll pass them separately
+            urlObj.search = '';
+            baseUrl = urlObj.toString();
+            console.log(`[Mockifyer] 🔍 Patched fetch: Extracted params from URL:`, params);
+            console.log(`[Mockifyer] 🔍 Patched fetch: Base URL without params:`, baseUrl);
+          } else {
+            console.log(`[Mockifyer] ⚠️ Patched fetch: URL has NO search params to extract!`);
+          }
+        } catch (error) {
+          // URL parsing failed, use URL as-is
+          console.warn(`[Mockifyer] ⚠️ Could not parse URL to extract params:`, error);
+        }
+        
+        // Convert Headers object to plain object if needed
+        let headersObj: Record<string, string> = {};
+        if (headers instanceof Headers) {
+          headers.forEach((value, key) => {
+            headersObj[key] = value;
+          });
+        } else if (Array.isArray(headers)) {
+          headers.forEach(([key, value]) => {
+            headersObj[key] = value;
+          });
+        } else {
+          headersObj = headers as Record<string, string>;
+        }
+        
+        try {
+          // Use Mockifyer's HTTPClient - this will go through interceptors and record if in record mode
+          // CRITICAL: Pass params separately so they're preserved through the interceptor chain
+          const requestConfig = {
+            url: baseUrl, // Use base URL without query params since we pass params separately
+            method: method as any,
+            headers: headersObj,
+            params: params, // Pass params separately so they're preserved
+            data: body ? (typeof body === 'string' ? (body.startsWith('{') || body.startsWith('[') ? JSON.parse(body) : body) : body) : undefined
+          };
+          
+          console.log(`[Mockifyer] 🔍 Patched fetch: Request config:`, {
+            url: requestConfig.url,
+            method: requestConfig.method,
+            hasParams: !!requestConfig.params,
+            params: requestConfig.params,
+            paramsCount: params ? Object.keys(params).length : 0
+          });
+          
+          const response = await httpClient.request(requestConfig);
+          
+          // Convert HTTPResponse to fetch Response
+          const responseHeaders = new Headers();
+          Object.entries(response.headers || {}).forEach(([key, value]) => {
+            responseHeaders.set(key, String(value));
+          });
+          
+          // Handle response data - if it's already a string, use it directly, otherwise stringify
+          const responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+          
+          return new Response(responseBody, {
+            status: response.status,
+            statusText: response.statusText || '',
+            headers: responseHeaders
+          });
+        } catch (error: any) {
+          // Handle errors
+          if (error.response) {
+            const responseHeaders = new Headers();
+            Object.entries(error.response.headers || {}).forEach(([key, value]) => {
+              responseHeaders.set(key, String(value));
+            });
+            
+            const errorBody = typeof error.response.data === 'string' 
+              ? error.response.data 
+              : JSON.stringify(error.response.data);
+            
+            return new Response(errorBody, {
+              status: error.response.status,
+              statusText: error.response.statusText || '',
+              headers: responseHeaders
+            });
+          }
+          throw error;
+        }
+      } as typeof fetch;
+      
+      console.log('[Mockifyer] Global fetch function patched');
+    } else {
+      console.log('[Mockifyer] Fetch client created with original fetch stored (global fetch not patched)');
+    }
+  }
+  
   // Extend the HTTPClient with cache management methods
-  return Object.assign(httpClient, {
-    reloadMockData: () => mockifyer.reloadMockData(),
-    clearStaleCacheEntries: () => mockifyer.clearStaleCacheEntries()
-  }) as MockifyerInstance;
+  // Use direct property assignment to preserve prototype chain and method binding
+  const extendedClient = httpClient as MockifyerInstance;
+  extendedClient.reloadMockData = () => mockifyer.reloadMockData();
+  extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
+  
+  console.log('[Mockifyer] setupMockifyer returning HTTP client:', {
+    hasGet: typeof extendedClient.get === 'function',
+    hasRequest: typeof extendedClient.request === 'function',
+    hasInterceptors: typeof extendedClient.interceptors === 'object',
+    prototype: Object.getPrototypeOf(extendedClient).constructor.name,
+    constructor: extendedClient.constructor.name
+  });
+  
+  return extendedClient;
 }
 
 // Re-export date utilities and types
 export * from './utils/date';
 export * from './types';
 export * from './clients/http-client-factory';
-export * from './types/http-client'; 
+export * from './types/http-client';
+
+// Re-export axios types for convenience (but users should import axios directly)
+export type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosHeaders } from 'axios'; 

@@ -1,0 +1,38 @@
+{
+  "name": "@sgedda/mockifyer-core",
+  "version": "1.6.1",
+  "description": "Core utilities and types for Mockifyer",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mockifyer": "./src/cli/generate-bundle.ts",
+    "mockifyer-sync-to-device": "./src/cli/sync-to-device.ts",
+    "mockifyer-sync-from-device": "./src/cli/sync-from-device.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "example:build": "ts-node examples/build-example.ts"
+  },
+  "keywords": [
+    "mock",
+    "api",
+    "testing",
+    "http",
+    "intercept"
+  ],
+  "author": "sgedda",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgedda/mockifyer.git"
+  }
+}

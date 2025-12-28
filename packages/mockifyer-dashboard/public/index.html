@@ -1,0 +1,3819 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockifyer Dashboard</title>
+    <link rel="stylesheet" href="common.css">
+    <style>
+        .dashboard-header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            padding: 30px 20px;
+        }
+
+        .dashboard-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-header p {
+            color: #a0a0a0;
+            font-size: 1.1em;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            background: rgba(20, 20, 35, 0.8);
+            color: #e0e0e0;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(25, 25, 40, 0.9);
+        }
+
+        .mock-file-item {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mock-file-item:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+        }
+
+        .mock-file-item.selected {
+            border-left-color: #4caf50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .mock-file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .mock-file-name {
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+
+        .mock-file-meta {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .mock-file-endpoint {
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        #editor-card {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+
+        #editor-card .editor-container {
+            width: 100%;
+        }
+
+        .editor-panel {
+            width: 100%;
+        }
+
+        .editor-panel {
+            background: rgba(20, 20, 35, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .editor-panel h3 {
+            color: #8b9aff;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .json-editor {
+            width: 100%;
+            min-height: 400px;
+            background: rgba(10, 10, 20, 0.9);
+            color: #e0e0e0;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .json-editor:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            font-size: 0.95em;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(102, 126, 234, 0.2);
+            color: #8b9aff;
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(30, 30, 46, 0.8);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: 700;
+            color: #8b9aff;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border-left: 4px solid #f44336;
+            color: #ffcdd2;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 4px solid #4caf50;
+            color: #c8e6c9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #8b9aff;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #a0a0a0;
+        }
+
+        .empty-state h3 {
+            color: #8b9aff;
+            margin-bottom: 10px;
+        }
+
+        .editor-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .editor-toggle .toggle-btn {
+            flex: 1;
+        }
+
+        .toggle-btn {
+            padding: 8px 16px;
+            border: none;
+            background: rgba(102, 126, 234, 0.2);
+            color: #8b9aff;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.2s ease;
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            font-size: 0.9em;
+            min-width: 0;
+        }
+
+        .toggle-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        .toggle-btn.active:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .field-editor {
+            display: none;
+        }
+
+        .field-editor.active {
+            display: block;
+        }
+
+        .json-editor-container {
+            display: none;
+        }
+
+        .json-editor-container.active {
+            display: block;
+        }
+
+        .field-group {
+            margin-bottom: 20px;
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 3px solid rgba(102, 126, 234, 0.5);
+        }
+
+        .field-group.nested {
+            margin-left: 20px;
+            border-left-color: rgba(139, 154, 255, 0.3);
+        }
+
+        .field-group.collapsible {
+            cursor: pointer;
+        }
+
+        .field-group-content {
+            margin-top: 10px;
+        }
+
+        .field-group-content.collapsed {
+            display: none;
+        }
+
+        .field-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 0.95em;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapse-icon {
+            font-size: 0.9em;
+            transition: transform 0.2s ease;
+            color: #667eea;
+            min-width: 20px;
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .field-label .field-key {
+            font-family: 'Courier New', monospace;
+            color: #a78bfa;
+        }
+
+        .field-label .field-type {
+            font-size: 0.8em;
+            color: #666;
+            background: rgba(102, 126, 234, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .field-input {
+            width: 100%;
+            padding: 10px;
+            background: rgba(10, 10, 20, 0.9);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .field-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: rgba(15, 15, 25, 0.95);
+        }
+
+        .field-input[type="number"] {
+            font-family: 'Courier New', monospace;
+        }
+
+        .field-input[type="checkbox"] {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .field-group-content {
+            margin-top: 10px;
+        }
+
+        .field-group-content.collapsed {
+            display: none;
+        }
+
+        .collapse-icon {
+            font-size: 0.9em;
+            transition: transform 0.2s ease;
+            color: #667eea;
+            min-width: 20px;
+            display: inline-block;
+            cursor: pointer;
+            user-select: none;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .collapse-icon:hover {
+            background: rgba(102, 126, 234, 0.2);
+        }
+
+        .collapse-icon.collapsed {
+            transform: rotate(-90deg);
+        }
+
+        .array-item {
+            background: rgba(30, 30, 46, 0.4);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid rgba(139, 154, 255, 0.4);
+        }
+
+        .array-controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 0.9em;
+            min-width: 120px;
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .add-field-btn {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .add-field-btn:hover {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .remove-btn {
+            background: rgba(244, 67, 54, 0.2);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .remove-btn:hover {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        /* Request Flow Styles */
+        .request-flow-section {
+            margin-top: 20px;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .view-toggle button {
+            background: rgba(102, 126, 234, 0.3);
+            color: #8b9aff;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+
+        .view-toggle button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            padding-left: 30px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #667eea;
+            border: 3px solid #1a1a2e;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+        }
+
+        .request-card {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .request-card:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+            border-left-color: #8b9aff;
+        }
+
+        .request-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sequence-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9em;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .method-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .method-get {
+            background: #10b981;
+            color: white;
+        }
+
+        .method-post {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .method-put {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .method-delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .method-patch {
+            background: #8b5cf6;
+            color: white;
+        }
+
+        .request-url {
+            flex: 1;
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            word-break: break-all;
+            min-width: 200px;
+        }
+
+        .request-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85em;
+            color: #a0a0a0;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .source-file {
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .filename-info {
+            color: #a0a0a0;
+            font-size: 0.85em;
+        }
+
+        .duration {
+            color: #10b981;
+        }
+
+        .flow-view {
+            display: none;
+        }
+
+        .flow-view.active {
+            display: block;
+        }
+
+        .list-item {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 60px 80px 1fr 200px 150px;
+            gap: 15px;
+            align-items: center;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .list-item:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+        }
+
+        @media (max-width: 768px) {
+            .list-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #a0a0a0;
+        }
+
+        .graph-container {
+            position: relative;
+            min-height: 400px;
+            background: rgba(20, 20, 35, 0.4);
+            border-radius: 10px;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        .graph-node {
+            background: rgba(30, 30, 46, 0.9);
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            display: inline-block;
+            min-width: 200px;
+            max-width: 300px;
+            margin: 10px;
+        }
+
+        .graph-arrow {
+            display: inline-block;
+            color: #667eea;
+            font-size: 2em;
+            margin: 0 10px;
+            vertical-align: middle;
+        }
+
+        /* Network Inspector Styles */
+        .network-logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .network-logs-table thead {
+            background: rgba(102, 126, 234, 0.2);
+            border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .network-logs-table th {
+            padding: 12px 15px;
+            text-align: left;
+            color: #8b9aff;
+            font-weight: 600;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-right: 1px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .network-logs-table th:last-child {
+            border-right: none;
+        }
+
+        .network-logs-table tbody tr {
+            border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .network-logs-table tbody tr:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .network-logs-table tbody tr.expanded {
+            background: rgba(102, 126, 234, 0.15);
+        }
+
+        .network-logs-table tbody tr.hidden {
+            display: none;
+        }
+
+        .network-logs-table td {
+            padding: 12px 15px;
+            color: #e0e0e0;
+            font-size: 0.9em;
+            vertical-align: middle;
+            border-right: 1px solid rgba(102, 126, 234, 0.05);
+        }
+
+        .network-logs-table td:last-child {
+            border-right: none;
+        }
+
+        .network-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .network-status-2xx {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .network-status-3xx {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .network-status-4xx {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .network-status-5xx {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .network-method {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+            text-align: center;
+        }
+
+        .network-method-get {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .network-method-post {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+        }
+
+        .network-method-put {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .network-method-delete {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .network-method-patch {
+            background: rgba(139, 92, 246, 0.2);
+            color: #8b5cf6;
+        }
+
+        .network-url {
+            font-family: 'Courier New', monospace;
+            color: #8b9aff;
+            word-break: break-all;
+            max-width: 500px;
+        }
+
+        .network-duration {
+            color: #10b981;
+            font-family: 'Courier New', monospace;
+        }
+
+        .network-time {
+            color: #a0a0a0;
+            font-size: 0.85em;
+        }
+
+        .network-size {
+            color: #a0a0a0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .network-details {
+            background: rgba(10, 10, 20, 0.8);
+            padding: 20px;
+            border-top: 2px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .network-details-section {
+            margin-bottom: 20px;
+        }
+
+        .network-details-section h4 {
+            color: #8b9aff;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .network-details-content {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            color: #e0e0e0;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .network-details-json {
+            color: #e0e0e0;
+        }
+
+        @media (max-width: 768px) {
+            .network-logs-table {
+                font-size: 0.85em;
+            }
+
+            .network-logs-table th,
+            .network-logs-table td {
+                padding: 8px 10px;
+            }
+
+            .network-url {
+                max-width: 200px;
+            }
+        }
+
+        .graph-session {
+            margin-bottom: 40px;
+        }
+
+        .graph-session-header {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .graph-session-header h3 {
+            color: #8b9aff;
+            margin: 0 0 10px 0;
+        }
+
+        .graph-session-header .session-info {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+
+        .graph-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            background: rgba(20, 20, 35, 0.3);
+            border-radius: 10px;
+        }
+
+        .graph-node {
+            background: rgba(30, 30, 46, 0.9);
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            display: inline-block;
+            min-width: 200px;
+            max-width: 300px;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .graph-node:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            border-color: #8b9aff;
+        }
+
+        .graph-node::before {
+            content: attr(data-sequence);
+            position: absolute;
+            top: -12px;
+            left: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: 700;
+        }
+
+        .graph-node .node-method {
+            font-weight: 600;
+            color: #8b9aff;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .graph-node .node-url {
+            font-size: 0.9em;
+            color: #e0e0e0;
+            word-break: break-all;
+            margin-bottom: 8px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .graph-node .node-meta {
+            font-size: 0.75em;
+            color: #a0a0a0;
+            margin-top: 5px;
+        }
+
+        /* Navigation Styles */
+        body {
+            padding: 0 !important;
+        }
+
+        .dashboard-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: rgba(15, 15, 25, 0.95);
+            border-right: 2px solid rgba(102, 126, 234, 0.3);
+            padding: 20px;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+            border-radius: 0;
+        }
+
+        .sidebar-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+        }
+
+        .sidebar-header h1 {
+            color: #8b9aff;
+            font-size: 1.5em;
+            margin: 0 0 5px 0;
+        }
+
+        .sidebar-header p {
+            color: #a0a0a0;
+            font-size: 0.9em;
+            margin: 0;
+        }
+
+        .nav-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .nav-item {
+            margin-bottom: 10px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            color: #a0a0a0;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .nav-link:hover {
+            background: rgba(102, 126, 234, 0.1);
+            color: #8b9aff;
+        }
+
+        .nav-link.active {
+            background: rgba(102, 126, 234, 0.2);
+            color: #8b9aff;
+            font-weight: 600;
+        }
+
+        .nav-link-icon {
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 250px;
+            padding: 30px;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .page-header {
+            margin-bottom: 30px;
+            margin-top: 0;
+        }
+
+        .page-header h2 {
+            color: #e0e0e0;
+            font-size: 2em;
+            margin: 0 0 10px 0;
+        }
+
+        .page-header p {
+            color: #a0a0a0;
+            margin: 0;
+        }
+
+        .sidebar-toggle {
+            display: none;
+            position: fixed;
+            top: 0;
+            right: 0;
+            z-index: 1001;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            border: none;
+            padding: 15px 20px;
+            border-radius: 0;
+            cursor: pointer;
+            font-size: 1.2em;
+            box-shadow: none;
+            width: auto;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                padding: 20px;
+            }
+
+            .page-header h2 {
+                font-size: 1.5em;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            html {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .sidebar-toggle {
+                display: block;
+                top: 0;
+                right: 0;
+                border-radius: 0;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                transform: translateY(-100%);
+                transition: transform 0.3s ease;
+                border: none;
+                border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+                border-radius: 0;
+                max-height: 80vh;
+                overflow-y: auto;
+                z-index: 1000;
+                padding-top: 0;
+                margin: 0;
+                box-shadow: none;
+            }
+
+            .sidebar-header {
+                margin-bottom: 20px;
+                padding-bottom: 15px;
+                padding-top: 50px;
+            }
+
+            .sidebar.mobile-open {
+                transform: translateY(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 15px;
+                padding-top: 60px;
+            }
+
+            .page-header {
+                margin-top: 0;
+                margin-bottom: 20px;
+            }
+
+            .mock-file-item {
+                padding: 12px;
+                margin-bottom: 8px;
+            }
+
+            .mock-file-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+
+            .mock-file-name {
+                font-size: 0.95em;
+                word-break: break-word;
+            }
+
+            .mock-file-meta {
+                font-size: 0.85em;
+                width: 100%;
+            }
+
+            .mock-file-endpoint {
+                font-size: 0.85em;
+                word-break: break-all;
+                overflow-wrap: break-word;
+            }
+
+            .nav-menu {
+                flex-direction: column;
+                overflow-x: visible;
+                gap: 5px;
+            }
+
+            .nav-item {
+                margin-bottom: 5px;
+                flex-shrink: 1;
+            }
+
+            .nav-link {
+                width: 100%;
+                padding: 14px 15px;
+            }
+
+            .page-header h2 {
+                font-size: 1.3em;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .card {
+                padding: 15px;
+            }
+
+            .card h2 {
+                font-size: 1.2em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            html {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .sidebar {
+                width: 100%;
+                border-radius: 0;
+                border: none;
+                border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+                padding-top: 0;
+                margin: 0;
+                box-shadow: none;
+            }
+
+            .sidebar-header {
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                padding-top: 50px;
+            }
+
+            .main-content {
+                padding: 10px;
+                padding-top: 55px;
+            }
+
+            .page-header {
+                margin-top: 0;
+                margin-bottom: 15px;
+            }
+
+            .page-header h2 {
+                font-size: 1.1em;
+                line-height: 1.3;
+            }
+
+            .page-header p {
+                font-size: 0.9em;
+            }
+
+            .card {
+                padding: 12px;
+                margin-bottom: 15px;
+            }
+
+            .card h2 {
+                font-size: 1.1em;
+                margin-bottom: 15px;
+            }
+
+            .stat-number {
+                font-size: 1.5em;
+            }
+
+            .mock-file-item {
+                padding: 10px;
+                margin-bottom: 8px;
+            }
+
+            .mock-file-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+
+            .mock-file-name {
+                font-size: 0.9em;
+                word-break: break-word;
+            }
+
+            .mock-file-meta {
+                font-size: 0.8em;
+                width: 100%;
+            }
+
+            .mock-file-endpoint {
+                font-size: 0.8em;
+                word-break: break-all;
+                overflow-wrap: break-word;
+            }
+
+            input,
+            select,
+            button:not(.menu-toggle):not(.sidebar-toggle) {
+                font-size: 16px;
+                /* Prevents zoom on iOS */
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+    <div class="dashboard-layout">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1>🎭 Mockifyer</h1>
+                <p>Dashboard</p>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#" class="nav-link active" data-page="overview">
+                        <span class="nav-link-icon">📊</span>
+                        <span>Overview</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="date-manipulation">
+                        <span class="nav-link-icon">📅</span>
+                        <span>Date Manipulation</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="scenario-management">
+                        <span class="nav-link-icon">🎭</span>
+                        <span>Scenario Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="request-flow">
+                        <span class="nav-link-icon">🔄</span>
+                        <span>Request Flow</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-page="network-inspector">
+                        <span class="nav-link-icon">🌐</span>
+                        <span>Network Inspector</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Overview Page -->
+            <div id="overview-page" class="page active">
+                <div class="page-header">
+                    <h2>📊 Overview</h2>
+                    <p>View statistics and manage your mock files</p>
+                </div>
+
+                <!-- Statistics -->
+                <div class="card">
+                    <h2>📊 Statistics</h2>
+                    <div class="stats-grid" id="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number" id="stat-total">-</div>
+                            <div class="stat-label">Total Mocks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="stat-size">-</div>
+                            <div class="stat-label">Total Size</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="stat-endpoints">-</div>
+                            <div class="stat-label">Unique Endpoints</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mock Files Browser -->
+                <div class="card">
+                    <h2>📁 Mock Files</h2>
+
+                    <!-- Filters -->
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                        <div style="flex: 1; min-width: 200px;">
+                            <label
+                                style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600; font-size: 0.9em;">🎭
+                                Scenario</label>
+                            <select id="overview-scenario-filter" class="search-box"
+                                style="margin-bottom: 0; padding: 10px 15px;" onchange="filterMockFiles()">
+                                <option value="">All Scenarios</option>
+                            </select>
+                        </div>
+                        <div style="flex: 1; min-width: 200px;">
+                            <label
+                                style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600; font-size: 0.9em;">🔄
+                                Session</label>
+                            <select id="overview-session-filter" class="search-box"
+                                style="margin-bottom: 0; padding: 10px 15px;" onchange="filterMockFiles()">
+                                <option value="">All Sessions</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <input type="text" class="search-box" id="search-box"
+                        placeholder="🔍 Search by filename, endpoint, or method..." onkeyup="filterFiles()">
+                    <div id="mock-files-list"></div>
+                </div>
+
+                <!-- Editor -->
+                <div class="card" id="editor-card" style="display: none;">
+                    <h2>✏️ Edit Mock Data</h2>
+                    <div id="editor-message"></div>
+                    <div class="editor-container">
+                        <div class="editor-panel">
+                            <h3>Request <span
+                                    style="color: #666; font-size: 0.8em; font-weight: normal;">(Read-only)</span>
+                            </h3>
+                            <textarea class="json-editor" id="request-editor" readonly></textarea>
+                        </div>
+                        <div class="editor-panel">
+                            <h3>Response Data</h3>
+                            <div class="editor-toggle">
+                                <button class="toggle-btn active" id="field-toggle" onclick="switchEditor('field')">📝
+                                    Field
+                                    Editor</button>
+                                <button class="toggle-btn" id="json-toggle" onclick="switchEditor('json')">📄 JSON
+                                    Editor</button>
+                            </div>
+
+                            <!-- Field Editor -->
+                            <div class="field-editor active" id="field-editor">
+                                <div style="margin-bottom: 15px; display: flex; gap: 10px;">
+                                    <button class="btn btn-small btn-secondary" onclick="expandAllGroups()">📂 Expand
+                                        All</button>
+                                    <button class="btn btn-small btn-secondary" onclick="collapseAllGroups()">📁
+                                        Collapse All</button>
+                                </div>
+                                <div id="field-editor-content"></div>
+                            </div>
+
+                            <!-- JSON Editor -->
+                            <div class="json-editor-container" id="json-editor-container">
+                                <textarea class="json-editor" id="response-editor"></textarea>
+                            </div>
+
+                            <div class="button-group">
+                                <button class="btn btn-primary" onclick="saveMock()">💾 Save Changes</button>
+                                <button class="btn btn-secondary" id="format-btn"
+                                    onclick="formatJSON('response-editor')" style="display: none;">✨ Format
+                                    JSON</button>
+                                <button class="btn btn-danger" onclick="deleteMock()">🗑️ Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Manipulation Page -->
+            <div id="date-manipulation-page" class="page">
+                <div class="page-header">
+                    <h2>📅 Date Manipulation</h2>
+                    <p>Control the date returned by <code>getCurrentDate()</code>. Changes are saved to
+                        <code>date-config.json</code>.
+                    </p>
+                </div>
+                <div class="card">
+                    <div id="date-config-container">
+                        <!-- Tab-style mode switcher -->
+                        <div
+                            style="display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid rgba(20, 20, 35, 0.8);">
+                            <button type="button" id="date-mode-fixed-btn"
+                                style="padding: 12px 24px; background: rgba(25, 25, 40, 0.8); border: none; border-bottom: 3px solid #667eea; color: #e0e0e0; cursor: pointer; font-weight: 600; font-size: 14px; transition: all 0.2s;">
+                                Fixed Date
+                            </button>
+                            <button type="button" id="date-mode-offset-btn"
+                                style="padding: 12px 24px; background: rgba(20, 20, 35, 0.6); border: none; border-bottom: 3px solid transparent; color: #a0a0a0; cursor: pointer; font-weight: 500; font-size: 14px; transition: all 0.2s;">
+                                Offset from Current
+                            </button>
+                        </div>
+
+                        <!-- Fixed Date Section -->
+                        <div id="fixed-date-section" style="display: block;">
+                            <div style="margin-bottom: 20px;">
+                                <label
+                                    style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Fixed
+                                    Date</label>
+                                <input type="datetime-local" id="fixed-date-input" class="search-box"
+                                    style="margin-bottom: 0; width: 100%; max-width: 300px;">
+                                <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                                    Set a specific date and time
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Offset Section -->
+                        <div id="offset-section" style="display: none;">
+                            <div style="margin-bottom: 20px;">
+                                <label
+                                    style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Offset
+                                    from
+                                    Current Time</label>
+                                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                                    <select id="offset-direction" class="search-box"
+                                        style="margin-bottom: 0; width: 100px; padding: 12px 15px;">
+                                        <option value="future">Future</option>
+                                        <option value="past">Past</option>
+                                    </select>
+                                    <div style="display: flex; align-items: center; gap: 5px;">
+                                        <input type="number" id="offset-days" class="search-box"
+                                            style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0"
+                                            min="0">
+                                        <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">d</label>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 5px;">
+                                        <input type="number" id="offset-hours" class="search-box"
+                                            style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0"
+                                            min="0" max="23">
+                                        <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">h</label>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 5px;">
+                                        <input type="number" id="offset-minutes" class="search-box"
+                                            style="margin-bottom: 0; width: 70px; text-align: center;" placeholder="0"
+                                            min="0" max="59">
+                                        <label style="color: #a0a0a0; white-space: nowrap; font-size: 0.9em;">m</label>
+                                    </div>
+                                </div>
+                                <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                                    Add time to current date
+                                </small>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Current
+                                Date
+                                (getCurrentDate())</label>
+                            <div id="current-date-display"
+                                style="padding: 10px; background: rgba(20, 20, 35, 0.6); border-radius: 8px; color: #8b9aff; font-family: monospace;">
+                                Loading...
+                            </div>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn btn-primary" onclick="saveDateConfig()">💾 Save Date Config</button>
+                            <button class="btn btn-secondary" onclick="clearDateConfig()">🔄 Clear</button>
+                        </div>
+                        <div id="date-config-message" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scenario Management Page -->
+            <div id="scenario-management-page" class="page">
+                <div class="page-header">
+                    <h2>🎭 Scenario Management</h2>
+                    <p>Organize mock data into separate folders. Switch between scenarios to test different API response
+                        sets.</p>
+                </div>
+                <div class="card">
+                    <div id="scenario-config-container">
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Current
+                                Scenario</label>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <select id="scenario-select" class="search-box"
+                                    style="flex: 1; min-width: 200px; padding: 11px 15px; margin: 0; height: 44px; box-sizing: border-box; line-height: 22px; font-size: 16px; appearance: none; -webkit-appearance: none; -moz-appearance: none;"
+                                    onchange="switchScenario()">
+                                    <option value="">Loading...</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="switchScenario()"
+                                    style="margin: 0; padding: 11px 20px; white-space: nowrap; height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border: 2px solid transparent; line-height: 22px; font-size: 16px;">🔄
+                                    Switch Scenario</button>
+                            </div>
+                            <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                                Mock files are stored in: <code>mock-data/{scenario}/</code>
+                            </small>
+                        </div>
+
+                        <div
+                            style="margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                            <label style="display: block; color: #e0e0e0; margin-bottom: 8px; font-weight: 600;">Create
+                                New Scenario</label>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <input type="text" id="new-scenario-input" class="search-box"
+                                    placeholder="Enter scenario name (e.g., api-error, no-data)"
+                                    style="flex: 1; min-width: 200px; padding: 11px 15px; margin: 0; height: 44px; box-sizing: border-box; line-height: 22px; font-size: 16px;">
+                                <button class="btn btn-secondary" onclick="createScenario()"
+                                    style="margin: 0; padding: 11px 20px; white-space: nowrap; height: 44px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border: 2px solid rgba(102, 126, 234, 0.3); line-height: 22px; font-size: 16px;">➕
+                                    Create Scenario</button>
+                            </div>
+                            <small style="color: #a0a0a0; display: block; margin-top: 5px;">
+                                Use only letters, numbers, hyphens, and underscores
+                            </small>
+                        </div>
+
+                        <div id="scenario-config-message" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Files in Current Scenario -->
+                <div class="card" style="margin-top: 20px;">
+                    <h2>📁 Files in Current Scenario</h2>
+                    <div id="scenario-files-list" style="margin-top: 15px;">
+                        <div class="loading">Loading files...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Request Flow Page -->
+            <div id="request-flow-page" class="page">
+                <div class="page-header">
+                    <h2>🔄 Request Flow</h2>
+                    <p>View all API requests in chronological order</p>
+                </div>
+                <div class="card">
+                    <div style="margin-bottom: 20px;">
+                        <select id="session-filter" onchange="filterBySession()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="all">All Sessions</option>
+                        </select>
+                    </div>
+                    <div class="view-toggle">
+                        <button class="active" onclick="switchFlowView('timeline')">📊 Timeline</button>
+                        <button onclick="switchFlowView('graph')">🔗 Graph</button>
+                        <button onclick="switchFlowView('list')">📋 List</button>
+                    </div>
+
+                    <!-- Timeline View -->
+                    <div id="timeline-flow-view" class="flow-view active">
+                        <div class="timeline" id="timeline-content">
+                            <div class="loading">Loading request flow...</div>
+                        </div>
+                    </div>
+
+                    <!-- Graph View -->
+                    <div id="graph-flow-view" class="flow-view">
+                        <div class="graph-container" id="graph-content">
+                            <div class="loading">Loading request flow...</div>
+                        </div>
+                    </div>
+
+                    <!-- List View -->
+                    <div id="list-flow-view" class="flow-view">
+                        <div id="list-content">
+                            <div class="loading">Loading request flow...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Inspector Page -->
+            <div id="network-inspector-page" class="page">
+                <div class="page-header">
+                    <h2>🌐 Network Inspector</h2>
+                    <p>View network requests in a DevTools-style log</p>
+                </div>
+
+                <!-- Controls -->
+                <div class="card">
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+                        <button class="btn btn-secondary" onclick="refreshNetworkLogs()"
+                            style="display: flex; align-items: center; gap: 8px;">
+                            <span>🔄</span>
+                            <span>Refresh</span>
+                        </button>
+                        <input type="text" id="network-search" class="search-box"
+                            placeholder="🔍 Filter by URL, method, or status..."
+                            style="flex: 1; min-width: 200px; margin: 0;" oninput="filterNetworkLogs()">
+                        <select id="network-method-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Methods</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                        <select id="network-status-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Status</option>
+                            <option value="200">200 OK</option>
+                            <option value="201">201 Created</option>
+                            <option value="400">400 Bad Request</option>
+                            <option value="401">401 Unauthorized</option>
+                            <option value="404">404 Not Found</option>
+                            <option value="500">500 Server Error</option>
+                        </select>
+                        <select id="network-scenario-filter" onchange="filterNetworkLogs()"
+                            style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                            <option value="">All Scenarios</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Network Logs Table -->
+                <div class="card">
+                    <div id="network-logs-container" style="overflow-x: auto;">
+                        <table class="network-logs-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 80px;">Status</th>
+                                    <th style="width: 100px;">Method</th>
+                                    <th style="min-width: 300px;">URL</th>
+                                    <th style="width: 120px;">Duration</th>
+                                    <th style="width: 150px;">Time</th>
+                                    <th style="width: 100px;">Size</th>
+                                </tr>
+                            </thead>
+                            <tbody id="network-logs-body">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                                        <div class="loading">Loading network logs...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let mockFiles = [];
+        let selectedFile = null;
+        let currentResponseData = null; // For JSON editor: response.data
+        let currentResponseObject = null; // For field editor: entire response object
+        let editorMode = 'field'; // 'field' or 'json'
+
+        // Navigation functionality
+        function initNavigation () {
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const pageId = link.getAttribute('data-page');
+                    switchPage(pageId);
+                });
+            });
+        }
+
+        function toggleSidebar () {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (sidebar && overlay) {
+                sidebar.classList.toggle('mobile-open');
+                overlay.classList.toggle('active');
+            }
+        }
+
+        function closeSidebar () {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            if (sidebar && overlay) {
+                sidebar.classList.remove('mobile-open');
+                overlay.classList.remove('active');
+            }
+        }
+
+        function switchPage (pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+
+            // Remove active class from all nav links
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+
+            // Show selected page
+            const targetPage = document.getElementById(`${pageId}-page`);
+            if (targetPage) {
+                targetPage.classList.add('active');
+            }
+
+            // Activate corresponding nav link
+            const activeLink = document.querySelector(`[data-page="${pageId}"]`);
+            if (activeLink) {
+                activeLink.classList.add('active');
+            }
+
+            // Update URL hash for bookmarking/sharing
+            window.location.hash = pageId;
+
+            // Close sidebar on mobile when navigating
+            closeSidebar();
+
+            // Load page-specific content
+            if (pageId === 'request-flow') {
+                loadRequestFlow();
+            } else if (pageId === 'scenario-management') {
+                loadScenarioFiles();
+            } else if (pageId === 'network-inspector') {
+                loadNetworkLogs();
+            }
+        }
+
+        // Handle browser back/forward buttons
+        window.addEventListener('hashchange', () => {
+            const hash = window.location.hash.substring(1); // Remove #
+            if (hash) {
+                switchPage(hash);
+            } else {
+                switchPage('overview');
+            }
+        });
+
+        async function loadScenarioFiles (scenario = null) {
+            try {
+                let currentScenario = scenario;
+                if (!currentScenario) {
+                    const response = await fetch('/api/scenario-config');
+                    const data = await response.json();
+                    currentScenario = data.currentScenario || 'default';
+                }
+
+                // Load files for the current scenario
+                const mocksResponse = await fetch(`/api/mocks?scenario=${encodeURIComponent(currentScenario)}`);
+                const mocksData = await mocksResponse.json();
+                const files = mocksData.files || [];
+
+                const container = document.getElementById('scenario-files-list');
+                if (!container) return;
+
+                if (files.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No files in this scenario yet.</p></div>';
+                    return;
+                }
+
+                container.innerHTML = files.map(file => `
+                    <div class="mock-file-item" style="cursor: pointer;" onclick="window.location.hash = 'overview'; setTimeout(() => selectFile('${file.filename}'), 100);">
+                        <div class="mock-file-header">
+                            <div class="mock-file-name">${escapeHtml(file.filename)}</div>
+                            <div class="mock-file-meta">${formatBytes(file.size)} • ${formatDate(file.modified)}</div>
+                        </div>
+                        ${file.endpoint ? `<div class="mock-file-endpoint">${escapeHtml(file.endpoint)}</div>` : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading scenario files:', error);
+                const container = document.getElementById('scenario-files-list');
+                if (container) {
+                    container.innerHTML = '<div class="error-message">Failed to load files: ' + error.message + '</div>';
+                }
+            }
+        }
+
+        // Request Flow functions
+        let allRequests = [];
+        let allSessions = new Map();
+        let filteredRequests = [];
+
+        function loadRequestFlow () {
+            fetch('/api/mocks')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.files && data.files.length > 0) {
+                        allRequests = [];
+                        allSessions.clear();
+
+                        // Process all mock files to extract request flow data
+                        const promises = data.files.map(file =>
+                            fetch(`/api/mocks/${file.filename}`)
+                                .then(res => res.json())
+                                .then(mockData => {
+                                    // Debug: log structure for POST requests
+                                    if (file.filename.toLowerCase().includes('post')) {
+                                        console.log('[RequestFlow] POST file structure:', {
+                                            filename: file.filename,
+                                            hasData: !!mockData.data,
+                                            hasRequest: !!(mockData.data && mockData.data.request),
+                                            method: mockData.data?.request?.method,
+                                            url: mockData.data?.request?.url,
+                                            fullStructure: mockData
+                                        });
+                                    }
+
+                                    // Handle both structures: mockData.request (direct) and mockData.data.request (nested)
+                                    const request = mockData.data?.request || mockData.request;
+                                    const response = mockData.data?.response || mockData.response;
+                                    const timestamp = mockData.data?.timestamp || mockData.timestamp || file.modified;
+                                    const sessionId = mockData.data?.sessionId || mockData.sessionId || 'default';
+                                    const scenario = mockData.data?.scenario || mockData.scenario;
+
+                                    if (request) {
+                                        return {
+                                            filename: file.filename,
+                                            method: request.method || 'GET',
+                                            url: request.url,
+                                            timestamp: timestamp,
+                                            status: response?.status || 200,
+                                            sessionId: sessionId,
+                                            scenario: scenario,
+                                            source: file.filename,
+                                            duration: 'N/A'
+                                        };
+                                    }
+
+                                    // Debug: log files that don't have request
+                                    console.warn('[RequestFlow] File without request structure:', file.filename, mockData);
+                                    return null;
+                                })
+                                .catch(err => {
+                                    console.error('Error loading mock:', err);
+                                    return null;
+                                })
+                        );
+
+                        Promise.all(promises).then(results => {
+                            allRequests = results.filter(r => r !== null);
+
+                            allRequests.forEach(req => {
+                                if (!allSessions.has(req.sessionId)) {
+                                    allSessions.set(req.sessionId, []);
+                                }
+                                allSessions.get(req.sessionId).push(req);
+                            });
+
+                            filteredRequests = allRequests;
+                            updateSessionFilter();
+                            renderRequestFlow();
+                        });
+                    } else {
+                        document.getElementById('timeline-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                        document.getElementById('graph-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                        document.getElementById('list-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading request flow:', error);
+                });
+        }
+
+        function updateSessionFilter () {
+            const filter = document.getElementById('session-filter');
+            if (!filter) return;
+
+            filter.innerHTML = '<option value="all">All Sessions</option>';
+            allSessions.forEach((requests, sessionId) => {
+                const option = document.createElement('option');
+                option.value = sessionId;
+                option.textContent = `Session: ${sessionId.substring(0, 20)}... (${requests.length} requests)`;
+                filter.appendChild(option);
+            });
+        }
+
+        function filterBySession () {
+            const filterValue = document.getElementById('session-filter').value;
+            if (filterValue === 'all') {
+                filteredRequests = allRequests;
+            } else {
+                filteredRequests = allRequests.filter(req => req.sessionId === filterValue);
+            }
+            renderRequestFlow();
+        }
+
+        function switchFlowView (view) {
+            // Hide all views
+            document.querySelectorAll('.flow-view').forEach(v => v.classList.remove('active'));
+
+            // Show selected view
+            const viewElement = document.getElementById(`${view}-flow-view`);
+            if (viewElement) {
+                viewElement.classList.add('active');
+            }
+
+            // Update button states
+            document.querySelectorAll('.view-toggle button').forEach(btn => {
+                btn.classList.remove('active');
+                const btnText = btn.textContent.toLowerCase();
+                if ((view === 'timeline' && btnText.includes('timeline')) ||
+                    (view === 'graph' && btnText.includes('graph')) ||
+                    (view === 'list' && btnText.includes('list'))) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        function renderRequestFlow () {
+            if (!filteredRequests || filteredRequests.length === 0) {
+                document.getElementById('timeline-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                document.getElementById('graph-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                document.getElementById('list-content').innerHTML = '<div class="empty-state"><p>No request flow data available</p></div>';
+                return;
+            }
+
+            // Group by session
+            const sessionMap = new Map();
+            filteredRequests.forEach(req => {
+                if (!sessionMap.has(req.sessionId)) {
+                    sessionMap.set(req.sessionId, []);
+                }
+                sessionMap.get(req.sessionId).push(req);
+            });
+
+            // Render timeline
+            let timelineHtml = '';
+            let sessionIndex = 1;
+            sessionMap.forEach((requests, sessionId) => {
+                timelineHtml += `<div class="timeline-item" style="margin-bottom: 40px;">
+                    <div style="background: rgba(102, 126, 234, 0.2); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                        <h3 style="color: #8b9aff; margin: 0 0 10px 0;">Session #${sessionIndex}: ${sessionId}</h3>
+                        <div style="color: #a0a0a0; font-size: 0.9em;">${requests.length} request(s)</div>
+                    </div>
+                </div>`;
+
+                requests.forEach((req, idx) => {
+                    timelineHtml += `<div class="timeline-item">
+                        <div class="request-card">
+                            <div class="request-header">
+                                <span class="sequence-badge">#${idx + 1}</span>
+                                <span class="method-badge method-${req.method.toLowerCase()}">${req.method}</span>
+                                <span class="request-url">${escapeHtml(req.url)}</span>
+                            </div>
+                            <div class="request-meta">
+                                <span class="filename-info">📄 ${escapeHtml(req.filename)}</span>
+                                <span>🕐 ${new Date(req.timestamp).toLocaleString()}</span>
+                                <span>✅ ${req.status}</span>
+                                ${req.scenario ? `<span style="color: #f59e0b;">🎭 ${escapeHtml(req.scenario)}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>`;
+                });
+                sessionIndex++;
+            });
+            document.getElementById('timeline-content').innerHTML = timelineHtml;
+
+            // Render list
+            const listHtml = filteredRequests.map((req, idx) => `
+                <div class="list-item">
+                    <span class="sequence-badge">#${idx + 1}</span>
+                    <span class="method-badge method-${req.method.toLowerCase()}">${req.method}</span>
+                    <span class="request-url">${escapeHtml(req.url)}</span>
+                    <span class="source-file">${escapeHtml(req.filename)}</span>
+                    <span class="duration">${req.status}</span>
+                </div>
+            `).join('');
+            document.getElementById('list-content').innerHTML = listHtml;
+
+            // Render graph view
+            let graphHtml = '';
+            let graphSessionIndex = 1;
+
+            sessionMap.forEach((requests, sessionId) => {
+                // Session header
+                graphHtml += `
+                    <div class="graph-session">
+                        <div class="graph-session-header">
+                            <h3>Session #${graphSessionIndex}: ${sessionId.substring(0, 30)}${sessionId.length > 30 ? '...' : ''}</h3>
+                            <div class="session-info">
+                                ${requests.length} request(s) • 
+                                Started: ${formatDate(new Date(requests[0].timestamp))} • 
+                                Duration: ${calculateSessionDuration(requests)}
+                            </div>
+                        </div>
+                `;
+
+                // Build request map for easy lookup
+                const requestMap = new Map();
+                requests.forEach(req => {
+                    requestMap.set(req.filename, req);
+                });
+
+                // Group requests by parent-child relationships
+                const rootRequests = requests.filter(req => !req.parentRequestId || !requestMap.has(req.parentRequestId));
+                const childRequests = requests.filter(req => req.parentRequestId && requestMap.has(req.parentRequestId));
+
+                // Render requests in graph rows
+                graphHtml += '<div class="graph-row">';
+
+                // Render root requests first
+                rootRequests.forEach((item, index) => {
+                    if (index > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                    }
+                    graphHtml += renderGraphNode(item, index + 1);
+
+                    // Find and render children inline
+                    const children = childRequests.filter(child => child.parentRequestId === item.filename);
+                    if (children.length > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                        children.forEach((child, childIndex) => {
+                            if (childIndex > 0) {
+                                graphHtml += '<span class="graph-arrow">→</span>';
+                            }
+                            graphHtml += renderGraphNode(child, rootRequests.length + childIndex + 1);
+                        });
+                    }
+                });
+
+                // Render orphaned child requests (parent not in session)
+                const orphanedChildren = childRequests.filter(req => !requestMap.has(req.parentRequestId));
+                if (orphanedChildren.length > 0 && rootRequests.length > 0) {
+                    graphHtml += '<span class="graph-arrow">→</span>';
+                }
+                orphanedChildren.forEach((item, index) => {
+                    if (index > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                    }
+                    graphHtml += renderGraphNode(item, rootRequests.length + index + 1);
+                });
+
+                graphHtml += '</div>';
+                graphHtml += '</div>';
+                graphSessionIndex++;
+            });
+
+            document.getElementById('graph-content').innerHTML = graphHtml || '<div class="empty-state"><p>No request flow data available</p></div>';
+        }
+
+        function renderGraphNode (item, sequence) {
+            const methodClass = `method-${item.method.toLowerCase()}`;
+            return `
+                <div class="graph-node" data-sequence="#${sequence}" title="${escapeHtml(item.url)}">
+                    <div class="node-method">
+                        <span class="method-badge ${methodClass}">${item.method}</span>
+                    </div>
+                    <div class="node-url">${escapeHtml(item.url.length > 50 ? item.url.substring(0, 50) + '...' : item.url)}</div>
+                    <div class="node-meta">
+                        <div>📍 ${escapeHtml(item.filename)}</div>
+                        <div>⏱ ${item.duration || 'N/A'} • ✅ ${item.status}</div>
+                        ${item.parentRequestId ? `<div style="color: #667eea; margin-top: 5px;">🔗 Parent: ${escapeHtml(item.parentRequestId.substring(0, 20))}...</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function calculateSessionDuration (requests) {
+            if (requests.length === 0) return '0ms';
+            const start = new Date(requests[0].timestamp).getTime();
+            const end = new Date(requests[requests.length - 1].timestamp).getTime();
+            const duration = end - start;
+
+            if (duration < 1000) return `${duration}ms`;
+            return `${(duration / 1000).toFixed(2)}s`;
+        }
+
+        function formatDate (date) {
+            return new Date(date).toLocaleString();
+        }
+
+        function escapeHtml (text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load mock files on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            initNavigation();
+
+            // Check for hash in URL and navigate to that page
+            const hash = window.location.hash.substring(1);
+            if (hash) {
+                switchPage(hash);
+            } else {
+                switchPage('overview');
+            }
+
+            loadMockFiles();
+            loadStats();
+            loadDateConfig();
+            loadScenarioConfig();
+
+            // Track when user is editing date inputs
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+            const dateModeFixedBtn = document.getElementById('date-mode-fixed-btn');
+            const dateModeOffsetBtn = document.getElementById('date-mode-offset-btn');
+            const fixedDateSection = document.getElementById('fixed-date-section');
+            const offsetSection = document.getElementById('offset-section');
+
+            // Handle date mode switching
+            function updateDateModeUI (isFixedMode) {
+                // Update button styles
+                if (isFixedMode) {
+                    dateModeFixedBtn.style.background = 'rgba(25, 25, 40, 0.8)';
+                    dateModeFixedBtn.style.color = '#e0e0e0';
+                    dateModeFixedBtn.style.borderBottomColor = '#667eea';
+                    dateModeFixedBtn.style.fontWeight = '600';
+
+                    dateModeOffsetBtn.style.background = 'rgba(20, 20, 35, 0.6)';
+                    dateModeOffsetBtn.style.color = '#a0a0a0';
+                    dateModeOffsetBtn.style.borderBottomColor = 'transparent';
+                    dateModeOffsetBtn.style.fontWeight = '500';
+
+                    // Show/hide sections
+                    fixedDateSection.style.display = 'block';
+                    offsetSection.style.display = 'none';
+
+                    // Clear offset inputs
+                    offsetDaysInput.value = '';
+                    offsetHoursInput.value = '';
+                    offsetMinutesInput.value = '';
+                } else {
+                    dateModeFixedBtn.style.background = 'rgba(20, 20, 35, 0.6)';
+                    dateModeFixedBtn.style.color = '#a0a0a0';
+                    dateModeFixedBtn.style.borderBottomColor = 'transparent';
+                    dateModeFixedBtn.style.fontWeight = '500';
+
+                    dateModeOffsetBtn.style.background = 'rgba(25, 25, 40, 0.8)';
+                    dateModeOffsetBtn.style.color = '#e0e0e0';
+                    dateModeOffsetBtn.style.borderBottomColor = '#667eea';
+                    dateModeOffsetBtn.style.fontWeight = '600';
+
+                    // Show/hide sections
+                    fixedDateSection.style.display = 'none';
+                    offsetSection.style.display = 'block';
+
+                    // Clear fixed date input
+                    fixedDateInput.value = '';
+                }
+            }
+
+            // Make updateDateModeUI accessible globally
+            window.updateDateModeUI = updateDateModeUI;
+
+            dateModeFixedBtn.addEventListener('click', () => updateDateModeUI(true));
+            dateModeOffsetBtn.addEventListener('click', () => updateDateModeUI(false));
+            updateDateModeUI(true); // Initial state - fixed date mode
+
+            const dateInputs = [fixedDateInput, offsetDaysInput, offsetHoursInput, offsetMinutesInput];
+            dateInputs.forEach(input => {
+                if (input) {
+                    input.addEventListener('focus', () => {
+                        isUserEditingDate = true;
+                    });
+                    input.addEventListener('blur', () => {
+                        // Small delay to allow save button click to register
+                        setTimeout(() => {
+                            isUserEditingDate = false;
+                        }, 200);
+                    });
+                    input.addEventListener('input', () => {
+                        isUserEditingDate = true;
+                    });
+                }
+            });
+
+            // Load overview filters
+            loadOverviewFilters();
+
+            // Refresh every 5 seconds
+            setInterval(() => {
+                const scenarioFilter = document.getElementById('overview-scenario-filter');
+                const selectedScenario = scenarioFilter ? scenarioFilter.value : '';
+                loadMockFiles(selectedScenario || null);
+                loadStats();
+                loadDateConfig();
+                loadScenarioConfig();
+                loadOverviewFilters();
+            }, 5000);
+        });
+
+        async function loadMockFiles (scenario = null) {
+            try {
+                const url = scenario ? `/api/mocks?scenario=${encodeURIComponent(scenario)}` : '/api/mocks';
+                const response = await fetch(url);
+                const data = await response.json();
+                mockFiles = data.files || [];
+
+                // Extract sessions from mock files
+                await extractSessionsFromFiles();
+
+                renderMockFiles();
+            } catch (error) {
+                console.error('Error loading mock files:', error);
+                document.getElementById('mock-files-list').innerHTML =
+                    '<div class="error-message">Failed to load mock files: ' + error.message + '</div>';
+            }
+        }
+
+        async function loadOverviewFilters () {
+            // Load scenarios for the filter dropdown
+            try {
+                const response = await fetch('/api/scenario-config');
+                const data = await response.json();
+                const scenarioFilter = document.getElementById('overview-scenario-filter');
+                if (scenarioFilter) {
+                    scenarioFilter.innerHTML = '<option value="">All Scenarios</option>';
+                    if (data.scenarios && data.scenarios.length > 0) {
+                        data.scenarios.forEach(scenario => {
+                            const option = document.createElement('option');
+                            option.value = scenario;
+                            option.textContent = scenario;
+                            if (scenario === data.currentScenario) {
+                                option.selected = true;
+                            }
+                            scenarioFilter.appendChild(option);
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading scenarios:', error);
+            }
+        }
+
+        async function extractSessionsFromFiles () {
+            // Extract unique sessions from mock files (sessionId is now included in file metadata)
+            const sessions = new Set();
+            mockFiles.forEach(file => {
+                if (file.sessionId) {
+                    sessions.add(file.sessionId);
+                }
+            });
+
+            const sessionFilter = document.getElementById('overview-session-filter');
+            if (sessionFilter) {
+                const currentValue = sessionFilter.value;
+                sessionFilter.innerHTML = '<option value="">All Sessions</option>';
+                Array.from(sessions).sort().forEach(sessionId => {
+                    const option = document.createElement('option');
+                    option.value = sessionId;
+                    option.textContent = sessionId.length > 30 ? sessionId.substring(0, 30) + '...' : sessionId;
+                    if (sessionId === currentValue) {
+                        option.selected = true;
+                    }
+                    sessionFilter.appendChild(option);
+                });
+            }
+        }
+
+        async function filterMockFiles () {
+            const scenarioFilter = document.getElementById('overview-scenario-filter');
+            const sessionFilter = document.getElementById('overview-session-filter');
+            const selectedScenario = scenarioFilter ? scenarioFilter.value : '';
+
+            // If a scenario is selected, switch to it first
+            if (selectedScenario) {
+                try {
+                    const response = await fetch('/api/scenario-config/set', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ scenario: selectedScenario })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to switch scenario');
+                    }
+
+                    // Update scenario select in scenario management page if it exists
+                    const scenarioSelect = document.getElementById('scenario-select');
+                    if (scenarioSelect) {
+                        scenarioSelect.value = selectedScenario;
+                    }
+                } catch (error) {
+                    console.error('Error switching scenario:', error);
+                    alert('Failed to switch scenario: ' + error.message);
+                    return;
+                }
+            }
+
+            // Load files for the selected scenario
+            if (selectedScenario) {
+                await loadMockFiles(selectedScenario);
+            } else {
+                await loadMockFiles();
+            }
+
+            // Filter by session if needed
+            const selectedSession = sessionFilter ? sessionFilter.value : '';
+            if (selectedSession) {
+                filterBySessionInFiles(selectedSession);
+            } else {
+                renderMockFiles();
+            }
+        }
+
+        async function filterBySessionInFiles (sessionId) {
+            // Filter mockFiles by sessionId (sessionId is now included in file metadata)
+            const filteredFiles = mockFiles.filter(file => file.sessionId === sessionId);
+            mockFiles = filteredFiles;
+            renderMockFiles();
+        }
+
+        async function loadStats () {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                document.getElementById('stat-total').textContent = data.totalFiles || 0;
+                document.getElementById('stat-size').textContent = formatBytes(data.totalSize || 0);
+                document.getElementById('stat-endpoints').textContent = Object.keys(data.endpoints || {}).length;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        function renderMockFiles () {
+            const container = document.getElementById('mock-files-list');
+            const searchTerm = document.getElementById('search-box').value.toLowerCase();
+
+            if (mockFiles.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No mock files found</h3><p>Start recording API calls to see mock data here.</p></div>';
+                return;
+            }
+
+            const sessionFilter = document.getElementById('overview-session-filter');
+            const selectedSession = sessionFilter ? sessionFilter.value : '';
+
+            const filtered = mockFiles.filter(file => {
+                // Filter by session if selected
+                if (selectedSession && file.sessionId !== selectedSession) {
+                    return false;
+                }
+
+                // Filter by search term
+                if (!searchTerm) return true;
+                const search = searchTerm.toLowerCase();
+                return file.filename.toLowerCase().includes(search) ||
+                    (file.endpoint && file.endpoint.toLowerCase().includes(search)) ||
+                    file.filename.toLowerCase().includes(search);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No files match your search</h3></div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(file => `
+                <div class="mock-file-item ${selectedFile === file.filename ? 'selected' : ''}" 
+                     onclick="selectFile('${file.filename}')">
+                    <div class="mock-file-header">
+                        <div class="mock-file-name">${escapeHtml(file.filename)}</div>
+                        <div class="mock-file-meta">${formatBytes(file.size)} • ${formatDate(file.modified)}</div>
+                    </div>
+                    ${file.endpoint ? `<div class="mock-file-endpoint">${escapeHtml(file.endpoint)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function selectFile (filename) {
+            selectedFile = filename;
+            renderMockFiles();
+
+            try {
+                const response = await fetch(`/api/mocks/${filename}`);
+                const data = await response.json();
+
+                // Request is read-only - just display it
+                document.getElementById('request-editor').value = JSON.stringify(data.data.request, null, 2);
+
+                // Store full response object (needed for saving)
+                currentResponseObject = data.data.response || { status: 200, data: {}, headers: {} };
+
+                // Store only response.data for both editors (what we actually edit)
+                currentResponseData = currentResponseObject.data || {};
+
+                // Update JSON editor with response.data
+                document.getElementById('response-editor').value = JSON.stringify(currentResponseData, null, 2);
+
+                // Update field editor with only response.data (not status, headers, etc.)
+                renderFieldEditor(currentResponseData);
+
+                // Show editor card
+                const editorCard = document.getElementById('editor-card');
+                if (editorCard) {
+                    editorCard.style.display = 'block';
+                    editorCard.scrollIntoView({ behavior: 'smooth' });
+                }
+                document.getElementById('editor-message').innerHTML = '';
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Failed to load file: ' + error.message + '</div>';
+            }
+        }
+
+
+        function switchEditor (mode) {
+            editorMode = mode;
+
+            if (mode === 'field') {
+                document.getElementById('field-toggle').classList.add('active');
+                document.getElementById('json-toggle').classList.remove('active');
+                document.getElementById('field-editor').classList.add('active');
+                document.getElementById('json-editor-container').classList.remove('active');
+                document.getElementById('format-btn').style.display = 'none';
+
+                // Sync JSON editor (response.data) to field editor (show only response.data)
+                try {
+                    const jsonData = JSON.parse(document.getElementById('response-editor').value);
+                    currentResponseData = jsonData;
+                    // Update the data field of the response object for saving
+                    if (!currentResponseObject) {
+                        currentResponseObject = { status: 200, data: {}, headers: {} };
+                    }
+                    currentResponseObject.data = jsonData;
+                    // Render only response.data in field editor
+                    renderFieldEditor(currentResponseData);
+                } catch (e) {
+                    // Invalid JSON, keep current field editor
+                    if (currentResponseData) {
+                        renderFieldEditor(currentResponseData);
+                    }
+                }
+            } else {
+                document.getElementById('json-toggle').classList.add('active');
+                document.getElementById('field-toggle').classList.remove('active');
+                document.getElementById('field-editor').classList.remove('active');
+                document.getElementById('json-editor-container').classList.add('active');
+                document.getElementById('format-btn').style.display = 'inline-block';
+
+                // Sync field editor (response.data) to JSON editor
+                try {
+                    const fieldData = collectFieldEditorData();
+                    // Extract only the 'response' field from the collected data
+                    const responseField = fieldData.response !== undefined ? fieldData.response : fieldData;
+                    currentResponseData = responseField;
+                    // Update the data field of the response object for saving
+                    if (!currentResponseObject) {
+                        currentResponseObject = { status: 200, data: {}, headers: {} };
+                    }
+                    currentResponseObject.data = responseField;
+                    // Update JSON editor with only the response field
+                    document.getElementById('response-editor').value = JSON.stringify(responseField, null, 2);
+                } catch (e) {
+                    console.error('Error syncing field editor:', e);
+                }
+            }
+        }
+
+        function renderFieldEditor (data, parentKey = '', level = 0) {
+            const container = document.getElementById('field-editor-content');
+
+            if (!data || typeof data !== 'object') {
+                container.innerHTML = '<div class="empty-state"><p>No data to edit</p></div>';
+                return;
+            }
+
+            // At top level (level 0), only show the 'response' field and its subfields
+            if (level === 0 && !Array.isArray(data) && data.response !== undefined) {
+                // Only render the 'response' field, using 'response' as the parent key
+                const responseData = data.response;
+                if (Array.isArray(responseData)) {
+                    container.innerHTML = renderArrayFields(responseData, 'response', level);
+                } else if (responseData && typeof responseData === 'object') {
+                    // Render the response object fields directly, but with 'response' as parent key
+                    container.innerHTML = renderObjectFields(responseData, 'response', level);
+                } else {
+                    // Primitive value - wrap in object with 'response' key
+                    container.innerHTML = renderObjectFields({ response: responseData }, parentKey, level);
+                }
+                return;
+            }
+
+            if (Array.isArray(data)) {
+                container.innerHTML = renderArrayFields(data, parentKey, level);
+            } else {
+                container.innerHTML = renderObjectFields(data, parentKey, level);
+            }
+        }
+
+        function renderObjectFields (obj, parentKey = '', level = 0) {
+            let html = '';
+            const isNested = level > 0;
+            const shouldCollapse = level > 0; // Collapse nested groups by default
+
+            for (const [key, value] of Object.entries(obj)) {
+                const fieldId = parentKey ? `${parentKey}.${key}` : key;
+                const valueType = getValueType(value);
+                const isComplex = valueType === 'object' || valueType === 'array';
+                const groupId = `group-${fieldId.replace(/[\.\[\]]/g, '-')}`;
+
+                html += `<div class="field-group ${isNested ? 'nested' : ''}">`;
+                html += `<div class="field-label" style="cursor: ${isComplex ? 'pointer' : 'default'};" ${isComplex ? `onclick="toggleGroup('${groupId}')"` : ''}>`;
+                if (isComplex) {
+                    html += `<span class="collapse-icon ${shouldCollapse ? 'collapsed' : ''}" onclick="event.stopPropagation(); toggleGroup('${groupId}')">▼</span>`;
+                } else {
+                    html += `<span class="collapse-icon" style="opacity: 0; cursor: default;">▼</span>`;
+                }
+                html += `<span class="field-key">${escapeHtml(key)}</span>`;
+                html += `<span class="field-type">${valueType}</span>`;
+                html += `</div>`;
+
+                if (isComplex) {
+                    html += `<div class="field-group-content ${shouldCollapse ? 'collapsed' : ''}" id="${groupId}">`;
+                }
+
+                if (valueType === 'object') {
+                    html += renderObjectFields(value, fieldId, level + 1);
+                } else if (valueType === 'array') {
+                    html += renderArrayFields(value, fieldId, level + 1);
+                } else {
+                    html += renderInputField(fieldId, value, valueType);
+                }
+
+                if (isComplex) {
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            }
+
+            return html;
+        }
+
+        function renderArrayFields (arr, parentKey = '', level = 0) {
+            let html = `<div class="array-container">`;
+            const shouldCollapse = level > 0; // Collapse nested arrays by default
+
+            arr.forEach((item, index) => {
+                const fieldId = `${parentKey}[${index}]`;
+                const valueType = getValueType(item);
+                const isComplex = valueType === 'object' || valueType === 'array';
+                const itemId = `array-item-${fieldId.replace(/[\.\[\]]/g, '-')}`;
+
+                html += `<div class="array-item">`;
+                html += `<div class="field-label" style="cursor: ${isComplex ? 'pointer' : 'default'};" ${isComplex ? `onclick="toggleGroup('${itemId}')"` : ''}>`;
+                if (isComplex) {
+                    html += `<span class="collapse-icon ${shouldCollapse ? 'collapsed' : ''}" onclick="event.stopPropagation(); toggleGroup('${itemId}')">▼</span>`;
+                } else {
+                    html += `<span class="collapse-icon" style="opacity: 0; cursor: default;">▼</span>`;
+                }
+                html += `<span>Item ${index + 1}</span>`;
+                html += `<span class="field-type">${valueType}</span>`;
+                html += `<button class="btn btn-small remove-btn" onclick="event.stopPropagation(); removeArrayItem('${parentKey}', ${index})">Remove</button>`;
+                html += `</div>`;
+
+                if (isComplex) {
+                    html += `<div class="field-group-content ${shouldCollapse ? 'collapsed' : ''}" id="${itemId}">`;
+                }
+
+                if (valueType === 'object') {
+                    html += renderObjectFields(item, fieldId, level + 1);
+                } else if (valueType === 'array') {
+                    html += renderArrayFields(item, fieldId, level + 1);
+                } else {
+                    html += renderInputField(fieldId, item, valueType);
+                }
+
+                if (isComplex) {
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            });
+
+            html += `<button class="btn btn-small add-field-btn" onclick="addArrayItem('${parentKey}')">+ Add Item</button>`;
+            html += `</div>`;
+
+            return html;
+        }
+
+        function toggleGroup (groupId) {
+            const content = document.getElementById(groupId);
+            if (!content) return;
+
+            const isCollapsed = content.classList.contains('collapsed');
+            const group = content.closest('.field-group, .array-item');
+            const icon = group?.querySelector('.collapse-icon');
+
+            if (isCollapsed) {
+                content.classList.remove('collapsed');
+                if (icon) icon.classList.remove('collapsed');
+            } else {
+                content.classList.add('collapsed');
+                if (icon) icon.classList.add('collapsed');
+            }
+        }
+
+        function expandAllGroups () {
+            document.querySelectorAll('.field-group-content.collapsed').forEach(content => {
+                content.classList.remove('collapsed');
+                const group = content.closest('.field-group, .array-item');
+                const icon = group?.querySelector('.collapse-icon');
+                if (icon) icon.classList.remove('collapsed');
+            });
+        }
+
+        function collapseAllGroups () {
+            document.querySelectorAll('.field-group-content:not(.collapsed)').forEach(content => {
+                content.classList.add('collapsed');
+                const group = content.closest('.field-group, .array-item');
+                const icon = group?.querySelector('.collapse-icon');
+                if (icon) icon.classList.add('collapsed');
+            });
+        }
+
+        function renderInputHandler (event) {
+            // Only toggle if clicking on the label, not on inputs
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'BUTTON') {
+                return;
+            }
+            const group = event.currentTarget;
+            const content = group.querySelector('.field-group-content');
+            if (content) {
+                toggleGroup(content.id);
+            }
+        }
+
+        function renderInputField (fieldId, value, type) {
+            let input = '';
+
+            if (type === 'boolean') {
+                input = `<input type="checkbox" id="${fieldId}" ${value ? 'checked' : ''} onchange="updateFieldValue('${fieldId}', this.checked)" onclick="event.stopPropagation()">`;
+            } else if (type === 'number') {
+                input = `<input type="number" class="field-input" id="${fieldId}" value="${value}" onchange="updateFieldValue('${fieldId}', parseFloat(this.value) || 0)" onclick="event.stopPropagation()">`;
+            } else if (type === 'string' && (value.length > 100 || value.includes('\n'))) {
+                input = `<textarea class="field-input" id="${fieldId}" rows="4" onchange="updateFieldValue('${fieldId}', this.value)" onclick="event.stopPropagation()">${escapeHtml(value)}</textarea>`;
+            } else {
+                input = `<input type="text" class="field-input" id="${fieldId}" value="${escapeHtml(String(value))}" onchange="updateFieldValue('${fieldId}', this.value)" onclick="event.stopPropagation()">`;
+            }
+
+            return input;
+        }
+
+        function getValueType (value) {
+            if (value === null) return 'null';
+            if (Array.isArray(value)) return 'array';
+            return typeof value;
+        }
+
+        function updateFieldValue (fieldId, newValue) {
+            const keys = fieldId.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            // Navigate to parent
+            for (let i = 0; i < keys.length - 1; i++) {
+                const key = keys[i];
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            // Update value
+            const lastKey = keys[keys.length - 1];
+            if (Array.isArray(current)) {
+                current[parseInt(lastKey)] = newValue;
+            } else {
+                current[lastKey] = newValue;
+            }
+
+            // Sync to JSON editor if in JSON mode
+            if (editorMode === 'json') {
+                document.getElementById('response-editor').value = JSON.stringify(currentResponseData, null, 2);
+            }
+        }
+
+        function collectFieldEditorData () {
+            // Collect all field values from the form
+            const inputs = document.querySelectorAll('#field-editor-content input, #field-editor-content textarea');
+            // Use currentResponseData (only response.data) for field editor
+            const data = JSON.parse(JSON.stringify(currentResponseData || {})); // Deep clone
+
+            inputs.forEach(input => {
+                const fieldId = input.id;
+                if (!fieldId) return;
+
+                const keys = fieldId.split(/[\.\[\]]/).filter(k => k !== '');
+                let current = data;
+
+                // Navigate to parent
+                for (let i = 0; i < keys.length - 1; i++) {
+                    const key = keys[i];
+                    if (Array.isArray(current)) {
+                        current = current[parseInt(key)];
+                    } else {
+                        current = current[key];
+                    }
+                }
+
+                // Set value
+                const lastKey = keys[keys.length - 1];
+                let value = input.type === 'checkbox' ? input.checked : input.value;
+
+                // Type conversion
+                if (input.type === 'number') {
+                    value = parseFloat(value) || 0;
+                }
+
+                if (Array.isArray(current)) {
+                    current[parseInt(lastKey)] = value;
+                } else {
+                    current[lastKey] = value;
+                }
+            });
+
+            // Only return the 'response' field if it exists, otherwise return the whole data
+            if (data.response !== undefined) {
+                return { response: data.response };
+            }
+            return data;
+        }
+
+        function removeArrayItem (parentKey, index) {
+            const keys = parentKey.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            for (const key of keys) {
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            if (Array.isArray(current)) {
+                current.splice(index, 1);
+                renderFieldEditor(currentResponseData);
+            }
+        }
+
+        function addArrayItem (parentKey) {
+            const keys = parentKey.split(/[\.\[\]]/).filter(k => k !== '');
+            // Use currentResponseData for field editor (only response.data)
+            let current = currentResponseData;
+
+            for (const key of keys) {
+                if (Array.isArray(current)) {
+                    current = current[parseInt(key)];
+                } else {
+                    current = current[key];
+                }
+            }
+
+            if (Array.isArray(current)) {
+                // Determine type from existing items or default to empty object
+                const newItem = current.length > 0 ?
+                    (typeof current[0] === 'object' ? {} : '') :
+                    {};
+                current.push(newItem);
+                renderFieldEditor(currentResponseData);
+            }
+        }
+
+        async function saveMock () {
+            if (!selectedFile) return;
+
+            let responseData;
+
+            try {
+                if (editorMode === 'field') {
+                    // Collect field editor data, then extract only the 'response' field
+                    const fieldData = collectFieldEditorData();
+                    responseData = fieldData.response !== undefined ? fieldData.response : fieldData;
+                } else {
+                    // Parse from JSON editor - should only contain response.data
+                    const responseEditor = document.getElementById('response-editor');
+                    const parsed = JSON.parse(responseEditor.value);
+
+                    // Safeguard: if someone manually edited JSON to include full response object,
+                    // extract only the data field
+                    if (parsed && typeof parsed === 'object' && 'data' in parsed && ('status' in parsed || 'headers' in parsed)) {
+                        // This looks like a full response object, extract only data
+                        responseData = parsed.data || {};
+                    } else {
+                        // Normal case: JSON editor contains only response.data
+                        responseData = parsed;
+                    }
+                }
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Invalid JSON: ' + error.message + '</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/mocks/${selectedFile}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ responseData })
+                });
+
+                if (response.ok) {
+                    document.getElementById('editor-message').innerHTML =
+                        '<div class="success-message">✓ Mock file saved successfully!</div>';
+                    loadMockFiles();
+                    setTimeout(() => {
+                        document.getElementById('editor-message').innerHTML = '';
+                    }, 3000);
+                } else {
+                    const error = await response.json();
+                    document.getElementById('editor-message').innerHTML =
+                        '<div class="error-message">Failed to save: ' + (error.details || error.error) + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('editor-message').innerHTML =
+                    '<div class="error-message">Error saving file: ' + error.message + '</div>';
+            }
+        }
+
+        async function deleteMock () {
+            if (!selectedFile) return;
+            if (!confirm(`Are you sure you want to delete ${selectedFile}?`)) return;
+
+            try {
+                const response = await fetch(`/api/mocks/${selectedFile}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    document.getElementById('editor-card').style.display = 'none';
+                    selectedFile = null;
+                    loadMockFiles();
+                    loadStats();
+                } else {
+                    const error = await response.json();
+                    alert('Failed to delete: ' + (error.details || error.error));
+                }
+            } catch (error) {
+                alert('Error deleting file: ' + error.message);
+            }
+        }
+
+        function formatJSON (editorId) {
+            const editor = document.getElementById(editorId);
+            try {
+                const parsed = JSON.parse(editor.value);
+                editor.value = JSON.stringify(parsed, null, 2);
+            } catch (error) {
+                alert('Invalid JSON: ' + error.message);
+            }
+        }
+
+        function filterFiles () {
+            renderMockFiles();
+        }
+
+        function formatBytes (bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatDate (date) {
+            return new Date(date).toLocaleString();
+        }
+
+        function escapeHtml (text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Date Config Functions
+        let dateConfigLastLoaded = null; // Track last loaded config to detect changes
+        let isUserEditingDate = false; // Track if user is currently editing
+        let updateDateModeUI = null; // Will be set in DOMContentLoaded
+
+        async function loadDateConfig (forceUpdate = false) {
+            try {
+                const response = await fetch('/api/date-config');
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Date config API error:', response.status, errorText);
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText.substring(0, 200)}`);
+                }
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Date config API returned non-JSON:', contentType, text.substring(0, 200));
+                    throw new Error(`Expected JSON but got ${contentType}`);
+                }
+                const data = await response.json();
+
+                const fixedDateInput = document.getElementById('fixed-date-input');
+                const offsetDaysInput = document.getElementById('offset-days');
+                const offsetHoursInput = document.getElementById('offset-hours');
+                const offsetMinutesInput = document.getElementById('offset-minutes');
+                const currentDateDisplay = document.getElementById('current-date-display');
+
+                // Check if config has changed (only update inputs if config changed or forced)
+                const configChanged = JSON.stringify(data.dateManipulation) !== JSON.stringify(dateConfigLastLoaded);
+
+                // Only update inputs if config changed, forced, or user is not editing
+                if (forceUpdate || (configChanged && !isUserEditingDate)) {
+                    const dateModeFixedBtn = document.getElementById('date-mode-fixed-btn');
+
+                    if (data.dateManipulation) {
+                        if (data.dateManipulation.fixedDate) {
+                            // Set fixed date mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(true);
+
+                            // Convert ISO string (UTC) to datetime-local format (local timezone)
+                            const date = new Date(data.dateManipulation.fixedDate);
+                            // Format as YYYY-MM-DDTHH:mm for datetime-local input
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+                            fixedDateInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+                        } else if (data.dateManipulation.offset !== undefined) {
+                            // Set offset mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(false);
+
+                            // Convert milliseconds to days, hours, minutes
+                            const totalMs = Math.abs(data.dateManipulation.offset);
+                            const totalMinutes = Math.floor(totalMs / (1000 * 60));
+                            const days = Math.floor(totalMinutes / (60 * 24));
+                            const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+                            const minutes = totalMinutes % 60;
+
+                            // Set direction based on sign
+                            const directionSelect = document.getElementById('offset-direction');
+                            if (directionSelect) {
+                                directionSelect.value = data.dateManipulation.offset >= 0 ? 'future' : 'past';
+                            }
+
+                            offsetDaysInput.value = days || '';
+                            offsetHoursInput.value = hours || '';
+                            offsetMinutesInput.value = minutes || '';
+                        } else {
+                            // No config - default to fixed date mode
+                            if (window.updateDateModeUI) window.updateDateModeUI(true);
+                            fixedDateInput.value = '';
+                        }
+                    } else {
+                        // No config - default to fixed date mode
+                        if (window.updateDateModeUI) window.updateDateModeUI(true);
+                        fixedDateInput.value = '';
+                    }
+
+                    // Update last loaded config
+                    dateConfigLastLoaded = data.dateManipulation;
+                }
+
+                // Always update the current date display
+                if (currentDateDisplay) {
+                    currentDateDisplay.textContent = data.currentDate || new Date().toISOString();
+                }
+            } catch (error) {
+                console.error('Error loading date config:', error);
+                const currentDateDisplay = document.getElementById('current-date-display');
+                if (currentDateDisplay) {
+                    currentDateDisplay.textContent = 'Error: ' + (error.message || 'Failed to load date config');
+                    currentDateDisplay.style.color = '#f44336';
+                }
+            }
+        }
+
+        async function saveDateConfig () {
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+            const fixedDateSection = document.getElementById('fixed-date-section');
+
+            // Determine which mode is selected (check which section is visible)
+            const isFixedMode = fixedDateSection && fixedDateSection.style.display !== 'none';
+
+            let fixedDate = null;
+            let offset = null;
+
+            if (isFixedMode) {
+                // Fixed date mode - only save fixed date
+                fixedDate = fixedDateInput.value;
+                if (fixedDate) {
+                    // Convert datetime-local to ISO string
+                    const localDate = new Date(fixedDate);
+                    if (isNaN(localDate.getTime())) {
+                        showDateMessage('Invalid date format', 'error');
+                        return;
+                    }
+                    // Convert to ISO string (UTC)
+                    fixedDate = localDate.toISOString();
+                }
+            } else {
+                // Offset mode - only save offset
+                const days = parseInt(offsetDaysInput.value, 10) || 0;
+                const hours = parseInt(offsetHoursInput.value, 10) || 0;
+                const minutes = parseInt(offsetMinutesInput.value, 10) || 0;
+                const direction = offsetDirectionSelect.value || 'future';
+
+                // Calculate offset in milliseconds from days, hours, minutes
+                if (days !== 0 || hours !== 0 || minutes !== 0) {
+                    const totalMs = (days * 24 * 60 * 60 * 1000) +
+                        (hours * 60 * 60 * 1000) +
+                        (minutes * 60 * 1000);
+                    // Apply direction (negative for past, positive for future)
+                    offset = direction === 'past' ? -totalMs : totalMs;
+                }
+            }
+
+            // Build request body
+            const requestBody = {
+                fixedDate: fixedDate || null,
+                offset: offset !== null ? offset : null
+            };
+
+            try {
+                const response = await fetch('/api/date-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${errorText.substring(0, 100)}`);
+                }
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showDateMessage('Date config saved successfully!', 'success');
+                    isUserEditingDate = false; // User finished editing
+                    // Reload the config to refresh all inputs with saved values (force update)
+                    await loadDateConfig(true);
+                } else {
+                    showDateMessage('Failed to save: ' + (data.details || data.error), 'error');
+                }
+            } catch (error) {
+                showDateMessage('Error saving date config: ' + error.message, 'error');
+            }
+        }
+
+        async function clearDateConfig () {
+            const fixedDateInput = document.getElementById('fixed-date-input');
+            const offsetDaysInput = document.getElementById('offset-days');
+            const offsetHoursInput = document.getElementById('offset-hours');
+            const offsetMinutesInput = document.getElementById('offset-minutes');
+            const offsetDirectionSelect = document.getElementById('offset-direction');
+
+            // Reset to fixed date mode
+            if (window.updateDateModeUI) window.updateDateModeUI(true);
+
+            fixedDateInput.value = '';
+            offsetDaysInput.value = '';
+            offsetHoursInput.value = '';
+            offsetMinutesInput.value = '';
+
+            if (offsetDirectionSelect) {
+                offsetDirectionSelect.value = 'future';
+            }
+
+            try {
+                const response = await fetch('/api/date-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fixedDate: null,
+                        offset: null,
+                        timezone: null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showDateMessage('Date config cleared!', 'success');
+                    if (data.currentDate) {
+                        document.getElementById('current-date-display').textContent = data.currentDate;
+                    }
+                } else {
+                    showDateMessage('Failed to clear: ' + (data.details || data.error), 'error');
+                }
+            } catch (error) {
+                showDateMessage('Error clearing date config: ' + error.message, 'error');
+            }
+        }
+
+        // Scenario Config Functions
+        function showScenarioMessage (message, type) {
+            const messageDiv = document.getElementById('scenario-config-message');
+            if (messageDiv) {
+                messageDiv.textContent = message;
+                messageDiv.style.color = type === 'error' ? '#f44336' : '#4caf50';
+                messageDiv.style.display = 'block';
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        async function loadScenarioConfig () {
+            try {
+                const response = await fetch('/api/scenario-config');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const scenarioSelect = document.getElementById('scenario-select');
+                if (scenarioSelect && data.scenarios) {
+                    scenarioSelect.innerHTML = '';
+                    data.scenarios.forEach(scenario => {
+                        const option = document.createElement('option');
+                        option.value = scenario;
+                        option.textContent = scenario;
+                        if (scenario === data.currentScenario) {
+                            option.selected = true;
+                        }
+                        scenarioSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading scenario config:', error);
+                showScenarioMessage('Error loading scenario config: ' + error.message, 'error');
+            }
+        }
+
+        async function switchScenario () {
+            const scenarioSelect = document.getElementById('scenario-select');
+            if (!scenarioSelect) return;
+
+            const selectedScenario = scenarioSelect.value;
+            if (!selectedScenario) {
+                showScenarioMessage('Please select a scenario', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/scenario-config/set', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ scenario: selectedScenario })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                showScenarioMessage(`Switched to scenario: ${data.currentScenario}`, 'success');
+
+                // Reload mock files and stats to reflect new scenario
+                await loadMockFiles();
+                await loadStats();
+
+                // Always reload scenario files if on scenario management page
+                const scenarioManagementPage = document.getElementById('scenario-management-page');
+                if (scenarioManagementPage && scenarioManagementPage.classList.contains('active')) {
+                    await loadScenarioFiles(data.currentScenario);
+                }
+
+                // Also update overview filters if on overview page
+                const overviewPage = document.getElementById('overview-page');
+                if (overviewPage && overviewPage.classList.contains('active')) {
+                    await loadOverviewFilters();
+                    const overviewScenarioFilter = document.getElementById('overview-scenario-filter');
+                    if (overviewScenarioFilter) {
+                        overviewScenarioFilter.value = data.currentScenario;
+                    }
+                    // Reload files with new scenario
+                    await loadMockFiles(data.currentScenario);
+                }
+            } catch (error) {
+                showScenarioMessage('Error switching scenario: ' + error.message, 'error');
+            }
+        }
+
+        async function createScenario () {
+            const newScenarioInput = document.getElementById('new-scenario-input');
+            if (!newScenarioInput) return;
+
+            const scenarioName = newScenarioInput.value.trim();
+            if (!scenarioName) {
+                showScenarioMessage('Please enter a scenario name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/scenario-config/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ scenario: scenarioName })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                showScenarioMessage(`Scenario "${data.scenarios[data.scenarios.length - 1]}" created successfully!`, 'success');
+
+                // Clear input and reload scenario list
+                newScenarioInput.value = '';
+                await loadScenarioConfig();
+            } catch (error) {
+                showScenarioMessage('Error creating scenario: ' + error.message, 'error');
+            }
+        }
+
+        function showDateMessage (message, type) {
+            const messageDiv = document.getElementById('date-config-message');
+            messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
+            messageDiv.textContent = message;
+            messageDiv.style.display = 'block';
+
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Scenario Config Functions
+        function showScenarioMessage (message, type) {
+            const messageDiv = document.getElementById('scenario-config-message');
+            if (messageDiv) {
+                messageDiv.textContent = message;
+                messageDiv.style.color = type === 'error' ? '#f44336' : '#4caf50';
+                messageDiv.style.display = 'block';
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        async function loadScenarioConfig () {
+            try {
+                const response = await fetch('/api/scenario-config');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                const scenarioSelect = document.getElementById('scenario-select');
+                if (scenarioSelect && data.scenarios) {
+                    scenarioSelect.innerHTML = '';
+                    data.scenarios.forEach(scenario => {
+                        const option = document.createElement('option');
+                        option.value = scenario;
+                        option.textContent = scenario;
+                        if (scenario === data.currentScenario) {
+                            option.selected = true;
+                        }
+                        scenarioSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading scenario config:', error);
+                showScenarioMessage('Error loading scenario config: ' + error.message, 'error');
+            }
+        }
+
+        async function switchScenario () {
+            const scenarioSelect = document.getElementById('scenario-select');
+            if (!scenarioSelect) return;
+
+            const selectedScenario = scenarioSelect.value;
+            if (!selectedScenario) {
+                showScenarioMessage('Please select a scenario', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/scenario-config/set', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ scenario: selectedScenario })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                showScenarioMessage(`Switched to scenario: ${data.currentScenario}`, 'success');
+
+                // Reload mock files and stats to reflect new scenario
+                await loadMockFiles();
+                await loadStats();
+
+                // Always reload scenario files if on scenario management page
+                const scenarioManagementPage = document.getElementById('scenario-management-page');
+                if (scenarioManagementPage && scenarioManagementPage.classList.contains('active')) {
+                    await loadScenarioFiles(data.currentScenario);
+                }
+
+                // Also update overview filters if on overview page
+                const overviewPage = document.getElementById('overview-page');
+                if (overviewPage && overviewPage.classList.contains('active')) {
+                    await loadOverviewFilters();
+                    const overviewScenarioFilter = document.getElementById('overview-scenario-filter');
+                    if (overviewScenarioFilter) {
+                        overviewScenarioFilter.value = data.currentScenario;
+                    }
+                    // Reload files with new scenario
+                    await loadMockFiles(data.currentScenario);
+                }
+            } catch (error) {
+                showScenarioMessage('Error switching scenario: ' + error.message, 'error');
+            }
+        }
+
+        async function createScenario () {
+            const newScenarioInput = document.getElementById('new-scenario-input');
+            if (!newScenarioInput) return;
+
+            const scenarioName = newScenarioInput.value.trim();
+            if (!scenarioName) {
+                showScenarioMessage('Please enter a scenario name', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/scenario-config/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ scenario: scenarioName })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                showScenarioMessage(`Scenario "${data.scenarios[data.scenarios.length - 1]}" created successfully!`, 'success');
+
+                // Clear input and reload scenario list
+                newScenarioInput.value = '';
+                await loadScenarioConfig();
+            } catch (error) {
+                showScenarioMessage('Error creating scenario: ' + error.message, 'error');
+            }
+        }
+
+        // Network Inspector Functions
+        let networkLogs = [];
+        let filteredNetworkLogs = [];
+
+        async function loadNetworkLogs () {
+            try {
+                const response = await fetch('/api/mocks');
+                const data = await response.json();
+                const files = data.files || [];
+
+                // Load scenario filter options
+                await loadNetworkScenarioFilter();
+
+                // Load details for each file
+                networkLogs = [];
+                const promises = files.map(file =>
+                    fetch(`/api/mocks/${file.filename}`)
+                        .then(res => res.json())
+                        .then(mockData => {
+                            // Handle both structures: mockData.request (direct) and mockData.data.request (nested)
+                            const request = mockData.data?.request || mockData.request;
+                            const response = mockData.data?.response || mockData.response || {};
+                            const timestamp = mockData.data?.timestamp || mockData.timestamp || file.modified;
+                            const sessionId = mockData.data?.sessionId || mockData.sessionId;
+                            const scenario = mockData.data?.scenario || mockData.scenario || 'default';
+                            const duration = mockData.data?.duration || mockData.data?.responseTime || mockData.duration || 'N/A';
+
+                            // Debug: log POST requests to see structure
+                            if (file.filename.toLowerCase().includes('post') || request?.method === 'POST') {
+                                console.log('[NetworkInspector] POST file structure:', {
+                                    filename: file.filename,
+                                    hasData: !!mockData.data,
+                                    hasRequest: !!request,
+                                    method: request?.method,
+                                    url: request?.url,
+                                    fullStructure: mockData
+                                });
+                            }
+
+                            if (request) {
+                                // Calculate response size
+                                let size = 'N/A';
+                                if (response.data) {
+                                    const sizeBytes = JSON.stringify(response.data).length;
+                                    size = formatBytes(sizeBytes);
+                                }
+
+                                const logEntry = {
+                                    filename: file.filename,
+                                    method: request.method || 'GET',
+                                    url: request.url || '',
+                                    status: response.status || 200,
+                                    duration: duration,
+                                    timestamp: timestamp,
+                                    size: size,
+                                    scenario: scenario,
+                                    sessionId: sessionId,
+                                    request: request,
+                                    response: response,
+                                    headers: request.headers || {},
+                                    queryParams: request.queryParams || {}
+                                };
+
+                                // Debug: log first entry to see structure
+                                if (networkLogs.length === 0) {
+                                    console.log('[NetworkInspector] First network log entry:', logEntry);
+                                }
+
+                                return logEntry;
+                            }
+
+                            // Debug: log files that don't have request
+                            console.warn('[NetworkInspector] File without request structure:', file.filename, mockData);
+                            return null;
+                        })
+                        .catch(err => {
+                            console.error('Error loading mock:', err);
+                            return null;
+                        })
+                );
+
+                const results = await Promise.all(promises);
+                networkLogs = results.filter(log => log !== null);
+
+                // Sort by timestamp (newest first)
+                networkLogs.sort((a, b) => {
+                    const timeA = new Date(a.timestamp).getTime();
+                    const timeB = new Date(b.timestamp).getTime();
+                    return timeB - timeA;
+                });
+
+                filteredNetworkLogs = [...networkLogs];
+                renderNetworkLogs();
+            } catch (error) {
+                console.error('Error loading network logs:', error);
+                const tbody = document.getElementById('network-logs-body');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #f44336;">Failed to load network logs: ' + error.message + '</td></tr>';
+                }
+            }
+        }
+
+        async function loadNetworkScenarioFilter () {
+            try {
+                const response = await fetch('/api/scenario-config');
+                const data = await response.json();
+                const scenarioFilter = document.getElementById('network-scenario-filter');
+                if (scenarioFilter) {
+                    const currentValue = scenarioFilter.value;
+                    scenarioFilter.innerHTML = '<option value="">All Scenarios</option>';
+                    if (data.scenarios && data.scenarios.length > 0) {
+                        data.scenarios.forEach(scenario => {
+                            const option = document.createElement('option');
+                            option.value = scenario;
+                            option.textContent = scenario;
+                            if (scenario === data.currentScenario) {
+                                option.selected = true;
+                            }
+                            scenarioFilter.appendChild(option);
+                        });
+                    }
+                    if (currentValue) {
+                        scenarioFilter.value = currentValue;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading scenarios:', error);
+            }
+        }
+
+        function filterNetworkLogs () {
+            const searchQuery = (document.getElementById('network-search')?.value || '').toLowerCase();
+            const methodFilter = document.getElementById('network-method-filter')?.value || '';
+            const statusFilter = document.getElementById('network-status-filter')?.value || '';
+            const scenarioFilter = document.getElementById('network-scenario-filter')?.value || '';
+
+            filteredNetworkLogs = networkLogs.filter(log => {
+                // Search filter
+                if (searchQuery) {
+                    const matchesSearch =
+                        log.url.toLowerCase().includes(searchQuery) ||
+                        log.method.toLowerCase().includes(searchQuery) ||
+                        String(log.status).includes(searchQuery);
+                    if (!matchesSearch) return false;
+                }
+
+                // Method filter
+                if (methodFilter && log.method !== methodFilter) {
+                    return false;
+                }
+
+                // Status filter
+                if (statusFilter && String(log.status) !== statusFilter) {
+                    return false;
+                }
+
+                // Scenario filter
+                if (scenarioFilter && log.scenario !== scenarioFilter) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            renderNetworkLogs();
+        }
+
+        function renderNetworkLogs () {
+            const tbody = document.getElementById('network-logs-body');
+            if (!tbody) return;
+
+            if (filteredNetworkLogs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #a0a0a0;">No network logs found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filteredNetworkLogs.map((log, index) => {
+                const statusClass = getStatusClass(log.status);
+                const methodClass = `network-method-${log.method.toLowerCase()}`;
+                const durationDisplay = typeof log.duration === 'number' ? `${log.duration}ms` : log.duration;
+                const timeDisplay = formatDate(new Date(log.timestamp));
+                // Use index as ID to avoid special character issues
+                const logId = `network-log-${index}`;
+
+                return `
+                    <tr class="network-log-row" data-log-index="${index}" onclick="window.toggleNetworkLogDetails(${index})" style="cursor: pointer;">
+                        <td>
+                            <span class="network-status ${statusClass}">${log.status}</span>
+                        </td>
+                        <td>
+                            <span class="network-method ${methodClass}">${log.method}</span>
+                        </td>
+                        <td>
+                            <div class="network-url" title="${escapeHtml(log.url)}">${escapeHtml(log.url)}</div>
+                        </td>
+                        <td>
+                            <span class="network-duration">${durationDisplay}</span>
+                        </td>
+                        <td>
+                            <span class="network-time">${timeDisplay}</span>
+                        </td>
+                        <td>
+                            <span class="network-size">${log.size}</span>
+                        </td>
+                    </tr>
+                    <tr class="network-details-row" id="${logId}" style="display: none;">
+                        <td colspan="6">
+                            <div class="network-details">
+                                <div class="network-details-section">
+                                    <h4>Request Headers</h4>
+                                    <div class="network-details-content">${formatHeaders(log.headers || log.request?.headers || {})}</div>
+                                </div>
+                                ${Object.keys(log.queryParams || log.request?.queryParams || {}).length > 0 ? `
+                                <div class="network-details-section">
+                                    <h4>Query Parameters</h4>
+                                    <div class="network-details-content">${formatQueryParams(log.queryParams || log.request?.queryParams || {})}</div>
+                                </div>
+                                ` : ''}
+                                ${(log.request?.data !== undefined && log.request?.data !== null) ? `
+                                <div class="network-details-section">
+                                    <h4>Request Body</h4>
+                                    <div class="network-details-content network-details-json">${formatJSON(log.request.data)}</div>
+                                </div>
+                                ` : ''}
+                                <div class="network-details-section">
+                                    <h4>Response Headers</h4>
+                                    <div class="network-details-content">${formatHeaders(log.response?.headers || {})}</div>
+                                </div>
+                                <div class="network-details-section">
+                                    <h4>Response Body</h4>
+                                    <div class="network-details-content network-details-json">${formatJSON(log.response?.data || {})}</div>
+                                </div>
+                                ${log.sessionId ? `
+                                <div class="network-details-section">
+                                    <h4>Session Info</h4>
+                                    <div class="network-details-content">Session ID: ${escapeHtml(log.sessionId)}</div>
+                                </div>
+                                ` : ''}
+                                <div class="network-details-section">
+                                    <h4>Debug Info</h4>
+                                    <div class="network-details-content" style="font-size: 0.8em; color: #888;">
+                                        Filename: ${escapeHtml(log.filename)}<br>
+                                        Has request: ${!!log.request}<br>
+                                        Has response: ${!!log.response}<br>
+                                        Request keys: ${log.request ? Object.keys(log.request).join(', ') : 'none'}<br>
+                                        Response keys: ${log.response ? Object.keys(log.response).join(', ') : 'none'}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Make function globally accessible for onclick handlers
+        window.toggleNetworkLogDetails = function (index) {
+            console.log('toggleNetworkLogDetails called with index:', index);
+            const logId = `network-log-${index}`;
+            const row = document.querySelector(`.network-log-row[data-log-index="${index}"]`);
+            const detailsRow = document.getElementById(logId);
+
+            console.log('Elements found:', {
+                index,
+                logId,
+                rowFound: !!row,
+                detailsRowFound: !!detailsRow,
+                detailsRowHTML: detailsRow ? detailsRow.innerHTML.substring(0, 200) : 'N/A'
+            });
+
+            if (!row || !detailsRow) {
+                console.error('Could not find row or details:', { index, logId, row: !!row, detailsRow: !!detailsRow });
+                return;
+            }
+
+            const isExpanded = detailsRow.style.display !== 'none' && detailsRow.style.display !== '';
+            console.log('Current state:', { isExpanded, display: detailsRow.style.display });
+
+            // Close all other expanded rows
+            document.querySelectorAll('.network-details-row').forEach(r => {
+                r.style.display = 'none';
+            });
+            document.querySelectorAll('.network-log-row').forEach(r => {
+                r.classList.remove('expanded');
+            });
+
+            // Toggle current row
+            if (!isExpanded) {
+                detailsRow.style.display = 'table-row';
+                row.classList.add('expanded');
+                console.log('Expanded row. Details content:', detailsRow.innerHTML.substring(0, 500));
+            } else {
+                console.log('Collapsed row');
+            }
+        };
+
+        function getStatusClass (status) {
+            if (status >= 200 && status < 300) return 'network-status-2xx';
+            if (status >= 300 && status < 400) return 'network-status-3xx';
+            if (status >= 400 && status < 500) return 'network-status-4xx';
+            if (status >= 500) return 'network-status-5xx';
+            return 'network-status-2xx';
+        }
+
+        function formatHeaders (headers) {
+            if (!headers || Object.keys(headers).length === 0) {
+                return 'No headers';
+            }
+            return Object.entries(headers)
+                .map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(String(value))}`)
+                .join('\n');
+        }
+
+        function formatQueryParams (params) {
+            if (!params || Object.keys(params).length === 0) {
+                return 'No query parameters';
+            }
+            return Object.entries(params)
+                .map(([key, value]) => `${escapeHtml(key)}=${escapeHtml(String(value))}`)
+                .join('\n');
+        }
+
+        function formatJSON (data) {
+            if (!data) return 'No data';
+            try {
+                return JSON.stringify(data, null, 2);
+            } catch (e) {
+                return String(data);
+            }
+        }
+
+        function refreshNetworkLogs () {
+            loadNetworkLogs();
+        }
+    </script>
+</body>
+
+</html>

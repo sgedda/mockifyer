@@ -1,0 +1,36 @@
+{
+  "name": "simple-axios-example",
+  "version": "1.0.0",
+  "description": "Simple example demonstrating Mockifyer with axios for 3 API endpoints",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node -r tsconfig-paths/register src/axios-example.ts",
+    "start:axios": "ts-node -r tsconfig-paths/register src/axios-example.ts",
+    "start:axios:local": "ts-node -r tsconfig-paths/register src/axios-example-local.ts",
+    "start:fetch": "ts-node -r tsconfig-paths/register src/fetch-example.ts",
+    "start:fetch:local": "ts-node -r tsconfig-paths/register src/fetch-example-local.ts",
+    "record:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true ts-node -r tsconfig-paths/register src/axios-example.ts",
+    "record:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true ts-node -r tsconfig-paths/register src/axios-example-local.ts",
+    "record:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true ts-node -r tsconfig-paths/register src/fetch-example.ts",
+    "record:fetch:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true ts-node -r tsconfig-paths/register src/fetch-example-local.ts",
+    "mock:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false ts-node -r tsconfig-paths/register src/axios-example.ts",
+    "mock:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false ts-node -r tsconfig-paths/register src/axios-example-local.ts",
+    "mock:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false ts-node -r tsconfig-paths/register src/fetch-example.ts",
+    "mock:fetch:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false ts-node -r tsconfig-paths/register src/fetch-example-local.ts"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer": "file:../../",
+    "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
+    "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
+    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.3.3"
+  }
+}
+

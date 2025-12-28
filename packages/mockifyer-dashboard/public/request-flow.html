@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mockifyer - Request Flow</title>
+    <link rel="stylesheet" href="common.css">
+    <style>
+        .dashboard-header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            padding: 30px 20px;
+        }
+
+        .dashboard-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .dashboard-header p {
+            color: #a0a0a0;
+            font-size: 1.1em;
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .view-toggle button {
+            background: rgba(102, 126, 234, 0.3);
+            color: #8b9aff;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+
+        .view-toggle button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .view-toggle button:hover {
+            background: rgba(102, 126, 234, 0.4);
+        }
+
+        /* Timeline View */
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 15px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 30px;
+            padding-left: 30px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 8px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #667eea;
+            border: 3px solid #1a1a2e;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+        }
+
+        .request-card {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .request-card:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+            border-left-color: #8b9aff;
+        }
+
+        .request-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .sequence-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.9em;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .method-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .method-get {
+            background: #10b981;
+            color: white;
+        }
+
+        .method-post {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .method-put {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .method-delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .method-patch {
+            background: #8b5cf6;
+            color: white;
+        }
+
+        .request-url {
+            flex: 1;
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            word-break: break-all;
+            min-width: 200px;
+        }
+
+        .request-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85em;
+            color: #a0a0a0;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .source-file {
+            color: #8b9aff;
+            font-family: 'Courier New', monospace;
+        }
+
+        .duration {
+            color: #10b981;
+        }
+
+        .filename-info {
+            color: #a0a0a0;
+            font-size: 0.85em;
+        }
+
+        /* List View */
+        .list-item {
+            background: rgba(20, 20, 35, 0.6);
+            border-radius: 10px;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 60px 80px 1fr 200px 150px 150px;
+            gap: 15px;
+            align-items: center;
+            border-left: 4px solid #667eea;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .session-header {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .list-item:hover {
+            background: rgba(25, 25, 40, 0.8);
+            transform: translateX(5px);
+        }
+
+        @media (max-width: 768px) {
+            .list-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        .flow-view {
+            display: none;
+        }
+
+        .flow-view.active {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #a0a0a0;
+        }
+
+        /* Graph View */
+        .graph-container {
+            position: relative;
+            min-height: 400px;
+            background: rgba(20, 20, 35, 0.4);
+            border-radius: 10px;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        .graph-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            background: rgba(20, 20, 35, 0.3);
+            border-radius: 10px;
+        }
+
+        .graph-node {
+            background: rgba(30, 30, 46, 0.9);
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            padding: 15px;
+            display: inline-block;
+            min-width: 200px;
+            max-width: 300px;
+            position: relative;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .graph-node:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+            border-color: #8b9aff;
+        }
+
+        .graph-node::before {
+            content: attr(data-sequence);
+            position: absolute;
+            top: -12px;
+            left: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: 700;
+        }
+
+        .graph-node .node-method {
+            font-weight: 600;
+            color: #8b9aff;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .graph-node .node-url {
+            font-size: 0.9em;
+            color: #e0e0e0;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+
+        .graph-node .node-meta {
+            font-size: 0.75em;
+            color: #a0a0a0;
+            margin-top: 5px;
+        }
+
+        .graph-arrow {
+            display: inline-block;
+            color: #667eea;
+            font-size: 2em;
+            margin: 0 10px;
+            vertical-align: middle;
+            font-weight: bold;
+        }
+
+        .graph-session {
+            margin-bottom: 40px;
+        }
+
+        .graph-session-header {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .graph-session-header h3 {
+            color: #8b9aff;
+            margin: 0 0 10px 0;
+        }
+
+        .graph-session-header .session-info {
+            color: #a0a0a0;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>🔄 Request Flow</h1>
+            <p>View all API requests in chronological order</p>
+            <div style="margin-top: 20px;">
+                <a href="/index.html" class="btn btn-secondary" style="text-decoration: none; display: inline-block;">←
+                    Back to Dashboard</a>
+            </div>
+        </div>
+
+        <!-- View Toggle -->
+        <div class="card">
+            <div style="margin-bottom: 20px;">
+                <select id="session-filter" onchange="filterBySession()"
+                    style="padding: 10px; background: rgba(20, 20, 35, 0.8); color: #e0e0e0; border: 2px solid rgba(102, 126, 234, 0.3); border-radius: 8px; font-size: 14px;">
+                    <option value="all">All Sessions</option>
+                </select>
+            </div>
+            <div class="view-toggle">
+                <button class="active" onclick="switchFlowView('timeline')">📊 Timeline</button>
+                <button onclick="switchFlowView('graph')">🔗 Graph</button>
+                <button onclick="switchFlowView('list')">📋 List</button>
+            </div>
+
+            <!-- Timeline View -->
+            <div id="timeline-flow-view" class="flow-view active">
+                <div class="timeline" id="timeline-content">
+                    <div class="loading">Loading request flow...</div>
+                </div>
+            </div>
+
+            <!-- Graph View -->
+            <div id="graph-flow-view" class="flow-view">
+                <div class="graph-container" id="graph-content">
+                    <div class="loading">Loading request flow...</div>
+                </div>
+            </div>
+
+            <!-- List View -->
+            <div id="list-flow-view" class="flow-view">
+                <div id="list-content">
+                    <div class="loading">Loading request flow...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allRequests = [];
+        let allSessions = new Map();
+        let filteredRequests = [];
+
+        // Load all requests on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAllRequests();
+        });
+
+        function filterBySession () {
+            const filterValue = document.getElementById('session-filter').value;
+
+            if (filterValue === 'all') {
+                filteredRequests = allRequests;
+            } else {
+                filteredRequests = allRequests.filter(req => req.sessionId === filterValue);
+            }
+
+            // Rebuild session map for filtered requests
+            const filteredSessionMap = new Map();
+            filteredRequests.forEach(req => {
+                if (!filteredSessionMap.has(req.sessionId)) {
+                    filteredSessionMap.set(req.sessionId, []);
+                }
+                filteredSessionMap.get(req.sessionId).push(req);
+            });
+
+            // Sort sessions
+            filteredSessionMap.forEach((sessionRequests) => {
+                sessionRequests.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            });
+
+            renderRequestFlow(filteredRequests, filteredSessionMap);
+        }
+
+        async function loadAllRequests () {
+            try {
+                const response = await fetch('/api/mocks');
+                const data = await response.json();
+                const files = data.files || [];
+
+                // Load details for each file
+                allRequests = [];
+                const sessionMap = new Map(); // Group by sessionId
+
+                for (const file of files) {
+                    try {
+                        const fileResponse = await fetch(`/api/mocks/${file.filename}`);
+                        const fileData = await fileResponse.json();
+                        const mockData = fileData.data;
+
+                        if (mockData.request) {
+                            const method = mockData.request.method || 'GET';
+                            const url = mockData.request.url || '';
+                            const timestamp = mockData.timestamp || file.modified || new Date().toISOString();
+
+                            // Generate or use sessionId - group by timestamp proximity (within 5 minutes) or use provided sessionId
+                            let sessionId = mockData.sessionId;
+                            if (!sessionId) {
+                                // Try to find existing session within 5 minutes
+                                const requestTime = new Date(timestamp).getTime();
+                                let foundSession = false;
+
+                                for (const [sid, sessionRequests] of sessionMap.entries()) {
+                                    const lastRequestTime = new Date(sessionRequests[sessionRequests.length - 1].timestamp).getTime();
+                                    const timeDiff = Math.abs(requestTime - lastRequestTime);
+
+                                    // If within 5 minutes (300000ms), add to existing session
+                                    if (timeDiff < 300000) {
+                                        sessionId = sid;
+                                        foundSession = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!foundSession) {
+                                    // Create new session ID
+                                    sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                }
+                            }
+
+                            const requestData = {
+                                requestId: mockData.requestId || `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                sessionId: sessionId,
+                                parentRequestId: mockData.parentRequestId || null,
+                                sequence: mockData.sequence || null,
+                                method: method,
+                                url: url,
+                                timestamp: timestamp,
+                                filename: file.filename,
+                                source: mockData.source || mockData.callStack?.[0] || 'Unknown',
+                                callStack: mockData.callStack || [],
+                                duration: mockData.duration || mockData.responseTime || 'N/A',
+                                status: mockData.response?.status || 200,
+                                scenario: mockData.scenario || null
+                            };
+
+                            // Add to session map
+                            if (!sessionMap.has(sessionId)) {
+                                sessionMap.set(sessionId, []);
+                            }
+                            sessionMap.get(sessionId).push(requestData);
+
+                            allRequests.push(requestData);
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to load ${file.filename}:`, error);
+                    }
+                }
+
+                // Sort all requests by timestamp
+                allRequests.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+                // Update sequence numbers within each session
+                sessionMap.forEach((sessionRequests) => {
+                    sessionRequests.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    sessionRequests.forEach((req, index) => {
+                        req.sequence = index + 1;
+                    });
+                });
+
+                // Update global sequence
+                allRequests.forEach((req, index) => {
+                    req.globalSequence = index + 1;
+                });
+
+                // Store sessions for filtering
+                allSessions = sessionMap;
+                filteredRequests = allRequests;
+
+                // Populate session filter dropdown
+                const sessionFilter = document.getElementById('session-filter');
+                sessionMap.forEach((sessionRequests, sessionId) => {
+                    const option = document.createElement('option');
+                    option.value = sessionId;
+                    option.textContent = `Session ${sessionMap.size > 0 ? Array.from(sessionMap.keys()).indexOf(sessionId) + 1 : ''} (${sessionRequests.length} requests)`;
+                    sessionFilter.appendChild(option);
+                });
+
+                renderRequestFlow(allRequests, sessionMap);
+            } catch (error) {
+                console.error('Error loading requests:', error);
+                document.getElementById('timeline-content').innerHTML =
+                    '<div class="error-message">Failed to load request flow: ' + error.message + '</div>';
+                document.getElementById('list-content').innerHTML =
+                    '<div class="error-message">Failed to load request flow: ' + error.message + '</div>';
+            }
+        }
+
+        function renderRequestFlow (flowData, sessionMap) {
+            if (!flowData || flowData.length === 0) {
+                document.getElementById('timeline-content').innerHTML =
+                    '<div class="empty-state"><p>No request flow data available</p></div>';
+                document.getElementById('graph-content').innerHTML =
+                    '<div class="empty-state"><p>No request flow data available</p></div>';
+                document.getElementById('list-content').innerHTML =
+                    '<div class="empty-state"><p>No request flow data available</p></div>';
+                return;
+            }
+
+            // Render timeline view - group by session
+            let timelineHtml = '';
+            let sessionIndex = 1;
+
+            sessionMap.forEach((sessionRequests, sessionId) => {
+                // Session header
+                timelineHtml += `
+                    <div class="timeline-item" style="margin-bottom: 40px;">
+                        <div style="background: rgba(102, 126, 234, 0.2); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                            <h3 style="color: #8b9aff; margin: 0 0 10px 0;">Session #${sessionIndex}: ${sessionId}</h3>
+                            <div style="color: #a0a0a0; font-size: 0.9em;">
+                                ${sessionRequests.length} request(s) • 
+                                Started: ${formatDate(new Date(sessionRequests[0].timestamp))} • 
+                                Duration: ${calculateSessionDuration(sessionRequests)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Requests in this session
+                sessionRequests.forEach((item) => {
+                    const parentInfo = item.parentRequestId ?
+                        `<span style="color: #667eea;">🔗 Parent: ${item.parentRequestId.substring(0, 20)}...</span>` :
+                        '<span style="color: #10b981;">🌱 Root request</span>';
+
+                    timelineHtml += `
+                        <div class="timeline-item">
+                            <div class="request-card">
+                                <div class="request-header">
+                                    <span class="sequence-badge">#${item.sequence || item.globalSequence}</span>
+                                    <span class="method-badge method-${item.method.toLowerCase()}">${item.method}</span>
+                                    <span class="request-url">${escapeHtml(item.url)}</span>
+                                </div>
+                                <div class="request-meta">
+                                    ${parentInfo}
+                                    <span class="filename-info">📄 ${escapeHtml(item.filename)}</span>
+                                    <span class="source-info">
+                                        📍 <span class="source-file">${escapeHtml(item.source)}</span>
+                                    </span>
+                                    <span class="duration">⏱ ${item.duration}</span>
+                                    <span>🕐 ${formatDate(new Date(item.timestamp))}</span>
+                                    <span>✅ ${item.status}</span>
+                                    ${item.scenario ? `<span style="color: #f59e0b;">🎭 ${escapeHtml(item.scenario)}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                sessionIndex++;
+            });
+
+            document.getElementById('timeline-content').innerHTML = timelineHtml;
+
+            // Render graph view
+            let graphHtml = '';
+            let graphSessionIndex = 1;
+
+            sessionMap.forEach((sessionRequests, sessionId) => {
+                // Session header
+                graphHtml += `
+                    <div class="graph-session">
+                        <div class="graph-session-header">
+                            <h3>Session #${graphSessionIndex}: ${sessionId.substring(0, 30)}...</h3>
+                            <div class="session-info">
+                                ${sessionRequests.length} request(s) • 
+                                Started: ${formatDate(new Date(sessionRequests[0].timestamp))} • 
+                                Duration: ${calculateSessionDuration(sessionRequests)}
+                            </div>
+                        </div>
+                `;
+
+                // Build request map for easy lookup
+                const requestMap = new Map();
+                sessionRequests.forEach(req => {
+                    requestMap.set(req.requestId || req.filename, req);
+                });
+
+                // Group requests by parent-child relationships
+                const rootRequests = sessionRequests.filter(req => !req.parentRequestId || !requestMap.has(req.parentRequestId));
+                const childRequests = sessionRequests.filter(req => req.parentRequestId && requestMap.has(req.parentRequestId));
+
+                // Render requests in graph rows
+                graphHtml += '<div class="graph-row">';
+
+                // Render root requests first
+                rootRequests.forEach((item, index) => {
+                    if (index > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                    }
+                    graphHtml += renderGraphNode(item);
+
+                    // Find and render children inline
+                    const children = childRequests.filter(child => child.parentRequestId === (item.requestId || item.filename));
+                    if (children.length > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                        children.forEach((child, childIndex) => {
+                            if (childIndex > 0) {
+                                graphHtml += '<span class="graph-arrow">→</span>';
+                            }
+                            graphHtml += renderGraphNode(child);
+                        });
+                    }
+                });
+
+                // Render orphaned child requests (parent not in session)
+                const orphanedChildren = childRequests.filter(req => !requestMap.has(req.parentRequestId));
+                if (orphanedChildren.length > 0 && rootRequests.length > 0) {
+                    graphHtml += '<span class="graph-arrow">→</span>';
+                }
+                orphanedChildren.forEach((item, index) => {
+                    if (index > 0) {
+                        graphHtml += '<span class="graph-arrow">→</span>';
+                    }
+                    graphHtml += renderGraphNode(item);
+                });
+
+                graphHtml += '</div>';
+
+                graphHtml += '</div>';
+                graphSessionIndex++;
+            });
+
+            document.getElementById('graph-content').innerHTML = graphHtml;
+
+            // Render list view
+            const listHtml = flowData.map((item) => `
+                <div class="list-item">
+                    <span class="sequence-badge">#${item.sequence || item.globalSequence}</span>
+                    <span class="method-badge method-${item.method.toLowerCase()}">${item.method}</span>
+                    <span class="request-url">${escapeHtml(item.url)}</span>
+                    <span class="source-file">${escapeHtml(item.source)}</span>
+                    <span class="filename-info" title="${escapeHtml(item.sessionId)}">${escapeHtml(item.filename)}</span>
+                    <span class="duration">${item.duration}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('list-content').innerHTML = listHtml;
+        }
+
+        function renderGraphNode (item) {
+            const methodClass = `method-${item.method.toLowerCase()}`;
+            return `
+                <div class="graph-node" data-sequence="#${item.sequence || item.globalSequence}" title="${escapeHtml(item.url)}">
+                    <div class="node-method">
+                        <span class="method-badge ${methodClass}">${item.method}</span>
+                    </div>
+                    <div class="node-url">${escapeHtml(item.url.length > 50 ? item.url.substring(0, 50) + '...' : item.url)}</div>
+                    <div class="node-meta">
+                        <div>📍 ${escapeHtml(item.source)}</div>
+                        <div>⏱ ${item.duration} • ✅ ${item.status}</div>
+                        ${item.parentRequestId ? `<div style="color: #667eea; margin-top: 5px;">🔗 Parent: ${escapeHtml(item.parentRequestId.substring(0, 20))}...</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function calculateSessionDuration (sessionRequests) {
+            if (sessionRequests.length === 0) return '0ms';
+            const start = new Date(sessionRequests[0].timestamp).getTime();
+            const end = new Date(sessionRequests[sessionRequests.length - 1].timestamp).getTime();
+            const duration = end - start;
+
+            if (duration < 1000) return `${duration}ms`;
+            return `${(duration / 1000).toFixed(2)}s`;
+        }
+
+        function switchFlowView (view) {
+            // Hide all views
+            document.querySelectorAll('.flow-view').forEach(v => v.classList.remove('active'));
+
+            // Show selected view
+            const viewElement = document.getElementById(`${view}-flow-view`);
+            if (viewElement) {
+                viewElement.classList.add('active');
+            }
+
+            // Update button states
+            document.querySelectorAll('.view-toggle button').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.includes(view === 'timeline' ? 'Timeline' : view === 'graph' ? 'Graph' : 'List')) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        function formatDate (date) {
+            return new Date(date).toLocaleString();
+        }
+
+        function escapeHtml (text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>
