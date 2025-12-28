@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDate } from '@sgedda/mockifyer';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 

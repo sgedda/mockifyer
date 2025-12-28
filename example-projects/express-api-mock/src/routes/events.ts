@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getCurrentDate } from '@sgedda/mockifyer';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 import axios from 'axios';
 
 const router = express.Router();

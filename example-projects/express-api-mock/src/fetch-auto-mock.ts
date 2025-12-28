@@ -1,4 +1,5 @@
-import { setupMockifyer, HTTPClient } from '@sgedda/mockifyer';
+import { HTTPClient } from '@sgedda/mockifyer-core';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
 const mockDataPath = process.env.MOCKIFYER_PATH || './tests/fetch/mock-data';
 const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
@@ -12,7 +13,6 @@ if (isEnabled) {
     mockDataPath,
     recordMode: isRecordMode,
     failOnMissingMock: !isRecordMode, // Only fail on missing mock when not in record mode
-    httpClientType: 'fetch',
     useGlobalFetch: true // Patch global fetch function
   });
 } else {
@@ -21,7 +21,6 @@ if (isEnabled) {
     mockDataPath,
     recordMode: false,
     failOnMissingMock: false,
-    httpClientType: 'fetch',
     useGlobalFetch: false // Do not patch global fetch
   });
 }

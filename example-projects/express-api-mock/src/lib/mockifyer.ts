@@ -1,4 +1,5 @@
-import { setupMockifyer } from '@sgedda/mockifyer';
+import { setupMockifyer as setupMockifyerAxios } from '@sgedda/mockifyer-axios';
+import { setupMockifyer as setupMockifyerFetch } from '@sgedda/mockifyer-fetch';
 import path from 'path';
 import fs from 'fs';
 
@@ -79,7 +80,7 @@ export function initializeMockifyer(): void {
     });
     
     // Initialize mockifyer with absolute paths
-    const instance = setupMockifyer({
+    const instance = setupMockifyerAxios({
       mockDataPath: mockPath,
       recordMode: process.env.MOCKIFYER_RECORD === 'true',
       failOnMissingMock: false, // Set to false in record mode
@@ -87,11 +88,10 @@ export function initializeMockifyer(): void {
     });
 
     // Initialize Mockifyer for fetch
-    const fetchInstance = setupMockifyer({
+    const fetchInstance = setupMockifyerFetch({
       mockDataPath: mockPath,
       recordMode: process.env.MOCKIFYER_RECORD === 'true',
       failOnMissingMock: false, // Set to false in record mode
-      httpClientType: 'fetch',
       useGlobalFetch: true  // Patches global fetch
     });
 

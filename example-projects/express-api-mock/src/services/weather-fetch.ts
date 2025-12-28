@@ -1,5 +1,5 @@
-import { setupMockifyer } from '@sgedda/mockifyer';
-import { HTTPClient } from '@sgedda/mockifyer';
+import { HTTPClient } from '@sgedda/mockifyer-core';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 import path from 'path';
 
 export async function getCurrentWeather(city: string = 'London', fullResponse: boolean = false): Promise<{ data: any; headers: Record<string, string> }> {
@@ -23,7 +23,6 @@ export async function getCurrentWeather(city: string = 'London', fullResponse: b
     mockDataPath,
     recordMode: isRecordMode,
     failOnMissingMock: !isRecordMode, // Only fail on missing mock when not in record mode
-    httpClientType: 'fetch',
     useGlobalFetch: true // Patch global fetch function
   });
   } else {
@@ -32,7 +31,6 @@ export async function getCurrentWeather(city: string = 'London', fullResponse: b
     mockDataPath,
     recordMode: false,
     failOnMissingMock: false,
-    httpClientType: 'fetch',
     useGlobalFetch: false // Do not patch global fetch
   });
   }

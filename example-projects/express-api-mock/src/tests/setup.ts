@@ -1,4 +1,4 @@
-import { setupMockifyer } from '@sgedda/mockifyer';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
 // Configure mockifyer for tests
 setupMockifyer({

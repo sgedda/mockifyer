@@ -1,5 +1,5 @@
-import { HTTPClient } from '@sgedda/mockifyer';
-import { setupMockifyer } from '@sgedda/mockifyer';
+import { HTTPClient } from '@sgedda/mockifyer-core';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 import fs from 'fs';
 

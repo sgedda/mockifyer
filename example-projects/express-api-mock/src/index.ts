@@ -22,7 +22,6 @@ import { dateConfigRouter } from './routes/date-config';
 import { dateDemoRouter } from './routes/date-demo';
 import { dateExampleRouter } from './routes/date-example';
 import { eventsRouter } from './routes/events';
-import { setupMockifyer } from '@sgedda/mockifyer';
 
 const app = express();
 const port = process.env.PORT || 3000;
