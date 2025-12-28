@@ -1,4 +1,5 @@
-import { setupMockifyer, getCurrentDate, resetDateManipulation } from '../src';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { getCurrentDate, resetDateManipulation } from '@sgedda/mockifyer-core';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 

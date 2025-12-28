@@ -1,4 +1,5 @@
-import { setupMockifyer, getCurrentDate } from '../../src';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 async function runDateExamples() {
   // Example 1: Using current date (baseline)

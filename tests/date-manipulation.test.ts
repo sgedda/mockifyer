@@ -1,4 +1,5 @@
-import { setupMockifyer, getCurrentDate, resetDateManipulation } from '../src';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { getCurrentDate, resetDateManipulation } from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
   const fixedBaseTime = new Date('2024-01-01T00:00:00.000Z').getTime();

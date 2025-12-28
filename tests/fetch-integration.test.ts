@@ -1,7 +1,7 @@
-import { setupMockifyer } from '../src';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { HTTPClient } from '@sgedda/mockifyer-core';
 import path from 'path';
 import fs from 'fs';
-import { HTTPClient } from '../src/types/http-client';
 
 describe('Mockifyer Fetch Integration', () => {
   const testMockDataPath = path.join(__dirname, '../test-mock-data-fetch');
@@ -11,18 +11,23 @@ describe('Mockifyer Fetch Integration', () => {
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
-        fs.unlinkSync(path.join(testMockDataPath, file));
+        const filePath = path.join(testMockDataPath, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(filePath);
+        }
       });
     } else {
       fs.mkdirSync(testMockDataPath, { recursive: true });
     }
 
-    // Setup Mockifyer with fetch client
+    // Setup Mockifyer with fetch client (don't patch global fetch to avoid real HTTP calls in tests)
     httpClient = setupMockifyer({
       mockDataPath: testMockDataPath,
       recordMode: false, // Use mocks, don't record
-      httpClientType: 'fetch',
-      useGlobalAxios: false
+      useGlobalFetch: false // Use httpClient directly, don't patch global fetch
     });
   });
 
@@ -30,7 +35,13 @@ describe('Mockifyer Fetch Integration', () => {
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
-        fs.unlinkSync(path.join(testMockDataPath, file));
+        const filePath = path.join(testMockDataPath, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(filePath);
+        }
       });
     }
   });
@@ -57,12 +68,17 @@ describe('Mockifyer Fetch Integration', () => {
       timestamp: new Date().toISOString()
     };
 
+    // Mock files are stored in scenario subdirectories (default/ by default)
+    const defaultScenarioPath = path.join(testMockDataPath, 'default');
+    if (!fs.existsSync(defaultScenarioPath)) {
+      fs.mkdirSync(defaultScenarioPath, { recursive: true });
+    }
     const mockFileName = `test_GET_api_example_com_test.json`;
-    const mockFilePath = path.join(testMockDataPath, mockFileName);
+    const mockFilePath = path.join(defaultScenarioPath, mockFileName);
     fs.writeFileSync(mockFilePath, JSON.stringify(mockData, null, 2));
 
-    // Reload mock data
-    (httpClient as any).reloadMockData();
+    // Reload mock data (async)
+    await (httpClient as any).reloadMockData();
 
     // Make request using fetch client
     const response = await httpClient.get('https://api.example.com/test');
@@ -104,12 +120,17 @@ describe('Mockifyer Fetch Integration', () => {
       timestamp: new Date().toISOString()
     };
 
+    // Mock files are stored in scenario subdirectories (default/ by default)
+    const defaultScenarioPath = path.join(testMockDataPath, 'default');
+    if (!fs.existsSync(defaultScenarioPath)) {
+      fs.mkdirSync(defaultScenarioPath, { recursive: true });
+    }
     const mockFileName = `test_GET_api_example_com_users.json`;
-    const mockFilePath = path.join(testMockDataPath, mockFileName);
+    const mockFilePath = path.join(defaultScenarioPath, mockFileName);
     fs.writeFileSync(mockFilePath, JSON.stringify(mockData, null, 2));
 
-    // Reload mock data
-    (httpClient as any).reloadMockData();
+    // Reload mock data (async)
+    await (httpClient as any).reloadMockData();
 
     // Make request with query parameters
     const response = await httpClient.get('https://api.example.com/users', {
@@ -137,7 +158,6 @@ describe('Mockifyer Fetch Integration', () => {
       mockDataPath: testMockDataPath,
       recordMode: false,
       failOnMissingMock: false,
-      httpClientType: 'fetch',
       useGlobalAxios: false,
       useGlobalFetch: false
     });
@@ -159,7 +179,6 @@ describe('Mockifyer Fetch Integration', () => {
       mockDataPath: testMockDataPath,
       recordMode: false,
       failOnMissingMock: true,
-      httpClientType: 'fetch',
       useGlobalAxios: false
     });
 
@@ -198,7 +217,6 @@ describe('Mockifyer Fetch Integration', () => {
     const recordClient = setupMockifyer({
       mockDataPath: testMockDataPath,
       recordMode: true,
-      httpClientType: 'fetch',
       useGlobalAxios: false,
       useGlobalFetch: false
     });
@@ -211,17 +229,21 @@ describe('Mockifyer Fetch Integration', () => {
     expect(recordedResponse.data).toEqual(testResponseData);
 
     // Verify mock file was created
-    const files = fs.readdirSync(testMockDataPath);
+    // Mock files are saved in scenario subdirectories (default/ by default)
+    const defaultScenarioPath = path.join(testMockDataPath, 'default');
+    expect(fs.existsSync(defaultScenarioPath)).toBe(true);
+    
+    const files = fs.readdirSync(defaultScenarioPath);
     expect(files.length).toBeGreaterThan(0);
     
-    // Find the mock file for this URL (filename format: YYYY-MM-DD_HH-MM-SS_METHOD_url.json)
-    // Note: URL sanitization replaces non-alphanumeric chars with underscores, so 'record-test' becomes 'record_test'
+    // Find the mock file for this URL (filename format: YYYY-MM-DDTHH-MM-SS-MSSZ_METHOD_url.json)
+    // Note: URL sanitization replaces non-alphanumeric chars with hyphens, so 'record-test' stays as 'record-test'
     const mockFile = files.find(file => 
-      file.includes('GET') && file.includes('api_example_com_record_test')
+      file.includes('GET') && (file.includes('api_example_com_record-test') || file.includes('api_example_com_record_test'))
     );
     expect(mockFile).toBeDefined();
     
-    const mockFilePath = path.join(testMockDataPath, mockFile!);
+    const mockFilePath = path.join(defaultScenarioPath, mockFile!);
     
     // Verify the content of the saved mock
     const savedMock = JSON.parse(fs.readFileSync(mockFilePath, 'utf-8'));
@@ -237,7 +259,6 @@ describe('Mockifyer Fetch Integration', () => {
     const readClient = setupMockifyer({
       mockDataPath: testMockDataPath,
       recordMode: false,
-      httpClientType: 'fetch',
       useGlobalAxios: false
     });
 
@@ -268,7 +289,6 @@ describe('Mockifyer Fetch Integration', () => {
       mockDataPath: testMockDataPath,
       recordMode: false,
       failOnMissingMock: false,
-      httpClientType: 'fetch',
       useGlobalAxios: false,
       useGlobalFetch: false
     });

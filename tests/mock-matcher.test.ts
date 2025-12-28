@@ -6,8 +6,8 @@ import {
   findBestMatchingMock,
   CachedMockData,
   MockMatchingConfig
-} from '../src/utils/mock-matcher';
-import { StoredRequest, MockData } from '../src/types';
+} from '@sgedda/mockifyer-core';
+import { StoredRequest, MockData } from '@sgedda/mockifyer-core';
 
 describe('mock-matcher', () => {
   describe('generateRequestKey', () => {

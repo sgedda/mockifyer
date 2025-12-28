@@ -1,5 +1,5 @@
-import { setupMockifyer } from '../../dist';
-import { HTTPClient } from '../../src/types/http-client';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { HTTPClient } from '@sgedda/mockifyer-core';
 
 const mockDataPath = process.env.MOCKIFYER_PATH || './tests/axios/mock-data';
 const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
@@ -13,7 +13,6 @@ if (isEnabled) {
     mockDataPath,
     recordMode: isRecordMode,
     failOnMissingMock: !isRecordMode, // Only fail on missing mock when not in record mode
-    httpClientType: 'axios',
     useGlobalAxios: false // Use local instance, don't patch global axios
   });
 } else {

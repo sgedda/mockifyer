@@ -1,4 +1,4 @@
-import { setupMockifyer } from '../src';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
 async function main() {

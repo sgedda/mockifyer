@@ -19,7 +19,6 @@
     "mock:fetch:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false ts-node -r tsconfig-paths/register src/fetch-example-local.ts"
   },
   "dependencies": {
-    "@sgedda/mockifyer": "file:../../",
     "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
     "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
     "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",

@@ -1,22 +1,16 @@
 {
   "name": "@sgedda/mockifyer",
   "version": "1.6.0",
-  "description": "API mocking and logging utility for storing and replaying API responses",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "API mocking and logging utility for storing and replaying API responses (deprecated - use @sgedda/mockifyer-core, @sgedda/mockifyer-axios, or @sgedda/mockifyer-fetch instead)",
   "scripts": {
-    "build": "tsc",
     "test": "jest",
     "test:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
     "test:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
     "test:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/fetch/fetch-auto-mock.ts",
     "test:watch": "jest --watch",
-    "prepare": "npm run build",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
-    "release:major": "npm version major && git push && git push --tags",
-    "prepublishOnly": "npm test && npm run build",
-    "watch": "tsc --watch"
+    "release:major": "npm version major && git push && git push --tags"
   },
   "keywords": [
     "mock",
