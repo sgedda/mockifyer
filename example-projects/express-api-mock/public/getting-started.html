@@ -303,7 +303,13 @@ import express from 'express';
 // ... other imports</code>
                 </div>
                 <p>
-                    This pattern ensures Mockifyer is only loaded when needed, avoiding any bundle impact in production.
+                    This pattern prevents Mockifyer code from executing at runtime when disabled.
+                    <strong>Note:</strong> The package will still be installed in <code>node_modules</code>.
+                    For Node.js services without bundling (most common), this has no bundle size impact
+                    since code isn't bundled. For bundled applications (webpack, Metro, etc.), the package
+                    may still be included in the bundle depending on your bundler's tree-shaking capabilities
+                    and how imports are structured. The key benefit is preventing runtime execution and side
+                    effects when Mockifyer is disabled.
                 </p>
             </div>
 
@@ -384,8 +390,9 @@ MOCKIFYER_PATH=./mock-data
                 <ul>
                     <li><strong>No Code Execution:</strong> When <code>MOCKIFYER_ENABLED</code> is not set, Mockifyer
                         code never runs</li>
-                    <li><strong>No Bundle Impact:</strong> Use conditional imports to avoid bundling Mockifyer in
-                        production</li>
+                    <li><strong>Runtime Safety:</strong> Conditional initialization prevents code execution and side
+                        effects
+                        when disabled. Package remains in dependencies but won't execute.</li>
                     <li><strong>Explicit Opt-In:</strong> Must explicitly set environment variable to enable</li>
                     <li><strong>Zero Side Effects:</strong> Early return means no HTTP client patching, no file system
                         access</li>
@@ -420,6 +427,23 @@ export async function initializeMockifyer() {
                 In production React Native builds, <code>__DEV__</code> is <code>false</code>, so Mockifyer won't
                 initialize unless explicitly enabled via environment variable.
             </p>
+            <div class="what-to-expect"
+                style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 15px;">
+                <h4>⚠️ React Native Bundle Size</h4>
+                <p>
+                    <strong>Important:</strong> If Mockifyer is imported in your React Native code, Metro bundler will
+                    include it in <strong>all builds</strong> (development and production), regardless of
+                    <code>__DEV__</code> checks. Conditional execution prevents code from running but doesn't prevent
+                    bundling.
+                </p>
+                <ul>
+                    <li><strong>Bundle Impact:</strong> ~50-200KB+ (gzipped) in all builds if Mockifyer is imported</li>
+                    <li><strong>devDependencies:</strong> Won't work if you need Mockifyer in any deployed environment
+                        (staging, QA, production) - it must be in <code>dependencies</code></li>
+                    <li><strong>All Builds:</strong> Both development and production bundles include Mockifyer if
+                        imported</li>
+                </ul>
+            </div>
         </div>
 
         <div class="section">
@@ -862,7 +886,56 @@ export default function App() {
                 </div>
 
                 <div class="step">
-                    <h4><span class="step-number">4</span>Development Mode (Recording)</h4>
+                    <h4><span class="step-number">4</span>Bundle Size Impact</h4>
+                    <p>
+                        <strong>Important:</strong> If Mockifyer is imported in your code, Metro bundler will include it
+                        in <strong>all builds</strong> (development and production), regardless of conditional execution
+                        checks.
+                    </p>
+                    <div class="what-to-expect"
+                        style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 15px;">
+                        <h4>⚠️ Bundle Size Reality</h4>
+                        <ul>
+                            <li><strong>All Builds Include Mockifyer:</strong> If you import Mockifyer, it's included in
+                                both development and production bundles created by Metro</li>
+                            <li><strong>Estimated Size:</strong> ~50-200KB+ (gzipped), depending on which providers and
+                                features you use</li>
+                            <li><strong>Conditional Execution ≠ Bundle Exclusion:</strong> <code>__DEV__</code> checks
+                                prevent code execution but don't prevent bundling</li>
+                            <li><strong>devDependencies Won't Work:</strong> If you need Mockifyer in any deployed
+                                environment (staging, QA, production), it must be in <code>dependencies</code>, not
+                                <code>devDependencies</code>
+                            </li>
+                        </ul>
+                    </div>
+                    <p>
+                        <strong>Why this happens:</strong> Metro bundler does static analysis of imports at build time.
+                        When it sees
+                        <code>import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch'</code>,
+                        it includes the module in the bundle before runtime checks are evaluated.
+                    </p>
+                    <p>
+                        <strong>Options to minimize impact:</strong>
+                    </p>
+                    <ul>
+                        <li><strong>Accept the trade-off:</strong> If you use Mockifyer in production builds (with
+                            bundled
+                            mocks), the code must be included</li>
+                        <li><strong>Development-only:</strong> If you only use Mockifyer during local development, you
+                            can move it to <code>devDependencies</code>, but this means it won't be available in any
+                            deployed builds</li>
+                        <li><strong>Dynamic imports:</strong> Using dynamic imports (<code>import()</code>) may help,
+                            but Metro's static analysis may still include the code</li>
+                    </ul>
+                    <p>
+                        <strong>Bottom line:</strong> If Mockifyer is imported anywhere in your codebase that gets
+                        bundled, it will be included in all builds. The conditional checks only control execution, not
+                        bundling.
+                    </p>
+                </div>
+
+                <div class="step">
+                    <h4><span class="step-number">5</span>Development Mode (Recording)</h4>
                     <p>
                         In development, Mockifyer uses the Expo FileSystem provider and can record API responses:
                     </p>
@@ -889,7 +962,7 @@ const response = await fetch('https://api.example.com/users');
                 </div>
 
                 <div class="step">
-                    <h4><span class="step-number">5</span>Production Mode (Bundled Mocks)</h4>
+                    <h4><span class="step-number">6</span>Production Mode (Bundled Mocks)</h4>
                     <p>
                         For production builds, generate a TypeScript bundle from your recorded mocks:
                     </p>
@@ -932,8 +1005,10 @@ npx @sgedda/mockifyer-core generate-bundle \\
                         </li>
                         <li><strong>Metro Config:</strong> Helper function handles all Metro configuration automatically
                         </li>
-                        <li><strong>Zero Bundle Impact:</strong> Metro config runs at build time, not included in bundle
-                        </li>
+                        <li><strong>Metro Config Bundle Impact:</strong> Metro config helper runs at build time, not
+                            included in bundle (but Mockifyer package itself will be included if imported)</li>
+                        <li><strong>Bundle Size:</strong> Mockifyer will be included in all builds (~50-200KB+ gzipped)
+                            if imported, regardless of conditional execution checks</li>
                     </ul>
                 </div>
 
@@ -1022,13 +1097,17 @@ npx @sgedda/mockifyer-core generate-bundle \\
             <p><strong>Options:</strong></p>
             <ul>
                 <li><code>-i, --input &lt;path&gt;</code> - Path to mock data directory (default:
-                    <code>./mock-data</code>)</li>
+                    <code>./mock-data</code>)
+                </li>
                 <li><code>-o, --output &lt;path&gt;</code> - Output file path (default:
-                    <code>./assets/mock-data.ts</code>)</li>
+                    <code>./assets/mock-data.ts</code>)
+                </li>
                 <li><code>-f, --format &lt;format&gt;</code> - Output format: <code>json</code>,
-                    <code>typescript</code>, <code>javascript</code> (default: <code>typescript</code>)</li>
+                    <code>typescript</code>, <code>javascript</code> (default: <code>typescript</code>)
+                </li>
                 <li><code>-v, --variable-name &lt;name&gt;</code> - Variable name for exported data (default:
-                    <code>mockData</code>)</li>
+                    <code>mockData</code>)
+                </li>
                 <li><code>-h, --help</code> - Show help message</li>
             </ul>
             <p>
@@ -1269,7 +1348,8 @@ npm run sync:to-device     # Sync to device</code>
                     <li><strong>Bidirectional</strong> - Sync both ways: device → project and project → device</li>
                     <li><strong>Custom Paths</strong> - Specify custom mock data directories</li>
                     <li><strong>Package Detection</strong> - Auto-detects Android package name from
-                        <code>app.json</code></li>
+                        <code>app.json</code>
+                    </li>
                 </ul>
             </div>
 
