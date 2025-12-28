@@ -25,7 +25,13 @@ describe('Reload with Sync Functionality', () => {
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
-        fs.unlinkSync(path.join(testMockDataPath, file));
+        const filePath = path.join(testMockDataPath, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(filePath);
+        }
       });
     } else {
       fs.mkdirSync(testMockDataPath, { recursive: true });
@@ -76,7 +82,13 @@ describe('Reload with Sync Functionality', () => {
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
-        fs.unlinkSync(path.join(testMockDataPath, file));
+        const filePath = path.join(testMockDataPath, file);
+        const stat = fs.statSync(filePath);
+        if (stat.isDirectory()) {
+          fs.rmSync(filePath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(filePath);
+        }
       });
     }
   });
@@ -128,8 +140,12 @@ describe('Reload with Sync Functionality', () => {
       await httpClient.reloadMockData(true);
 
       expect(mockFetch).toHaveBeenCalled();
-      const fetchCall = mockFetch.mock.calls[0];
-      expect(fetchCall[0]).toContain('/mockifyer-sync-to-device');
+      // Find the call to sync endpoint (may not be the first call due to initialization)
+      const syncCall = mockFetch.mock.calls.find((call: any[]) => 
+        call[0] && typeof call[0] === 'string' && call[0].includes('/mockifyer-sync-to-device')
+      );
+      expect(syncCall).toBeDefined();
+      expect(syncCall[0]).toContain('/mockifyer-sync-to-device');
     });
 
     it('should skip sync when syncFromProject is false', async () => {
