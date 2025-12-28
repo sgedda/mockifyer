@@ -15,7 +15,7 @@ const mockFetch = jest.fn();
 (global as any).__mockifyer_original_fetch = mockFetch;
 
 describe('Reload with Sync Functionality', () => {
-  const testMockDataPath = path.join(__dirname, '../../test-mock-data-reload');
+  const testMockDataPath = path.join(__dirname, '../test-mock-data-reload');
   let httpClient: any;
 
   beforeEach(() => {

@@ -579,7 +579,14 @@ const response = await fetch('https://api.example.com/users');
                     <div class="code-block">
                         <code># Generate bundle from recorded mocks
 npm run generate:build-data
-# Or use CLI directly:
+
+# Or use CLI directly (if installed locally):
+mockifyer generate-bundle \\
+  --input ./mock-data \\
+  --output ./assets/mock-data.ts \\
+  --format typescript
+
+# Or via npx (no installation needed):
 npx @sgedda/mockifyer-core generate-bundle \\
   --input ./mock-data \\
   --output ./assets/mock-data.ts \\
@@ -673,6 +680,73 @@ export default function App() {
         </div>
 
         <div class="section">
+            <h2>CLI Commands</h2>
+            <p>
+                Mockifyer provides several CLI commands that are available when you install <code>@sgedda/mockifyer-core</code>.
+                These commands can be used directly or via <code>npx</code> without installing the package globally.
+            </p>
+
+            <h3>1. Generate Bundle (<code>mockifyer generate-bundle</code>)</h3>
+            <p>
+                Generates a TypeScript/JavaScript/JSON bundle from recorded mock data files. This is especially useful
+                for React Native production builds where filesystem access is limited.
+            </p>
+            <div class="code-block">
+                <code># If installed locally
+mockifyer generate-bundle --input ./mock-data --output ./assets/mock-data.ts
+
+# Or via npx (no installation needed)
+npx @sgedda/mockifyer-core generate-bundle \\
+  --input ./mock-data \\
+  --output ./assets/mock-data.ts \\
+  --format typescript</code>
+            </div>
+            <p><strong>Options:</strong></p>
+            <ul>
+                <li><code>-i, --input &lt;path&gt;</code> - Path to mock data directory (default: <code>./mock-data</code>)</li>
+                <li><code>-o, --output &lt;path&gt;</code> - Output file path (default: <code>./assets/mock-data.ts</code>)</li>
+                <li><code>-f, --format &lt;format&gt;</code> - Output format: <code>json</code>, <code>typescript</code>, <code>javascript</code> (default: <code>typescript</code>)</li>
+                <li><code>-v, --variable-name &lt;name&gt;</code> - Variable name for exported data (default: <code>mockData</code>)</li>
+                <li><code>-h, --help</code> - Show help message</li>
+            </ul>
+            <p>
+                <strong>Use cases:</strong> React Native production builds, static site generation, bundling mocks for deployment
+            </p>
+
+            <h3>2. Sync from Device (<code>mockifyer-sync-from-device</code>)</h3>
+            <p>
+                Syncs mock files <strong>from</strong> React Native devices/simulators <strong>to</strong> your project folder.
+                See the <a href="#sync-commands">Sync Commands for React Native</a> section below for detailed usage.
+            </p>
+            <div class="code-block">
+                <code># Quick example
+npx mockifyer-sync-from-device --path ./mock-data</code>
+            </div>
+
+            <h3>3. Sync to Device (<code>mockifyer-sync-to-device</code>)</h3>
+            <p>
+                Syncs mock files <strong>from</strong> your project folder <strong>to</strong> React Native devices/simulators.
+                See the <a href="#sync-commands">Sync Commands for React Native</a> section below for detailed usage.
+            </p>
+            <div class="code-block">
+                <code># Quick example
+npx mockifyer-sync-to-device --path ./mock-data</code>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>✨ All CLI Commands</h4>
+                <ul>
+                    <li><strong><code>mockifyer generate-bundle</code></strong> - Bundle mock data for production builds</li>
+                    <li><strong><code>mockifyer-sync-from-device</code></strong> - Copy mocks from device to project</li>
+                    <li><strong><code>mockifyer-sync-to-device</code></strong> - Copy mocks from project to device</li>
+                </ul>
+                <p>
+                    All commands support <code>--help</code> for detailed usage information.
+                </p>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Using the Dashboard</h2>
             <p>
                 The Mockifyer Dashboard is a web interface for viewing, editing, and managing your mock data files.
@@ -759,6 +833,131 @@ npx @sgedda/mockifyer-dashboard --path ./mock-data</code>
                 When using the Hybrid Provider in development, mocks saved by your app automatically sync to your
                 project folder, and the dashboard picks them up instantly. No manual sync needed!
             </p>
+
+            <h3 id="sync-commands">Sync Commands for React Native</h3>
+            <p>
+                Mockifyer provides two CLI commands to sync mock files between your project folder and React Native
+                devices/simulators. These are especially useful when not using the Hybrid Provider or when you need
+                manual control over sync operations.
+            </p>
+
+            <div class="step">
+                <h4><span class="step-number">1</span>Sync FROM Device → Project</h4>
+                <p>
+                    Use <code>mockifyer-sync-from-device</code> to copy mock files <strong>from</strong> your device/simulator
+                    <strong>to</strong> your project folder. This is useful when:
+                </p>
+                <ul>
+                    <li>You've recorded new mocks in the app</li>
+                    <li>You want to version control the mocks</li>
+                    <li>You want to view/edit them in the dashboard</li>
+                </ul>
+                <div class="code-block">
+                    <code># Auto-detect device (iOS on macOS, Android on Linux/Windows)
+npx mockifyer-sync-from-device
+
+# Or if installed locally
+mockifyer-sync-from-device
+
+# Explicit platform
+mockifyer-sync-from-device --ios
+mockifyer-sync-from-device --android
+
+# Custom path
+mockifyer-sync-from-device --path ./mock-data
+
+# Android with package name
+mockifyer-sync-from-device --android --package com.myapp
+
+# HTTP endpoint (if app exposes /mocks endpoint)
+mockifyer-sync-from-device --http</code>
+                </div>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">2</span>Sync TO Device ← Project</h4>
+                <p>
+                    Use <code>mockifyer-sync-to-device</code> to copy mock files <strong>from</strong> your project folder
+                    <strong>to</strong> your device/simulator. This is useful when:
+                </p>
+                <ul>
+                    <li>You've edited mocks in the dashboard or project folder</li>
+                    <li>You want to test with updated mock data</li>
+                    <li>You've pulled new mocks from version control</li>
+                </ul>
+                <div class="code-block">
+                    <code># Auto-detect device (iOS on macOS, Android on Linux/Windows)
+npx mockifyer-sync-to-device
+
+# Or if installed locally
+mockifyer-sync-to-device
+
+# Explicit platform
+mockifyer-sync-to-device --ios
+mockifyer-sync-to-device --android
+
+# Custom path
+mockifyer-sync-to-device --path ./mock-data
+
+# Android with package name
+mockifyer-sync-to-device --android --package com.myapp</code>
+                </div>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">3</span>Add to package.json Scripts</h4>
+                <p>
+                    You can add these commands to your <code>package.json</code> for easier access:
+                </p>
+                <div class="code-block">
+                    <code>{
+  "scripts": {
+    "sync:mocks": "mockifyer-sync-from-device --path ./mock-data",
+    "sync:mocks:ios": "mockifyer-sync-from-device --path ./mock-data --ios",
+    "sync:mocks:android": "mockifyer-sync-from-device --path ./mock-data --android",
+    "sync:to-device": "mockifyer-sync-to-device --path ./mock-data",
+    "sync:to-device:ios": "mockifyer-sync-to-device --path ./mock-data --ios",
+    "sync:to-device:android": "mockifyer-sync-to-device --path ./mock-data --android"
+  }
+}</code>
+                </div>
+                <p>
+                    Then run them with:
+                </p>
+                <div class="code-block">
+                    <code>npm run sync:mocks          # Sync from device
+npm run sync:to-device     # Sync to device</code>
+                </div>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>✨ Sync Command Features</h4>
+                <ul>
+                    <li><strong>Auto-detection</strong> - Automatically detects iOS Simulator on macOS, Android Emulator on Linux/Windows</li>
+                    <li><strong>Platform Support</strong> - Works with iOS Simulator, Android Emulator, and HTTP endpoints</li>
+                    <li><strong>Bidirectional</strong> - Sync both ways: device → project and project → device</li>
+                    <li><strong>Custom Paths</strong> - Specify custom mock data directories</li>
+                    <li><strong>Package Detection</strong> - Auto-detects Android package name from <code>app.json</code></li>
+                </ul>
+            </div>
+
+            <div class="what-to-expect" style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px;">
+                <h4>⚠️ Requirements</h4>
+                <p><strong>iOS Simulator:</strong></p>
+                <ul>
+                    <li>✅ macOS</li>
+                    <li>✅ Xcode installed</li>
+                    <li>✅ Simulator booted and running</li>
+                    <li>✅ App must have been run at least once</li>
+                </ul>
+                <p><strong>Android Emulator:</strong></p>
+                <ul>
+                    <li>✅ Android SDK installed</li>
+                    <li>✅ <code>adb</code> in PATH</li>
+                    <li>✅ Emulator running</li>
+                    <li>✅ App must have been run at least once</li>
+                </ul>
+            </div>
 
             <h3>Dashboard Options</h3>
             <div class="code-block">

@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 
 describe('Mockifyer Fetch Integration', () => {
-  const testMockDataPath = path.join(__dirname, '../test-mock-data-fetch');
+  const testMockDataPath = path.join(__dirname, './test-mock-data-fetch');
   let httpClient: HTTPClient;
 
   beforeEach(() => {
