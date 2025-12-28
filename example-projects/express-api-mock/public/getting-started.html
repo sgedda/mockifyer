@@ -247,6 +247,182 @@
         </div>
 
         <div class="section">
+            <h2>Environment Separation & Production Safety</h2>
+            <p>
+                Mockifyer is designed to be completely isolated from production code. Here's how to ensure it never runs
+                in production and only activates in specific environments:
+            </p>
+
+            <div class="step">
+                <h4><span class="step-number">1</span>Environment Variable Gating</h4>
+                <p>
+                    Always gate Mockifyer initialization with <code>MOCKIFYER_ENABLED</code>. This ensures Mockifyer
+                    code
+                    never executes unless explicitly enabled:
+                </p>
+                <div class="code-block">
+                    <code>// src/lib/mockifyer.ts
+export function initializeMockifyer(): void {
+  // Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return; // No initialization, no side effects
+  }
+  
+  setupMockifyer({
+    mockDataPath: './mock-data',
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    useGlobalAxios: true
+  });
+}</code>
+                </div>
+                <p>
+                    <strong>Key Point:</strong> When <code>MOCKIFYER_ENABLED</code> is not set, Mockifyer code never
+                    runs.
+                    No HTTP client patching, no file system access, zero side effects.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">2</span>Conditional Initialization</h4>
+                <p>
+                    Initialize Mockifyer conditionally in your entry point, before other imports:
+                </p>
+                <div class="code-block">
+                    <code>// src/index.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Only initialize if enabled - use conditional require/import
+if (process.env.MOCKIFYER_ENABLED === 'true') {
+  const { initializeMockifyer } = require('./lib/mockifyer');
+  initializeMockifyer();
+}
+
+// Rest of your app imports
+import express from 'express';
+// ... other imports</code>
+                </div>
+                <p>
+                    This pattern ensures Mockifyer is only loaded when needed, avoiding any bundle impact in production.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">3</span>Environment-Specific Configuration</h4>
+                <p>
+                    Use different configurations per environment with <code>.env</code> files:
+                </p>
+                <div class="code-block">
+                    <code># .env.development
+MOCKIFYER_ENABLED=true
+MOCKIFYER_RECORD=false
+MOCKIFYER_PATH=./mock-data
+
+# .env.test
+MOCKIFYER_ENABLED=true
+MOCKIFYER_RECORD=false
+MOCKIFYER_PATH=./mock-data
+
+# .env.production
+# Mockifyer not enabled - no variables set
+# Your app runs normally without any Mockifyer code executing</code>
+                </div>
+                <p>
+                    Production environments should never have <code>MOCKIFYER_ENABLED</code> set, ensuring Mockifyer
+                    never runs.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">4</span>Package.json Scripts</h4>
+                <p>
+                    Create separate scripts for different environments:
+                </p>
+                <div class="code-block">
+                    <code>{
+  "scripts": {
+    "dev": "NODE_ENV=development node src/index.ts",
+    "dev:mock": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false npm run dev",
+    "dev:record": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm run dev",
+    "start": "NODE_ENV=production node src/index.ts",
+    "test": "MOCKIFYER_ENABLED=true jest"
+  }
+}</code>
+                </div>
+                <p>
+                    This makes it clear when Mockifyer is active and prevents accidental activation in production.
+                </p>
+            </div>
+
+            <div class="step">
+                <h4><span class="step-number">5</span>Extra Production Safety</h4>
+                <p>
+                    For additional safety, add an explicit production check:
+                </p>
+                <div class="code-block">
+                    <code>export function initializeMockifyer(): void {
+  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Extra safety: Never enable in production unless explicitly allowed
+  if (!isEnabled || (isProduction && process.env.MOCKIFYER_ALLOW_PRODUCTION !== 'true')) {
+    return;
+  }
+
+  setupMockifyer({
+    mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    useGlobalAxios: true,
+    failOnMissingMock: isProduction ? true : false,
+  });
+}</code>
+                </div>
+            </div>
+
+            <div class="what-to-expect">
+                <h4>✨ Production Safety Guarantees</h4>
+                <ul>
+                    <li><strong>No Code Execution:</strong> When <code>MOCKIFYER_ENABLED</code> is not set, Mockifyer
+                        code never runs</li>
+                    <li><strong>No Bundle Impact:</strong> Use conditional imports to avoid bundling Mockifyer in
+                        production</li>
+                    <li><strong>Explicit Opt-In:</strong> Must explicitly set environment variable to enable</li>
+                    <li><strong>Zero Side Effects:</strong> Early return means no HTTP client patching, no file system
+                        access</li>
+                    <li><strong>Environment Isolation:</strong> Different configs per environment ensure production
+                        safety</li>
+                </ul>
+            </div>
+
+            <h3>React Native Considerations</h3>
+            <p>
+                For React Native, Mockifyer automatically uses <code>__DEV__</code> to detect development mode:
+            </p>
+            <div class="code-block">
+                <code>// React Native automatically handles dev vs prod
+export async function initializeMockifyer() {
+  // Only enable in development OR if explicitly enabled
+  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
+  
+  if (!isEnabled) {
+    return; // Disabled in production builds
+  }
+
+  return await setupMockifyerForReactNative({
+    isDev: __DEV__, // Automatically false in production builds
+    mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data',
+    recordMode: __DEV__ && process.env.MOCKIFYER_RECORD === 'true',
+  });
+}</code>
+            </div>
+            <p>
+                In production React Native builds, <code>__DEV__</code> is <code>false</code>, so Mockifyer won't
+                initialize unless explicitly enabled via environment variable.
+            </p>
+        </div>
+
+        <div class="section">
             <h2>Platform Guides</h2>
             <div class="platform-tabs">
                 <button class="platform-tab active" onclick="showPlatform('node-service')">Node Service</button>
@@ -278,56 +454,109 @@ npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios @sgedda/mockifyer-fet
                 <div class="step">
                     <h4><span class="step-number">2</span>Initialize Mockifyer</h4>
                     <p>
+                        <strong>Important:</strong> Always gate Mockifyer initialization with
+                        <code>MOCKIFYER_ENABLED</code>
+                        to ensure it never runs in production. Here are the recommended patterns:
+                    </p>
+                    <p>
                         <strong>Option A - Direct Usage with Axios:</strong> Use the HTTP client returned by
                         <code>setupMockifyer</code> directly:
                     </p>
                     <div class="code-block">
-                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+                        <code>// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
-// Setup Mockifyer - returns an HTTP client you can use directly
-const axios = setupMockifyer({
-  mockDataPath: path.join(__dirname, 'mock-data'),
-  recordMode: process.env.MOCKIFYER_RECORD === 'true'
-});
+export function initializeMockifyer() {
+  // Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return null; // Return null or undefined when disabled
+  }
+
+  // Setup Mockifyer - returns an HTTP client you can use directly
+  return setupMockifyer({
+    mockDataPath: path.join(__dirname, 'mock-data'),
+    recordMode: process.env.MOCKIFYER_RECORD === 'true'
+  });
+}
+
+// src/index.ts or wherever you use it
+const axios = initializeMockifyer() || require('axios').default;
 
 // Use it like normal axios
 const response = await axios.get('https://api.example.com/users');
 // Your API calls will be automatically intercepted!</code>
                     </div>
                     <p>
-                        <strong>Option B - Global Axios Patching:</strong> Patch global axios to intercept all axios calls:
+                        <strong>Option B - Global Axios Patching:</strong> Patch global axios to intercept all axios
+                        calls:
                     </p>
                     <div class="code-block">
-                        <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+                        <code>// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
-// Initialize before importing axios
-setupMockifyer({
-  mockDataPath: './mock-data',
-  recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  useGlobalAxios: true  // Patch global axios
-});
+export function initializeMockifyer(): void {
+  // Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return; // Early return - no initialization
+  }
 
-// Now import axios - it's automatically patched
+  // Initialize before importing axios
+  setupMockifyer({
+    mockDataPath: './mock-data',
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    useGlobalAxios: true  // Patch global axios
+  });
+}
+
+// src/index.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Only initialize if enabled
+if (process.env.MOCKIFYER_ENABLED === 'true') {
+  const { initializeMockifyer } = require('./lib/mockifyer');
+  initializeMockifyer();
+}
+
+// Now import axios - it's automatically patched if Mockifyer is enabled
 import axios from 'axios';
 
-// Use axios normally - requests are intercepted
+// Use axios normally - requests are intercepted if Mockifyer is enabled
 const response = await axios.get('https://api.example.com/users');</code>
                     </div>
                     <p>
                         <strong>Option C - Fetch:</strong> For fetch-based applications:
                     </p>
                     <div class="code-block">
-                        <code>import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+                        <code>// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-// Initialize before using fetch
-setupMockifyer({
-  mockDataPath: './mock-data',
-  recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  useGlobalFetch: true  // Patch global fetch
-});
+export function initializeMockifyer(): void {
+  // Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return; // Early return - no initialization
+  }
 
-// Use fetch() normally - requests are intercepted
+  // Initialize before using fetch
+  setupMockifyer({
+    mockDataPath: './mock-data',
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    useGlobalFetch: true  // Patch global fetch
+  });
+}
+
+// src/index.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Only initialize if enabled
+if (process.env.MOCKIFYER_ENABLED === 'true') {
+  const { initializeMockifyer } = require('./lib/mockifyer');
+  initializeMockifyer();
+}
+
+// Use fetch() normally - requests are intercepted if Mockifyer is enabled
 const response = await fetch('https://api.example.com/users');</code>
                     </div>
                 </div>
@@ -391,63 +620,132 @@ const response = await axios.get('https://api.example.com/users');
                 </div>
 
                 <h3>Complete Example</h3>
-                <p>Here's a complete example showing both recording and replay with Axios:</p>
+                <p>
+                    Here's a complete example showing both recording and replay with Axios, including proper environment
+                    gating:
+                </p>
                 <div class="code-block">
-                    <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+                    <code>// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
+export function initializeMockifyer() {
+  // Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return null; // Return null when disabled
+  }
+
+  return setupMockifyer({
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    mockDataPath: process.env.MOCKIFYER_PATH || path.join(__dirname, 'mock-data'),
+    useGlobalAxios: true
+  });
+}
+
+// src/index.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Only initialize if enabled
+if (process.env.MOCKIFYER_ENABLED === 'true') {
+  const { initializeMockifyer } = require('./lib/mockifyer');
+  initializeMockifyer();
+}
+
+import axios from 'axios';
+
 async function main() {
-  // Step 1: Record API responses
-  console.log('Recording API calls...');
-  const recordAxios = setupMockifyer({
-    recordMode: true,
-    mockDataPath: path.join(__dirname, 'mock-data')
-  });
+  // Step 1: Record API responses (when MOCKIFYER_ENABLED=true and MOCKIFYER_RECORD=true)
+  console.log('Making API call...');
+  const response1 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
+  console.log('Response:', response1.data);
+  // If recording enabled, file saved: mock-data/2025-11-23_10-53-52_GET_jsonplaceholder_typicode_com_posts_1.json
 
-  // Make a real API call - response will be saved automatically
-  const response1 = await recordAxios.get('https://jsonplaceholder.typicode.com/posts/1');
-  console.log('Recorded:', response1.data);
-  // File saved: mock-data/2025-11-23_10-53-52_GET_jsonplaceholder_typicode_com_posts_1.json
-
-  // Step 2: Use recorded mocks
-  console.log('Using recorded mocks...');
-  const mockAxios = setupMockifyer({
-    recordMode: false,
-    mockDataPath: path.join(__dirname, 'mock-data')
-  });
-
+  // Step 2: Use recorded mocks (when MOCKIFYER_ENABLED=true and MOCKIFYER_RECORD=false)
   // This uses the saved mock instead of making a real API call
-  const response2 = await mockAxios.get('https://jsonplaceholder.typicode.com/posts/1');
-  console.log('From mock:', response2.data); // Same data, instant response!
+  const response2 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
+  console.log('Response:', response2.data); // Same data, instant response!
 }
 
 main();</code>
                 </div>
+                <p>
+                    <strong>Usage:</strong>
+                </p>
+                <div class="code-block">
+                    <code># Record mode (saves API responses)
+MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+
+# Mock mode (uses saved mocks)
+MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false npm start
+
+# Production (Mockifyer disabled - normal API calls)
+npm start</code>
+                </div>
 
                 <h3>Environment Variables</h3>
-                <p>You can also configure Mockifyer using environment variables:</p>
+                <p>
+                    You can configure Mockifyer using environment variables. <strong>Important:</strong> Always gate
+                    initialization with <code>MOCKIFYER_ENABLED</code> to ensure production safety:
+                </p>
                 <div class="code-block">
-                    <code># Enable Mockifyer
+                    <code># .env.development or .env.test
+# Enable Mockifyer (REQUIRED - Mockifyer won't run without this)
 MOCKIFYER_ENABLED=true
 
 # Path to mock data directory
 MOCKIFYER_PATH=./mock-data
 
 # Enable recording mode
-MOCKIFYER_RECORD=true</code>
+MOCKIFYER_RECORD=true
+
+# .env.production
+# DO NOT set MOCKIFYER_ENABLED in production
+# Mockifyer will not initialize if this variable is not set</code>
                 </div>
                 <p>
-                    Then initialize with minimal config (for Axios):
+                    Then initialize with proper environment gating (for Axios):
                 </p>
                 <div class="code-block">
-                    <code>import { setupMockifyer } from '@sgedda/mockifyer-axios';
+                    <code>// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
-// Reads configuration from environment variables and patches global axios
-setupMockifyer({
-  mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
-  recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  useGlobalAxios: true
-});</code>
+export function initializeMockifyer(): void {
+  // CRITICAL: Only initialize if explicitly enabled
+  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+    return; // No initialization in production
+  }
+
+  // Reads configuration from environment variables and patches global axios
+  setupMockifyer({
+    mockDataPath: process.env.MOCKIFYER_PATH || './mock-data',
+    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    useGlobalAxios: true
+  });
+}
+
+// src/index.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Only initialize if enabled
+if (process.env.MOCKIFYER_ENABLED === 'true') {
+  const { initializeMockifyer } = require('./lib/mockifyer');
+  initializeMockifyer();
+}</code>
+                </div>
+                <div class="what-to-expect"
+                    style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px;">
+                    <h4>⚠️ Production Safety</h4>
+                    <p>
+                        <strong>Never set <code>MOCKIFYER_ENABLED=true</code> in production environments.</strong>
+                    </p>
+                    <ul>
+                        <li>✅ Development: Set <code>MOCKIFYER_ENABLED=true</code> in <code>.env.development</code></li>
+                        <li>✅ Testing: Set <code>MOCKIFYER_ENABLED=true</code> in <code>.env.test</code> or test scripts
+                        </li>
+                        <li>❌ Production: Do NOT set <code>MOCKIFYER_ENABLED</code> - Mockifyer will not run</li>
+                    </ul>
                 </div>
             </div>
 
@@ -464,7 +762,8 @@ setupMockifyer({
                         <code>npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch expo-file-system</code>
                     </div>
                     <p>
-                        <code>@sgedda/mockifyer-core</code> is required as a dependency. <code>expo-file-system</code> is required for the Expo FileSystem provider used in React Native.
+                        <code>@sgedda/mockifyer-core</code> is required as a dependency. <code>expo-file-system</code>
+                        is required for the Expo FileSystem provider used in React Native.
                     </p>
                 </div>
 
@@ -511,18 +810,29 @@ module.exports = configureMetroForMockifyer(config);</code>
                 <div class="step">
                     <h4><span class="step-number">3</span>Initialize Mockifyer</h4>
                     <p>
-                        Use the React Native helper function for automatic provider selection:
+                        Use the React Native helper function for automatic provider selection. React Native
+                        automatically
+                        handles environment separation via <code>__DEV__</code>, but you can add explicit gating for
+                        extra safety:
                     </p>
                     <div class="code-block">
                         <code>// mockifyer-setup.ts
 import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
 
 export async function initializeMockifyer() {
+  // Only enable in development OR if explicitly enabled via environment variable
+  // In production builds, __DEV__ is false, so Mockifyer won't initialize
+  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
+  
+  if (!isEnabled) {
+    return null; // Disabled in production builds
+  }
+
   return await setupMockifyerForReactNative({
-    isDev: __DEV__, // Pass React Native's __DEV__ variable
+    isDev: __DEV__, // Pass React Native's __DEV__ variable (false in production builds)
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data', // For production builds
-    recordMode: process.env.MOCKIFYER_RECORD === 'true',
+    recordMode: __DEV__ && process.env.MOCKIFYER_RECORD === 'true',
   });
 }</code>
                     </div>
@@ -536,12 +846,19 @@ import { initializeMockifyer } from './mockifyer-setup';
 
 export default function App() {
   useEffect(() => {
+    // Only initializes if __DEV__ is true or MOCKIFYER_ENABLED is set
+    // In production builds, __DEV__ is false, so Mockifyer won't initialize
     initializeMockifyer();
   }, []);
 
   // Your app code...
 }</code>
                     </div>
+                    <p>
+                        <strong>Note:</strong> In production React Native builds, <code>__DEV__</code> is automatically
+                        <code>false</code>, so Mockifyer won't initialize unless you explicitly set
+                        <code>MOCKIFYER_ENABLED=true</code> (which you shouldn't do in production).
+                    </p>
                 </div>
 
                 <div class="step">
@@ -682,7 +999,8 @@ export default function App() {
         <div class="section">
             <h2>CLI Commands</h2>
             <p>
-                Mockifyer provides several CLI commands that are available when you install <code>@sgedda/mockifyer-core</code>.
+                Mockifyer provides several CLI commands that are available when you install
+                <code>@sgedda/mockifyer-core</code>.
                 These commands can be used directly or via <code>npx</code> without installing the package globally.
             </p>
 
@@ -703,19 +1021,25 @@ npx @sgedda/mockifyer-core generate-bundle \\
             </div>
             <p><strong>Options:</strong></p>
             <ul>
-                <li><code>-i, --input &lt;path&gt;</code> - Path to mock data directory (default: <code>./mock-data</code>)</li>
-                <li><code>-o, --output &lt;path&gt;</code> - Output file path (default: <code>./assets/mock-data.ts</code>)</li>
-                <li><code>-f, --format &lt;format&gt;</code> - Output format: <code>json</code>, <code>typescript</code>, <code>javascript</code> (default: <code>typescript</code>)</li>
-                <li><code>-v, --variable-name &lt;name&gt;</code> - Variable name for exported data (default: <code>mockData</code>)</li>
+                <li><code>-i, --input &lt;path&gt;</code> - Path to mock data directory (default:
+                    <code>./mock-data</code>)</li>
+                <li><code>-o, --output &lt;path&gt;</code> - Output file path (default:
+                    <code>./assets/mock-data.ts</code>)</li>
+                <li><code>-f, --format &lt;format&gt;</code> - Output format: <code>json</code>,
+                    <code>typescript</code>, <code>javascript</code> (default: <code>typescript</code>)</li>
+                <li><code>-v, --variable-name &lt;name&gt;</code> - Variable name for exported data (default:
+                    <code>mockData</code>)</li>
                 <li><code>-h, --help</code> - Show help message</li>
             </ul>
             <p>
-                <strong>Use cases:</strong> React Native production builds, static site generation, bundling mocks for deployment
+                <strong>Use cases:</strong> React Native production builds, static site generation, bundling mocks for
+                deployment
             </p>
 
             <h3>2. Sync from Device (<code>mockifyer-sync-from-device</code>)</h3>
             <p>
-                Syncs mock files <strong>from</strong> React Native devices/simulators <strong>to</strong> your project folder.
+                Syncs mock files <strong>from</strong> React Native devices/simulators <strong>to</strong> your project
+                folder.
                 See the <a href="#sync-commands">Sync Commands for React Native</a> section below for detailed usage.
             </p>
             <div class="code-block">
@@ -725,7 +1049,8 @@ npx mockifyer-sync-from-device --path ./mock-data</code>
 
             <h3>3. Sync to Device (<code>mockifyer-sync-to-device</code>)</h3>
             <p>
-                Syncs mock files <strong>from</strong> your project folder <strong>to</strong> React Native devices/simulators.
+                Syncs mock files <strong>from</strong> your project folder <strong>to</strong> React Native
+                devices/simulators.
                 See the <a href="#sync-commands">Sync Commands for React Native</a> section below for detailed usage.
             </p>
             <div class="code-block">
@@ -736,8 +1061,10 @@ npx mockifyer-sync-to-device --path ./mock-data</code>
             <div class="what-to-expect">
                 <h4>✨ All CLI Commands</h4>
                 <ul>
-                    <li><strong><code>mockifyer generate-bundle</code></strong> - Bundle mock data for production builds</li>
-                    <li><strong><code>mockifyer-sync-from-device</code></strong> - Copy mocks from device to project</li>
+                    <li><strong><code>mockifyer generate-bundle</code></strong> - Bundle mock data for production builds
+                    </li>
+                    <li><strong><code>mockifyer-sync-from-device</code></strong> - Copy mocks from device to project
+                    </li>
                     <li><strong><code>mockifyer-sync-to-device</code></strong> - Copy mocks from project to device</li>
                 </ul>
                 <p>
@@ -844,7 +1171,8 @@ npx @sgedda/mockifyer-dashboard --path ./mock-data</code>
             <div class="step">
                 <h4><span class="step-number">1</span>Sync FROM Device → Project</h4>
                 <p>
-                    Use <code>mockifyer-sync-from-device</code> to copy mock files <strong>from</strong> your device/simulator
+                    Use <code>mockifyer-sync-from-device</code> to copy mock files <strong>from</strong> your
+                    device/simulator
                     <strong>to</strong> your project folder. This is useful when:
                 </p>
                 <ul>
@@ -877,7 +1205,8 @@ mockifyer-sync-from-device --http</code>
             <div class="step">
                 <h4><span class="step-number">2</span>Sync TO Device ← Project</h4>
                 <p>
-                    Use <code>mockifyer-sync-to-device</code> to copy mock files <strong>from</strong> your project folder
+                    Use <code>mockifyer-sync-to-device</code> to copy mock files <strong>from</strong> your project
+                    folder
                     <strong>to</strong> your device/simulator. This is useful when:
                 </p>
                 <ul>
@@ -933,15 +1262,19 @@ npm run sync:to-device     # Sync to device</code>
             <div class="what-to-expect">
                 <h4>✨ Sync Command Features</h4>
                 <ul>
-                    <li><strong>Auto-detection</strong> - Automatically detects iOS Simulator on macOS, Android Emulator on Linux/Windows</li>
-                    <li><strong>Platform Support</strong> - Works with iOS Simulator, Android Emulator, and HTTP endpoints</li>
+                    <li><strong>Auto-detection</strong> - Automatically detects iOS Simulator on macOS, Android Emulator
+                        on Linux/Windows</li>
+                    <li><strong>Platform Support</strong> - Works with iOS Simulator, Android Emulator, and HTTP
+                        endpoints</li>
                     <li><strong>Bidirectional</strong> - Sync both ways: device → project and project → device</li>
                     <li><strong>Custom Paths</strong> - Specify custom mock data directories</li>
-                    <li><strong>Package Detection</strong> - Auto-detects Android package name from <code>app.json</code></li>
+                    <li><strong>Package Detection</strong> - Auto-detects Android package name from
+                        <code>app.json</code></li>
                 </ul>
             </div>
 
-            <div class="what-to-expect" style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px;">
+            <div class="what-to-expect"
+                style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 15px; margin-top: 20px;">
                 <h4>⚠️ Requirements</h4>
                 <p><strong>iOS Simulator:</strong></p>
                 <ul>
@@ -1242,7 +1575,8 @@ describe('/api/users/1', () => {
                 <p>How to organize tests.</p>
                 <ul>
                     <li><code>'endpoint'</code> → <code>tests/generated/api/users/1.test.ts</code></li>
-                    <li><code>'scenario'</code> → <code>tests/generated/scenarios/happy-path/api/users/1.test.ts</code></li>
+                    <li><code>'scenario'</code> → <code>tests/generated/scenarios/happy-path/api/users/1.test.ts</code>
+                    </li>
                     <li><code>'file'</code> → <code>tests/generated/api_users_1.test.ts</code></li>
                 </ul>
             </div>
@@ -1364,8 +1698,8 @@ npm test tests/generated
             </div>
 
             <p>
-                <strong>Learn More:</strong> See the complete <a
-                    href="config-reference.html#test-generation">Test Generation Configuration</a> reference.
+                <strong>Learn More:</strong> See the complete <a href="config-reference.html#test-generation">Test
+                    Generation Configuration</a> reference.
             </p>
         </div>
 
