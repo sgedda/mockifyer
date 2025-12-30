@@ -26,7 +26,9 @@ router.get('/', (req: Request, res: Response) => {
         methods: {},
         statusCodes: {},
         recentActivity: [],
-        scenario: currentScenario
+        scenario: currentScenario,
+        mockDataPath: mockDataPath,
+        scenarioPath: scenarioPath
       });
     }
 
@@ -39,7 +41,9 @@ router.get('/', (req: Request, res: Response) => {
         methods: {},
         statusCodes: {},
         recentActivity: [],
-        scenario: currentScenario
+        scenario: currentScenario,
+        mockDataPath: mockDataPath,
+        scenarioPath: scenarioPath
       });
     }
 
@@ -115,7 +119,9 @@ router.get('/', (req: Request, res: Response) => {
         filename: item.filename,
         modified: item.modified.toISOString()
       })),
-      scenario: currentScenario
+      scenario: currentScenario,
+      mockDataPath: mockDataPath,
+      scenarioPath: scenarioPath
     });
   } catch (error: any) {
     console.error('[StatsRoute] Error:', error);

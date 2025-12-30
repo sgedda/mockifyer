@@ -15,7 +15,7 @@ program
   .description('Standalone dashboard for viewing and managing Mockifyer mock data')
   .version('1.0.0')
   .option('-p, --path <path>', 'Path to mock data directory or SQLite database file')
-  .option('--port <port>', 'Port to run the dashboard on', '3001')
+  .option('--port <port>', 'Port to run the dashboard on', '3002')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--no-open', 'Do not open browser automatically')
   .option('--provider <provider>', 'Database provider type (filesystem or sqlite)', 'filesystem')

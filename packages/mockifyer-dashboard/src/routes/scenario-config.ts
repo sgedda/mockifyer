@@ -35,6 +35,7 @@ router.get('/', (req: Request, res: Response) => {
 
 // Set current scenario
 router.post('/set', (req: Request, res: Response) => {
+  console.log('[ScenarioConfigRoute] POST /set received', { body: req.body, path: req.path });
   try {
     const { scenario } = req.body;
     const mockDataPath = getMockDataPath();

@@ -8,11 +8,15 @@
     "mockifyer-dashboard": "./bin/mockifyer-dashboard"
   },
   "scripts": {
-    "build": "tsc && chmod +x bin/mockifyer-dashboard",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "tsc && chmod +x bin/mockifyer-dashboard",
     "watch": "tsc --watch",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "dev:watch": "nodemon --exec ts-node src/cli.ts --watch src --watch public"
+    "dev:watch": "nodemon --exec ts-node src/cli.ts --watch src --watch public",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\""
   },
   "keywords": [
     "mock",
@@ -33,6 +37,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.24",
+    "concurrently": "^8.2.2",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

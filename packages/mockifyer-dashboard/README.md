@@ -35,7 +35,7 @@ npx mockifyer-dashboard --no-open
 ### Options
 
 - `-p, --path <path>` - Path to mock data directory (default: auto-detected)
-- `--port <port>` - Port to run dashboard on (default: 3001)
+- `--port <port>` - Port to run dashboard on (default: 3002)
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
 - `--provider <provider>` - Database provider type (currently only 'filesystem' supported)

@@ -24,7 +24,7 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
     next();
   });
 
-  // API routes
+  // API routes - must be registered BEFORE static file serving
   app.use('/api/mocks', mocksRouter);
   app.use('/api/stats', statsRouter);
   app.use('/api/health', healthRouter);
@@ -34,16 +34,50 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
   // Log route registration (for debugging)
   console.log('[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config');
 
-  // Serve static files
-  app.use(express.static(publicDir));
+  // Serve static files from public directory (React build output)
+  // Only serve static files for GET requests to non-API paths
+  app.use('/assets', (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      express.static(path.join(publicDir, 'assets'))(req, res, next);
+    } else {
+      next();
+    }
+  });
+  
+  app.use((req, res, next) => {
+    // Only serve static files for GET/HEAD requests that aren't API routes
+    if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api/')) {
+      express.static(publicDir)(req, res, next);
+    } else {
+      next();
+    }
+  });
 
-  // Fallback to index.html for SPA routing (but not for API routes)
-  app.get('*', (req, res, next) => {
-    // Don't serve index.html for API routes
+  // Fallback to index.html for SPA routing (GET requests only)
+  app.get('*', (req, res) => {
+    // Don't serve index.html for API routes or asset requests
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found', path: req.path });
     }
+    if (req.path.startsWith('/assets/')) {
+      return res.status(404).send('Asset not found');
+    }
+    // Serve React app's index.html for all other GET routes
     res.sendFile(path.join(publicDir, 'index.html'));
+  });
+
+  // Handle unmatched API routes (all HTTP methods) - must come AFTER SPA fallback
+  // This catches any API routes that weren't matched by the routers above
+  app.use((req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ 
+        error: 'API endpoint not found', 
+        path: req.path, 
+        method: req.method 
+      });
+    }
+    // For non-API routes that weren't handled, return 404
+    res.status(404).send('Not found');
   });
 
   return app;
