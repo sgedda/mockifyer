@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import type { Stats } from '@/types'
-import { BarChart3, FileText, Database, Activity, ChevronDown } from 'lucide-react'
+import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +24,12 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [switching, setSwitching] = useState(false)
   const { toast } = useToast()
+  const navigate = useNavigate()
+
+  function handleEndpointClick(endpoint: string) {
+    // Navigate to mocks page with endpoint as search query
+    navigate(`/mocks?endpoint=${encodeURIComponent(endpoint)}`)
+  }
 
   useEffect(() => {
     loadScenarios()
@@ -196,9 +203,19 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <div className="space-y-2">
               {stats.endpoints.length > 0 ? (
                 stats.endpoints.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs truncate flex-1">{item.endpoint}</span>
-                    <span className="text-muted-foreground ml-4">{item.count}</span>
+                  <div 
+                    key={index} 
+                    className="flex items-center justify-between text-sm group hover:bg-accent/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                    onClick={() => handleEndpointClick(item.endpoint)}
+                    title={`Click to view mocks for ${item.endpoint}`}
+                  >
+                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary transition-colors">
+                      {item.endpoint}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{item.count}</span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                 ))
               ) : (

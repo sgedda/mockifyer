@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { updateMock } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData } from '@/types'
-import { X, Save, Code, Edit, Plus } from 'lucide-react'
+import { X, Save, Code, Edit, Plus, Copy, Terminal } from 'lucide-react'
 
 interface MockEditorProps {
   mock: MockData
@@ -102,6 +102,113 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
     }
   }
 
+  function generateCurlCommand(): string {
+    const request = mock.data.request
+    const method = request.method.toUpperCase()
+    let url = request.url
+
+    // Add query parameters to URL
+    if (request.queryParams && Object.keys(request.queryParams).length > 0) {
+      try {
+        // Try to parse as absolute URL first
+        let urlObj: URL
+        try {
+          urlObj = new URL(url)
+        } catch {
+          // If relative URL, prepend a base URL for parsing
+          urlObj = new URL(url, 'http://localhost')
+        }
+        
+        Object.entries(request.queryParams).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) {
+            urlObj.searchParams.append(key, String(value))
+          }
+        })
+        
+        // If it was a relative URL, remove the base
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = urlObj.pathname + urlObj.search + (urlObj.hash || '')
+        } else {
+          url = urlObj.toString()
+        }
+      } catch (error) {
+        // Fallback: manually append query params
+        const params = new URLSearchParams()
+        Object.entries(request.queryParams).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) {
+            params.append(key, String(value))
+          }
+        })
+        const queryString = params.toString()
+        url += (url.includes('?') ? '&' : '?') + queryString
+      }
+    }
+
+    let curlParts = [`curl -X ${method}`]
+
+    // Add headers
+    if (request.headers && Object.keys(request.headers).length > 0) {
+      Object.entries(request.headers).forEach(([key, value]) => {
+        // Escape quotes in header values
+        const escapedValue = String(value).replace(/"/g, '\\"')
+        curlParts.push(`-H "${key}: ${escapedValue}"`)
+      })
+    }
+
+    // Add Content-Type header if body exists and no Content-Type header is present
+    const methodsWithBody = ['POST', 'PUT', 'PATCH', 'DELETE']
+    const hasBody = methodsWithBody.includes(method) && request.data !== undefined && request.data !== null
+    const hasContentType = request.headers && Object.keys(request.headers).some(
+      key => key.toLowerCase() === 'content-type'
+    )
+    
+    if (hasBody && !hasContentType && typeof request.data === 'object') {
+      curlParts.push(`-H "Content-Type: application/json"`)
+    }
+
+    // Add body for methods that support it
+    if (hasBody) {
+      let bodyData = request.data
+      
+      // Convert to JSON string if it's an object
+      if (typeof bodyData === 'object') {
+        bodyData = JSON.stringify(bodyData)
+      }
+      
+      // Escape quotes and newlines in body
+      const escapedBody = String(bodyData)
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+      
+      curlParts.push(`-d "${escapedBody}"`)
+    }
+
+    // Add URL at the end (escape URL if needed)
+    const escapedUrl = url.replace(/"/g, '\\"')
+    curlParts.push(`"${escapedUrl}"`)
+
+    return curlParts.join(' \\\n  ')
+  }
+
+  async function handleCopyCurl() {
+    try {
+      const curlCommand = generateCurlCommand()
+      await navigator.clipboard.writeText(curlCommand)
+      toast({
+        title: 'Success',
+        description: 'cURL command copied to clipboard',
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: 'Failed to copy cURL command',
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <Card className="mt-6">
       <CardHeader>
@@ -121,6 +228,18 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
           </TabsList>
 
           <TabsContent value="request" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium">Request Details</div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyCurl}
+                className="h-8"
+              >
+                <Terminal className="h-4 w-4 mr-2" />
+                Copy cURL
+              </Button>
+            </div>
             <div className="space-y-2">
               <div className="text-sm font-medium">Method</div>
               <div className="font-mono text-sm bg-muted p-2 rounded">
@@ -131,6 +250,23 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
               <div className="text-sm font-medium">URL</div>
               <div className="font-mono text-sm bg-muted p-2 rounded break-all">
                 {mock.data.request.url}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">cURL Command</div>
+              <div className="relative">
+                <pre className="text-xs bg-muted p-3 rounded overflow-auto font-mono">
+                  {generateCurlCommand()}
+                </pre>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 h-6 w-6"
+                  onClick={handleCopyCurl}
+                  title="Copy cURL command"
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
               </div>
             </div>
             {mock.data.request.headers && Object.keys(mock.data.request.headers).length > 0 && (

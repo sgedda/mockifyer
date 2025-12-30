@@ -49,8 +49,14 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   useEffect(() => {
     if (activeTab === 'mocks') {
       loadMocks()
+      // Check for endpoint query parameter
+      const params = new URLSearchParams(location.search)
+      const endpointParam = params.get('endpoint')
+      if (endpointParam) {
+        setSearchQuery(endpointParam)
+      }
     }
-  }, [scenario, activeTab])
+  }, [scenario, activeTab, location.search])
 
   // Handle tab change - update URL
   const handleTabChange = (tab: string) => {
