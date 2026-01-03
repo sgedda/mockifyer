@@ -130,9 +130,31 @@ test.describe('cURL Command Display in Edit Mock File', () => {
     
     // Check if the command ends properly (not cut off mid-string)
     if (fullCommand) {
-      const hasProperEnding = fullCommand.includes('"') || fullCommand.trim().length > 0;
-      expect(hasProperEnding).toBeTruthy();
+      const trimmed = fullCommand.trim();
+      
+      // A complete curl command should:
+      // 1. Start with "curl"
+      expect(trimmed).toMatch(/^curl/i);
+      
+      // 2. End with a closing double quote (URL or data is quoted)
+      //    OR end with a closing brace } (if JSON data ends the command)
+      //    OR end with a closing single quote ' (alternative data format)
+      const endsProperly = trimmed.endsWith('"') || 
+                          trimmed.endsWith('}') || 
+                          trimmed.endsWith("'");
+      expect(endsProperly).toBeTruthy();
+      
+      // 3. Not end with a backslash (which would indicate continuation)
+      expect(trimmed).not.toMatch(/\\\s*$/);
+      
+      // 4. Have balanced double quotes (even number of unescaped quotes)
+      // Count unescaped double quotes (not preceded by backslash)
+      const unescapedQuotes = (trimmed.match(/(?<!\\)"/g) || []).length;
+      expect(unescapedQuotes % 2).toBe(0); // Should be even (balanced)
+      
       console.log('[✓] Command appears complete');
+      console.log('[Command ends with]:', trimmed.slice(-10));
+      console.log('[Unescaped quotes count]:', unescapedQuotes);
     }
   });
   

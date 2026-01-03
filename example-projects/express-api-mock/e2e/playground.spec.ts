@@ -54,11 +54,17 @@ test.describe('Playground Page', () => {
 
   test('should display endpoint tester', async ({ page }) => {
     // Check for endpoint input or form
-    await expect(page.getByPlaceholder(/endpoint/i).or(page.getByLabel(/endpoint/i))).toBeVisible({ timeout: 5000 }).catch(() => {
+    const endpointInput = page.getByPlaceholder(/endpoint/i).or(page.getByLabel(/endpoint/i));
+    const isVisible = await endpointInput.isVisible().catch(() => false);
+    
+    if (!isVisible) {
       // If not found by placeholder/label, check for any input fields
       const inputs = page.locator('input');
-      expect(inputs.count()).toBeGreaterThan(0);
-    });
+      const inputCount = await inputs.count();
+      expect(inputCount).toBeGreaterThan(0);
+    } else {
+      await expect(endpointInput).toBeVisible({ timeout: 5000 });
+    }
   });
 
   test('should show request history section', async ({ page }) => {
