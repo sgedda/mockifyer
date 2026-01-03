@@ -38,3 +38,8 @@ playwright/.cache/
 
 # Persisted data
 persisted/
+
+# Runtime vote data (auto-generated, contains user data)
+feature-votes.json
+user-votes.json
+ip-votes.json
