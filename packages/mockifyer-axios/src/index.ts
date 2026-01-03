@@ -7,7 +7,7 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions } from '@sgedda/mockifyer-core';
+import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions, checkRequestLimit } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
@@ -522,11 +522,13 @@ class MockifyerClass {
   }
 
   private setupInterceptors(): void {
+    // Always set up request interceptor to check limits
     // In record mode, only check for mocks if recordSameEndpoints is false
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
-    if (this.config.recordSameEndpoints !== true) {
-      this.httpClient.interceptors.request.use(async (config) => {
+    this.httpClient.interceptors.request.use(async (config) => {
+      // In record mode, only check for mocks if recordSameEndpoints is false
+      if (this.config.recordSameEndpoints !== true) {
         // CRITICAL: This log proves new code is running
         console.log('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url, {
           hasParams: !!config.params,
@@ -727,6 +729,53 @@ class MockifyerClass {
           return returnConfig;
         }
         
+        // Check request limit BEFORE making real API call (only if no mock found and in record mode)
+        if (this.config.recordMode) {
+          const limitCheck = checkRequestLimit(this.config.mockDataPath);
+          if (limitCheck.limitReached && limitCheck.error) {
+            console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+            
+            // Return a mock error response instead of making a real API call
+            const responseHeaders = {
+              'x-mockifyer': 'true',
+              'x-mockifyer-limit-reached': 'true',
+              'content-type': 'application/json'
+            };
+
+            const axiosHeaders = new AxiosHeaders();
+            Object.entries(responseHeaders).forEach(([key, value]) => {
+              axiosHeaders.set(key, value);
+            });
+
+            const mockErrorResponse: AxiosResponse = {
+              data: {
+                error: limitCheck.error.message,
+                message: limitCheck.error.message,
+                limitReached: true,
+                maxRequests: limitCheck.error.maxRequests,
+                currentScenario: limitCheck.error.currentScenario
+              },
+              status: 429, // Too Many Requests
+              statusText: 'Too Many Requests',
+              headers: axiosHeaders,
+              config: config as any,
+              request: {}
+            };
+            
+            const adapterConfig = {
+              ...config,
+              adapter: () => {
+                console.log(`[Mockifyer] 📦 Returning limit error response for ${requestKey}`);
+                // Mark as mock response
+                (mockErrorResponse.config as any).__mockifyer_isMock = true;
+                return Promise.resolve(mockErrorResponse);
+              }
+            } as any;
+            
+            return adapterConfig;
+          }
+        }
+        
         console.log(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
         if (request.method === 'POST' && request.data) {
           console.log(`[Mockifyer] 📦 Request data type: ${typeof request.data}, isString: ${typeof request.data === 'string'}`);
@@ -767,11 +816,80 @@ class MockifyerClass {
           this.processingRequests.delete(requestKey);
           throw error;
         }
-      });
-    } else {
-      // recordSameEndpoints is true - always make real API calls, don't check for mocks
-      console.log('[Mockifyer] recordSameEndpoints=true, will always make real API calls');
-    }
+        // End of recordSameEndpoints !== true block
+      } else {
+        // recordSameEndpoints is true - always make real API calls, don't check for mocks
+        // But we still need to check the limit before making real API calls!
+        if (this.config.recordMode) {
+          const limitCheck = checkRequestLimit(this.config.mockDataPath);
+          if (limitCheck.limitReached && limitCheck.error) {
+            console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+            
+            // Generate request key for consistency
+            const rawParams = config.params || {};
+            const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
+            const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
+              ? anonymizedQueryParams 
+              : undefined;
+            
+            let normalizedUrl = config.url || '';
+            if (normalizedUrl.endsWith('?') && !normalizedParams) {
+              normalizedUrl = normalizedUrl.slice(0, -1);
+            }
+            
+            const request: StoredRequest = {
+              method: config.method || 'GET',
+              url: normalizedUrl,
+              headers: config.headers || {},
+              data: config.data,
+              queryParams: normalizedParams
+            };
+            const requestKey = this.generateRequestKey(request);
+            
+            // Return a mock error response instead of making a real API call
+            const responseHeaders = {
+              'x-mockifyer': 'true',
+              'x-mockifyer-limit-reached': 'true',
+              'content-type': 'application/json'
+            };
+
+            const axiosHeaders = new AxiosHeaders();
+            Object.entries(responseHeaders).forEach(([key, value]) => {
+              axiosHeaders.set(key, value);
+            });
+
+            const mockErrorResponse: AxiosResponse = {
+              data: {
+                error: limitCheck.error.message,
+                message: limitCheck.error.message,
+                limitReached: true,
+                maxRequests: limitCheck.error.maxRequests,
+                currentScenario: limitCheck.error.currentScenario
+              },
+              status: 429, // Too Many Requests
+              statusText: 'Too Many Requests',
+              headers: axiosHeaders,
+              config: config as any,
+              request: {}
+            };
+            
+            const adapterConfig = {
+              ...config,
+              adapter: () => {
+                console.log(`[Mockifyer] 📦 Returning limit error response (recordSameEndpoints=true) for ${requestKey}`);
+                // Mark as mock response
+                (mockErrorResponse.config as any).__mockifyer_isMock = true;
+                return Promise.resolve(mockErrorResponse);
+              }
+            } as any;
+            
+            return adapterConfig;
+          }
+        }
+        // If recordSameEndpoints is true, just return config to proceed with real API call
+        return config;
+      }
+    });
 
     // Add response interceptor to record responses (only for real API calls)
     // Skip recording if this is a mocked response (has x-mockifyer header)
@@ -843,8 +961,22 @@ class MockifyerClass {
         
         console.log(`[Mockifyer] 🔍 Final isMocked check result (local axios): ${isMocked}`);
         
-        if (isMocked) {
-          console.log('[Mockifyer] ✅ Skipping recording - this is a mocked response');
+        // Also check for limit reached header
+        let isLimitReached = false;
+        if (response.headers) {
+          if (typeof (response.headers as any).get === 'function') {
+            isLimitReached = (response.headers as any).get('x-mockifyer-limit-reached') === 'true';
+          } else if (typeof response.headers === 'object' && !Array.isArray(response.headers)) {
+            const headers = response.headers as any;
+            const limitKey = Object.keys(headers).find(key => key.toLowerCase() === 'x-mockifyer-limit-reached');
+            if (limitKey && headers[limitKey] === 'true') {
+              isLimitReached = true;
+            }
+          }
+        }
+        
+        if (isMocked || isLimitReached) {
+          console.log('[Mockifyer] ✅ Skipping recording - this is a mocked response' + (isLimitReached ? ' (limit reached)' : ''));
           return response;
         } else {
           console.log('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
@@ -1202,6 +1334,15 @@ class MockifyerClass {
       const currentScenario = getCurrentScenario(this.config.mockDataPath);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+      
+      // Check request limit before saving (only if limit is set via env var)
+      const limitCheck = checkRequestLimit(this.config.mockDataPath);
+      if (limitCheck.limitReached && limitCheck.error) {
+        console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+        // Don't throw - just log and return to prevent app crash
+        return;
+      }
+      
       const filePath = path.join(scenarioPath, filename);
       
       // Write to file (no cache)

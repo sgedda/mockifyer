@@ -31,7 +31,8 @@ import {
   ensureScenarioFolder,
   initializeScenario,
   TestGenerator,
-  TestGenerationOptions
+  TestGenerationOptions,
+  checkRequestLimit
 } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
@@ -482,6 +483,42 @@ class MockifyerClass {
         } as any;
       }
 
+      // Check request limit BEFORE making real API call (only if no mock found and in record mode)
+      if (this.config.recordMode) {
+        const limitCheck = checkRequestLimit(this.config.mockDataPath);
+        if (limitCheck.limitReached && limitCheck.error) {
+          console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+          
+          // Return a mock error response instead of making a real API call
+          const responseHeaders = {
+            'x-mockifyer': 'true',
+            'x-mockifyer-limit-reached': 'true',
+            'content-type': 'application/json'
+          };
+          
+          const mockErrorResponse = {
+            data: {
+              error: limitCheck.error.message,
+              message: limitCheck.error.message,
+              limitReached: true,
+              maxRequests: limitCheck.error.maxRequests,
+              currentScenario: limitCheck.error.currentScenario
+            },
+            status: 429, // Too Many Requests
+            statusText: 'Too Many Requests',
+            headers: responseHeaders,
+            config: config as any
+          };
+          
+          return {
+            ...config,
+            __mockResponse: Promise.resolve(mockErrorResponse),
+            __mockifyer_requestKey: requestKey,
+            __mockifyer_limit_reached: true
+          } as any;
+        }
+      }
+
       if (this.config.failOnMissingMock) {
         throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
       }
@@ -571,8 +608,9 @@ class MockifyerClass {
         }
         
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
-        if (isMocked) {
-          console.log('[Mockifyer-Fetch] Response is mocked, skipping save');
+        const isLimitReached = response.headers && (response.headers as any)['x-mockifyer-limit-reached'] === 'true';
+        if (isMocked || isLimitReached) {
+          console.log('[Mockifyer-Fetch] Response is mocked, skipping save' + (isLimitReached ? ' (limit reached)' : ''));
           return response;
         }
         
@@ -760,6 +798,15 @@ class MockifyerClass {
         const currentScenario = getCurrentScenario(this.config.mockDataPath);
         const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
         ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+        
+        // Check request limit before saving (only if limit is set via env var)
+        const limitCheck = checkRequestLimit(this.config.mockDataPath);
+        if (limitCheck.limitReached && limitCheck.error) {
+          console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+          // Don't throw - just log and return to prevent app crash
+          return;
+        }
+        
         const filePath = path.join(scenarioPath, filename);
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
         console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);

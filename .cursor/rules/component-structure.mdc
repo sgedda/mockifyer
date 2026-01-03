@@ -1,0 +1,16 @@
+---
+description: React component structure and TypeScript standards
+globs: ["frontend/**/*.tsx", "frontend/**/*.ts"]
+alwaysApply: false
+---
+# React Component Rules
+- Use TypeScript for all components
+- Components should be in src/components/ or src/pages/
+- Use Shadcn UI components when available
+- Export components as default exports
+- Props should be typed with interfaces
+- Use functional components with hooks, not class components
+- Keep components focused on a single responsibility
+- Extract reusable logic into custom hooks when appropriate
+- Use meaningful component and prop names
+- Prefer composition over complex prop drilling

@@ -52,7 +52,18 @@ router.get('/fixtures', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          (result.data as any)?.limitReached === true ||
+                          (result.data as any)?.error?.includes('Maximum') ||
+                          (result.data as any)?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[FootballUnifiedRoute] Fixtures - Error:', error);
     const errorMessage = error?.message || 'Failed to fetch fixtures';
@@ -111,7 +122,18 @@ router.get('/standings/:leagueId', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          (result.data as any)?.limitReached === true ||
+                          (result.data as any)?.error?.includes('Maximum') ||
+                          (result.data as any)?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[FootballUnifiedRoute] Standings - Error:', error);
     const errorMessage = error?.message || 'Failed to fetch standings';
@@ -168,11 +190,23 @@ router.get('/team/:teamId', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          (result.data as any)?.limitReached === true ||
+                          (result.data as any)?.error?.includes('Maximum') ||
+                          (result.data as any)?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[FootballUnifiedRoute] Team - Error:', error);
     const errorMessage = error?.message || 'Failed to fetch team information';
-    const statusCode = error?.response?.status || 500;
+    // Check for status in error.status or error.response.status, default to 404 for "not found" errors
+    const statusCode = error?.status || error?.response?.status || (errorMessage.includes('not found') ? 404 : 500);
     res.status(statusCode).json({ 
       error: errorMessage,
       details: process.env.NODE_ENV === 'development' ? error?.stack : undefined

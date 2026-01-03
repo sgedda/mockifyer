@@ -1,0 +1,18 @@
+---
+description: General code quality and best practices
+globs: ["**/*.ts", "**/*.tsx", "**/*.js"]
+alwaysApply: true
+---
+# Code Quality Rules
+- Use async/await instead of .then() chains
+- Handle errors explicitly, don't silently fail
+- Use meaningful variable and function names
+- Add JSDoc comments for complex functions and public APIs
+- Avoid magic numbers and strings - use constants or enums
+- Use early returns to reduce nesting
+- Prefer const over let, avoid var
+- Use optional chaining (?.) and nullish coalescing (??) when appropriate
+- Keep functions small and focused
+- Use TypeScript strict mode features (no any unless necessary)
+- Prefer interfaces over type aliases for object shapes
+- Use enums or const objects for fixed sets of values

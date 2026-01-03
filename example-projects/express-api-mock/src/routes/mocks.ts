@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
@@ -24,15 +25,19 @@ function getMockDataPath(): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const mockDataPath = getMockDataPath();
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
     
-    if (!fs.existsSync(mockDataPath)) {
-      return res.json({ files: [], mockDataPath });
+    if (!fs.existsSync(scenarioPath)) {
+      // Ensure the directory exists
+      fs.mkdirSync(scenarioPath, { recursive: true });
+      return res.json({ files: [], mockDataPath: scenarioPath });
     }
 
-    const files = fs.readdirSync(mockDataPath)
-      .filter(file => file.endsWith('.json') && file !== 'date-config.json')
+    const files = fs.readdirSync(scenarioPath)
+      .filter(file => file.endsWith('.json') && file !== 'date-config.json' && file !== 'scenario-config.json')
       .map(file => {
-        const filePath = path.join(mockDataPath, file);
+        const filePath = path.join(scenarioPath, file);
         const stats = fs.statSync(filePath);
         
         // Try to extract endpoint URL and query params from the mock file
@@ -98,7 +103,7 @@ router.get('/', (req: Request, res: Response) => {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime()); // Sort by most recent first
 
-    res.json({ files, mockDataPath });
+    res.json({ files, mockDataPath: scenarioPath });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
     res.status(500).json({ error: 'Failed to list mock files', details: error.message });
@@ -110,10 +115,12 @@ router.get('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -145,10 +152,12 @@ router.put('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
@@ -223,10 +232,12 @@ router.delete('/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const mockDataPath = getMockDataPath();
-    const filePath = path.join(mockDataPath, filename);
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    const filePath = path.join(scenarioPath, filename);
 
     // Security: prevent directory traversal
-    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(mockDataPath))) {
+    if (!filename.endsWith('.json') || !path.resolve(filePath).startsWith(path.resolve(scenarioPath))) {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 

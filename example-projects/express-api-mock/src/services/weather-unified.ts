@@ -418,6 +418,21 @@ export async function getCurrentWeatherUnified(
       finalHeaders['x-mockifyer'] = 'true';
     }
 
+    // Check if this is a limit response - if so, return it as-is
+    const isLimitReached = response.status === 429 || 
+                          finalHeaders['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return limit error response as-is (don't transform)
+      return {
+        data: response.data,
+        headers: finalHeaders
+      };
+    }
+
     // Return full response if requested, otherwise return transformed data
     if (fullResponse) {
       return {
@@ -645,6 +660,21 @@ export async function getForecastUnified(
     const finalHeaders: Record<string, string> = { ...(response.headers || {}) };
     if (isMocked && !finalHeaders['x-mockifyer']) {
       finalHeaders['x-mockifyer'] = 'true';
+    }
+    
+    // Check if this is a limit response - if so, return it as-is
+    const isLimitReached = response.status === 429 || 
+                          finalHeaders['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return limit error response as-is (don't transform)
+      return {
+        data: response.data,
+        headers: finalHeaders
+      };
     }
     
     // Return full response if requested, otherwise return transformed data

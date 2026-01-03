@@ -35,15 +35,22 @@ Railway offers a free tier with automatic deployments from GitHub.
 
 5. **Set Environment Variables**
    - Go to the service settings → Variables
-   - Add these variables:
+   - **Reference**: See `.env.example` file for a complete list of all environment variables
+   - Add these required variables:
      ```
      WEATHER_API_KEY=your_weather_api_key_here
+     FOOTBALL_API_KEY=your_football_api_key_here
      PORT=3000
      NODE_ENV=production
      MOCKIFYER_ENABLED=true
      MOCKIFYER_RECORD=true  # Set to true initially to record mocks
      MOCKIFYER_PATH=/persisted/mock-data  # IMPORTANT: Set this to match your volume mount path
      GITHUB_TOKEN=your_github_token_with_read_packages_scope
+     ```
+   - Optional variables (see `.env.example` for details):
+     ```
+     MOCKIFYER_MAX_SCENARIOS=3  # Optional: Max scenarios (no limit if not set)
+     MOCKIFYER_MAX_REQUESTS_PER_SCENARIO=20  # Optional: Max requests per scenario (no limit if not set)
      ```
    - **CRITICAL**: Set `MOCKIFYER_PATH=/persisted/mock-data` to explicitly use the Railway volume
      - This ensures the app uses the volume path even if auto-detection fails
@@ -119,17 +126,26 @@ If you prefer using GitHub Actions for deployment, you can use the workflow file
 
 ## Environment Variables
 
-Required environment variables:
+**See `.env.example` file for a complete reference of all environment variables.**
+
+### Required Variables:
 
 - `WEATHER_API_KEY` - Your WeatherAPI key (get one at https://www.weatherapi.com/)
+- `FOOTBALL_API_KEY` - Your Football API key (get one at https://rapidapi.com/api-sports/api/api-football)
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Set to `production` for production
+- `GITHUB_TOKEN` - GitHub Personal Access Token with `read:packages` scope (required for GitHub Packages)
 - `MOCKIFYER_ENABLED` - Set to `true` to enable mockifyer
-- `MOCKIFYER_RECORD` - Set to `false` to use mocks (not record)
-- `MOCKIFYER_PATH` - Path to mock data (optional)
-  - On Railway: Automatically uses `/persisted/mock-data` if volume is mounted, or set custom path
-  - Local development: Defaults to `persisted/mock-data`
+- `MOCKIFYER_RECORD` - Set to `true` initially to record mocks, then `false` to use recorded mocks
+- `MOCKIFYER_PATH` - Path to mock data
+  - On Railway: Set to `/persisted/mock-data` to match volume mount path
+  - Local development: Defaults to `./mock-data` or `./persisted/mock-data`
   - If not set, the app will auto-detect the appropriate path
+
+### Optional Variables:
+
+- `MOCKIFYER_MAX_SCENARIOS` - Maximum number of scenarios allowed (no limit if not set)
+- `MOCKIFYER_MAX_REQUESTS_PER_SCENARIO` - Maximum requests per scenario (no limit if not set)
 
 ## Accessing Your Deployed App
 

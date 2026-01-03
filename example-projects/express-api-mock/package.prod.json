@@ -9,7 +9,9 @@
   },
   "scripts": {
     "preinstall": "rm -f package-lock.json package-lock.prod.json || true",
-    "build": "tsc",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "build:backend": "tsc",
     "start": "node dist/index.js",
     "test": "jest"
   },

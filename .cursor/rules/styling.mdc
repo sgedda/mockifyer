@@ -1,0 +1,16 @@
+---
+description: Styling and UI standards
+globs: ["frontend/**/*.tsx", "frontend/**/*.css"]
+alwaysApply: false
+---
+# Styling Rules
+- Use Tailwind CSS classes, not inline styles
+- Follow the existing design system (Shadcn UI)
+- Use CSS variables for colors (--primary, --muted, etc.)
+- Responsive design: mobile-first approach
+- Use semantic HTML elements (nav, main, section, etc.)
+- Maintain consistent spacing using Tailwind spacing scale
+- Use dark mode compatible colors (use CSS variables)
+- Avoid hardcoded colors, use theme variables
+- Keep component styles co-located with components when possible
+- Use className utilities from @/lib/utils (cn function) for conditional classes

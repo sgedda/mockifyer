@@ -3,7 +3,7 @@ import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig } from './types';
-import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder } from '../utils/scenario';
+import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -56,6 +56,18 @@ export class FilesystemProvider implements DatabaseProvider {
       throw new Error('FilesystemProvider requires Node.js fs module. ' +
         'For React Native, use ExpoFileSystemProvider instead.');
     }
+    
+    const scenarioPath = this.getScenarioPath();
+    ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
+    
+    // Check request limit before saving (only if limit is set via env var)
+    const limitCheck = checkRequestLimit(this.mockDataPath);
+    if (limitCheck.limitReached && limitCheck.error) {
+      console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+      // Don't throw - just log and return to prevent app crash
+      return;
+    }
+    
     // Format the datetime to be readable
     const now = new Date();
     const dateStr = now.toISOString()
@@ -69,8 +81,6 @@ export class FilesystemProvider implements DatabaseProvider {
       .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const scenarioPath = this.getScenarioPath();
-    ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
     const filePath = path.join(scenarioPath, filename);
     
     // Write to file

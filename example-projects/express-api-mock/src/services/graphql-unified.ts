@@ -425,6 +425,21 @@ export async function executeQueryUnified<T = any>(
       }
     }
 
+    // Check if this is a limit response - if so, return it as-is
+    const isLimitReached = response.status === 429 || 
+                          finalHeaders['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return limit error response as-is (don't transform)
+      return {
+        data: response.data,
+        headers: finalHeaders
+      };
+    }
+
     return {
       data: response.data as GraphQLResponse<T>,
       headers: finalHeaders
