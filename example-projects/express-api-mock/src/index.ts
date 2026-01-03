@@ -420,7 +420,9 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       runtimeConfig: {
         mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
-        mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)'
+        mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
+        maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,
+        maxRequestsPerScenario: process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO ? parseInt(process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO, 10) : null
       }
     });
   } catch (error) {
@@ -432,7 +434,9 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       runtimeConfig: {
         mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
-        mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)'
+        mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
+        maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,
+        maxRequestsPerScenario: process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO ? parseInt(process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO, 10) : null
       }
     });
   }

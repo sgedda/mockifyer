@@ -34,6 +34,8 @@ export default function Settings() {
     mockifyerEnabled: boolean
     recordMode: boolean
     mockDataPath: string
+    maxScenarios?: number | null
+    maxRequestsPerScenario?: number | null
   } | null>(null)
   const [scenarioConfig, setScenarioConfig] = useState<ScenarioConfig | null>(null)
   const [newScenarioName, setNewScenarioName] = useState('')
@@ -229,6 +231,8 @@ export default function Settings() {
           mockifyerEnabled: false,
           recordMode: false,
           mockDataPath: 'Not set (using default)',
+          maxScenarios: null,
+          maxRequestsPerScenario: null
         })
       }
     } catch (error) {
@@ -839,6 +843,34 @@ const currentDate = getCurrentDate();`}
                     <p className="text-xs text-muted-foreground mt-1">
                       Controlled by MOCKIFYER_PATH environment variable
                     </p>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-md border">
+                    <div>
+                      <p className="text-sm font-semibold">Max Scenarios</p>
+                      <p className="text-xs text-muted-foreground">
+                        Controlled by MOCKIFYER_MAX_SCENARIOS environment variable
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {runtimeConfig.maxScenarios !== null && runtimeConfig.maxScenarios !== undefined 
+                        ? `${runtimeConfig.maxScenarios}` 
+                        : 'No limit'}
+                    </Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-md border">
+                    <div>
+                      <p className="text-sm font-semibold">Max Requests Per Scenario</p>
+                      <p className="text-xs text-muted-foreground">
+                        Controlled by MOCKIFYER_MAX_REQUESTS_PER_SCENARIO environment variable
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {runtimeConfig.maxRequestsPerScenario !== null && runtimeConfig.maxRequestsPerScenario !== undefined 
+                        ? `${runtimeConfig.maxRequestsPerScenario}` 
+                        : 'No limit'}
+                    </Badge>
                   </div>
                 </div>
               ) : (
