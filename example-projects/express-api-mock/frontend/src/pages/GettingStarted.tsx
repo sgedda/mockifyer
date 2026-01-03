@@ -472,6 +472,34 @@ export default function App() {
               <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
+                  <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_MAX_SCENARIOS</code>
+                  <Badge variant="outline">Optional</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Maximum number of scenarios allowed. If not set, there is no limit.
+                </p>
+                <CodeBlock code={`MOCKIFYER_MAX_SCENARIOS=3`} language="bash" className="mt-2" small />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_MAX_REQUESTS_PER_SCENARIO</code>
+                  <Badge variant="outline">Optional</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Maximum number of requests (mock files) allowed per scenario. If not set, there is no limit.
+                </p>
+                <CodeBlock code={`MOCKIFYER_MAX_REQUESTS_PER_SCENARIO=20`} language="bash" className="mt-2" small />
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_DATE</code>
                   <Badge variant="outline">Optional</Badge>
                 </div>
@@ -489,6 +517,10 @@ export default function App() {
 MOCKIFYER_ENABLED=true
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_RECORD=true
+
+# Optional: Scenario Limits
+MOCKIFYER_MAX_SCENARIOS=3
+MOCKIFYER_MAX_REQUESTS_PER_SCENARIO=20
 
 # Your API Keys (if needed)
 WEATHER_API_KEY=your_key_here
