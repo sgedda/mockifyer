@@ -335,6 +335,32 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     
     console.log(`[ExpoFileSystemProvider] save - Saving mock data to: ${this.mockDataPath}`);
     
+    const scenarioPath = await this.ensureScenarioFolder();
+    
+    // Check request limit before saving (only if limit is set via env var)
+    const MAX_REQUESTS_PER_SCENARIO = process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO 
+      ? parseInt(process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO, 10) 
+      : undefined;
+    if (MAX_REQUESTS_PER_SCENARIO !== undefined) {
+      try {
+        const files = await this.FileSystem.readDirectoryAsync(scenarioPath);
+        const jsonFiles = files.filter((file: string) => 
+          file.endsWith('.json') && file !== 'scenario-config.json' && file !== 'date-config.json'
+        );
+        
+        if (jsonFiles.length >= MAX_REQUESTS_PER_SCENARIO) {
+          const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${this.currentScenario}". Please delete some mock files or switch to a different scenario.`;
+          console.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
+          // Don't throw - just log and return to prevent app crash
+          return;
+        }
+      } catch (error: any) {
+        // If directory doesn't exist or can't read, that's okay - we'll create it
+        // Ignore errors and continue (directory might not exist yet)
+        console.warn(`[ExpoFileSystemProvider] Could not check file count:`, error);
+      }
+    }
+    
     // Format the datetime to be readable
     const now = new Date();
     const dateStr = now.toISOString()
@@ -348,7 +374,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       .replace(/[^a-zA-Z0-9]/g, '_');
 
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const scenarioPath = await this.ensureScenarioFolder();
     const filePath = scenarioPath + '/' + filename;
     
     console.log(`[ExpoFileSystemProvider] save - File path: ${filePath}`);
