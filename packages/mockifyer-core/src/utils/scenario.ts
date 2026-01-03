@@ -59,6 +59,11 @@ function loadScenarioConfigFromFile(mockDataPath?: string): { currentScenario?: 
     }
 
     const fileContent = fs.readFileSync(configPath, 'utf-8');
+    // Check if file is empty or only whitespace
+    if (!fileContent || !fileContent.trim()) {
+      return null;
+    }
+    
     const config = JSON.parse(fileContent);
     return config.currentScenario ? { currentScenario: config.currentScenario } : null;
   } catch (error) {
@@ -178,6 +183,42 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
     throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
   }
 
+  // Check max scenarios limit (only if limit is set via env var)
+  const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
+    ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) 
+    : undefined;
+  
+  if (MAX_SCENARIOS !== undefined) {
+    // Count only scenarios that actually exist as directories
+    // (listScenarios includes 'default' even if it doesn't exist, so we need to filter)
+    if (!fs || !fs.existsSync || !fs.readdirSync) {
+      // In React Native, we can't check - skip limit check
+      // The provider will handle this if needed
+    } else {
+      let existingCount = 0;
+      if (fs.existsSync(mockDataPath)) {
+        const items = fs.readdirSync(mockDataPath, { withFileTypes: true });
+        for (const item of items) {
+          // Count only directories, exclude special files and hidden directories
+          if (item.isDirectory() && 
+              !item.name.startsWith('.') && 
+              item.name !== 'node_modules') {
+            // Don't count the scenario we're about to create if it already exists
+            if (item.name !== sanitized) {
+              existingCount++;
+            }
+          }
+        }
+      }
+      
+      if (existingCount >= MAX_SCENARIOS) {
+        const errorMessage = `Maximum ${MAX_SCENARIOS} scenarios allowed. Please delete a scenario first.`;
+        console.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
+        throw new Error(errorMessage);
+      }
+    }
+  }
+
   ensureScenarioFolder(mockDataPath, sanitized);
 }
 
@@ -205,5 +246,62 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
  */
 export function resetScenario(): void {
   currentConfig = null;
+}
+
+/**
+ * Check if request limit is reached for the current scenario
+ * @param mockDataPath Path to mock data directory
+ * @returns Object with limitReached boolean and error details if limit is reached
+ */
+export function checkRequestLimit(mockDataPath: string): {
+  limitReached: boolean;
+  error?: {
+    message: string;
+    maxRequests: number;
+    currentScenario: string;
+  };
+} {
+  const MAX_REQUESTS_PER_SCENARIO = process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO 
+    ? parseInt(process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO, 10) 
+    : undefined;
+  
+  if (MAX_REQUESTS_PER_SCENARIO === undefined) {
+    return { limitReached: false };
+  }
+
+  // Not available in React Native (fs is stubbed)
+  if (!fs || !fs.existsSync || !fs.readdirSync) {
+    return { limitReached: false };
+  }
+
+  try {
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    
+    if (!fs.existsSync(scenarioPath)) {
+      return { limitReached: false };
+    }
+
+    const files = fs.readdirSync(scenarioPath)
+      .filter(file => file.endsWith('.json') && file !== 'scenario-config.json' && file !== 'date-config.json');
+    
+    if (files.length >= MAX_REQUESTS_PER_SCENARIO) {
+      const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${currentScenario}". Please delete some mock files or switch to a different scenario.`;
+      return {
+        limitReached: true,
+        error: {
+          message: errorMessage,
+          maxRequests: MAX_REQUESTS_PER_SCENARIO,
+          currentScenario: currentScenario
+        }
+      };
+    }
+  } catch (error) {
+    // If check fails, don't block - just log and continue
+    console.warn(`[Mockifyer] ⚠️ Error checking request limit:`, error);
+    return { limitReached: false };
+  }
+
+  return { limitReached: false };
 }
 
