@@ -1,0 +1,16 @@
+---
+description: API and backend route standards
+globs: ["src/routes/**/*.ts", "src/services/**/*.ts"]
+alwaysApply: false
+---
+# API Rules
+- All API routes should be in src/routes/
+- Use proper error handling with try/catch
+- Return consistent error response format: { error: string, details?: any }
+- Include error details in development mode (process.env.NODE_ENV === 'development')
+- Use async/await for asynchronous operations
+- Validate input parameters before processing
+- Use proper HTTP status codes (200, 400, 500, etc.)
+- Services should be in src/services/ and handle business logic
+- Routes should delegate to services, not contain business logic
+- Use Express Router for route organization

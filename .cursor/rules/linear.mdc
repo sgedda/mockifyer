@@ -1,0 +1,15 @@
+---
+description: Linear integration defaults for creating issues
+globs: 
+alwaysApply: true
+---
+# Linear Integration Rules
+
+When creating Linear issues:
+- **Always use project**: "Mockifyer" (or "mockifyer" if case-sensitive)
+- **Default labels**: "feature" and "backlog" should be applied by default
+- When creating issues via Linear MCP tools, always include:
+  - `project: "Mockifyer"` (or the exact project name/ID)
+  - `labels: ["feature", "backlog"]` unless explicitly overridden by the user
+- If the user specifies different labels or project, use their preferences instead
+- When searching for projects, prioritize finding "Mockifyer" project
