@@ -41,6 +41,18 @@ export interface DateConfig {
   currentDateFormatted: string
 }
 
+export interface ScenarioConfig {
+  currentScenario: string
+  scenarios: string[]
+  scenariosWithCounts?: Array<{
+    name: string
+    requestCount: number
+    isCurrent: boolean
+  }>
+  maxScenarios?: number | null
+  maxRequestsPerScenario?: number | null
+}
+
 // Mock files API
 export async function getMockFiles(): Promise<MockFileListResponse> {
   const response = await fetch('/api/mocks')
@@ -120,6 +132,56 @@ export async function getFilteredEvents(filter?: 'upcoming' | 'past' | 'today') 
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error('Failed to fetch events')
+  }
+  return response.json()
+}
+
+// Scenario Config API
+export async function getScenarioConfig(): Promise<ScenarioConfig> {
+  const response = await fetch('/api/scenario-config')
+  if (!response.ok) {
+    throw new Error('Failed to fetch scenario config')
+  }
+  return response.json()
+}
+
+export async function setScenario(scenario: string): Promise<ScenarioConfig> {
+  const response = await fetch('/api/scenario-config/set', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to set scenario')
+  }
+  return response.json()
+}
+
+export async function createScenario(scenario: string): Promise<ScenarioConfig> {
+  const response = await fetch('/api/scenario-config/create', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to create scenario')
+  }
+  return response.json()
+}
+
+export async function deleteScenario(scenario: string): Promise<ScenarioConfig> {
+  const response = await fetch(`/api/scenario-config/${encodeURIComponent(scenario)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || 'Failed to delete scenario')
   }
   return response.json()
 }

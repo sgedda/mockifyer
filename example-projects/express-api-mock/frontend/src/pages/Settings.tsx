@@ -4,9 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
-import { getDateConfig, updateDateConfig, type DateConfig } from '@/lib/api'
-import { Settings as SettingsIcon, Calendar, BookOpen, ToggleLeft, ToggleRight } from 'lucide-react'
+import { getDateConfig, updateDateConfig, type DateConfig, getScenarioConfig, createScenario, deleteScenario, setScenario, type ScenarioConfig } from '@/lib/api'
+import { Settings as SettingsIcon, Calendar, BookOpen, ToggleLeft, ToggleRight, FolderOpen, Plus, Trash2 } from 'lucide-react'
+import CodeBlock from '@/components/CodeBlock'
 
 const IANA_TIMEZONES = [
   'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
@@ -20,6 +22,7 @@ export default function Settings() {
   const [dateConfig, setDateConfig] = useState<DateConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [dateMode, setDateMode] = useState<'fixed' | 'offset' | 'none'>('none')
   const [fixedDate, setFixedDate] = useState('')
   const [offsetDays, setOffsetDays] = useState('0')
   const [offsetHours, setOffsetHours] = useState('0')
@@ -32,12 +35,16 @@ export default function Settings() {
     recordMode: boolean
     mockDataPath: string
   } | null>(null)
+  const [scenarioConfig, setScenarioConfig] = useState<ScenarioConfig | null>(null)
+  const [newScenarioName, setNewScenarioName] = useState('')
+  const [scenarioLoading, setScenarioLoading] = useState(false)
   const isEditingRef = useRef(false)
   const { toast } = useToast()
 
   useEffect(() => {
     loadDateConfig()
     loadRuntimeConfig()
+    loadScenarioConfig()
     const interval = setInterval(() => {
       if (!isEditingRef.current) {
         updateCurrentDate()
@@ -45,6 +52,107 @@ export default function Settings() {
     }, 1000)
     return () => clearInterval(interval)
   }, [])
+
+  async function loadScenarioConfig() {
+    try {
+      const config = await getScenarioConfig()
+      setScenarioConfig(config)
+    } catch (error) {
+      console.error('Failed to load scenario config:', error)
+    }
+  }
+
+  async function handleCreateScenario() {
+    if (!newScenarioName.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a scenario name',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    try {
+      setScenarioLoading(true)
+      await createScenario(newScenarioName.trim())
+      setNewScenarioName('')
+      await loadScenarioConfig()
+      toast({
+        title: 'Success',
+        description: `Scenario "${newScenarioName.trim()}" created`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create scenario',
+        variant: 'destructive',
+      })
+    } finally {
+      setScenarioLoading(false)
+    }
+  }
+
+  async function handleDeleteScenario(scenario: string) {
+    if (scenario === 'default') {
+      toast({
+        title: 'Error',
+        description: 'Cannot delete the default scenario',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (scenario === scenarioConfig?.currentScenario) {
+      toast({
+        title: 'Error',
+        description: 'Cannot delete the currently active scenario. Switch to another scenario first.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    if (!confirm(`Are you sure you want to delete scenario "${scenario}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      setScenarioLoading(true)
+      await deleteScenario(scenario)
+      await loadScenarioConfig()
+      toast({
+        title: 'Success',
+        description: `Scenario "${scenario}" deleted`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete scenario',
+        variant: 'destructive',
+      })
+    } finally {
+      setScenarioLoading(false)
+    }
+  }
+
+  async function handleSetScenario(scenario: string) {
+    try {
+      setScenarioLoading(true)
+      await setScenario(scenario)
+      await loadScenarioConfig()
+      toast({
+        title: 'Success',
+        description: `Switched to scenario: ${scenario}`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to change scenario',
+        variant: 'destructive',
+      })
+    } finally {
+      setScenarioLoading(false)
+    }
+  }
 
   async function loadDateConfig() {
     try {
@@ -57,6 +165,19 @@ export default function Settings() {
       setOffsetMinutes(String(data.offsetMinutes || 0))
       setOffsetSign(data.offsetSign || '+')
       setTimezone(data.timezone || '')
+      
+      // Determine date mode based on current config
+      if (data.enabled) {
+        if (data.fixedDate) {
+          setDateMode('fixed')
+        } else if (data.offsetDays !== null || data.offsetHours !== null || data.offsetMinutes !== null) {
+          setDateMode('offset')
+        } else {
+          setDateMode('none')
+        }
+      } else {
+        setDateMode('none')
+      }
     } catch (error: any) {
       console.error('Failed to load date config:', error)
       toast({
@@ -130,17 +251,32 @@ export default function Settings() {
       }
 
       if (dateEnabled) {
-        if (fixedDate) {
+        // Only save the selected mode
+        if (dateMode === 'fixed' && fixedDate) {
           updateData.fixedDate = fixedDate
-        } else {
+          // Clear offset fields
+          updateData.offsetDays = null
+          updateData.offsetHours = null
+          updateData.offsetMinutes = null
+          updateData.offsetSign = null
+        } else if (dateMode === 'offset') {
           updateData.offsetDays = parseInt(offsetDays) || 0
           updateData.offsetHours = parseInt(offsetHours) || 0
           updateData.offsetMinutes = parseInt(offsetMinutes) || 0
           updateData.offsetSign = offsetSign
+          // Clear fixed date
+          updateData.fixedDate = null
         }
         if (timezone) {
           updateData.timezone = timezone
         }
+      } else {
+        // Clear everything when disabled
+        updateData.fixedDate = null
+        updateData.offsetDays = null
+        updateData.offsetHours = null
+        updateData.offsetMinutes = null
+        updateData.offsetSign = null
       }
 
       const updated = await updateDateConfig(updateData)
@@ -176,18 +312,37 @@ export default function Settings() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="date" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="date" className="flex items-center gap-2">
-            <Calendar className="h-4 w-4" />
-            Date Configuration
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1 h-auto p-1">
+          <TabsTrigger 
+            value="date" 
+            className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1.5 sm:px-3 py-2 sm:py-2 min-w-0 truncate"
+          >
+            <Calendar className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+            <span className="truncate">Date</span>
+            <span className="hidden sm:inline">Configuration</span>
           </TabsTrigger>
-          <TabsTrigger value="reference" className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4" />
-            Config Reference
+          <TabsTrigger 
+            value="scenarios" 
+            className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1.5 sm:px-3 py-2 sm:py-2 min-w-0 truncate"
+          >
+            <FolderOpen className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+            <span className="truncate">Scenarios</span>
           </TabsTrigger>
-          <TabsTrigger value="runtime" className="flex items-center gap-2">
-            <ToggleRight className="h-4 w-4" />
-            Runtime Settings
+          <TabsTrigger 
+            value="reference" 
+            className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1.5 sm:px-3 py-2 sm:py-2 min-w-0 truncate"
+          >
+            <BookOpen className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+            <span className="truncate">Config</span>
+            <span className="hidden sm:inline"> Reference</span>
+          </TabsTrigger>
+          <TabsTrigger 
+            value="runtime" 
+            className="flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm px-1.5 sm:px-3 py-2 sm:py-2 min-w-0 truncate"
+          >
+            <ToggleRight className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+            <span className="truncate">Runtime</span>
+            <span className="hidden sm:inline"> Settings</span>
           </TabsTrigger>
         </TabsList>
 
@@ -231,7 +386,12 @@ export default function Settings() {
                       type="checkbox"
                       id="dateEnabled"
                       checked={dateEnabled}
-                      onChange={(e) => setDateEnabled(e.target.checked)}
+                      onChange={(e) => {
+                        setDateEnabled(e.target.checked)
+                        if (!e.target.checked) {
+                          setDateMode('none')
+                        }
+                      }}
                       className="h-4 w-4"
                     />
                     <label htmlFor="dateEnabled" className="text-sm font-medium">
@@ -241,32 +401,75 @@ export default function Settings() {
 
                   {dateEnabled && (
                     <>
-                      {/* Fixed Date */}
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Fixed Date (ISO format)</label>
-                        <Input
-                          type="datetime-local"
-                          value={fixedDate ? new Date(fixedDate).toISOString().slice(0, 16) : ''}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const date = new Date(e.target.value)
-                              setFixedDate(date.toISOString())
-                            } else {
-                              setFixedDate('')
-                            }
-                          }}
-                          placeholder="YYYY-MM-DDTHH:mm"
-                        />
+                      {/* Date Mode Selection */}
+                      <div className="space-y-3">
+                        <label className="text-sm font-medium">Date Manipulation Mode</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="dateMode"
+                              value="fixed"
+                              checked={dateMode === 'fixed'}
+                              onChange={(e) => {
+                                setDateMode('fixed')
+                                // Clear offset when switching to fixed
+                                setOffsetDays('0')
+                                setOffsetHours('0')
+                                setOffsetMinutes('0')
+                              }}
+                              className="h-4 w-4"
+                            />
+                            <span className="text-sm">Fixed Date</span>
+                          </label>
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="dateMode"
+                              value="offset"
+                              checked={dateMode === 'offset'}
+                              onChange={(e) => {
+                                setDateMode('offset')
+                                // Clear fixed date when switching to offset
+                                setFixedDate('')
+                              }}
+                              className="h-4 w-4"
+                            />
+                            <span className="text-sm">Time Offset</span>
+                          </label>
+                        </div>
                         <p className="text-xs text-muted-foreground">
-                          Set a fixed date that will always be returned by getCurrentDate()
+                          Choose either a fixed date or a time offset. You cannot use both at the same time.
                         </p>
                       </div>
 
-                      <div className="text-center text-sm text-muted-foreground">OR</div>
+                      {/* Fixed Date */}
+                      {dateMode === 'fixed' && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Fixed Date (ISO format)</label>
+                          <Input
+                            type="datetime-local"
+                            value={fixedDate ? new Date(fixedDate).toISOString().slice(0, 16) : ''}
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                const date = new Date(e.target.value)
+                                setFixedDate(date.toISOString())
+                              } else {
+                                setFixedDate('')
+                              }
+                            }}
+                            placeholder="YYYY-MM-DDTHH:mm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Set a fixed date that will always be returned by getCurrentDate()
+                          </p>
+                        </div>
+                      )}
 
                       {/* Time Offset */}
-                      <div className="space-y-4">
-                        <label className="text-sm font-medium">Time Offset</label>
+                      {dateMode === 'offset' && (
+                        <div className="space-y-4">
+                          <label className="text-sm font-medium">Time Offset</label>
                         <div className="grid grid-cols-4 gap-2">
                           <div>
                             <label className="text-xs text-muted-foreground">Sign</label>
@@ -343,6 +546,7 @@ export default function Settings() {
                           </Button>
                         </div>
                       </div>
+                      )}
 
                       {/* Timezone */}
                       <div className="space-y-2">
@@ -374,6 +578,131 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        {/* Scenarios Tab */}
+        <TabsContent value="scenarios" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Scenario Management</CardTitle>
+              <CardDescription>
+                Create and manage scenarios.{' '}
+                {scenarioConfig?.maxScenarios !== undefined && scenarioConfig.maxScenarios !== null && (
+                  <>Maximum {scenarioConfig.maxScenarios} scenarios allowed.{' '}</>
+                )}
+                {scenarioConfig?.maxRequestsPerScenario !== undefined && scenarioConfig.maxRequestsPerScenario !== null && (
+                  <>Maximum {scenarioConfig.maxRequestsPerScenario} requests per scenario.</>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {scenarioConfig ? (
+                <>
+                  {/* Current Scenario */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Current Scenario</label>
+                    <Select
+                      value={scenarioConfig.currentScenario}
+                      onValueChange={handleSetScenario}
+                      disabled={scenarioLoading}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {scenarioConfig.scenarios.map((scenario) => (
+                          <SelectItem key={scenario} value={scenario}>
+                            {scenario}
+                            {scenario === scenarioConfig.currentScenario && ' (current)'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Create New Scenario */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Create New Scenario</label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newScenarioName}
+                        onChange={(e) => setNewScenarioName(e.target.value)}
+                        placeholder="Enter scenario name"
+                        disabled={scenarioLoading || (scenarioConfig.maxScenarios !== undefined && scenarioConfig.maxScenarios !== null && scenarioConfig.scenarios.length >= scenarioConfig.maxScenarios)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleCreateScenario()
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={handleCreateScenario}
+                        disabled={scenarioLoading || !newScenarioName.trim() || (scenarioConfig.maxScenarios !== undefined && scenarioConfig.maxScenarios !== null && scenarioConfig.scenarios.length >= scenarioConfig.maxScenarios)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create
+                      </Button>
+                    </div>
+                    {scenarioConfig.maxScenarios !== undefined && 
+                     scenarioConfig.maxScenarios !== null &&
+                     scenarioConfig.scenarios.length >= scenarioConfig.maxScenarios && (
+                      <p className="text-xs text-muted-foreground">
+                        Maximum {scenarioConfig.maxScenarios} scenarios reached. Delete a scenario to create a new one.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Scenario List */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Available Scenarios</label>
+                    <div className="space-y-2">
+                      {scenarioConfig.scenariosWithCounts?.map((scenario) => (
+                        <div
+                          key={scenario.name}
+                          className="flex items-center justify-between p-3 border rounded-md bg-muted/50"
+                        >
+                          <div className="flex items-center gap-3">
+                            <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                            <div>
+                              <div className="font-medium flex items-center gap-2">
+                                {scenario.name}
+                                {scenario.isCurrent && (
+                                  <Badge variant="default" className="text-xs">Current</Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {scenario.requestCount} request{scenario.requestCount !== 1 ? 's' : ''}
+                                {scenarioConfig?.maxRequestsPerScenario !== undefined && 
+                                 scenarioConfig.maxRequestsPerScenario !== null &&
+                                 scenario.requestCount >= scenarioConfig.maxRequestsPerScenario && (
+                                  <span className="text-red-500 ml-1">(Limit reached)</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {scenario.name !== 'default' && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteScenario(scenario.name)}
+                              disabled={scenarioLoading || scenario.isCurrent}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center text-muted-foreground py-8">
+                  Loading scenarios...
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Config Reference Tab */}
         <TabsContent value="reference" className="space-y-4">
           <Card>
@@ -394,8 +723,8 @@ export default function Settings() {
                 <TabsContent value="setup" className="space-y-4 mt-4">
                   <div>
                     <h4 className="font-semibold mb-2">setupMockifyer Options</h4>
-                    <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
-{`{
+                    <CodeBlock
+                      code={`{
   mockDataPath: string;        // Path to store/load mock files
   recordMode?: boolean;         // Enable recording mode
   failOnMissingMock?: boolean;  // Fail if no mock found
@@ -407,7 +736,8 @@ export default function Settings() {
     outputPath: string;
   }
 }`}
-                    </pre>
+                      language="typescript"
+                    />
                   </div>
                 </TabsContent>
 
@@ -451,12 +781,13 @@ export default function Settings() {
                       <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> instead of{' '}
                       <code className="bg-muted px-1 rounded">new Date()</code> for date manipulation to work.
                     </p>
-                    <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm">
-{`import { getCurrentDate } from '@sgedda/mockifyer-core';
+                    <CodeBlock
+                      code={`import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 // Use this instead of new Date()
 const currentDate = getCurrentDate();`}
-                    </pre>
+                      language="typescript"
+                    />
                   </div>
                 </TabsContent>
               </Tabs>

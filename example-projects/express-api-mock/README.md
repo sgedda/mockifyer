@@ -21,11 +21,24 @@ This example project demonstrates how to use `mockifyer` to mock external API ca
    npm install
    ```
 
-2. Create a `.env` file in the root directory with your API keys:
+2. Create a `.env` file in the root directory:
+   ```bash
+   cp .env.example .env
+   ```
+   Then edit `.env` and add your API keys. See `.env.example` for a complete list of all environment variables.
+   
+   **Quick reference:**
    ```
    WEATHER_API_KEY=your_weather_api_key_here
    FOOTBALL_API_KEY=your_football_api_key_here
    PORT=3000
+   
+   # Mockifyer Configuration (optional)
+   MOCKIFYER_ENABLED=true
+   MOCKIFYER_RECORD=true
+   MOCKIFYER_PATH=./mock-data
+   MOCKIFYER_MAX_SCENARIOS=3  # Optional: Set max number of scenarios. If not set, there is no limit.
+   MOCKIFYER_MAX_REQUESTS_PER_SCENARIO=20  # Optional: Set max requests per scenario. If not set, there is no limit.
    ```
 
    **Getting API Keys:**

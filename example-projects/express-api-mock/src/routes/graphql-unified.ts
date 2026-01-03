@@ -56,7 +56,18 @@ router.post('/query', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          (result.data as any)?.limitReached === true ||
+                          (result.data as any)?.error?.includes('Maximum') ||
+                          (result.data as any)?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[GraphQLUnifiedRoute] Error:', error);
     const errorMessage = error?.message || 'Failed to execute GraphQL query';

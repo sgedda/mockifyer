@@ -43,7 +43,8 @@ router.get('/current/:city', async (req: Request, res: Response) => {
         totalHeaders: Object.keys(result.headers).length,
         headerKeys: Object.keys(result.headers),
         hasXMockifyer: 'x-mockifyer' in result.headers,
-        xMockifyerValue: result.headers['x-mockifyer']
+        xMockifyerValue: result.headers['x-mockifyer'],
+        hasLimitReached: 'x-mockifyer-limit-reached' in result.headers
       });
       
       Object.entries(result.headers).forEach(([key, value]) => {
@@ -60,7 +61,18 @@ router.get('/current/:city', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          result.data?.limitReached === true ||
+                          result.data?.error?.includes('Maximum') ||
+                          result.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[WeatherUnifiedRoute] Current - Error:', {
       message: error?.message,
@@ -119,7 +131,8 @@ router.get('/forecast/:city', async (req: Request, res: Response) => {
         totalHeaders: Object.keys(result.headers).length,
         headerKeys: Object.keys(result.headers),
         hasXMockifyer: 'x-mockifyer' in result.headers,
-        xMockifyerValue: result.headers['x-mockifyer']
+        xMockifyerValue: result.headers['x-mockifyer'],
+        hasLimitReached: 'x-mockifyer-limit-reached' in result.headers
       });
       
       Object.entries(result.headers).forEach(([key, value]) => {
@@ -136,7 +149,18 @@ router.get('/forecast/:city', async (req: Request, res: Response) => {
     res.setHeader('x-client-type', clientType);
     res.setHeader('x-scope', scope);
     
-    res.json(result.data);
+    // Check if this is a limit response
+    const isLimitReached = result.headers?.['x-mockifyer-limit-reached'] === 'true' || 
+                          result.data?.limitReached === true ||
+                          result.data?.error?.includes('Maximum') ||
+                          result.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return 429 status with limit error JSON
+      res.status(429).json(result.data);
+    } else {
+      res.json(result.data);
+    }
   } catch (error: any) {
     console.error('[WeatherUnifiedRoute] Forecast - Error:', {
       message: error?.message,

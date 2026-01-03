@@ -134,8 +134,8 @@ const endpointConfigs: Record<string, EndpointConfig> = {
         id: 'team',
         label: 'Team (optional)',
         type: 'select',
+        placeholder: 'Select a team...',
         options: [
-          { value: '', label: 'Select a team...' },
           { value: '33', label: 'Manchester United', group: 'Premier League' },
           { value: '50', label: 'Manchester City', group: 'Premier League' },
           { value: '40', label: 'Liverpool', group: 'Premier League' },
@@ -268,20 +268,20 @@ const endpointConfigs: Record<string, EndpointConfig> = {
         label: 'Filter',
         type: 'select',
         options: [
-          { value: '', label: 'All Events' },
+          { value: 'all', label: 'All Events' },
           { value: 'upcoming', label: 'Upcoming Events' },
           { value: 'past', label: 'Past Events' },
           { value: 'today', label: "Today's Events" },
         ],
-        defaultValue: '',
+        defaultValue: 'all',
       },
     ],
     buildUrl: (params) => {
-      const filter = params.filter ? `?filter=${params.filter}` : ''
+      const filter = params.filter && params.filter !== 'all' ? `?filter=${params.filter}` : ''
       return `/api/events/filtered${filter}`
     },
     buildTitle: (params) => {
-      const filterText = params.filter
+      const filterText = params.filter && params.filter !== 'all'
         ? ` - ${params.filter.charAt(0).toUpperCase() + params.filter.slice(1)}`
         : ''
       return `Date-Filtered Events${filterText}`
@@ -360,6 +360,18 @@ export default function UnifiedEndpointTester({
       const duration = Date.now() - startTime
       const data = await response.json()
       const mocked = response.headers.get('x-mockifyer') === 'true'
+      const limitReached = response.headers.get('x-mockifyer-limit-reached') === 'true'
+
+      // Check if limit is reached
+      if (limitReached || data?.limitReached) {
+        const limitMessage = data?.message || data?.error || 'Maximum requests per scenario reached. Please delete some mock files or switch to a different scenario.'
+        toast({
+          title: 'Maximum Requests Reached',
+          description: limitMessage,
+          variant: 'destructive',
+          duration: 5000,
+        })
+      }
 
       onResponse({
         data,
@@ -372,17 +384,43 @@ export default function UnifiedEndpointTester({
         endpointName: `${config.icon} ${config.name}`,
         title: config.buildTitle(formValues),
         duration,
+        url: finalUrl,
+        method: config.method,
+        requestBody: options.body,
       })
     } catch (error: any) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
-      })
+      // Extract error message (handle both regular errors and axios errors)
+      let errorMessage = error?.message || error?.response?.data?.message || error?.response?.data?.error || 'An error occurred'
+      
+      // Check if this is a limit error
+      const isLimitError = error?.isLimitError || 
+                          errorMessage?.includes('Maximum') || 
+                          errorMessage?.includes('requests per scenario') ||
+                          errorMessage?.includes('requests per scenario reached')
+      
+      // Show clear message for limit errors
+      if (isLimitError) {
+        toast({
+          title: 'Maximum Requests Reached',
+          description: 'Cannot make more requests. Maximum requests per scenario reached. Please delete some mock files or switch to a different scenario.',
+          variant: 'destructive',
+          duration: 5000, // Show for 5 seconds
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        })
+      }
+      
       onResponse({
-        error: error.message,
+        error: errorMessage,
         endpointName: `${config.icon} ${config.name}`,
         title: config.buildTitle(formValues),
+        url: finalUrl,
+        method: config.method,
+        requestBody: options.body,
       })
     } finally {
       setLoading(false)
@@ -443,14 +481,14 @@ export default function UnifiedEndpointTester({
                   )}
                   {field.type === 'select' && (
                     <Select
-                      value={formValues[field.id] || field.defaultValue || ''}
+                      value={formValues[field.id] || field.defaultValue || undefined}
                       onValueChange={(value) => updateFormValue(field.id, value)}
                     >
                       <SelectTrigger id={`field-${field.id}`}>
-                        <SelectValue placeholder={field.placeholder} />
+                        <SelectValue placeholder={field.placeholder || 'Select an option...'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {field.options?.map((option) => (
+                        {field.options?.filter(option => option.value !== '').map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>

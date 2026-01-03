@@ -472,6 +472,21 @@ export async function getFixturesUnified(
       }
     }
 
+    // Check if this is a limit response - if so, return it as-is
+    const isLimitReached = response.status === 429 || 
+                          finalHeaders['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return limit error response as-is (don't transform)
+      return {
+        data: response.data,
+        headers: finalHeaders
+      };
+    }
+
     return {
       data: fixtures,
       headers: finalHeaders
@@ -625,6 +640,21 @@ export async function getStandingsUnified(
       }
     }
 
+    // Check if this is a limit response - if so, return it as-is
+    const isLimitReached = response.status === 429 || 
+                          finalHeaders['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      // Return limit error response as-is (don't transform)
+      return {
+        data: response.data,
+        headers: finalHeaders
+      };
+    }
+
     return {
       data: standings,
       headers: finalHeaders
@@ -723,8 +753,37 @@ export async function getTeamInfoUnified(
       });
     }
 
+    // Check if this is a limit response - if so, return it as-is (before checking for team data)
+    const isLimitReached = response.status === 429 || 
+                          response.headers?.['x-mockifyer-limit-reached'] === 'true' ||
+                          response.data?.limitReached === true ||
+                          response.data?.error?.includes('Maximum') ||
+                          response.data?.message?.includes('Maximum');
+    
+    if (isLimitReached) {
+      const finalHeaders: Record<string, string> = { ...(response.headers || {}) };
+      return {
+        data: response.data as any,
+        headers: finalHeaders
+      };
+    }
+
     const teamData = response.data.response?.[0]?.team;
     if (!teamData) {
+      // Check if API returned an error response or 404
+      if (response.status === 404 || response.data?.errors || response.data?.error) {
+        const error = new Error(response.data?.error || response.data?.errors?.[0]?.message || 'Team not found') as any;
+        error.status = 404;
+        error.response = { status: 404 };
+        throw error;
+      }
+      // If response array is empty, it's a 404
+      if (Array.isArray(response.data.response) && response.data.response.length === 0) {
+        const error = new Error('Team not found') as any;
+        error.status = 404;
+        error.response = { status: 404 };
+        throw error;
+      }
       throw new Error('Team not found');
     }
 
