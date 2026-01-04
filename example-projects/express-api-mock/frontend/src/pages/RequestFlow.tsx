@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Clock, Network, GitBranch, FileText, Search, BarChart3, Zap, AlertCircle, FolderOpen } from 'lucide-react'
+import { Network, GitBranch, Search, BarChart3, Zap, FolderOpen } from 'lucide-react'
 import { getMockFiles, getScenarioConfig, setScenario, type ScenarioConfig } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import CodeBlock from '@/components/CodeBlock'
@@ -110,13 +109,13 @@ export default function RequestFlow() {
               method,
               url,
               sequence: mockData.data?.sequence || index + 1,
-              sessionId: mockData.data?.sessionId || generateSessionId(file.modified),
+              sessionId: mockData.data?.sessionId || generateSessionId(file.modified.toISOString()),
               requestId: mockData.data?.requestId || file.filename,
               parentRequestId: mockData.data?.parentRequestId,
               source: mockData.data?.source || mockData.data?.callStack?.[0] || 'Unknown',
               duration: mockData.data?.duration || mockData.data?.responseTime,
-              timestamp: mockData.data?.timestamp || file.modified,
-              modified: file.modified,
+              timestamp: mockData.data?.timestamp || file.modified.toISOString(),
+              modified: file.modified.toISOString(),
               size: file.size,
               requestHeaders: mockData.data?.request?.headers,
               responseStatus: mockData.data?.response?.status,
@@ -132,10 +131,10 @@ export default function RequestFlow() {
               method: extractMethod(endpoint),
               url: extractUrl(endpoint),
               sequence: index + 1,
-              sessionId: generateSessionId(file.modified),
+              sessionId: generateSessionId(file.modified.toISOString()),
               requestId: file.filename,
-              timestamp: file.modified,
-              modified: file.modified,
+              timestamp: file.modified.toISOString(),
+              modified: file.modified.toISOString(),
               size: file.size,
             } as FlowRequest
           }
@@ -209,16 +208,6 @@ export default function RequestFlow() {
     return parts.slice(1).join(' ') || endpoint
   }
 
-  function getMethodBadgeClass(method: string): string {
-    const classes: Record<string, string> = {
-      GET: 'bg-green-500/20 text-green-400 border-green-500/30',
-      POST: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      PUT: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      PATCH: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-      DELETE: 'bg-red-500/20 text-red-400 border-red-500/30',
-    }
-    return classes[method] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-  }
 
   function formatDate(dateString: string): string {
     return new Date(dateString).toLocaleString()

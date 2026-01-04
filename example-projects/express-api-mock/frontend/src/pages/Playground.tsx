@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { getMockFiles, type MockFile, getScenarioConfig, setScenario, type ScenarioConfig } from '@/lib/api'
+import { getScenarioConfig, setScenario, type ScenarioConfig } from '@/lib/api'
 import MockFileBrowser from '@/components/MockFileBrowser'
-import QueryParamsBuilder from '@/components/QueryParamsBuilder'
 import RequestTemplates from '@/components/RequestTemplates'
 import StatusBanner from '@/components/StatusBanner'
 import ClientConfig from '@/components/ClientConfig'
 import UnifiedEndpointTester from '@/components/UnifiedEndpointTester'
-import { Copy, Download, Clock, CheckCircle2, XCircle, Globe, Zap, Terminal, Sparkles, FolderOpen } from 'lucide-react'
+import { Copy, Download, Clock, CheckCircle2, XCircle, Globe, Zap, FolderOpen } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -28,20 +26,17 @@ interface RequestHistory {
 }
 
 export default function Playground() {
-  const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState<any>(null)
   const [requestHistory, setRequestHistory] = useState<RequestHistory[]>([])
   const [endpoint, setEndpoint] = useState('')
   const [method, setMethod] = useState<'GET' | 'POST'>('GET')
   const [requestBody, setRequestBody] = useState('')
-  const [queryParams, setQueryParams] = useState<Array<{ key: string; value: string }>>([])
-  const [city, setCity] = useState('London')
   const [showTemplates, setShowTemplates] = useState(false)
   const [clientType, setClientType] = useState<'axios' | 'fetch'>('axios')
   const [scope, setScope] = useState<'local' | 'global'>('local')
   const [scenarioConfig, setScenarioConfig] = useState<ScenarioConfig | null>(null)
   const [scenarioLoading, setScenarioLoading] = useState(false)
-  const [graphqlQuery, setGraphqlQuery] = useState(`{
+  const [_graphqlQuery, setGraphqlQuery] = useState(`{
   characters {
     results {
       id
@@ -51,7 +46,7 @@ export default function Playground() {
     }
   }
 }`)
-  const [graphqlVariables, setGraphqlVariables] = useState('{}')
+  const [_graphqlVariables, setGraphqlVariables] = useState('{}')
   const { toast } = useToast()
 
   useEffect(() => {
@@ -109,257 +104,6 @@ export default function Playground() {
     localStorage.setItem('playground-history', JSON.stringify(updated))
   }
 
-  const handleRequest = async (url: string, options: RequestInit = {}) => {
-    const startTime = Date.now()
-    setLoading(true)
-    setResponse(null)
-    
-    // Store request info for curl generation
-    let requestUrl = ''
-    let requestMethod = options.method || 'GET'
-    
-    try {
-      // Add clientType and scope query parameters
-      // Handle both absolute and relative URLs
-      const baseUrl = url.startsWith('http') ? url : `${window.location.origin}${url}`
-      const urlObj = new URL(baseUrl)
-      urlObj.searchParams.set('clientType', clientType)
-      urlObj.searchParams.set('scope', scope)
-      const finalUrl = urlObj.pathname + urlObj.search
-      requestUrl = finalUrl
-      
-      const res = await fetch(finalUrl, options)
-      const duration = Date.now() - startTime
-      
-      // Check headers first, before parsing body
-      const mocked = res.headers.get('x-mockifyer') === 'true'
-      const limitReached = res.headers.get('x-mockifyer-limit-reached') === 'true'
-      const mockFilename = res.headers.get('x-mockifyer-filename')
-      const mockTimestamp = res.headers.get('x-mockifyer-timestamp')
-      
-      let data
-      const contentType = res.headers.get('content-type')
-      try {
-        if (contentType?.includes('application/json')) {
-          data = await res.json()
-        } else {
-          data = await res.text()
-        }
-      } catch (parseError) {
-        // If parsing fails, try to get text
-        try {
-          const text = await res.text()
-          data = { error: text, message: text }
-        } catch (e) {
-          data = { error: 'Failed to parse response', message: 'Failed to parse response' }
-        }
-      }
-      
-      // Check if limit is reached - show message but still display response
-      if (limitReached || data?.limitReached || res.status === 429) {
-        const limitMessage = data?.message || data?.error || 'Maximum requests per scenario reached. Please delete some mock files or switch to a different scenario.'
-        console.log('[Playground] Limit reached detected:', { limitReached, status: res.status, data })
-        toast({
-          title: 'Maximum Requests Reached',
-          description: limitMessage,
-          variant: 'destructive',
-          duration: 5000,
-        })
-        
-        // Set response even for limit errors so user can see the error message
-        const responseData = {
-          data,
-          mocked: true, // Mark limit responses as mocked
-          status: res.status,
-          statusText: res.statusText,
-          headers: Object.fromEntries(res.headers.entries()),
-          mockFilename,
-          mockTimestamp,
-          duration,
-          url: finalUrl,
-          method: (options.method || 'GET').toUpperCase(),
-          requestBody: options.body,
-          limitReached: true,
-        }
-        
-        console.log('[Set Response] Limit reached:', responseData)
-        setResponse(responseData)
-        return // Don't continue processing
-      }
-      
-      // Check if response is an error (but not limit reached - that's handled above)
-      if (!res.ok) {
-        const errorMessage = data?.error || data?.message || `HTTP ${res.status}: ${res.statusText}`
-        const errorDetails = data?.details || data?.stack
-        throw new Error(errorDetails ? `${errorMessage}\n\n${errorDetails}` : errorMessage)
-      }
-      
-      const responseData = {
-        data,
-        mocked: mocked || limitReached, // Mark limit responses as mocked
-        status: res.status,
-        statusText: res.statusText,
-        headers: Object.fromEntries(res.headers.entries()),
-        mockFilename,
-        mockTimestamp,
-        duration,
-        url: finalUrl,
-        method: (options.method || 'GET').toUpperCase(),
-        requestBody: options.body,
-        limitReached: limitReached || data?.limitReached,
-      }
-      
-      console.log('[Set Response]', { url: finalUrl, method: responseData.method, hasBody: !!options.body, limitReached })
-      setResponse(responseData)
-      
-      // Always refresh after successful requests to catch new recordings
-      // In record mode, new files are saved even if response doesn't have mockFilename header
-      // Delay to ensure file is written to disk (file writes happen asynchronously)
-      setTimeout(() => {
-        console.log('[Playground] Triggering mock file refresh after request')
-        window.dispatchEvent(new CustomEvent('mock-file-created', { 
-          detail: { 
-            filename: mockFilename || 'new-recording',
-            url: finalUrl 
-          } 
-        }))
-      }, 1500)
-      
-      // Save to history
-      saveToHistory({
-        id: Date.now().toString(),
-        url: finalUrl,
-        method: options.method || 'GET',
-        timestamp: new Date(),
-        status: res.status,
-        mocked: mocked || limitReached,
-        duration,
-      })
-      
-      // Don't show success toast for limit reached errors
-      if (!responseData.limitReached) {
-        toast({
-          title: mocked ? 'Mocked Response' : 'Real API Response',
-          description: `Status: ${res.status} (${duration}ms)`,
-        })
-      }
-    } catch (error: any) {
-      const duration = Date.now() - startTime
-      // Extract error message (handle both regular errors and axios errors)
-      let errorMessage = error?.message || error?.response?.data?.message || error?.response?.data?.error || 'An error occurred'
-      
-      // Check if this is a limit error
-      const isLimitError = error?.isLimitError || 
-                          errorMessage?.includes('Maximum') || 
-                          errorMessage?.includes('requests per scenario') ||
-                          errorMessage?.includes('requests per scenario reached')
-      
-      // Show clear message for limit errors
-      if (isLimitError) {
-        toast({
-          title: 'Maximum Requests Reached',
-          description: 'Cannot make more requests. Maximum requests per scenario reached. Please delete some mock files or switch to a different scenario.',
-          variant: 'destructive',
-          duration: 5000, // Show for 5 seconds
-        })
-      } else {
-        toast({
-          title: 'Error',
-          description: errorMessage,
-          variant: 'destructive',
-        })
-      }
-      
-      setResponse({
-        error: errorMessage,
-        duration,
-        url: requestUrl,
-        method: requestMethod,
-        requestBody: options.body,
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleWeatherRequest = (type: 'current' | 'forecast') => {
-    if (type === 'current') {
-      handleRequest(`/api/weather-unified/current/${encodeURIComponent(city)}`)
-    } else {
-      handleRequest(`/api/weather-unified/forecast/${encodeURIComponent(city)}?days=3`)
-    }
-  }
-
-  const handleGraphQLRequest = () => {
-    let variables
-    try {
-      variables = JSON.parse(graphqlVariables || '{}')
-    } catch (e) {
-      toast({
-        title: 'Invalid JSON',
-        description: 'GraphQL variables must be valid JSON',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    handleRequest('/api/graphql-unified/query', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: graphqlQuery,
-        variables,
-      }),
-    })
-  }
-
-  const handleCustomRequest = () => {
-    if (!endpoint) {
-      toast({
-        title: 'Error',
-        description: 'Please enter an endpoint',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    // Build URL with query parameters
-    let url = endpoint
-    const validParams = queryParams.filter((p) => p.key.trim() !== '')
-    if (validParams.length > 0 && method === 'GET') {
-      const searchParams = new URLSearchParams()
-      validParams.forEach((p) => {
-        searchParams.append(p.key.trim(), p.value.trim())
-      })
-      const queryString = searchParams.toString()
-      url = `${endpoint}${endpoint.includes('?') ? '&' : '?'}${queryString}`
-    }
-
-    const options: RequestInit = {
-      method,
-    }
-
-    if (method === 'POST' && requestBody) {
-      try {
-        JSON.parse(requestBody)
-        options.headers = {
-          'Content-Type': 'application/json',
-        }
-        options.body = requestBody
-      } catch (e) {
-        toast({
-          title: 'Invalid JSON',
-          description: 'Request body must be valid JSON',
-          variant: 'destructive',
-        })
-        return
-      }
-    }
-
-    handleRequest(url, options)
-  }
 
   const handleTemplateSelect = (template: any) => {
     setEndpoint(template.endpoint)

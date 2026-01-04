@@ -286,7 +286,7 @@ export default function JsonFieldEditor({ value, onChange, path = '', level = 0 
                     ) : (
                       <Input
                         type={typeof fieldValue === 'number' ? 'number' : 'text'}
-                        value={fieldValue ?? ''}
+                        value={typeof fieldValue === 'string' || typeof fieldValue === 'number' ? (fieldValue ?? '') : ''}
                         onChange={(e) => {
                           let newFieldValue: any = e.target.value
                           if (typeof fieldValue === 'number') {

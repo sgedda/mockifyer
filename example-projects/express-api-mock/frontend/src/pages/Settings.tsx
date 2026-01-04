@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/use-toast'
 import { getDateConfig, updateDateConfig, type DateConfig, getScenarioConfig, createScenario, deleteScenario, setScenario, type ScenarioConfig } from '@/lib/api'
-import { Settings as SettingsIcon, Calendar, BookOpen, ToggleLeft, ToggleRight, FolderOpen, Plus, Trash2 } from 'lucide-react'
+import { Settings as SettingsIcon, Calendar, BookOpen, ToggleRight, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 
 const IANA_TIMEZONES = [
@@ -415,7 +415,7 @@ export default function Settings() {
                               name="dateMode"
                               value="fixed"
                               checked={dateMode === 'fixed'}
-                              onChange={(e) => {
+                              onChange={() => {
                                 setDateMode('fixed')
                                 // Clear offset when switching to fixed
                                 setOffsetDays('0')
@@ -432,7 +432,7 @@ export default function Settings() {
                               name="dateMode"
                               value="offset"
                               checked={dateMode === 'offset'}
-                              onChange={(e) => {
+                              onChange={() => {
                                 setDateMode('offset')
                                 // Clear fixed date when switching to offset
                                 setFixedDate('')
