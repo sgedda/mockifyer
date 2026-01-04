@@ -154,10 +154,11 @@ export function listScenarios(mockDataPath: string): string[] {
   
   for (const item of items) {
     // Only include directories, and exclude special config files and system directories
+    const nameLower = item.name.toLowerCase();
     if (item.isDirectory() && 
         !item.name.startsWith('.') && 
         item.name !== 'node_modules' &&
-        item.name !== 'lost+found') {
+        nameLower !== 'lost+found') {
       scenarios.push(item.name);
     }
   }
@@ -201,9 +202,11 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
         const items = fs.readdirSync(mockDataPath, { withFileTypes: true });
         for (const item of items) {
           // Count only directories, exclude special files and hidden directories
+          const nameLower = item.name.toLowerCase();
           if (item.isDirectory() && 
               !item.name.startsWith('.') && 
-              item.name !== 'node_modules') {
+              item.name !== 'node_modules' &&
+              nameLower !== 'lost+found') {
             // Don't count the scenario we're about to create if it already exists
             if (item.name !== sanitized) {
               existingCount++;
