@@ -6,7 +6,6 @@
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "lib": ["es2019", "dom"],
     "types": ["node", "jest"],
