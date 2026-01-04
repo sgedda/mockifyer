@@ -93,15 +93,30 @@ export default function RequestFlow() {
       setLoading(true)
       const data = await getMockFiles()
       
+      if (!data.files || data.files.length === 0) {
+        console.warn('[RequestFlow] No files returned from API')
+        setRequests([])
+        return
+      }
+      
       // Fetch details for each mock file
       const flowRequests = await Promise.all(
         data.files.map(async (file, index) => {
           try {
             const response = await fetch(`/api/mocks/${file.filename}`)
+            if (!response.ok) {
+              console.warn(`[RequestFlow] Failed to fetch ${file.filename}:`, response.status, response.statusText)
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
             const mockData = await response.json()
             const endpoint = file.endpoint || mockData.data?.request?.url || ''
             const method = extractMethod(endpoint)
             const url = extractUrl(endpoint)
+            
+            // Handle date conversion (API returns dates as ISO strings)
+            const modifiedDate = typeof file.modified === 'string' 
+              ? file.modified 
+              : (file.modified instanceof Date ? file.modified.toISOString() : new Date().toISOString())
             
             return {
               filename: file.filename,
@@ -109,13 +124,13 @@ export default function RequestFlow() {
               method,
               url,
               sequence: mockData.data?.sequence || index + 1,
-              sessionId: mockData.data?.sessionId || generateSessionId(file.modified.toISOString()),
+              sessionId: mockData.data?.sessionId || generateSessionId(modifiedDate),
               requestId: mockData.data?.requestId || file.filename,
               parentRequestId: mockData.data?.parentRequestId,
               source: mockData.data?.source || mockData.data?.callStack?.[0] || 'Unknown',
               duration: mockData.data?.duration || mockData.data?.responseTime,
-              timestamp: mockData.data?.timestamp || file.modified.toISOString(),
-              modified: file.modified.toISOString(),
+              timestamp: mockData.data?.timestamp || modifiedDate,
+              modified: modifiedDate,
               size: file.size,
               requestHeaders: mockData.data?.request?.headers,
               responseStatus: mockData.data?.response?.status,
@@ -123,18 +138,24 @@ export default function RequestFlow() {
               callStack: mockData.data?.callStack,
             } as FlowRequest
           } catch (error) {
+            console.warn(`[RequestFlow] Error fetching ${file.filename}, using fallback:`, error)
             // Fallback if fetching fails
             const endpoint = file.endpoint || ''
+            // Handle date conversion (API returns dates as ISO strings)
+            const modifiedDate = typeof file.modified === 'string' 
+              ? file.modified 
+              : (file.modified instanceof Date ? file.modified.toISOString() : new Date().toISOString())
+            
             return {
               filename: file.filename,
               endpoint,
               method: extractMethod(endpoint),
               url: extractUrl(endpoint),
               sequence: index + 1,
-              sessionId: generateSessionId(file.modified.toISOString()),
+              sessionId: generateSessionId(modifiedDate),
               requestId: file.filename,
-              timestamp: file.modified.toISOString(),
-              modified: file.modified.toISOString(),
+              timestamp: modifiedDate,
+              modified: modifiedDate,
               size: file.size,
             } as FlowRequest
           }
