@@ -5,6 +5,10 @@ export default {
     './index.html',
     './src/**/*.{ts,tsx}',
   ],
+  safelist: [
+    'dark',
+    'dim',
+  ],
   theme: {
     container: {
       center: true,

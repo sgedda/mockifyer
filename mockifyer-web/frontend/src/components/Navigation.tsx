@@ -26,24 +26,30 @@ export default function Navigation() {
   return (
     <nav className="border-b bg-card">
       <div className="container mx-auto px-4">
-        <div className="flex h-16 items-center justify-between">
-          <Logo />
+        <div className="flex h-16 items-center justify-between gap-4">
+          <Logo className="flex-shrink-0" />
           
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  isActive(item.href)
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <div className="hidden md:flex items-center gap-2 flex-1 justify-end min-w-0">
+            <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+              {navItems.map((item) => (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                    isActive(item.href)
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Theme Toggle - Always visible on desktop */}
+          <div className="hidden md:block flex-shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -51,7 +57,7 @@ export default function Navigation() {
                 e.preventDefault()
                 toggleTheme()
               }}
-              className="ml-2"
+              className="flex-shrink-0"
               aria-label="Toggle theme"
             >
               {theme === 'dark' ? (
@@ -63,7 +69,7 @@ export default function Navigation() {
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="md:hidden flex items-center gap-2 flex-shrink-0">
             <Button
               variant="ghost"
               size="icon"
