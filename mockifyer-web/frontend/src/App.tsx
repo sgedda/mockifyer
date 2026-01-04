@@ -8,6 +8,7 @@ import DateConfig from './pages/DateConfig'
 import GettingStarted from './pages/GettingStarted'
 import ConfigReference from './pages/ConfigReference'
 import Settings from './pages/Settings'
+import Contact from './pages/Contact'
 import { ThemeProvider } from './lib/use-theme'
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
               <Route path="/getting-started" element={<GettingStarted />} />
               <Route path="/config-reference" element={<ConfigReference />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/contact" element={<Contact />} />
             </Routes>
           </main>
           <Toaster />
