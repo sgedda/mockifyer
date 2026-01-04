@@ -17,9 +17,16 @@ import {
 } from '@/components/ui/dialog'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { prism } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useTheme } from '@/lib/use-theme'
 import JsonFieldEditor from './JsonFieldEditor'
 
 export default function MockFileBrowser() {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  const syntaxStyle = isDark ? vscDarkPlus : prism
+  // Use a nice light blue-grey for light mode instead of plain grey
+  const bgColor = isDark ? '#1e1e1e' : '#f0f4f8'
   const [files, setFiles] = useState<MockFile[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<any>(null)
@@ -462,7 +469,7 @@ export default function MockFileBrowser() {
               <TabsContent value="json" className="mt-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Response Data (JSON) - Only response.data is editable</label>
-                  <div className="relative border rounded-md overflow-hidden bg-[#1e1e1e]">
+                  <div className="relative border rounded-md overflow-hidden" style={{ backgroundColor: bgColor }}>
                     <div className="relative h-96 overflow-hidden">
                       <textarea
                         ref={textareaRef}
@@ -484,12 +491,12 @@ export default function MockFileBrowser() {
                             highlightRef.current.scrollLeft = textareaRef.current.scrollLeft
                           }
                         }}
-                        className="absolute inset-0 w-full h-full p-3 font-mono text-sm resize-none bg-transparent text-transparent caret-white outline-none z-10"
+                        className="absolute inset-0 w-full h-full p-3 font-mono text-sm resize-none bg-transparent text-transparent outline-none z-10"
                         placeholder="Enter JSON response data"
                         spellCheck={false}
                         style={{
                           color: 'transparent',
-                          caretColor: '#fff',
+                          caretColor: isDark ? '#fff' : '#000',
                           fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                           overflow: 'auto',
                         }}
@@ -501,7 +508,7 @@ export default function MockFileBrowser() {
                       >
                         <SyntaxHighlighter
                           language="json"
-                          style={vscDarkPlus}
+                          style={syntaxStyle}
                           customStyle={{
                             margin: 0,
                             padding: '12px',
@@ -548,7 +555,7 @@ export default function MockFileBrowser() {
                     </Button>
                   </div>
                   <div 
-                    className="border rounded-md bg-[#1e1e1e] max-h-[60vh] p-4 curl-scroll-container"
+                    className="border rounded-md max-h-[60vh] p-4 curl-scroll-container"
                     style={{ 
                       width: '100%',
                       maxWidth: '100%',
@@ -561,11 +568,12 @@ export default function MockFileBrowser() {
                       margin: '8px 0',
                       scrollbarWidth: 'thin',
                       scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent',
+                      backgroundColor: bgColor,
                     }}
                   >
                     <SyntaxHighlighter
                       language="bash"
-                      style={vscDarkPlus}
+                      style={syntaxStyle}
                       customStyle={{
                         margin: 0,
                         padding: 0,
@@ -646,7 +654,7 @@ export default function MockFileBrowser() {
                     </Button>
                   </div>
                   <div 
-                    className="border rounded-md bg-[#1e1e1e] max-h-[60vh] p-4 curl-scroll-container"
+                    className="border rounded-md max-h-[60vh] p-4 curl-scroll-container"
                     style={{ 
                       width: '100%',
                       maxWidth: '100%',
@@ -659,11 +667,12 @@ export default function MockFileBrowser() {
                       margin: '8px 0',
                       scrollbarWidth: 'thin',
                       scrollbarColor: 'rgba(255, 255, 255, 0.2) transparent',
+                      backgroundColor: bgColor,
                     }}
                   >
                     <SyntaxHighlighter
                       language="javascript"
-                      style={vscDarkPlus}
+                      style={syntaxStyle}
                       customStyle={{
                         margin: 0,
                         padding: 0,

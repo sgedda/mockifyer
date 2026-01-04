@@ -457,7 +457,7 @@ export default function RequestFlow() {
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Duration</div>
-                <div className="text-xs sm:text-sm font-semibold text-green-500">{sessionInfo.duration}</div>
+                <div className="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-500">{sessionInfo.duration}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">Started</div>
@@ -498,7 +498,7 @@ export default function RequestFlow() {
               </div>
               <div className="p-3 sm:p-4 bg-muted rounded-md">
                 <div className="text-xs text-muted-foreground mb-1">Avg Duration</div>
-                <div className="text-xl sm:text-2xl font-bold text-green-500">{statistics.avgDuration}ms</div>
+                <div className="text-xl sm:text-2xl font-bold text-green-600 dark:text-green-500">{statistics.avgDuration}ms</div>
               </div>
               <div className="p-3 sm:p-4 bg-muted rounded-md">
                 <div className="text-xs text-muted-foreground mb-1">Errors</div>
@@ -517,7 +517,7 @@ export default function RequestFlow() {
                 {statistics.fastestRequest && (
                   <div>
                     <span className="text-muted-foreground">Fastest: </span>
-                    <span className="font-mono text-green-500">{formatDuration(statistics.fastestRequest.duration)}</span>
+                    <span className="font-mono text-green-600 dark:text-green-500">{formatDuration(statistics.fastestRequest.duration)}</span>
                     <span className="text-muted-foreground ml-2">({statistics.fastestRequest.url?.substring(0, 40)}...)</span>
                   </div>
                 )}
@@ -660,9 +660,9 @@ export default function RequestFlow() {
                                       <span className="break-all">Parent: {req.parentRequestId.substring(0, 15)}...</span>
                                     </span>
                                   ) : (
-                                    <span className="text-green-500 flex-shrink-0">🌱 Root request</span>
+                                    <span className="text-green-600 dark:text-green-500 flex-shrink-0">🌱 Root request</span>
                                   )}
-                                  <span className="text-green-500 font-semibold flex items-center gap-1 flex-shrink-0">
+                                  <span className="text-green-600 dark:text-green-500 font-semibold flex items-center gap-1 flex-shrink-0">
                                     <Zap className="h-3 w-3 flex-shrink-0" />
                                     {formatDuration(req.duration)}
                                   </span>
@@ -704,7 +704,7 @@ export default function RequestFlow() {
                 <div><strong>Sequence:</strong> #{selectedRequest.sequence}</div>
                 <div><strong>Request ID:</strong> <code className="bg-background px-1 rounded">{selectedRequest.requestId}</code></div>
                 <div><strong>Timestamp:</strong> {formatDate(selectedRequest.timestamp || selectedRequest.modified)}</div>
-                <div><strong>Duration:</strong> <span className="text-green-500">{formatDuration(selectedRequest.duration)}</span></div>
+                <div><strong>Duration:</strong> <span className="text-green-600 dark:text-green-500">{formatDuration(selectedRequest.duration)}</span></div>
               </div>
             </div>
 
