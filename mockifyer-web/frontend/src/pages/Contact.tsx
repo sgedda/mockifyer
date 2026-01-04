@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,29 @@ export default function Contact() {
     website: '', // Honeypot field
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formStartTime, setFormStartTime] = useState<number | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const { toast } = useToast()
+
+  // Track when form is first interacted with
+  useEffect(() => {
+    const startTime = Date.now()
+    setFormStartTime(startTime)
+    
+    // Generate session ID and register with backend
+    const id = Math.random().toString(36).substring(7)
+    setSessionId(id)
+    
+    fetch('/api/contact/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sessionId: id }),
+    }).catch(() => {
+      // Ignore errors - this is just for spam protection
+    })
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,6 +87,8 @@ export default function Contact() {
           email: formData.email.trim(),
           subject: formData.subject.trim() || 'Contact Form Submission',
           message: formData.message.trim(),
+          formStartTime,
+          sessionId,
         }),
       })
 
