@@ -14,6 +14,8 @@ import { ThemeProvider } from './lib/use-theme'
 function App() {
   return (
     <ThemeProvider>
+      {/* Ensure .dark class is included in build - used dynamically */}
+      <div className="hidden dark:block" />
       <BrowserRouter
         future={{
           v7_startTransition: true,
