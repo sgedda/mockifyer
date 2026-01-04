@@ -153,10 +153,11 @@ export function listScenarios(mockDataPath: string): string[] {
   const scenarios: string[] = [];
   
   for (const item of items) {
-    // Only include directories, and exclude special config files
+    // Only include directories, and exclude special config files and system directories
     if (item.isDirectory() && 
         !item.name.startsWith('.') && 
-        item.name !== 'node_modules') {
+        item.name !== 'node_modules' &&
+        item.name !== 'lost+found') {
       scenarios.push(item.name);
     }
   }
