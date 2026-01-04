@@ -16,7 +16,24 @@ function getMockDataPath(): string {
     // On Railway, use volume path
     return '/persisted/mock-data';
   } else {
-    // Local development fallback
+    // Local development fallback - try multiple possible locations
+    const possiblePaths = [
+      // Try relative to current working directory
+      path.join(process.cwd(), 'persisted', 'mock-data'),
+      // Try relative to __dirname (when running from dist/)
+      path.join(__dirname, '..', '..', 'persisted', 'mock-data'),
+      // Try going up from dist/routes/ to find project root
+      __dirname.includes('dist') 
+        ? path.join(__dirname.substring(0, __dirname.indexOf('dist')), 'persisted', 'mock-data')
+        : null,
+    ].filter((p): p is string => p !== null && fs.existsSync(p));
+    
+    // Return the first path that exists, or fallback to process.cwd()
+    if (possiblePaths.length > 0) {
+      return possiblePaths[0];
+    }
+    
+    // Last resort: return the default path (will be created if needed)
     return path.join(process.cwd(), 'persisted', 'mock-data');
   }
 }
