@@ -20,7 +20,7 @@ Railway offers a free tier with automatic deployments from GitHub.
 
 3. **Configure Service**
    - **IMPORTANT**: In the service settings, go to "Settings" → "Source"
-   - Set the **Root Directory** to: `example-projects/express-api-mock`
+   - Set the **Root Directory** to: `mockifyer-web`
    - **IMPORTANT**: In "Settings" → "Build", set **Builder** to: `Nixpacks` (or leave as auto-detect)
    - Railway will use Railpack (Nixpacks) which reads `nixpacks.toml` configuration
    - The `nixpacks.toml` handles copying production files, regenerating lockfile, and building correctly
@@ -90,7 +90,7 @@ Railway automatically deploys when you push to the main branch. No GitHub Action
 
 3. **Configure**
    - **Name**: `mockifyer-example`
-   - **Root Directory**: `example-projects/express-api-mock`
+   - **Root Directory**: `mockifyer-web`
    - **Environment**: `Node`
    - **Build Command**: `npm install && npm run build`
    - **Start Command**: `npm start`
@@ -158,7 +158,7 @@ Visit the URL to see the web dashboard!
 ## Troubleshooting
 
 ### Build Fails
-- Make sure the root directory is set to `example-projects/express-api-mock`
+- Make sure the root directory is set to `mockifyer-web`
 - Check that all dependencies are in `package.json`
 
 ### App Crashes

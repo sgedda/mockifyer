@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@sgedda/mockifyer-core": ["../packages/mockifyer-core/src"],
+      "@sgedda/mockifyer-core/*": ["../packages/mockifyer-core/src/*"],
+      "@sgedda/mockifyer-axios": ["../packages/mockifyer-axios/src"],
+      "@sgedda/mockifyer-axios/*": ["../packages/mockifyer-axios/src/*"],
+      "@sgedda/mockifyer-fetch": ["../packages/mockifyer-fetch/src"],
+      "@sgedda/mockifyer-fetch/*": ["../packages/mockifyer-fetch/src/*"]
+    }
+  },
+  "ts-node": {
+    "require": ["tsconfig-paths/register"],
+    "compilerOptions": {
+      "module": "commonjs"
+    }
+  }
+}
+
+
+

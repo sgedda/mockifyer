@@ -5,9 +5,9 @@ RUN node --version && npm --version
 
 WORKDIR /app
 
-# Copy files (if Root Directory is set to example-projects/express-api-mock, 
+# Copy files (if Root Directory is set to mockifyer-web, 
 # the build context is already that directory, so we copy from .)
-# If Root Directory is root, we'd need example-projects/express-api-mock/ but
+# If Root Directory is root, we'd need mockifyer-web/ but
 # Railway with Root Directory set means context is already the subdirectory
 COPY . ./
 

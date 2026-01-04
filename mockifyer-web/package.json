@@ -1,5 +1,5 @@
 {
-  "name": "express-api-mock-example",
+  "name": "mockifyer-web",
   "version": "1.0.0",
   "description": "Example Express.js API using mockifyer for testing and development",
   "main": "dist/index.js",
@@ -29,9 +29,9 @@
     "postinstall": "npm run build"
   },
   "dependencies": {
-    "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
-    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
-    "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
+    "@sgedda/mockifyer-axios": "file:../packages/mockifyer-axios",
+    "@sgedda/mockifyer-core": "file:../packages/mockifyer-core",
+    "@sgedda/mockifyer-fetch": "file:../packages/mockifyer-fetch",
     "axios": "^1.6.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

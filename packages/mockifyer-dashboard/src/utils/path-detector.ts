@@ -59,9 +59,39 @@ export function detectMockDataPath(cliPath?: string): string {
     currentDir = path.dirname(currentDir);
   }
   
-  // 4. Check common example project locations (from monorepo root)
+  // 4. Check mockifyer-web directory in root (from monorepo root)
   const repoRoot = findRepoRoot();
   if (repoRoot) {
+    // Check mockifyer-web directory first
+    const mockifyerWebDir = path.join(repoRoot, 'mockifyer-web');
+    if (fs.existsSync(mockifyerWebDir)) {
+      // Check persisted/mock-data first (preferred location)
+      const webPersistedPath = path.join(mockifyerWebDir, 'persisted', 'mock-data');
+      if (fs.existsSync(webPersistedPath)) {
+        try {
+          const files = fs.readdirSync(webPersistedPath);
+          if (files.length > 0) {
+            return webPersistedPath;
+          }
+        } catch (e) {
+          // Continue to next check
+        }
+      }
+      
+      // Check mock-data directory
+      const webMockDataPath = path.join(mockifyerWebDir, 'mock-data');
+      if (fs.existsSync(webMockDataPath)) {
+        try {
+          const files = fs.readdirSync(webMockDataPath);
+          if (files.length > 0) {
+            return webMockDataPath;
+          }
+        } catch (e) {
+          // Continue to next check
+        }
+      }
+    }
+    
     // Check example-projects directories
     const exampleProjectsDir = path.join(repoRoot, 'example-projects');
     if (fs.existsSync(exampleProjectsDir)) {
