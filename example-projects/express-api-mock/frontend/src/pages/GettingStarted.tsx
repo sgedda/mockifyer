@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Code, Zap, BookOpen, Settings, Play, Shield, Terminal, Monitor, Smartphone, TestTube, Clock } from 'lucide-react'
+import { CheckCircle2, Code, Zap, BookOpen, Settings, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 
 export default function GettingStarted() {

@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 
 interface EndpointField {
@@ -337,16 +336,17 @@ export default function UnifiedEndpointTester({
     }
 
     setLoading(true)
+    let finalUrl = ''
+    const options: RequestInit = {
+      method: config.method,
+    }
+    
     try {
       const url = config.buildUrl(formValues)
       const urlObj = new URL(url, window.location.origin)
       urlObj.searchParams.set('clientType', clientType)
       urlObj.searchParams.set('scope', scope)
-      const finalUrl = urlObj.pathname + urlObj.search
-
-      const options: RequestInit = {
-        method: config.method,
-      }
+      finalUrl = urlObj.pathname + urlObj.search
 
       if (config.method === 'POST' && config.buildBody) {
         options.headers = {
