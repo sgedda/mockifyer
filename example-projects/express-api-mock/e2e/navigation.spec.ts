@@ -18,14 +18,14 @@ test.describe('Navigation', () => {
   test('should navigate to Getting Started page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Getting Started' }).click();
-    await expect(page).toHaveURL(/.*getting-started\.html/);
+    await expect(page).toHaveURL(/.*getting-started/);
     await expect(page.getByText(/Getting Started with Mockifyer/i)).toBeVisible();
   });
 
   test('should navigate to Playground page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('navigation').getByRole('link', { name: 'Playground', exact: true }).click();
-    await expect(page).toHaveURL(/.*playground\.html/);
+    await expect(page).toHaveURL(/.*playground/);
     // Wait for page to load and check for Status Banner (reliable indicator)
     await page.waitForLoadState('networkidle');
     await expect(page.getByText(/Mockifyer:/i)).toBeVisible({ timeout: 10000 });
@@ -34,7 +34,7 @@ test.describe('Navigation', () => {
   test('should navigate to Request Flow page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('navigation').getByRole('link', { name: 'Request Flow', exact: true }).click();
-    await expect(page).toHaveURL(/.*request-flow\.html/);
+    await expect(page).toHaveURL(/.*request-flow/);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { name: /Request Flow Visualization/i })).toBeVisible({ timeout: 10000 });
   });
@@ -42,12 +42,12 @@ test.describe('Navigation', () => {
   test('should navigate to Settings page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true }).click();
-    await expect(page).toHaveURL(/.*settings\.html/);
+    await expect(page).toHaveURL(/.*settings/);
     await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
   });
 
   test('should have logo link to home page', async ({ page }) => {
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     const logo = page.getByRole('navigation').getByRole('link', { name: /mockifyer/i });
     await logo.click();
     await expect(page).toHaveURL('/');

@@ -4,7 +4,7 @@ test.describe('cURL Command Display in Edit Mock File', () => {
   test('should display full curl command and allow scrolling', async ({ page }) => {
     // Set a narrower viewport to simulate the issue
     await page.setViewportSize({ width: 800, height: 600 });
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     await page.waitForLoadState('networkidle');
     
     // Wait for mock files to load
@@ -159,7 +159,7 @@ test.describe('cURL Command Display in Edit Mock File', () => {
   });
   
   test('should copy curl command to clipboard', async ({ page, context }) => {
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     await page.waitForLoadState('networkidle');
     
     // Grant clipboard permissions

@@ -21,7 +21,7 @@ test.describe('Status API and Banner', () => {
   });
 
   test('should display version in status banner on playground page', async ({ page }) => {
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     await page.waitForLoadState('networkidle');
     
     // Wait for status banner to load

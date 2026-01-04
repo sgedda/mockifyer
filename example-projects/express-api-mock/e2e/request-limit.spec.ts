@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Request Limit Enforcement', () => {
   test('should block requests when limit is reached and show error message', async ({ page, context }) => {
     // Navigate to playground
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     await page.waitForLoadState('networkidle');
     
     // Wait for page to load
@@ -55,7 +55,7 @@ test.describe('Request Limit Enforcement', () => {
     });
     
     // First, check current scenario and count existing mocks
-    const baseUrl = page.url().split('/playground.html')[0];
+    const baseUrl = page.url().split('/playground')[0];
     const scenarioResponse = await page.request.get(`${baseUrl}/api/scenario-config`);
     const scenarioConfig = await scenarioResponse.json();
     const currentScenario = scenarioConfig.currentScenario || 'default';
@@ -176,7 +176,7 @@ test.describe('Request Limit Enforcement', () => {
   });
   
   test('should verify no external API calls are made when limit is reached', async ({ page }) => {
-    await page.goto('/playground.html');
+    await page.goto('/playground');
     await page.waitForLoadState('networkidle');
     
     // Block external API calls to verify they're not made

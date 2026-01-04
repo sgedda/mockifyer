@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Getting Started Page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/getting-started.html');
+    await page.goto('/getting-started');
   });
 
   test('should display getting started content', async ({ page }) => {
