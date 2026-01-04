@@ -819,7 +819,7 @@ npm test tests/generated
               <p className="text-sm text-muted-foreground mb-3">
                 Test API endpoints and see Mockifyer in action
               </p>
-              <Link to="/playground.html">
+              <Link to="/playground">
                 <Button size="sm" className="w-full">Open Playground</Button>
               </Link>
             </div>
@@ -832,7 +832,7 @@ npm test tests/generated
               <p className="text-sm text-muted-foreground mb-3">
                 Manage date settings and view configuration
               </p>
-              <Link to="/settings.html">
+              <Link to="/settings">
                 <Button size="sm" variant="outline" className="w-full">Open Settings</Button>
               </Link>
             </div>
@@ -849,7 +849,7 @@ npm test tests/generated
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link to="/playground.html" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/playground" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <Play className="h-5 w-5 text-primary" />
                 <h4 className="font-semibold">Playground</h4>
@@ -859,7 +859,7 @@ npm test tests/generated
               </p>
             </Link>
 
-            <Link to="/request-flow.html" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/request-flow" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="h-5 w-5 text-primary" />
                 <h4 className="font-semibold">Request Flow</h4>
@@ -869,7 +869,7 @@ npm test tests/generated
               </p>
             </Link>
 
-            <Link to="/settings.html" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/settings" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <BookOpen className="h-5 w-5 text-primary" />
                 <h4 className="font-semibold">Settings</h4>

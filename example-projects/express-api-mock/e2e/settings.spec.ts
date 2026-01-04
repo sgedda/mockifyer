@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Settings Page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/settings.html');
+    await page.goto('/settings');
   });
 
   test('should display settings page with tabs', async ({ page }) => {

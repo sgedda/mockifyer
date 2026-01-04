@@ -156,7 +156,7 @@ export default function Introduction() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Link to="/playground.html">
+          <Link to="/playground">
             <Button>Explore Playground</Button>
           </Link>
         </CardContent>
@@ -167,17 +167,17 @@ export default function Introduction() {
           <CardTitle>Next Steps</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Link to="/getting-started.html" className="block">
+          <Link to="/getting-started" className="block">
             <Button variant="outline" className="w-full justify-start">
               Get Started Guide
             </Button>
           </Link>
-          <Link to="/playground.html" className="block">
+          <Link to="/playground" className="block">
             <Button variant="outline" className="w-full justify-start">
               Try the Playground
             </Button>
           </Link>
-          <Link to="/request-flow.html" className="block">
+          <Link to="/request-flow" className="block">
             <Button variant="outline" className="w-full justify-start">
               View Request Flow Visualization
             </Button>

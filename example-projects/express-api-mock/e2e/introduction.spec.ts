@@ -24,7 +24,7 @@ test.describe('Introduction Page', () => {
     const playgroundLink = page.getByRole('link', { name: /Explore Playground/i });
     await expect(playgroundLink).toBeVisible();
     await playgroundLink.click();
-    await expect(page).toHaveURL(/.*playground\.html/);
+    await expect(page).toHaveURL(/.*playground/);
     
     // Go back and check other links
     await page.goto('/');

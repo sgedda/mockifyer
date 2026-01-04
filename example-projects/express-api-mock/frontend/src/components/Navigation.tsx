@@ -5,10 +5,10 @@ import { useState } from 'react'
 import Logo from './Logo'
 
 const navItems = [
-  { href: '/getting-started.html', label: 'Getting Started' },
-  { href: '/playground.html', label: 'Playground' },
-  { href: '/request-flow.html', label: 'Request Flow' },
-  { href: '/settings.html', label: 'Settings' },
+  { href: '/getting-started', label: 'Getting Started' },
+  { href: '/playground', label: 'Playground' },
+  { href: '/request-flow', label: 'Request Flow' },
+  { href: '/settings', label: 'Settings' },
 ]
 
 export default function Navigation() {
@@ -17,7 +17,7 @@ export default function Navigation() {
 
   const isActive = (path: string) => {
     return location.pathname === path || 
-           (path === '/index.html' && location.pathname === '/')
+           (path === '/' && location.pathname === '/')
   }
 
   return (
