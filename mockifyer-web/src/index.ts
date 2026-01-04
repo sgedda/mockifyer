@@ -26,6 +26,7 @@ import { eventsRouter } from './routes/events';
 import { featureVotesRouter } from './routes/feature-votes';
 import { linearFeaturesRouter } from './routes/linear-features';
 import { scenarioConfigRouter } from './routes/scenario-config';
+import { contactRouter } from './routes/contact';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -57,6 +58,7 @@ app.use('/api/events', eventsRouter);
 app.use('/api/feature-votes', featureVotesRouter);
 app.use('/api/linear-features', linearFeaturesRouter);
 app.use('/api/scenario-config', scenarioConfigRouter);
+app.use('/api/contact', contactRouter);
 
 // Health check endpoint
 app.get('/health', (req: express.Request, res: express.Response) => {

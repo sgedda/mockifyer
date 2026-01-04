@@ -10,6 +10,7 @@ const navItems = [
   { href: '/playground', label: 'Playground' },
   { href: '/request-flow', label: 'Request Flow' },
   { href: '/settings', label: 'Settings' },
+  { href: '/contact', label: 'Contact' },
 ]
 
 export default function Navigation() {
