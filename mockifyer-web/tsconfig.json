@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "target": "es2019",
+    "module": "commonjs",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "lib": ["es2019", "dom"],
+    "types": ["node", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@sgedda/mockifyer-core": ["../packages/mockifyer-core/src"],
+      "@sgedda/mockifyer-core/*": ["../packages/mockifyer-core/src/*"],
+      "@sgedda/mockifyer-axios": ["../packages/mockifyer-axios/src"],
+      "@sgedda/mockifyer-axios/*": ["../packages/mockifyer-axios/src/*"],
+      "@sgedda/mockifyer-fetch": ["../packages/mockifyer-fetch/src"],
+      "@sgedda/mockifyer-fetch/*": ["../packages/mockifyer-fetch/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+} 

@@ -1,6 +1,6 @@
-# Express API Mock Example
+# Mockifyer Web
 
-This example project demonstrates how to use `mockifyer` to mock external API calls and manipulate dates in your tests. The project implements a simple weather API service that fetches data from a third-party weather API.
+This web application demonstrates how to use `mockifyer` to mock external API calls and manipulate dates in your tests. The project implements a simple weather API service that fetches data from a third-party weather API.
 
 ## Features
 
