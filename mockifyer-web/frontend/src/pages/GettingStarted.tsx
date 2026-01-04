@@ -241,7 +241,7 @@ MOCKIFYER_PATH=./mock-data
           </div>
 
           <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-md">
-            <h4 className="font-semibold mb-2 text-green-400 flex items-center gap-2">
+            <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
               Production Safety Guarantees
             </h4>
@@ -427,7 +427,7 @@ export default function App() {
         <CardContent className="space-y-4">
           <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_ENABLED</code>
@@ -441,7 +441,7 @@ export default function App() {
             </div>
 
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_PATH</code>
@@ -455,7 +455,7 @@ export default function App() {
             </div>
 
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_RECORD</code>
@@ -469,7 +469,7 @@ export default function App() {
             </div>
 
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_MAX_SCENARIOS</code>
@@ -483,7 +483,7 @@ export default function App() {
             </div>
 
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_MAX_REQUESTS_PER_SCENARIO</code>
@@ -497,7 +497,7 @@ export default function App() {
             </div>
 
             <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5" />
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_DATE</code>

@@ -14,6 +14,8 @@ import UnifiedEndpointTester from '@/components/UnifiedEndpointTester'
 import { Copy, Download, Clock, CheckCircle2, XCircle, Globe, Zap, FolderOpen } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { prism } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useTheme } from '@/lib/use-theme'
 
 interface RequestHistory {
   id: string
@@ -26,6 +28,12 @@ interface RequestHistory {
 }
 
 export default function Playground() {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  const syntaxStyle = isDark ? vscDarkPlus : prism
+  // Use a nice light blue-grey for light mode instead of plain grey
+  const bgColor = isDark ? '#1e1e1e' : '#f0f4f8'
+  
   const [response, setResponse] = useState<any>(null)
   const [requestHistory, setRequestHistory] = useState<RequestHistory[]>([])
   const [endpoint, setEndpoint] = useState('')
@@ -377,7 +385,7 @@ export default function Playground() {
       )}
 
       {response && (
-        <Card className={response.error ? 'border-destructive' : response.mocked ? 'border-green-500' : 'border-orange-500'}>
+        <Card className={response.error ? 'border-destructive' : response.mocked ? 'border-green-600 dark:border-green-500' : 'border-orange-500'}>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <CardTitle className="flex flex-wrap items-center gap-2">
@@ -388,7 +396,7 @@ export default function Playground() {
                     Error
                   </Badge>
                 ) : response.mocked ? (
-                  <Badge variant="default" className="bg-green-500">
+                  <Badge variant="default" className="bg-green-600 dark:bg-green-500">
                     <CheckCircle2 className="h-3 w-3 mr-1" />
                     Mocked
                   </Badge>
@@ -437,18 +445,18 @@ export default function Playground() {
                 {response.mocked && (
                   <div className="bg-green-500/10 border border-green-500/20 rounded-md p-3">
                     <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5" />
+                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-500 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-sm text-green-400 font-semibold">
+                        <p className="text-sm text-green-600 dark:text-green-400 font-semibold">
                           This response was served from a mock file
                         </p>
                         {response.mockFilename && (
-                          <p className="text-xs text-green-300 mt-1">
+                          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
                             File: {response.mockFilename}
                           </p>
                         )}
                         {response.mockTimestamp && (
-                          <p className="text-xs text-green-300">
+                          <p className="text-xs text-green-700 dark:text-green-300">
                             Recorded: {new Date(response.mockTimestamp).toLocaleString()}
                           </p>
                         )}
@@ -490,16 +498,16 @@ export default function Playground() {
                           Copy
                         </Button>
                       </div>
-                      <div className="border rounded-md bg-[#1e1e1e] max-h-96 p-4 curl-scroll-container overflow-auto">
+                      <div className="border rounded-md max-h-96 p-4 curl-scroll-container overflow-auto" style={{ backgroundColor: bgColor }}>
                         <SyntaxHighlighter
                           language="json"
-                          style={vscDarkPlus}
+                          style={syntaxStyle}
                           customStyle={{
                             margin: 0,
                             padding: 0,
                             fontSize: '0.875rem',
                             lineHeight: '1.5',
-                            background: '#1e1e1e',
+                            background: bgColor,
                             display: 'block',
                             width: 'max-content',
                           }}
@@ -513,7 +521,7 @@ export default function Playground() {
                               overflowWrap: 'normal',
                               padding: 0,
                               margin: 0,
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }
                           }}
                           PreTag={({ children, ...props }: any) => (
@@ -523,7 +531,7 @@ export default function Playground() {
                               display: 'block',
                               width: 'max-content',
                               whiteSpace: 'pre',
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }}>
                               {children}
                             </pre>
@@ -551,16 +559,16 @@ export default function Playground() {
                           Copy
                         </Button>
                       </div>
-                      <div className="border rounded-md bg-[#1e1e1e] max-h-96 p-4 curl-scroll-container overflow-auto">
+                      <div className="border rounded-md max-h-96 p-4 curl-scroll-container overflow-auto" style={{ backgroundColor: bgColor }}>
                         <SyntaxHighlighter
                           language="json"
-                          style={vscDarkPlus}
+                          style={syntaxStyle}
                           customStyle={{
                             margin: 0,
                             padding: 0,
                             fontSize: '0.875rem',
                             lineHeight: '1.5',
-                            background: '#1e1e1e',
+                            background: bgColor,
                             display: 'block',
                             width: 'max-content',
                           }}
@@ -574,7 +582,7 @@ export default function Playground() {
                               overflowWrap: 'normal',
                               padding: 0,
                               margin: 0,
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }
                           }}
                           PreTag={({ children, ...props }: any) => (
@@ -584,7 +592,7 @@ export default function Playground() {
                               display: 'block',
                               width: 'max-content',
                               whiteSpace: 'pre',
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }}>
                               {children}
                             </pre>
@@ -617,16 +625,16 @@ export default function Playground() {
                           Copy
                         </Button>
                       </div>
-                      <div className="border rounded-md bg-[#1e1e1e] max-h-96 p-4 curl-scroll-container overflow-auto">
+                      <div className="border rounded-md max-h-96 p-4 curl-scroll-container overflow-auto" style={{ backgroundColor: bgColor }}>
                         <SyntaxHighlighter
                           language="bash"
-                          style={vscDarkPlus}
+                          style={syntaxStyle}
                           customStyle={{
                             margin: 0,
                             padding: 0,
                             fontSize: '0.875rem',
                             lineHeight: '1.5',
-                            background: '#1e1e1e',
+                            background: bgColor,
                             display: 'block',
                             width: 'max-content',
                           }}
@@ -640,7 +648,7 @@ export default function Playground() {
                               overflowWrap: 'normal',
                               padding: 0,
                               margin: 0,
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }
                           }}
                           PreTag={({ children, ...props }: any) => (
@@ -650,7 +658,7 @@ export default function Playground() {
                               display: 'block',
                               width: 'max-content',
                               whiteSpace: 'pre',
-                              background: '#1e1e1e',
+                              background: bgColor,
                             }}>
                               {children}
                             </pre>
@@ -701,7 +709,7 @@ export default function Playground() {
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>{req.timestamp.toLocaleTimeString()}</span>
-                      <span className={req.mocked ? 'text-green-500' : 'text-orange-500'}>
+                      <span className={req.mocked ? 'text-green-600 dark:text-green-500' : 'text-orange-500'}>
                         {req.mocked ? 'Mocked' : 'Real'}
                       </span>
                       <span>Status: {req.status}</span>

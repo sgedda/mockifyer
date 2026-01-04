@@ -1,9 +1,11 @@
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { prism } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Copy } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { useTheme } from '@/lib/use-theme'
 
 interface CodeBlockProps {
   code: string
@@ -14,6 +16,13 @@ interface CodeBlockProps {
 
 export default function CodeBlock({ code, language = 'typescript', className, small = false }: CodeBlockProps) {
   const { toast } = useToast()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  
+  // Use dark theme for dark mode, light theme for light mode
+  const syntaxStyle = isDark ? vscDarkPlus : prism
+  // Use a nice light blue-grey for light mode instead of plain grey
+  const bgColor = isDark ? '#1e1e1e' : '#f0f4f8'
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code.trim())
@@ -24,8 +33,8 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
   }
 
   return (
-    <div className={cn('rounded-md overflow-hidden border bg-[#1e1e1e]', className)}>
-      <div className="flex items-center justify-between p-2 border-b bg-[#1e1e1e]">
+    <div className={cn('rounded-md overflow-hidden border', className)} style={{ backgroundColor: bgColor }}>
+      <div className="flex items-center justify-between p-2 border-b" style={{ backgroundColor: bgColor }}>
         <span className="text-xs text-muted-foreground uppercase font-medium">{language || 'code'}</span>
         <Button
           variant="ghost"
@@ -40,19 +49,19 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
       <div className={cn('overflow-auto', small ? 'p-2' : 'p-4')}>
         <SyntaxHighlighter
           language={language}
-          style={vscDarkPlus}
+          style={syntaxStyle}
           customStyle={{
             margin: 0,
             padding: 0,
             fontSize: small ? '0.75rem' : '0.875rem',
             lineHeight: '1.5',
             borderRadius: '0',
-            background: '#1e1e1e',
+            background: bgColor,
             display: 'block',
           }}
           codeTagProps={{
             style: {
-              background: '#1e1e1e',
+              background: bgColor,
               fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
             }
           }}
@@ -60,7 +69,7 @@ export default function CodeBlock({ code, language = 'typescript', className, sm
             <pre {...props} style={{ 
               margin: 0, 
               padding: 0, 
-              background: '#1e1e1e',
+              background: bgColor,
             }}>
               {children}
             </pre>
