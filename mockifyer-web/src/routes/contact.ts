@@ -17,7 +17,23 @@ const rateLimitStore: Map<string, RateLimitEntry> = new Map();
 // Configuration
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_SUBMISSIONS_PER_HOUR = 3; // Max 3 submissions per IP per hour
+const MAX_SUBMISSIONS_PER_EMAIL = 2; // Max 2 submissions per email per hour
+const MIN_FORM_FILL_TIME_MS = 3000; // Minimum 3 seconds to fill form (bots fill instantly)
 const CONTACT_SUBMISSIONS_FILE = path.join(__dirname, '../../persisted/contact-submissions.json');
+
+// Common spam keywords/phrases
+const SPAM_KEYWORDS = [
+  'viagra', 'cialis', 'casino', 'poker', 'lottery', 'winner', 'prize',
+  'click here', 'buy now', 'limited time', 'act now', 'urgent',
+  'make money', 'work from home', 'get rich', 'guaranteed',
+  'free money', 'no credit check', 'debt relief', 'loan',
+  'seo services', 'backlinks', 'increase traffic', 'rank higher',
+  'crypto', 'bitcoin', 'investment opportunity', 'forex',
+  'pharmacy', 'prescription', 'medication', 'pills',
+];
+
+// Track form start times (in-memory, resets on server restart)
+const formStartTimes: Map<string, number> = new Map();
 
 // Ensure persisted directory exists
 const persistedDir = path.dirname(CONTACT_SUBMISSIONS_FILE);
@@ -80,6 +96,37 @@ function incrementRateLimit(ip: string): void {
   }
 }
 
+// Helper to check email-based rate limit
+function checkEmailRateLimit(email: string): boolean {
+  const submissions = readSubmissions();
+  const now = Date.now();
+  const oneHourAgo = now - RATE_LIMIT_WINDOW_MS;
+  
+  const recentSubmissions = submissions.filter((sub: any) => {
+    if (!sub.timestamp) return false;
+    const subTime = new Date(sub.timestamp).getTime();
+    return sub.email?.toLowerCase() === email.toLowerCase() && subTime > oneHourAgo;
+  });
+  
+  return recentSubmissions.length < MAX_SUBMISSIONS_PER_EMAIL;
+}
+
+// Helper to detect spam content
+function containsSpamContent(text: string): boolean {
+  const lowerText = text.toLowerCase();
+  return SPAM_KEYWORDS.some(keyword => lowerText.includes(keyword.toLowerCase()));
+}
+
+// Helper to check form fill time
+function checkFormFillTime(formStartTime: number | null): boolean {
+  if (!formStartTime) {
+    // If no start time, assume it's suspicious (form might have been prefilled)
+    return false;
+  }
+  const fillTime = Date.now() - formStartTime;
+  return fillTime >= MIN_FORM_FILL_TIME_MS;
+}
+
 // Helper to read submissions
 function readSubmissions(): any[] {
   try {
@@ -108,16 +155,38 @@ function saveSubmission(submission: any): void {
 // Email validation regex
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Endpoint to track form start time
+router.post('/start', (req: Request, res: Response) => {
+  const sessionId = req.body.sessionId || req.headers['x-session-id'] || Math.random().toString(36).substring(7);
+  formStartTimes.set(sessionId, Date.now());
+  res.json({ sessionId });
+});
+
 // Contact form submission endpoint
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, email, subject, message, website } = req.body;
+    const { name, email, subject, message, website, formStartTime, sessionId } = req.body;
     const ip = getClientIp(req);
 
     // Honeypot check - if website field is filled, it's likely a bot
     if (website && website.trim() !== '') {
       console.warn(`[Contact] Honeypot triggered for IP: ${ip}`);
       // Return success to avoid revealing the honeypot
+      return res.status(200).json({ success: true, message: 'Message received' });
+    }
+
+    // Time-based validation - check if form was filled too quickly
+    let startTime: number | null = null;
+    if (formStartTime && typeof formStartTime === 'number') {
+      startTime = formStartTime;
+    } else if (sessionId && formStartTimes.has(sessionId)) {
+      startTime = formStartTimes.get(sessionId)!;
+      formStartTimes.delete(sessionId); // Clean up
+    }
+    
+    if (!checkFormFillTime(startTime)) {
+      console.warn(`[Contact] Form filled too quickly (suspected bot) from IP: ${ip}, Email: ${email}`);
+      // Return success to avoid revealing the check
       return res.status(200).json({ success: true, message: 'Message received' });
     }
 
@@ -152,13 +221,29 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Message must be between 10 and 5000 characters' });
     }
 
-    // Check rate limit
+    // Spam content detection
+    const fullText = `${trimmedSubject} ${trimmedMessage}`.toLowerCase();
+    if (containsSpamContent(fullText)) {
+      console.warn(`[Contact] Spam content detected from IP: ${ip}, Email: ${trimmedEmail}`);
+      // Return success to avoid revealing the check
+      return res.status(200).json({ success: true, message: 'Message received' });
+    }
+
+    // Check IP-based rate limit
     const rateLimit = checkRateLimit(ip);
     if (!rateLimit.allowed) {
       const resetMinutes = Math.ceil((rateLimit.resetTime - Date.now()) / (60 * 1000));
       return res.status(429).json({
         error: 'Too many requests. Please try again later.',
         resetInMinutes: resetMinutes,
+      });
+    }
+
+    // Check email-based rate limit
+    if (!checkEmailRateLimit(trimmedEmail)) {
+      console.warn(`[Contact] Email rate limit exceeded for: ${trimmedEmail}`);
+      return res.status(429).json({
+        error: 'Too many requests from this email address. Please try again later.',
       });
     }
 
