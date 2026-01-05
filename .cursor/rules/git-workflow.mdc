@@ -1,5 +1,7 @@
 # Git Workflow Rules
 
+**IMPORTANT:** When this rule is referenced (e.g., `@.cursor/rules/git-workflow.mdc`), it means you should **always** follow this workflow automatically without requiring additional confirmation or text from the user. Proceed with creating a branch, committing changes, pushing, and creating a PR as described below.
+
 ## Branch, Commit, Push, and PR Creation
 
 When creating a new feature or fix:

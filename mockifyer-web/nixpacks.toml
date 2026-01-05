@@ -52,6 +52,8 @@ cmds = [
   "ls -la public/assets/ || echo '⚠️  public/assets directory check'",
   "test -f public/index.html || (echo '❌ index.html not found!' && exit 1)",
   "echo '✅ Frontend build verified - index.html exists'",
+  "echo '📄 Contents of index.html:'",
+  "cat public/index.html",
   "test -d public/assets || (echo '❌ assets directory not found!' && exit 1)",
   "echo '✅ Assets directory verified'",
   "echo '🔍 Checking for Contact page in build...'",
