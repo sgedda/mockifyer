@@ -1,0 +1,78 @@
+# Git Workflow Rules
+
+## Branch, Commit, Push, and PR Creation
+
+When creating a new feature or fix:
+
+1. **Create a new branch:**
+   ```bash
+   git checkout -b fix/description-of-change
+   # or
+   git checkout -b feature/description-of-feature
+   ```
+
+2. **Stage and commit changes:**
+   ```bash
+   git add <files>
+   git commit -m "fix: description of change"
+   ```
+
+3. **Push the branch:**
+   ```bash
+   git push -u origin fix/description-of-change
+   ```
+
+4. **Create a PR using curl:**
+   ```bash
+   curl -X POST \
+     -H "Accept: application/vnd.github+json" \
+     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+     https://api.github.com/repos/sgedda/mockifyer/pulls \
+     -d '{
+       "title": "fix: Description of change",
+       "body": "## Description\n\nDetailed description of the changes.\n\n## Changes\n\n- Change 1\n- Change 2\n\n## Testing\n\nHow to test the changes.",
+       "head": "fix/description-of-change",
+       "base": "main"
+     }'
+   ```
+
+   **Alternative: Use GitHub CLI (simpler):**
+   ```bash
+   gh pr create --title "fix: Description of change" \
+     --body "## Description\n\nDetailed description..." \
+     --base main --head fix/description-of-change
+   ```
+
+## Commit Message Format
+
+Use conventional commit format:
+- `fix:` - Bug fixes
+- `feat:` - New features
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Test changes
+- `chore:` - Build/tooling changes
+
+Example: `fix: improve frontend build cache clearing for Contact page deployment`
+
+## PR Description Template
+
+```markdown
+## Problem
+
+Description of the issue being solved.
+
+## Solution
+
+How the problem is being solved.
+
+## Changes
+
+- Change 1
+- Change 2
+- Change 3
+
+## Testing
+
+Steps to verify the changes work correctly.
+```

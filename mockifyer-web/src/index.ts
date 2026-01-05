@@ -444,10 +444,14 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
   }
 });
 
-// Serve static assets (JS, CSS, etc.) from public directory
+// Serve static assets (JS, CSS, etc.) from public directory with cache headers
 app.use('/assets', (req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') {
-    express.static(path.join(__dirname, '../public/assets'))(req, res, next);
+    // Cache assets for 1 year (they have hash-based filenames)
+    express.static(path.join(__dirname, '../public/assets'), {
+      maxAge: '1y',
+      immutable: true
+    })(req, res, next);
   } else {
     next();
   }
@@ -472,6 +476,10 @@ app.get('*', (req, res) => {
   if (req.path.startsWith('/assets/')) {
     return res.status(404).send('Asset not found');
   }
+  // Never cache index.html - always serve fresh version
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   // Serve React app's index.html for all other GET routes
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
