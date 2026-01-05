@@ -7,4 +7,8 @@ coverage
 package-lock.json
 package-lock.prod.json
 # Note: mock-data is NOT ignored - it will be preserved across deployments
+# Vote files are stored in persisted/ directory (Railway volume) - don't overwrite
+feature-votes.json
+user-votes.json
+ip-votes.json
 
