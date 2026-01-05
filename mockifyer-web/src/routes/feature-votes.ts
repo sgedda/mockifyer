@@ -9,35 +9,90 @@ const COOKIE_NAME = 'mockifyer-user-id';
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 // Determine persisted directory path (Railway volume or local)
+// This function is called dynamically at runtime to ensure Railway volumes are available
 function getPersistedDir(): string {
-  // On Railway, check for volume at /persisted/
-  if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted')) {
+  // Check for Railway environment variables (more reliable than checking file system)
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID) {
+    const railwayPath = '/persisted';
+    // Ensure directory exists (Railway volumes should be mounted, but create if needed)
+    try {
+      if (!fs.existsSync(railwayPath)) {
+        fs.mkdirSync(railwayPath, { recursive: true });
+      }
+      return railwayPath;
+    } catch (error) {
+      console.error('[FeatureVotes] Failed to access Railway volume at /persisted:', error);
+      // Fall through to local path if Railway volume is not accessible
+    }
+  }
+  
+  // Check if /persisted exists (for Railway volumes that might be mounted but env vars not set)
+  if (fs.existsSync('/persisted')) {
     return '/persisted';
   }
+  
   // Local development: use persisted/ in project directory
-  return path.join(__dirname, '../../persisted');
+  const localPath = path.join(__dirname, '../../persisted');
+  return localPath;
 }
 
-// Get vote file paths in persisted directory
-const persistedDir = getPersistedDir();
-const VOTES_FILE = path.join(persistedDir, 'feature-votes.json');
-const USER_VOTES_FILE = path.join(persistedDir, 'user-votes.json');
-const IP_VOTES_FILE = path.join(persistedDir, 'ip-votes.json');
-
-// Ensure persisted directory exists
-if (!fs.existsSync(persistedDir)) {
-  fs.mkdirSync(persistedDir, { recursive: true });
+// Get vote file paths dynamically (called at runtime, not module load time)
+function getVotesFilePath(): string {
+  const persistedDir = getPersistedDir();
+  return path.join(persistedDir, 'feature-votes.json');
 }
 
-// Initialize files if they don't exist
-if (!fs.existsSync(VOTES_FILE)) {
-  fs.writeFileSync(VOTES_FILE, JSON.stringify({}), 'utf-8');
+function getUserVotesFilePath(): string {
+  const persistedDir = getPersistedDir();
+  return path.join(persistedDir, 'user-votes.json');
 }
-if (!fs.existsSync(USER_VOTES_FILE)) {
-  fs.writeFileSync(USER_VOTES_FILE, JSON.stringify({}), 'utf-8');
+
+function getIpVotesFilePath(): string {
+  const persistedDir = getPersistedDir();
+  return path.join(persistedDir, 'ip-votes.json');
 }
-if (!fs.existsSync(IP_VOTES_FILE)) {
-  fs.writeFileSync(IP_VOTES_FILE, JSON.stringify({}), 'utf-8');
+
+// Track if we've logged the persisted directory path (to avoid spam)
+let persistedDirLogged = false;
+
+// Ensure persisted directory and files exist (called at runtime)
+function ensurePersistedFilesExist(): void {
+  try {
+    const persistedDir = getPersistedDir();
+    
+    // Log persisted directory path once on first initialization
+    if (!persistedDirLogged) {
+      console.log(`[FeatureVotes] Using persisted directory: ${persistedDir}`);
+      persistedDirLogged = true;
+    }
+    
+    // Ensure persisted directory exists
+    if (!fs.existsSync(persistedDir)) {
+      fs.mkdirSync(persistedDir, { recursive: true });
+      console.log(`[FeatureVotes] Created persisted directory: ${persistedDir}`);
+    }
+    
+    // Initialize files if they don't exist
+    const votesFile = getVotesFilePath();
+    const userVotesFile = getUserVotesFilePath();
+    const ipVotesFile = getIpVotesFilePath();
+    
+    if (!fs.existsSync(votesFile)) {
+      fs.writeFileSync(votesFile, JSON.stringify({}), 'utf-8');
+      console.log(`[FeatureVotes] Created votes file: ${votesFile}`);
+    }
+    if (!fs.existsSync(userVotesFile)) {
+      fs.writeFileSync(userVotesFile, JSON.stringify({}), 'utf-8');
+      console.log(`[FeatureVotes] Created user votes file: ${userVotesFile}`);
+    }
+    if (!fs.existsSync(ipVotesFile)) {
+      fs.writeFileSync(ipVotesFile, JSON.stringify({}), 'utf-8');
+      console.log(`[FeatureVotes] Created IP votes file: ${ipVotesFile}`);
+    }
+  } catch (error) {
+    console.error('[FeatureVotes] Failed to initialize persisted files:', error);
+    // Don't throw - let individual operations handle errors
+  }
 }
 
 // Helper to get or create user ID from cookie
@@ -60,16 +115,26 @@ function getOrCreateUserId(req: express.Request, res: express.Response): string 
 // Helper to read user votes
 function readUserVotes(): Record<string, string[]> {
   try {
-    const data = fs.readFileSync(USER_VOTES_FILE, 'utf-8');
+    ensurePersistedFilesExist(); // Ensure files exist before reading
+    const userVotesFile = getUserVotesFilePath();
+    const data = fs.readFileSync(userVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
+    console.error('[FeatureVotes] Error reading user votes:', error);
     return {};
   }
 }
 
 // Helper to write user votes
 function writeUserVotes(userVotes: Record<string, string[]>): void {
-  fs.writeFileSync(USER_VOTES_FILE, JSON.stringify(userVotes, null, 2), 'utf-8');
+  try {
+    ensurePersistedFilesExist(); // Ensure files exist before writing
+    const userVotesFile = getUserVotesFilePath();
+    fs.writeFileSync(userVotesFile, JSON.stringify(userVotes, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('[FeatureVotes] Error writing user votes:', error);
+    throw error; // Re-throw to let caller handle
+  }
 }
 
 // Helper to recalculate vote counts from user votes (ensures consistency)
@@ -96,8 +161,10 @@ function readVotes(): Record<string, number> {
   // Read current file to check if update is needed (avoid unnecessary writes)
   let fileVotes: Record<string, number> = {};
   try {
-    if (fs.existsSync(VOTES_FILE)) {
-      const data = fs.readFileSync(VOTES_FILE, 'utf-8');
+    ensurePersistedFilesExist(); // Ensure files exist before reading
+    const votesFile = getVotesFilePath();
+    if (fs.existsSync(votesFile)) {
+      const data = fs.readFileSync(votesFile, 'utf-8');
       fileVotes = JSON.parse(data);
     }
   } catch (error) {
@@ -109,7 +176,9 @@ function readVotes(): Record<string, number> {
   const needsUpdate = JSON.stringify(recalculatedVotes) !== JSON.stringify(fileVotes);
   if (needsUpdate) {
     try {
-      fs.writeFileSync(VOTES_FILE, JSON.stringify(recalculatedVotes, null, 2), 'utf-8');
+      ensurePersistedFilesExist(); // Ensure files exist before writing
+      const votesFile = getVotesFilePath();
+      fs.writeFileSync(votesFile, JSON.stringify(recalculatedVotes, null, 2), 'utf-8');
     } catch (error) {
       console.error('[FeatureVotes] Could not write votes file:', error);
     }
@@ -120,7 +189,14 @@ function readVotes(): Record<string, number> {
 
 // Helper to write vote counts
 function writeVotes(votes: Record<string, number>): void {
-  fs.writeFileSync(VOTES_FILE, JSON.stringify(votes, null, 2), 'utf-8');
+  try {
+    ensurePersistedFilesExist(); // Ensure files exist before writing
+    const votesFile = getVotesFilePath();
+    fs.writeFileSync(votesFile, JSON.stringify(votes, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('[FeatureVotes] Error writing votes:', error);
+    throw error; // Re-throw to let caller handle
+  }
 }
 
 // Helper to get client IP address
@@ -137,16 +213,26 @@ function getClientIp(req: express.Request): string {
 // Helper to read IP votes
 function readIpVotes(): Record<string, string[]> {
   try {
-    const data = fs.readFileSync(IP_VOTES_FILE, 'utf-8');
+    ensurePersistedFilesExist(); // Ensure files exist before reading
+    const ipVotesFile = getIpVotesFilePath();
+    const data = fs.readFileSync(ipVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
+    console.error('[FeatureVotes] Error reading IP votes:', error);
     return {};
   }
 }
 
 // Helper to write IP votes
 function writeIpVotes(ipVotes: Record<string, string[]>): void {
-  fs.writeFileSync(IP_VOTES_FILE, JSON.stringify(ipVotes, null, 2), 'utf-8');
+  try {
+    ensurePersistedFilesExist(); // Ensure files exist before writing
+    const ipVotesFile = getIpVotesFilePath();
+    fs.writeFileSync(ipVotesFile, JSON.stringify(ipVotes, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('[FeatureVotes] Error writing IP votes:', error);
+    throw error; // Re-throw to let caller handle
+  }
 }
 
 // Helper to check if IP has voted for a feature
