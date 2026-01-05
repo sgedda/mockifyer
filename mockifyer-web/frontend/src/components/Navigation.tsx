@@ -8,7 +8,7 @@ import { useTheme } from '@/lib/use-theme'
 const navItems = [
   { href: '/getting-started', label: 'Getting Started' },
   { href: '/playground', label: 'Playground' },
-  { href: '/request-flow', label: 'Request Flow' },
+  { href: '/timeline', label: 'Timeline' },
   { href: '/settings', label: 'Settings' },
   { href: '/contact', label: 'Contact' },
 ]

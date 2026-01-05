@@ -16,7 +16,7 @@ interface FlowRequest extends Omit<MockFile, 'sessionId'> {
   timestamp?: string
 }
 
-export default function RequestFlow({ scenario }: { scenario: string }) {
+export default function Timeline({ scenario }: { scenario: string }) {
   const [mocks, setMocks] = useState<FlowRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'timeline' | 'graph' | 'list'>('timeline')
@@ -60,7 +60,7 @@ export default function RequestFlow({ scenario }: { scenario: string }) {
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to load request flow data',
+        description: 'Failed to load timeline data',
         variant: 'destructive',
       })
     } finally {
@@ -155,7 +155,7 @@ export default function RequestFlow({ scenario }: { scenario: string }) {
     return (
       <Card>
         <CardContent className="p-6">
-          <div className="text-center text-muted-foreground">Loading request flow...</div>
+          <div className="text-center text-muted-foreground">Loading timeline...</div>
         </CardContent>
       </Card>
     )
@@ -168,7 +168,7 @@ export default function RequestFlow({ scenario }: { scenario: string }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Request Flow</h2>
+          <h2 className="text-2xl font-bold">Timeline</h2>
           <p className="text-sm text-muted-foreground">
             Visualize API request sequences and dependencies
           </p>
@@ -207,7 +207,7 @@ export default function RequestFlow({ scenario }: { scenario: string }) {
       {mocks.length === 0 ? (
         <Card>
           <CardContent className="p-6">
-            <div className="text-center text-muted-foreground">No request flow data available</div>
+            <div className="text-center text-muted-foreground">No timeline data available</div>
           </CardContent>
         </Card>
       ) : viewMode === 'timeline' ? (
@@ -587,7 +587,7 @@ function GraphView({ sessions, extractMethod, extractUrl, getMethodBadgeColor }:
       <Card>
         <CardContent className="p-6">
           <div className="text-center text-muted-foreground">
-            No request flow data available for graph visualization
+            No timeline data available for graph visualization
           </div>
         </CardContent>
       </Card>

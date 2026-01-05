@@ -3,7 +3,7 @@ import { Toaster } from '@/components/ui/toaster'
 import Navigation from './components/Navigation'
 import Introduction from './pages/Introduction'
 import Playground from './pages/Playground'
-import RequestFlow from './pages/RequestFlow'
+import Timeline from './pages/Timeline'
 import DateConfig from './pages/DateConfig'
 import GettingStarted from './pages/GettingStarted'
 import ConfigReference from './pages/ConfigReference'
@@ -29,7 +29,7 @@ function App() {
               <Route path="/" element={<Introduction />} />
               <Route path="/index.html" element={<Introduction />} />
               <Route path="/playground" element={<Playground />} />
-              <Route path="/request-flow" element={<RequestFlow />} />
+              <Route path="/timeline" element={<Timeline />} />
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />
               <Route path="/config-reference" element={<ConfigReference />} />

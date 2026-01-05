@@ -57,6 +57,13 @@ export class FilesystemProvider implements DatabaseProvider {
         'For React Native, use ExpoFileSystemProvider instead.');
     }
     
+    // CRITICAL: Never save Resend API requests - they should never be mocked
+    const requestUrl = mockData?.request?.url || '';
+    if (requestUrl.includes('api.resend.com')) {
+      console.log(`[FilesystemProvider] ⚠️ Skipping save - Resend API request: ${requestUrl}`);
+      return;
+    }
+    
     const scenarioPath = this.getScenarioPath();
     ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
     

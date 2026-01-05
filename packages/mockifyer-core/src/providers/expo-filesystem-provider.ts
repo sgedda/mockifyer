@@ -324,12 +324,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   }
 
   async save(mockData: MockData): Promise<void> {
-    // CRITICAL: Never save sync endpoint requests - they should never be mocked
+    // CRITICAL: Never save sync endpoint requests or Resend API requests - they should never be mocked
     const requestUrl = mockData?.request?.url || '';
     if (requestUrl.includes('/mockifyer-save') || 
         requestUrl.includes('/mockifyer-clear') || 
-        requestUrl.includes('/mockifyer-sync')) {
-      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping save - request URL is a sync endpoint: ${requestUrl}`);
+        requestUrl.includes('/mockifyer-sync') ||
+        requestUrl.includes('api.resend.com')) {
+      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping save - request URL is excluded: ${requestUrl}`);
       return;
     }
     

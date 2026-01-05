@@ -177,9 +177,9 @@ export default function Introduction() {
               Try the Playground
             </Button>
           </Link>
-          <Link to="/request-flow" className="block">
+          <Link to="/timeline" className="block">
             <Button variant="outline" className="w-full justify-start">
-              View Request Flow Visualization
+              View API Timeline
             </Button>
           </Link>
         </CardContent>

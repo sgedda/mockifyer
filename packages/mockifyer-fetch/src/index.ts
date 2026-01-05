@@ -662,10 +662,16 @@ class MockifyerClass {
       return;
     }
     
-    // CRITICAL: Skip saving responses from Mockifyer sync endpoints FIRST
+    // CRITICAL: Skip saving responses from Mockifyer sync endpoints and Resend API FIRST
     // Check multiple ways to get the URL in case response.config is undefined
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
-    if (url && (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync'))) {
+    if (url && (
+      url.includes('/mockifyer-save') || 
+      url.includes('/mockifyer-clear') || 
+      url.includes('/mockifyer-sync') ||
+      url.includes('api.resend.com')
+    )) {
+      console.log('[Mockifyer-Fetch] ⚠️ Skipping save - Resend API request:', url);
       return;
     }
     
@@ -1150,8 +1156,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       const headers = init?.headers || {};
       const body = init?.body;
       
-      // Skip Mockifyer sync endpoints to prevent infinite loops
-      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+      // Skip Mockifyer sync endpoints and Resend API to prevent infinite loops
+      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync') || url.includes('api.resend.com')) {
         return await originalFetchForPatched(input, init);
       }
       

@@ -39,7 +39,7 @@ frontend/
 │   ├── pages/          # Page components
 │   │   ├── Introduction.tsx
 │   │   ├── Playground.tsx
-│   │   ├── RequestFlow.tsx
+│   │   ├── Timeline.tsx
 │   │   ├── DateConfig.tsx
 │   │   ├── GettingStarted.tsx
 │   │   ├── Roadmap.tsx
