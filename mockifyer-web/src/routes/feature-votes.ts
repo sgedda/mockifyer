@@ -5,11 +5,29 @@ import { randomUUID } from 'crypto';
 
 const router = express.Router();
 
-const VOTES_FILE = path.join(__dirname, '../../feature-votes.json');
-const USER_VOTES_FILE = path.join(__dirname, '../../user-votes.json');
-const IP_VOTES_FILE = path.join(__dirname, '../../ip-votes.json');
 const COOKIE_NAME = 'mockifyer-user-id';
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
+
+// Determine persisted directory path (Railway volume or local)
+function getPersistedDir(): string {
+  // On Railway, check for volume at /persisted/
+  if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted')) {
+    return '/persisted';
+  }
+  // Local development: use persisted/ in project directory
+  return path.join(__dirname, '../../persisted');
+}
+
+// Get vote file paths in persisted directory
+const persistedDir = getPersistedDir();
+const VOTES_FILE = path.join(persistedDir, 'feature-votes.json');
+const USER_VOTES_FILE = path.join(persistedDir, 'user-votes.json');
+const IP_VOTES_FILE = path.join(persistedDir, 'ip-votes.json');
+
+// Ensure persisted directory exists
+if (!fs.existsSync(persistedDir)) {
+  fs.mkdirSync(persistedDir, { recursive: true });
+}
 
 // Initialize files if they don't exist
 if (!fs.existsSync(VOTES_FILE)) {
