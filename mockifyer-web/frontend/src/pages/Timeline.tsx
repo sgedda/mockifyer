@@ -28,7 +28,7 @@ interface FlowRequest {
   callStack?: string[]
 }
 
-export default function RequestFlow() {
+export default function Timeline() {
   const [requests, setRequests] = useState<FlowRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState<FlowRequest | null>(null)
@@ -94,7 +94,7 @@ export default function RequestFlow() {
       const data = await getMockFiles()
       
       if (!data.files || data.files.length === 0) {
-        console.warn('[RequestFlow] No files returned from API')
+        console.warn('[Timeline] No files returned from API')
         setRequests([])
         return
       }
@@ -105,7 +105,7 @@ export default function RequestFlow() {
           try {
             const response = await fetch(`/api/mocks/${file.filename}`)
             if (!response.ok) {
-              console.warn(`[RequestFlow] Failed to fetch ${file.filename}:`, response.status, response.statusText)
+              console.warn(`[Timeline] Failed to fetch ${file.filename}:`, response.status, response.statusText)
               throw new Error(`HTTP ${response.status}: ${response.statusText}`)
             }
             const mockData = await response.json()
@@ -138,7 +138,7 @@ export default function RequestFlow() {
               callStack: mockData.data?.callStack,
             } as FlowRequest
           } catch (error) {
-            console.warn(`[RequestFlow] Error fetching ${file.filename}, using fallback:`, error)
+            console.warn(`[Timeline] Error fetching ${file.filename}, using fallback:`, error)
             // Fallback if fetching fails
             const endpoint = file.endpoint || ''
             // Handle date conversion (API returns dates as ISO strings)
@@ -193,7 +193,7 @@ export default function RequestFlow() {
         }
       }
     } catch (error) {
-      console.error('Failed to load request flow:', error)
+      console.error('Failed to load timeline:', error)
     } finally {
       setLoading(false)
     }
@@ -397,7 +397,7 @@ export default function RequestFlow() {
       <div className="space-y-6">
         <Card>
           <CardContent className="p-6">
-            <div className="text-center text-muted-foreground">Loading request flow...</div>
+            <div className="text-center text-muted-foreground">Loading timeline...</div>
           </CardContent>
         </Card>
       </div>
@@ -411,7 +411,7 @@ export default function RequestFlow() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Network className="h-8 w-8" />
-            Request Flow Visualization
+            API Timeline
           </h1>
           <p className="text-muted-foreground mt-2">
             Visualize the order and origin of API requests
@@ -549,7 +549,7 @@ export default function RequestFlow() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Request Flow Timeline</CardTitle>
+          <CardTitle>Timeline</CardTitle>
           <CardDescription>
             Visualize the order and origin of API requests
           </CardDescription>
@@ -591,7 +591,7 @@ export default function RequestFlow() {
 
           {requests.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
-              No request flow data available. Make some API calls to see the flow visualization.
+              No timeline data available. Make some API calls to see the timeline visualization.
             </div>
           ) : filteredRequests.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">

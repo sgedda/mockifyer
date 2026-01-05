@@ -859,10 +859,10 @@ npm test tests/generated
               </p>
             </Link>
 
-            <Link to="/request-flow" className="p-4 border rounded-md hover:bg-accent transition-colors">
+            <Link to="/timeline" className="p-4 border rounded-md hover:bg-accent transition-colors">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="h-5 w-5 text-primary" />
-                <h4 className="font-semibold">Request Flow</h4>
+                <h4 className="font-semibold">Timeline</h4>
               </div>
               <p className="text-sm text-muted-foreground">
                 Visualize how requests flow through Mockifyer

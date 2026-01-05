@@ -5,7 +5,7 @@ import MockList from './MockList'
 import MockEditor from './MockEditor'
 import StatsView from './StatsView'
 import Settings from './Settings'
-import RequestFlow from './RequestFlow'
+import Timeline from './Timeline'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
 import { getMocks, getMock } from '@/lib/api'
@@ -24,7 +24,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const getActiveTabFromPath = () => {
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
-    if (path === '/flow') return 'flow'
+    if (path === '/timeline') return 'timeline'
     if (path === '/date-config') return 'date-config'
     if (path === '/settings') return 'settings'
     return 'stats' // default to stats (root path)
@@ -64,7 +64,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
-      'flow': '/flow',
+      'timeline': '/timeline',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -202,7 +202,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 </div>
               }
             />
-            <Route path="/flow" element={<RequestFlow scenario={scenario} />} />
+            <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"

@@ -37,6 +37,11 @@ export interface MockifyerConfig {
   anonymizeHeaders?: string[];
   /** Query parameters to anonymize when saving mock data (defaults to common API key params). Set to empty array to disable. */
   anonymizeQueryParams?: string[];
+  /** URLs or URL patterns to exclude from recording/mocking. 
+   * Supports partial matches (e.g., 'api.resend.com' will match any URL containing that string).
+   * Defaults to ['/mockifyer-save', '/mockifyer-clear', '/mockifyer-sync', 'api.resend.com'].
+   * Set to empty array to disable all exclusions. */
+  excludedUrls?: string[];
   /** Database provider configuration - NOT YET AVAILABLE FOR USE
    * 
    * ⚠️ Database providers (SQLite, Memory, Expo) are not yet available for use.

@@ -1,16 +1,16 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Request Flow Page', () => {
+test.describe('Timeline Page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/request-flow');
+    await page.goto('/timeline');
   });
 
-  test('should display request flow page', async ({ page }) => {
+  test('should display timeline page', async ({ page }) => {
     // Wait for page to load
     await page.waitForLoadState('networkidle');
     
     // Check page title (heading with full text)
-    await expect(page.getByRole('heading', { name: /Request Flow Visualization/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /API Timeline/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should have view mode toggle buttons', async ({ page }) => {

@@ -1168,6 +1168,13 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
+    // CRITICAL: Skip saving responses from Resend API
+    const url = response.config?.url || '';
+    if (url && url.includes('api.resend.com')) {
+      console.log('[Mockifyer] ⚠️ Skipping save - Resend API request:', url);
+      return;
+    }
+    
     // CRITICAL SAFETY CHECK: Don't save mocked responses
     // This is a final safeguard in case the interceptor check is bypassed
     let isMocked = false;

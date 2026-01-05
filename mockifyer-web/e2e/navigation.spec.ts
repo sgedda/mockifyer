@@ -11,7 +11,7 @@ test.describe('Navigation', () => {
     // Check navigation links (use navigation role to avoid duplicates)
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Getting Started' })).toBeVisible();
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Playground', exact: true })).toBeVisible();
-    await expect(page.getByRole('navigation').getByRole('link', { name: 'Request Flow', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'Timeline', exact: true })).toBeVisible();
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
   });
 
@@ -31,12 +31,12 @@ test.describe('Navigation', () => {
     await expect(page.getByText(/Mockifyer:/i)).toBeVisible({ timeout: 10000 });
   });
 
-  test('should navigate to Request Flow page', async ({ page }) => {
+  test('should navigate to Timeline page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('navigation').getByRole('link', { name: 'Request Flow', exact: true }).click();
-    await expect(page).toHaveURL(/.*request-flow/);
+    await page.getByRole('navigation').getByRole('link', { name: 'Timeline', exact: true }).click();
+    await expect(page).toHaveURL(/.*timeline/);
     await page.waitForLoadState('networkidle');
-    await expect(page.getByRole('heading', { name: /Request Flow Visualization/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: /API Timeline/i })).toBeVisible({ timeout: 10000 });
   });
 
   test('should navigate to Settings page', async ({ page }) => {

@@ -23,7 +23,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
   const navItems = [
     { id: 'stats', label: 'Statistics', icon: BarChart3, path: '/' },
     { id: 'mocks', label: 'Mocks', icon: FileText, path: '/mocks' },
-    { id: 'flow', label: 'Request Flow', icon: GitBranch, path: '/flow' },
+    { id: 'timeline', label: 'Timeline', icon: GitBranch, path: '/timeline' },
     { id: 'date-config', label: 'Date Config', icon: Calendar, path: '/date-config' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ]
