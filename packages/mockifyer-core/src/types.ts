@@ -95,6 +95,7 @@ export interface MockData {
   request: StoredRequest;
   response: StoredResponse;
   timestamp: string;
+  duration?: number; // Request duration in milliseconds
   scenario?: string;
   sessionId?: string; // Unique identifier for grouping related requests
 }

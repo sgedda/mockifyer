@@ -431,6 +431,14 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
                 </div>
               </div>
             )}
+            {mock.data.duration !== undefined && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Duration</div>
+                <div className="text-sm text-muted-foreground">
+                  {mock.data.duration}ms
+                </div>
+              </div>
+            )}
             {mock.data.scenario && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">Scenario</div>

@@ -666,6 +666,8 @@ class MockifyerClass {
           }
           // Store requestKey on config so response interceptor can clean it up
           (returnConfig as any).__mockifyer_requestKey = requestKey;
+          // Store request start time for duration calculation
+          (returnConfig as any).__mockifyer_startTime = Date.now();
           return returnConfig;
         } catch (error) {
           console.error(`[Mockifyer] ❌ Error processing ${requestKey}:`, error);
@@ -909,10 +911,15 @@ class MockifyerClass {
         headers: response.headers as Record<string, string>
       };
 
+      // Calculate request duration if start time is available
+      const startTime = (response.config as any).__mockifyer_startTime;
+      const duration = startTime ? Date.now() - startTime : undefined;
+
       const mockData: MockData = {
         request,
         response: storedResponse,
         timestamp: new Date().toISOString(),
+        duration,
         scenario: this.config.scenarios?.default
       };
 

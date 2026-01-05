@@ -28,6 +28,7 @@ export interface MockData {
       headers?: Record<string, string>
     }
     timestamp?: string
+    duration?: number // Request duration in milliseconds
     scenario?: string
     sessionId?: string
   }
