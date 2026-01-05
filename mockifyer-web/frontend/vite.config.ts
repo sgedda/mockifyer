@@ -4,7 +4,6 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  root: __dirname,
   plugins: [react()],
   resolve: {
     alias: {
@@ -23,11 +22,6 @@ export default defineConfig({
   build: {
     outDir: '../public',
     emptyOutDir: true,
-    rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, 'index.html'),
-      },
-    },
   },
 })
 
