@@ -3,27 +3,37 @@
 
 set -e
 
-# Get the directory where the script is located
+# Get the directory where the script is located (packages/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Change to the packages directory
 cd "$SCRIPT_DIR"
 
+# Verify we're in the packages directory
+if [ ! -d "mockifyer-core" ]; then
+  echo "❌ Error: mockifyer-core directory not found in $SCRIPT_DIR"
+  echo "Current directory: $(pwd)"
+  echo "Contents:"
+  ls -la
+  exit 1
+fi
+
+# Store absolute path to packages directory
+PACKAGES_DIR="$(pwd)"
+
 echo "🔧 Building mockifyer-core..."
-cd mockifyer-core
+cd "$PACKAGES_DIR/mockifyer-core"
 npm install
 npm run build
-cd ..
 
 echo "🔧 Building mockifyer-axios..."
-cd mockifyer-axios
+cd "$PACKAGES_DIR/mockifyer-axios"
 npm install
 npm run build
-cd ..
 
 echo "🔧 Building mockifyer-fetch..."
-cd mockifyer-fetch
+cd "$PACKAGES_DIR/mockifyer-fetch"
 npm install
 npm run build
-cd ..
 
 echo "✅ All packages built successfully!"
 
