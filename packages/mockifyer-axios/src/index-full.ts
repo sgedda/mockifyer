@@ -420,7 +420,17 @@ class MockifyerClass {
             request: {}
           };
           
-          console.log('[Mockifyer] AxiosHeaders keys:', Array.from(axiosHeaders.keys()));
+          // Safely get keys from AxiosHeaders (it might not have .keys() method in all Axios versions)
+          try {
+            if (typeof (axiosHeaders as any).keys === 'function') {
+              console.log('[Mockifyer] AxiosHeaders keys:', Array.from((axiosHeaders as any).keys()));
+            } else {
+              // Fallback: use Object.keys on the plain headers object
+              console.log('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
+            }
+          } catch (e) {
+            console.log('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
+          }
           console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
           
           return {
