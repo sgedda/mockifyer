@@ -4,10 +4,28 @@ const CONTACT_EMAIL = 'sebastian.gedda@gmail.com';
 
 // Create reusable transporter
 let transporter: nodemailer.Transporter | null = null;
+let verificationAttempted = false;
+let verificationFailed = false;
+
+// Helper function to add timeout to promises
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
 
 async function getTransporter(): Promise<nodemailer.Transporter | null> {
-  if (transporter) {
+  // If we already have a verified transporter, return it
+  if (transporter && !verificationFailed) {
     return transporter;
+  }
+
+  // If verification previously failed, don't retry on every request
+  if (verificationFailed) {
+    return null;
   }
 
   // Check if email is configured via environment variables
@@ -19,7 +37,10 @@ async function getTransporter(): Promise<nodemailer.Transporter | null> {
 
   // If SMTP is not configured, return null (emails won't be sent)
   if (!smtpHost || !smtpUser || !smtpPassword) {
-    console.warn('[Email] SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables to enable email notifications.');
+    if (!verificationAttempted) {
+      console.warn('[Email] SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables to enable email notifications.');
+      verificationAttempted = true;
+    }
     return null;
   }
 
@@ -32,22 +53,39 @@ async function getTransporter(): Promise<nodemailer.Transporter | null> {
         user: smtpUser,
         pass: smtpPassword,
       },
+      // Add connection timeout to prevent hanging
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000, // 10 seconds
+      socketTimeout: 10000, // 10 seconds
       // Add debug logging
       debug: process.env.NODE_ENV === 'development',
       logger: process.env.NODE_ENV === 'development',
     });
 
-    // Verify connection
-    await transporter.verify();
-    console.log(`[Email] ✅ SMTP transporter configured and verified for ${smtpHost}:${smtpPort}`);
-    console.log(`[Email] Sending emails to: ${CONTACT_EMAIL}`);
-    return transporter;
+    // Verify connection with timeout (5 seconds max)
+    // Don't block the request if verification fails - we'll try to send anyway
+    try {
+      await withTimeout(transporter.verify(), 5000);
+      console.log(`[Email] ✅ SMTP transporter configured and verified for ${smtpHost}:${smtpPort}`);
+      console.log(`[Email] Sending emails to: ${CONTACT_EMAIL}`);
+      verificationAttempted = true;
+      return transporter;
+    } catch (verifyError: any) {
+      console.warn('[Email] ⚠️ SMTP verification failed or timed out, but transporter created. Emails may still work.');
+      console.warn('[Email] Verification error:', verifyError.message);
+      // Don't mark as failed - allow sending to proceed (some SMTP servers don't support verify)
+      verificationAttempted = true;
+      return transporter;
+    }
   } catch (error: any) {
-    console.error('[Email] ❌ Failed to create or verify SMTP transporter');
+    console.error('[Email] ❌ Failed to create SMTP transporter');
     console.error('[Email] Error:', error.message);
     if (error.code) {
       console.error('[Email] Error code:', error.code);
     }
+    verificationFailed = true;
+    verificationAttempted = true;
+    transporter = null;
     return null;
   }
 }
@@ -120,7 +158,8 @@ You can reply directly to this email to respond to ${submission.name}.
     };
 
     console.log(`[Email] Attempting to send email to ${CONTACT_EMAIL} from ${process.env.SMTP_USER}`);
-    const info = await emailTransporter.sendMail(mailOptions);
+    // Add timeout to prevent hanging (30 seconds should be enough for most SMTP servers)
+    const info = await withTimeout(emailTransporter.sendMail(mailOptions), 30000);
     console.log(`[Email] ✅ Contact form email sent successfully!`);
     console.log(`[Email] Message ID: ${info.messageId}`);
     console.log(`[Email] Response: ${info.response}`);
