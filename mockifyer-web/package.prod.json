@@ -16,9 +16,9 @@
     "test": "jest"
   },
   "dependencies": {
-    "@sgedda/mockifyer-core": "^1.6.2",
-    "@sgedda/mockifyer-axios": "^1.6.0",
-    "@sgedda/mockifyer-fetch": "^1.6.1",
+    "@sgedda/mockifyer-core": "^1.7.0",
+    "@sgedda/mockifyer-axios": "^1.7.0",
+    "@sgedda/mockifyer-fetch": "^1.7.0",
     "@types/nodemailer": "^7.0.4",
     "axios": "^1.6.7",
     "cookie-parser": "^1.4.7",
