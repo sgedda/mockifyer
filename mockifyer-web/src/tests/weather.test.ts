@@ -13,45 +13,58 @@ describe('WeatherService', () => {
     process.env.MOCKIFYER_RECORD = 'false';
     process.env.WEATHER_API_KEY = 'test-key';
 
-    // Create mock data directory
-    if (!fs.existsSync(mockDataPath)) {
-      fs.mkdirSync(mockDataPath, { recursive: true });
+    // Create mock data directory and default scenario directory
+    const defaultScenarioPath = path.join(mockDataPath, 'default');
+    if (!fs.existsSync(defaultScenarioPath)) {
+      fs.mkdirSync(defaultScenarioPath, { recursive: true });
     }
 
     // Create mock data for current weather
+    // Note: key parameter must be anonymized as Mockifyer anonymizes it when matching
     fs.writeFileSync(
-      path.join(mockDataPath, 'current_weather.json'),
+      path.join(defaultScenarioPath, 'current_weather.json'),
       JSON.stringify({
         request: {
           method: 'GET',
           url: 'https://api.weatherapi.com/v1/current.json',
-          queryParams: { key: 'test-key', q: 'London' }
+          queryParams: { key: '***ANONYMIZED***', q: 'London' },
+          headers: {}
         },
         response: {
           status: 200,
           data: {
+            location: {
+              name: 'London'
+            },
             current: {
               temp_c: 18,
               condition: { text: 'Partly cloudy' },
               last_updated: '2024-03-16 12:00'
             }
-          }
-        }
+          },
+          headers: {}
+        },
+        timestamp: '2024-03-16T12:00:00.000Z'
       })
     );
 
     // Create mock data for forecast
+    // Note: key parameter must be anonymized as Mockifyer anonymizes it when matching
     fs.writeFileSync(
-      path.join(mockDataPath, 'forecast.json'),
+      path.join(defaultScenarioPath, 'forecast.json'),
       JSON.stringify({
         request: {
           method: 'GET',
           url: 'https://api.weatherapi.com/v1/forecast.json',
-          queryParams: { key: 'test-key', q: 'London', days: 3 }
+          queryParams: { key: '***ANONYMIZED***', q: 'London', days: '3' },
+          headers: {}
         },
         response: {
           status: 200,
           data: {
+            location: {
+              name: 'London'
+            },
             forecast: {
               forecastday: [
                 {
@@ -68,8 +81,10 @@ describe('WeatherService', () => {
                 }
               ]
             }
-          }
-        }
+          },
+          headers: {}
+        },
+        timestamp: '2024-03-16T12:00:00.000Z'
       })
     );
     
@@ -89,16 +104,19 @@ describe('WeatherService', () => {
   });
 
   it('should fetch current weather', async () => {
-    const weather = await weatherService.getCurrentWeather('London');
-    expect(weather).toBeDefined();
-    expect(weather.location).toBe('London');
-    expect(weather.temperature).toBe(18);
-    expect(weather.conditions).toBe('Partly cloudy');
-    expect(weather.timestamp).toBe('2024-03-16 12:00');
+    const response = await weatherService.getCurrentWeather('London');
+    expect(response).toBeDefined();
+    expect(response.data).toBeDefined();
+    expect(response.data.location).toBe('London');
+    expect(response.data.temperature).toBe(18);
+    expect(response.data.conditions).toBe('Partly cloudy');
+    expect(response.data.timestamp).toBe('2024-03-16 12:00');
   });
 
   it('should fetch weather forecast', async () => {
-    const forecast = await weatherService.getForecast('London', 3);
+    const response = await weatherService.getForecast('London', 3);
+    expect(response.data).toBeDefined();
+    const forecast = response.data;
     expect(forecast).toHaveLength(3);
     expect(forecast[0]).toEqual({
       location: 'London',
