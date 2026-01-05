@@ -19,7 +19,20 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_SUBMISSIONS_PER_HOUR = 3; // Max 3 submissions per IP per hour
 const MAX_SUBMISSIONS_PER_EMAIL = 2; // Max 2 submissions per email per hour
 const MIN_FORM_FILL_TIME_MS = 3000; // Minimum 3 seconds to fill form (bots fill instantly)
-const CONTACT_SUBMISSIONS_FILE = path.join(__dirname, '../../persisted/contact-submissions.json');
+
+// Determine persisted directory path (Railway volume or local)
+function getPersistedDir(): string {
+  // On Railway, check for volume at /persisted/
+  if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted')) {
+    return '/persisted';
+  }
+  // Local development: use persisted/ in project directory
+  return path.join(__dirname, '../../persisted');
+}
+
+// Get contact submissions file path
+const persistedDir = getPersistedDir();
+const CONTACT_SUBMISSIONS_FILE = path.join(persistedDir, 'contact-submissions.json');
 
 // Common spam keywords/phrases
 const SPAM_KEYWORDS = [
@@ -35,15 +48,19 @@ const SPAM_KEYWORDS = [
 // Track form start times (in-memory, resets on server restart)
 const formStartTimes: Map<string, number> = new Map();
 
-// Ensure persisted directory exists
-const persistedDir = path.dirname(CONTACT_SUBMISSIONS_FILE);
-if (!fs.existsSync(persistedDir)) {
-  fs.mkdirSync(persistedDir, { recursive: true });
-}
-
-// Initialize submissions file if it doesn't exist
-if (!fs.existsSync(CONTACT_SUBMISSIONS_FILE)) {
-  fs.writeFileSync(CONTACT_SUBMISSIONS_FILE, JSON.stringify([]), 'utf-8');
+// Ensure persisted directory exists (with error handling)
+try {
+  if (!fs.existsSync(persistedDir)) {
+    fs.mkdirSync(persistedDir, { recursive: true });
+  }
+  
+  // Initialize submissions file if it doesn't exist
+  if (!fs.existsSync(CONTACT_SUBMISSIONS_FILE)) {
+    fs.writeFileSync(CONTACT_SUBMISSIONS_FILE, JSON.stringify([]), 'utf-8');
+  }
+} catch (error) {
+  console.error('[Contact] Failed to initialize persisted directory:', error);
+  // Don't crash - file operations will handle errors gracefully later
 }
 
 // Helper to get client IP address
@@ -130,6 +147,9 @@ function checkFormFillTime(formStartTime: number | null): boolean {
 // Helper to read submissions
 function readSubmissions(): any[] {
   try {
+    if (!fs.existsSync(CONTACT_SUBMISSIONS_FILE)) {
+      return [];
+    }
     const data = fs.readFileSync(CONTACT_SUBMISSIONS_FILE, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
@@ -141,6 +161,10 @@ function readSubmissions(): any[] {
 // Helper to save submission
 function saveSubmission(submission: any): void {
   try {
+    // Ensure directory exists before writing
+    if (!fs.existsSync(persistedDir)) {
+      fs.mkdirSync(persistedDir, { recursive: true });
+    }
     const submissions = readSubmissions();
     submissions.push({
       ...submission,
@@ -149,6 +173,7 @@ function saveSubmission(submission: any): void {
     fs.writeFileSync(CONTACT_SUBMISSIONS_FILE, JSON.stringify(submissions, null, 2), 'utf-8');
   } catch (error) {
     console.error('[Contact] Error saving submission:', error);
+    // Log but don't throw - submission will still be processed
   }
 }
 
@@ -265,10 +290,15 @@ router.post('/', async (req: Request, res: Response) => {
     // Log submission
     console.log(`[Contact] New submission from ${trimmedEmail} (${ip})`);
 
-    // Send email notification
-    const emailSent = await sendContactEmail(submission);
-    if (!emailSent) {
-      console.warn(`[Contact] Email notification failed for submission from ${trimmedEmail}, but submission was saved`);
+    // Send email notification (non-blocking - don't fail the request if email fails)
+    try {
+      const emailSent = await sendContactEmail(submission);
+      if (!emailSent) {
+        console.warn(`[Contact] Email notification failed for submission from ${trimmedEmail}, but submission was saved`);
+      }
+    } catch (emailError: any) {
+      // Email sending failed, but don't fail the request
+      console.error(`[Contact] Email sending error (non-fatal) for submission from ${trimmedEmail}:`, emailError.message);
     }
 
     res.status(200).json({
