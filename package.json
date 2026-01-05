@@ -11,7 +11,8 @@
     "test:watch": "jest --watch",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
-    "release:major": "npm version major && git push && git push --tags"
+    "release:major": "npm version major && git push && git push --tags",
+    "retag:latest": "bash scripts/retag-latest.sh"
   },
   "keywords": [
     "mock",
