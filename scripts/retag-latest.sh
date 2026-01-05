@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to delete the latest tag, recreate it, and push to remote
+# Script to delete a tag, recreate it pointing to latest main/HEAD, and push to remote
 # This is useful for fixing tags or re-tagging a commit
 
 set -e  # Exit on error
@@ -13,20 +13,33 @@ if [ -z "$LATEST_TAG" ]; then
   exit 1
 fi
 
-echo "📌 Latest tag: $LATEST_TAG"
+# Show recent tags
+echo "📋 Recent tags:"
+git tag --sort=-version:refname | head -10 | nl -w2 -s'. '
 
-# Get the commit SHA that the tag points to
-TAG_COMMIT=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null || echo "")
+# Ask which tag to retag (default to latest)
+echo ""
+read -p "Which tag to retag? [default: $LATEST_TAG] " TAG_TO_RETAG
+TAG_TO_RETAG=${TAG_TO_RETAG:-$LATEST_TAG}
 
-if [ -z "$TAG_COMMIT" ]; then
-  echo "❌ ERROR: Could not find commit for tag $LATEST_TAG"
+# Verify the tag exists
+if ! git rev-parse "$TAG_TO_RETAG" >/dev/null 2>&1; then
+  echo "❌ ERROR: Tag '$TAG_TO_RETAG' does not exist"
   exit 1
 fi
 
-echo "📍 Tag points to commit: $TAG_COMMIT"
+# Get the latest commit SHA from main branch (always use latest)
+TAG_COMMIT=$(git rev-parse origin/main 2>/dev/null || git rev-parse main 2>/dev/null || git rev-parse HEAD)
+
+echo ""
+echo "📌 Tag to retag: $TAG_TO_RETAG"
+echo "📍 Current tag points to: $(git rev-list -n 1 "$TAG_TO_RETAG" 2>/dev/null || echo 'unknown')"
+echo "📍 Will point tag to: $TAG_COMMIT"
+echo "📍 Commit message: $(git log -1 --pretty=format:'%s' "$TAG_COMMIT")"
+echo ""
 
 # Confirm with user
-read -p "⚠️  This will delete and recreate tag '$LATEST_TAG'. Continue? (y/N) " -n 1 -r
+read -p "⚠️  This will delete and recreate tag '$TAG_TO_RETAG' pointing to latest commit. Continue? (y/N) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
   echo "❌ Aborted"
@@ -34,20 +47,19 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # Delete tag locally
-echo "🗑️  Deleting tag locally: $LATEST_TAG"
-git tag -d "$LATEST_TAG" || echo "⚠️  Tag not found locally (may have already been deleted)"
+echo "🗑️  Deleting tag locally: $TAG_TO_RETAG"
+git tag -d "$TAG_TO_RETAG" || echo "⚠️  Tag not found locally (may have already been deleted)"
 
 # Delete tag remotely
-echo "🗑️  Deleting tag remotely: $LATEST_TAG"
-git push origin ":refs/tags/$LATEST_TAG" || echo "⚠️  Tag not found remotely (may have already been deleted)"
+echo "🗑️  Deleting tag remotely: $TAG_TO_RETAG"
+git push origin ":refs/tags/$TAG_TO_RETAG" || echo "⚠️  Tag not found remotely (may have already been deleted)"
 
-# Create the tag again pointing to the same commit
-echo "🏷️  Creating tag again: $LATEST_TAG -> $TAG_COMMIT"
-git tag "$LATEST_TAG" "$TAG_COMMIT"
+# Create the tag again pointing to the latest commit
+echo "🏷️  Creating tag again: $TAG_TO_RETAG -> $TAG_COMMIT"
+git tag "$TAG_TO_RETAG" "$TAG_COMMIT"
 
 # Push the tag to remote
-echo "🚀 Pushing tag to remote: $LATEST_TAG"
-git push origin "$LATEST_TAG"
+echo "🚀 Pushing tag to remote: $TAG_TO_RETAG"
+git push origin "$TAG_TO_RETAG"
 
-echo "✅ Successfully recreated and pushed tag: $LATEST_TAG"
-
+echo "✅ Successfully recreated and pushed tag: $TAG_TO_RETAG"
