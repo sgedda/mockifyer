@@ -295,10 +295,9 @@ router.post('/', async (req: Request, res: Response) => {
       const emailSent = await sendContactEmail(submission);
       if (!emailSent) {
         console.error(`[Contact] ❌ EMAIL NOTIFICATION FAILED for submission from ${trimmedEmail}`);
-        console.error(`[Contact] Submission was saved, but email was not sent. Check SMTP configuration.`);
-        console.error(`[Contact] SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
-        console.error(`[Contact] SMTP_USER: ${process.env.SMTP_USER || 'NOT SET'}`);
-        console.error(`[Contact] SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? 'SET' : 'NOT SET'}`);
+        console.error(`[Contact] Submission was saved, but email was not sent. Check Resend configuration.`);
+        console.error(`[Contact] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? 'SET' : 'NOT SET'}`);
+        console.error(`[Contact] RESEND_FROM_EMAIL: ${process.env.RESEND_FROM_EMAIL || 'NOT SET (using default)'}`);
       } else {
         console.log(`[Contact] ✅ Email notification sent successfully for submission from ${trimmedEmail}`);
       }
@@ -325,7 +324,7 @@ router.get('/test-email', async (req: Request, res: Response) => {
       name: 'Test User',
       email: 'test@example.com',
       subject: 'Test Email Configuration',
-      message: 'This is a test email to verify SMTP configuration.',
+      message: 'This is a test email to verify Resend email configuration.',
       ip: getClientIp(req),
     };
 
@@ -340,7 +339,7 @@ router.get('/test-email', async (req: Request, res: Response) => {
       res.status(500).json({
         success: false,
         message: 'Failed to send test email. Check server logs for details.',
-        smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD),
+        resendConfigured: !!process.env.RESEND_API_KEY,
       });
     }
   } catch (error: any) {
