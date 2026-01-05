@@ -6,13 +6,9 @@ coverage
 .env.local
 package-lock.json
 package-lock.prod.json
-# CRITICAL: Exclude persisted/ directory from build to prevent overwriting Railway volume
-# If persisted/ is included in the build, nixpacks will copy empty files into the volume,
-# overwriting existing vote data on deployment
-persisted/
-# Also exclude individual vote files (backup in case directory exclusion doesn't work)
+# Note: mock-data is NOT ignored - it will be preserved across deployments
+# Vote files are stored in persisted/ directory (Railway volume) - don't overwrite
 feature-votes.json
 user-votes.json
 ip-votes.json
-contact-submissions.json
 
