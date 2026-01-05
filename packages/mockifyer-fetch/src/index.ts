@@ -439,6 +439,8 @@ class MockifyerClass {
       
       // Store request key for response interceptor
       (config as any).__mockifyer_requestKey = requestKey;
+      // Store request start time for duration calculation
+      (config as any).__mockifyer_startTime = Date.now();
       
       const cachedMock = await this.findBestMatchingMock(request);
       
@@ -732,6 +734,10 @@ class MockifyerClass {
         this.sessionStartTime = now;
       }
 
+      // Calculate request duration if start time is available
+      const startTime = (response.config as any).__mockifyer_startTime;
+      const duration = startTime ? Date.now() - startTime : undefined;
+
       const mockData: MockData = {
         request: {
           method: response.config?.method?.toUpperCase() || 'GET',
@@ -746,6 +752,7 @@ class MockifyerClass {
           headers: response.headers || {}
         },
         timestamp: new Date().toISOString(),
+        duration,
         sessionId: this.currentSessionId
       };
       

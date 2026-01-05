@@ -254,7 +254,12 @@ export default function RequestFlow({ scenario }: { scenario: string }) {
                             )}
                             <span>📄 {req.filename}</span>
                             {req.source && <span>📍 {req.source}</span>}
-                            {req.duration && <span>⏱ {req.duration}ms</span>}
+                            {req.duration !== undefined && (
+                              <span className="flex items-center gap-1 font-mono text-primary">
+                                <Clock className="h-3 w-3" />
+                                {req.duration}ms
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
