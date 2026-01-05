@@ -90,35 +90,32 @@ function recalculateVotes(): Record<string, number> {
 
 // Helper to read vote counts (with restoration from user votes)
 function readVotes(): Record<string, number> {
-  // First try to read from file
-  let votes: Record<string, number> = {};
+  // Recalculate from user votes - this is the source of truth
+  const recalculatedVotes = recalculateVotes();
+  
+  // Read current file to check if update is needed (avoid unnecessary writes)
+  let fileVotes: Record<string, number> = {};
   try {
     if (fs.existsSync(VOTES_FILE)) {
       const data = fs.readFileSync(VOTES_FILE, 'utf-8');
-      votes = JSON.parse(data);
+      fileVotes = JSON.parse(data);
     }
   } catch (error) {
-    console.warn('[FeatureVotes] Could not read votes file, recalculating:', error);
+    console.warn('[FeatureVotes] Could not read votes file, will update:', error);
   }
   
-  // Recalculate from user votes to ensure consistency and restore any missing votes
-  const recalculatedVotes = recalculateVotes();
-  
-  // Merge: use recalculated votes as source of truth, but keep any features that might exist in file but not in user votes yet
-  // This handles edge cases where vote file might have data but user votes file doesn't
-  const mergedVotes = { ...votes, ...recalculatedVotes };
-  
-  // If recalculated votes differ from file, update the file (restore consistency)
-  const needsUpdate = JSON.stringify(mergedVotes) !== JSON.stringify(votes);
+  // Use recalculated votes as source of truth (derived from user votes)
+  // Only update file if it differs from recalculated votes
+  const needsUpdate = JSON.stringify(recalculatedVotes) !== JSON.stringify(fileVotes);
   if (needsUpdate) {
     try {
-      fs.writeFileSync(VOTES_FILE, JSON.stringify(mergedVotes, null, 2), 'utf-8');
+      fs.writeFileSync(VOTES_FILE, JSON.stringify(recalculatedVotes, null, 2), 'utf-8');
     } catch (error) {
       console.error('[FeatureVotes] Could not write votes file:', error);
     }
   }
   
-  return mergedVotes;
+  return recalculatedVotes;
 }
 
 // Helper to write vote counts
