@@ -45,6 +45,11 @@ When creating a new feature or fix:
      --base main --head fix/description-of-change
    ```
 
+5. **Checkout main branch:**
+   ```bash
+   git checkout main
+   ```
+
 ## Commit Message Format
 
 Use conventional commit format:

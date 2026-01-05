@@ -38,7 +38,12 @@ async function getTransporter(): Promise<nodemailer.Transporter | null> {
   // If SMTP is not configured, return null (emails won't be sent)
   if (!smtpHost || !smtpUser || !smtpPassword) {
     if (!verificationAttempted) {
-      console.warn('[Email] SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables to enable email notifications.');
+      console.error('[Email] ❌ SMTP NOT CONFIGURED - Emails will not be sent!');
+      console.error('[Email] Missing environment variables:');
+      console.error(`[Email]   SMTP_HOST: ${smtpHost || '❌ NOT SET'}`);
+      console.error(`[Email]   SMTP_USER: ${smtpUser || '❌ NOT SET'}`);
+      console.error(`[Email]   SMTP_PASSWORD: ${smtpPassword ? '✅ SET' : '❌ NOT SET'}`);
+      console.error('[Email] Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables to enable email notifications.');
       verificationAttempted = true;
     }
     return null;
@@ -106,10 +111,11 @@ export async function sendContactEmail(submission: ContactSubmission): Promise<b
     const smtpUser = process.env.SMTP_USER;
     const smtpPassword = process.env.SMTP_PASSWORD;
     
-    console.error('[Email] Cannot send email - SMTP not configured');
-    console.error('[Email] SMTP_HOST:', smtpHost || 'NOT SET');
-    console.error('[Email] SMTP_USER:', smtpUser || 'NOT SET');
-    console.error('[Email] SMTP_PASSWORD:', smtpPassword ? 'SET (hidden)' : 'NOT SET');
+    console.error('[Email] ❌ Cannot send email - SMTP not configured');
+    console.error('[Email] Missing environment variables:');
+    console.error(`[Email]   SMTP_HOST: ${smtpHost || '❌ NOT SET'}`);
+    console.error(`[Email]   SMTP_USER: ${smtpUser || '❌ NOT SET'}`);
+    console.error(`[Email]   SMTP_PASSWORD: ${smtpPassword ? '✅ SET (hidden)' : '❌ NOT SET'}`);
     console.error('[Email] Please set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD environment variables');
     return false;
   }

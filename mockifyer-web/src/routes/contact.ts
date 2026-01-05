@@ -294,7 +294,13 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       const emailSent = await sendContactEmail(submission);
       if (!emailSent) {
-        console.warn(`[Contact] Email notification failed for submission from ${trimmedEmail}, but submission was saved`);
+        console.error(`[Contact] ❌ EMAIL NOTIFICATION FAILED for submission from ${trimmedEmail}`);
+        console.error(`[Contact] Submission was saved, but email was not sent. Check SMTP configuration.`);
+        console.error(`[Contact] SMTP_HOST: ${process.env.SMTP_HOST || 'NOT SET'}`);
+        console.error(`[Contact] SMTP_USER: ${process.env.SMTP_USER || 'NOT SET'}`);
+        console.error(`[Contact] SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? 'SET' : 'NOT SET'}`);
+      } else {
+        console.log(`[Contact] ✅ Email notification sent successfully for submission from ${trimmedEmail}`);
       }
     } catch (emailError: any) {
       // Email sending failed, but don't fail the request
