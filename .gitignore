@@ -13,6 +13,7 @@ node_modules/
 # Build output
 dist/
 build/
+**/public/
 
 # Coverage directory
 coverage/
