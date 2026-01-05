@@ -21,30 +21,13 @@ function getPersistedDir(): string {
   if (isProduction) {
     const railwayPath = '/persisted';
     
-    // In production, wait a bit for volume to be mounted (Railway volumes mount after container starts)
+    // In production, check if volume is mounted (Railway volumes should be mounted before container starts)
+    // If not mounted yet, log warning but continue - volume will be checked again on first use
     if (!fs.existsSync(railwayPath)) {
-      console.warn('[FeatureVotes] ⚠️  Railway volume not mounted yet at /persisted, waiting...');
-      
-      // Try to wait for volume mount (max 5 seconds)
-      let attempts = 0;
-      const maxAttempts = 10;
-      while (attempts < maxAttempts && !fs.existsSync(railwayPath)) {
-        // Wait 500ms between attempts
-        const start = Date.now();
-        while (Date.now() - start < 500) {
-          // Busy wait (simple approach for Railway)
-        }
-        attempts++;
-      }
-      
-      if (!fs.existsSync(railwayPath)) {
-        console.error('[FeatureVotes] ❌ Railway volume still not available after waiting. This may cause data loss!');
-        console.error('[FeatureVotes] Make sure volume is mounted at /persisted in Railway dashboard');
-        // Still return railway path - don't fall back to local in production
-        return railwayPath;
-      }
-      
-      console.log('[FeatureVotes] ✅ Railway volume mounted successfully');
+      console.warn('[FeatureVotes] ⚠️  Railway volume not mounted yet at /persisted');
+      console.warn('[FeatureVotes] Volume will be checked again on first request. Make sure volume is mounted at /persisted in Railway dashboard');
+      // Still return railway path - don't fall back to local in production
+      return railwayPath;
     }
     
     // Verify it's actually a directory (not a file)
@@ -54,6 +37,7 @@ function getPersistedDir(): string {
         console.error('[FeatureVotes] ❌ /persisted exists but is not a directory!');
         return railwayPath; // Still return it, but log the error
       }
+      console.log('[FeatureVotes] ✅ Railway volume mounted successfully at /persisted');
     } catch (error) {
       console.error('[FeatureVotes] ❌ Error checking /persisted:', error);
     }
@@ -110,9 +94,10 @@ function ensurePersistedFilesExist(): void {
                            process.env.RAILWAY_ENVIRONMENT || 
                            process.env.RAILWAY_ENVIRONMENT_ID;
       if (isProduction && persistedDir === '/persisted') {
-        console.error('[FeatureVotes] ❌ Cannot create /persisted - it must be a Railway volume!');
-        console.error('[FeatureVotes] Please ensure volume is mounted at /persisted in Railway dashboard');
-        throw new Error('Railway volume /persisted is not mounted');
+        console.warn('[FeatureVotes] ⚠️  Railway volume /persisted is not mounted yet');
+        console.warn('[FeatureVotes] Files will be initialized when volume becomes available. Make sure volume is mounted at /persisted in Railway dashboard');
+        // Don't throw - allow retry on next request when volume might be mounted
+        return;
       }
       
       fs.mkdirSync(persistedDir, { recursive: true });
