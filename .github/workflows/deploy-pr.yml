@@ -31,7 +31,14 @@ jobs:
 
             - name: Install dependencies
               working-directory: mockifyer-web
-              run: npm ci
+              run: |
+                  if [ -f "package-lock.json" ]; then
+                      echo "Using npm ci (package-lock.json found)"
+                      npm ci
+                  else
+                      echo "Using npm install (package-lock.json not found)"
+                      npm install
+                  fi
 
             - name: Build
               working-directory: mockifyer-web
