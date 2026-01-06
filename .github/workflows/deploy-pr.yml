@@ -20,8 +20,14 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: "20.x"
-                  cache: "npm"
-                  cache-dependency-path: mockifyer-web/package-lock.json
+
+            - name: Cache npm dependencies
+              uses: actions/cache@v4
+              with:
+                  path: mockifyer-web/node_modules
+                  key: ${{ runner.os }}-npm-${{ hashFiles('mockifyer-web/package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-npm-
 
             - name: Install dependencies
               working-directory: mockifyer-web
@@ -39,4 +45,4 @@ jobs:
               env:
                   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
               run: |
-                  railway up --service ${{ secrets.RAILWAY_TOKEN }}
+                  railway up --service ${{ secrets.RAILWAY_SERVICE_ID }}
