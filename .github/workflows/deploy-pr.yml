@@ -61,5 +61,6 @@ jobs:
               working-directory: mockifyer-web
               env:
                   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+                  CI: "true"
               run: |
                   railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --ci
