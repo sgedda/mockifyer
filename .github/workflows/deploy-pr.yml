@@ -21,24 +21,26 @@ jobs:
               with:
                   node-version: "20.x"
 
+            - name: Prepare production configuration
+              working-directory: mockifyer-web
+              run: |
+                  echo "Copying production configuration files"
+                  cp package.prod.json package.json
+                  cp tsconfig.prod.json tsconfig.json
+                  echo "Removing lockfiles (as per package.prod.json preinstall)"
+                  rm -f package-lock.json package-lock.prod.json || true
+
             - name: Cache npm dependencies
               uses: actions/cache@v4
               with:
                   path: mockifyer-web/node_modules
-                  key: ${{ runner.os }}-npm-${{ hashFiles('mockifyer-web/package-lock.json') }}
+                  key: ${{ runner.os }}-npm-prod-${{ hashFiles('mockifyer-web/package.prod.json') }}
                   restore-keys: |
-                      ${{ runner.os }}-npm-
+                      ${{ runner.os }}-npm-prod-
 
             - name: Install dependencies
               working-directory: mockifyer-web
-              run: |
-                  if [ -f "package-lock.json" ]; then
-                      echo "Using npm ci (package-lock.json found)"
-                      npm ci
-                  else
-                      echo "Using npm install (package-lock.json not found)"
-                      npm install
-                  fi
+              run: npm install
 
             - name: Build
               working-directory: mockifyer-web
