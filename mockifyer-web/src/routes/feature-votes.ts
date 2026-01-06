@@ -10,66 +10,28 @@ const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 // Determine persisted directory path (Railway volume or local)
 // This function is called dynamically at runtime to ensure Railway volumes are available
+// Matches the pattern used in mocks.ts which successfully persists files
 function getPersistedDir(): string {
-  // Check for Railway environment variables (more reliable than checking file system)
-  const isProduction = process.env.NODE_ENV === 'production' || 
-                       process.env.RAILWAY_ENVIRONMENT || 
-                       process.env.RAILWAY_ENVIRONMENT_ID || 
-                       process.env.RAILWAY_PROJECT_ID;
-  
-  if (isProduction) {
-    const railwayPath = '/persisted';
-    
-    // In production, /persisted MUST be a Railway volume mount - don't try to create it
-    // Check if it exists and is writable (but don't block or wait)
-    if (fs.existsSync(railwayPath)) {
-      try {
-        // Verify it's actually a directory (not a file)
-        const stats = fs.statSync(railwayPath);
-        if (!stats.isDirectory()) {
-          console.error('[FeatureVotes] ❌ /persisted exists but is not a directory!');
-          // Still return it, but log the error
-          return railwayPath;
-        }
-        
-        // Verify we can actually write to this directory
-        const testFile = path.join(railwayPath, '.test-write');
-        fs.writeFileSync(testFile, 'test');
-        fs.unlinkSync(testFile);
-        return railwayPath;
-      } catch (error) {
-        console.error('[FeatureVotes] ❌ Railway volume /persisted exists but is not writable:', error);
-        console.error('[FeatureVotes] Make sure volume is properly mounted at /persisted in Railway dashboard');
-        // In production, still return railway path - don't fall back to local (would cause data loss)
-        return railwayPath;
-      }
-    } else {
-      // Volume not mounted yet - this is OK during build, will be available at runtime
-      // Log warning but don't block or wait (that caused Railway build timeouts)
-      console.warn('[FeatureVotes] ⚠️  Railway volume not mounted yet at /persisted');
-      console.warn('[FeatureVotes] This is normal during build. Volume will be checked again on first request.');
-      // Return railway path anyway - it will be available when the app runs
-      return railwayPath;
+  // Check for MOCKIFYER_PATH first (for consistency with mocks.ts)
+  if (process.env.MOCKIFYER_PATH) {
+    const basePath = path.isAbsolute(process.env.MOCKIFYER_PATH) 
+      ? process.env.MOCKIFYER_PATH 
+      : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
+    // For feature votes, we want the persisted root, not mock-data subdirectory
+    if (basePath.includes('mock-data')) {
+      // Go up one level if it's mock-data path
+      return path.dirname(basePath);
     }
+    return basePath;
   }
   
-  // Check if /persisted exists (for Railway volumes that might be mounted but env vars not set)
-  if (fs.existsSync('/persisted')) {
-    try {
-      // Verify we can write to it
-      const testFile = path.join('/persisted', '.test-write');
-      fs.writeFileSync(testFile, 'test');
-      fs.unlinkSync(testFile);
-      return '/persisted';
-    } catch (error) {
-      console.warn('[FeatureVotes] /persisted exists but is not writable, falling back to local:', error);
-      // Fall through to local path
-    }
+  // Check for Railway environment or if /persisted exists (matches mocks.ts pattern)
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID || fs.existsSync('/persisted')) {
+    return '/persisted';
   }
   
-  // Local development: use persisted/ in project directory (using process.cwd() for better compatibility)
-  const localPath = path.join(process.cwd(), 'persisted');
-  return localPath;
+  // Local development: use persisted/ in project directory (using process.cwd() like mocks.ts)
+  return path.join(process.cwd(), 'persisted');
 }
 
 // Get vote file paths dynamically (called at runtime, not module load time)
@@ -92,49 +54,56 @@ function getIpVotesFilePath(): string {
 let persistedDirLogged = false;
 
 // Ensure persisted directory and files exist (called at runtime)
+// Only creates directories/files in development - in production, Railway volume must exist
 function ensurePersistedFilesExist(): void {
   try {
     const persistedDir = getPersistedDir();
-    
-    // Log persisted directory path once on first initialization
-    if (!persistedDirLogged) {
-      console.log(`[FeatureVotes] Using persisted directory: ${persistedDir}`);
-      persistedDirLogged = true;
-    }
-    
-    // Ensure persisted directory exists
-    // In production, don't create /persisted - it must be a Railway volume
     const isProduction = process.env.NODE_ENV === 'production' || 
                          process.env.RAILWAY_ENVIRONMENT || 
                          process.env.RAILWAY_ENVIRONMENT_ID;
     
+    // Log persisted directory path once on first initialization
+    if (!persistedDirLogged) {
+      console.log(`[FeatureVotes] Using persisted directory: ${persistedDir}`);
+      if (isProduction && persistedDir !== '/persisted') {
+        console.error('[FeatureVotes] ⚠️  WARNING: In production but not using /persisted volume!');
+      }
+      persistedDirLogged = true;
+    }
+    
+    // In production, don't create /persisted - it must be a Railway volume mount
+    // In development, create the directory if it doesn't exist
     if (!fs.existsSync(persistedDir)) {
       if (isProduction && persistedDir === '/persisted') {
         console.error('[FeatureVotes] ❌ Cannot create /persisted - it must be a Railway volume!');
         console.error('[FeatureVotes] Please ensure volume is mounted at /persisted in Railway dashboard');
         // Don't throw - let individual operations handle the error gracefully
+        return;
       } else {
+        // Development: create directory
         fs.mkdirSync(persistedDir, { recursive: true });
         console.log(`[FeatureVotes] Created persisted directory: ${persistedDir}`);
       }
     }
     
-    // Initialize files if they don't exist
-    const votesFile = getVotesFilePath();
-    const userVotesFile = getUserVotesFilePath();
-    const ipVotesFile = getIpVotesFilePath();
-    
-    if (!fs.existsSync(votesFile)) {
-      fs.writeFileSync(votesFile, JSON.stringify({}), 'utf-8');
-      console.log(`[FeatureVotes] Created votes file: ${votesFile}`);
-    }
-    if (!fs.existsSync(userVotesFile)) {
-      fs.writeFileSync(userVotesFile, JSON.stringify({}), 'utf-8');
-      console.log(`[FeatureVotes] Created user votes file: ${userVotesFile}`);
-    }
-    if (!fs.existsSync(ipVotesFile)) {
-      fs.writeFileSync(ipVotesFile, JSON.stringify({}), 'utf-8');
-      console.log(`[FeatureVotes] Created IP votes file: ${ipVotesFile}`);
+    // Initialize files if they don't exist (only if directory exists)
+    if (fs.existsSync(persistedDir)) {
+      const votesFile = getVotesFilePath();
+      const userVotesFile = getUserVotesFilePath();
+      const ipVotesFile = getIpVotesFilePath();
+      
+      if (!fs.existsSync(votesFile)) {
+        fs.writeFileSync(votesFile, JSON.stringify({}), 'utf-8');
+        console.log(`[FeatureVotes] Created votes file: ${votesFile}`);
+      }
+      if (!fs.existsSync(userVotesFile)) {
+        fs.writeFileSync(userVotesFile, JSON.stringify({}), 'utf-8');
+        console.log(`[FeatureVotes] Created user votes file: ${userVotesFile}`);
+      }
+      if (!fs.existsSync(ipVotesFile)) {
+        fs.writeFileSync(ipVotesFile, JSON.stringify({}), 'utf-8');
+        console.log(`[FeatureVotes] Created IP votes file: ${ipVotesFile}`);
+      }
     }
   } catch (error) {
     console.error('[FeatureVotes] Failed to initialize persisted files:', error);
