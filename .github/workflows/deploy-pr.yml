@@ -30,6 +30,12 @@ jobs:
                   echo "Removing lockfiles (as per package.prod.json preinstall)"
                   rm -f package-lock.json package-lock.prod.json || true
 
+            - name: Setup npm authentication for GitHub Packages
+              working-directory: mockifyer-web
+              run: |
+                  echo '@sgedda:registry=https://npm.pkg.github.com' > .npmrc
+                  echo '//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}' >> .npmrc
+
             - name: Cache npm dependencies
               uses: actions/cache@v4
               with:
@@ -40,7 +46,9 @@ jobs:
 
             - name: Install dependencies
               working-directory: mockifyer-web
-              run: npm install
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: npm install --legacy-peer-deps
 
             - name: Build
               working-directory: mockifyer-web
