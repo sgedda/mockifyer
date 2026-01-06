@@ -12,8 +12,11 @@ function getMockDataPath(): string {
     return path.isAbsolute(process.env.MOCKIFYER_PATH) 
       ? process.env.MOCKIFYER_PATH 
       : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
-  } else if (process.env.RAILWAY_ENVIRONMENT || require('fs').existsSync('/persisted/mock-data')) {
-    // On Railway, use volume path
+  } else if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID) {
+    // On Railway, volume is mounted at /persisted, use mock-data subdirectory
+    return '/persisted/mock-data';
+  } else if (require('fs').existsSync('/persisted')) {
+    // Fallback: check if /persisted exists (volume mounted but env vars not set)
     return '/persisted/mock-data';
   } else {
     // Local development fallback - try multiple possible locations
