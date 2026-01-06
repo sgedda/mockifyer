@@ -21,18 +21,74 @@ const MAX_SUBMISSIONS_PER_EMAIL = 2; // Max 2 submissions per email per hour
 const MIN_FORM_FILL_TIME_MS = 3000; // Minimum 3 seconds to fill form (bots fill instantly)
 
 // Determine persisted directory path (Railway volume or local)
+// This function is called dynamically at runtime to ensure Railway volumes are available
 function getPersistedDir(): string {
-  // On Railway, check for volume at /persisted/
-  if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted')) {
-    return '/persisted';
+  // Check for Railway environment variables (more reliable than checking file system)
+  const isProduction = process.env.NODE_ENV === 'production' || 
+                       process.env.RAILWAY_ENVIRONMENT || 
+                       process.env.RAILWAY_ENVIRONMENT_ID || 
+                       process.env.RAILWAY_PROJECT_ID;
+  
+  if (isProduction) {
+    const railwayPath = '/persisted';
+    
+    // In production, /persisted MUST be a Railway volume mount - don't try to create it
+    // Check if it exists and is writable (but don't block or wait)
+    if (fs.existsSync(railwayPath)) {
+      try {
+        // Verify it's actually a directory (not a file)
+        const stats = fs.statSync(railwayPath);
+        if (!stats.isDirectory()) {
+          console.error('[Contact] ❌ /persisted exists but is not a directory!');
+          // Still return it, but log the error
+          return railwayPath;
+        }
+        
+        // Verify we can actually write to this directory
+        const testFile = path.join(railwayPath, '.test-write');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        return railwayPath;
+      } catch (error) {
+        console.error('[Contact] ❌ Railway volume /persisted exists but is not writable:', error);
+        console.error('[Contact] Make sure volume is properly mounted at /persisted in Railway dashboard');
+        // In production, still return railway path - don't fall back to local (would cause data loss)
+        return railwayPath;
+      }
+    } else {
+      // Volume not mounted yet - this is OK during build, will be available at runtime
+      // Log warning but don't block or wait (that caused Railway build timeouts)
+      console.warn('[Contact] ⚠️  Railway volume not mounted yet at /persisted');
+      console.warn('[Contact] This is normal during build. Volume will be checked again on first request.');
+      // Return railway path anyway - it will be available when the app runs
+      return railwayPath;
+    }
   }
-  // Local development: use persisted/ in project directory
-  return path.join(__dirname, '../../persisted');
+  
+  // Check if /persisted exists (for Railway volumes that might be mounted but env vars not set)
+  if (fs.existsSync('/persisted')) {
+    try {
+      // Verify we can write to it
+      const testFile = path.join('/persisted', '.test-write');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      return '/persisted';
+    } catch (error) {
+      console.warn('[Contact] /persisted exists but is not writable, falling back to local:', error);
+      // Fall through to local path
+    }
+  }
+  
+  // Local development: use persisted/ in project directory (using process.cwd() for better compatibility)
+  const localPath = path.join(process.cwd(), 'persisted');
+  return localPath;
 }
 
-// Get contact submissions file path
-const persistedDir = getPersistedDir();
-const CONTACT_SUBMISSIONS_FILE = path.join(persistedDir, 'contact-submissions.json');
+// Get contact submissions file path dynamically (called at runtime, not module load time)
+function getContactSubmissionsFilePath(): string {
+  const persistedDir = getPersistedDir();
+  return path.join(persistedDir, 'contact-submissions.json');
+}
 
 // Common spam keywords/phrases
 const SPAM_KEYWORDS = [
@@ -48,19 +104,35 @@ const SPAM_KEYWORDS = [
 // Track form start times (in-memory, resets on server restart)
 const formStartTimes: Map<string, number> = new Map();
 
-// Ensure persisted directory exists (with error handling)
-try {
-  if (!fs.existsSync(persistedDir)) {
-    fs.mkdirSync(persistedDir, { recursive: true });
+// Ensure persisted directory and file exist (called at runtime, not module load time)
+function ensurePersistedFilesExist(): void {
+  try {
+    const persistedDir = getPersistedDir();
+    
+    // In production, don't create /persisted - it must be a Railway volume
+    const isProduction = process.env.NODE_ENV === 'production' || 
+                       process.env.RAILWAY_ENVIRONMENT || 
+                       process.env.RAILWAY_ENVIRONMENT_ID;
+    
+    if (!fs.existsSync(persistedDir)) {
+      if (isProduction && persistedDir === '/persisted') {
+        console.error('[Contact] ❌ Cannot create /persisted - it must be a Railway volume!');
+        console.error('[Contact] Please ensure volume is mounted at /persisted in Railway dashboard');
+        // Don't throw - let individual operations handle the error gracefully
+      } else {
+        fs.mkdirSync(persistedDir, { recursive: true });
+      }
+    }
+    
+    // Initialize submissions file if it doesn't exist
+    const submissionsFile = getContactSubmissionsFilePath();
+    if (!fs.existsSync(submissionsFile)) {
+      fs.writeFileSync(submissionsFile, JSON.stringify([]), 'utf-8');
+    }
+  } catch (error) {
+    console.error('[Contact] Failed to initialize persisted directory:', error);
+    // Don't crash - file operations will handle errors gracefully later
   }
-  
-  // Initialize submissions file if it doesn't exist
-  if (!fs.existsSync(CONTACT_SUBMISSIONS_FILE)) {
-    fs.writeFileSync(CONTACT_SUBMISSIONS_FILE, JSON.stringify([]), 'utf-8');
-  }
-} catch (error) {
-  console.error('[Contact] Failed to initialize persisted directory:', error);
-  // Don't crash - file operations will handle errors gracefully later
 }
 
 // Helper to get client IP address
@@ -147,10 +219,12 @@ function checkFormFillTime(formStartTime: number | null): boolean {
 // Helper to read submissions
 function readSubmissions(): any[] {
   try {
-    if (!fs.existsSync(CONTACT_SUBMISSIONS_FILE)) {
+    ensurePersistedFilesExist(); // Ensure files exist before reading
+    const submissionsFile = getContactSubmissionsFilePath();
+    if (!fs.existsSync(submissionsFile)) {
       return [];
     }
-    const data = fs.readFileSync(CONTACT_SUBMISSIONS_FILE, 'utf-8');
+    const data = fs.readFileSync(submissionsFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
     console.error('[Contact] Error reading submissions:', error);
@@ -161,16 +235,14 @@ function readSubmissions(): any[] {
 // Helper to save submission
 function saveSubmission(submission: any): void {
   try {
-    // Ensure directory exists before writing
-    if (!fs.existsSync(persistedDir)) {
-      fs.mkdirSync(persistedDir, { recursive: true });
-    }
+    ensurePersistedFilesExist(); // Ensure files exist before writing
     const submissions = readSubmissions();
     submissions.push({
       ...submission,
       timestamp: new Date().toISOString(),
     });
-    fs.writeFileSync(CONTACT_SUBMISSIONS_FILE, JSON.stringify(submissions, null, 2), 'utf-8');
+    const submissionsFile = getContactSubmissionsFilePath();
+    fs.writeFileSync(submissionsFile, JSON.stringify(submissions, null, 2), 'utf-8');
   } catch (error) {
     console.error('[Contact] Error saving submission:', error);
     // Log but don't throw - submission will still be processed
