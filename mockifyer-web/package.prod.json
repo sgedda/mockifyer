@@ -4,7 +4,7 @@
   "description": "Example Express.js API using mockifyer for testing and development",
   "main": "dist/index.js",
   "engines": {
-    "node": "20.19.5",
+    "node": ">=20.19.5",
     "npm": ">=9.0.0"
   },
   "scripts": {
