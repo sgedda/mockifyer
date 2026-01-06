@@ -86,25 +86,9 @@ function ensurePersistedFilesExist(): void {
       }
     }
     
-    // Initialize files if they don't exist (only if directory exists)
-    if (fs.existsSync(persistedDir)) {
-      const votesFile = getVotesFilePath();
-      const userVotesFile = getUserVotesFilePath();
-      const ipVotesFile = getIpVotesFilePath();
-      
-      if (!fs.existsSync(votesFile)) {
-        fs.writeFileSync(votesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created votes file: ${votesFile}`);
-      }
-      if (!fs.existsSync(userVotesFile)) {
-        fs.writeFileSync(userVotesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created user votes file: ${userVotesFile}`);
-      }
-      if (!fs.existsSync(ipVotesFile)) {
-        fs.writeFileSync(ipVotesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created IP votes file: ${ipVotesFile}`);
-      }
-    }
+    // Don't create files proactively - let write operations create them naturally
+    // This prevents overwriting existing data in production Railway volumes
+    // Read functions handle missing files gracefully by returning empty objects
   } catch (error) {
     console.error('[FeatureVotes] Failed to initialize persisted files:', error);
     // Don't throw - let individual operations handle errors
@@ -131,8 +115,11 @@ function getOrCreateUserId(req: express.Request, res: express.Response): string 
 // Helper to read user votes
 function readUserVotes(): Record<string, string[]> {
   try {
-    ensurePersistedFilesExist(); // Ensure files exist before reading
+    ensurePersistedFilesExist(); // Ensure directory exists
     const userVotesFile = getUserVotesFilePath();
+    if (!fs.existsSync(userVotesFile)) {
+      return {}; // File doesn't exist yet - return empty object
+    }
     const data = fs.readFileSync(userVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
@@ -229,8 +216,11 @@ function getClientIp(req: express.Request): string {
 // Helper to read IP votes
 function readIpVotes(): Record<string, string[]> {
   try {
-    ensurePersistedFilesExist(); // Ensure files exist before reading
+    ensurePersistedFilesExist(); // Ensure directory exists
     const ipVotesFile = getIpVotesFilePath();
+    if (!fs.existsSync(ipVotesFile)) {
+      return {}; // File doesn't exist yet - return empty object
+    }
     const data = fs.readFileSync(ipVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
