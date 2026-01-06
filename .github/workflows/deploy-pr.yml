@@ -57,13 +57,6 @@ jobs:
             - name: Install Railway CLI
               run: npm install -g @railway/cli
 
-            - name: Link Railway project
-              working-directory: mockifyer-web
-              env:
-                  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-              run: |
-                  railway link --project ${{ secrets.RAILWAY_PROJECT_ID }}
-
             - name: Deploy to Railway
               working-directory: mockifyer-web
               env:
