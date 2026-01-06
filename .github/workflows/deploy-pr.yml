@@ -57,6 +57,17 @@ jobs:
             - name: Install Railway CLI
               run: npm install -g @railway/cli
 
+            - name: Verify Railway token
+              env:
+                  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+              run: |
+                  if [ -z "$RAILWAY_TOKEN" ]; then
+                      echo "Error: RAILWAY_TOKEN is not set"
+                      exit 1
+                  fi
+                  echo "RAILWAY_TOKEN is set"
+                  railway --version || echo "Railway CLI version check failed"
+
             - name: Deploy to Railway
               working-directory: mockifyer-web
               env:
