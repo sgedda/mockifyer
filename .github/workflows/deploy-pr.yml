@@ -64,3 +64,58 @@ jobs:
                   CI: "true"
               run: |
                   railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --ci
+
+            - name: Get and Print Railway Service URL
+              working-directory: mockifyer-web
+              env:
+                  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+              run: |
+                  echo "Fetching Railway service URL..."
+
+                  SERVICE_URL=""
+                  DOMAIN_OUTPUT=""
+
+                  # Try railway domain command - it may generate or display existing domain
+                  # Try with --service flag first (if supported), then without
+                  if [ -n "${{ secrets.RAILWAY_SERVICE_ID }}" ]; then
+                      DOMAIN_OUTPUT=$(railway domain --service ${{ secrets.RAILWAY_SERVICE_ID }} 2>&1 || echo "")
+                  fi
+
+                  # If that didn't work, try without service flag (uses linked service)
+                  if [ -z "$DOMAIN_OUTPUT" ] || echo "$DOMAIN_OUTPUT" | grep -qi "error\|not found\|invalid"; then
+                      DOMAIN_OUTPUT=$(railway domain 2>&1 || echo "")
+                  fi
+
+                  # Extract URL from domain output (handles various formats)
+                  if [ -n "$DOMAIN_OUTPUT" ]; then
+                      # Check for full URL with https://
+                      if echo "$DOMAIN_OUTPUT" | grep -q "https://"; then
+                          SERVICE_URL=$(echo "$DOMAIN_OUTPUT" | grep -oE 'https://[^\s<>"]+' | head -1 | tr -d '"' | tr -d "'")
+                      # Check for railway.app domain pattern (without https://)
+                      elif echo "$DOMAIN_OUTPUT" | grep -qE '[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.railway\.app'; then
+                          DOMAIN=$(echo "$DOMAIN_OUTPUT" | grep -oE '[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.railway\.app' | head -1)
+                          SERVICE_URL="https://$DOMAIN"
+                      fi
+                  fi
+
+                  # Output results
+                  if [ -z "$SERVICE_URL" ]; then
+                      echo ""
+                      echo "⚠️  Could not automatically retrieve service URL"
+                      echo "The domain may need to be generated manually in the Railway dashboard"
+                      echo "Please check: https://railway.app"
+                      if [ -n "$DOMAIN_OUTPUT" ]; then
+                          echo ""
+                          echo "Domain command output for debugging:"
+                          echo "$DOMAIN_OUTPUT"
+                      fi
+                  else
+                      echo ""
+                      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                      echo "✅ Deployment successful!"
+                      echo "🌐 Railway Service URL: $SERVICE_URL"
+                      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                      echo ""
+                      # Create a GitHub Actions notice for better visibility in workflow summary
+                      echo "::notice title=🚀 Deployment URL::$SERVICE_URL"
+                  fi
