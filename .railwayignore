@@ -1,15 +1,17 @@
-package.json
+node_modules
+dist
+coverage
+*.log
+.env
+.env.local
 package-lock.json
-tsconfig.json
-src/
-tests/
-examples/
-.git/
-node_modules/
-dist/
-coverage/
-*.test.ts
-*.test.js
-# But keep production files for deployment
-!package.prod.json
-!package-lock.prod.json
+package-lock.prod.json
+# CRITICAL: Exclude persisted/ directory from build to prevent overwriting Railway volume
+# If persisted/ is included in the build, nixpacks will copy empty files into the volume,
+# overwriting existing vote data on deployment
+persisted/
+# Also exclude individual vote files (backup in case directory exclusion doesn't work)
+feature-votes.json
+user-votes.json
+ip-votes.json
+contact-submissions.json
