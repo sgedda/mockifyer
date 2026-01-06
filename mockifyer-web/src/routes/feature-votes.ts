@@ -25,8 +25,14 @@ function getPersistedDir(): string {
     return basePath;
   }
   
-  // Check for Railway environment or if /persisted exists (matches mocks.ts pattern)
-  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID || fs.existsSync('/persisted')) {
+  // Check for Railway environment variables (prioritize these - volume will be mounted at runtime)
+  // Don't check fs.existsSync() here as volume might not be mounted during build
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID) {
+    return '/persisted';
+  }
+  
+  // Fallback: check if /persisted exists (for cases where env vars aren't set but volume is mounted)
+  if (fs.existsSync('/persisted')) {
     return '/persisted';
   }
   
@@ -64,9 +70,13 @@ function ensurePersistedFilesExist(): void {
     
     // Log persisted directory path once on first initialization
     if (!persistedDirLogged) {
+      const hasRailwayEnv = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID);
+      const hasPersistedDir = fs.existsSync('/persisted');
       console.log(`[FeatureVotes] Using persisted directory: ${persistedDir}`);
+      console.log(`[FeatureVotes] Detection: Railway env=${hasRailwayEnv}, /persisted exists=${hasPersistedDir}, isProduction=${isProduction}`);
       if (isProduction && persistedDir !== '/persisted') {
         console.error('[FeatureVotes] ⚠️  WARNING: In production but not using /persisted volume!');
+        console.error(`[FeatureVotes] Current path: ${persistedDir}, process.cwd(): ${process.cwd()}`);
       }
       persistedDirLogged = true;
     }
@@ -86,25 +96,9 @@ function ensurePersistedFilesExist(): void {
       }
     }
     
-    // Initialize files if they don't exist (only if directory exists)
-    if (fs.existsSync(persistedDir)) {
-      const votesFile = getVotesFilePath();
-      const userVotesFile = getUserVotesFilePath();
-      const ipVotesFile = getIpVotesFilePath();
-      
-      if (!fs.existsSync(votesFile)) {
-        fs.writeFileSync(votesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created votes file: ${votesFile}`);
-      }
-      if (!fs.existsSync(userVotesFile)) {
-        fs.writeFileSync(userVotesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created user votes file: ${userVotesFile}`);
-      }
-      if (!fs.existsSync(ipVotesFile)) {
-        fs.writeFileSync(ipVotesFile, JSON.stringify({}), 'utf-8');
-        console.log(`[FeatureVotes] Created IP votes file: ${ipVotesFile}`);
-      }
-    }
+    // Don't create files proactively - let write operations create them naturally
+    // This prevents overwriting existing data in production Railway volumes
+    // Read functions handle missing files gracefully by returning empty objects
   } catch (error) {
     console.error('[FeatureVotes] Failed to initialize persisted files:', error);
     // Don't throw - let individual operations handle errors
@@ -131,8 +125,11 @@ function getOrCreateUserId(req: express.Request, res: express.Response): string 
 // Helper to read user votes
 function readUserVotes(): Record<string, string[]> {
   try {
-    ensurePersistedFilesExist(); // Ensure files exist before reading
+    ensurePersistedFilesExist(); // Ensure directory exists
     const userVotesFile = getUserVotesFilePath();
+    if (!fs.existsSync(userVotesFile)) {
+      return {}; // File doesn't exist yet - return empty object
+    }
     const data = fs.readFileSync(userVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
@@ -229,8 +226,11 @@ function getClientIp(req: express.Request): string {
 // Helper to read IP votes
 function readIpVotes(): Record<string, string[]> {
   try {
-    ensurePersistedFilesExist(); // Ensure files exist before reading
+    ensurePersistedFilesExist(); // Ensure directory exists
     const ipVotesFile = getIpVotesFilePath();
+    if (!fs.existsSync(ipVotesFile)) {
+      return {}; // File doesn't exist yet - return empty object
+    }
     const data = fs.readFileSync(ipVotesFile, 'utf-8');
     return JSON.parse(data);
   } catch (error) {
