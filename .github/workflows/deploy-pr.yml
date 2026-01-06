@@ -98,24 +98,31 @@ jobs:
                       fi
                   fi
 
+                  # Use hardcoded URL as fallback or primary display
+                  HARDCODED_URL="https://mockifyer-dev-production.up.railway.app/"
+                  
                   # Output results
-                  if [ -z "$SERVICE_URL" ]; then
-                      echo ""
-                      echo "⚠️  Could not automatically retrieve service URL"
-                      echo "The domain may need to be generated manually in the Railway dashboard"
-                      echo "Please check: https://railway.app"
-                      if [ -n "$DOMAIN_OUTPUT" ]; then
-                          echo ""
-                          echo "Domain command output for debugging:"
-                          echo "$DOMAIN_OUTPUT"
-                      fi
+                  echo ""
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo "✅ Deployment successful!"
+                  
+                  if [ -n "$SERVICE_URL" ]; then
+                      echo "🌐 Railway Service URL (detected): $SERVICE_URL"
+                      echo "🌐 Railway Service URL (hardcoded): $HARDCODED_URL"
+                      FINAL_URL="$SERVICE_URL"
                   else
+                      echo "🌐 Railway Service URL: $HARDCODED_URL"
+                      FINAL_URL="$HARDCODED_URL"
+                  fi
+                  
+                  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                  echo ""
+                  
+                  # Create a GitHub Actions notice for better visibility in workflow summary
+                  echo "::notice title=🚀 Deployment URL::$FINAL_URL"
+                  
+                  if [ -n "$DOMAIN_OUTPUT" ] && [ -z "$SERVICE_URL" ]; then
                       echo ""
-                      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                      echo "✅ Deployment successful!"
-                      echo "🌐 Railway Service URL: $SERVICE_URL"
-                      echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                      echo ""
-                      # Create a GitHub Actions notice for better visibility in workflow summary
-                      echo "::notice title=🚀 Deployment URL::$SERVICE_URL"
+                      echo "Domain command output for debugging:"
+                      echo "$DOMAIN_OUTPUT"
                   fi
