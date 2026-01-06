@@ -25,8 +25,14 @@ function getPersistedDir(): string {
     return basePath;
   }
   
-  // Check for Railway environment or if /persisted exists (matches mocks.ts pattern)
-  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID || fs.existsSync('/persisted')) {
+  // Check for Railway environment variables (prioritize these - volume will be mounted at runtime)
+  // Don't check fs.existsSync() here as volume might not be mounted during build
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID) {
+    return '/persisted';
+  }
+  
+  // Fallback: check if /persisted exists (for cases where env vars aren't set but volume is mounted)
+  if (fs.existsSync('/persisted')) {
     return '/persisted';
   }
   
@@ -64,9 +70,13 @@ function ensurePersistedFilesExist(): void {
     
     // Log persisted directory path once on first initialization
     if (!persistedDirLogged) {
+      const hasRailwayEnv = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID);
+      const hasPersistedDir = fs.existsSync('/persisted');
       console.log(`[FeatureVotes] Using persisted directory: ${persistedDir}`);
+      console.log(`[FeatureVotes] Detection: Railway env=${hasRailwayEnv}, /persisted exists=${hasPersistedDir}, isProduction=${isProduction}`);
       if (isProduction && persistedDir !== '/persisted') {
         console.error('[FeatureVotes] ⚠️  WARNING: In production but not using /persisted volume!');
+        console.error(`[FeatureVotes] Current path: ${persistedDir}, process.cwd(): ${process.cwd()}`);
       }
       persistedDirLogged = true;
     }
