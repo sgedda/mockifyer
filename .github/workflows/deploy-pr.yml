@@ -62,7 +62,7 @@ jobs:
               env:
                   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
               run: |
-                  railway link --project ${{ secrets.RAILWAY_PROJECT_ID }} --non-interactive
+                  railway link --project ${{ secrets.RAILWAY_PROJECT_ID }}
 
             - name: Deploy to Railway
               working-directory: mockifyer-web
