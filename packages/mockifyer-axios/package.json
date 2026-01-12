@@ -27,7 +27,7 @@
   "author": "sgedda",
   "license": "MIT",
   "dependencies": {
-    "@sgedda/mockifyer-core": "^1.7.0",
+    "@sgedda/mockifyer-core": "file:../mockifyer-core",
     "axios-mock-adapter": "^1.22.0"
   },
   "peerDependencies": {

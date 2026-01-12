@@ -46,7 +46,7 @@
   "author": "sgedda",
   "license": "MIT",
   "dependencies": {
-    "@sgedda/mockifyer-core": "^1.7.0"
+    "@sgedda/mockifyer-core": "file:../mockifyer-core"
   },
   "publishConfig": {
     "access": "public"
