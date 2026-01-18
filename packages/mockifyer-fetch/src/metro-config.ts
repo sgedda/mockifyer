@@ -3,8 +3,9 @@
  * 
  * This helper configures Metro to stub Node.js built-in modules that aren't
  * available in React Native, allowing Mockifyer to bundle successfully.
+ * Optionally sets up sync middleware for Hybrid Provider.
  * 
- * @example
+ * @example Basic usage (fs stubbing only):
  * ```javascript
  * const { getDefaultConfig } = require('expo/metro-config');
  * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
@@ -12,7 +13,40 @@
  * const config = getDefaultConfig(__dirname);
  * module.exports = configureMetroForMockifyer(config);
  * ```
+ * 
+ * @example With sync middleware (for Hybrid Provider):
+ * ```javascript
+ * const { getDefaultConfig } = require('expo/metro-config');
+ * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+ * 
+ * const config = getDefaultConfig(__dirname);
+ * module.exports = configureMetroForMockifyer(config, {
+ *   syncMiddleware: {
+ *     projectRoot: __dirname,
+ *     mockDataPath: './mock-data',
+ *   },
+ * });
+ * ```
+ * 
+ * @example With auto-sync (for ExpoFileSystem Provider - syncs files from device to project folder):
+ * ```javascript
+ * const { getDefaultConfig } = require('expo/metro-config');
+ * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+ * 
+ * const config = getDefaultConfig(__dirname);
+ * module.exports = configureMetroForMockifyer(config, {
+ *   autoSync: {
+ *     enabled: true,
+ *     intervalMs: 5000,
+ *     projectRoot: __dirname,
+ *     mockDataPath: './mock-data',
+ *   },
+ * });
+ * ```
  */
+
+import type { MetroSyncMiddlewareOptions } from './metro-sync-middleware';
+import { logger } from '@sgedda/mockifyer-core';
 
 // Metro config types (simplified - Metro doesn't export types)
 export interface MetroConfig {
@@ -41,17 +75,37 @@ export interface MetroConfig {
 const NODE_BUILTINS = ['fs', 'path', 'assert', 'util'] as const;
 
 /**
+ * Options for configuring Metro for Mockifyer
+ */
+export interface ConfigureMetroOptions {
+  /** Sync middleware options - if provided, sets up Hybrid Provider sync */
+  syncMiddleware?: MetroSyncMiddlewareOptions;
+  /** Auto-sync options - Required when using ExpoFileSystem Provider to sync files from device to project folder for code search. Not needed with Hybrid Provider (uses instant HTTP sync). */
+  autoSync?: {
+    /** Enable auto-sync (default: false). Set to true if using ExpoFileSystem Provider and want files in project folder for code search */
+    enabled?: boolean;
+    /** Sync interval in milliseconds (default: 5000) */
+    intervalMs?: number;
+    /** Project root directory (default: process.cwd()) */
+    projectRoot?: string;
+    /** Mock data path (default: 'mock-data') */
+    mockDataPath?: string;
+  };
+}
+
+/**
  * Configure Metro bundler for Mockifyer
  * 
- * This function adds resolver configuration to stub Node.js built-in modules
- * that aren't available in React Native. The stubs are empty modules that
- * allow Metro to bundle successfully while the code gracefully handles
- * their absence at runtime.
+ * This function:
+ * 1. Adds resolver configuration to stub Node.js built-in modules (fs, path, assert, util)
+ * 2. Optionally sets up sync middleware for Hybrid Provider (if syncMiddleware options provided)
+ * 3. Optionally sets up auto-sync polling (if autoSync options provided - needed for ExpoFileSystem Provider, not needed with Hybrid Provider)
  * 
  * @param config - Existing Metro config (e.g., from getDefaultConfig)
- * @returns Metro config with Mockifyer resolver configuration merged in
+ * @param options - Optional configuration including sync middleware setup
+ * @returns Metro config with Mockifyer configuration merged in
  * 
- * @example
+ * @example Basic usage (fs stubbing only):
  * ```javascript
  * const { getDefaultConfig } = require('expo/metro-config');
  * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
@@ -59,8 +113,41 @@ const NODE_BUILTINS = ['fs', 'path', 'assert', 'util'] as const;
  * const config = getDefaultConfig(__dirname);
  * module.exports = configureMetroForMockifyer(config);
  * ```
+ * 
+ * @example With sync middleware (for Hybrid Provider):
+ * ```javascript
+ * const { getDefaultConfig } = require('expo/metro-config');
+ * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+ * 
+ * const config = getDefaultConfig(__dirname);
+ * module.exports = configureMetroForMockifyer(config, {
+ *   syncMiddleware: {
+ *     projectRoot: __dirname,
+ *     mockDataPath: './mock-data',
+ *   },
+ * });
+ * ```
+ * 
+ * @example With auto-sync (for ExpoFileSystem Provider - syncs files from device to project folder):
+ * ```javascript
+ * const { getDefaultConfig } = require('expo/metro-config');
+ * const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+ * 
+ * const config = getDefaultConfig(__dirname);
+ * module.exports = configureMetroForMockifyer(config, {
+ *   autoSync: {
+ *     enabled: true,
+ *     intervalMs: 5000,
+ *     projectRoot: __dirname,
+ *     mockDataPath: './mock-data',
+ *   },
+ * });
+ * ```
  */
-export function configureMetroForMockifyer(config: MetroConfig): MetroConfig {
+export function configureMetroForMockifyer(
+  config: MetroConfig,
+  options?: ConfigureMetroOptions
+): MetroConfig {
   // Get path to empty module stub
   // Resolve using the package export path, which points to metro-polyfills/empty-module.js
   let emptyModulePath: string;
@@ -103,6 +190,64 @@ export function configureMetroForMockifyer(config: MetroConfig): MetroConfig {
     return context.resolveRequest(context, moduleName, platform);
   };
 
+  // Set up sync middleware if options provided
+  if (options?.syncMiddleware) {
+    try {
+      const { createMockSyncMiddleware } = require('./metro-sync-middleware');
+      const syncMiddleware = createMockSyncMiddleware({
+        projectRoot: options.syncMiddleware.projectRoot || process.cwd(),
+        mockDataPath: options.syncMiddleware.mockDataPath || 'mock-data',
+        testGeneration: options.syncMiddleware.testGeneration,
+      });
+
+      // Add middleware to server config
+      // Expo Metro uses enhanceMiddleware, but also supports middleware array
+      config.server = config.server || {};
+      
+      // Use enhanceMiddleware if available (Expo Metro standard)
+      // enhanceMiddleware receives existing middleware and returns new middleware
+      const existingEnhance = config.server.enhanceMiddleware;
+      config.server.enhanceMiddleware = (middleware: any) => {
+        // Return a middleware function that runs our syncMiddleware first,
+        // then calls the existing enhanced middleware
+        return (req: any, res: any, next: any) => {
+          // Try our middleware first (it calls next() if not handling the request)
+          syncMiddleware(req, res, (err?: any) => {
+            if (err) {
+              return next(err);
+            }
+            // If our middleware didn't handle it, call the existing middleware
+            if (!res.headersSent) {
+              return middleware(req, res, next);
+            }
+          });
+        };
+      };
+    } catch (e) {
+      logger.warn('[Metro] Could not set up Mockifyer sync middleware:', e);
+    }
+  }
+
+  // Set up auto-sync (polling-based sync from iOS Simulator to project folder) if options provided
+  // Required when using ExpoFileSystem Provider to sync files from device to project folder for code search
+  // Not needed with Hybrid Provider (uses instant HTTP sync via syncMiddleware)
+  if (options?.autoSync?.enabled) {
+    try {
+      const { startAutoSync } = require('./metro-sync-middleware');
+      const intervalMs = options.autoSync.intervalMs || 5000;
+      const projectRoot = options.autoSync.projectRoot || process.cwd();
+      const mockDataPath = options.autoSync.mockDataPath || 'mock-data';
+
+      startAutoSync(intervalMs, {
+        projectRoot,
+        mockDataPath,
+      });
+      console.log(`[Metro] ✅ Auto-sync enabled: polling every ${intervalMs}ms`);
+    } catch (e) {
+      logger.warn('[Metro] Could not set up Mockifyer auto-sync:', e);
+    }
+  }
+
   // Merge config with new resolver
   return {
     ...config,
@@ -112,4 +257,3 @@ export function configureMetroForMockifyer(config: MetroConfig): MetroConfig {
     },
   };
 }
-

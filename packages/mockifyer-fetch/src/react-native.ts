@@ -8,6 +8,7 @@
 import { setupMockifyer } from './index';
 import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
 import type { MockifyerConfig } from '@sgedda/mockifyer-core';
+import { logger } from '@sgedda/mockifyer-core';
 
 // Re-export MockifyerInstance type to avoid circular dependency
 export interface MockifyerInstance extends HTTPClient {
@@ -63,7 +64,7 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
     bundledMockData = data;
     return data;
   } catch (error) {
-    console.warn('[Mockifyer] Could not load bundled mock data:', error);
+    logger.warn('[Mockifyer] Could not load bundled mock data:', error);
     return [];
   }
 }
@@ -100,7 +101,7 @@ export async function setupMockifyerForReactNative(
   // Check if Mockifyer is enabled
   const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || isDev;
   if (!isEnabled) {
-    console.log('[Mockifyer] Disabled');
+    logger.info('[Mockifyer] Disabled');
     return null;
   }
 
@@ -141,10 +142,10 @@ export async function setupMockifyerForReactNative(
       ...config,
     });
 
-    console.log('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
-    console.log(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
+    logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
+    logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
     if (recordMode) {
-      console.log('[Mockifyer] Recording mode enabled - new API responses will be saved');
+      logger.info('[Mockifyer] Recording mode enabled - new API responses will be saved');
     }
 
     return instance;
@@ -158,7 +159,7 @@ export async function setupMockifyerForReactNative(
     const mockDataArray = await loadBundledMockData(bundledDataPath);
 
     if (mockDataArray.length === 0) {
-      console.warn('[Mockifyer] No bundled mock data found. Make sure to run the build script first.');
+      logger.warn('[Mockifyer] No bundled mock data found. Make sure to run the build script first.');
       return null;
     }
 
@@ -177,7 +178,7 @@ export async function setupMockifyerForReactNative(
       ...config,
     });
 
-    console.log(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
+    logger.info(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
     return instance;
   }
 }

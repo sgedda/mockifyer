@@ -8,6 +8,7 @@ export * from './utils/scenario';
 export * from './providers';
 export * from './utils/build-utils';
 export * from './utils/test-generator';
+export * from './utils/logger';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)

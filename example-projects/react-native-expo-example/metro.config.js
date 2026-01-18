@@ -25,18 +25,15 @@ function getMockifyerFetchPath() {
   return path.resolve(__dirname, 'node_modules/@sgedda/mockifyer-fetch');
 }
 
-// Try to require Mockifyer helpers (may fail if package not installed yet)
-let createMockSyncMiddleware, startAutoSync, configureMetroForMockifyer;
+// Try to require Mockifyer Metro config helper (may fail if package not installed yet)
+let configureMetroForMockifyer;
 try {
   const mockifyerFetchPath = getMockifyerFetchPath();
-  const metroSyncMiddleware = require(path.join(mockifyerFetchPath, 'dist/metro-sync-middleware.js'));
   const metroConfig = require(path.join(mockifyerFetchPath, 'dist/metro-config.js'));
-  createMockSyncMiddleware = metroSyncMiddleware.createMockSyncMiddleware;
-  startAutoSync = metroSyncMiddleware.startAutoSync;
   configureMetroForMockifyer = metroConfig.configureMetroForMockifyer;
 } catch (e) {
   // Package not installed yet - will be resolved by Metro resolver
-  console.warn('[Metro] Mockifyer package not found, skipping Metro config helpers');
+  console.warn('[Metro] Mockifyer package not found, skipping Metro config helper');
 }
 
 // If using local packages, configure Metro to watch and resolve them
@@ -87,8 +84,29 @@ if (isUsingLocalPackages) {
 }
 
 // Configure Metro for Mockifyer (stubs Node.js built-ins: fs, path, assert, util)
+// Also sets up sync middleware for Hybrid Provider (saves files to project folder)
+// And enables auto-sync for ExpoFileSystem Provider (polling-based sync from device to project folder)
 if (configureMetroForMockifyer) {
-  config = configureMetroForMockifyer(config);
+  config = configureMetroForMockifyer(config, {
+    syncMiddleware: {
+      projectRoot: __dirname,
+      mockDataPath: './mock-data',
+      testGeneration: {
+        enabled: process.env.MOCKIFYER_GENERATE_TESTS === 'true',
+        framework: 'jest',
+        outputPath: './tests/generated',
+        groupBy: 'endpoint',
+        uniqueTestsPerEndpoint: true,
+      },
+    },
+    autoSync: {
+      enabled: true,
+      intervalMs: 5000,
+      projectRoot: __dirname,
+      mockDataPath: './mock-data',
+    },
+  });
+  console.log('[Metro] ✅ Mockifyer configured: FS stubbing + sync middleware + auto-sync');
 }
 
 // Custom resolver to handle @babel/runtime and Mockifyer packages
@@ -165,46 +183,8 @@ config.transformer = {
   }),
 };
 
-// Add mock sync middleware (only if available)
-if (createMockSyncMiddleware && startAutoSync) {
-  const mockSyncMiddleware = createMockSyncMiddleware({
-    projectRoot: __dirname,
-    mockDataPath: 'mock-data',
-    testGeneration: {
-      enabled: process.env.MOCKIFYER_GENERATE_TESTS === 'true',
-      framework: 'jest',
-      outputPath: './tests/generated',
-      groupBy: 'endpoint',
-      uniqueTestsPerEndpoint: true,
-    },
-  });
-
-  config.server = {
-    ...config.server,
-    enhanceMiddleware: (middleware) => {
-      // Add mock sync middleware before default middleware
-      return (req, res, next) => {
-        // Try mock sync middleware first
-        mockSyncMiddleware(req, res, (err) => {
-          if (err) {
-            return next(err);
-          }
-          // If not handled by mock sync, continue with default middleware
-          if (!res.headersSent) {
-            return middleware(req, res, next);
-          }
-        });
-      };
-    },
-  };
-
-  // Start auto-sync in development (syncs every 5 seconds)
-  if (process.env.NODE_ENV !== 'production') {
-    startAutoSync(5000, {
-      projectRoot: __dirname,
-      mockDataPath: 'mock-data',
-    });
-  }
-}
+// Note: Sync middleware and auto-sync are now automatically set up by configureMetroForMockifyer above
+// - syncMiddleware: Used by Hybrid Provider for instant HTTP sync
+// - autoSync: Used by ExpoFileSystem Provider for polling-based sync from device to project folder
 
 module.exports = config;

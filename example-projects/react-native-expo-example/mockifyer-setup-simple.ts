@@ -38,6 +38,10 @@ export async function initializeMockifyer() {
     recordMode: recordMode,
     // Pass watch options and test generation through config
     config: __DEV__ ? {
+      // Logging configuration: 'none' | 'error' | 'warn' | 'info' | 'debug'
+      // Default is 'info' - set to 'none' to disable all logs (errors still logged)
+      // Set to 'debug' for verbose logging during development
+      logging: 'info', // or 'none', 'error', 'warn', 'debug'
       databaseProvider: {
         type: 'hybrid',
         path: 'mock-data',
