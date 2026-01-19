@@ -23,6 +23,9 @@ coverage/
 .env.local
 .env.*.local
 
+# npm configuration (may contain sensitive tokens)
+.npmrc
+
 # IDE specific files
 .idea/
 .vscode/
