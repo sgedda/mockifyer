@@ -3,6 +3,73 @@ import fs from 'fs';
 import path from 'path';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
 
+// Helper function to load date config for a scenario
+function loadDateConfigForScenario(mockDataPath: string, scenario: string): any {
+  // Try scenario-specific config first
+  const scenarioConfigPath = path.join(mockDataPath, scenario, 'date-config.json');
+  if (fs.existsSync(scenarioConfigPath)) {
+    try {
+      const fileContent = fs.readFileSync(scenarioConfigPath, 'utf-8');
+      return JSON.parse(fileContent);
+    } catch (error) {
+      // Fall through to root config
+    }
+  }
+  
+  // Fallback to root config
+  const rootConfigPath = path.join(mockDataPath, 'date-config.json');
+  if (fs.existsSync(rootConfigPath)) {
+    try {
+      const fileContent = fs.readFileSync(rootConfigPath, 'utf-8');
+      return JSON.parse(fileContent);
+    } catch (error) {
+      // Return default
+    }
+  }
+  
+  return { enabled: false };
+}
+
+// Helper function to update environment variables from date config
+function updateEnvVarsFromDateConfig(config: any): void {
+  if (config.enabled) {
+    if (config.fixedDate) {
+      process.env.MOCKIFYER_DATE = config.fixedDate;
+      delete process.env.MOCKIFYER_DATE_OFFSET;
+    } else if (config.offset !== null && config.offset !== undefined) {
+      process.env.MOCKIFYER_DATE_OFFSET = config.offset.toString();
+      delete process.env.MOCKIFYER_DATE;
+    } else if (config.offsetDays !== undefined || config.offsetHours !== undefined || config.offsetMinutes !== undefined) {
+      // Calculate offset from days/hours/minutes
+      const days = parseInt(config.offsetDays || 0, 10);
+      const hours = parseInt(config.offsetHours || 0, 10);
+      const minutes = parseInt(config.offsetMinutes || 0, 10);
+      const sign = config.offsetSign === '-' ? -1 : 1;
+      const offsetMs = sign * (
+        days * 24 * 60 * 60 * 1000 +
+        hours * 60 * 60 * 1000 +
+        minutes * 60 * 1000
+      );
+      process.env.MOCKIFYER_DATE_OFFSET = offsetMs.toString();
+      delete process.env.MOCKIFYER_DATE;
+    } else {
+      delete process.env.MOCKIFYER_DATE;
+      delete process.env.MOCKIFYER_DATE_OFFSET;
+    }
+
+    if (config.timezone) {
+      process.env.MOCKIFYER_TIMEZONE = config.timezone;
+    } else {
+      delete process.env.MOCKIFYER_TIMEZONE;
+    }
+  } else {
+    // Config is disabled, clear all env vars
+    delete process.env.MOCKIFYER_DATE;
+    delete process.env.MOCKIFYER_DATE_OFFSET;
+    delete process.env.MOCKIFYER_TIMEZONE;
+  }
+}
+
 const router = express.Router();
 
 const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -49,6 +116,11 @@ router.get('/', (req: Request, res: Response) => {
     const mockDataPath = getMockDataPath();
     const currentScenario = getCurrentScenario(mockDataPath);
     const scenarios = listScenarios(mockDataPath);
+    
+    // Update environment variables to match the current scenario's date config
+    // This ensures getCurrentDate() uses the correct scenario-specific date
+    const dateConfig = loadDateConfigForScenario(mockDataPath, currentScenario);
+    updateEnvVarsFromDateConfig(dateConfig);
     
     // Get request counts for each scenario
     const scenariosWithCounts = scenarios.map(scenario => {
@@ -103,6 +175,10 @@ router.post('/set', (req: Request, res: Response) => {
 
     // Save scenario config
     saveScenarioConfig(mockDataPath, sanitized);
+    
+    // Update environment variables to match the new scenario's date config
+    const dateConfig = loadDateConfigForScenario(mockDataPath, sanitized);
+    updateEnvVarsFromDateConfig(dateConfig);
     
     res.json({
       success: true,

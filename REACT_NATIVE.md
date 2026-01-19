@@ -1,9 +1,10 @@
 # Using Mockifyer with React Native and Expo
 
-Mockifyer can be used in React Native and Expo applications! You have **two options** for storage:
+Mockifyer can be used in React Native and Expo applications! You have **three options** for storage:
 
-1. **Expo FileSystem Provider** (recommended) - Uses `expo-file-system` to persist files on the device
-2. **Memory Provider** - In-memory storage (data lost on app restart)
+1. **Hybrid Provider** (recommended for development) - Saves to both device AND project folder simultaneously
+2. **Expo FileSystem Provider** - Uses `expo-file-system` to persist files on the device
+3. **Memory Provider** - In-memory storage (data lost on app restart)
 
 ## Quick Answer
 
@@ -17,7 +18,68 @@ Use the **Expo FileSystem Provider** to:
 
 ## Setup for React Native/Expo
 
-### Option 1: Expo FileSystem Provider (Recommended)
+### Option 0: Hybrid Provider (Recommended for Development)
+
+The Hybrid Provider saves mock files to **both** device filesystem and your project folder simultaneously. This is perfect for development as files are immediately available in your codebase.
+
+#### 1. Install Dependencies
+
+```bash
+npm install @sgedda/mockifyer-fetch
+# or if using axios
+npm install @sgedda/mockifyer-axios
+
+# Install expo-file-system
+npx expo install expo-file-system
+```
+
+#### 2. Configure Metro with Sync Middleware
+
+```javascript
+// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+const config = getDefaultConfig(__dirname);
+
+// One function call handles BOTH:
+// 1. FS/path stubbing (for bundling)
+// 2. Sync middleware (for Hybrid Provider to save files to project folder)
+module.exports = configureMetroForMockifyer(config, {
+  syncMiddleware: {
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
+  },
+});
+```
+
+#### 3. Configure with Hybrid Provider
+
+```typescript
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  databaseProvider: {
+    type: 'hybrid', // ✅ Saves to both device AND project folder
+    path: 'mock-data',
+  },
+  recordMode: true,
+  useGlobalFetch: true,
+});
+```
+
+**Files are saved to:**
+- Device: `FileSystem.documentDirectory + 'mock-data'`
+- Project folder: `./mock-data/` (in your codebase)
+
+**Benefits:**
+- ✅ Files immediately available in your project folder (no polling delay)
+- ✅ Can search/edit files in your code editor
+- ✅ Files persist on device for app access
+- ✅ Perfect for development workflow
+
+### Option 1: Expo FileSystem Provider
 
 #### 1. Install Dependencies
 
@@ -387,7 +449,17 @@ MOCKIFYER_DB_PROVIDER=memory
 
 ## Summary
 
-### Expo FileSystem Provider (Recommended)
+### Hybrid Provider (Recommended for Development)
+✅ **Works in React Native/Expo** with filesystem access  
+✅ **Saves to both device AND project folder** simultaneously  
+✅ **Files immediately available** in your codebase (no polling delay)  
+✅ **Files persist** across app restarts  
+✅ **Can record new API responses**  
+✅ **Perfect for development** - can search/edit files in code editor  
+⚠️ **Requires Metro sync middleware** (automatically set up with `configureMetroForMockifyer`)  
+💡 **Best choice for development** - files appear in project folder instantly
+
+### Expo FileSystem Provider
 ✅ **Works in React Native/Expo** with filesystem access  
 ✅ **Files persist** across app restarts  
 ✅ **Can record new API responses**  

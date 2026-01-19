@@ -26,3 +26,4 @@ export function shouldExcludeUrl(url: string | null | undefined, excludedUrls?: 
   return exclusionList.some(pattern => url.includes(pattern));
 }
 
+

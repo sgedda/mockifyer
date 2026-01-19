@@ -6,7 +6,21 @@ import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
 
+// Store mockDataPath globally so routes can access it
+let globalMockDataPath: string | null = null;
+
+export function setMockDataPath(path: string): void {
+  globalMockDataPath = path;
+}
+
+export function getMockDataPath(): string | null {
+  return globalMockDataPath;
+}
+
 export function createServer(publicDir: string, mockDataPath: string): express.Application {
+  // Store the mockDataPath so routes can access it
+  setMockDataPath(mockDataPath);
+  
   const app = express();
 
   // Middleware

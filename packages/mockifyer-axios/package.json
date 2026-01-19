@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-axios",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Mockifyer for Axios - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -27,7 +27,7 @@
   "author": "sgedda",
   "license": "MIT",
   "dependencies": {
-    "@sgedda/mockifyer-core": "file:../mockifyer-core",
+    "@sgedda/mockifyer-core": "^1.7.0",
     "axios-mock-adapter": "^1.22.0"
   },
   "peerDependencies": {

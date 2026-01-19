@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
 import MockList from './MockList'
@@ -37,6 +37,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const { toast } = useToast()
+  const mockEditorRef = useRef<HTMLDivElement>(null)
 
   // Sync activeTab with URL path
   useEffect(() => {
@@ -48,13 +49,28 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
 
   useEffect(() => {
     if (activeTab === 'mocks') {
-      loadMocks()
-      // Check for endpoint query parameter
-      const params = new URLSearchParams(location.search)
-      const endpointParam = params.get('endpoint')
-      if (endpointParam) {
-        setSearchQuery(endpointParam)
-      }
+      loadMocks().then((loadedMocks) => {
+        // Check for endpoint, method, or filename query parameter after mocks are loaded
+        const params = new URLSearchParams(location.search)
+        const endpointParam = params.get('endpoint')
+        const methodParam = params.get('method')
+        const filenameParam = params.get('filename')
+        
+        if (endpointParam) {
+          setSearchQuery(endpointParam)
+        } else if (methodParam) {
+          // Set search query to method for display purposes
+          setSearchQuery(methodParam)
+        }
+        
+        if (filenameParam && loadedMocks) {
+          // Find and select the mock with matching filename
+          const mockFile = loadedMocks.find((m: MockFile) => m.filename === filenameParam)
+          if (mockFile) {
+            handleSelectMock(mockFile)
+          }
+        }
+      })
     }
   }, [scenario, activeTab, location.search])
 
@@ -77,12 +93,14 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       setLoading(true)
       const data = await getMocks(scenario)
       setMocks(data.files)
+      return data.files
     } catch (error) {
       toast({
         title: 'Error',
         description: 'Failed to load mocks',
         variant: 'destructive',
       })
+      return []
     } finally {
       setLoading(false)
     }
@@ -92,6 +110,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     try {
       const mockData = await getMock(file.filename)
       setSelectedMock(mockData)
+      // Scroll to editor after a delay to ensure it's rendered
+      setTimeout(() => {
+        if (mockEditorRef.current) {
+          mockEditorRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }, 200)
     } catch (error) {
       toast({
         title: 'Error',
@@ -101,13 +125,53 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }
 
+  // Also scroll when selectedMock changes (in case it's set from elsewhere)
+  useEffect(() => {
+    if (selectedMock && mockEditorRef.current) {
+      setTimeout(() => {
+        mockEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 200)
+    }
+  }, [selectedMock])
+
   const filteredMocks = mocks.filter(mock => {
     const query = searchQuery.toLowerCase()
-    return (
-      mock.filename.toLowerCase().includes(query) ||
-      mock.endpoint?.toLowerCase().includes(query) ||
-      mock.graphqlInfo?.query.toLowerCase().includes(query)
-    )
+    const params = new URLSearchParams(location.search)
+    const methodParam = params.get('method')
+    
+    // Filter by method if specified
+    if (methodParam) {
+      // Extract method from filename (format: timestamp_METHOD_url.json)
+      // Filename format: YYYY-MM-DD_HH-MM-SS_METHOD_url.json
+      let mockMethod = 'GET'
+      
+      const filenameParts = mock.filename.split('_')
+      if (filenameParts.length >= 3) {
+        // The method is typically the 3rd part (index 2) after timestamp parts
+        // Format: YYYY-MM-DD_HH-MM-SS_METHOD_url.json
+        const potentialMethod = filenameParts[2].toUpperCase()
+        // Check if it's a valid HTTP method
+        const validMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
+        if (validMethods.includes(potentialMethod)) {
+          mockMethod = potentialMethod
+        }
+      }
+      
+      if (mockMethod !== methodParam.toUpperCase()) {
+        return false
+      }
+    }
+    
+    // Filter by search query
+    if (query) {
+      return (
+        mock.filename.toLowerCase().includes(query) ||
+        mock.endpoint?.toLowerCase().includes(query) ||
+        mock.graphqlInfo?.query.toLowerCase().includes(query)
+      )
+    }
+    
+    return true
   })
 
   return (
@@ -194,6 +258,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   />
                   {selectedMock && (
                     <MockEditor
+                      ref={mockEditorRef}
                       mock={selectedMock}
                       onClose={() => setSelectedMock(null)}
                       onSave={loadMocks}
@@ -203,7 +268,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
-            <Route path="/date-config" element={<DateConfig />} />
+            <Route path="/date-config" element={<DateConfig scenario={scenario} onScenarioChange={onScenarioChange} />} />
             <Route
               path="/settings"
               element={

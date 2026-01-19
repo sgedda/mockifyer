@@ -24,6 +24,13 @@ const FILE_REF_MAP = {
   '@sgedda/mockifyer-axios': 'file:../mockifyer-axios',
 };
 
+// Packages that should be converted (all packages that might have file: refs)
+const PACKAGES_TO_CONVERT = [
+  '@sgedda/mockifyer-core',
+  '@sgedda/mockifyer-fetch',
+  '@sgedda/mockifyer-axios',
+];
+
 /**
  * Get the version of a package from its package.json
  */
@@ -56,7 +63,7 @@ function convertFileRefsToVersions() {
     // Check dependencies
     if (pkg.dependencies) {
       for (const [depName, depValue] of Object.entries(pkg.dependencies)) {
-        if (typeof depValue === 'string' && depValue.startsWith('file:') && FILE_REF_MAP[depName]) {
+        if (typeof depValue === 'string' && depValue.startsWith('file:') && PACKAGES_TO_CONVERT.includes(depName)) {
           const version = getPackageVersion(depName);
           if (version) {
             console.log(`  ${pkgName}: ${depName} ${depValue} → ${version}`);

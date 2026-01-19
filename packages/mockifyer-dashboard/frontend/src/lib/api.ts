@@ -97,10 +97,14 @@ export interface DateConfig {
     timezone?: string
   } | null
   currentDate: string
+  scenario?: string // Scenario this config belongs to
 }
 
-export async function getDateConfig(): Promise<DateConfig> {
-  const response = await fetch(`${API_BASE}/date-config`)
+export async function getDateConfig(scenario?: string): Promise<DateConfig> {
+  const url = scenario 
+    ? `${API_BASE}/date-config?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/date-config`
+  const response = await fetch(url)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
 }
@@ -109,6 +113,7 @@ export async function updateDateConfig(config: {
   fixedDate?: string | null
   offset?: number | null
   timezone?: string | null
+  scenario?: string // Optional: save to scenario-specific config
 }): Promise<DateConfig> {
   const response = await fetch(`${API_BASE}/date-config`, {
     method: 'POST',

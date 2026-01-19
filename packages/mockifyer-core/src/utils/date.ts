@@ -1,5 +1,6 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { logger } from './logger';
+import { getCurrentScenario, getScenarioFolderPath } from './scenario';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -17,9 +18,10 @@ try {
 let currentConfig: MockifyerConfig | null = null;
 
 /**
- * Try to load date config from date-config.json file in mock data directory
+ * Try to load date config from date-config.json file
+ * Supports per-scenario config with fallback to root config
  */
-function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
+function loadDateConfigFromFile(mockDataPath?: string, scenario?: string): { dateManipulation?: any } | null {
   // Skip file loading if fs/path are not available (React Native)
   if (!fs || !path) {
     return null;
@@ -27,28 +29,76 @@ function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any
 
   try {
     // Try to detect mock data path if not provided
-    let configPath: string;
+    let resolvedMockDataPath: string;
     if (mockDataPath) {
-      configPath = path.join(mockDataPath, 'date-config.json');
+      resolvedMockDataPath = mockDataPath;
     } else {
       // Try common locations
       const possiblePaths = [
-        './mock-data/date-config.json',
-        './persisted/mock-data/date-config.json',
-        path.join(process.cwd(), 'mock-data', 'date-config.json'),
-        path.join(process.cwd(), 'persisted', 'mock-data', 'date-config.json'),
+        './mock-data',
+        './persisted/mock-data',
+        path.join(process.cwd(), 'mock-data'),
+        path.join(process.cwd(), 'persisted', 'mock-data'),
       ];
       
-      configPath = possiblePaths.find(p => fs!.existsSync(p)) || '';
+      resolvedMockDataPath = possiblePaths.find(p => fs!.existsSync(p)) || '';
     }
 
-    if (!configPath || !fs.existsSync(configPath)) {
+    if (!resolvedMockDataPath) {
       return null;
     }
 
-    const fileContent = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(fileContent);
-    return config.dateManipulation ? { dateManipulation: config.dateManipulation } : null;
+    // Try scenario-specific config first (if scenario is provided)
+    if (scenario) {
+      const scenarioPath = getScenarioFolderPath(resolvedMockDataPath, scenario);
+      const scenarioConfigPath = path.join(scenarioPath, 'date-config.json');
+      
+      if (fs.existsSync(scenarioConfigPath)) {
+        try {
+          const fileContent = fs.readFileSync(scenarioConfigPath, 'utf-8');
+          const config = JSON.parse(fileContent);
+          // Convert to dateManipulation format
+          if (config.enabled && (config.fixedDate || config.offset !== null || config.timezone)) {
+            return {
+              dateManipulation: {
+                fixedDate: config.fixedDate || undefined,
+                offset: config.offset !== null && config.offset !== undefined ? config.offset : undefined,
+                timezone: config.timezone || undefined,
+              }
+            };
+          }
+        } catch (error) {
+          // Continue to fallback
+        }
+      }
+    }
+
+    // Fallback to root date-config.json (backward compatibility)
+    const rootConfigPath = path.join(resolvedMockDataPath, 'date-config.json');
+    if (fs.existsSync(rootConfigPath)) {
+      try {
+        const fileContent = fs.readFileSync(rootConfigPath, 'utf-8');
+        const config = JSON.parse(fileContent);
+        // Support both old format (dateManipulation) and new format (direct properties)
+        if (config.dateManipulation) {
+          return { dateManipulation: config.dateManipulation };
+        }
+        // Convert new format to dateManipulation format
+        if (config.enabled && (config.fixedDate || config.offset !== null || config.timezone)) {
+          return {
+            dateManipulation: {
+              fixedDate: config.fixedDate || undefined,
+              offset: config.offset !== null && config.offset !== undefined ? config.offset : undefined,
+              timezone: config.timezone || undefined,
+            }
+          };
+        }
+      } catch (error) {
+        // Silently fail - file might be invalid
+      }
+    }
+
+    return null;
   } catch (error) {
     // Silently fail - file might not exist or be invalid
     return null;
@@ -112,9 +162,10 @@ export function getCurrentDate(): Date {
   // Try to get date manipulation from current config
   let dateManipulation = currentConfig?.dateManipulation;
 
-  // If no config, try to load from date-config.json file
-  if (!dateManipulation) {
-    const fileConfig = loadDateConfigFromFile(currentConfig?.mockDataPath);
+  // If no config, try to load from date-config.json file (with scenario support)
+  if (!dateManipulation && currentConfig?.mockDataPath) {
+    const scenario = getCurrentScenario(currentConfig.mockDataPath);
+    const fileConfig = loadDateConfigFromFile(currentConfig.mockDataPath, scenario);
     if (fileConfig?.dateManipulation) {
       dateManipulation = fileConfig.dateManipulation;
     }

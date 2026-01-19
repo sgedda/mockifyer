@@ -39,6 +39,7 @@ export interface DateConfig {
   enabled: boolean
   currentDate: string
   currentDateFormatted: string
+  scenario?: string // Scenario this config belongs to
 }
 
 export interface ScenarioConfig {
@@ -102,15 +103,18 @@ export async function deleteMockFile(filename: string): Promise<void> {
 }
 
 // Date config API
-export async function getDateConfig(): Promise<DateConfig> {
-  const response = await fetch('/api/date-config')
+export async function getDateConfig(scenario?: string): Promise<DateConfig> {
+  const url = scenario 
+    ? `/api/date-config?scenario=${encodeURIComponent(scenario)}`
+    : '/api/date-config'
+  const response = await fetch(url)
   if (!response.ok) {
     throw new Error('Failed to fetch date config')
   }
   return response.json()
 }
 
-export async function updateDateConfig(config: Partial<DateConfig>): Promise<DateConfig> {
+export async function updateDateConfig(config: Partial<DateConfig> & { scenario?: string }): Promise<DateConfig> {
   const response = await fetch('/api/date-config', {
     method: 'PUT',
     headers: {

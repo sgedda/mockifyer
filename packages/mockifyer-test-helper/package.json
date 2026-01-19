@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-test-helper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Test helper utilities for Mockifyer - auto-setup and realistic data",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -17,8 +17,8 @@
   "author": "sgedda",
   "license": "MIT",
   "dependencies": {
-    "@sgedda/mockifyer-fetch": "file:../mockifyer-fetch",
-    "@sgedda/mockifyer-core": "file:../mockifyer-core"
+    "@sgedda/mockifyer-fetch": "^1.7.1",
+    "@sgedda/mockifyer-core": "^1.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",

@@ -2,11 +2,14 @@
  * Mockifyer Setup for React Native Expo
  * 
  * This file implements conditional Mockifyer initialization:
- * - Development (Metro): Uses Expo FileSystem provider - can record mocks
+ * - Development (Metro): Uses Hybrid Provider - saves to both device AND project folder
  * - Production Build: Uses Memory provider with bundled TypeScript file
  * 
  * Usage:
  *   Import and call initializeMockifyer() in your App.tsx
+ * 
+ * Note: Metro config must include sync middleware for Hybrid Provider to work.
+ * See metro.config.js for setup.
  */
 
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
@@ -44,7 +47,7 @@ async function loadBundledMockData(): Promise<MockData[]> {
 /**
  * Initialize Mockifyer with conditional provider based on environment
  * 
- * Development (Metro): Uses Expo FileSystem provider - can record mocks
+ * Development (Metro): Uses Hybrid Provider - saves to both device AND project folder
  * Production Build: Uses Memory provider with bundled TypeScript file
  */
 export async function initializeMockifyer() {
@@ -57,15 +60,19 @@ export async function initializeMockifyer() {
 
   if (__DEV__) {
     // DEVELOPMENT MODE (Metro bundler)
-    // Use Expo FileSystem provider - can record and read from device filesystem
+    // Use Hybrid Provider - saves to both device AND project folder simultaneously
+    // Files are immediately available in project folder (no polling delay)
     const mockifyerConfig = {
       mockDataPath: 'mock-data',
       databaseProvider: {
-        type: 'expo-filesystem' as const, // Use expo-filesystem for React Native
+        type: 'hybrid' as const, // ✅ Saves to both device AND project folder
         path: 'mock-data',
+        options: {
+          metroPort: process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081,
+        },
       },
       generateTests: {
-        enabled: true,
+        enabled: process.env.MOCKIFYER_GENERATE_TESTS === 'true',
         framework: 'jest' as const,
         outputPath: './tests/generated', // Relative to project root (where Metro runs)
         groupBy: 'endpoint' as const
@@ -82,7 +89,8 @@ export async function initializeMockifyer() {
     
     await setupMockifyer(mockifyerConfig);
 
-    console.log('[Mockifyer] Development mode: Using Expo FileSystem provider');
+    console.log('[Mockifyer] Development mode: Using Hybrid Provider (device + project folder)');
+    console.log(`[Mockifyer] Metro endpoint: http://localhost:${mockifyerConfig.databaseProvider.options?.metroPort || 8081}/mockifyer-save`);
     if (process.env.MOCKIFYER_RECORD === 'true') {
       console.log('[Mockifyer] Recording mode enabled - new API responses will be saved');
     }

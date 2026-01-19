@@ -1,99 +1,127 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentDate } from '@sgedda/mockifyer-core';
+import { getCurrentDate, getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
-// Path to store date configuration
-const getConfigPath = () => {
-  // Use the same directory as mock data, or fallback to persisted directory
+// Get mock data directory path
+function getMockDataPath(): string {
   if (process.env.MOCKIFYER_PATH) {
-    const mockPath = process.env.MOCKIFYER_PATH;
-    // If MOCKIFYER_PATH is a file path, use its directory; if it's a directory, use it directly
-    const configDir = fs.existsSync(mockPath) && fs.statSync(mockPath).isFile()
-      ? path.dirname(mockPath)
-      : mockPath;
-    return path.join(configDir, 'date-config.json');
+    return path.isAbsolute(process.env.MOCKIFYER_PATH) 
+      ? process.env.MOCKIFYER_PATH 
+      : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
+  } else if (process.env.RAILWAY_ENVIRONMENT || fs.existsSync('/persisted/mock-data')) {
+    return '/persisted/mock-data';
+  } else {
+    return path.join(process.cwd(), 'persisted', 'mock-data');
   }
-  return path.join(process.cwd(), 'persisted', 'date-config.json');
+}
+
+// Path to store date configuration (supports per-scenario)
+const getConfigPath = (scenario?: string) => {
+  const mockDataPath = getMockDataPath();
+  
+  // If scenario is provided, use scenario-specific config
+  if (scenario) {
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    return path.join(scenarioPath, 'date-config.json');
+  }
+  
+  // Fallback to root date-config.json (for backward compatibility)
+  return path.join(mockDataPath, 'date-config.json');
+};
+
+// Load date config with fallback: scenario-specific -> root -> default
+function loadDateConfig(scenario?: string): any {
+  const mockDataPath = getMockDataPath();
+  const currentScenario = scenario || getCurrentScenario(mockDataPath);
+  
+  // Try scenario-specific config first
+  const scenarioConfigPath = getConfigPath(currentScenario);
+  if (fs.existsSync(scenarioConfigPath)) {
+    try {
+      const fileContent = fs.readFileSync(scenarioConfigPath, 'utf-8');
+      const config = JSON.parse(fileContent);
+      return config;
+    } catch (error) {
+      console.warn(`[DateConfig] Could not read scenario config file (${scenarioConfigPath}):`, error);
+    }
+  }
+  
+  // Fallback to root config (backward compatibility)
+  const rootConfigPath = getConfigPath();
+  if (fs.existsSync(rootConfigPath)) {
+    try {
+      const fileContent = fs.readFileSync(rootConfigPath, 'utf-8');
+      const config = JSON.parse(fileContent);
+      return config;
+    } catch (error) {
+      console.warn('[DateConfig] Could not read root config file:', error);
+    }
+  }
+  
+  // Return default config
+  return {
+    fixedDate: null,
+    offset: null,
+    offsetDays: null,
+    offsetHours: null,
+    offsetMinutes: null,
+    timezone: null,
+    enabled: false
+  };
 };
 
 // Get current date configuration
 router.get('/', (req: Request, res: Response) => {
   try {
-    const configPath = getConfigPath();
-    let config: any = {
-      fixedDate: null,
-      offset: null,
-      offsetDays: null,
-      offsetHours: null,
-      offsetMinutes: null,
-      timezone: null,
-      enabled: false
-    };
+    // Support scenario query parameter (optional)
+    const scenario = req.query.scenario as string | undefined;
+    const mockDataPath = getMockDataPath();
+    const currentScenario = scenario || getCurrentScenario(mockDataPath);
+    
+    // Load config (with fallback: scenario-specific -> root -> default)
+    let config = loadDateConfig(scenario);
 
-    // Read from config file if it exists
-    if (fs.existsSync(configPath)) {
-      try {
-        const fileContent = fs.readFileSync(configPath, 'utf-8');
-        const fileConfig = JSON.parse(fileContent);
-        config = { ...config, ...fileConfig };
-      } catch (error) {
-        console.warn('[DateConfig] Could not read config file:', error);
+    // Update environment variables to match the scenario's config
+    // This ensures getCurrentDate() uses the correct scenario-specific date
+    if (config.enabled) {
+      if (config.fixedDate) {
+        process.env.MOCKIFYER_DATE = config.fixedDate;
+        delete process.env.MOCKIFYER_DATE_OFFSET;
+      } else if (config.offset !== null && config.offset !== undefined) {
+        process.env.MOCKIFYER_DATE_OFFSET = config.offset.toString();
+        delete process.env.MOCKIFYER_DATE;
+      } else if (config.offsetDays !== undefined || config.offsetHours !== undefined || config.offsetMinutes !== undefined) {
+        // Calculate offset from days/hours/minutes if offset not directly set
+        const days = parseInt(config.offsetDays || 0, 10);
+        const hours = parseInt(config.offsetHours || 0, 10);
+        const minutes = parseInt(config.offsetMinutes || 0, 10);
+        const sign = config.offsetSign === '-' ? -1 : 1;
+        const offsetMs = sign * (
+          days * 24 * 60 * 60 * 1000 +
+          hours * 60 * 60 * 1000 +
+          minutes * 60 * 1000
+        );
+        config.offset = offsetMs;
+        process.env.MOCKIFYER_DATE_OFFSET = offsetMs.toString();
+        delete process.env.MOCKIFYER_DATE;
+      } else {
+        // No date manipulation, clear env vars
+        delete process.env.MOCKIFYER_DATE;
+        delete process.env.MOCKIFYER_DATE_OFFSET;
       }
-    }
 
-    // Also check environment variables (they take precedence)
-    if (process.env.MOCKIFYER_DATE) {
-      config.fixedDate = process.env.MOCKIFYER_DATE;
-      config.enabled = true;
-    } else if (process.env.MOCKIFYER_DATE_OFFSET) {
-      const offset = parseInt(process.env.MOCKIFYER_DATE_OFFSET, 10);
-      config.offset = offset;
-      // Convert milliseconds to days, hours, minutes for display
-      const absOffset = Math.abs(offset);
-      config.offsetDays = Math.floor(absOffset / (24 * 60 * 60 * 1000));
-      config.offsetHours = Math.floor((absOffset % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-      config.offsetMinutes = Math.floor((absOffset % (60 * 60 * 1000)) / (60 * 1000));
-      config.offsetSign = offset < 0 ? '-' : '+';
-      config.enabled = true;
-    } else if (config.enabled && (config.offset !== null && config.offset !== undefined)) {
-      // If config file has offset but env vars don't, set env vars from config file
-      // This ensures getCurrentDate() works correctly after server restart
-      process.env.MOCKIFYER_DATE_OFFSET = config.offset.toString();
-      delete process.env.MOCKIFYER_DATE;
-    } else if (config.enabled && (config.offsetDays !== undefined || config.offsetHours !== undefined || config.offsetMinutes !== undefined)) {
-      // If we only have days/hours/minutes but not offset in ms, calculate it
-      const days = parseInt(config.offsetDays || 0, 10);
-      const hours = parseInt(config.offsetHours || 0, 10);
-      const minutes = parseInt(config.offsetMinutes || 0, 10);
-      const sign = config.offsetSign === '-' ? -1 : 1;
-      const offsetMs = sign * (
-        days * 24 * 60 * 60 * 1000 +
-        hours * 60 * 60 * 1000 +
-        minutes * 60 * 1000
-      );
-      config.offset = offsetMs;
-      process.env.MOCKIFYER_DATE_OFFSET = offsetMs.toString();
-      delete process.env.MOCKIFYER_DATE;
-    } else if (config.fixedDate && config.enabled) {
-      // If config file has fixedDate but env vars don't, set env vars from config file
-      process.env.MOCKIFYER_DATE = config.fixedDate;
-      delete process.env.MOCKIFYER_DATE_OFFSET;
-    } else if (!config.enabled) {
-      // If disabled, clear env vars
+      if (config.timezone) {
+        process.env.MOCKIFYER_TIMEZONE = config.timezone;
+      } else {
+        delete process.env.MOCKIFYER_TIMEZONE;
+      }
+    } else {
+      // Config is disabled, clear all env vars
       delete process.env.MOCKIFYER_DATE;
       delete process.env.MOCKIFYER_DATE_OFFSET;
-    }
-
-    if (process.env.MOCKIFYER_TIMEZONE) {
-      config.timezone = process.env.MOCKIFYER_TIMEZONE;
-      config.enabled = true;
-    } else if (config.timezone && config.enabled) {
-      // If config file has timezone but env vars don't, set env vars from config file
-      process.env.MOCKIFYER_TIMEZONE = config.timezone;
-    } else if (!config.enabled) {
       delete process.env.MOCKIFYER_TIMEZONE;
     }
 
@@ -101,6 +129,7 @@ router.get('/', (req: Request, res: Response) => {
     const currentDate = getCurrentDate();
     config.currentDate = currentDate.toISOString();
     config.currentDateFormatted = currentDate.toLocaleString();
+    config.scenario = currentScenario; // Include scenario info in response
 
     res.json(config);
   } catch (error: any) {
@@ -119,11 +148,22 @@ router.put('/', (req: Request, res: Response) => {
       offsetMinutes,
       offsetSign,
       timezone,
-      enabled
+      enabled,
+      scenario // Optional: save to scenario-specific config
     } = req.body;
 
-    const configPath = getConfigPath();
+    const mockDataPath = getMockDataPath();
+    const currentScenario = scenario || getCurrentScenario(mockDataPath);
+    const configPath = getConfigPath(currentScenario);
     const configDir = path.dirname(configPath);
+    
+    // Ensure scenario folder exists if using scenario-specific config
+    if (scenario) {
+      const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+      if (!fs.existsSync(scenarioPath)) {
+        fs.mkdirSync(scenarioPath, { recursive: true });
+      }
+    }
 
     // Ensure config directory exists
     if (!fs.existsSync(configDir)) {
@@ -208,11 +248,12 @@ router.put('/', (req: Request, res: Response) => {
     const currentDate = getCurrentDate();
     config.currentDate = currentDate.toISOString();
     config.currentDateFormatted = currentDate.toLocaleString();
+    config.scenario = currentScenario; // Include scenario info in response
 
-    console.log('[DateConfig] Updated date configuration:', config);
+    console.log(`[DateConfig] Updated date configuration for scenario "${currentScenario}":`, config);
     res.json({ 
       success: true, 
-      message: 'Date configuration updated successfully',
+      message: `Date configuration updated successfully for scenario "${currentScenario}"`,
       config 
     });
   } catch (error: any) {

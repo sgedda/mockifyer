@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, forwardRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -14,7 +14,7 @@ interface MockEditorProps {
   onSave: () => void
 }
 
-export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
+const MockEditor = forwardRef<HTMLDivElement, MockEditorProps>(({ mock, onClose, onSave }, ref) => {
   const [responseData, setResponseData] = useState('')
   const [responseObject, setResponseObject] = useState<any>(null)
   const [editMode, setEditMode] = useState<'json' | 'form'>('form')
@@ -210,7 +210,7 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
   }
 
   return (
-    <Card className="mt-6">
+    <Card ref={ref} className="mt-6">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl">Edit Mock: <span className="text-primary font-mono">{mock.filename}</span></CardTitle>
@@ -452,5 +452,9 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
       </CardContent>
     </Card>
   )
-}
+})
+
+MockEditor.displayName = 'MockEditor'
+
+export default MockEditor
 

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
+import { getStats, getScenarioConfig, setScenario, getDateConfig } from '@/lib/api'
 import type { Stats } from '@/types'
-import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink } from 'lucide-react'
+import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink, Calendar, Clock } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,8 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [loading, setLoading] = useState(true)
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [switching, setSwitching] = useState(false)
+  const [currentDate, setCurrentDate] = useState<string>('')
+  const [dateConfig, setDateConfig] = useState<any>(null)
   const { toast } = useToast()
   const navigate = useNavigate()
 
@@ -31,15 +33,83 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     navigate(`/mocks?endpoint=${encodeURIComponent(endpoint)}`)
   }
 
+  function handleMethodClick(method: string) {
+    // Navigate to mocks page with method as filter
+    navigate(`/mocks?method=${encodeURIComponent(method)}`)
+  }
+
   useEffect(() => {
     loadScenarios()
   }, [])
 
   useEffect(() => {
     loadStats()
-    const interval = setInterval(loadStats, 5000) // Refresh every 5 seconds
+    loadDateConfig()
+    const interval = setInterval(() => {
+      loadStats()
+      loadDateConfig()
+    }, 5000) // Refresh every 5 seconds
     return () => clearInterval(interval)
   }, [scenario])
+
+  async function loadDateConfig() {
+    try {
+      const config = await getDateConfig(scenario)
+      setDateConfig(config)
+      setCurrentDate(config.currentDate || '')
+    } catch (error) {
+      console.error('Failed to load date config:', error)
+    }
+  }
+
+  function formatDate(dateString: string): string {
+    if (!dateString) return ''
+    try {
+      const date = new Date(dateString)
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hour = String(date.getHours()).padStart(2, '0')
+      const minute = String(date.getMinutes()).padStart(2, '0')
+      const second = String(date.getSeconds()).padStart(2, '0')
+      return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+    } catch {
+      return dateString
+    }
+  }
+
+  function getDateConfigSummary() {
+    if (!dateConfig) return 'No date configuration'
+    
+    const { dateManipulation } = dateConfig
+    if (!dateManipulation) return 'No date manipulation configured'
+    
+    if (dateManipulation.fixedDate) {
+      return `Fixed date: ${formatDate(dateManipulation.fixedDate)}`
+    }
+    
+    if (dateManipulation.offset) {
+      const ms = dateManipulation.offset
+      const days = Math.floor(ms / (24 * 60 * 60 * 1000))
+      const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+      const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000))
+      const seconds = Math.floor((ms % (60 * 1000)) / 1000)
+      
+      const parts = []
+      if (days !== 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`)
+      if (hours !== 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`)
+      if (minutes !== 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`)
+      if (seconds !== 0) parts.push(`${seconds} second${seconds !== 1 ? 's' : ''}`)
+      
+      return parts.length > 0 ? `Offset: ${parts.join(', ')}` : 'No offset'
+    }
+    
+    if (dateManipulation.timezone) {
+      return `Timezone: ${dateManipulation.timezone}`
+    }
+    
+    return 'No date manipulation configured'
+  }
 
   async function loadScenarios() {
     try {
@@ -73,6 +143,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
       setSwitching(false)
     }
   }
+
 
   async function loadStats() {
     try {
@@ -233,9 +304,17 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <div className="space-y-2">
               {Object.keys(stats.methods).length > 0 ? (
                 Object.entries(stats.methods).map(([method, count]) => (
-                  <div key={method} className="flex items-center justify-between text-sm">
-                    <span className="font-semibold">{method}</span>
-                    <span className="text-muted-foreground">{count}</span>
+                  <div 
+                    key={method} 
+                    className="flex items-center justify-between text-sm group hover:bg-accent/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                    onClick={() => handleMethodClick(method)}
+                    title={`Click to filter mocks by ${method}`}
+                  >
+                    <span className="font-semibold group-hover:text-primary transition-colors">{method}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{count}</span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                 ))
               ) : (
@@ -281,11 +360,19 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <div className="space-y-2">
               {stats.recentActivity.length > 0 ? (
                 stats.recentActivity.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs truncate flex-1">{item.filename}</span>
-                    <span className="text-muted-foreground ml-4 text-xs">
-                      {new Date(item.modified).toLocaleDateString()}
-                    </span>
+                  <div 
+                    key={index} 
+                    className="flex items-center justify-between text-sm group hover:bg-accent/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/mocks?filename=${encodeURIComponent(item.filename)}`)}
+                    title={`Click to view ${item.filename}`}
+                  >
+                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary transition-colors">{item.filename}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground ml-4 text-xs">
+                        {new Date(item.modified).toLocaleDateString()}
+                      </span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
                   </div>
                 ))
               ) : (
@@ -295,6 +382,50 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
           </CardContent>
         </Card>
       </div>
+
+      {/* Date Settings Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            <CardTitle>Date Configuration</CardTitle>
+          </div>
+          <CardDescription>
+            Current date settings for <code className="bg-muted px-1 py-0.5 rounded text-xs">getCurrentDate()</code>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Current Date</span>
+            </div>
+            <div className="text-lg font-mono text-primary">
+              {currentDate ? formatDate(currentDate) : 'Loading...'}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              This is the date that <code className="bg-background px-1 py-0.5 rounded">getCurrentDate()</code> will return
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Configuration</label>
+            <div className="text-sm text-muted-foreground font-mono bg-muted p-3 rounded">
+              {getDateConfigSummary()}
+            </div>
+          </div>
+          
+          <Button
+            variant="outline"
+            onClick={() => navigate('/date-config')}
+            className="w-full"
+          >
+            <Calendar className="h-4 w-4 mr-2" />
+            Configure Date Settings
+          </Button>
+        </CardContent>
+      </Card>
+
     </div>
   )
 }

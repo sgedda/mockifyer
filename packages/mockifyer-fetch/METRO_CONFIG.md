@@ -6,6 +6,8 @@ Mockifyer requires Metro bundler configuration to stub Node.js built-in modules 
 
 Use the provided helper function to configure Metro automatically:
 
+### Basic Setup (FS Stubbing Only)
+
 ```javascript
 // metro.config.js
 const { getDefaultConfig } = require('expo/metro-config');
@@ -14,6 +16,32 @@ const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-co
 const config = getDefaultConfig(__dirname);
 module.exports = configureMetroForMockifyer(config);
 ```
+
+### With Sync Middleware (For Hybrid Provider)
+
+If you're using the Hybrid Provider to save files to both device and project folder:
+
+```javascript
+// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+const config = getDefaultConfig(__dirname);
+
+// One function call handles BOTH:
+// 1. FS/path stubbing (for bundling)
+// 2. Sync middleware (for Hybrid Provider to save files to project folder)
+module.exports = configureMetroForMockifyer(config, {
+  syncMiddleware: {
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
+  },
+});
+```
+
+This automatically sets up:
+- ✅ Node.js module stubbing (`fs`, `path`, `assert`, `util`)
+- ✅ Sync middleware for Hybrid Provider (saves files to project folder)
 
 ## Manual Setup
 
@@ -52,7 +80,19 @@ module.exports = config;
 
 ## Why This Is Needed
 
+### FS/Path Stubbing
+
 Mockifyer packages use Node.js built-in modules (`fs`, `path`) for filesystem operations. These modules aren't available in React Native, so Metro needs to stub them during bundling. The stubs are empty modules that allow bundling to succeed while the code gracefully handles their absence at runtime.
+
+**Note:** With conditional imports (added in recent versions), FS stubbing is optional - the code handles missing modules gracefully. However, Metro config is still recommended to prevent bundling errors.
+
+### Sync Middleware (Optional)
+
+If you're using the **Hybrid Provider**, you need sync middleware to save files to your project folder. The Hybrid Provider saves mocks to both:
+1. Device filesystem (via Expo FileSystem)
+2. Project folder (via Metro HTTP endpoint)
+
+The sync middleware handles the Metro endpoint (`/mockifyer-save`) that writes files to your project folder.
 
 ## Modules Stubbed
 
@@ -93,5 +133,25 @@ config.resolver.extraNodeModules = { /* ... */ };
 
 // Add Mockifyer config (preserves your custom resolver)
 module.exports = configureMetroForMockifyer(config);
+```
+
+### Files Not Appearing in Project Folder (Hybrid Provider)
+
+If you're using Hybrid Provider but files aren't appearing in your project folder:
+
+1. **Check Metro is running**: Hybrid Provider requires Metro to be running
+2. **Check sync middleware is configured**: Make sure you passed `syncMiddleware` options to `configureMetroForMockifyer`
+3. **Check Metro port**: Ensure Metro port matches (default: 8081)
+4. **Check logs**: Look for `[HybridProvider]` messages in your app logs
+
+Example with sync middleware:
+
+```javascript
+module.exports = configureMetroForMockifyer(config, {
+  syncMiddleware: {
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
+  },
+});
 ```
 

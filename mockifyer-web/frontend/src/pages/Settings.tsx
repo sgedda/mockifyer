@@ -44,7 +44,6 @@ export default function Settings() {
   const { toast } = useToast()
 
   useEffect(() => {
-    loadDateConfig()
     loadRuntimeConfig()
     loadScenarioConfig()
     const interval = setInterval(() => {
@@ -54,6 +53,13 @@ export default function Settings() {
     }, 1000)
     return () => clearInterval(interval)
   }, [])
+
+  // Reload date config when scenario changes
+  useEffect(() => {
+    if (scenarioConfig?.currentScenario) {
+      loadDateConfig()
+    }
+  }, [scenarioConfig?.currentScenario])
 
   async function loadScenarioConfig() {
     try {
@@ -158,7 +164,9 @@ export default function Settings() {
 
   async function loadDateConfig() {
     try {
-      const data = await getDateConfig()
+      // Load date config for current scenario (or undefined for root/default)
+      const currentScenario = scenarioConfig?.currentScenario
+      const data = await getDateConfig(currentScenario)
       setDateConfig(data)
       setDateEnabled(data.enabled)
       setFixedDate(data.fixedDate || '')
@@ -207,7 +215,8 @@ export default function Settings() {
 
   async function updateCurrentDate() {
     try {
-      const data = await getDateConfig()
+      const currentScenario = scenarioConfig?.currentScenario
+      const data = await getDateConfig(currentScenario)
       if (dateConfig) {
         setDateConfig({ ...dateConfig, currentDate: data.currentDate, currentDateFormatted: data.currentDateFormatted })
       }
@@ -250,8 +259,10 @@ export default function Settings() {
     setSaving(true)
     isEditingRef.current = true
     try {
+      const currentScenario = scenarioConfig?.currentScenario
       const updateData: any = {
         enabled: dateEnabled,
+        scenario: currentScenario, // Include scenario to save per-scenario config
       }
 
       if (dateEnabled) {
@@ -285,9 +296,10 @@ export default function Settings() {
 
       const updated = await updateDateConfig(updateData)
       setDateConfig(updated)
+      const scenarioText = currentScenario ? ` for scenario "${currentScenario}"` : ''
       toast({
         title: 'Success',
-        description: 'Date configuration updated successfully',
+        description: `Date configuration updated successfully${scenarioText}`,
       })
     } catch (error: any) {
       toast({

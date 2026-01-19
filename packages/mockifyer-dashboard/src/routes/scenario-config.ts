@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import { getMockDataPath as getGlobalMockDataPath } from '../server';
 
 const router = express.Router();
 
@@ -10,6 +11,13 @@ const SCENARIO_CONFIG_FILENAME = 'scenario-config.json';
 
 // Get mock data directory path
 function getMockDataPath(): string {
+  // First try to use the path set by the server (from CLI argument)
+  const globalPath = getGlobalMockDataPath();
+  if (globalPath) {
+    return globalPath;
+  }
+  
+  // Fallback to detection if not set
   const detectedPath = detectMockDataPath();
   console.log(`[ScenarioConfigRoute] Detected mock data path: ${detectedPath}`);
   return detectedPath;

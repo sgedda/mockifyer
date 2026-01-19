@@ -361,7 +361,17 @@ const { getDefaultConfig } = require('expo/metro-config');
 const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
 
 const config = getDefaultConfig(__dirname);
-module.exports = configureMetroForMockifyer(config);`} language="javascript" />
+
+// Basic setup (FS stubbing only)
+module.exports = configureMetroForMockifyer(config);
+
+// OR with sync middleware (for Hybrid Provider - saves files to project folder)
+// module.exports = configureMetroForMockifyer(config, {
+//   syncMiddleware: {
+//     projectRoot: __dirname,
+//     mockDataPath: './mock-data',
+//   },
+// });`} language="javascript" />
                 </div>
 
                 <div>

@@ -1,5 +1,14 @@
 import { MockData, StoredRequest } from '../types';
-import * as path from 'path';
+
+// Conditionally import path - will be undefined in React Native
+let path: typeof import('path') | undefined;
+
+try {
+  path = require('path');
+} catch (e) {
+  // path not available (React Native environment)
+  path = undefined;
+}
 
 export type TestFramework = 'jest' | 'vitest' | 'mocha';
 
@@ -317,6 +326,13 @@ describe('${testInfo.endpoint}', () => {
    */
   private generateSetup(testInfo: TestInfo, options: TestGenerationOptions, testFilePath: string): string {
     // Calculate relative path from test file location to mock-data directory
+    // Skip path operations if path module is not available (React Native)
+    if (!path) {
+      // Fallback: use simple relative path calculation
+      const mockDataPathFromOptions = options.mockDataPath || './mock-data';
+      return `const mockDataPath = '${mockDataPathFromOptions}';`;
+    }
+
     // testFilePath is relative to project root (e.g., './tests/generated/posts_71/posts_71.test.ts')
     // mockDataPath is relative to project root (e.g., './mock-data')
     const mockDataPathFromOptions = options.mockDataPath || './mock-data';
