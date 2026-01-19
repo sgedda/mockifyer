@@ -18,6 +18,9 @@ yarn-error.log
 assets/mock-data.ts
 assets/mock-data-types.d.ts
 
+# Package switching backup
+package.json.backup
+
 # Environment
 .env
 .env.local

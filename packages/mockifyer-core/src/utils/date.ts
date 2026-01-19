@@ -1,6 +1,18 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
-import fs from 'fs';
-import path from 'path';
+import { logger } from './logger';
+
+// Conditionally import fs and path - will be undefined in React Native
+let fs: typeof import('fs') | undefined;
+let path: typeof import('path') | undefined;
+
+try {
+  fs = require('fs');
+  path = require('path');
+} catch (e) {
+  // fs/path not available (React Native environment)
+  fs = undefined;
+  path = undefined;
+}
 
 let currentConfig: MockifyerConfig | null = null;
 
@@ -8,6 +20,11 @@ let currentConfig: MockifyerConfig | null = null;
  * Try to load date config from date-config.json file in mock data directory
  */
 function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
+  // Skip file loading if fs/path are not available (React Native)
+  if (!fs || !path) {
+    return null;
+  }
+
   try {
     // Try to detect mock data path if not provided
     let configPath: string;
@@ -22,7 +39,7 @@ function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any
         path.join(process.cwd(), 'persisted', 'mock-data', 'date-config.json'),
       ];
       
-      configPath = possiblePaths.find(p => fs.existsSync(p)) || '';
+      configPath = possiblePaths.find(p => fs!.existsSync(p)) || '';
     }
 
     if (!configPath || !fs.existsSync(configPath)) {
@@ -49,7 +66,7 @@ function getTimezoneOffset(targetTimezone: string): number {
     const targetOffset = targetTime.getTime() - utcTime;
     return targetOffset;
   } catch (error) {
-    console.warn(`Invalid timezone: ${targetTimezone}. Using system timezone instead.`);
+    logger.warn(`Invalid timezone: ${targetTimezone}. Using system timezone instead.`);
     return 0;
   }
 }

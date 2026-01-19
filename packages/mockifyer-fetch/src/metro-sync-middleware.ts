@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { MockData, TestGenerator, TestGenerationOptions } from '@sgedda/mockifyer-core';
+import { logger } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
   /** Project root directory (default: process.cwd()) */
@@ -141,12 +142,10 @@ function generateTestForMock(
         }
       }
     } catch (e) {
-      console.log(`[MockSync] ⚠️ Could not load TestGenerator: ${(e as Error).message}`);
       return false;
     }
 
     if (!TestGeneratorClass) {
-      console.log('[MockSync] ⚠️ TestGenerator not available');
       return false;
     }
 
@@ -170,7 +169,6 @@ function generateTestForMock(
 
     // If uniqueTestsPerEndpoint is enabled, check if a test file already exists
     if (options.uniqueTestsPerEndpoint && fs.existsSync(absoluteTestPath)) {
-      console.log(`[MockSync] ✅ Test file already exists for endpoint ${testInfo.method} ${testInfo.endpoint}, skipping generation`);
       return true;
     }
 
@@ -187,7 +185,6 @@ function generateTestForMock(
       
       const existingContent = fs.readFileSync(absoluteTestPath, 'utf-8');
       if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
-        console.log(`[MockSync] ✅ Test already exists in ${absoluteTestPath}, skipping generation`);
         return true;
       }
       
@@ -200,18 +197,16 @@ function generateTestForMock(
           `$1${newTest}\n$1$2`
         );
         fs.writeFileSync(absoluteTestPath, updatedContent);
-        console.log(`[MockSync] ✅ Appended test to existing file: ${absoluteTestPath}`);
         return true;
       }
     } else {
       // Create new test file
       fs.writeFileSync(absoluteTestPath, testCode);
-      console.log(`[MockSync] ✅ Generated test: ${absoluteTestPath}`);
     }
 
     return true;
   } catch (error) {
-    console.error(`[MockSync] ❌ Error generating test:`, error);
+    logger.error(`[MockSync] ❌ Error generating test:`, error);
     return false;
   }
 }
@@ -237,7 +232,7 @@ function saveMockToProjectFolder(
     // Also check if the mockData string contains nested sync requests
     const mockDataStr = JSON.stringify(mockData);
     if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear') || mockDataStr.includes('/mockifyer-sync')) {
-      console.warn(`[MockSync] ⚠️ Rejecting save - Mock data contains nested Mockifyer sync requests`);
+      logger.warn(`[MockSync] ⚠️ Rejecting save - Mock data contains nested Mockifyer sync requests`);
       return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
     }
     
@@ -263,14 +258,11 @@ function saveMockToProjectFolder(
 
     // Check if file already exists - skip saving if it does
     if (fs.existsSync(filePath)) {
-      console.log(`[MockSync] ⚠️ File already exists, skipping save: ${filename}`);
       return { success: true, filename, skipped: true, reason: 'File already exists' };
     }
 
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-    
-    console.log(`[MockSync] ✅ Saved mock to project folder: ${currentScenario}/${filename}`);
     
     // Generate test file if enabled
     if (testConfig) {
@@ -307,10 +299,9 @@ function clearMockFiles(mockDataPath: string): { success: boolean; filesDeleted?
       }
     });
 
-    console.log(`[MockSync] ✅ Cleared ${deleted} mock files from ${currentScenario}`);
     return { success: true, filesDeleted: deleted };
   } catch (error) {
-    console.error(`[MockSync] ❌ Error clearing mock files:`, error);
+    logger.error(`[MockSync] ❌ Error clearing mock files:`, error);
     return { success: false, error: (error as Error).message };
   }
 }
@@ -389,7 +380,6 @@ function syncFromIOSSimulator(
           }
         });
 
-        console.log(`[MockSync] ✅ Synced ${filesSynced} files from iOS Simulator to ${currentScenario}`);
         break;
       }
     }
@@ -411,6 +401,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
   const projectRoot = options?.projectRoot || process.cwd();
   const mockDataPath = path.resolve(projectRoot, options?.mockDataPath || 'mock-data');
   const testConfig = getTestGenerationConfig(options);
+  
+  // Log the resolved paths for debugging
+  logger.info(`[MetroSyncMiddleware] Initialized with projectRoot: ${projectRoot}, mockDataPath: ${mockDataPath}`);
 
   return function mockSyncMiddleware(req: any, res: any, next: any) {
     const url = req.url.split('?')[0]; // Remove query params
@@ -479,16 +472,45 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     // Handle GET endpoint for scenario config
     if (url === '/mockifyer-scenario-config' && req.method === 'GET') {
       try {
+        // Check environment variable first (highest priority)
+        if (process.env.MOCKIFYER_SCENARIO) {
+          logger.info(`[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${process.env.MOCKIFYER_SCENARIO}`);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ 
+            success: true, 
+            currentScenario: process.env.MOCKIFYER_SCENARIO 
+          }));
+          return;
+        }
+        
         const configPath = path.join(mockDataPath, 'scenario-config.json');
+        const resolvedPath = path.resolve(configPath);
+        logger.info(`[MetroSyncMiddleware] Reading scenario config from: ${resolvedPath}`);
+        logger.info(`[MetroSyncMiddleware] mockDataPath: ${mockDataPath}, projectRoot: ${projectRoot}`);
+        
         if (fs.existsSync(configPath)) {
-          const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+          const fileContent = fs.readFileSync(configPath, 'utf-8');
+          logger.info(`[MetroSyncMiddleware] File content: ${fileContent}`);
+          const config = JSON.parse(fileContent);
+          const scenario = config.currentScenario || DEFAULT_SCENARIO;
+          logger.info(`[MetroSyncMiddleware] Found scenario in config: ${scenario} (from file: ${JSON.stringify(config)})`);
+          
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify(config));
+          // Return format expected by ExpoFileSystemProvider: { success: true, currentScenario: ... }
+          res.end(JSON.stringify({ 
+            success: true, 
+            currentScenario: scenario 
+          }));
         } else {
+          logger.info(`[MetroSyncMiddleware] Config file not found at ${resolvedPath}, returning default scenario`);
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ currentScenario: DEFAULT_SCENARIO }));
+          res.end(JSON.stringify({ 
+            success: true, 
+            currentScenario: DEFAULT_SCENARIO 
+          }));
         }
       } catch (error) {
+        logger.error(`[MetroSyncMiddleware] Error reading scenario config:`, error);
         res.statusCode = 500;
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ success: false, error: (error as Error).message }));
@@ -531,14 +553,13 @@ export function startAutoSync(
   options?: MetroSyncMiddlewareOptions
 ): void {
   if (autoSyncInterval) {
-    console.log('[MockSync] Auto-sync already running');
     return;
   }
 
   const projectRoot = options?.projectRoot || process.cwd();
   const mockDataPath = path.resolve(projectRoot, options?.mockDataPath || 'mock-data');
 
-  console.log(`[MockSync] Starting auto-sync every ${intervalMs}ms`);
+  logger.info(`[MockSync] Starting auto-sync every ${intervalMs}ms`);
   autoSyncInterval = setInterval(() => {
     syncFromIOSSimulator(projectRoot, mockDataPath);
   }, intervalMs);
@@ -551,7 +572,6 @@ export function stopAutoSync(): void {
   if (autoSyncInterval) {
     clearInterval(autoSyncInterval);
     autoSyncInterval = null;
-    console.log('[MockSync] Auto-sync disabled');
   }
 }
 

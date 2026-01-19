@@ -4,7 +4,7 @@ This setup automatically syncs mock files from the iOS Simulator to your project
 
 ## How It Works
 
-The Metro middleware (`metro-sync-middleware.js`) automatically:
+The Metro middleware (from `@sgedda/mockifyer-fetch/metro-config`) automatically:
 
 1. **Watches for new/modified files** in the simulator's mock-data directory
 2. **Syncs every 5 seconds** (configurable) to your project's `./mock-data/` folder
@@ -68,13 +68,16 @@ console.log('Synced files:', result.filesSynced);
 
 ### Disable Auto-Sync
 
-To disable auto-sync, edit `metro.config.js` and comment out:
+To disable auto-sync, edit `metro.config.js` and set `autoSync.enabled: false`:
 
 ```javascript
-// Start auto-sync in development (syncs every 5 seconds)
-// if (process.env.NODE_ENV !== 'production') {
-//   mockSyncMiddleware.startAutoSync(5000);
-// }
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+module.exports = configureMetroForMockifyer(config, {
+  autoSync: {
+    enabled: false, // Disable auto-sync
+  },
+});
 ```
 
 ### Change Sync Interval
@@ -82,7 +85,16 @@ To disable auto-sync, edit `metro.config.js` and comment out:
 To change the sync interval (default: 5000ms = 5 seconds), edit `metro.config.js`:
 
 ```javascript
-mockSyncMiddleware.startAutoSync(10000); // Sync every 10 seconds
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
+
+module.exports = configureMetroForMockifyer(config, {
+  autoSync: {
+    enabled: true,
+    intervalMs: 10000, // Sync every 10 seconds
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
+  },
+});
 ```
 
 ## How It Works Technically
@@ -102,10 +114,11 @@ mockSyncMiddleware.startAutoSync(10000); // Sync every 10 seconds
 
 ### Auto-sync not working?
 
-1. **Check Metro logs** - Look for `[MockSync]` messages
+1. **Check Metro logs** - Look for `[Metro] ✅ Auto-sync enabled` messages
 2. **Verify simulator is booted** - Run `xcrun simctl list devices booted`
 3. **Check file permissions** - Ensure Metro can write to `./mock-data/`
-4. **Restart Metro** - Sometimes Metro needs a restart after config changes
+4. **Verify configuration** - Ensure `configureMetroForMockifyer` is called with `autoSync.enabled: true`
+5. **Restart Metro** - Sometimes Metro needs a restart after config changes
 
 ### Files not syncing?
 

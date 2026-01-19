@@ -4,6 +4,14 @@
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "react-native": "dist/index.js",
+  "exports": {
+    ".": {
+      "react-native": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "bin": {
     "mockifyer": "./src/cli/generate-bundle.ts",
     "mockifyer-sync-to-device": "./src/cli/sync-to-device.ts",
@@ -29,7 +37,7 @@
     "typescript": "^5.3.3"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "repository": {
     "type": "git",

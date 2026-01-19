@@ -63,24 +63,27 @@ await setupMockifyerForReactNative({
 
 ## Metro Middleware
 
-The Metro middleware (`metro-sync-middleware.js`) must be configured in your `metro.config.js` to handle the `/mockifyer-save` endpoint:
+The Metro middleware is automatically configured when you use `configureMetroForMockifyer` in your `metro.config.js`. This sets up the `/mockifyer-save` endpoint:
 
 ```javascript
 const { getDefaultConfig } = require('expo/metro-config');
-const mockSyncMiddleware = require('./metro-sync-middleware');
+const { configureMetroForMockifyer } = require('@sgedda/mockifyer-fetch/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// Add middleware
-config.server = {
-  ...config.server,
-  enhanceMiddleware: (middleware) => {
-    return mockSyncMiddleware.middleware(middleware);
+// Configure Metro for Mockifyer (stubs Node.js built-ins + sets up sync middleware)
+module.exports = configureMetroForMockifyer(config, {
+  syncMiddleware: {
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
   },
-};
-
-module.exports = config;
+});
 ```
+
+The `configureMetroForMockifyer` helper automatically:
+- ✅ Stubs Node.js built-in modules (`fs`, `path`, `assert`, `util`) for React Native bundling
+- ✅ Sets up sync middleware to handle `/mockifyer-save` endpoint
+- ✅ Configures Metro to save files to your project folder
 
 ## How It Differs from Polling-Based Sync
 
@@ -109,7 +112,7 @@ You can manually sync later using the legacy sync endpoint (`/mockifyer-sync`) i
 
 1. **Check Metro is running**: The Hybrid Provider requires Metro to be running
 2. **Check Metro port**: Ensure `METRO_PORT` environment variable matches your Metro server port
-3. **Check Metro middleware**: Verify `metro-sync-middleware.js` is configured in `metro.config.js`
+3. **Check Metro middleware**: Verify `configureMetroForMockifyer` is called with `syncMiddleware` options in `metro.config.js`
 4. **Check logs**: Look for `[HybridProvider]` messages in your app logs
 
 ### Metro endpoint errors

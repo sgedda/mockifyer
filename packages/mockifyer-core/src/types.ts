@@ -80,6 +80,14 @@ export interface MockifyerConfig {
     /** If true, only generate one test per endpoint (method + pathname), ignoring query parameters (default: false) */
     uniqueTestsPerEndpoint?: boolean;
   };
+  /** Logging configuration
+   * - 'none': No logs (errors still logged)
+   * - 'error': Only errors
+   * - 'warn': Errors and warnings
+   * - 'info': Errors, warnings, and info messages (default)
+   * - 'debug': All logs including debug messages
+   */
+  logging?: 'none' | 'error' | 'warn' | 'info' | 'debug';
 }
 
 export interface StoredRequest {

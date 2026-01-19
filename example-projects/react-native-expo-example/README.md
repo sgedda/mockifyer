@@ -47,7 +47,23 @@ npm install
 
 ### 4. Metro Configuration
 
-The project includes a `metro.config.js` that configures Metro bundler to resolve the local monorepo packages. This is required for Metro to find `@sgedda/mockifyer-core` and `@sgedda/mockifyer-fetch`.
+The project includes a `metro.config.js` that:
+- ✅ Configures Metro bundler to resolve the local monorepo packages
+- ✅ Stubs Node.js built-in modules (`fs`, `path`, `assert`, `util`) for React Native bundling
+- ✅ Sets up sync middleware for Hybrid Provider (saves files to project folder)
+
+The config uses `configureMetroForMockifyer` which automatically handles both FS stubbing and sync middleware setup:
+
+```javascript
+config = configureMetroForMockifyer(config, {
+  syncMiddleware: {
+    projectRoot: __dirname,
+    mockDataPath: './mock-data',
+  },
+});
+```
+
+This is required for Metro to find `@sgedda/mockifyer-core` and `@sgedda/mockifyer-fetch`, and enables Hybrid Provider to save files to your project folder.
 
 ### 5. Setup Mockifyer
 
@@ -68,7 +84,7 @@ npm run dev:record
    - Files appear instantly in `./mock-data/` - no manual sync needed!
    - See [HYBRID_PROVIDER.md](./HYBRID_PROVIDER.md) for details
    
-   For legacy manual sync (if needed):
+   For manual sync (if using ExpoFileSystem Provider):
    ```bash
    npm run sync:mocks
    ```
@@ -240,7 +256,7 @@ cd ../mockifyer-fetch && npm run build
 ## Related Documentation
 
 - [Hybrid Provider](./HYBRID_PROVIDER.md) - Instant mock file sync (recommended)
-- [Metro Auto-Sync](./METRO_AUTO_SYNC.md) - Legacy polling-based sync (for reference)
+- [Metro Auto-Sync](./METRO_AUTO_SYNC.md) - Polling-based sync (for ExpoFileSystem Provider)
 - [Sync Mocks](./SYNC_MOCKS.md) - Manual sync scripts
 - [React Native Guide](../../REACT_NATIVE.md)
 - [Build Workflow](../../packages/mockifyer-core/REACT_NATIVE_BUILD_WORKFLOW.md)

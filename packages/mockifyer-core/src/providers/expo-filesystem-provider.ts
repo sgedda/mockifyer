@@ -1,6 +1,7 @@
 import { MockData, StoredRequest, ENV_VARS } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { logger } from '../utils/logger';
 
 const DEFAULT_SCENARIO = 'default';
 
@@ -57,34 +58,27 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       return envScenario;
     }
 
-    // Try to load from local scenario-config.json
-    try {
-      const configPath = this.mockDataPath + '/scenario-config.json';
-      const configInfo = await this.FileSystem.getInfoAsync(configPath);
-      if (configInfo.exists) {
-        const fileContent = await this.FileSystem.readAsStringAsync(configPath);
-        const config = JSON.parse(fileContent);
-        if (config.currentScenario) {
-          return config.currentScenario;
-        }
-      }
-    } catch (error) {
-      // Silently fail - file might not exist or be invalid
-    }
-
-    // Try to fetch from Metro endpoint (for React Native dev mode)
-    // This allows dashboard changes to be picked up by the app
+    // Try to fetch from Metro endpoint FIRST (for React Native dev mode)
+    // This allows dashboard changes to be picked up by the app immediately
+    // Metro is the source of truth in development mode
     try {
       const metroPort = process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081;
       const metroUrl = `http://localhost:${metroPort}/mockifyer-scenario-config`;
       
       // Use fetch if available (React Native has global fetch)
+      // Add cache-busting query parameter to ensure we get fresh data
+      const cacheBustUrl = `${metroUrl}?t=${Date.now()}`;
       if (typeof fetch !== 'undefined') {
-        const response = await fetch(metroUrl);
+        const response = await fetch(cacheBustUrl, {
+          // Add timeout to avoid hanging if Metro is not available
+          signal: AbortSignal.timeout?.(2000) || undefined,
+          // Disable cache to ensure fresh data
+          cache: 'no-store',
+        } as any);
         if (response.ok) {
           const data = await response.json() as { success?: boolean; currentScenario?: string };
           if (data.success && data.currentScenario) {
-            // Save to local config for future use
+            // Always save to local config to keep it in sync with Metro
             const configPath = this.mockDataPath + '/scenario-config.json';
             const config = {
               currentScenario: data.currentScenario,
@@ -94,16 +88,37 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
               configPath,
               JSON.stringify(config, null, 2)
             );
-            console.log(`[ExpoFileSystemProvider] Synced scenario config from Metro: ${data.currentScenario}`);
+            logger.info(`[ExpoFileSystemProvider] ✅ Synced scenario config from Metro: ${data.currentScenario}`);
             return data.currentScenario;
+          } else {
+            logger.debug(`[ExpoFileSystemProvider] Metro returned invalid response format:`, data);
           }
+        } else {
+          logger.debug(`[ExpoFileSystemProvider] Metro endpoint returned status ${response.status}`);
         }
       }
     } catch (error) {
-      // Silently fail - Metro might not be available or endpoint might not exist
-      console.debug('[ExpoFileSystemProvider] Could not fetch scenario config from Metro:', error);
+      // Metro not available - fall back to local config
+      logger.debug('[ExpoFileSystemProvider] Metro endpoint not available, using local config:', error);
     }
 
+    // Fallback: Try to load from local scenario-config.json
+    try {
+      const configPath = this.mockDataPath + '/scenario-config.json';
+      const configInfo = await this.FileSystem.getInfoAsync(configPath);
+      if (configInfo.exists) {
+        const fileContent = await this.FileSystem.readAsStringAsync(configPath);
+        const config = JSON.parse(fileContent);
+        if (config.currentScenario) {
+          logger.info(`[ExpoFileSystemProvider] Using local scenario config: ${config.currentScenario} (Metro sync failed or unavailable)`);
+          return config.currentScenario;
+        }
+      }
+    } catch (error) {
+      // Silently fail - file might not exist or be invalid
+    }
+
+    logger.info(`[ExpoFileSystemProvider] Using default scenario: ${DEFAULT_SCENARIO}`);
     return DEFAULT_SCENARIO;
   }
 
@@ -141,17 +156,17 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     const dirInfo = await this.FileSystem.getInfoAsync(fullPath);
     if (!dirInfo.exists) {
       await this.FileSystem.makeDirectoryAsync(fullPath, { intermediates: true });
-      console.log(`[Mockifyer] Created mock data directory: ${fullPath}`);
+      logger.info(`[Mockifyer] Created mock data directory: ${fullPath}`);
     } else {
-      console.log(`[Mockifyer] Using existing mock data directory: ${fullPath}`);
+      logger.info(`[Mockifyer] Using existing mock data directory: ${fullPath}`);
     }
     
     this.mockDataPath = fullPath;
     
     // Get current scenario and ensure scenario folder exists
     this.currentScenario = await this.getCurrentScenario();
-    await this.ensureScenarioFolder();
-    console.log(`[Mockifyer] Using scenario: ${this.currentScenario}`);
+    const scenarioPath = await this.ensureScenarioFolder();
+    logger.info(`[Mockifyer] Using scenario: ${this.currentScenario} (path: ${scenarioPath})`);
     
     // Start file watching if enabled
     if (this.watchEnabled) {
@@ -167,7 +182,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       return; // Already watching
     }
 
-    console.log(`[ExpoFileSystemProvider] 🔄 Starting file watching (checking every ${this.watchIntervalMs}ms)`);
+    logger.debug(`[ExpoFileSystemProvider] 🔄 Starting file watching (checking every ${this.watchIntervalMs}ms)`);
     
     this.watchInterval = setInterval(async () => {
       await this.checkForFileChanges();
@@ -181,7 +196,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     if (this.watchInterval) {
       clearInterval(this.watchInterval);
       this.watchInterval = null;
-      console.log('[ExpoFileSystemProvider] ⏹️ Stopped file watching');
+      logger.debug('[ExpoFileSystemProvider] ⏹️ Stopped file watching');
     }
   }
 
@@ -222,7 +237,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       }
 
       if (hasChanges) {
-        console.log('[ExpoFileSystemProvider] 🔄 Detected file changes - clearing cache');
         this.fileCache.clear();
         this.fileModTimes.clear();
         
@@ -263,7 +277,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       }
     } catch (error) {
       // Silently fail - don't spam logs
-      console.debug('[ExpoFileSystemProvider] Error checking for file changes:', error);
+      logger.debug('[ExpoFileSystemProvider] Error checking for file changes:', error);
     }
   }
 
@@ -273,9 +287,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    * Also refreshes file modification times to detect changes
    */
   async reload(): Promise<void> {
-    console.log('[ExpoFileSystemProvider] 🔄 Manual reload - clearing cache and refreshing file list');
-    
-    // AGGRESSIVE: Clear all caches
+    // Clear all caches
     this.fileCache.clear();
     this.fileModTimes.clear();
     
@@ -283,9 +295,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     // This ensures that synced files are detected on next request
     try {
       const files = await this.listMockFiles();
-      console.log(`[ExpoFileSystemProvider] 🔄 Reload found ${files.length} mock files`);
       
-      // Log all files found for debugging
+      // Update modification times
       const scenarioPath = this.getScenarioPath();
       for (const file of files) {
         try {
@@ -293,15 +304,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           const fileInfo = await this.FileSystem.getInfoAsync(filePath);
           if (fileInfo.exists && fileInfo.modificationTime) {
             this.fileModTimes.set(file, fileInfo.modificationTime);
-            console.log(`[ExpoFileSystemProvider] 📄 File: ${file} (mtime: ${fileInfo.modificationTime})`);
           }
         } catch (error) {
           // Ignore errors for individual files
         }
       }
-      
-      console.log('[ExpoFileSystemProvider] ✅ Reload complete - cache cleared, files will be re-read on next request');
-      console.log('[ExpoFileSystemProvider] 💡 Cache size after reload:', this.fileCache.size);
     } catch (error) {
       console.warn('[ExpoFileSystemProvider] ⚠️ Error refreshing file list during reload:', error);
     }
@@ -330,11 +337,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         requestUrl.includes('/mockifyer-clear') || 
         requestUrl.includes('/mockifyer-sync') ||
         requestUrl.includes('api.resend.com')) {
-      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping save - request URL is excluded: ${requestUrl}`);
+      logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping save - request URL is excluded: ${requestUrl}`);
       return;
     }
     
-    console.log(`[ExpoFileSystemProvider] save - Saving mock data to: ${this.mockDataPath}`);
     
     const scenarioPath = await this.ensureScenarioFolder();
     
@@ -351,14 +357,14 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         
         if (jsonFiles.length >= MAX_REQUESTS_PER_SCENARIO) {
           const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${this.currentScenario}". Please delete some mock files or switch to a different scenario.`;
-          console.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
+          logger.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
           // Don't throw - just log and return to prevent app crash
           return;
         }
       } catch (error: any) {
         // If directory doesn't exist or can't read, that's okay - we'll create it
         // Ignore errors and continue (directory might not exist yet)
-        console.warn(`[ExpoFileSystemProvider] Could not check file count:`, error);
+        logger.warn(`[ExpoFileSystemProvider] Could not check file count:`, error);
       }
     }
     
@@ -377,20 +383,15 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
     const filePath = scenarioPath + '/' + filename;
     
-    console.log(`[ExpoFileSystemProvider] save - File path: ${filePath}`);
-    console.log(`[ExpoFileSystemProvider] save - Filename: ${this.currentScenario}/${filename}`);
-    
     // Write to file (async)
     try {
       await this.FileSystem.writeAsStringAsync(
         filePath,
         JSON.stringify(mockData, null, 2)
       );
-      console.log(`[ExpoFileSystemProvider] ✅ Successfully saved mock to file: ${filename}`);
       
       // Verify file was saved and update cache
       const fileInfo = await this.FileSystem.getInfoAsync(filePath);
-      console.log(`[ExpoFileSystemProvider] save - File exists after save: ${fileInfo.exists}`);
       
       // Update modification time cache
       if (fileInfo.exists && fileInfo.modificationTime) {
@@ -399,7 +400,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         // Note: We can't easily find the requestKey here, so we'll let it be cleared on next findExactMatch
       }
     } catch (error) {
-      console.error(`[ExpoFileSystemProvider] ❌ Error saving mock file:`, error);
+      logger.error(`[ExpoFileSystemProvider] ❌ Error saving mock file:`, error);
       throw error;
     }
   }
@@ -497,7 +498,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           matches.push({ file, filePath, mockData, mtime: fileMtime });
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
     }
     
@@ -507,16 +508,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       matches.sort((a, b) => b.mtime - a.mtime);
       const bestMatch = matches[0];
       
-      console.log(`[ExpoFileSystemProvider] ✅ Found ${matches.length} match(es), using newest: ${bestMatch.file} (mtime: ${bestMatch.mtime})`);
-      if (matches.length > 1) {
-        console.log(`[ExpoFileSystemProvider] 📋 Other matches: ${matches.slice(1).map(m => `${m.file} (mtime: ${m.mtime})`).join(', ')}`);
-      }
-      
-      // Log the actual data being returned for debugging
-      const responseData = bestMatch.mockData?.response?.data;
-      if (responseData && typeof responseData === 'object' && 'name' in responseData) {
-        console.log(`[ExpoFileSystemProvider] 📦 Returning data with name: "${responseData.name}"`);
-      }
       
       // Cache the result
       try {
@@ -541,7 +532,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       };
     }
 
-    console.log(`[ExpoFileSystemProvider] ⚠️ No exact match found`);
+    logger.debug(`[ExpoFileSystemProvider] ⚠️ No exact match found`);
     return undefined;
   }
 
@@ -551,7 +542,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     if (requestUrl.includes('/mockifyer-save') || 
         requestUrl.includes('/mockifyer-clear') || 
         requestUrl.includes('/mockifyer-sync')) {
-      console.log(`[ExpoFileSystemProvider] ⚠️ Skipping findAllForSimilarMatch - request URL is a sync endpoint: ${requestUrl}`);
+      logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping findAllForSimilarMatch - request URL is a sync endpoint: ${requestUrl}`);
       return [];
     }
     
@@ -569,7 +560,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
             fileContent.includes('/mockifyer-clear') || 
             fileContent.includes('/mockifyer-sync') ||
             fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
+          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
           continue;
         }
         
@@ -584,7 +575,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         if (requestUrl.includes('/mockifyer-save') || 
             requestUrl.includes('/mockifyer-clear') || 
             requestUrl.includes('/mockifyer-sync')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
+          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
           continue;
         }
 
@@ -608,7 +599,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           continue;
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
     }
 
@@ -636,7 +627,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
             fileContent.includes('/mockifyer-clear') || 
             fileContent.includes('/mockifyer-sync') ||
             fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
+          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
           continue;
         }
         
@@ -647,13 +638,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         if (requestUrl.includes('/mockifyer-save') || 
             requestUrl.includes('/mockifyer-clear') || 
             requestUrl.includes('/mockifyer-sync')) {
-          console.log(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
+          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
           continue;
         }
         
         results.push(mockData);
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
     }
 
@@ -666,19 +657,19 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   private async listMockFiles(): Promise<string[]> {
     try {
       const scenarioPath = this.getScenarioPath();
-      console.log(`[ExpoFileSystemProvider] listMockFiles - Reading directory: ${scenarioPath}`);
+      logger.debug(`[ExpoFileSystemProvider] listMockFiles - Reading from scenario: ${this.currentScenario}, path: ${scenarioPath}`);
       const dirInfo = await this.FileSystem.getInfoAsync(scenarioPath);
       if (!dirInfo.exists || !dirInfo.isDirectory) {
-        console.log(`[ExpoFileSystemProvider] listMockFiles - Scenario directory does not exist: ${scenarioPath}`);
+        logger.debug(`[ExpoFileSystemProvider] listMockFiles - Scenario directory does not exist: ${scenarioPath}`);
         return [];
       }
       
       const files = await this.FileSystem.readDirectoryAsync(scenarioPath);
       const jsonFiles = files.filter((file: string) => file.endsWith('.json'));
-      console.log(`[ExpoFileSystemProvider] listMockFiles - Found ${jsonFiles.length} JSON files in scenario "${this.currentScenario}":`, jsonFiles);
+      logger.debug(`[ExpoFileSystemProvider] listMockFiles - Found ${jsonFiles.length} files in scenario ${this.currentScenario}`);
       return jsonFiles;
     } catch (error) {
-      console.warn(`[Mockifyer] Failed to list mock files:`, error);
+      logger.warn(`[Mockifyer] Failed to list mock files:`, error);
       return [];
     }
   }
@@ -703,25 +694,23 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   async clearAll(): Promise<void> {
     try {
       const files = await this.listMockFiles();
-      console.log(`[ExpoFileSystemProvider] clearAll - Deleting ${files.length} mock files`);
+      logger.debug(`[ExpoFileSystemProvider] clearAll - Deleting ${files.length} mock files`);
       
       const scenarioPath = this.getScenarioPath();
       for (const file of files) {
         const filePath = scenarioPath + '/' + file;
         try {
           await this.FileSystem.deleteAsync(filePath, { idempotent: true });
-          console.log(`[ExpoFileSystemProvider] ✅ Deleted: ${file}`);
         } catch (error) {
-          console.warn(`[ExpoFileSystemProvider] Failed to delete ${file}:`, error);
+          logger.warn(`[ExpoFileSystemProvider] Failed to delete ${file}:`, error);
         }
       }
       
       // Clear cache after deleting files
       this.fileCache.clear();
       
-      console.log(`[ExpoFileSystemProvider] ✅ Cleared all mock files`);
     } catch (error) {
-      console.error(`[ExpoFileSystemProvider] ❌ Error clearing mock files:`, error);
+      logger.error(`[ExpoFileSystemProvider] ❌ Error clearing mock files:`, error);
       throw error;
     }
   }
