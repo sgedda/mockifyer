@@ -47,6 +47,8 @@ export interface Stats {
   methods: Record<string, number>
   statusCodes: Record<string, number>
   recentActivity: Array<{ filename: string; modified: string }>
+  /** Files per subdirectory (matches mock folder layout under the scenario). */
+  folderBreakdown?: Array<{ folder: string; count: number }>
   scenario: string
   mockDataPath?: string
   scenarioPath?: string

@@ -1,16 +1,18 @@
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useMemo, useState } from 'react'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock } from '@/lib/api'
+import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
+import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import type { MockFile, MockData } from '@/types'
-import { RefreshCw, Trash2, Copy, ExternalLink } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
   loading: boolean
+  loadingMock?: boolean
   searchQuery: string
   onSearchChange: (query: string) => void
   selectedMock: MockData | null
@@ -18,9 +20,18 @@ interface MockListProps {
   onRefresh: () => void
 }
 
-export default function MockList({
+export default function MockList(props: MockListProps) {
+  return (
+    <MockFolderTreeProvider>
+      <MockListContent {...props} />
+    </MockFolderTreeProvider>
+  )
+}
+
+function MockListContent({
   mocks,
   loading,
+  loadingMock = false,
   searchQuery,
   onSearchChange,
   selectedMock,
@@ -28,6 +39,7 @@ export default function MockList({
   onRefresh,
 }: MockListProps) {
   const { toast } = useToast()
+  const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const [deleting, setDeleting] = useState<string | null>(null)
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
@@ -71,26 +83,50 @@ export default function MockList({
     }
   }
 
-  function formatFileSize(bytes: number): string {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  }
-
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleString()
-  }
+  const { folderTree, hasFolders } = useMemo(() => {
+    const tree = buildMockFolderTree(mocks)
+    return {
+      folderTree: tree,
+      hasFolders: sortFolderEntries(tree).length > 0,
+    }
+  }, [mocks])
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-4">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="🔍 Search by filename, endpoint, or method..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="flex-1"
+          className="min-w-[12rem] flex-1"
         />
-        <Button onClick={onRefresh} variant="outline" size="icon">
+        {!loading && hasFolders && mocks.length > 0 && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={expandAllFolders}
+              title="Expand all folders"
+            >
+              <UnfoldVertical className="h-4 w-4" />
+              <span className="hidden sm:inline">Expand all</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              onClick={collapseAllFolders}
+              title="Collapse all folders"
+            >
+              <FoldVertical className="h-4 w-4" />
+              <span className="hidden sm:inline">Collapse all</span>
+            </Button>
+          </>
+        )}
+        <Button onClick={onRefresh} variant="outline" size="icon" className="shrink-0" title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
@@ -110,69 +146,21 @@ export default function MockList({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {mocks.map((mock) => {
-            const isSelected = selectedMock?.filename === mock.filename
-            return (
-              <Card
-                key={mock.filename}
-                className={`cursor-pointer transition-all hover:border-primary/50 hover:shadow-md ${
-                  isSelected ? 'border-primary bg-primary/5' : ''
-                }`}
-                onClick={() => onSelectMock(mock)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg mb-2 text-foreground">{mock.filename}</CardTitle>
-                      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <span className="text-primary">📦</span>
-                          {formatFileSize(mock.size)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-primary">🕒</span>
-                          {formatDate(mock.modified)}
-                        </span>
-                        {mock.graphqlInfo && (
-                          <Badge variant="outline" className="border-purple-500/30 bg-purple-500/20 text-purple-300">
-                            GraphQL
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => handleDuplicate(mock.filename, e)}
-                        title="Duplicate"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => handleDelete(mock.filename, e)}
-                        disabled={deleting === mock.filename}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                {mock.endpoint && (
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
-                      <ExternalLink className="h-3 w-3" />
-                      <span className="break-all">{mock.endpoint}</span>
-                    </div>
-                  </CardContent>
-                )}
-              </Card>
-            )
-          })}
+        <div className="relative space-y-4">
+          {loadingMock && (
+            <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
+              Loading mock…
+            </div>
+          )}
+          <MockFolderTree
+            node={folderTree}
+            level={0}
+            selectedMock={selectedMock}
+            onSelectMock={onSelectMock}
+            onDelete={handleDelete}
+            onDuplicate={handleDuplicate}
+            deleting={deleting}
+          />
         </div>
       )}
     </div>

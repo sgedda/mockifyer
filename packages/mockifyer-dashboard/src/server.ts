@@ -12,6 +12,14 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
   // Middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+  });
   
   // CORS for local development
   app.use((req, res, next) => {

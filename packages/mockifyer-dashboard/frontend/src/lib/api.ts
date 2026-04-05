@@ -2,15 +2,18 @@ import type { MockFile, MockData, Stats, ScenarioConfig } from '@/types'
 
 const API_BASE = '/api'
 
+/** Prevent stale API responses (browser HTTP cache on GET). */
+const noStore: RequestInit = { cache: 'no-store' }
+
 export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
   const url = scenario ? `${API_BASE}/mocks?scenario=${encodeURIComponent(scenario)}` : `${API_BASE}/mocks`
-  const response = await fetch(url)
+  const response = await fetch(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }
 
 export async function getMock(filename: string): Promise<MockData> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`)
+  const response = await fetch(`${API_BASE}/mocks/${filename}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -42,14 +45,17 @@ export async function duplicateMock(filename: string): Promise<{ newFilename: st
   return response.json()
 }
 
-export async function getStats(): Promise<Stats> {
-  const response = await fetch(`${API_BASE}/stats`)
+export async function getStats(scenario?: string): Promise<Stats> {
+  const url = scenario
+    ? `${API_BASE}/stats?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/stats`
+  const response = await fetch(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch stats')
   return response.json()
 }
 
 export async function getScenarioConfig(): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config`)
+  const response = await fetch(`${API_BASE}/scenario-config`, noStore)
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
   // Map the API response to match ScenarioConfig interface
@@ -100,7 +106,7 @@ export interface DateConfig {
 }
 
 export async function getDateConfig(): Promise<DateConfig> {
-  const response = await fetch(`${API_BASE}/date-config`)
+  const response = await fetch(`${API_BASE}/date-config`, noStore)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
 }
