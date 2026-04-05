@@ -1,6 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
-import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { ExpoFileSystemProvider } from './expo-filesystem-provider';
 
 /**
@@ -52,8 +52,9 @@ export class HybridProvider implements DatabaseProvider {
 
   /**
    * Save mock data to both device and project folder
+   * When `options.relativePath` is set (Metro project→device sync), only updates device; skips POST to Metro.
    */
-  async save(mockData: MockData): Promise<void> {
+  async save(mockData: MockData, options?: SaveMockOptions): Promise<void> {
     // CRITICAL: Never save Mockifyer sync endpoint requests to prevent infinite loops
     const url = mockData.request.url || '';
     if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
@@ -92,19 +93,19 @@ export class HybridProvider implements DatabaseProvider {
     
     // Save to device first (primary storage)
     try {
-      await this.deviceProvider.save(mockData);
+      await this.deviceProvider.save(mockData, options);
     } catch (error) {
       console.error(`[HybridProvider] Error saving to device filesystem:`, error);
       throw error; // Re-throw device save errors
     }
-    
-    // Also save to project folder via Metro HTTP endpoint
-    try {
-      await this.saveToProjectFolder(mockData);
-    } catch (error) {
-      // Don't fail if Metro endpoint is unavailable (e.g., Metro not running)
-      // Device save already succeeded, so we just log a warning
-      console.warn('[HybridProvider] Failed to save to project folder via Metro:', error);
+
+    // Sync back to project folder only when this save originated on device (not Metro pull)
+    if (!options?.relativePath) {
+      try {
+        await this.saveToProjectFolder(mockData);
+      } catch (error) {
+        console.warn('[HybridProvider] Failed to save to project folder via Metro:', error);
+      }
     }
   }
 
@@ -307,39 +308,61 @@ export class HybridProvider implements DatabaseProvider {
    */
   private async syncFromProjectFolder(): Promise<void> {
     try {
-      // Fetch files from Metro endpoint
       const originalFetch = (global as any).__mockifyer_original_fetch || fetch;
-      const response = await originalFetch(`${this.metroUrl}/mockifyer-sync-to-device`);
-      
-      if (!response.ok) {
-        throw new Error(`Metro endpoint returned ${response.status}: ${response.statusText}`);
+
+      // 1) Manifest only — one giant JSON with every mock often fails (memory / parse / timeout).
+      const manifestRes = await originalFetch(`${this.metroUrl}/mockifyer-sync-to-device-manifest`);
+      if (!manifestRes.ok) {
+        throw new Error(`Metro manifest returned ${manifestRes.status}: ${manifestRes.statusText}`);
       }
-      
-      const result = await response.json() as { success: boolean; files?: Array<{ filename: string; content: any; modificationTime: number }>; error?: string; count?: number };
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Unknown error syncing from project folder');
+
+      const manifest = await manifestRes.json() as {
+        success: boolean;
+        files?: Array<{ filename: string; modificationTime: number }>;
+        error?: string;
+      };
+
+      if (!manifest.success) {
+        throw new Error(manifest.error || 'Unknown error loading sync manifest');
       }
-      
-      if (!result.files || result.files.length === 0) {
+
+      if (!manifest.files || manifest.files.length === 0) {
         return;
       }
-      
-      // Save each file to device
-      let savedCount = 0;
-      for (const fileData of result.files) {
+
+      // 2) Fetch each file separately
+      for (const entry of manifest.files) {
         try {
-          // Save to device using the device provider
-          await this.deviceProvider.save(fileData.content);
-          savedCount++;
+          const q = encodeURIComponent(entry.filename);
+          const fileRes = await originalFetch(`${this.metroUrl}/mockifyer-sync-to-device-file?path=${q}`);
+          if (!fileRes.ok) {
+            console.warn(
+              `[HybridProvider] Metro returned ${fileRes.status} for ${entry.filename}; skipping`
+            );
+            continue;
+          }
+          const filePayload = await fileRes.json() as {
+            success: boolean;
+            filename?: string;
+            content?: MockData;
+            error?: string;
+          };
+          if (!filePayload.success || !filePayload.content) {
+            console.warn(
+              `[HybridProvider] Skipping ${entry.filename}: ${filePayload.error || 'invalid payload'}`
+            );
+            continue;
+          }
+          await this.deviceProvider.save(filePayload.content, {
+            relativePath: filePayload.filename || entry.filename,
+          });
         } catch (error) {
-          console.warn(`[HybridProvider] Failed to save ${fileData.filename}:`, error);
+          console.warn(`[HybridProvider] Failed to save ${entry.filename}:`, error);
         }
       }
     } catch (error: any) {
-      // Don't throw - Metro might not be running or endpoint might not be available
       console.warn('[HybridProvider] ⚠️ Failed to sync from project folder via Metro:', error.message);
-      throw error; // Re-throw so caller knows sync failed
+      throw error;
     }
   }
 

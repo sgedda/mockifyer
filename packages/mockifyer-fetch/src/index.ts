@@ -32,7 +32,8 @@ import {
   initializeScenario,
   TestGenerator,
   TestGenerationOptions,
-  checkRequestLimit
+  checkRequestLimit,
+  shouldExcludeUrl
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -44,6 +45,8 @@ class MockifyerClass {
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
   private databaseProvider?: DatabaseProvider;
+  /** Resolves when async databaseProvider.initialize() completes (expo/hybrid). */
+  private databaseProviderInitPromise: Promise<void> = Promise.resolve();
   private currentSessionId: string | null = null;
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -111,9 +114,9 @@ class MockifyerClass {
     if (config.databaseProvider && config.databaseProvider.type) {
       this.databaseProvider = createProvider(config.databaseProvider.type, config.databaseProvider);
       const initResult = this.databaseProvider.initialize();
-      // Handle async initialization (expo-filesystem provider has async initialize)
+      // Handle async initialization (expo-filesystem / hybrid providers)
       if (initResult instanceof Promise) {
-        initResult.catch((error) => {
+        this.databaseProviderInitPromise = initResult.catch((error) => {
           logger.error('[Mockifyer-Fetch] Error initializing database provider:', error);
         });
       }
@@ -402,6 +405,10 @@ class MockifyerClass {
       
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        logger.info(
+          `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
+            (filePath ? ` (${filePath})` : '')
+        );
         const responseHeaders = {
           ...mockData.response.headers,
           'x-mockifyer': 'true',
@@ -576,15 +583,8 @@ class MockifyerClass {
       return;
     }
     
-    // CRITICAL: Skip saving responses from Mockifyer sync endpoints and Resend API FIRST
-    // Check multiple ways to get the URL in case response.config is undefined
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
-    if (url && (
-      url.includes('/mockifyer-save') || 
-      url.includes('/mockifyer-clear') || 
-      url.includes('/mockifyer-sync') ||
-      url.includes('api.resend.com')
-    )) {
+    if (url && shouldExcludeUrl(url, this.config.excludedUrls)) {
       return;
     }
     
@@ -920,6 +920,7 @@ class MockifyerClass {
   }
 
   async reloadMockData(syncFromProject: boolean = true): Promise<void> {
+    await this.databaseProviderInitPromise;
     // If provider has a reload method, use it (for ExpoFileSystemProvider with caching)
     // For HybridProvider, this will also sync files from project folder to device
     if (this.databaseProvider && typeof (this.databaseProvider as any).reload === 'function') {
@@ -951,7 +952,7 @@ class MockifyerClass {
 }
 
 export interface MockifyerInstance extends HTTPClient {
-  reloadMockData: () => Promise<void>;
+  reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
 }
@@ -1108,7 +1109,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   }
   
   const extendedClient = httpClient as MockifyerInstance;
-  extendedClient.reloadMockData = async () => await mockifyer.reloadMockData();
+  extendedClient.reloadMockData = async (syncFromProject?: boolean) =>
+    await mockifyer.reloadMockData(syncFromProject);
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   

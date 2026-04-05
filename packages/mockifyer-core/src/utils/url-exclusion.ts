@@ -5,7 +5,9 @@ export const DEFAULT_EXCLUDED_URLS = [
   '/mockifyer-save',
   '/mockifyer-clear',
   '/mockifyer-sync',
-  'api.resend.com'
+  /** Metro scenario sync — uses cache-bust `?t=`; recording each fetch creates duplicate mocks. */
+  '/mockifyer-scenario-config',
+  'api.resend.com',
 ];
 
 /**

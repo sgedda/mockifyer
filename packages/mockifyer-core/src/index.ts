@@ -9,10 +9,12 @@ export * from './providers';
 export * from './utils/build-utils';
 export * from './utils/test-generator';
 export * from './utils/logger';
+export * from './utils/file-naming';
+export * from './utils/url-exclusion';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
-// - mockifyer-sync-to-device
+// - mockifyer-sync-to-device-manifest / mockifyer-sync-to-device-file / mockifyer-sync-to-device (legacy)
 // - mockifyer-sync-from-device
 // 
 // If you need CLI functions programmatically in Node.js scripts,

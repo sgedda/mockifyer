@@ -1,9 +1,11 @@
 /**
  * Metro middleware for mock file synchronization
  * 
- * Provides two sync mechanisms:
+ * Provides sync mechanisms:
  * 1. POST /mockifyer-save - Direct save endpoint (used by Hybrid Provider for instant sync)
- * 2. GET /mockifyer-sync - Legacy polling-based sync endpoint (for manual sync)
+ * 2. GET /mockifyer-sync-to-device-manifest + /mockifyer-sync-to-device-file - Project → app (HybridProvider; avoids huge single JSON)
+ * 3. GET /mockifyer-sync-to-device - Legacy: all files in one response (may fail on large scenarios)
+ * 4. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -44,6 +46,49 @@ export interface MetroSyncMiddlewareOptions {
 const DEFAULT_SCENARIO = 'default';
 
 let autoSyncInterval: NodeJS.Timeout | null = null;
+
+function getMockFilePathLocal(mockData: MockData, dateStr: string): { dir: string; filename: string } {
+  const url = mockData.request.url || '';
+  const method = (mockData.request.method || 'GET').toUpperCase();
+  let host = 'unknown';
+  let pathSegments: string[] = [];
+  try {
+    const parsed = new URL(url);
+    host = parsed.hostname;
+    pathSegments = parsed.pathname.split('/').filter(Boolean);
+  } catch {
+    return { dir: 'unknown', filename: `${method}_${dateStr}.json` };
+  }
+  const hostSafe = host.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const graphqlIdx = pathSegments.lastIndexOf('graphql');
+  const restIdx = pathSegments.indexOf('rest');
+  let type: string;
+  let remainingSegments: string[];
+  if (graphqlIdx >= 0) {
+    type = 'graphql';
+    remainingSegments = pathSegments.slice(graphqlIdx + 1);
+  } else if (restIdx >= 0) {
+    type = 'rest';
+    remainingSegments = pathSegments.slice(restIdx + 1);
+  } else {
+    type = '';
+    remainingSegments = pathSegments;
+  }
+  let identifier = '';
+  if (mockData.request.data) {
+    try {
+      const body = typeof mockData.request.data === 'string'
+        ? JSON.parse(mockData.request.data) : mockData.request.data;
+      if (body.operationName) identifier = body.operationName;
+      else if (body.path) identifier = body.path;
+      else if (body.webAppName) identifier = body.webAppName;
+    } catch { /* ignore */ }
+  }
+  identifier = identifier.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 60);
+  const dir = [hostSafe, type, ...remainingSegments].filter(Boolean).join('/');
+  const filename = identifier ? `${method}_${identifier}_${dateStr}.json` : `${method}_${dateStr}.json`;
+  return { dir, filename };
+}
 
 /**
  * Get current scenario from scenario-config.json
@@ -241,35 +286,26 @@ function saveMockToProjectFolder(
     const scenarioPath = getScenarioPath(currentScenario, mockDataPath);
     fs.mkdirSync(scenarioPath, { recursive: true });
 
-    // Format the datetime to be readable
-    const now = new Date();
-    const dateStr = now.toISOString()
-      .replace(/T/, '_')
-      .replace(/\..+/, '')
-      .replace(/:/g, '-');
-
-    // Create a safe filename from the URL
-    const urlSafe = mockData.request.url
-      .replace(/^https?:\/\//, '')
-      .replace(/[^a-zA-Z0-9]/g, '_');
-
-    const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const filePath = path.join(scenarioPath, filename);
+    const dateStr = new Date().toISOString().replace(/T/, '_').replace(/\..+/, '').replace(/:/g, '-');
+    const { dir, filename } = getMockFilePathLocal(mockData, dateStr);
+    const fullDir = path.join(scenarioPath, dir);
+    const filePath = path.join(fullDir, filename);
 
     // Check if file already exists - skip saving if it does
     if (fs.existsSync(filePath)) {
-      return { success: true, filename, skipped: true, reason: 'File already exists' };
+      return { success: true, filename: path.join(dir, filename), skipped: true, reason: 'File already exists' };
     }
 
+    fs.mkdirSync(fullDir, { recursive: true });
     // Write to file
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-    
+
     // Generate test file if enabled
     if (testConfig) {
       generateTestForMock(mockData, testConfig, projectRoot);
     }
-    
-    return { success: true, filename, scenario: currentScenario };
+
+    return { success: true, filename: path.join(dir, filename), scenario: currentScenario };
   } catch (error) {
     console.error(`[MockSync] ❌ Error saving mock to project folder:`, error);
     return { success: false, error: (error as Error).message };
@@ -395,6 +431,190 @@ function syncFromIOSSimulator(
 }
 
 /**
+ * Recursive mock JSON files under scenario root (paths relative to scenario, POSIX slashes).
+ */
+function listScenarioMockJsonFiles(scenarioAbsPath: string): Array<{ relativePath: string; fullPath: string }> {
+  const out: Array<{ relativePath: string; fullPath: string }> = [];
+  if (!fs.existsSync(scenarioAbsPath)) {
+    return out;
+  }
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.name.endsWith('.json')) {
+        const rel = path.relative(scenarioAbsPath, full);
+        const relativePath = rel.split(path.sep).join('/');
+        if (
+          relativePath === 'scenario-config.json' ||
+          relativePath === 'date-config.json'
+        ) {
+          continue;
+        }
+        out.push({ relativePath, fullPath: full });
+      }
+    }
+  };
+  walk(scenarioAbsPath);
+  return out;
+}
+
+/**
+ * Resolve a client-supplied path to a mock file under the scenario folder (blocks path traversal).
+ */
+function resolveScenarioRelativeMockPath(
+  rawQueryPath: string,
+  scenarioAbsPath: string
+): { relativePath: string; fullPath: string } | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawQueryPath);
+  } catch {
+    return null;
+  }
+  const normalized = decoded.replace(/\\/g, '/').replace(/^\//, '');
+  if (!normalized.endsWith('.json') || normalized.includes('..')) {
+    return null;
+  }
+  const fullPath = path.normalize(path.join(scenarioAbsPath, normalized));
+  const scenarioResolved = path.resolve(scenarioAbsPath);
+  const relativeToScenario = path.relative(scenarioResolved, fullPath);
+  if (relativeToScenario.startsWith('..') || path.isAbsolute(relativeToScenario)) {
+    return null;
+  }
+  const relativePath = relativeToScenario.split(path.sep).join('/');
+  return { relativePath, fullPath };
+}
+
+/**
+ * Small manifest only (paths + mtimes) for GET /mockifyer-sync-to-device-manifest.
+ */
+function buildSyncToDeviceManifest(mockDataPath: string): {
+  success: boolean;
+  files?: Array<{ filename: string; modificationTime: number }>;
+  count?: number;
+  error?: string;
+} {
+  try {
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioPath(currentScenario, mockDataPath);
+    const entries = listScenarioMockJsonFiles(scenarioPath);
+    const files: Array<{ filename: string; modificationTime: number }> = [];
+    for (const { relativePath, fullPath } of entries) {
+      try {
+        const stat = fs.statSync(fullPath);
+        files.push({ filename: relativePath, modificationTime: stat.mtimeMs });
+      } catch (e) {
+        logger.warn(`[MetroSyncMiddleware] Manifest: could not stat ${fullPath}:`, e);
+      }
+    }
+    logger.info(
+      `[MetroSyncMiddleware] /mockifyer-sync-to-device-manifest: ${files.length} file(s), scenario "${currentScenario}"`
+    );
+    return { success: true, files, count: files.length };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
+ * One mock file for GET /mockifyer-sync-to-device-file?path=
+ */
+function buildSyncToDeviceSingleFilePayload(mockDataPath: string, rawPathParam: string): {
+  success: boolean;
+  filename?: string;
+  content?: MockData;
+  modificationTime?: number;
+  error?: string;
+} {
+  try {
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioPath(currentScenario, mockDataPath);
+    const resolved = resolveScenarioRelativeMockPath(rawPathParam, scenarioPath);
+    if (!resolved) {
+      return { success: false, error: 'Invalid or unsafe path' };
+    }
+    const { fullPath, relativePath } = resolved;
+    if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+      return { success: false, error: 'Not found' };
+    }
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    const content = JSON.parse(raw) as MockData;
+    if (!content?.request || !content?.response) {
+      return { success: false, error: 'Invalid mock JSON (missing request/response)' };
+    }
+    const stat = fs.statSync(fullPath);
+    return {
+      success: true,
+      filename: relativePath,
+      content,
+      modificationTime: stat.mtimeMs,
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
+ * Build payload for GET /mockifyer-sync-to-device (project mock-data → native app via HybridProvider).
+ */
+function buildSyncToDevicePayload(mockDataPath: string): {
+  success: boolean;
+  files?: Array<{ filename: string; content: MockData; modificationTime: number }>;
+  count?: number;
+  error?: string;
+} {
+  try {
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioPath = getScenarioPath(currentScenario, mockDataPath);
+    const entries = listScenarioMockJsonFiles(scenarioPath);
+    const files: Array<{ filename: string; content: MockData; modificationTime: number }> = [];
+
+    for (const { relativePath, fullPath } of entries) {
+      try {
+        const raw = fs.readFileSync(fullPath, 'utf-8');
+        const content = JSON.parse(raw) as MockData;
+        if (!content?.request || !content?.response) {
+          logger.debug(`[MetroSyncMiddleware] Skipping JSON without request/response: ${relativePath}`);
+          continue;
+        }
+        const stat = fs.statSync(fullPath);
+        files.push({
+          filename: relativePath,
+          content,
+          modificationTime: stat.mtimeMs,
+        });
+      } catch (e) {
+        logger.warn(`[MetroSyncMiddleware] Could not read ${fullPath}:`, e);
+      }
+    }
+
+    logger.info(
+      `[MetroSyncMiddleware] /mockifyer-sync-to-device: ${files.length} mock file(s) from scenario "${getCurrentScenario(mockDataPath)}"`
+    );
+    return { success: true, files, count: files.length };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
+ * Normalize URL pathname from Node/Metro `req.url` so `/mockifyer-sync-to-device/` matches `/mockifyer-sync-to-device`.
+ * Without this, trailing slashes fall through to Expo Web's SPA and Expo Router treats them as AppDun routes.
+ */
+function normalizeMiddlewarePathname(reqUrl: string): string {
+  if (!reqUrl || typeof reqUrl !== 'string') {
+    return '/';
+  }
+  let pathname = reqUrl.split('?')[0];
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
+  return pathname;
+}
+
+/**
  * Metro middleware function
  */
 export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
@@ -406,7 +626,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
   logger.info(`[MetroSyncMiddleware] Initialized with projectRoot: ${projectRoot}, mockDataPath: ${mockDataPath}`);
 
   return function mockSyncMiddleware(req: any, res: any, next: any) {
-    const url = req.url.split('?')[0]; // Remove query params
+    const url = normalizeMiddlewarePathname(req.url || '');
     
     // Handle POST endpoint for clearing mocks
     if (url === '/mockifyer-clear' && req.method === 'POST') {
@@ -440,6 +660,44 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }));
         }
       });
+      return;
+    }
+
+    // Project folder → device/simulator: manifest (small JSON)
+    if (url === '/mockifyer-sync-to-device-manifest' && req.method === 'GET') {
+      const payload = buildSyncToDeviceManifest(mockDataPath);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = payload.success ? 200 : 500;
+      res.end(JSON.stringify(payload));
+      return;
+    }
+
+    // Single file for HybridProvider (avoids multi‑MB single response)
+    if (url === '/mockifyer-sync-to-device-file' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const query = qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '';
+      const params = new URLSearchParams(query);
+      const pathParam = params.get('path') || '';
+      const payload = buildSyncToDeviceSingleFilePayload(mockDataPath, pathParam);
+      res.setHeader('Content-Type', 'application/json');
+      if (payload.success) {
+        res.statusCode = 200;
+      } else if (payload.error === 'Not found') {
+        res.statusCode = 404;
+      } else {
+        res.statusCode = 400;
+      }
+      res.end(JSON.stringify(payload));
+      return;
+    }
+
+    // Legacy: all files in one response (may OOM / timeout on large scenarios)
+    if (url === '/mockifyer-sync-to-device' && req.method === 'GET') {
+      const payload = buildSyncToDevicePayload(mockDataPath);
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = payload.success ? 200 : 500;
+      res.end(JSON.stringify(payload));
       return;
     }
     

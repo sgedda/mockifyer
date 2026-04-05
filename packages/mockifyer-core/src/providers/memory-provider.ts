@@ -1,6 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
-import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
 /**
  * In-memory provider for React Native/Expo and other environments without filesystem access
@@ -20,7 +20,7 @@ export class MemoryProvider implements DatabaseProvider {
     console.log('[Mockifyer] MemoryProvider initialized (in-memory storage)');
   }
 
-  save(mockData: MockData): void {
+  save(mockData: MockData, _options?: SaveMockOptions): void {
     const requestKey = generateRequestKey(mockData.request);
     this.mocks.set(requestKey, mockData);
     this.mockCounter++;
