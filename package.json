@@ -4,6 +4,7 @@
   "description": "API mocking and logging utility for storing and replaying API responses (deprecated - use @sgedda/mockifyer-core, @sgedda/mockifyer-axios, or @sgedda/mockifyer-fetch instead)",
   "scripts": {
     "build": "sh packages/build-all.sh",
+    "start": "npm run start --prefix mockifyer-web",
     "test": "jest",
     "test:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
     "test:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
