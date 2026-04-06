@@ -74,18 +74,6 @@ export function generateRequestKey(request: StoredRequest): string {
   
   let key = `${normalizedMethod}:${normalizedUrl}${queryString ? '?' + queryString : ''}`;
   
-  // CRITICAL DEBUG for GraphQL
-  if (normalizedMethod === 'POST' && normalizedUrl.includes('graphql')) {
-    console.log('[Mockifyer] 🔑 generateRequestKey - GraphQL request:', {
-      method: normalizedMethod,
-      url: normalizedUrl,
-      hasData: !!request.data,
-      dataType: typeof request.data,
-      dataValue: request.data ? (typeof request.data === 'string' ? request.data.substring(0, 150) : JSON.stringify(request.data).substring(0, 150)) : 'UNDEFINED',
-      currentKey: key
-    });
-  }
-  
   // For POST/PUT/PATCH requests, include body data in the key
   // This is important for GraphQL and other POST requests where the body determines the response
   if (['POST', 'PUT', 'PATCH'].includes(normalizedMethod) && request.data) {
@@ -106,12 +94,6 @@ export function generateRequestKey(request: StoredRequest): string {
       if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
         const normalizedQuery = normalizeGraphQLQuery(bodyData.query);
         const variablesHash = bodyData.variables ? hashObject(bodyData.variables) : '';
-        console.log('[Mockifyer] 🔷 GraphQL key generation:', {
-          hasVariables: !!bodyData.variables,
-          variables: bodyData.variables,
-          variablesHash: variablesHash.substring(0, 100),
-          queryPreview: normalizedQuery.substring(0, 50) + '...'
-        });
         key += `|body:gql:${normalizedQuery}:vars:${variablesHash}`;
       } else {
         // For other POST requests, include a hash of the body

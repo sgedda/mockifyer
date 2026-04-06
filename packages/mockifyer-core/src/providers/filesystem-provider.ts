@@ -2,8 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
-import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
+import { getCurrentDate } from '../utils/date';
+import { getMockFilePath, formatDateStr } from '../utils/file-naming';
+import { shouldExcludeUrl } from '../utils/url-exclusion';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -51,49 +54,61 @@ export class FilesystemProvider implements DatabaseProvider {
     return getScenarioFolderPath(this.mockDataPath, currentScenario);
   }
 
-  save(mockData: MockData): void {
+  save(mockData: MockData, options?: SaveMockOptions): void {
     if (!this.fsAvailable) {
       throw new Error('FilesystemProvider requires Node.js fs module. ' +
         'For React Native, use ExpoFileSystemProvider instead.');
     }
     
-    // CRITICAL: Never save Resend API requests - they should never be mocked
     const requestUrl = mockData?.request?.url || '';
-    if (requestUrl.includes('api.resend.com')) {
-      console.log(`[FilesystemProvider] ⚠️ Skipping save - Resend API request: ${requestUrl}`);
+    if (shouldExcludeUrl(requestUrl, undefined)) {
+      console.log(`[FilesystemProvider] ⚠️ Skipping save - request URL is excluded: ${requestUrl}`);
       return;
     }
     
     const scenarioPath = this.getScenarioPath();
     ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
     
-    // Check request limit before saving (only if limit is set via env var)
-    const limitCheck = checkRequestLimit(this.mockDataPath);
-    if (limitCheck.limitReached && limitCheck.error) {
-      console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
-      // Don't throw - just log and return to prevent app crash
-      return;
+    if (!options?.relativePath) {
+      const limitCheck = checkRequestLimit(this.mockDataPath);
+      if (limitCheck.limitReached && limitCheck.error) {
+        console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+        return;
+      }
     }
-    
-    // Format the datetime to be readable
-    const now = new Date();
-    const dateStr = now.toISOString()
-      .replace(/T/, '_')
-      .replace(/\..+/, '')
-      .replace(/:/g, '-');
 
-    // Create a safe filename from the URL
-    const urlSafe = mockData.request.url
-      .replace(/^https?:\/\//, '')
-      .replace(/[^a-zA-Z0-9]/g, '_');
+    let dir: string;
+    let filename: string;
+    if (options?.relativePath) {
+      const normalized = options.relativePath.replace(/\\/g, '/').replace(/^\//, '');
+      const lastSlash = normalized.lastIndexOf('/');
+      dir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
+      filename = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
+    } else {
+      const parts = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+      dir = parts.dir;
+      filename = parts.filename;
+    }
+    const filePath = path.join(scenarioPath, dir, filename);
+    fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
 
-    const filename = `${dateStr}_${mockData.request.method}_${urlSafe}.json`;
-    const filePath = path.join(scenarioPath, filename);
-    
-    // Write to file
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
     const currentScenario = getCurrentScenario(this.mockDataPath);
-    console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+    console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`);
+  }
+
+  private getAllJsonFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.getAllJsonFiles(fullPath));
+      } else if (entry.name.endsWith('.json')) {
+        results.push(fullPath);
+      }
+    }
+    return results;
   }
 
   findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
@@ -106,30 +121,23 @@ export class FilesystemProvider implements DatabaseProvider {
       return undefined;
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
+    const files = this.getAllJsonFiles(scenarioPath);
 
-    for (const file of files) {
+    for (const filePath of files) {
       try {
-        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
-        
+
         if (!mockData?.request || typeof mockData.request !== 'object') {
           continue;
         }
 
-        // Generate key for this mock and compare with requested key
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          return {
-            mockData,
-            filename: file,
-            filePath: filePath
-          };
+          return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 
@@ -146,42 +154,29 @@ export class FilesystemProvider implements DatabaseProvider {
       return [];
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
-
     const results: CachedMockData[] = [];
 
-    for (const file of files) {
+    for (const filePath of this.getAllJsonFiles(scenarioPath)) {
       try {
-        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
-        
+
         if (!mockData?.request || typeof mockData.request !== 'object') {
           continue;
         }
 
-        // Check if path and method match
         try {
           const requestUrl = new URL(request.url);
           const mockUrl = new URL(mockData.request.url);
-          const requestPath = requestUrl.pathname;
-          const mockPath = mockUrl.pathname;
-          
-          if (mockPath === requestPath && 
+          if (mockUrl.pathname === requestUrl.pathname &&
               (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            results.push({
-              mockData,
-              filename: file,
-              filePath: filePath
-            });
+            results.push({ mockData, filename: path.relative(scenarioPath, filePath), filePath });
           }
         } catch (e) {
-          // Invalid URL, skip
           continue;
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 
@@ -189,8 +184,6 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   exists(requestKey: string): boolean {
-    // For filesystem provider, we can't efficiently check existence by key
-    // without reading all files. This will be handled by findExactMatch
     return false;
   }
 
@@ -204,19 +197,17 @@ export class FilesystemProvider implements DatabaseProvider {
       return [];
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
+    const files = this.getAllJsonFiles(scenarioPath);
 
     const results: MockData[] = [];
 
-    for (const file of files) {
+    for (const filePath of files) {
       try {
-        const filePath = path.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         results.push(mockData);
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 

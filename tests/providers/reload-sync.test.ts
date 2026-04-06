@@ -18,6 +18,77 @@ describe('Reload with Sync Functionality', () => {
   const testMockDataPath = path.join(__dirname, '../test-mock-data-reload');
   let httpClient: any;
 
+  const headerFactory = () => ({
+    forEach: jest.fn((callback: (value: string, key: string) => void) => {
+      callback('application/json', 'content-type');
+    }),
+    get: jest.fn((name: string) => 'application/json'),
+  });
+
+  /** Hybrid sync uses manifest + per-file endpoints (not one giant JSON). */
+  function stubManifestSyncFetch(
+    files: Array<{ filename: string; content: Record<string, unknown>; modificationTime: number }>
+  ) {
+    const headers = headerFactory();
+    mockFetch.mockImplementation((reqUrl: string | Request) => {
+      const url = typeof reqUrl === 'string' ? reqUrl : reqUrl.url;
+      if (url.includes('/mockifyer-scenario-config')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers,
+          json: async () => ({ success: true, currentScenario: 'default' }),
+          text: async () => '',
+        });
+      }
+      if (url.includes('/mockifyer-sync-to-device-manifest')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers,
+          json: async () => ({
+            success: true,
+            files: files.map((f) => ({ filename: f.filename, modificationTime: f.modificationTime })),
+          }),
+          text: async () => '',
+        });
+      }
+      if (url.includes('/mockifyer-sync-to-device-file')) {
+        let decoded = '';
+        try {
+          const u = new URL(url, 'http://localhost');
+          const p = u.searchParams.get('path');
+          decoded = p ? decodeURIComponent(p) : '';
+        } catch {
+          /* ignore */
+        }
+        const file = files.find((f) => f.filename === decoded);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers,
+          json: async () => ({
+            success: true,
+            filename: file?.filename,
+            content: file?.content,
+          }),
+          text: async () => '',
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers,
+        json: async () => ({ success: true }),
+        text: async () => '',
+      });
+    });
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -116,22 +187,7 @@ describe('Reload with Sync Functionality', () => {
         },
       ];
 
-      const mockHeadersForSync1 = {
-        forEach: jest.fn((callback: (value: string, key: string) => void) => {
-          callback('application/json', 'content-type');
-        }),
-        get: jest.fn((name: string) => 'application/json'),
-      };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: mockHeadersForSync1,
-        json: async () => ({
-          success: true,
-          files: mockFiles,
-        }),
-      });
+      stubManifestSyncFetch(mockFiles);
 
       mockFileSystem.readDirectoryAsync.mockResolvedValue(['synced_file.json']);
       mockFileSystem.getInfoAsync.mockResolvedValue({ exists: true, modificationTime: Date.now() });
@@ -140,21 +196,25 @@ describe('Reload with Sync Functionality', () => {
       await httpClient.reloadMockData(true);
 
       expect(mockFetch).toHaveBeenCalled();
-      // Find the call to sync endpoint (may not be the first call due to initialization)
-      const syncCall = mockFetch.mock.calls.find((call: any[]) => 
-        call[0] && typeof call[0] === 'string' && call[0].includes('/mockifyer-sync-to-device')
+      const manifestCall = mockFetch.mock.calls.find(
+        (call: any[]) =>
+          call[0] &&
+          typeof call[0] === 'string' &&
+          call[0].includes('/mockifyer-sync-to-device-manifest')
       );
-      expect(syncCall).toBeDefined();
-      expect(syncCall[0]).toContain('/mockifyer-sync-to-device');
+      expect(manifestCall).toBeDefined();
     });
 
     it('should skip sync when syncFromProject is false', async () => {
       await httpClient.reloadMockData(false);
 
-      expect(mockFetch).not.toHaveBeenCalledWith(
-        expect.stringContaining('/mockifyer-sync-to-device'),
-        expect.anything()
+      const manifestCalls = mockFetch.mock.calls.filter(
+        (call: any[]) =>
+          call[0] &&
+          typeof call[0] === 'string' &&
+          call[0].includes('/mockifyer-sync-to-device-manifest')
       );
+      expect(manifestCalls.length).toBe(0);
     });
 
     it('should reload cache after syncing', async () => {
@@ -179,22 +239,7 @@ describe('Reload with Sync Functionality', () => {
         },
       ];
 
-      const mockHeadersForSync2 = {
-        forEach: jest.fn((callback: (value: string, key: string) => void) => {
-          callback('application/json', 'content-type');
-        }),
-        get: jest.fn((name: string) => 'application/json'),
-      };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: mockHeadersForSync2,
-        json: async () => ({
-          success: true,
-          files: mockFiles,
-        }),
-      });
+      stubManifestSyncFetch(mockFiles);
 
       mockFileSystem.readDirectoryAsync.mockResolvedValue(['test.json']);
       mockFileSystem.getInfoAsync.mockResolvedValue({ exists: true, modificationTime: Date.now() });
@@ -207,7 +252,20 @@ describe('Reload with Sync Functionality', () => {
     });
 
     it('should handle sync failure gracefully', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Sync failed'));
+      mockFetch.mockImplementation((reqUrl: string | Request) => {
+        const url = typeof reqUrl === 'string' ? reqUrl : reqUrl.url;
+        if (url.includes('/mockifyer-sync-to-device-manifest')) {
+          return Promise.reject(new Error('Sync failed'));
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: headerFactory(),
+          json: async () => ({ success: true, currentScenario: 'default' }),
+          text: async () => '',
+        });
+      });
 
       await expect(httpClient.reloadMockData(true)).resolves.not.toThrow();
     });
@@ -237,22 +295,7 @@ describe('Reload with Sync Functionality', () => {
         },
       ];
 
-      const mockHeadersForSync3 = {
-        forEach: jest.fn((callback: (value: string, key: string) => void) => {
-          callback('application/json', 'content-type');
-        }),
-        get: jest.fn((name: string) => 'application/json'),
-      };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: mockHeadersForSync3,
-        json: async () => ({
-          success: true,
-          files: mockFiles,
-        }),
-      });
+      stubManifestSyncFetch(mockFiles);
 
       mockFileSystem.readDirectoryAsync.mockResolvedValue(['preserved_time.json']);
       mockFileSystem.getInfoAsync.mockResolvedValue({ exists: true, modificationTime: originalMtime });
@@ -306,22 +349,7 @@ describe('Reload with Sync Functionality', () => {
         modificationTime: newerMtime,
       };
 
-      const mockHeadersForSync4 = {
-        forEach: jest.fn((callback: (value: string, key: string) => void) => {
-          callback('application/json', 'content-type');
-        }),
-        get: jest.fn((name: string) => 'application/json'),
-      };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: mockHeadersForSync4,
-        json: async () => ({
-          success: true,
-          files: [olderFile, newerFile],
-        }),
-      });
+      stubManifestSyncFetch([olderFile, newerFile]);
 
       mockFileSystem.readDirectoryAsync.mockResolvedValue(['older.json', 'newer.json']);
       mockFileSystem.getInfoAsync
@@ -387,26 +415,13 @@ describe('Reload with Sync Functionality', () => {
       mockFileSystem.readAsStringAsync.mockResolvedValue(JSON.stringify(originalData));
 
       // Reload with updated file
-      const mockHeadersForSync = {
-        forEach: jest.fn((callback: (value: string, key: string) => void) => {
-          callback('application/json', 'content-type');
-        }),
-        get: jest.fn((name: string) => 'application/json'),
-      };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: 'OK',
-        headers: mockHeadersForSync,
-        json: async () => ({
-          success: true,
-          files: [{
-            filename,
-            content: updatedData,
-            modificationTime: updatedMtime,
-          }],
-        }),
-      });
+      stubManifestSyncFetch([
+        {
+          filename,
+          content: updatedData as unknown as Record<string, unknown>,
+          modificationTime: updatedMtime,
+        },
+      ]);
 
       await httpClient.reloadMockData(true);
 

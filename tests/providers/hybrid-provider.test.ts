@@ -221,29 +221,35 @@ describe('HybridProvider', () => {
     it('should sync from project folder before reload when syncFromProject is true', async () => {
       await provider.initialize();
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          files: [
-            {
-              filename: 'test.json',
-              content: {
-                request: { method: 'GET', url: 'https://api.example.com/test', headers: {}, queryParams: {} },
-                response: { status: 200, data: {}, headers: {} },
-                timestamp: new Date().toISOString(),
-              },
-              modificationTime: Date.now(),
-            },
-          ],
-        }),
-      });
+      const fileContent = {
+        request: { method: 'GET', url: 'https://api.example.com/test', headers: {}, queryParams: {} },
+        response: { status: 200, data: {}, headers: {} },
+        timestamp: new Date().toISOString(),
+      };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            files: [{ filename: 'test.json', modificationTime: Date.now() }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            filename: 'test.json',
+            content: fileContent,
+          }),
+        });
 
       await provider.reload(true);
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/mockifyer-sync-to-device')
+        `${mockMetroUrl}/mockifyer-sync-to-device-manifest`
       );
     });
 
@@ -253,8 +259,11 @@ describe('HybridProvider', () => {
       await provider.reload(false);
 
       // Should not call sync endpoint
-      const syncCalls = mockFetch.mock.calls.filter(call => 
-        call[0] && call[0].includes('/mockifyer-sync-to-device')
+      const syncCalls = mockFetch.mock.calls.filter(call =>
+        call[0] &&
+        typeof call[0] === 'string' &&
+        (call[0].includes('/mockifyer-sync-to-device-manifest') ||
+          call[0].includes('/mockifyer-sync-to-device-file'))
       );
       expect(syncCalls.length).toBe(0);
     });
@@ -293,20 +302,37 @@ describe('HybridProvider', () => {
         },
       ];
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          files: mockFiles,
-        }),
-      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            files: mockFiles.map((f) => ({ filename: f.filename, modificationTime: f.modificationTime })),
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            filename: mockFiles[0].filename,
+            content: mockFiles[0].content,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            filename: mockFiles[1].filename,
+            content: mockFiles[1].content,
+          }),
+        });
 
       await (provider as any).syncFromProjectFolder();
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${mockMetroUrl}/mockifyer-sync-to-device`
-      );
+      expect(mockFetch).toHaveBeenCalledWith(`${mockMetroUrl}/mockifyer-sync-to-device-manifest`);
       // Files should be saved to device
       expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalled();
     });
@@ -326,6 +352,7 @@ describe('HybridProvider', () => {
       await (provider as any).syncFromProjectFolder();
 
       expect(mockFileSystem.writeAsStringAsync).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(`${mockMetroUrl}/mockifyer-sync-to-device-manifest`);
     });
 
     it('should throw error when Metro endpoint fails', async () => {
@@ -365,14 +392,33 @@ describe('HybridProvider', () => {
         },
       ];
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          files: mockFiles,
-        }),
-      });
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            files: mockFiles.map((f) => ({ filename: f.filename, modificationTime: f.modificationTime })),
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            filename: mockFiles[0].filename,
+            content: mockFiles[0].content,
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            filename: mockFiles[1].filename,
+            content: mockFiles[1].content,
+          }),
+        });
 
       mockFileSystem.writeAsStringAsync
         .mockResolvedValueOnce(undefined)
