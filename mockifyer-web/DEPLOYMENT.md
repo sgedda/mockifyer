@@ -57,7 +57,7 @@ Railway offers a free tier with automatic deployments from GitHub.
      - The path must match exactly the volume mount path you configured in step 4
      - If not set, the app will try to auto-detect, but explicit is better
    - **Important**: Add `GITHUB_TOKEN` with a GitHub Personal Access Token that has `read:packages` scope
-     - This is needed to install `@sgedda/mockifyer` from GitHub Packages
+     - This is needed to install `@sgedda/mockifyer-*` packages from GitHub Packages
      - Create token at: https://github.com/settings/tokens/new
      - Select scope: `read:packages`
      - The build process will automatically configure npm to use this token
