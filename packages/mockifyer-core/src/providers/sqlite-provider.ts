@@ -1,6 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
-import { DatabaseProvider, DatabaseProviderConfig } from './types';
+import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
 /**
  * SQLite-based provider for storing mock data
@@ -62,7 +62,7 @@ export class SQLiteProvider implements DatabaseProvider {
     console.log(`[Mockifyer] SQLite database initialized at: ${this.dbPath}`);
   }
 
-  save(mockData: MockData): void {
+  save(mockData: MockData, _options?: SaveMockOptions): void {
     if (!this.db) {
       throw new Error('SQLiteProvider not initialized. Call initialize() first.');
     }

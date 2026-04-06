@@ -1,32 +1,19 @@
 FROM node:20.19.5-alpine
 
-# Verify Node.js version (for debugging) - do this early so we see it even if build fails
 RUN node --version && npm --version
 
 WORKDIR /app
 
-# Copy files (if Root Directory is set to mockifyer-web, 
-# the build context is already that directory, so we copy from .)
-# If Root Directory is root, we'd need mockifyer-web/ but
-# Railway with Root Directory set means context is already the subdirectory
+# Full monorepo (mockifyer-web depends on file:../packages/*)
 COPY . ./
 
-# Verify source files exist
-RUN ls -la package*.json || (echo "ERROR: package files not found!" && exit 1)
+# Build shared packages first (required before mockifyer-web can load them)
+RUN sh packages/build-all.sh
 
-# Copy production package files
-# RUN cp package.prod.json package.json
+# Web app (has npm start → node dist/index.js)
+WORKDIR /app/mockifyer-web
+RUN npm install
 
-# Install dependencies (will generate new lockfile)
-RUN npm ci --verbose
-
-# Build the application
-RUN npm run build
-
-# Expose port
 EXPOSE 3000
 
-# Start the application
 CMD ["npm", "start"]
-
-

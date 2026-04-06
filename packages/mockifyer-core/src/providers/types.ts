@@ -1,6 +1,12 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData } from '../utils/mock-matcher';
 
+/** Optional hints when saving (e.g. Metro sync project → device preserves on-disk paths). */
+export interface SaveMockOptions {
+  /** Path relative to scenario root (e.g. host/rest/.../POST_foo_2026-01-01_12-00-00.json). */
+  relativePath?: string;
+}
+
 /**
  * Configuration for database providers
  */
@@ -25,7 +31,7 @@ export interface DatabaseProvider {
   /**
    * Save mock data to the database
    */
-  save(mockData: MockData): Promise<void> | void;
+  save(mockData: MockData, options?: SaveMockOptions): Promise<void> | void;
 
   /**
    * Find exact match for a request

@@ -12,7 +12,7 @@ import { logger } from '@sgedda/mockifyer-core';
 
 // Re-export MockifyerInstance type to avoid circular dependency
 export interface MockifyerInstance extends HTTPClient {
-  reloadMockData: () => void;
+  reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
 }
@@ -144,8 +144,18 @@ export async function setupMockifyerForReactNative(
 
     logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
     logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
+    logger.info(
+      `[Mockifyer] Project→device sync: /mockifyer-sync-to-device-manifest + per-file fetch (on reloadMockData); Metro port ${metroPort}`
+    );
     if (recordMode) {
       logger.info('[Mockifyer] Recording mode enabled - new API responses will be saved');
+    }
+
+    // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
+    try {
+      await instance.reloadMockData(true);
+    } catch (error) {
+      logger.warn('[Mockifyer] Initial project→device sync failed (Metro running with built mockifyer-fetch?):', error);
     }
 
     return instance;
