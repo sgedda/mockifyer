@@ -1,6 +1,17 @@
 # Mockifyer
 
+
 API mocking and recording for **axios** and **fetch**, with date manipulation for tests. Mock data lives in your repo as JSON (per request/response), with optional **scenarios** and React Native / Expo support.
+Monorepo for **Mockifyer**: libraries for mocking and recording API calls, with special support for date manipulation in tests.
+
+Published packages (install these, not the repo root):
+
+- `@sgedda/mockifyer-core` — types, providers, `getCurrentDate`, etc.
+- `@sgedda/mockifyer-axios` — Axios integration (`setupMockifyer`)
+- `@sgedda/mockifyer-fetch` — `fetch` integration (`setupMockifyer`)
+- `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-test-helper` — optional tooling
+
+The root `package.json` is private workspace metadata only (not published). The legacy package is not on [npm](https://www.npmjs.com/); on **GitHub Packages** it appears as [`pkgs/npm/mockifyer`](https://github.com/sgedda/mockifyer/pkgs/npm/mockifyer) (unscoped name `mockifyer` in the API). To remove versions: `scripts/delete-github-packages-legacy-mockifyer.sh` (needs `gh` + `delete:packages`).
 
 This repository is a **monorepo**. Prefer the scoped packages below; the root `package.json` is legacy workspace metadata.
 
@@ -18,20 +29,16 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 ## Installation
 
 ```bash
-# Fetch (Expo / RN, or any fetch-based app)
-npm install @sgedda/mockifyer-fetch
-
-# Axios
-npm install @sgedda/mockifyer-axios
-
-# Core only (advanced / custom HTTP clients)
-npm install @sgedda/mockifyer-core
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
+# or for fetch:
+# npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
 ```
 
 ## Usage (fetch)
 
 ```typescript
-import { setupMockifyer, getCurrentDate } from '@sgedda/mockifyer-fetch';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 setupMockifyer({
   mockDataPath: './mock-data',
