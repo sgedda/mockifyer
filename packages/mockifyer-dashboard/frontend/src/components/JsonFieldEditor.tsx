@@ -185,16 +185,6 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
                   />
                 </div>
               )}
-              {isComplex && !isCollapsed && (
-                <div className="flex-1">
-                  <JsonFieldEditor
-                    data={value}
-                    path={fieldPath}
-                    onChange={(newValue) => updateField(key, newValue)}
-                    level={level + 1}
-                  />
-                </div>
-              )}
               {isComplex && isCollapsed && (
                 <span className="text-xs text-muted-foreground">
                   {type === 'array' ? `Array (${(value as any[]).length} items)` : 'Object'}

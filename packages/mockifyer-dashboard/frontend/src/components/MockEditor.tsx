@@ -1,4 +1,8 @@
 import { useState, useEffect } from 'react'
+import CodeMirror from '@uiw/react-codemirror'
+import { json } from '@codemirror/lang-json'
+import type { Extension } from '@codemirror/state'
+import { vscodeLight, vscodeDark } from '@uiw/codemirror-theme-vscode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -12,12 +16,85 @@ interface MockEditorProps {
   mock: MockData
   onClose: () => void
   onSave: () => void
+  /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
+  variant?: 'default' | 'modal'
 }
 
-export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
+/** Above this serialized size, default to JSON tab — form editor is too heavy for huge GraphQL payloads. */
+const LARGE_RESPONSE_CHAR_THRESHOLD = 48_000
+
+const jsonLanguageExtensions: Extension[] = [json()]
+
+function useCodeMirrorVscodeTheme(): Extension {
+  const [theme, setTheme] = useState<Extension>(() => {
+    if (typeof document === 'undefined') return vscodeLight
+    const root = document.documentElement
+    return root.classList.contains('dark') || root.classList.contains('dim') ? vscodeDark : vscodeLight
+  })
+
+  useEffect(() => {
+    const update = () => {
+      const root = document.documentElement
+      const dark = root.classList.contains('dark') || root.classList.contains('dim')
+      setTheme(dark ? vscodeDark : vscodeLight)
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+    return () => observer.disconnect()
+  }, [])
+
+  return theme
+}
+
+interface JsonResponseCodeMirrorProps {
+  value: string
+  onChange: (text: string) => void
+  isModal: boolean
+}
+
+function JsonResponseCodeMirror({ value, onChange, isModal }: JsonResponseCodeMirrorProps) {
+  const vscodeTheme = useCodeMirrorVscodeTheme()
+  return (
+    <div className="w-full overflow-hidden rounded-md border border-input focus-within:ring-2 focus-within:ring-ring">
+      <CodeMirror
+        value={value}
+        height={isModal ? 'min(32rem, 50vh)' : '24rem'}
+        minHeight={isModal ? 'min(280px, 35vh)' : undefined}
+        theme={vscodeTheme}
+        extensions={jsonLanguageExtensions}
+        onChange={onChange}
+        className="text-sm font-mono"
+        basicSetup={{
+          lineNumbers: true,
+          foldGutter: true,
+        }}
+      />
+    </div>
+  )
+}
+
+function estimateResponsePayloadSize(data: unknown): number {
+  if (data === undefined || data === null) return 0
+  if (typeof data === 'string') return data.length
+  try {
+    return JSON.stringify(data).length
+  } catch {
+    return 0
+  }
+}
+
+export default function MockEditor({ mock, onClose, onSave, variant = 'default' }: MockEditorProps) {
   const [responseData, setResponseData] = useState('')
   const [responseObject, setResponseObject] = useState<any>(null)
-  const [editMode, setEditMode] = useState<'json' | 'form'>('form')
+  const [responseCharSize, setResponseCharSize] = useState(0)
+  const preferJsonEditor = responseCharSize > LARGE_RESPONSE_CHAR_THRESHOLD
+  const [editMode, setEditMode] = useState<'json' | 'form'>(() =>
+    estimateResponsePayloadSize(mock.data.response.data) > LARGE_RESPONSE_CHAR_THRESHOLD ? 'json' : 'form'
+  )
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const { toast } = useToast()
@@ -35,7 +112,17 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
       }
     }
     setResponseObject(parsedData)
-    setResponseData(JSON.stringify(parsedData, null, 2))
+    const size = estimateResponsePayloadSize(parsedData)
+    setResponseCharSize(size)
+    setEditMode(size > LARGE_RESPONSE_CHAR_THRESHOLD ? 'json' : 'form')
+    // Large payloads: compact JSON first — browser stays responsive; user can format in editor
+    setResponseData(
+      size > LARGE_RESPONSE_CHAR_THRESHOLD
+        ? typeof parsedData === 'string'
+          ? parsedData
+          : JSON.stringify(parsedData)
+        : JSON.stringify(parsedData, null, 2)
+    )
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -209,18 +296,21 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
     }
   }
 
-  return (
-    <Card className="mt-6">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-xl">Edit Mock: <span className="text-primary font-mono">{mock.filename}</span></CardTitle>
-          <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="response" className="space-y-4">
+  const isModal = variant === 'modal'
+
+  const header = (
+    <div className="flex items-center justify-between gap-2 pr-8 sm:pr-10">
+      <CardTitle className="text-xl">Edit Mock: <span className="text-primary font-mono">{mock.filename}</span></CardTitle>
+      {!isModal && (
+        <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive shrink-0">
+          <X className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  )
+
+  const editorTabs = (
+    <Tabs defaultValue="response" className="space-y-4">
           <TabsList>
             <TabsTrigger value="request">Request</TabsTrigger>
             <TabsTrigger value="response">Response</TabsTrigger>
@@ -306,11 +396,26 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
                 </div>
               </div>
               
+              {preferJsonEditor && (
+                <p className="text-xs text-muted-foreground">
+                  Large response (~{Math.round(responseCharSize / 1024)} KB) — opened in JSON mode for performance. Form
+                  editor will ask for confirmation (it can freeze the tab on huge payloads).
+                </p>
+              )}
               <div className="flex gap-2 border rounded-md p-1 w-fit">
                 <Button
                   variant={editMode === 'form' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => {
+                    if (
+                      preferJsonEditor &&
+                      typeof window !== 'undefined' &&
+                      !window.confirm(
+                        'The form editor loads the full response as editable fields and can freeze the browser on large JSON. Continue?'
+                      )
+                    ) {
+                      return
+                    }
                     setEditMode('form')
                     syncJsonFromObject()
                   }}
@@ -371,14 +476,13 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
                   )}
                 </div>
               ) : (
-                <textarea
+                <JsonResponseCodeMirror
                   value={responseData}
-                  onChange={(e) => {
-                    setResponseData(e.target.value)
-                    validateJSON(e.target.value)
+                  onChange={(text) => {
+                    setResponseData(text)
+                    validateJSON(text)
                   }}
-                  className="w-full h-96 font-mono text-sm bg-muted p-3 rounded-md border border-input focus:outline-none focus:ring-2 focus:ring-ring"
-                  spellCheck={false}
+                  isModal={isModal}
                 />
               )}
               {jsonError && (
@@ -449,7 +553,21 @@ export default function MockEditor({ mock, onClose, onSave }: MockEditorProps) {
             )}
           </TabsContent>
         </Tabs>
-      </CardContent>
+  )
+
+  if (isModal) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0 border-b border-border px-6 pb-4 pt-1">{header}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{editorTabs}</div>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>{header}</CardHeader>
+      <CardContent>{editorTabs}</CardContent>
     </Card>
   )
 }

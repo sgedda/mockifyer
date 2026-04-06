@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
+import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
@@ -14,8 +15,10 @@ function getMockDataPath(): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const mockDataPath = getMockDataPath();
-    const currentScenario = getCurrentScenario(mockDataPath);
-    const scenarioPath = getScenarioFolderPath(mockDataPath, currentScenario);
+    /** Must match /api/mocks: prefer explicit ?scenario= (dashboard) over env-only getCurrentScenario(). */
+    const requestedScenario = req.query.scenario as string | undefined;
+    const currentScenario = requestedScenario || getCurrentScenario(mockDataPath);
+    const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, currentScenario));
     
     if (!fs.existsSync(mockDataPath)) {
       return res.json({
@@ -26,6 +29,7 @@ router.get('/', (req: Request, res: Response) => {
         methods: {},
         statusCodes: {},
         recentActivity: [],
+        folderBreakdown: [],
         scenario: currentScenario,
         mockDataPath: mockDataPath,
         scenarioPath: scenarioPath
@@ -41,29 +45,34 @@ router.get('/', (req: Request, res: Response) => {
         methods: {},
         statusCodes: {},
         recentActivity: [],
+        folderBreakdown: [],
         scenario: currentScenario,
         mockDataPath: mockDataPath,
         scenarioPath: scenarioPath
       });
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
+    const filePaths = getAllJsonFiles(scenarioPath);
 
     let totalSize = 0;
     const endpoints: Record<string, number> = {};
     const domains: Record<string, number> = {};
     const methods: Record<string, number> = {};
     const statusCodes: Record<string, number> = {};
+    const folderCounts: Record<string, number> = {};
     const recentActivity: Array<{ filename: string; modified: Date }> = [];
 
-    files.forEach(file => {
-      const filePath = path.join(scenarioPath, file);
+    filePaths.forEach((filePath) => {
+      const relativeName = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+      const dir = path.dirname(relativeName).split(path.sep).join('/');
+      const folderKey = dir === '.' ? '' : dir;
+      folderCounts[folderKey] = (folderCounts[folderKey] || 0) + 1;
+
       const stats = fs.statSync(filePath);
       totalSize += stats.size;
-      
+
       recentActivity.push({
-        filename: file,
+        filename: relativeName,
         modified: stats.mtime
       });
 
@@ -108,8 +117,15 @@ router.get('/', (req: Request, res: Response) => {
       .slice(0, 10)
       .map(([endpoint, count]) => ({ endpoint, count }));
 
+    const folderBreakdown = Object.entries(folderCounts)
+      .map(([folder, count]) => ({
+        folder: folder === '' ? '(scenario root)' : folder,
+        count,
+      }))
+      .sort((a, b) => a.folder.localeCompare(b.folder));
+
     res.json({
-      totalFiles: files.length,
+      totalFiles: filePaths.length,
       totalSize,
       endpoints: topEndpoints,
       domains,
@@ -119,6 +135,7 @@ router.get('/', (req: Request, res: Response) => {
         filename: item.filename,
         modified: item.modified.toISOString()
       })),
+      folderBreakdown,
       scenario: currentScenario,
       mockDataPath: mockDataPath,
       scenarioPath: scenarioPath

@@ -1,404 +1,150 @@
 # Using Mockifyer with React Native and Expo
 
-Mockifyer can be used in React Native and Expo applications! You have **two options** for storage:
+Mockifyer works with **Expo** and **React Native** via `@sgedda/mockifyer-fetch` (patches `global.fetch`) and `@sgedda/mockifyer-core` providers.
 
-1. **Expo FileSystem Provider** (recommended) - Uses `expo-file-system` to persist files on the device
-2. **Memory Provider** - In-memory storage (data lost on app restart)
+## Recommended: `setupMockifyerForReactNative`
 
-## Quick Answer
+Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entry as `setupMockifyer` path-wise; you can import from `@sgedda/mockifyer-fetch` or `@sgedda/mockifyer-fetch/react-native` depending on your bundler resolution).
 
-**Yes, you can use Mockifyer in React Native/Expo with filesystem access!**
+| Mode | Provider | Behavior |
+|------|----------|----------|
+| **Development** (`isDev: true`) | **Hybrid** | Writes mocks to the **device** (Expo FileSystem) **and** to the **project** `mock-data` folder via Metro HTTP endpoints. |
+| **Production** (`isDev: false`) | **Memory** | Loads mocks from a **bundled** module (e.g. `assets/mock-data.ts`). |
 
-Use the **Expo FileSystem Provider** to:
-- ✅ Save mock files to the device's filesystem
-- ✅ Read mock files that persist across app restarts
-- ✅ Record new API responses during development
-- ✅ Access files locally on your development machine (via Metro)
+- **`MOCKIFYER_ENABLED=true`** or **`__DEV__`** enables Mockifyer in development (unless you override).
+- **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
+- After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
 
-## Setup for React Native/Expo
+Example:
 
-### Option 1: Expo FileSystem Provider (Recommended)
+```typescript
+import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
 
-#### 1. Install Dependencies
+export async function initializeMockifyer() {
+  const recordMode = __DEV__ && process.env.MOCKIFYER_RECORD === 'true';
+
+  return setupMockifyerForReactNative({
+    isDev: __DEV__,
+    mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data',
+    recordMode,
+    config: {
+      logging: 'info',
+    },
+  });
+}
+```
+
+In **`App`** / root layout, **`await initializeMockifyer()`** before other network-heavy setup so interception is active early.
+
+---
+
+## Metro sync middleware (required for Hybrid)
+
+Hybrid saves to the repo through Metro. Add **`createMockSyncMiddleware`** from `@sgedda/mockifyer-fetch` (compiled **`dist/metro-sync-middleware.js`**) in **`metro.config.js`** — see **`example-projects/react-native-expo-example`** or **`example-projects/capp-react-native`** for patterns.
+
+Typical responsibilities:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/mockifyer-save` | Device → project folder (JSON mock file) |
+| `GET` | `/mockifyer-sync-to-device-manifest` | List mock files + mtimes for current scenario |
+| `GET` | `/mockifyer-sync-to-device-file?path=…` | Single mock file (avoids huge all-in-one JSON) |
+| `GET` | `/mockifyer-sync-to-device` | Legacy: all files in one response (large trees may fail) |
+| `GET` | `/mockifyer-scenario-config` | Current scenario for the app |
+| `POST` | `/mockifyer-clear` | Clear project mocks (optional) |
+
+Middleware resolves **`projectRoot`** and **`mockDataPath`** (e.g. `./mock-data`). Scenario comes from **`mock-data/scenario-config.json`** or **`MOCKIFYER_SCENARIO`**.
+
+**Build step:** if Metro `require`s `dist/metro-sync-middleware.js`, run **`npm run build`** in **`packages/mockifyer-fetch`** (and **`packages/mockifyer-core`**) so `dist/` exists, or use a project `metro.config.js` that builds those packages when missing.
+
+**Project → device:** call **`instance.reloadMockData(true)`** (or rely on the initial sync inside `setupMockifyerForReactNative`). Uses manifest + per-file downloads over `http://localhost:${metroPort}` (simulator) — ensure Metro is running.
+
+**Dashboard vs Metro:** **[`mockifyer-dashboard`](./packages/mockifyer-dashboard)** is a **separate** Express app (e.g. port **3002**) for browsing/editing mocks. Sync endpoints for the app run on **Metro**, not the dashboard, unless you mount the same middleware on Express yourself.
+
+---
+
+## Storage providers (manual / advanced)
+
+You can use **`setupMockifyer`** with an explicit ` databaseProvider` instead of the helper:
+
+1. **`hybrid`** — device + project (needs Metro middleware).
+2. **`expo-filesystem`** — device only; mocks stay under the app **document directory** (no automatic sync to repo).
+3. **`memory`** — in-memory; use for tests or production bundles with preloaded data.
 
 ```bash
 npm install @sgedda/mockifyer-fetch
-# or if using axios
-npm install @sgedda/mockifyer-axios
-
-# Install expo-file-system
 npx expo install expo-file-system
 ```
 
-#### 2. Configure with Expo FileSystem Provider
-
 ```typescript
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-// Initialize with expo-filesystem provider
 setupMockifyer({
-  mockDataPath: 'mock-data', // Relative path in document directory
+  mockDataPath: 'mock-data',
   databaseProvider: {
-    type: 'expo-filesystem', // Uses expo-file-system
-    path: 'mock-data', // Directory name in document directory
+    type: 'expo-filesystem',
+    path: 'mock-data',
   },
-  recordMode: true, // Can record new API responses!
-  // Your other config...
+  recordMode: true,
+  useGlobalFetch: true,
 });
 ```
 
-**Files are stored in:** `FileSystem.documentDirectory + 'mock-data'`
+---
 
-### Option 2: Memory Provider (No Persistence)
+## Where files live (Expo FileSystem / Hybrid device side)
 
-#### 1. Install Mockifyer
+On device, mocks are under the **document directory**, e.g.:
+
+`FileSystem.documentDirectory` + `mock-data/<scenario>/...`
+
+iOS Simulator example:
+
+`…/Documents/mock-data/default/<host>/…/*.json`
+
+The **project** copy (Hybrid + Metro) mirrors the same **relative paths** inside `mock-data/<scenario>/`.
+
+Listing files in app code depends on your **expo-file-system** API (legacy `readDirectoryAsync` vs newer **`File`/`Directory`** APIs). The `ExpoFileSystemProvider` in core uses the modern API where available.
+
+---
+
+## Production: bundled mocks
+
+1. Record / edit mocks in dev (Hybrid or filesystem).
+2. Generate a static TS/JS module (e.g. `generateStaticDataFile` / build scripts in **`@sgedda/mockifyer-core`** `build-utils`).
+3. Release build: `setupMockifyerForReactNative` with `isDev: false` loads **`bundledDataPath`** into **Memory** provider.
+
+---
+
+## Environment variables (React Native)
+
+Typical:
 
 ```bash
-npm install @sgedda/mockifyer-fetch
-# or if using axios
-npm install @sgedda/mockifyer-axios
-```
-
-#### 2. Configure with Memory Provider
-
-```typescript
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-
-// Initialize with memory provider (no filesystem access needed)
-setupMockifyer({
-  mockDataPath: './mock-data', // Still required but not used with memory provider
-  databaseProvider: {
-    type: 'memory', // Use in-memory storage
-  },
-  // Your other config...
-});
-```
-
-### 3. Access Files During Development
-
-With Expo FileSystem Provider, files are stored on the device. To access them during development:
-
-#### Option A: Use Expo Dev Tools
-- Files are in the app's document directory
-- Use `expo-file-system` APIs to read/write
-- Files persist across app restarts
-
-#### Option B: Export/Share Files
-```typescript
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-
-// Share a mock file
-const fileUri = FileSystem.documentDirectory + 'mock-data/your-file.json';
-await Sharing.shareAsync(fileUri);
-```
-
-### 4. Pre-load Mock Data (Memory Provider Only)
-
-Since the memory provider doesn't persist data, you can pre-load mocks from bundled JSON files:
-
-```typescript
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-import { MemoryProvider } from '@sgedda/mockifyer-core';
-import mockData1 from './mocks/api-response-1.json';
-import mockData2 from './mocks/api-response-2.json';
-
-const provider = new MemoryProvider({});
-provider.initialize();
-
-// Pre-load your mock data
-provider.save(mockData1);
-provider.save(mockData2);
-
-setupMockifyer({
-  mockDataPath: './mock-data',
-  databaseProvider: {
-    type: 'memory',
-  },
-  // The provider will use the pre-loaded data
-});
-```
-
-## Limitations
-
-### Expo FileSystem Provider
-
-- **Files are device-specific**: Files are stored on the device, not on your development machine
-- **Sandboxed storage**: Files are in the app's document directory (not accessible via file manager)
-- **Async operations**: All file operations are async (unlike Node.js fs)
-
-### Memory Provider Limitations
-
-- **Data is lost on app restart**: All mocks are stored in memory and cleared when the app closes
-- **No recording mode**: Can't record new API responses (would need filesystem access)
-- **Pre-loading required**: You need to manually load mock data at startup
-
-### Workarounds
-
-1. **Use Expo FileSystem Provider**: For persistent storage and recording capabilities
-2. **Bundle mock data**: Include JSON files in your app bundle and load them at startup
-3. **Use Metro bundler**: Import JSON files directly - they'll be bundled with your app
-4. **Development only**: Use mockifyer primarily for development/testing, not production
-
-## Recommended: Conditional Setup (Development + Production)
-
-**Best Practice**: Use Expo FileSystem provider in development (Metro) and Memory provider with bundled TypeScript file in production builds.
-
-### Complete Workflow
-
-1. **Development**: Record mocks using Expo FileSystem provider
-2. **Build**: Generate TypeScript file from recorded mocks
-3. **Production**: Use Memory provider with bundled file
-
-### Step 1: Setup Conditional Initialization
-
-```typescript
-// mockifyer-setup.ts
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-import { MemoryProvider } from '@sgedda/mockifyer-core';
-import { MockData } from '@sgedda/mockifyer-core';
-
-// Lazy load bundled data (only in production)
-let bundledMockData: MockData[] | null = null;
-
-async function loadBundledMockData(): Promise<MockData[]> {
-  if (bundledMockData) return bundledMockData;
-  
-  try {
-    const module = await import('../assets/mock-data');
-    bundledMockData = Array.isArray(module.mockData) 
-      ? module.mockData 
-      : [module.mockData];
-    return bundledMockData;
-  } catch (error) {
-    console.warn('[Mockifyer] Could not load bundled mock data:', error);
-    return [];
-  }
-}
-
-export async function initializeMockifyer() {
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
-  if (!isEnabled) return;
-
-  if (__DEV__) {
-    // DEVELOPMENT: Expo FileSystem Provider (can record)
-    await setupMockifyer({
-      mockDataPath: 'mock-data',
-      databaseProvider: {
-        type: 'expo-filesystem',
-        path: 'mock-data',
-      },
-      recordMode: process.env.MOCKIFYER_RECORD === 'true',
-    });
-    console.log('[Mockifyer] Development: Using Expo FileSystem provider');
-  } else {
-    // PRODUCTION: Memory Provider with bundled data
-    const provider = new MemoryProvider({});
-    await provider.initialize();
-
-    const mockDataArray = await loadBundledMockData();
-    if (mockDataArray.length === 0) {
-      console.warn('[Mockifyer] No bundled mock data found');
-      return;
-    }
-
-    for (const mockData of mockDataArray) {
-      await provider.save(mockData);
-    }
-
-    await setupMockifyer({
-      mockDataPath: './mock-data',
-      databaseProvider: { type: 'memory' },
-      recordMode: false,
-    });
-    console.log(`[Mockifyer] Production: Loaded ${mockDataArray.length} mocks from bundle`);
-  }
-}
-```
-
-### Step 2: Create Build Script
-
-```typescript
-// scripts/generate-build-data.ts
-import { generateStaticDataFile } from '@sgedda/mockifyer-core/utils/build-utils';
-import path from 'path';
-
-generateStaticDataFile({
-  mockDataPath: path.join(__dirname, '../mock-data'),
-  outputPath: path.join(__dirname, '../assets/mock-data.ts'),
-  format: 'typescript',
-  variableName: 'mockData',
-  transform: (data) => ({
-    request: data.request,
-    response: data.response,
-    timestamp: data.timestamp,
-    scenario: data.scenario
-  })
-});
-```
-
-### Step 3: Add to package.json
-
-```json
-{
-  "scripts": {
-    "dev": "react-native start",
-    "dev:record": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true react-native start",
-    "generate:build-data": "ts-node scripts/generate-build-data.ts",
-    "prebuild": "npm run generate:build-data",
-    "build:ios": "npm run generate:build-data && react-native run-ios",
-    "build:android": "npm run generate:build-data && react-native run-android"
-  }
-}
-```
-
-### Step 4: Use in App.tsx
-
-```typescript
-// App.tsx
-import { useEffect } from 'react';
-import { initializeMockifyer } from './mockifyer-setup';
-
-export default function App() {
-  useEffect(() => {
-    initializeMockifyer();
-  }, []);
-  
-  // ... rest of your app
-}
-```
-
-### Workflow Summary
-
-**Development (Metro):**
-- Uses `__DEV__ === true`
-- Expo FileSystem provider
-- Can record new mocks
-- Files stored on device
-
-**Production Build:**
-- Uses `__DEV__ === false`
-- Memory provider
-- Loads from bundled `mock-data.ts`
-- No filesystem dependency
-- Faster (in-memory access)
-
-## Alternative: Simple Setup Examples
-
-### Using Expo FileSystem Provider Only
-
-```typescript
-// mockifyer-setup.ts
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-
-export async function initializeMockifyer() {
-  if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
-    await setupMockifyer({
-      mockDataPath: 'mock-data',
-      databaseProvider: {
-        type: 'expo-filesystem',
-        path: 'mock-data',
-      },
-      recordMode: true,
-    });
-  }
-}
-```
-
-### Using Memory Provider Only
-
-```typescript
-// mockifyer-setup.ts
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-import { MemoryProvider } from '@sgedda/mockifyer-core';
-import userMock from './mocks/user.json';
-import postsMock from './mocks/posts.json';
-
-export function initializeMockifyer() {
-  if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
-    const provider = new MemoryProvider({});
-    provider.initialize();
-    provider.save(userMock);
-    provider.save(postsMock);
-
-    setupMockifyer({
-      mockDataPath: './mock-data',
-      databaseProvider: { type: 'memory' },
-      recordMode: false,
-    });
-  }
-}
-```
-
-## File Access During Development
-
-### Where are files stored?
-
-With Expo FileSystem Provider, files are stored at:
-```
-FileSystem.documentDirectory + 'mock-data/'
-```
-
-Example path on iOS simulator:
-```
-/Users/yourname/Library/Developer/CoreSimulator/Devices/.../data/Containers/Data/Application/.../Documents/mock-data/
-```
-
-### Reading files programmatically
-
-```typescript
-import * as FileSystem from 'expo-file-system';
-
-// List all mock files
-const mockDir = FileSystem.documentDirectory + 'mock-data';
-const files = await FileSystem.readDirectoryAsync(mockDir);
-
-// Read a specific file
-const fileUri = mockDir + '/' + files[0];
-const content = await FileSystem.readAsStringAsync(fileUri);
-const mockData = JSON.parse(content);
-```
-
-### Sharing files for inspection
-
-```typescript
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-
-// Share all mock files (for debugging)
-const mockDir = FileSystem.documentDirectory + 'mock-data';
-const files = await FileSystem.readDirectoryAsync(mockDir);
-
-for (const file of files) {
-  const fileUri = mockDir + '/' + file;
-  await Sharing.shareAsync(fileUri);
-}
-```
-
-## Environment Variables
-
-You can still use environment variables in React Native (via `react-native-config` or similar):
-
-```bash
-# .env
 MOCKIFYER_ENABLED=true
-MOCKIFYER_DB_PROVIDER=memory
+MOCKIFYER_RECORD=true    # recording mode when supported
+MOCKIFYER_SCENARIO=default
+METRO_PORT=8081          # if not default
 ```
+
+Use **`app.config` / Babel** / **metro `transform-inline-environment-variables`** for vars that must appear in the JS bundle (see example projects).
+
+---
+
+## Optional: `mockifyer-dashboard`
+
+Run **`npx mockifyer-dashboard`** (or the package binary) to open a local UI for the same **filesystem** `mock-data` tree. It does **not** replace Metro for in-app sync; it complements editing and scenario switching from the desktop.
+
+---
 
 ## Summary
 
-### Expo FileSystem Provider (Recommended)
-✅ **Works in React Native/Expo** with filesystem access  
-✅ **Files persist** across app restarts  
-✅ **Can record new API responses**  
-✅ **Perfect for development/testing**  
-⚠️ **Files stored on device** (not directly accessible from dev machine)  
-💡 **Use expo-file-system** APIs to access files programmatically
+| Goal | Approach |
+|------|----------|
+| Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + `MOCKIFYER_ENABLED` / `MOCKIFYER_RECORD` as needed |
+| Device-only, no repo sync | **`expo-filesystem`** provider |
+| Production / store build | **Memory** + **bundled** mock module |
+| Edit mocks visually | **mockifyer-dashboard** (optional; separate server) |
 
-### Memory Provider
-✅ **Works in React Native/Expo** without filesystem  
-✅ **No dependencies** needed  
-⚠️ **Data doesn't persist** (lost on app restart)  
-⚠️ **Can't record new mocks** (would need filesystem)  
-💡 **Pre-load mock data** from bundled JSON files
-
+For **`recordMode`**, **`similarMatch`**, **GraphQL** matching, and **fail-on-missing-mock**, use the same `MockifyerConfig` options as in **`@sgedda/mockifyer-fetch`** README / types.

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import type { Stats } from '@/types'
-import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink } from 'lucide-react'
+import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink, Folder } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,8 +27,16 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const navigate = useNavigate()
 
   function handleEndpointClick(endpoint: string) {
-    // Navigate to mocks page with endpoint as search query
     navigate(`/mocks?endpoint=${encodeURIComponent(endpoint)}`)
+  }
+
+  function handleRecentFileClick(filename: string) {
+    navigate(`/mocks?q=${encodeURIComponent(filename)}`)
+  }
+
+  function handleFolderFilter(folderLabel: string) {
+    if (folderLabel === '(scenario root)') return
+    navigate(`/mocks?q=${encodeURIComponent(`${folderLabel}/`)}`)
   }
 
   useEffect(() => {
@@ -37,7 +45,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
 
   useEffect(() => {
     loadStats()
-    const interval = setInterval(loadStats, 5000) // Refresh every 5 seconds
+    const interval = setInterval(() => loadStats(), 5000) // Refresh every 5 seconds
     return () => clearInterval(interval)
   }, [scenario])
 
@@ -62,7 +70,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
         title: 'Success',
         description: `Switched to scenario "${newScenario}"`,
       })
-      await loadStats() // Reload stats for new scenario
+      await loadStats(newScenario)
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -74,9 +82,9 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     }
   }
 
-  async function loadStats() {
+  async function loadStats(scenarioOverride?: string) {
     try {
-      const data = await getStats()
+      const data = await getStats(scenarioOverride ?? scenario)
       setStats(data)
     } catch (error) {
       console.error('Failed to load stats:', error)
@@ -225,6 +233,42 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
           </CardContent>
         </Card>
 
+        {stats.folderBreakdown && stats.folderBreakdown.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Folder className="h-4 w-4 text-primary" />
+                Files by folder
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                {stats.folderBreakdown.map((row) => (
+                  <div
+                    key={row.folder}
+                    className={`flex items-center justify-between gap-2 text-sm rounded-md px-2 py-1 -mx-2 -my-0.5 ${
+                      row.folder !== '(scenario root)'
+                        ? 'cursor-pointer hover:bg-accent/50'
+                        : ''
+                    }`}
+                    onClick={() => handleFolderFilter(row.folder)}
+                    title={
+                      row.folder === '(scenario root)'
+                        ? 'Mocks in scenario root (no subfolder)'
+                        : `Show mocks under ${row.folder}/`
+                    }
+                  >
+                    <span className="font-mono text-xs truncate text-muted-foreground" title={row.folder}>
+                      {row.folder}
+                    </span>
+                    <span className="text-foreground shrink-0">{row.count}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>HTTP Methods</CardTitle>
@@ -281,9 +325,16 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <div className="space-y-2">
               {stats.recentActivity.length > 0 ? (
                 stats.recentActivity.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between text-sm">
-                    <span className="font-mono text-xs truncate flex-1">{item.filename}</span>
-                    <span className="text-muted-foreground ml-4 text-xs">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between text-sm group hover:bg-accent/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
+                    onClick={() => handleRecentFileClick(item.filename)}
+                    title="Open mocks list filtered to this file"
+                  >
+                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary">
+                      {item.filename}
+                    </span>
+                    <span className="text-muted-foreground ml-4 text-xs shrink-0">
                       {new Date(item.modified).toLocaleDateString()}
                     </span>
                   </div>

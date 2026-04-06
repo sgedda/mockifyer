@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import MockList from './MockList'
 import MockEditor from './MockEditor'
 import StatsView from './StatsView'
@@ -34,6 +35,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mocks, setMocks] = useState<MockFile[]>([])
   const [selectedMock, setSelectedMock] = useState<MockData | null>(null)
+  const [loadingMock, setLoadingMock] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const { toast } = useToast()
@@ -51,8 +53,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       loadMocks()
       // Check for endpoint query parameter
       const params = new URLSearchParams(location.search)
+      const qParam = params.get('q')
       const endpointParam = params.get('endpoint')
-      if (endpointParam) {
+      if (qParam) {
+        setSearchQuery(qParam)
+      } else if (endpointParam) {
         setSearchQuery(endpointParam)
       }
     }
@@ -90,6 +95,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
 
   async function handleSelectMock(file: MockFile) {
     try {
+      setLoadingMock(true)
       const mockData = await getMock(file.filename)
       setSelectedMock(mockData)
     } catch (error) {
@@ -98,6 +104,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
         description: 'Failed to load mock data',
         variant: 'destructive',
       })
+    } finally {
+      setLoadingMock(false)
     }
   }
 
@@ -186,19 +194,36 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   <MockList
                     mocks={filteredMocks}
                     loading={loading}
+                    loadingMock={loadingMock}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
                     selectedMock={selectedMock}
                     onSelectMock={handleSelectMock}
                     onRefresh={loadMocks}
                   />
-                  {selectedMock && (
-                    <MockEditor
-                      mock={selectedMock}
-                      onClose={() => setSelectedMock(null)}
-                      onSave={loadMocks}
-                    />
-                  )}
+                  <Dialog
+                    open={!!selectedMock}
+                    onOpenChange={(open) => {
+                      if (!open) setSelectedMock(null)
+                    }}
+                  >
+                    <DialogContent
+                      showCloseButton
+                      className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96rem,96vw)] w-[min(96rem,96vw)]"
+                    >
+                      {selectedMock ? (
+                        <>
+                          <DialogTitle className="sr-only">Edit mock {selectedMock.filename}</DialogTitle>
+                          <MockEditor
+                            variant="modal"
+                            mock={selectedMock}
+                            onClose={() => setSelectedMock(null)}
+                            onSave={loadMocks}
+                          />
+                        </>
+                      ) : null}
+                    </DialogContent>
+                  </Dialog>
                 </div>
               }
             />
