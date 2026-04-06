@@ -1,6 +1,15 @@
 # mockifyer
 
-A Node.js package for mocking and recording API calls, with special support for date manipulation in tests.
+Monorepo for **Mockifyer**: libraries for mocking and recording API calls, with special support for date manipulation in tests.
+
+Published packages (install these, not the repo root):
+
+- `@sgedda/mockifyer-core` — types, providers, `getCurrentDate`, etc.
+- `@sgedda/mockifyer-axios` — Axios integration (`setupMockifyer`)
+- `@sgedda/mockifyer-fetch` — `fetch` integration (`setupMockifyer`)
+- `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-test-helper` — optional tooling
+
+The root `package.json` is private workspace metadata only (not published). The legacy package is not on [npm](https://www.npmjs.com/); on **GitHub Packages** it appears as [`pkgs/npm/mockifyer`](https://github.com/sgedda/mockifyer/pkgs/npm/mockifyer) (unscoped name `mockifyer` in the API). To remove versions: `scripts/delete-github-packages-legacy-mockifyer.sh` (needs `gh` + `delete:packages`).
 
 ## Features
 
@@ -14,13 +23,16 @@ A Node.js package for mocking and recording API calls, with special support for 
 ## Installation
 
 ```bash
-npm install mockifyer
+npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
+# or for fetch:
+# npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
 ```
 
 ## Usage
 
 ```typescript
-import { setupMockifyer, getCurrentDate } from 'mockifyer';
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 // Setup mockifyer with configuration
 setupMockifyer({
