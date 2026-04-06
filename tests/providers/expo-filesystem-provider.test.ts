@@ -244,29 +244,43 @@ describe('ExpoFileSystemProvider', () => {
       mockFileSystem.Directory = jest.fn().mockReturnValue(dir);
       mockFileSystem.Paths.info = jest.fn().mockReturnValue({ exists: true, isDirectory: true });
 
-      let fileCallCount = 0;
-      mockFileSystem.File = jest.fn().mockImplementation(() => {
-        fileCallCount++;
-        if (fileCallCount === 1) {
-          // initialize dir check
-          return makeMockFile({ exists: true, modificationTime: olderMtime, textResult: JSON.stringify(olderData) });
-        } else if (fileCallCount === 2) {
-          return makeMockFile({ exists: true, modificationTime: newerMtime, textResult: JSON.stringify(newerData) });
+      mockFileSystem.File = jest.fn().mockImplementation((uri: string) => {
+        if (typeof uri === 'string' && uri.includes('older_file')) {
+          return makeMockFile({
+            exists: true,
+            modificationTime: olderMtime,
+            textResult: JSON.stringify(olderData),
+          });
+        }
+        if (typeof uri === 'string' && uri.includes('newer_file')) {
+          return makeMockFile({
+            exists: true,
+            modificationTime: newerMtime,
+            textResult: JSON.stringify(newerData),
+          });
         }
         return makeMockFile({ exists: true, modificationTime: newerMtime });
       });
 
       await provider.initialize();
 
-      // Reset call count for the actual test
-      fileCallCount = 0;
-      mockFileSystem.File = jest.fn().mockImplementation(() => {
-        fileCallCount++;
-        if (fileCallCount % 2 === 1) {
-          return makeMockFile({ exists: true, modificationTime: olderMtime, textResult: JSON.stringify(olderData) });
-        } else {
-          return makeMockFile({ exists: true, modificationTime: newerMtime, textResult: JSON.stringify(newerData) });
+      // findExactMatch calls newFile multiple times per path; route by uri so mtime stays stable
+      mockFileSystem.File = jest.fn().mockImplementation((uri: string) => {
+        if (typeof uri === 'string' && uri.includes('older_file')) {
+          return makeMockFile({
+            exists: true,
+            modificationTime: olderMtime,
+            textResult: JSON.stringify(olderData),
+          });
         }
+        if (typeof uri === 'string' && uri.includes('newer_file')) {
+          return makeMockFile({
+            exists: true,
+            modificationTime: newerMtime,
+            textResult: JSON.stringify(newerData),
+          });
+        }
+        return makeMockFile({ exists: true, modificationTime: newerMtime });
       });
 
       const result = await provider.findExactMatch(request, requestKey);

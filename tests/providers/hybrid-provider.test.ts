@@ -19,16 +19,51 @@ describe('HybridProvider', () => {
   const mockMetroPort = 8081;
   const mockMetroUrl = `http://localhost:${mockMetroPort}`;
 
+  /** Expo FS v2 API mocks (Directory.create / File.write), shared for assertions */
+  let defaultDir: {
+    exists: boolean;
+    create: jest.Mock;
+    list: jest.Mock;
+    delete: jest.Mock;
+  };
+  let defaultFile: {
+    exists: boolean;
+    modificationTime: number | null;
+    text: jest.Mock;
+    write: jest.Mock;
+    delete: jest.Mock;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     
-    // Setup default FileSystem mocks
+    // Setup default FileSystem mocks (Paths.document.uri is used by ExpoFileSystemProvider)
     mockFileSystem.documentDirectory = '/mock/document/dir/';
+    mockFileSystem.Paths = {
+      document: { uri: '/mock/document/dir/' },
+      info: jest.fn().mockReturnValue({ exists: true, isDirectory: true }),
+    };
     mockFileSystem.readDirectoryAsync.mockResolvedValue([]);
     mockFileSystem.getInfoAsync.mockResolvedValue({ exists: false });
     mockFileSystem.makeDirectoryAsync.mockResolvedValue(undefined);
     mockFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
-    
+
+    defaultDir = {
+      exists: false,
+      create: jest.fn(),
+      list: jest.fn().mockReturnValue([]),
+      delete: jest.fn(),
+    };
+    defaultFile = {
+      exists: false,
+      modificationTime: null,
+      text: jest.fn().mockResolvedValue('{}'),
+      write: jest.fn(),
+      delete: jest.fn(),
+    };
+    mockFileSystem.File = jest.fn().mockReturnValue(defaultFile);
+    mockFileSystem.Directory = jest.fn().mockReturnValue(defaultDir);
+
     // Setup default fetch mock
     mockFetch.mockResolvedValue({
       ok: true,
@@ -52,7 +87,7 @@ describe('HybridProvider', () => {
   describe('initialization', () => {
     it('should initialize successfully', async () => {
       await provider.initialize();
-      expect(mockFileSystem.makeDirectoryAsync).toHaveBeenCalled();
+      expect(defaultDir.create).toHaveBeenCalled();
     });
 
     it('should use default metro port if not specified', () => {
@@ -92,7 +127,7 @@ describe('HybridProvider', () => {
 
       await provider.save(mockData);
 
-      expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalled();
+      expect(defaultFile.write).toHaveBeenCalled();
     });
 
     it('should skip saving sync endpoint requests', async () => {
@@ -115,7 +150,7 @@ describe('HybridProvider', () => {
 
       await provider.save(mockData);
 
-      expect(mockFileSystem.writeAsStringAsync).not.toHaveBeenCalled();
+      expect(defaultFile.write).not.toHaveBeenCalled();
     });
 
     it('should skip saving when response contains Metro rejection message', async () => {
@@ -138,7 +173,7 @@ describe('HybridProvider', () => {
 
       await provider.save(mockData);
 
-      expect(mockFileSystem.writeAsStringAsync).not.toHaveBeenCalled();
+      expect(defaultFile.write).not.toHaveBeenCalled();
     });
 
     it('should attempt to save to project folder via Metro', async () => {
@@ -201,7 +236,7 @@ describe('HybridProvider', () => {
 
       // Should not throw
       await expect(provider.save(mockData)).resolves.not.toThrow();
-      expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalled();
+      expect(defaultFile.write).toHaveBeenCalled();
     });
   });
 
@@ -334,7 +369,7 @@ describe('HybridProvider', () => {
 
       expect(mockFetch).toHaveBeenCalledWith(`${mockMetroUrl}/mockifyer-sync-to-device-manifest`);
       // Files should be saved to device
-      expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalled();
+      expect(defaultFile.write).toHaveBeenCalled();
     });
 
     it('should handle empty file list', async () => {
@@ -351,7 +386,7 @@ describe('HybridProvider', () => {
 
       await (provider as any).syncFromProjectFolder();
 
-      expect(mockFileSystem.writeAsStringAsync).not.toHaveBeenCalled();
+      expect(defaultFile.write).not.toHaveBeenCalled();
       expect(mockFetch).toHaveBeenCalledWith(`${mockMetroUrl}/mockifyer-sync-to-device-manifest`);
     });
 
@@ -420,13 +455,17 @@ describe('HybridProvider', () => {
           }),
         });
 
-      mockFileSystem.writeAsStringAsync
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('Save failed'));
+      // save() calls File.write synchronously; rejected promises are unhandled — use sync throw
+      defaultFile.write = jest
+        .fn()
+        .mockImplementationOnce(() => undefined)
+        .mockImplementationOnce(() => {
+          throw new Error('Save failed');
+        });
 
       await (provider as any).syncFromProjectFolder();
 
-      expect(mockFileSystem.writeAsStringAsync).toHaveBeenCalledTimes(2);
+      expect(defaultFile.write).toHaveBeenCalledTimes(2);
     });
   });
 
