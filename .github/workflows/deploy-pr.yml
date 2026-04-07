@@ -30,16 +30,14 @@ jobs:
                   echo "Removing lockfiles (as per package.prod.json preinstall)"
                   rm -f package-lock.json package-lock.prod.json || true
 
-            - name: Setup npm authentication for GitHub Packages
+            - name: Configure npm registry for @sgedda (public npm)
               working-directory: mockifyer-web
               run: |
-                  echo '@sgedda:registry=https://npm.pkg.github.com' > .npmrc
-                  echo '//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}' >> .npmrc
+                  echo '@sgedda:registry=https://registry.npmjs.org/' > .npmrc
+                  echo 'legacy-peer-deps=true' >> .npmrc
 
             - name: Generate package-lock.json for Railway
               working-directory: mockifyer-web
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   npm install --package-lock-only --legacy-peer-deps || echo "Lockfile generation completed (warnings OK)"
 

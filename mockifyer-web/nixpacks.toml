@@ -17,8 +17,8 @@ cmds = [
   "cp package.prod.json package.json 2>/dev/null || true",
   "npm install -g npm@latest",
   "npm --version",
-  "echo '@sgedda:registry=https://npm.pkg.github.com' > .npmrc",
-  "echo '//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}' >> .npmrc",
+  "echo '@sgedda:registry=https://registry.npmjs.org/' > .npmrc",
+  "echo 'legacy-peer-deps=true' >> .npmrc",
   "npm install --legacy-peer-deps"
 ]
 
