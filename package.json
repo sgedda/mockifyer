@@ -1,6 +1,6 @@
 {
   "name": "mockifyer-monorepo",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "private": true,
   "description": "Monorepo for Mockifyer libraries: @sgedda/mockifyer-core, @sgedda/mockifyer-axios, @sgedda/mockifyer-fetch, @sgedda/mockifyer-dashboard, @sgedda/mockifyer-test-helper",
   "scripts": {

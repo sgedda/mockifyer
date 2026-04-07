@@ -16,9 +16,9 @@
     "test": "jest"
   },
   "dependencies": {
-    "@sgedda/mockifyer-core": "^1.8.1",
+    "@sgedda/mockifyer-core": "^1.8.2",
     "@sgedda/mockifyer-axios": "^1.7.3",
-    "@sgedda/mockifyer-fetch": "^1.8.1",
+    "@sgedda/mockifyer-fetch": "^1.8.2",
     "axios": "^1.6.7",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
