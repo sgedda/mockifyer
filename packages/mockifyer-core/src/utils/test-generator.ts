@@ -1,5 +1,38 @@
 import { MockData, StoredRequest } from '../types';
-import * as path from 'path';
+
+/**
+ * Minimal POSIX-style path helpers for TestGenerator.
+ * Avoids Node's `path` module so Metro does not pull Node builtins into React Native bundles.
+ */
+function posixPathNormalize(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+function posixPathDirname(p: string): string {
+  const s = posixPathNormalize(p).replace(/\/+$/, '');
+  const i = s.lastIndexOf('/');
+  if (i <= 0) {
+    return '.';
+  }
+  return s.slice(0, i);
+}
+
+function posixPathRelative(from: string, to: string): string {
+  const segments = (p: string) =>
+    posixPathNormalize(p)
+      .split('/')
+      .filter((seg) => seg !== '' && seg !== '.');
+  const fromParts = segments(from);
+  const toParts = segments(to);
+  let i = 0;
+  while (i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
+    i++;
+  }
+  const up = fromParts.length - i;
+  const down = toParts.slice(i);
+  const out = [...Array(up).fill('..'), ...down];
+  return out.join('/') || '.';
+}
 
 export type TestFramework = 'jest' | 'vitest' | 'mocha';
 
@@ -322,25 +355,18 @@ describe('${testInfo.endpoint}', () => {
     const mockDataPathFromOptions = options.mockDataPath || './mock-data';
     
     // Get the directory containing the test file (remove filename)
-    const testFileDir = path.dirname(testFilePath);
+    const testFileDir = posixPathDirname(testFilePath);
     
     // Calculate relative path from test file directory to mock-data directory
-    // path.relative returns the relative path from testFileDir to mockDataPathFromOptions
     // e.g., from './tests/generated/posts_71' to './mock-data' -> '../../../../mock-data'
-    // But we need to normalize paths first
-    const normalizedTestDir = path.normalize(testFileDir);
-    const normalizedMockDataPath = path.normalize(mockDataPathFromOptions);
+    const normalizedTestDir = posixPathNormalize(testFileDir);
+    const normalizedMockDataPath = posixPathNormalize(mockDataPathFromOptions);
     
-    // Calculate relative path
-    let relativePath = path.relative(normalizedTestDir, normalizedMockDataPath);
-    
-    // Normalize to use forward slashes (works on all platforms)
+    let relativePath = posixPathRelative(normalizedTestDir, normalizedMockDataPath);
     relativePath = relativePath.replace(/\\/g, '/');
     
-    // If paths are the same or mock-data is in a parent directory, ensure we have a valid relative path
     if (!relativePath || relativePath === '.' || relativePath === '..') {
-      // Fallback: calculate based on depth
-      const testDepth = normalizedTestDir.split(path.sep).filter((p: string) => p && p !== '.').length;
+      const testDepth = normalizedTestDir.split('/').filter((p: string) => p && p !== '.').length;
       relativePath = '../'.repeat(testDepth) + 'mock-data';
     }
     
