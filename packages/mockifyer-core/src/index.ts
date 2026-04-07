@@ -6,7 +6,8 @@ export * from './utils/mock-matcher';
 export * from './utils/date';
 export * from './utils/scenario';
 export * from './providers';
-export * from './utils/build-utils';
+// build-utils uses Node fs/path — not in main entry (breaks React Native / Metro).
+// Import from '@sgedda/mockifyer-core/utils/build-utils' in Node.js build scripts only.
 export * from './utils/test-generator';
 export * from './utils/logger';
 export * from './utils/file-naming';

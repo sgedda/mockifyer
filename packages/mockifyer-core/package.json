@@ -10,6 +10,10 @@
       "react-native": "./dist/index.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./utils/build-utils": {
+      "types": "./dist/utils/build-utils.d.ts",
+      "default": "./dist/utils/build-utils.js"
     }
   },
   "bin": {
