@@ -1,4 +1,4 @@
-name: Publish Packages to npm
+name: Publish Packages to npm and GitHub Packages
 
 on:
   push:
@@ -25,11 +25,12 @@ jobs:
         run: npm run build
 
   publish:
-    name: Publish to npm
+    name: Publish to npm and GitHub Packages
     needs: quality
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,24 +96,28 @@ jobs:
         working-directory: packages/mockifyer-core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
       - name: Publish mockifyer-axios
         working-directory: packages/mockifyer-axios
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
       - name: Publish mockifyer-fetch
         working-directory: packages/mockifyer-fetch
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
       - name: Publish mockifyer-dashboard
         working-directory: packages/mockifyer-dashboard
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
       # Note: mockifyer-test-helper is skipped for now
@@ -121,11 +126,12 @@ jobs:
       - name: Notify on success
         if: success()
         run: |
-          echo "🎉 Successfully published version ${{ steps.get_version.outputs.VERSION }} to npm!"
-          echo "📦 Packages:"
+          echo "🎉 Successfully published version ${{ steps.get_version.outputs.VERSION }} to npm and GitHub Packages!"
+          echo "📦 npm:"
           echo "  - @sgedda/mockifyer-core: https://www.npmjs.com/package/@sgedda/mockifyer-core"
           echo "  - @sgedda/mockifyer-axios: https://www.npmjs.com/package/@sgedda/mockifyer-axios"
           echo "  - @sgedda/mockifyer-fetch: https://www.npmjs.com/package/@sgedda/mockifyer-fetch"
           echo "  - @sgedda/mockifyer-dashboard: https://www.npmjs.com/package/@sgedda/mockifyer-dashboard"
+          echo "📦 GitHub Packages: https://github.com/${{ github.repository }}?tab=packages"
           echo "⏭️  Skipped: @sgedda/mockifyer-test-helper"
           echo "📝 Release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.VERSION }}"
