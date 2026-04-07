@@ -31,4 +31,9 @@ cd "$PACKAGES_DIR/mockifyer-fetch"
 npm install
 npm run build
 
+echo "Building mockifyer-dashboard..."
+cd "$PACKAGES_DIR/mockifyer-dashboard"
+npm install
+npm run build
+
 echo "All packages built successfully."

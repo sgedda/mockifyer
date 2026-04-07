@@ -1,12 +1,17 @@
 {
   "name": "@sgedda/mockifyer-dashboard",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Standalone CLI dashboard for viewing and managing Mockifyer mock data",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "bin": {
     "mockifyer-dashboard": "./bin/mockifyer-dashboard"
   },
+  "files": [
+    "bin",
+    "dist",
+    "public"
+  ],
   "scripts": {
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm install && npm run build",
