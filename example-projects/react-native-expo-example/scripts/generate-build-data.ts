@@ -17,7 +17,7 @@
  *   5. App uses Memory provider with bundled data at runtime
  */
 
-import { generateStaticDataFile } from '@sgedda/mockifyer-core';
+import { generateStaticDataFile } from '@sgedda/mockifyer-core/utils/build-utils';
 import path from 'path';
 import fs from 'fs';
 
