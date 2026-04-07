@@ -86,6 +86,19 @@ const response = await fetch('https://api.example.com/data');
 const data = await response.json();
 ```
 
+## Publishing
+
+From `packages/`, run:
+
+```bash
+./publish-all.sh
+```
+
+- **npm:** requires `npm login` to [registry.npmjs.org](https://registry.npmjs.org/).
+- **GitHub Packages:** set `GITHUB_TOKEN` or `GH_TOKEN` (PAT or `gh auth token` with `write:packages`). If unset, only npm is used.
+
+Same versions are published to both registries.
+
 ## Next Steps
 
 The `mockifyer-axios` package needs the full implementation extracted from `src/index.ts`:
