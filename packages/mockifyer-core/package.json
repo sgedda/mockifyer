@@ -1,13 +1,13 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.8.3",
+  "version": "1.8.4",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "react-native": "dist/index.js",
+  "react-native": "./dist/index.react-native.js",
   "exports": {
     ".": {
-      "react-native": "./dist/index.js",
+      "react-native": "./dist/index.react-native.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
