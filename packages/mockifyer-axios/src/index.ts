@@ -7,7 +7,7 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions, checkRequestLimit } from '@sgedda/mockifyer-core';
+import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions, checkRequestLimit, prepareMockResponseBody, getCurrentDate } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
@@ -491,7 +491,7 @@ class MockifyerClass {
         });
         
         const mockResponse: AxiosResponse = {
-          data: mockData.response.data,
+          data: prepareMockResponseBody(mockData, getCurrentDate),
           status: mockData.response.status,
           statusText: 'OK',
           headers: axiosHeaders,
@@ -673,7 +673,7 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: mockData.response.data,
+            data: prepareMockResponseBody(mockData, getCurrentDate),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,

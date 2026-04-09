@@ -138,6 +138,29 @@ router.put('/*', (req: Request, res: Response) => {
 
     if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
     existingData.response.data = parsedResponseData;
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
+      const raw = req.body.responseDateOverrides;
+      if (raw === null) {
+        delete existingData.responseDateOverrides;
+      } else if (Array.isArray(raw)) {
+        for (const item of raw) {
+          if (!item || typeof item !== 'object' || typeof item.path !== 'string' || !item.path.trim()) {
+            return res.status(400).json({
+              error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
+            });
+          }
+        }
+        if (raw.length === 0) {
+          delete existingData.responseDateOverrides;
+        } else {
+          existingData.responseDateOverrides = raw;
+        }
+      } else {
+        return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
+      }
+    }
+
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
 
     const stats = fs.statSync(filePath);

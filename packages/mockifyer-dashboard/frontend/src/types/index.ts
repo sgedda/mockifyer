@@ -1,3 +1,13 @@
+/** Paths are relative to `response.data` (see Mockifyer core). */
+export interface MockResponseDateOverride {
+  path: string
+  offsetMs?: number
+  offsetDays?: number
+  offsetHours?: number
+  offsetMinutes?: number
+  format?: 'iso' | 'unix-ms' | 'unix-s'
+}
+
 export interface MockFile {
   filename: string
   filePath: string
@@ -31,6 +41,8 @@ export interface MockData {
     duration?: number // Request duration in milliseconds
     scenario?: string
     sessionId?: string
+    /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
+    responseDateOverrides?: MockResponseDateOverride[]
   }
   metadata: {
     size: number

@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import { getCurrentDate, resetDateManipulation } from '@sgedda/mockifyer-core';
 
@@ -209,6 +212,73 @@ describe('Date Manipulation', () => {
       // So we just verify it's a valid date (not checking exact value)
       expect(result).toBeInstanceOf(Date);
       expect(result.getTime()).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Per-scenario date-config.json', () => {
+    it('uses the active scenario folder before legacy root date-config.json', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.mkdirSync(path.join(mockData, 'beta'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'alpha', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2020-06-01T00:00:00.000Z' },
+        })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'beta', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2021-07-01T00:00:00.000Z' },
+        })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2019-01-01T00:00:00.000Z' },
+        })
+      );
+
+      try {
+        setupMockifyer({ mockDataPath: mockData });
+        expect(getCurrentDate().toISOString()).toBe('2020-06-01T00:00:00.000Z');
+
+        fs.writeFileSync(
+          path.join(mockData, 'scenario-config.json'),
+          JSON.stringify({ currentScenario: 'beta' })
+        );
+        expect(getCurrentDate().toISOString()).toBe('2021-07-01T00:00:00.000Z');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('falls back to legacy root date-config.json when scenario file is missing', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'gamma'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'gamma' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2018-05-05T12:00:00.000Z' },
+        })
+      );
+
+      try {
+        setupMockifyer({ mockDataPath: mockData });
+        expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
     });
   });
 }); 
