@@ -1,5 +1,6 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { logger } from './logger';
+import { getCurrentScenario, getScenarioFolderPath } from './scenario';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -17,7 +18,32 @@ try {
 let currentConfig: MockifyerConfig | null = null;
 
 /**
- * Try to load date config from date-config.json file in mock data directory
+ * Read dateManipulation payload from a single date-config.json file.
+ */
+function readDateManipulationFromJsonFile(filePath: string): { dateManipulation?: any } | null {
+  if (!fs) {
+    return null;
+  }
+  try {
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const config = JSON.parse(fileContent);
+    if (config && typeof config === 'object' && 'dateManipulation' in config) {
+      return { dateManipulation: config.dateManipulation };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load date config from disk: per-scenario file first, then legacy root date-config.json.
+ *
+ * Scenario path: `{mockDataPath}/{currentScenario}/date-config.json`
+ * Legacy path: `{mockDataPath}/date-config.json` (used when scenario-specific file is absent)
+ *
+ * If the scenario folder or per-scenario file does not exist yet, this falls through to the
+ * legacy root file only (no error). If neither file exists, returns null.
  */
 function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
   // Skip file loading if fs/path are not available (React Native)
@@ -26,31 +52,62 @@ function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any
   }
 
   try {
-    // Try to detect mock data path if not provided
-    let configPath: string;
-    if (mockDataPath) {
-      configPath = path.join(mockDataPath, 'date-config.json');
-    } else {
-      // Try common locations
-      const possiblePaths = [
-        './mock-data/date-config.json',
-        './persisted/mock-data/date-config.json',
-        path.join(process.cwd(), 'mock-data', 'date-config.json'),
-        path.join(process.cwd(), 'persisted', 'mock-data', 'date-config.json'),
-      ];
-      
-      configPath = possiblePaths.find(p => fs!.existsSync(p)) || '';
-    }
-
-    if (!configPath || !fs.existsSync(configPath)) {
+    if (mockDataPath && fs.existsSync(mockDataPath)) {
+      const scenario = getCurrentScenario(mockDataPath);
+      const scenarioDir = getScenarioFolderPath(mockDataPath, scenario);
+      const scenarioPath = path.join(scenarioDir, 'date-config.json');
+      if (fs.existsSync(scenarioPath)) {
+        const parsed = readDateManipulationFromJsonFile(scenarioPath);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+      const rootPath = path.join(mockDataPath, 'date-config.json');
+      if (fs.existsSync(rootPath)) {
+        const parsed = readDateManipulationFromJsonFile(rootPath);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
       return null;
     }
 
-    const fileContent = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(fileContent);
-    return config.dateManipulation ? { dateManipulation: config.dateManipulation } : null;
-  } catch (error) {
-    // Silently fail - file might not exist or be invalid
+    // No mockDataPath: probe common roots (same as before, with per-scenario first)
+    const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '';
+    const possibleRoots = [
+      path.join(cwd, 'mock-data'),
+      path.join(cwd, 'persisted', 'mock-data'),
+    ];
+    for (const root of possibleRoots) {
+      if (!fs.existsSync(root)) {
+        continue;
+      }
+      const scenario = getCurrentScenario(root);
+      const scenarioPath = path.join(getScenarioFolderPath(root, scenario), 'date-config.json');
+      if (fs.existsSync(scenarioPath)) {
+        const parsed = readDateManipulationFromJsonFile(scenarioPath);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+      const legacyRoot = path.join(root, 'date-config.json');
+      if (fs.existsSync(legacyRoot)) {
+        const parsed = readDateManipulationFromJsonFile(legacyRoot);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+    }
+
+    const relativeOnly = ['./mock-data/date-config.json', './persisted/mock-data/date-config.json'].find(p =>
+      fs.existsSync(p)
+    );
+    if (relativeOnly) {
+      return readDateManipulationFromJsonFile(relativeOnly);
+    }
+
+    return null;
+  } catch {
     return null;
   }
 }
@@ -112,10 +169,10 @@ export function getCurrentDate(): Date {
   // Try to get date manipulation from current config
   let dateManipulation = currentConfig?.dateManipulation;
 
-  // If no config, try to load from date-config.json file
+  // If no config, try to load from date-config.json file (per-scenario, then legacy root)
   if (!dateManipulation) {
     const fileConfig = loadDateConfigFromFile(currentConfig?.mockDataPath);
-    if (fileConfig?.dateManipulation) {
+    if (fileConfig && 'dateManipulation' in fileConfig) {
       dateManipulation = fileConfig.dateManipulation;
     }
   }
