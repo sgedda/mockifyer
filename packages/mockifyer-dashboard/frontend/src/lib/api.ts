@@ -1,4 +1,4 @@
-import type { MockFile, MockData, Stats, ScenarioConfig } from '@/types'
+import type { MockFile, MockData, MockResponseDateOverride, Stats, ScenarioConfig } from '@/types'
 
 const API_BASE = '/api'
 
@@ -18,15 +18,23 @@ export async function getMock(filename: string): Promise<MockData> {
   return response.json()
 }
 
-export async function updateMock(filename: string, responseData: any): Promise<void> {
+export async function updateMock(
+  filename: string,
+  responseData: any,
+  responseDateOverrides?: MockResponseDateOverride[] | null
+): Promise<void> {
+  const body: Record<string, unknown> = { responseData }
+  if (responseDateOverrides !== undefined) {
+    body.responseDateOverrides = responseDateOverrides
+  }
   const response = await fetch(`${API_BASE}/mocks/${filename}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ responseData }),
+    body: JSON.stringify(body),
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.message || 'Failed to update mock')
+    throw new Error(error.error || error.message || 'Failed to update mock')
   }
 }
 

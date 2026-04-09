@@ -4,6 +4,7 @@ export * from './types/http-client';
 export * from './clients/base-http-client';
 export * from './utils/mock-matcher';
 export * from './utils/date';
+export * from './utils/mock-response-date-overrides';
 export * from './utils/scenario';
 export * from './providers';
 // build-utils uses Node fs/path — not in main entry (breaks React Native / Metro).

@@ -6,12 +6,15 @@ import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
 
+/** Default express.json limit is 100kb — large GraphQL mocks exceed that (413 Payload Too Large). */
+const JSON_BODY_LIMIT = '50mb';
+
 export function createServer(publicDir: string, mockDataPath: string): express.Application {
   const app = express();
 
   // Middleware
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
   app.use('/api', (_req, res, next) => {
