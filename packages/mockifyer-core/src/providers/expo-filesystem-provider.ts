@@ -5,6 +5,7 @@ import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './typ
 import { logger } from '../utils/logger';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
+import { getScenarioLaunchOverride } from '../utils/scenario';
 
 const DEFAULT_SCENARIO = 'default';
 
@@ -69,7 +70,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    * Tries local config first, then Metro endpoint as fallback
    */
   private async getCurrentScenario(): Promise<string> {
-    // Check environment variable first
+    const launchScenario = getScenarioLaunchOverride();
+    if (launchScenario) {
+      return launchScenario;
+    }
+
+    // Check environment variable
     const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
     if (envScenario) {
       return envScenario;

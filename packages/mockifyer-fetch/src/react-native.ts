@@ -6,7 +6,7 @@
  */
 
 import { setupMockifyer } from './index';
-import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
+import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient, setScenarioLaunchOverride } from '@sgedda/mockifyer-core';
 import type { MockifyerConfig } from '@sgedda/mockifyer-core';
 import { logger } from '@sgedda/mockifyer-core';
 
@@ -26,8 +26,48 @@ export interface ReactNativeMockifyerConfig {
   bundledDataPath?: string;
   /** Enable recording mode (development only) */
   recordMode?: boolean;
+  /**
+   * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
+   * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
+   */
+  useLaunchArgumentsScenario?: boolean;
+  /**
+   * Sets the same highest-priority scenario as {@link useLaunchArgumentsScenario} when you pass the value yourself
+   * (e.g. after reading launch args). Ignored if empty after trim.
+   */
+  defaultScenario?: string;
   /** Additional Mockifyer config options */
   config?: Partial<Parameters<typeof setupMockifyer>[0]>;
+}
+
+/**
+ * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ */
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): void {
+  let applied = false;
+  if (options.useLaunchArgumentsScenario) {
+    try {
+      // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
+      const LaunchArguments = mod.LaunchArguments;
+      const raw =
+        LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;
+      const scenario = raw?.scenario;
+      if (scenario !== undefined && scenario !== null && String(scenario).trim() !== '') {
+        setScenarioLaunchOverride(String(scenario).trim());
+        applied = true;
+      }
+    } catch {
+      // Package not installed or native module unavailable
+    }
+  }
+  if (!applied && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+    const t = String(options.defaultScenario).trim();
+    if (t !== '') {
+      setScenarioLaunchOverride(t);
+    }
+  }
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -84,6 +124,7 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
  *   mockDataPath: 'mock-data',
  *   bundledDataPath: './assets/mock-data',
  *   recordMode: process.env.MOCKIFYER_RECORD === 'true',
+ *   useLaunchArgumentsScenario: true, // optional: scenario from react-native-launch-arguments (highest priority)
  * });
  * ```
  */
@@ -104,6 +145,8 @@ export async function setupMockifyerForReactNative(
     logger.info('[Mockifyer] Disabled');
     return null;
   }
+
+  applyReactNativeScenarioOptions(options);
 
   if (isDev === true) {
     // DEVELOPMENT MODE (React Native app running in dev)
