@@ -52,6 +52,14 @@
     "@types/node": "^20.11.24",
     "typescript": "^5.3.3"
   },
+  "peerDependencies": {
+    "react-native-launch-arguments": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native-launch-arguments": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public"
   },

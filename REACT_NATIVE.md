@@ -37,6 +37,18 @@ export async function initializeMockifyer() {
 
 In **`App`** / root layout, **`await initializeMockifyer()`** before other network-heavy setup so interception is active early.
 
+### Default scenario from launch arguments (E2E / Detox)
+
+To force a scenario **above** `MOCKIFYER_SCENARIO`, `config.scenarios.default`, Metro’s `/mockifyer-scenario-config`, and `scenario-config.json`, use either:
+
+1. **`setupMockifyerForReactNative({ useLaunchArgumentsScenario: true, ... })`** — reads `scenario` from [`react-native-launch-arguments`](https://github.com/wix/react-native-launch-arguments) when that package is installed (`LaunchArguments.value().scenario`).
+
+2. **`setScenarioLaunchOverride('my-scenario')`** from `@sgedda/mockifyer-core` — call before or after setup if you read launch args yourself.
+
+3. **`defaultScenario: 'smoke'`** on `setupMockifyerForReactNative` — same priority as (1) when launch args did not supply a non-empty `scenario`.
+
+Clear with `setScenarioLaunchOverride(null)`.
+
 ---
 
 ## Metro sync middleware (required for Hybrid)
