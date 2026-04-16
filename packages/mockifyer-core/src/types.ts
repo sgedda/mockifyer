@@ -42,23 +42,18 @@ export interface MockifyerConfig {
    * Defaults include Mockifyer Metro internals (save/clear/sync/scenario-config) and Resend.
    * Set to empty array to disable all exclusions. */
   excludedUrls?: string[];
-  /** Database provider configuration - NOT YET AVAILABLE FOR USE
-   * 
-   * ⚠️ Database providers (SQLite, Memory, Expo) are not yet available for use.
-   * Only the filesystem provider is currently supported.
-   * 
-   * This configuration option exists for future use. Setting databaseProvider.type
-   * to anything other than 'filesystem' (or undefined) will result in an error.
-   * 
-   * Future support planned for:
-   * - 'sqlite': SQLite database storage
-   * - 'memory': In-memory storage for testing
-   * - 'expo-filesystem': React Native/Expo filesystem storage
+  /**
+   * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
+   * Use `redis` with `mockifyer-fetch` (Node) for a shared Redis-backed store; requires `ioredis`.
+   * `mockifyer-axios` currently supports filesystem only for mock lookup.
    */
   databaseProvider?: {
-    /** Type of database provider: 'filesystem' (default), 'sqlite', 'memory' (in-memory), 'expo-filesystem' (for React Native/Expo), or 'hybrid' (device + project folder) */
-    type?: 'filesystem' | 'sqlite' | 'memory' | 'expo-filesystem' | 'hybrid';
-    /** Path for the provider (directory for filesystem/expo-filesystem, file path for SQLite, ignored for memory) */
+    /** Provider: filesystem (default), sqlite, memory, expo-filesystem, hybrid, or redis (Node + fetch). */
+    type?: 'filesystem' | 'sqlite' | 'memory' | 'expo-filesystem' | 'hybrid' | 'redis';
+    /**
+     * Path or connection URL: mock directory, SQLite file, or Redis URL (e.g. `redis://127.0.0.1:6379`).
+     * For Redis, defaults to `MOCKIFYER_REDIS_URL` or `redis://127.0.0.1:6379`.
+     */
     path?: string;
     /** Additional provider-specific options (e.g., metroPort for hybrid provider) */
     options?: Record<string, any>;

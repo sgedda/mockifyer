@@ -55,7 +55,7 @@ class MockifyerClass {
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
     if (config.databaseProvider && config.databaseProvider.type) {
-      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory'];
+      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory', 'redis', 'sqlite'];
       if (!supportedTypes.includes(config.databaseProvider.type)) {
         throw new Error(
           `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
@@ -112,7 +112,15 @@ class MockifyerClass {
     
     // Initialize database provider if specified
     if (config.databaseProvider && config.databaseProvider.type) {
-      this.databaseProvider = createProvider(config.databaseProvider.type, config.databaseProvider);
+      const providerConfig = {
+        ...config.databaseProvider,
+        options: {
+          ...config.databaseProvider.options,
+          mockDataPath:
+            config.databaseProvider.options?.mockDataPath ?? config.mockDataPath,
+        },
+      };
+      this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
       const initResult = this.databaseProvider.initialize();
       // Handle async initialization (expo-filesystem / hybrid providers)
       if (initResult instanceof Promise) {
