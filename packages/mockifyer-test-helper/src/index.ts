@@ -39,6 +39,13 @@ export interface TestConfig {
   additionalConfig?: Partial<MockifyerConfig>;
 }
 
+function setScenarioEnv(scenario: string | undefined): void {
+  if (!scenario) return;
+  if (typeof process !== 'undefined' && process.env) {
+    process.env.MOCKIFYER_SCENARIO = scenario;
+  }
+}
+
 /**
  * Sets up Mockifyer for testing with automatic configuration
  */
@@ -48,12 +55,13 @@ export function setupTestMocks(config: TestConfig = {}): any {
   }
 
   if (!mockifyerInstance) {
+    setScenarioEnv(config.scenario || process.env.MOCKIFYER_SCENARIO);
+
     const mockifyerConfig: MockifyerConfig = {
       mockDataPath,
       recordMode: false,
       useGlobalFetch: config.httpClientType !== 'axios',
       useGlobalAxios: config.httpClientType === 'axios',
-      scenario: config.scenario || process.env.MOCKIFYER_SCENARIO || 'default',
       ...config.additionalConfig
     };
 
@@ -61,6 +69,7 @@ export function setupTestMocks(config: TestConfig = {}): any {
   }
 
   if (config.scenario) {
+    setScenarioEnv(config.scenario);
     mockifyerInstance.setScenario?.(config.scenario);
   }
 
@@ -71,27 +80,24 @@ export function setupTestMocks(config: TestConfig = {}): any {
  * Auto-setup for Jest
  */
 export function jestSetup(config: TestConfig = {}) {
-  beforeAll(() => {
-    setupTestMocks(config);
-  });
+  const g = globalThis as unknown as { beforeAll?: (fn: () => void) => void };
+  g.beforeAll?.(() => setupTestMocks(config));
 }
 
 /**
  * Auto-setup for Vitest
  */
 export function vitestSetup(config: TestConfig = {}) {
-  beforeAll(() => {
-    setupTestMocks(config);
-  });
+  const g = globalThis as unknown as { beforeAll?: (fn: () => void) => void };
+  g.beforeAll?.(() => setupTestMocks(config));
 }
 
 /**
  * Auto-setup for Mocha
  */
 export function mochaSetup(config: TestConfig = {}) {
-  before(() => {
-    setupTestMocks(config);
-  });
+  const g = globalThis as unknown as { before?: (fn: () => void) => void };
+  g.before?.(() => setupTestMocks(config));
 }
 
 /**

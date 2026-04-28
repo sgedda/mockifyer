@@ -120,8 +120,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
-      # Note: mockifyer-test-helper is skipped for now
-
       # Notify on success
       - name: Notify on success
         if: success()
@@ -133,5 +131,4 @@ jobs:
           echo "  - @sgedda/mockifyer-fetch: https://www.npmjs.com/package/@sgedda/mockifyer-fetch"
           echo "  - @sgedda/mockifyer-dashboard: https://www.npmjs.com/package/@sgedda/mockifyer-dashboard"
           echo "📦 GitHub Packages: https://github.com/${{ github.repository }}?tab=packages"
-          echo "⏭️  Skipped: @sgedda/mockifyer-test-helper"
           echo "📝 Release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.VERSION }}"
