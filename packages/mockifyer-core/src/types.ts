@@ -43,6 +43,18 @@ export interface MockifyerConfig {
    * Set to empty array to disable all exclusions. */
   excludedUrls?: string[];
   /**
+   * Optional HTTP proxy mode for environments that can't access the database provider directly (e.g. React Native + Redis).
+   * When set, network requests can be routed through a proxy service (e.g. mockifyer-dashboard) which serves mocks and/or forwards upstream.
+   */
+  proxy?: {
+    /** Base URL for the proxy service (e.g. `http://localhost:3002`) */
+    baseUrl: string;
+    /** Optional scenario override for the proxy lookup */
+    scenario?: string;
+    /** If true, proxy will record responses on cache miss (if the proxy supports it) */
+    recordOnMiss?: boolean;
+  };
+  /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
    * Use `redis` with `mockifyer-fetch` (Node) for a shared Redis-backed store; requires `ioredis`.
    * `mockifyer-axios` currently supports filesystem only for mock lookup.
