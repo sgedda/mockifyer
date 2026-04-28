@@ -36,9 +36,4 @@ cd "$PACKAGES_DIR/mockifyer-dashboard"
 npm install
 npm run build
 
-echo "Building mockifyer-test-helper..."
-cd "$PACKAGES_DIR/mockifyer-test-helper"
-npm install
-npm run build
-
 echo "All packages built successfully."
