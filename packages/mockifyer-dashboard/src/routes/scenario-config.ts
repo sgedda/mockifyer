@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import { getDashboardContext } from '../utils/dashboard-context';
+import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
@@ -16,11 +18,25 @@ function getMockDataPath(): string {
 }
 
 // Get current scenario config
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
     const currentScenario = getCurrentScenario(mockDataPath);
-    const scenarios = listScenarios(mockDataPath);
+    let scenarios = listScenarios(mockDataPath);
+
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await store.listScenarios();
+        scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
     
     res.json({
       currentScenario,
@@ -34,11 +50,11 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // Set current scenario
-router.post('/set', (req: Request, res: Response) => {
+router.post('/set', async (req: Request, res: Response) => {
   console.log('[ScenarioConfigRoute] POST /set received', { body: req.body, path: req.path });
   try {
     const { scenario } = req.body;
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
     
     if (!scenario || typeof scenario !== 'string' || scenario.trim() === '') {
       return res.status(400).json({ error: 'Scenario name is required' });
@@ -52,11 +68,26 @@ router.post('/set', (req: Request, res: Response) => {
       });
     }
 
-    // Check if scenario exists
-    const scenarios = listScenarios(mockDataPath);
-    if (!scenarios.includes(sanitized)) {
-      return res.status(404).json({ 
-        error: `Scenario "${sanitized}" does not exist. Create it first.` 
+    // Discover scenarios (filesystem + optionally Redis)
+    let scenarios = listScenarios(mockDataPath);
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await store.listScenarios();
+        scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    // In redis mode, allow switching to a scenario even if it doesn't exist yet (it will be created on first write).
+    if (config.provider !== 'redis' && !scenarios.includes(sanitized)) {
+      return res.status(404).json({
+        error: `Scenario "${sanitized}" does not exist. Create it first.`,
       });
     }
 
@@ -68,7 +99,7 @@ router.post('/set', (req: Request, res: Response) => {
       success: true,
       message: `Scenario switched to "${sanitized}"`,
       currentScenario: sanitized,
-      scenarios
+      scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
     });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Set - Error:', error);
@@ -77,10 +108,10 @@ router.post('/set', (req: Request, res: Response) => {
 });
 
 // Create new scenario
-router.post('/create', (req: Request, res: Response) => {
+router.post('/create', async (req: Request, res: Response) => {
   try {
     const { scenario } = req.body;
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
     
     if (!scenario || typeof scenario !== 'string' || scenario.trim() === '') {
       return res.status(400).json({ error: 'Scenario name is required' });
@@ -94,23 +125,39 @@ router.post('/create', (req: Request, res: Response) => {
       });
     }
 
-    // Check if scenario already exists
-    const scenarios = listScenarios(mockDataPath);
+    // Check if scenario already exists (filesystem + optionally Redis)
+    let scenarios = listScenarios(mockDataPath);
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await store.listScenarios();
+        scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
     if (scenarios.includes(sanitized)) {
-      return res.status(409).json({ 
-        error: `Scenario "${sanitized}" already exists` 
+      return res.status(409).json({
+        error: `Scenario "${sanitized}" already exists`,
       });
     }
 
-    // Create scenario folder
+    // Create scenario folder for filesystem flows; for redis it is optional but harmless.
     createScenario(mockDataPath, sanitized);
+    // Also set the scenario immediately.
+    saveScenarioConfig(mockDataPath, sanitized);
     
     console.log(`[ScenarioConfigRoute] Created scenario: ${sanitized}`);
     res.json({
       success: true,
       message: `Scenario "${sanitized}" created successfully`,
-      currentScenario: getCurrentScenario(mockDataPath),
-      scenarios: listScenarios(mockDataPath)
+      currentScenario: sanitized,
+      scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
     });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Create - Error:', error);

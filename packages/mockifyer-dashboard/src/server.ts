@@ -6,8 +6,22 @@ import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
 
-export function createServer(publicDir: string, mockDataPath: string): express.Application {
+export interface DashboardServerConfig {
+  provider: 'filesystem' | 'sqlite' | 'redis';
+  redisUrl?: string;
+  keyPrefix?: string;
+}
+
+export function createServer(
+  publicDir: string,
+  mockDataPath: string,
+  _config: DashboardServerConfig
+): express.Application {
   const app = express();
+
+  // Make config accessible to route handlers
+  app.locals.mockDataPath = mockDataPath;
+  app.locals.dashboardConfig = _config;
 
   // Middleware
   app.use(express.json());

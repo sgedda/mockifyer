@@ -4,6 +4,8 @@ import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import { getDashboardContext } from '../utils/dashboard-context';
+import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
@@ -11,12 +13,99 @@ function getMockDataPath(): string {
   return detectMockDataPath();
 }
 
+function parseRedisHashFromFilename(relativeName: string): string | null {
+  // Expected format: redis/<hash>.json
+  if (!relativeName.startsWith('redis/')) return null;
+  if (!relativeName.endsWith('.json')) return null;
+  const hash = relativeName.slice('redis/'.length, -'.json'.length);
+  if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+  return hash;
+}
+
 // List all mock files (recursive)
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
     const requestedScenario = req.query.scenario as string | undefined;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
+
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const items = await store.list(scenario);
+        const files = items
+          .map(({ hash, mockData, redisKey }) => {
+            const payload = JSON.stringify(mockData);
+            const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
+
+            let endpoint: string | null = null;
+            let graphqlInfo: any = null;
+            let sessionId: string | null = null;
+            try {
+              if (mockData.request?.url) endpoint = mockData.request.url;
+              // Best-effort query params formatting, matching filesystem route behavior.
+              if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+                const params = new URLSearchParams();
+                Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
+                  if (value != null) params.append(key, String(value));
+                });
+                const qs = params.toString();
+                if (qs && endpoint) endpoint += '?' + qs;
+              }
+              // GraphQL heuristic
+              const body = (mockData.request as any)?.data;
+              const parsedBody =
+                typeof body === 'string'
+                  ? (() => {
+                      try {
+                        return JSON.parse(body);
+                      } catch {
+                        return body;
+                      }
+                    })()
+                  : body;
+              if (
+                parsedBody &&
+                typeof parsedBody === 'object' &&
+                typeof (parsedBody as any).query === 'string'
+              ) {
+                graphqlInfo = {
+                  query: (parsedBody as any).query,
+                  variables: (parsedBody as any).variables || null,
+                };
+              }
+              sessionId = (mockData as any).sessionId || null;
+            } catch {
+              // ignore
+            }
+
+            // Use a stable pseudo-filename for UI routing. Must end with .json.
+            const filename = `redis/${hash}.json`;
+            return {
+              filename,
+              filePath: `redis://${redisKey}`,
+              size: Buffer.byteLength(payload),
+              created: ts.toISOString(),
+              modified: ts.toISOString(),
+              endpoint,
+              graphqlInfo,
+              sessionId,
+            };
+          })
+          .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+        return res.json({ files, mockDataPath, scenario });
+      } catch (error: any) {
+        console.error('[MocksRoute] Redis List - Error:', error);
+        return res.status(500).json({ error: 'Failed to list Redis mocks', details: error.message });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
 
     if (!fs.existsSync(mockDataPath) || !fs.existsSync(scenarioPath)) {
@@ -91,10 +180,39 @@ function resolveFilePath(scenarioPath: string, relativeName: string): string | n
 }
 
 // Get a specific mock file — filename may contain slashes (e.g. host/graphql/file.json)
-router.get('/*', (req: Request, res: Response) => {
+router.get('/*', async (req: Request, res: Response) => {
   try {
     const relativeName = req.params[0];
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (config.provider === 'redis') {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const scenario = getCurrentScenario(mockDataPath);
+        const data = await store.getByHash(hash, scenario);
+        if (!data) return res.status(404).json({ error: 'Mock not found' });
+        const payload = JSON.stringify(data);
+        const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+        return res.json({
+          filename: relativeName,
+          data,
+          metadata: {
+            size: Buffer.byteLength(payload),
+            created: ts.toISOString(),
+            modified: ts.toISOString(),
+          },
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
     const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
@@ -103,7 +221,11 @@ router.get('/*', (req: Request, res: Response) => {
 
     const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     const stats = fs.statSync(filePath);
-    res.json({ filename: relativeName, data: mockData, metadata: { size: stats.size, created: stats.birthtime, modified: stats.mtime } });
+    res.json({
+      filename: relativeName,
+      data: mockData,
+      metadata: { size: stats.size, created: stats.birthtime, modified: stats.mtime },
+    });
   } catch (error: any) {
     console.error('[MocksRoute] Get - Error:', error);
     res.status(500).json({ error: 'Failed to read mock file', details: error.message });
@@ -111,10 +233,54 @@ router.get('/*', (req: Request, res: Response) => {
 });
 
 // Update a mock file
-router.put('/*', (req: Request, res: Response) => {
+router.put('/*', async (req: Request, res: Response) => {
   try {
     const relativeName = req.params[0];
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (config.provider === 'redis') {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+      if (!req.body || req.body.responseData === undefined) {
+        return res.status(400).json({ error: 'Request body must contain responseData field' });
+      }
+
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const scenario = getCurrentScenario(mockDataPath);
+        const existingData = await store.getByHash(hash, scenario);
+        if (!existingData) return res.status(404).json({ error: 'Mock not found' });
+
+        let parsedResponseData: any;
+        try {
+          parsedResponseData =
+            typeof req.body.responseData === 'string'
+              ? JSON.parse(req.body.responseData)
+              : req.body.responseData;
+        } catch (e: any) {
+          return res.status(400).json({ error: 'Invalid JSON', details: e.message });
+        }
+
+        if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
+        (existingData as any).response.data = parsedResponseData;
+        await store.setByHash(hash, existingData as any, scenario);
+        const payload = JSON.stringify(existingData);
+        const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
+        return res.json({
+          success: true,
+          message: `Mock updated successfully`,
+          filename: relativeName,
+          metadata: { size: Buffer.byteLength(payload), modified: ts.toISOString() },
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
     const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
@@ -150,10 +316,28 @@ router.put('/*', (req: Request, res: Response) => {
 });
 
 // Delete a mock file
-router.delete('/*', (req: Request, res: Response) => {
+router.delete('/*', async (req: Request, res: Response) => {
   try {
     const relativeName = req.params[0];
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (config.provider === 'redis') {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const scenario = getCurrentScenario(mockDataPath);
+        await store.deleteByHash(hash, scenario);
+        return res.json({ success: true, message: `Mock deleted successfully`, filename: relativeName });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
     const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
@@ -170,11 +354,19 @@ router.delete('/*', (req: Request, res: Response) => {
 });
 
 // Duplicate a mock file
-router.post('/*/duplicate', (req: Request, res: Response) => {
+router.post('/*/duplicate', async (req: Request, res: Response) => {
   try {
     // params[0] captures everything between the leading / and /duplicate
     const relativeName = req.params[0];
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (config.provider === 'redis') {
+      // Redis provider keys are derived from request key hashes, so "duplicate" would overwrite the same key.
+      return res.status(400).json({
+        error: 'Duplicate is not supported for Redis-backed mocks (keys are deterministic per request).',
+      });
+    }
+
     const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
