@@ -152,7 +152,7 @@ export class RedisProvider implements DatabaseProvider {
     if (members.length === 0) {
       return [];
     }
-      const keys = members.map((h: string) => this.dataKey(h));
+    const keys = members.map((h: string) => this.dataKey(h));
     const values = await this.redis.mget(...keys);
     const out: MockData[] = [];
     for (const raw of values) {

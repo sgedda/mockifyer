@@ -37,8 +37,15 @@ This web application demonstrates how to use `mockifyer` to mock external API ca
    MOCKIFYER_ENABLED=true
    MOCKIFYER_RECORD=true
    MOCKIFYER_PATH=./mock-data
+   MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379  # Optional: Redis-backed mock storage
    MOCKIFYER_MAX_SCENARIOS=3  # Optional: Set max number of scenarios. If not set, there is no limit.
    MOCKIFYER_MAX_REQUESTS_PER_SCENARIO=20  # Optional: Set max requests per scenario. If not set, there is no limit.
+   ```
+
+   If you want a local Redis quickly, from the repo root run:
+
+   ```bash
+   docker compose up redis
    ```
 
    **Getting API Keys:**
