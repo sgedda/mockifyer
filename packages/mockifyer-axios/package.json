@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-axios",
-  "version": "1.8.6",
+  "version": "1.8.7",
   "description": "Mockifyer for Axios - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
