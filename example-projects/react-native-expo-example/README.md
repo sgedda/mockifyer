@@ -138,6 +138,20 @@ npm run dev:record
 npm start
 ```
 
+### Dashboard with Redis Provider
+
+Use the dashboard in Redis mode when your mock data is stored in Redis:
+
+```bash
+# Uses redis://localhost:6379
+npm run dashboard:redis
+
+# Uses MOCKIFYER_REDIS_URL from env
+MOCKIFYER_REDIS_URL=redis://localhost:6380 npm run dashboard:redis:custom
+```
+
+See `DASHBOARD.md` for the full Redis dashboard flow and options.
+
 ## Project Structure
 
 ```

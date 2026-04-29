@@ -27,12 +27,17 @@ export class RedisProvider implements DatabaseProvider {
   private readonly keyPrefix: string;
 
   private readonly redisUrl: string;
+  private readonly activeScenarioKey: string;
+  private readonly useCentralizedScenario: boolean;
 
   constructor(config: DatabaseProviderConfig) {
     this.redisUrl =
       config.path || (typeof process !== 'undefined' && process.env?.MOCKIFYER_REDIS_URL) || 'redis://127.0.0.1:6379';
     this.mockDataPath = (config.options?.mockDataPath as string) || '.';
     this.keyPrefix = (config.options?.keyPrefix as string) || 'mockifyer:v1';
+    this.activeScenarioKey =
+      (config.options?.activeScenarioKey as string) || `${this.keyPrefix}:active_scenario`;
+    this.useCentralizedScenario = (config.options?.useCentralizedScenario as boolean) ?? true;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RedisCtor: any;
@@ -51,30 +56,40 @@ export class RedisProvider implements DatabaseProvider {
     });
   }
 
-  private scenarioKey(): string {
+  private async scenarioKey(scenarioOverride?: string): Promise<string> {
+    if (scenarioOverride) return scenarioOverride;
+    if (!this.useCentralizedScenario) return getCurrentScenario(this.mockDataPath);
+
+    const centralizedScenario = await this.redis.get(this.activeScenarioKey);
+    if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
+      return centralizedScenario.trim();
+    }
+
     return getCurrentScenario(this.mockDataPath);
   }
 
-  private indexKey(): string {
-    return `${this.keyPrefix}:index:${this.scenarioKey()}`;
+  private async indexKey(scenarioOverride?: string): Promise<string> {
+    return `${this.keyPrefix}:index:${await this.scenarioKey(scenarioOverride)}`;
   }
 
-  private dataKey(hash: string): string {
-    return `${this.keyPrefix}:mock:${this.scenarioKey()}:${hash}`;
+  private async dataKey(hash: string, scenarioOverride?: string): Promise<string> {
+    return `${this.keyPrefix}:mock:${await this.scenarioKey(scenarioOverride)}:${hash}`;
   }
 
   async initialize(): Promise<void> {
     await this.redis.ping();
-    logger.info(`[RedisProvider] Connected; prefix=${this.keyPrefix} scenario=${this.scenarioKey()}`);
+    const scenario = await this.scenarioKey();
+    logger.info(`[RedisProvider] Connected; prefix=${this.keyPrefix} scenario=${scenario}`);
   }
 
   async save(mockData: MockData, _options?: SaveMockOptions): Promise<void> {
     const requestKey = generateRequestKey(mockData.request);
     const h = hashRequestKey(requestKey);
-    const key = this.dataKey(h);
+    const key = await this.dataKey(h);
     const payload = JSON.stringify(mockData);
     await this.redis.set(key, payload);
-    await this.redis.sadd(this.indexKey(), h);
+    const scenarioIndex = await this.indexKey();
+    await this.redis.sadd(scenarioIndex, h);
     logger.debug(`[RedisProvider] Saved mock ${h.slice(0, 12)}… (${payload.length} bytes)`);
   }
 
@@ -83,7 +98,8 @@ export class RedisProvider implements DatabaseProvider {
     requestKey: string
   ): Promise<CachedMockData | undefined> {
     const h = hashRequestKey(requestKey);
-    const raw = await this.redis.get(this.dataKey(h));
+    const dataKey = await this.dataKey(h);
+    const raw = await this.redis.get(dataKey);
     if (!raw) {
       return undefined;
     }
@@ -91,7 +107,7 @@ export class RedisProvider implements DatabaseProvider {
     return {
       mockData,
       filename: `redis_${h.slice(0, 16)}.json`,
-      filePath: `redis://${this.dataKey(h)}`,
+      filePath: `redis://${dataKey}`,
     };
   }
 
@@ -102,12 +118,13 @@ export class RedisProvider implements DatabaseProvider {
       const requestPath = requestUrl.pathname;
       const requestMethod = (request.method || 'GET').toUpperCase();
 
-      const members = await this.redis.smembers(this.indexKey());
+      const scenarioIndex = await this.indexKey();
+      const members = await this.redis.smembers(scenarioIndex);
       if (members.length === 0) {
         return [];
       }
 
-      const keys = members.map((h: string) => this.dataKey(h));
+      const keys = await Promise.all(members.map((h: string) => this.dataKey(h)));
       const values = await this.redis.mget(...keys);
 
       for (let i = 0; i < members.length; i++) {
@@ -123,7 +140,7 @@ export class RedisProvider implements DatabaseProvider {
             results.push({
               mockData,
               filename: `redis_${h.slice(0, 16)}.json`,
-              filePath: `redis://${this.dataKey(h)}`,
+              filePath: `redis://${keys[i]}`,
             });
           }
         } catch {
@@ -143,16 +160,18 @@ export class RedisProvider implements DatabaseProvider {
 
   async exists(requestKey: string): Promise<boolean> {
     const h = hashRequestKey(requestKey);
-    const n = await this.redis.exists(this.dataKey(h));
+    const dataKey = await this.dataKey(h);
+    const n = await this.redis.exists(dataKey);
     return n === 1;
   }
 
   async getAll(): Promise<MockData[]> {
-    const members = await this.redis.smembers(this.indexKey());
+    const scenarioIndex = await this.indexKey();
+    const members = await this.redis.smembers(scenarioIndex);
     if (members.length === 0) {
       return [];
     }
-    const keys = members.map((h: string) => this.dataKey(h));
+    const keys = await Promise.all(members.map((h: string) => this.dataKey(h)));
     const values = await this.redis.mget(...keys);
     const out: MockData[] = [];
     for (const raw of values) {
@@ -175,12 +194,14 @@ export class RedisProvider implements DatabaseProvider {
   }
 
   async clearAll(): Promise<void> {
-    const members = await this.redis.smembers(this.indexKey());
+    const scenario = await this.scenarioKey();
+    const scenarioIndex = await this.indexKey(scenario);
+    const members = await this.redis.smembers(scenarioIndex);
     if (members.length > 0) {
-      const keys = members.map((h: string) => this.dataKey(h));
+      const keys = await Promise.all(members.map((h: string) => this.dataKey(h, scenario)));
       await this.redis.del(...keys);
     }
-    await this.redis.del(this.indexKey());
-    logger.info(`[RedisProvider] Cleared scenario ${this.scenarioKey()}`);
+    await this.redis.del(scenarioIndex);
+    logger.info(`[RedisProvider] Cleared scenario ${scenario}`);
   }
 }
