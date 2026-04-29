@@ -4,11 +4,21 @@ import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
   private defaultHeaders: Record<string, string>;
+  private proxyBaseUrl?: string;
+  private proxyScenario?: string;
+  private proxyRecordOnMiss: boolean;
 
-  constructor(config?: { baseUrl?: string; defaultHeaders?: Record<string, string> }) {
+  constructor(config?: {
+    baseUrl?: string;
+    defaultHeaders?: Record<string, string>;
+    proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean };
+  }) {
     super();
     this.baseUrl = config?.baseUrl;
     this.defaultHeaders = config?.defaultHeaders || {};
+    this.proxyBaseUrl = config?.proxy?.baseUrl;
+    this.proxyScenario = config?.proxy?.scenario;
+    this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
@@ -56,8 +66,56 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       console.warn('[FetchHTTPClient] _originalFetch not set! This may cause infinite loops if global fetch is patched.');
     }
     
+    // Proxy mode (e.g. React Native → dashboard → Redis)
+    if (this.proxyBaseUrl) {
+      const proxyUrl = new URL('/api/proxy', this.proxyBaseUrl).toString();
+      const proxyResponse = await fetchFn(proxyUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          method: requestConfig.method,
+          headers: (() => {
+            const out: Record<string, string> = {};
+            headers.forEach((value, key) => {
+              out[key] = value;
+            });
+            return out;
+          })(),
+          body: config.data ?? null,
+          scenario: this.proxyScenario,
+          record: this.proxyRecordOnMiss,
+        }),
+      });
+      if (!proxyResponse.ok) {
+        const txt = await proxyResponse.text();
+        throw new Error(`[FetchHTTPClient] Proxy error: ${proxyResponse.status} ${txt}`);
+      }
+      const payload = await proxyResponse.json();
+      const data = payload?.response?.data;
+      const status = payload?.response?.status ?? 200;
+      const responseHeaders: Record<string, string> = payload?.response?.headers ?? {};
+
+      return {
+        data,
+        status,
+        statusText: String(status),
+        headers: responseHeaders,
+        config,
+      };
+    }
+
     const response = await fetchFn(url, requestConfig);
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const rawText = await response.text();
+    let data: any = rawText;
+    if (contentType.includes('application/json')) {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = rawText;
+      }
+    }
 
     // Convert response Headers to Record<string, string>
     const responseHeaders: Record<string, string> = {};
@@ -70,7 +128,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
-      config
+      config,
     };
   }
 

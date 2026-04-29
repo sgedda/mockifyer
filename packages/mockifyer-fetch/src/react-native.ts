@@ -28,6 +28,12 @@ export interface ReactNativeMockifyerConfig {
   recordMode?: boolean;
   /** Additional Mockifyer config options */
   config?: Partial<Parameters<typeof setupMockifyer>[0]>;
+  /** Optional: route real network calls through a proxy service (e.g. mockifyer-dashboard in Redis mode) */
+  proxyBaseUrl?: string;
+  /** Optional: force proxy scenario */
+  proxyScenario?: string;
+  /** Optional: record responses on proxy cache miss (proxy must support recording) */
+  proxyRecordOnMiss?: boolean;
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -96,6 +102,9 @@ export async function setupMockifyerForReactNative(
     bundledDataPath = './assets/mock-data',
     recordMode = false,
     config = {},
+    proxyBaseUrl,
+    proxyScenario,
+    proxyRecordOnMiss = false,
   } = options;
 
   // Check if Mockifyer is enabled
@@ -139,6 +148,9 @@ export async function setupMockifyerForReactNative(
       databaseProvider: databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
+      proxy: proxyBaseUrl
+        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyRecordOnMiss }
+        : undefined,
       ...config,
     });
 
@@ -185,6 +197,9 @@ export async function setupMockifyerForReactNative(
       },
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
+      proxy: proxyBaseUrl
+        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyRecordOnMiss }
+        : undefined,
       ...config,
     });
 

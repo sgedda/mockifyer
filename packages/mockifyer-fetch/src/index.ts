@@ -136,7 +136,8 @@ class MockifyerClass {
     // Create fetch HTTP client
     this.httpClient = new FetchHTTPClient({ 
       baseUrl: config.baseUrl, 
-      defaultHeaders: config.defaultHeaders 
+      defaultHeaders: config.defaultHeaders,
+      proxy: config.proxy
     });
     
     if(!config.recordSameEndpoints) {
