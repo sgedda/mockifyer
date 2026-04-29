@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
+import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import type { MockFile, MockData } from '@/types'
 import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
@@ -41,6 +42,23 @@ function MockListContent({
   const { toast } = useToast()
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
+  const didAutoSwitchGroupBy = useRef(false)
+
+  useEffect(() => {
+    if (didAutoSwitchGroupBy.current) return
+    if (loading) return
+    if (!mocks || mocks.length === 0) return
+
+    // Heuristic: Redis-backed mocks are displayed as `redis/<hash>.json` filenames.
+    // In that case, the folder view is not very helpful; prefer grouping by request source (domain).
+    const looksLikeRedisFilenames = mocks.every((m) => m.filename.startsWith('redis/'))
+    const hasAbsoluteEndpoints = mocks.some((m) => typeof m.endpoint === 'string' && /^https?:\/\//i.test(m.endpoint))
+    if (looksLikeRedisFilenames && hasAbsoluteEndpoints) {
+      setGroupBy('domains')
+      didAutoSwitchGroupBy.current = true
+    }
+  }, [loading, mocks])
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -84,12 +102,12 @@ function MockListContent({
   }
 
   const { folderTree, hasFolders } = useMemo(() => {
-    const tree = buildMockFolderTree(mocks)
+    const tree = groupBy === 'domains' ? buildMockRequestTree(mocks) : buildMockFolderTree(mocks)
     return {
       folderTree: tree,
       hasFolders: sortFolderEntries(tree).length > 0,
     }
-  }, [mocks])
+  }, [groupBy, mocks])
 
   return (
     <div className="space-y-4">
@@ -100,6 +118,18 @@ function MockListContent({
           onChange={(e) => onSearchChange(e.target.value)}
           className="min-w-[12rem] flex-1"
         />
+        {!loading && mocks.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setGroupBy((g) => (g === 'folders' ? 'domains' : 'folders'))}
+            title={groupBy === 'folders' ? 'Group by domain + path' : 'Group by filename folders'}
+          >
+            Group: {groupBy === 'folders' ? 'Folders' : 'Domains'}
+          </Button>
+        )}
         {!loading && hasFolders && mocks.length > 0 && (
           <>
             <Button

@@ -570,8 +570,9 @@ class MockifyerClass {
           return response;
         }
         
-        // Only save if recordMode is enabled
-        if (this.config.recordMode) {
+        // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
+        // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
+        if (this.config.recordMode && !this.config.proxy?.baseUrl) {
           await this.saveResponse(response);
         }
         return response;
@@ -589,6 +590,12 @@ class MockifyerClass {
   private async saveResponse(response: HTTPResponse): Promise<void> {
     // CRITICAL: Check for bypass flags FIRST - if set, completely skip processing
     if ((response.config as any)?.__mockifyer_skip_save || (response.config as any)?.__mockifyer_bypass) {
+      return;
+    }
+
+    // If using a proxy for upstream calls, do not save locally.
+    // Proxy mode can record into Redis on miss (recordOnMiss) and keeps the app runtime stateless.
+    if (this.config.proxy?.baseUrl) {
       return;
     }
     

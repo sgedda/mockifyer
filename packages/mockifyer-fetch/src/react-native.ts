@@ -32,7 +32,10 @@ export interface ReactNativeMockifyerConfig {
   proxyBaseUrl?: string;
   /** Optional: force proxy scenario */
   proxyScenario?: string;
-  /** Optional: record responses on proxy cache miss (proxy must support recording) */
+  /**
+   * Optional: record responses on proxy cache miss (proxy must support recording).
+   * Deprecated: prefer using `recordMode` when `proxyBaseUrl` is provided.
+   */
   proxyRecordOnMiss?: boolean;
 }
 
@@ -104,8 +107,10 @@ export async function setupMockifyerForReactNative(
     config = {},
     proxyBaseUrl,
     proxyScenario,
-    proxyRecordOnMiss = false,
+    proxyRecordOnMiss,
   } = options;
+
+  const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
 
   // Check if Mockifyer is enabled
   const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || isDev;
@@ -149,7 +154,7 @@ export async function setupMockifyerForReactNative(
       recordMode,
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyRecordOnMiss }
+        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
       ...config,
     });
@@ -198,7 +203,7 @@ export async function setupMockifyerForReactNative(
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyRecordOnMiss }
+        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
       ...config,
     });
