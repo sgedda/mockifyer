@@ -35,10 +35,14 @@ export class RedisMockStore {
   private readonly redis: any;
   private readonly mockDataPath: string;
   private readonly keyPrefix: string;
+  private readonly activeScenarioKey: string;
+  private readonly useCentralizedScenario: boolean;
 
   constructor(config: RedisMockStoreConfig) {
     this.mockDataPath = config.mockDataPath;
     this.keyPrefix = config.keyPrefix || 'mockifyer:v1';
+    this.activeScenarioKey = `${this.keyPrefix}:active_scenario`;
+    this.useCentralizedScenario = true;
 
     const RedisCtor = requireIoRedis();
     this.redis = new RedisCtor(config.redisUrl, {
@@ -47,17 +51,31 @@ export class RedisMockStore {
     });
   }
 
-  private scenarioKey(scenarioOverride?: string): string {
+  private async scenarioKey(scenarioOverride?: string): Promise<string> {
     if (scenarioOverride) return scenarioOverride;
+    if (this.useCentralizedScenario) {
+      const centralizedScenario = await this.redis.get(this.activeScenarioKey);
+      if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
+        return centralizedScenario.trim();
+      }
+    }
     return getCurrentScenario(this.mockDataPath);
   }
 
-  private indexKey(scenarioOverride?: string): string {
-    return `${this.keyPrefix}:index:${this.scenarioKey(scenarioOverride)}`;
+  private async indexKey(scenarioOverride?: string): Promise<string> {
+    return `${this.keyPrefix}:index:${await this.scenarioKey(scenarioOverride)}`;
   }
 
-  private dataKey(hash: string, scenarioOverride?: string): string {
-    return `${this.keyPrefix}:mock:${this.scenarioKey(scenarioOverride)}:${hash}`;
+  private async dataKey(hash: string, scenarioOverride?: string): Promise<string> {
+    return `${this.keyPrefix}:mock:${await this.scenarioKey(scenarioOverride)}:${hash}`;
+  }
+
+  async getActiveScenario(): Promise<string> {
+    return this.scenarioKey();
+  }
+
+  async setActiveScenario(scenario: string): Promise<void> {
+    await this.redis.set(this.activeScenarioKey, scenario);
   }
 
   async ping(): Promise<void> {
@@ -65,10 +83,11 @@ export class RedisMockStore {
   }
 
   async list(scenario?: string): Promise<RedisMockListItem[]> {
-    const hashes: string[] = await this.redis.smembers(this.indexKey(scenario));
+    const indexKey = await this.indexKey(scenario);
+    const hashes: string[] = await this.redis.smembers(indexKey);
     if (hashes.length === 0) return [];
 
-    const keys = hashes.map((h) => this.dataKey(h, scenario));
+    const keys = await Promise.all(hashes.map((h) => this.dataKey(h, scenario)));
     const values: Array<string | null> = await this.redis.mget(...keys);
 
     const out: RedisMockListItem[] = [];
@@ -86,7 +105,8 @@ export class RedisMockStore {
   }
 
   async getByHash(hash: string, scenario?: string): Promise<MockData | null> {
-    const raw: string | null = await this.redis.get(this.dataKey(hash, scenario));
+    const dataKey = await this.dataKey(hash, scenario);
+    const raw: string | null = await this.redis.get(dataKey);
     if (!raw) return null;
     return JSON.parse(raw) as MockData;
   }
@@ -98,14 +118,17 @@ export class RedisMockStore {
   }
 
   async setByHash(hash: string, mockData: MockData, scenario?: string): Promise<void> {
-    const key = this.dataKey(hash, scenario);
+    const key = await this.dataKey(hash, scenario);
+    const indexKey = await this.indexKey(scenario);
     await this.redis.set(key, JSON.stringify(mockData));
-    await this.redis.sadd(this.indexKey(scenario), hash);
+    await this.redis.sadd(indexKey, hash);
   }
 
   async deleteByHash(hash: string, scenario?: string): Promise<void> {
-    await this.redis.del(this.dataKey(hash, scenario));
-    await this.redis.srem(this.indexKey(scenario), hash);
+    const dataKey = await this.dataKey(hash, scenario);
+    const indexKey = await this.indexKey(scenario);
+    await this.redis.del(dataKey);
+    await this.redis.srem(indexKey, hash);
   }
 
   async close(): Promise<void> {
