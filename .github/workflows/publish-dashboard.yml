@@ -16,7 +16,13 @@ jobs:
         with:
           node-version: "20.x"
 
-      - name: Install dashboard dependencies
+      - name: Install core dependencies (local file:)
+        run: npm --prefix packages/mockifyer-core install
+
+      - name: Build core
+        run: npm --prefix packages/mockifyer-core run build
+
+      - name: Install dashboard dependencies (local file:)
         run: npm --prefix packages/mockifyer-dashboard install
 
       - name: Build dashboard
@@ -39,11 +45,13 @@ jobs:
           node-version: "20.x"
           registry-url: "https://registry.npmjs.org"
 
-      # Convert file: references to published versions before publishing
-      - name: Prepare packages for publishing
-        run: node packages/prepare-for-publish.js
+      - name: Install core dependencies (local file:)
+        run: npm --prefix packages/mockifyer-core install
 
-      - name: Install dashboard dependencies
+      - name: Build core
+        run: npm --prefix packages/mockifyer-core run build
+
+      - name: Install dashboard dependencies (local file:)
         run: npm --prefix packages/mockifyer-dashboard install
 
       - name: Build dashboard
@@ -67,6 +75,11 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "Dashboard ${{ steps.get_version.outputs.VERSION }}" \
             --notes "Publishing @sgedda/mockifyer-dashboard@${{ steps.get_version.outputs.VERSION }}"
+
+      # Convert file: references to published versions right before publishing.
+      # Build steps above intentionally use local file: deps so the workflow doesn't depend on npm having the matching core version.
+      - name: Prepare dashboard for publishing
+        run: node packages/prepare-for-publish.js
 
       - name: Publish @sgedda/mockifyer-dashboard
         working-directory: packages/mockifyer-dashboard
