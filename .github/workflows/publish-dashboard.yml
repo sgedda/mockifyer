@@ -75,7 +75,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
 
-      - name: Restore file: references (cleanup)
+      - name: "Restore file: references (cleanup)"
         if: always()
         run: node packages/prepare-for-publish.js --restore
 
