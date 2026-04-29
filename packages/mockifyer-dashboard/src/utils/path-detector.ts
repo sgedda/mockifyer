@@ -165,7 +165,7 @@ function findRepoRoot(): string | null {
 /**
  * Detect provider type based on path
  */
-export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' {
+export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' | 'redis' {
   if (dataPath.endsWith('.db')) {
     return 'sqlite';
   }
@@ -173,6 +173,10 @@ export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' {
   // Check environment variable
   if (process.env.MOCKIFYER_DB_PROVIDER === 'sqlite') {
     return 'sqlite';
+  }
+
+  if (process.env.MOCKIFYER_DB_PROVIDER === 'redis') {
+    return 'redis';
   }
   
   return 'filesystem';
