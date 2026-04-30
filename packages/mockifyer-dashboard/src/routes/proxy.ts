@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
-import { generateRequestKey } from '@sgedda/mockifyer-core';
+import { generateRequestKey, getCurrentDate, prepareMockResponseBody } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
 
 const router = express.Router();
@@ -54,11 +54,15 @@ router.post('/', async (req: Request, res: Response) => {
     // 1) Try Redis hit
     const mock = await store.getByHash(hash, scenario);
     if (mock) {
+      const responseWithOverrides = {
+        ...mock.response,
+        data: prepareMockResponseBody(mock as any, getCurrentDate),
+      };
       return res.json({
         proxied: false,
         source: 'redis',
         hash,
-        response: mock.response,
+        response: responseWithOverrides,
       });
     }
 
