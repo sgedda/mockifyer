@@ -267,6 +267,30 @@ router.put('/*', async (req: Request, res: Response) => {
 
         if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
         (existingData as any).response.data = parsedResponseData;
+
+        // Keep behavior consistent with filesystem provider: allow saving responseDateOverrides.
+        if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
+          const raw = req.body.responseDateOverrides;
+          if (raw === null) {
+            delete (existingData as any).responseDateOverrides;
+          } else if (Array.isArray(raw)) {
+            for (const item of raw) {
+              if (!item || typeof item !== 'object' || typeof (item as any).path !== 'string' || !(item as any).path.trim()) {
+                return res.status(400).json({
+                  error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
+                });
+              }
+            }
+            if (raw.length === 0) {
+              delete (existingData as any).responseDateOverrides;
+            } else {
+              (existingData as any).responseDateOverrides = raw;
+            }
+          } else {
+            return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
+          }
+        }
+
         await store.setByHash(hash, existingData as any, scenario);
         const payload = JSON.stringify(existingData);
         const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
