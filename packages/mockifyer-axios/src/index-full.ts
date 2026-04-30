@@ -8,7 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation } from './utils/date';
+import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -390,7 +390,7 @@ class MockifyerClass {
         if (this.config.httpClientType === 'fetch') {
           // Create HTTPResponse format for fetch client
           const mockResponse = {
-            data: mockData.response.data,
+            data: prepareMockResponseBody(mockData, getCurrentDate),
             status: mockData.response.status,
             statusText: 'OK',
             headers: responseHeaders,
@@ -411,7 +411,7 @@ class MockifyerClass {
           });
           
           const mockResponse: AxiosResponse = {
-            data: mockData.response.data,
+            data: prepareMockResponseBody(mockData, getCurrentDate),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -585,7 +585,7 @@ class MockifyerClass {
           if (this.config.httpClientType === 'fetch') {
             // Create HTTPResponse format for fetch client
             const mockResponse = {
-              data: mockData.response.data,
+              data: prepareMockResponseBody(mockData, getCurrentDate),
               status: mockData.response.status,
               statusText: 'OK', // StoredResponse doesn't have statusText, use default
               headers: mockData.response.headers || {},
@@ -626,7 +626,7 @@ class MockifyerClass {
             });
 
             const mockResponse: AxiosResponse = {
-              data: mockData.response.data,
+              data: prepareMockResponseBody(mockData, getCurrentDate),
               status: mockData.response.status,
               statusText: 'OK',
               headers: axiosHeaders,

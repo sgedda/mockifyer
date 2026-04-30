@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { getDateConfig, updateDateConfig } from '@/lib/api'
+import {
+  getDateConfig,
+  updateDateConfig,
+  getScenarioConfig,
+  type DateConfig,
+} from '@/lib/api'
 import { Calendar, Clock, Globe, RotateCcw } from 'lucide-react'
 
 // Comprehensive list of IANA timezones
@@ -109,6 +114,9 @@ export default function DateConfig() {
   const [currentDate, setCurrentDate] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [selectedScenario, setSelectedScenario] = useState<string>('')
+  const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
+  const [configSource, setConfigSource] = useState<DateConfig['configSource']>()
   const [mode, setMode] = useState<'fixed' | 'offset' | 'timezone' | 'none'>('none')
   const { toast } = useToast()
   const isEditingRef = useRef(false)
@@ -144,39 +152,34 @@ export default function DateConfig() {
   }
 
   useEffect(() => {
-    loadDateConfig()
-    // Refresh current date every second (but don't reload config if user is editing)
-    const interval = setInterval(() => {
-      if (!isEditingRef.current) {
-        updateCurrentDate()
+    void (async () => {
+      try {
+        const sc = await getScenarioConfig()
+        setAvailableScenarios(sc.availableScenarios)
+        setSelectedScenario(sc.currentScenario)
+      } catch (e) {
+        console.error('Failed to load scenarios:', e)
       }
-    }, 1000)
-    return () => clearInterval(interval)
+    })()
   }, [])
 
-  async function updateCurrentDate() {
-    try {
-      const config = await getDateConfig()
-      setCurrentDate(config.currentDate)
-    } catch (error) {
-      // Silently fail - don't show error toast for background updates
-      console.error('Failed to update current date:', error)
-    }
-  }
-
-  async function loadDateConfig() {
+  const loadDateConfig = useCallback(async () => {
     try {
       setLoading(true)
-      const config = await getDateConfig()
+      const config = await getDateConfig(selectedScenario)
       setCurrentDate(config.currentDate)
-      
+      setConfigSource(config.configSource)
+
       // Only update form fields if user is not currently editing
       if (!isEditingRef.current) {
         if (config.dateManipulation) {
           if (config.dateManipulation.fixedDate) {
             setFixedDate(config.dateManipulation.fixedDate)
             setMode('fixed')
-          } else if (config.dateManipulation.offset !== undefined && config.dateManipulation.offset !== null) {
+          } else if (
+            config.dateManipulation.offset !== undefined &&
+            config.dateManipulation.offset !== null
+          ) {
             const offsetMs = config.dateManipulation.offset
             setOffset(String(offsetMs))
             setOffsetFromMilliseconds(offsetMs)
@@ -184,7 +187,14 @@ export default function DateConfig() {
           }
           if (config.dateManipulation.timezone) {
             setTimezone(config.dateManipulation.timezone)
-            if (mode === 'none') setMode('timezone')
+          }
+          const dm = config.dateManipulation
+          if (
+            dm.timezone &&
+            !dm.fixedDate &&
+            (dm.offset === undefined || dm.offset === null)
+          ) {
+            setMode('timezone')
           }
         } else {
           setMode('none')
@@ -198,14 +208,44 @@ export default function DateConfig() {
           setTimezoneSearch('')
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to load date config'
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load date config',
+        description: message,
         variant: 'destructive',
       })
     } finally {
       setLoading(false)
+    }
+  }, [selectedScenario, toast])
+
+  useEffect(() => {
+    if (!selectedScenario) {
+      return
+    }
+    void loadDateConfig()
+  }, [selectedScenario, loadDateConfig])
+
+  useEffect(() => {
+    if (!selectedScenario) {
+      return
+    }
+    const interval = setInterval(() => {
+      if (!isEditingRef.current) {
+        void updateCurrentDate()
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [selectedScenario])
+
+  async function updateCurrentDate() {
+    try {
+      const config = await getDateConfig(selectedScenario)
+      setCurrentDate(config.currentDate)
+    } catch (error) {
+      // Silently fail - don't show error toast for background updates
+      console.error('Failed to update current date:', error)
     }
   }
 
@@ -243,8 +283,9 @@ export default function DateConfig() {
         updateData.timezone = null
       }
 
-      const result = await updateDateConfig(updateData)
+      const result = await updateDateConfig({ ...updateData, scenario: selectedScenario })
       setCurrentDate(result.currentDate)
+      setConfigSource(result.configSource)
       isEditingRef.current = false // Allow config reload after save
       toast({
         title: 'Success',
@@ -265,7 +306,13 @@ export default function DateConfig() {
   async function handleClear() {
     try {
       setSaving(true)
-      await updateDateConfig({ fixedDate: null, offset: null, timezone: null })
+      const cleared = await updateDateConfig({
+        fixedDate: null,
+        offset: null,
+        timezone: null,
+        scenario: selectedScenario,
+      })
+      setConfigSource(cleared.configSource)
       setFixedDate('')
       setOffset('')
       setOffsetDays('')
@@ -300,7 +347,7 @@ export default function DateConfig() {
     }
   }
 
-  if (loading) {
+  if (!selectedScenario || loading) {
     return (
       <Card>
         <CardContent className="p-6">
@@ -316,10 +363,41 @@ export default function DateConfig() {
         <CardHeader>
           <CardTitle>Date Manipulation</CardTitle>
           <CardDescription>
-            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality.
+            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the selected scenario only (runtime uses the active scenario from{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario-config.json</code>).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="date-scenario" className="text-sm font-medium">
+              Edit dates for scenario
+            </label>
+            <select
+              id="date-scenario"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={selectedScenario}
+              onChange={(e) => setSelectedScenario(e.target.value)}
+              disabled={saving}
+            >
+              {availableScenarios.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Saved to{' '}
+              <code className="rounded bg-muted px-1 py-0.5 text-xs">{`${selectedScenario}/date-config.json`}</code>{' '}
+              under your mock-data folder.
+              {configSource === 'legacy' && (
+                <span className="mt-1 block">
+                  Showing legacy root <code className="rounded bg-muted px-1 py-0.5 text-xs">date-config.json</code>{' '}
+                  until you save for this scenario.
+                </span>
+              )}
+            </p>
+          </div>
+
           {/* Current Date Display */}
           <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
             <div className="flex items-center gap-2 mb-2">

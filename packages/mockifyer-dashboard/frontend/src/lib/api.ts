@@ -1,4 +1,4 @@
-import type { MockFile, MockData, Stats, ScenarioConfig } from '@/types'
+import type { MockFile, MockData, MockResponseDateOverride, Stats, ScenarioConfig } from '@/types'
 
 const API_BASE = '/api'
 
@@ -18,15 +18,23 @@ export async function getMock(filename: string): Promise<MockData> {
   return response.json()
 }
 
-export async function updateMock(filename: string, responseData: any): Promise<void> {
+export async function updateMock(
+  filename: string,
+  responseData: any,
+  responseDateOverrides?: MockResponseDateOverride[] | null
+): Promise<void> {
+  const body: Record<string, unknown> = { responseData }
+  if (responseDateOverrides !== undefined) {
+    body.responseDateOverrides = responseDateOverrides
+  }
   const response = await fetch(`${API_BASE}/mocks/${filename}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ responseData }),
+    body: JSON.stringify(body),
   })
   if (!response.ok) {
     const error = await response.json()
-    throw new Error(error.message || 'Failed to update mock')
+    throw new Error(error.error || error.message || 'Failed to update mock')
   }
 }
 
@@ -103,10 +111,20 @@ export interface DateConfig {
     timezone?: string
   } | null
   currentDate: string
+  /** Scenario whose date-config.json is loaded or written */
+  scenario?: string
+  /** Active scenario from scenario-config.json (runtime) */
+  currentScenario?: string
+  /** Whether values came from per-scenario file or legacy root date-config.json */
+  configSource?: 'scenario' | 'legacy' | 'none'
 }
 
-export async function getDateConfig(): Promise<DateConfig> {
-  const response = await fetch(`${API_BASE}/date-config`, noStore)
+export async function getDateConfig(scenario?: string): Promise<DateConfig> {
+  const q =
+    scenario !== undefined && scenario !== ''
+      ? `?scenario=${encodeURIComponent(scenario)}`
+      : ''
+  const response = await fetch(`${API_BASE}/date-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
 }
@@ -115,6 +133,7 @@ export async function updateDateConfig(config: {
   fixedDate?: string | null
   offset?: number | null
   timezone?: string | null
+  scenario?: string | null
 }): Promise<DateConfig> {
   const response = await fetch(`${API_BASE}/date-config`, {
     method: 'POST',

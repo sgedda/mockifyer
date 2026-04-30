@@ -8,6 +8,9 @@ import { scenarioConfigRouter } from './routes/scenario-config';
 import { proxyRouter } from './routes/proxy';
 import type { DashboardContextConfig } from './utils/dashboard-context';
 
+/** Default express.json limit is 100kb — large GraphQL mocks exceed that (413 Payload Too Large). */
+const JSON_BODY_LIMIT = '50mb';
+
 export function createServer(
   publicDir: string,
   mockDataPath: string,
@@ -18,8 +21,8 @@ export function createServer(
   app.locals.dashboardConfig = config;
 
   // Middleware
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
   app.use('/api', (_req, res, next) => {

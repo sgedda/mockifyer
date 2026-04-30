@@ -111,6 +111,23 @@ export interface StoredResponse {
   headers: Record<string, string>;
 }
 
+/**
+ * When serving a mock, rewrite these response paths to a date derived from the
+ * manipulated current date (see `getCurrentDate` in mockifyer-core) plus optional offsets.
+ */
+export interface MockResponseDateOverride {
+  /** Dot-separated path from `response.data` root. Use numeric segments for array indices (e.g. `items.0.expiresAt`). */
+  path: string;
+  /** Milliseconds added to manipulated now (default 0). */
+  offsetMs?: number;
+  /** Optional day/hour/minute offsets (combined with offsetMs). */
+  offsetDays?: number;
+  offsetHours?: number;
+  offsetMinutes?: number;
+  /** How to encode the value. If omitted, inferred from the existing value (ISO string vs unix s/ms). */
+  format?: 'iso' | 'unix-ms' | 'unix-s';
+}
+
 export interface MockData {
   request: StoredRequest;
   response: StoredResponse;
@@ -118,6 +135,8 @@ export interface MockData {
   duration?: number; // Request duration in milliseconds
   scenario?: string;
   sessionId?: string; // Unique identifier for grouping related requests
+  /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
+  responseDateOverrides?: MockResponseDateOverride[];
 }
 
 // Environment variable names

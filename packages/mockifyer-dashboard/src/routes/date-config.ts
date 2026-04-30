@@ -2,96 +2,158 @@ import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
+import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
 const DATE_CONFIG_FILENAME = 'date-config.json';
 
-// Get mock data directory path
 function getMockDataPath(): string {
   try {
     return detectMockDataPath();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[DateConfigRoute] Error detecting mock data path:', error);
-    // Fallback to default
     return path.join(process.cwd(), 'mock-data');
   }
 }
 
-// Get date config file path
-function getDateConfigPath(): string {
-  try {
-    const mockDataPath = getMockDataPath();
-    return path.join(mockDataPath, DATE_CONFIG_FILENAME);
-  } catch (error: any) {
-    console.error('[DateConfigRoute] Error getting config path:', error);
-    // Fallback to default
-    return path.join(process.cwd(), 'mock-data', DATE_CONFIG_FILENAME);
+/** Resolve scenario: query/body, validated against existing folders when possible */
+function resolveScenario(mockDataPath: string, raw?: string | null): string {
+  if (raw && typeof raw === 'string' && raw.trim() !== '') {
+    const trimmed = raw.trim();
+    const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (sanitized !== trimmed) {
+      return getCurrentScenario(mockDataPath);
+    }
+    const scenarios = listScenarios(mockDataPath);
+    if (scenarios.includes(sanitized)) {
+      return sanitized;
+    }
+    return getCurrentScenario(mockDataPath);
   }
+  return getCurrentScenario(mockDataPath);
 }
 
-// Get current date config
+function getDateConfigPathForScenario(mockDataPath: string, scenario: string): string {
+  const folder = getScenarioFolderPath(mockDataPath, scenario);
+  return path.join(folder, DATE_CONFIG_FILENAME);
+}
+
+function computeCurrentDate(dateManipulation: {
+  fixedDate?: string | null;
+  offset?: number;
+  timezone?: string;
+} | null): Date {
+  if (!dateManipulation) {
+    return new Date();
+  }
+  if (dateManipulation.fixedDate) {
+    return new Date(dateManipulation.fixedDate);
+  }
+  if (dateManipulation.offset !== undefined && dateManipulation.offset !== null) {
+    return new Date(Date.now() + dateManipulation.offset);
+  }
+  if (dateManipulation.timezone) {
+    const date = new Date();
+    try {
+      return new Date(date.toLocaleString('en-US', { timeZone: dateManipulation.timezone }));
+    } catch {
+      return new Date();
+    }
+  }
+  return new Date();
+}
+
+/**
+ * Load date config for a scenario: per-scenario file first, then legacy root mock-data/date-config.json.
+ * If the scenario directory or `{scenario}/date-config.json` is missing, reads legacy root only.
+ */
+function loadMergedDateConfig(mockDataPath: string, scenario: string): {
+  dateManipulation: Record<string, unknown> | null;
+  source: 'scenario' | 'legacy' | 'none';
+} {
+  const scenarioPath = getDateConfigPathForScenario(mockDataPath, scenario);
+  if (fs.existsSync(scenarioPath)) {
+    try {
+      const fileContent = fs.readFileSync(scenarioPath, 'utf-8');
+      const config = JSON.parse(fileContent);
+      const dm = config.dateManipulation ?? null;
+      return { dateManipulation: dm, source: 'scenario' };
+    } catch {
+      return { dateManipulation: null, source: 'none' };
+    }
+  }
+
+  const legacyPath = path.join(mockDataPath, DATE_CONFIG_FILENAME);
+  if (fs.existsSync(legacyPath)) {
+    try {
+      const fileContent = fs.readFileSync(legacyPath, 'utf-8');
+      const config = JSON.parse(fileContent);
+      const dm = config.dateManipulation ?? null;
+      return { dateManipulation: dm, source: 'legacy' };
+    } catch {
+      return { dateManipulation: null, source: 'none' };
+    }
+  }
+
+  return { dateManipulation: null, source: 'none' };
+}
+
+// Get current date config (per scenario; optional ?scenario=)
 router.get('/', (req: Request, res: Response) => {
   try {
     const mockDataPath = getMockDataPath();
-    const configPath = getDateConfigPath();
-    
-    console.log('[DateConfigRoute] GET - Mock data path:', mockDataPath);
-    console.log('[DateConfigRoute] GET - Config path:', configPath);
-    
-    if (!fs.existsSync(configPath)) {
-      console.log('[DateConfigRoute] GET - Config file does not exist, returning default');
-      return res.json({ 
-        dateManipulation: null,
-        currentDate: new Date().toISOString()
-      });
-    }
+    const scenarioParam = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
+    const scenario = resolveScenario(mockDataPath, scenarioParam);
 
-    const fileContent = fs.readFileSync(configPath, 'utf-8');
-    const config = JSON.parse(fileContent);
-    
-    const dateManipulation = config.dateManipulation || null;
-    
-    // Calculate current date based on config
-    let currentDate: Date;
-    if (dateManipulation?.fixedDate) {
-      currentDate = new Date(dateManipulation.fixedDate);
-    } else if (dateManipulation?.offset !== undefined) {
-      currentDate = new Date(Date.now() + dateManipulation.offset);
-    } else {
-      currentDate = new Date();
-    }
+    const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
+    const currentDate = computeCurrentDate(dateManipulation);
 
-    console.log('[DateConfigRoute] GET - Success, returning:', { dateManipulation, currentDate: currentDate.toISOString() });
+    console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source);
+
     res.json({
-      dateManipulation: dateManipulation,
-      currentDate: currentDate.toISOString()
+      dateManipulation,
+      currentDate: currentDate.toISOString(),
+      scenario,
+      currentScenario: getCurrentScenario(mockDataPath),
+      configSource: source,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('[DateConfigRoute] GET - Error:', error);
-    console.error('[DateConfigRoute] GET - Error stack:', error.stack);
-    res.status(500).json({ error: 'Failed to read date config', details: error.message });
+    res.status(500).json({ error: 'Failed to read date config', details: message });
   }
 });
 
-// Update date config
+// Update date config for a scenario (body.scenario optional; defaults to current)
 router.post('/', (req: Request, res: Response) => {
   try {
-    const { fixedDate, offset, timezone } = req.body;
-    const configPath = getDateConfigPath();
+    const { fixedDate, offset, timezone, scenario: bodyScenario } = req.body as {
+      fixedDate?: string | null;
+      offset?: number | null;
+      timezone?: string | null;
+      scenario?: string | null;
+    };
     const mockDataPath = getMockDataPath();
+    const scenario = resolveScenario(mockDataPath, bodyScenario ?? undefined);
 
-    // Ensure mock data directory exists
+    const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
+    const configPath = path.join(scenarioFolder, DATE_CONFIG_FILENAME);
+
+    // Create mock-data and scenario folder on first save (no need for them to exist when only reading)
     if (!fs.existsSync(mockDataPath)) {
       fs.mkdirSync(mockDataPath, { recursive: true });
     }
+    if (!fs.existsSync(scenarioFolder)) {
+      fs.mkdirSync(scenarioFolder, { recursive: true });
+    }
 
-    // Validate input
     if (fixedDate !== undefined && fixedDate !== null && fixedDate !== '') {
-      // Validate date format
       const testDate = new Date(fixedDate);
       if (isNaN(testDate.getTime())) {
-        return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format (e.g., 2024-12-25T00:00:00.000Z)' });
+        return res.status(400).json({
+          error: 'Invalid date format. Use ISO 8601 format (e.g., 2024-12-25T00:00:00.000Z)',
+        });
       }
     }
 
@@ -99,72 +161,67 @@ router.post('/', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Offset must be a number (milliseconds)' });
     }
 
-    // Build config object
-    const dateManipulation: any = {};
-    
+    const dateManipulation: Record<string, unknown> = {};
+
     if (fixedDate !== undefined && fixedDate !== null && fixedDate !== '') {
       dateManipulation.fixedDate = fixedDate;
-      // Clear offset if fixedDate is set
-      delete dateManipulation.offset;
     } else if (offset !== undefined && offset !== null) {
       dateManipulation.offset = offset;
-      // Clear fixedDate if offset is set
-      delete dateManipulation.fixedDate;
     } else {
-      // If both are cleared, remove date manipulation
       dateManipulation.fixedDate = null;
       dateManipulation.offset = undefined;
     }
 
     if (timezone !== undefined && timezone !== null && timezone !== '') {
       dateManipulation.timezone = timezone;
-    } else {
-      delete dateManipulation.timezone;
     }
 
-    // If both fixedDate and offset are cleared, delete the config file
-    if (!dateManipulation.fixedDate && dateManipulation.offset === undefined && !dateManipulation.timezone) {
+    const noManipulation =
+      !dateManipulation.fixedDate &&
+      dateManipulation.offset === undefined &&
+      !dateManipulation.timezone;
+
+    if (noManipulation) {
       if (fs.existsSync(configPath)) {
         fs.unlinkSync(configPath);
       }
+      const { dateManipulation: dm, source } = loadMergedDateConfig(mockDataPath, scenario);
       return res.json({
         success: true,
-        message: 'Date manipulation cleared',
-        dateManipulation: null,
-        currentDate: new Date().toISOString()
+        message: 'Date manipulation cleared for scenario',
+        dateManipulation: dm,
+        currentDate: computeCurrentDate(dm).toISOString(),
+        scenario,
+        currentScenario: getCurrentScenario(mockDataPath),
+        configSource: source,
       });
     }
 
-    // Save config to file
     const config = {
       dateManipulation,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
 
-    // Calculate current date based on config
-    let currentDate: Date;
-    if (dateManipulation.fixedDate) {
-      currentDate = new Date(dateManipulation.fixedDate);
-    } else if (dateManipulation.offset !== undefined) {
-      currentDate = new Date(Date.now() + dateManipulation.offset);
-    } else {
-      currentDate = new Date();
-    }
+    const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
 
-    console.log(`[DateConfigRoute] Updated date config:`, dateManipulation);
+    console.log(`[DateConfigRoute] Updated date config for scenario "${scenario}":`, dateManipulation);
+
     res.json({
       success: true,
       message: 'Date manipulation updated successfully',
       dateManipulation,
-      currentDate: currentDate.toISOString()
+      currentDate: currentDate.toISOString(),
+      scenario,
+      currentScenario: getCurrentScenario(mockDataPath),
+      configSource: 'scenario' as const,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error('[DateConfigRoute] Update - Error:', error);
-    res.status(500).json({ error: 'Failed to update date config', details: error.message });
+    res.status(500).json({ error: 'Failed to update date config', details: message });
   }
 });
 
 export const dateConfigRouter = router;
-

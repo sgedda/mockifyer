@@ -33,6 +33,8 @@ import {
   TestGenerator,
   TestGenerationOptions,
   checkRequestLimit,
+  prepareMockResponseBody,
+  getCurrentDate,
   shouldExcludeUrl
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
@@ -427,7 +429,7 @@ class MockifyerClass {
         };
         
         const mockResponse = {
-          data: mockData.response.data,
+          data: prepareMockResponseBody(mockData, getCurrentDate),
           status: mockData.response.status,
           statusText: 'OK',
           headers: responseHeaders,
