@@ -117,6 +117,7 @@ function MockListContent({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="min-w-[12rem] flex-1"
+          disabled={loading}
         />
         {!loading && mocks.length > 0 && (
           <Button
@@ -161,7 +162,7 @@ function MockListContent({
         </Button>
       </div>
 
-      {loading ? (
+      {loading && mocks.length === 0 ? (
         <Card>
           <CardContent className="p-6">
             <div className="text-center text-muted-foreground">Loading mocks...</div>
@@ -177,9 +178,9 @@ function MockListContent({
         </Card>
       ) : (
         <div className="relative space-y-4">
-          {loadingMock && (
+          {(loading || loadingMock) && (
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
-              Loading mock…
+              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
             </div>
           )}
           <MockFolderTree
