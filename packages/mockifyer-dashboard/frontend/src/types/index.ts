@@ -1,6 +1,7 @@
 /** Paths are relative to `response.data` (see Mockifyer core). */
 export interface MockResponseDateOverride {
   path: string
+  base?: 'now' | 'response'
   offsetMs?: number
   offsetDays?: number
   offsetHours?: number
