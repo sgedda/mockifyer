@@ -57,7 +57,7 @@ class MockifyerClass {
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
     if (config.databaseProvider && config.databaseProvider.type) {
-      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory'];
+      const supportedTypes = ['filesystem', 'expo-filesystem', 'hybrid', 'memory', 'redis', 'sqlite'];
       if (!supportedTypes.includes(config.databaseProvider.type)) {
         throw new Error(
           `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
@@ -114,7 +114,15 @@ class MockifyerClass {
     
     // Initialize database provider if specified
     if (config.databaseProvider && config.databaseProvider.type) {
-      this.databaseProvider = createProvider(config.databaseProvider.type, config.databaseProvider);
+      const providerConfig = {
+        ...config.databaseProvider,
+        options: {
+          ...config.databaseProvider.options,
+          mockDataPath:
+            config.databaseProvider.options?.mockDataPath ?? config.mockDataPath,
+        },
+      };
+      this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
       const initResult = this.databaseProvider.initialize();
       // Handle async initialization (expo-filesystem / hybrid providers)
       if (initResult instanceof Promise) {
@@ -130,7 +138,8 @@ class MockifyerClass {
     // Create fetch HTTP client
     this.httpClient = new FetchHTTPClient({ 
       baseUrl: config.baseUrl, 
-      defaultHeaders: config.defaultHeaders 
+      defaultHeaders: config.defaultHeaders,
+      proxy: config.proxy
     });
     
     if(!config.recordSameEndpoints) {
@@ -563,8 +572,9 @@ class MockifyerClass {
           return response;
         }
         
-        // Only save if recordMode is enabled
-        if (this.config.recordMode) {
+        // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
+        // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
+        if (this.config.recordMode && !this.config.proxy?.baseUrl) {
           await this.saveResponse(response);
         }
         return response;
@@ -582,6 +592,12 @@ class MockifyerClass {
   private async saveResponse(response: HTTPResponse): Promise<void> {
     // CRITICAL: Check for bypass flags FIRST - if set, completely skip processing
     if ((response.config as any)?.__mockifyer_skip_save || (response.config as any)?.__mockifyer_bypass) {
+      return;
+    }
+
+    // If using a proxy for upstream calls, do not save locally.
+    // Proxy mode can record into Redis on miss (recordOnMiss) and keeps the app runtime stateless.
+    if (this.config.proxy?.baseUrl) {
       return;
     }
     

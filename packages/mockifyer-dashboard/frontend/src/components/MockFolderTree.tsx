@@ -96,7 +96,18 @@ export function MockFolderTree({
     <div className={level > 0 ? 'space-y-3' : 'space-y-4'}>
       {sortedFiles.map((mock) => {
         const isSelected = selectedMock?.filename === mock.filename
-        const displayName = mock.filename.includes('/') ? mock.filename.split('/').pop()! : mock.filename
+        const displayName = (() => {
+          if (mock.endpoint) {
+            try {
+              const url = new URL(mock.endpoint)
+              const last = url.pathname.split('/').filter(Boolean).pop()
+              return last || '/'
+            } catch {
+              // ignore
+            }
+          }
+          return mock.filename.includes('/') ? mock.filename.split('/').pop()! : mock.filename
+        })()
         return (
           <Card
             key={mock.filename}

@@ -1,6 +1,6 @@
 # Mockifyer Dashboard Integration
 
-The Mockifyer Dashboard provides a web interface to view and manage your mock data files.
+The Mockifyer Dashboard provides a web interface to view and manage your mock data using either filesystem files or Redis.
 
 ## Quick Start ✅
 
@@ -14,7 +14,35 @@ npm start
 npm run dashboard
 ```
 
-Then open **http://localhost:3001** in your browser.
+Then open **http://localhost:3002** in your browser.
+
+## Redis Provider (Dashboard) 🧠
+
+If you want to manage mocks from Redis in this React Native example, run the dashboard with the Redis provider:
+
+```bash
+# Terminal 1: Start Metro (app)
+npm start
+
+# Terminal 2: Start dashboard in Redis mode
+npm run dashboard:redis
+```
+
+By default, `dashboard:redis` uses:
+- Redis URL: `redis://localhost:6379`
+- Dashboard port: `3002`
+
+To use a custom Redis URL, set an environment variable and run the custom script:
+
+```bash
+MOCKIFYER_REDIS_URL=redis://localhost:6380 npm run dashboard:redis:custom
+```
+
+You can also customize the key namespace used by dashboard:
+
+```bash
+MOCKIFYER_REDIS_KEY_PREFIX=mockifyer:v1 npm run dashboard:redis:custom
+```
 
 ## How It Works
 
@@ -58,7 +86,9 @@ The dashboard works seamlessly with Metro's sync middleware:
 2. **Metro saves to project folder** → File appears in `./mock-data`
 3. **Dashboard reads from `./mock-data`** → File appears in dashboard
 
-No additional setup needed!
+No additional setup needed for filesystem mode.
+
+For Redis mode, Metro sync middleware is not required by the dashboard itself; the dashboard reads and writes directly from Redis.
 
 ## Advanced: Running Both Together
 

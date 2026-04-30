@@ -15,6 +15,8 @@
     "switch:published": "node scripts/switch-packages.js published && npm install",
     "switch:status": "node scripts/switch-packages.js status",
     "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
+    "dashboard:redis": "MOCKIFYER_REDIS_URL=redis://localhost:6379 mockifyer-dashboard --provider redis --port 3002",
+    "dashboard:redis:custom": "mockifyer-dashboard --provider redis --port 3002",
     "sync:mocks": "mockifyer-sync-from-device --path ./mock-data",
     "sync:mocks:ios": "mockifyer-sync-from-device --path ./mock-data --ios",
     "sync:mocks:android": "mockifyer-sync-from-device --path ./mock-data --android",
@@ -32,7 +34,7 @@
   "dependencies": {
     "@babel/runtime": "^7.28.4",
     "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
-    "@sgedda/mockifyer-dashboard": "^1.1.0",
+    "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",
     "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
     "expo": "~51.0.0",
     "expo-file-system": "~17.0.0",

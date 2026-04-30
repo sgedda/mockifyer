@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.8.4",
+  "version": "1.8.7",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -35,8 +35,17 @@
   ],
   "author": "sgedda",
   "license": "MIT",
+  "peerDependencies": {
+    "ioredis": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "ioredis": "^5.6.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },

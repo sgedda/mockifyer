@@ -5,12 +5,20 @@ import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
+import { proxyRouter } from './routes/proxy';
+import type { DashboardContextConfig } from './utils/dashboard-context';
 
 /** Default express.json limit is 100kb — large GraphQL mocks exceed that (413 Payload Too Large). */
 const JSON_BODY_LIMIT = '50mb';
 
-export function createServer(publicDir: string, mockDataPath: string): express.Application {
+export function createServer(
+  publicDir: string,
+  mockDataPath: string,
+  config: DashboardContextConfig = { provider: 'filesystem' }
+): express.Application {
   const app = express();
+  app.locals.mockDataPath = mockDataPath;
+  app.locals.dashboardConfig = config;
 
   // Middleware
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
@@ -41,9 +49,12 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
   app.use('/api/health', healthRouter);
   app.use('/api/date-config', dateConfigRouter);
   app.use('/api/scenario-config', scenarioConfigRouter);
+  app.use('/api/proxy', proxyRouter);
   
   // Log route registration (for debugging)
-  console.log('[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config');
+  console.log(
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config, /api/proxy'
+  );
 
   // Serve static files from public directory (React build output)
   // Only serve static files for GET requests to non-API paths

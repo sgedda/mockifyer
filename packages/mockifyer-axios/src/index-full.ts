@@ -27,10 +27,9 @@ class MockifyerClass {
     // Validate database provider - only filesystem is currently supported
     if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'filesystem') {
       throw new Error(
-        `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
-        `Only 'filesystem' provider is currently supported. ` +
-        `Database providers (SQLite, Memory, Expo) are planned for future releases. ` +
-        `Please remove the databaseProvider configuration or set type to 'filesystem' (or undefined).`
+        `Database provider type '${config.databaseProvider.type}' is not supported with mockifyer-axios. ` +
+        `Use type 'filesystem' (or omit databaseProvider). ` +
+        `For Redis or other providers, use @sgedda/mockifyer-fetch in Node.`
       );
     }
     

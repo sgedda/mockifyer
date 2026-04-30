@@ -1,0 +1,94 @@
+name: Publish Dashboard (tag)
+
+on:
+  push:
+    tags:
+      - "dashboard-v*"
+
+jobs:
+  build:
+    name: Build dashboard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install core dependencies (local file:)
+        run: npm --prefix packages/mockifyer-core install
+
+      - name: Build core
+        run: npm --prefix packages/mockifyer-core run build
+
+      - name: Install dashboard dependencies (local file:)
+        run: npm --prefix packages/mockifyer-dashboard install
+
+      - name: Build dashboard
+        run: npm --prefix packages/mockifyer-dashboard run build
+
+  publish:
+    name: Publish dashboard
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install core dependencies (local file:)
+        run: npm --prefix packages/mockifyer-core install
+
+      - name: Build core
+        run: npm --prefix packages/mockifyer-core run build
+
+      - name: Install dashboard dependencies (local file:)
+        run: npm --prefix packages/mockifyer-dashboard install
+
+      - name: Build dashboard
+        run: npm --prefix packages/mockifyer-dashboard run build
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/dashboard-v}" >> $GITHUB_OUTPUT
+
+      # Create GitHub Release (safe for reruns)
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" 2>/dev/null; then
+            echo "Release for $TAG already exists — skipping create"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Dashboard ${{ steps.get_version.outputs.VERSION }}" \
+            --notes "Publishing @sgedda/mockifyer-dashboard@${{ steps.get_version.outputs.VERSION }}"
+
+      # Convert file: references to published versions right before publishing.
+      # Build steps above intentionally use local file: deps so the workflow doesn't depend on npm having the matching core version.
+      - name: Prepare dashboard for publishing
+        run: node packages/prepare-for-publish.js
+
+      - name: Publish @sgedda/mockifyer-dashboard
+        working-directory: packages/mockifyer-dashboard
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: sh "${{ github.workspace }}/scripts/npm-publish-if-not-on-registry.sh"
+
+      - name: "Restore file: references (cleanup)"
+        if: always()
+        run: node packages/prepare-for-publish.js --restore
+

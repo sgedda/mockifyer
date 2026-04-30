@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-dashboard",
-  "version": "1.4.2",
+  "version": "1.4.4",
   "description": "Standalone CLI dashboard for viewing and managing Mockifyer mock data",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -37,6 +37,7 @@
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "express": "^4.18.2",
+    "ioredis": "^5.6.1",
     "open": "^8.4.2"
   },
   "devDependencies": {

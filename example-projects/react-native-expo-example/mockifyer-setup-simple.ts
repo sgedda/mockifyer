@@ -10,6 +10,14 @@
  */
 
 import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+import { Platform } from 'react-native';
+
+function getDefaultDashboardBaseUrl(): string {
+  // "localhost" from the emulator/device is not always your host machine.
+  // Android emulator: host loopback is 10.0.2.2
+  // iOS simulator: localhost maps to the host machine
+  return Platform.OS === 'android' ? 'http://10.0.2.2:3002' : 'http://localhost:3002';
+}
 
 /**
  * Initialize Mockifyer - automatically handles dev/prod provider selection
@@ -23,8 +31,9 @@ export async function initializeMockifyer() {
   // 
   // To enable recording, you have two options:
   // 
-  // Option 1: Enable recording in development (simple - change true to false to disable)
-  const recordMode = __DEV__ && true; // Set to true to enable recording in dev mode
+  // In proxy + redis mode, `recordMode` controls whether the dashboard records cache-misses into Redis.
+  // The app itself will not record locally while proxying is enabled.
+  const recordMode = __DEV__ && true;
   
   // Option 2: Use expo-constants with .env file (requires additional setup)
   // Uncomment below if you have expo-constants and .env configured:
@@ -36,6 +45,8 @@ export async function initializeMockifyer() {
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode: recordMode,
+    // Route all upstream requests through the dashboard proxy (dashboard must run with --provider redis)
+    proxyBaseUrl: getDefaultDashboardBaseUrl(),
     // Pass watch options and test generation through config
     config: __DEV__ ? {
       // Logging configuration: 'none' | 'error' | 'warn' | 'info' | 'debug'
@@ -43,15 +54,8 @@ export async function initializeMockifyer() {
       // Set to 'debug' for verbose logging during development
       logging: 'info', // or 'none', 'error', 'warn', 'debug'
       databaseProvider: {
-        type: 'hybrid',
-        path: 'mock-data',
-        options: {
-          watchFiles: true, // Enable automatic file watching
-          watchInterval: 2000, // Check every 2 seconds
-          onFilesChanged: () => {
-            console.log('[Mockifyer] 📁 Mock files changed - will use new files on next request');
-          },
-        },
+        // Keep an in-memory provider locally; Redis is the source-of-truth via proxy.
+        type: 'memory',
       },
       generateTests: {
         enabled: true,

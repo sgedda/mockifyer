@@ -18,7 +18,12 @@ program
   .option('--port <port>', 'Port to run the dashboard on', '3002')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--no-open', 'Do not open browser automatically')
-  .option('--provider <provider>', 'Database provider type (filesystem or sqlite)', 'filesystem')
+  .option('--provider <provider>', 'Database provider type (filesystem, sqlite, redis)', 'filesystem')
+  .option('--redis-url <url>', 'Redis URL (or use MOCKIFYER_REDIS_URL env var)')
+  .option(
+    '--key-prefix <prefix>',
+    'Redis key prefix (or use MOCKIFYER_REDIS_KEY_PREFIX env var; default: mockifyer:v1)'
+  )
   .parse(process.argv);
 
 const options = program.opts();
@@ -28,6 +33,8 @@ async function main() {
     // Detect mock data path
     const mockDataPath = detectMockDataPath(options.path);
     const provider = options.provider || detectProvider(mockDataPath);
+    const redisUrl = options.redisUrl || process.env.MOCKIFYER_REDIS_URL;
+    const keyPrefix = options.keyPrefix || process.env.MOCKIFYER_REDIS_KEY_PREFIX;
     
     // Debug: Log detected path
     if (process.env.DEBUG) {
@@ -36,15 +43,15 @@ async function main() {
       console.log(chalk.gray(`🔍 Debug: Path exists: ${fs.existsSync(mockDataPath)}\n`));
     }
 
-    // Validate provider (only filesystem is currently supported)
-    if (provider !== 'filesystem') {
-      console.error(chalk.red(`\n❌ Error: Database provider '${provider}' is not yet available.`));
-      console.error(chalk.yellow('Only filesystem provider is currently supported.\n'));
+    const validProviders = new Set(['filesystem', 'sqlite', 'redis']);
+    if (!validProviders.has(provider)) {
+      console.error(chalk.red(`\n❌ Error: Unsupported database provider '${provider}'.`));
+      console.error(chalk.yellow("Supported providers: filesystem, sqlite, redis.\n"));
       process.exit(1);
     }
 
     // Check if path exists (or create default directory)
-    if (!fs.existsSync(mockDataPath)) {
+    if (provider !== 'redis' && !fs.existsSync(mockDataPath)) {
       console.log(chalk.yellow(`\n⚠️  Mock data path does not exist: ${mockDataPath}`));
       console.log(chalk.cyan('Creating directory...'));
       fs.mkdirSync(mockDataPath, { recursive: true });
@@ -62,7 +69,11 @@ async function main() {
     }
 
     // Create and start server
-    const app = createServer(publicDir, mockDataPath);
+    const app = createServer(publicDir, mockDataPath, {
+      provider,
+      redisUrl,
+      keyPrefix,
+    });
     const port = parseInt(options.port, 10);
     const host = options.host;
 
@@ -73,6 +84,14 @@ async function main() {
       console.log(chalk.cyan(`   📊 Dashboard: ${chalk.bold(url)}`));
       console.log(chalk.cyan(`   📁 Mock Data: ${chalk.bold(mockDataPath)}`));
       console.log(chalk.cyan(`   🔧 Provider: ${chalk.bold(provider)}\n`));
+      if (provider === 'redis') {
+        console.log(
+          chalk.cyan(`   🧠 Redis URL: ${chalk.bold(redisUrl || 'redis://127.0.0.1:6379 (default)')}`)
+        );
+        console.log(
+          chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}\n`)
+        );
+      }
       
       if (!options.noOpen) {
         open(url).catch(() => {
