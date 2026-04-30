@@ -11,10 +11,27 @@ function isLikelyUnixSeconds(n: number): boolean {
   return n > 1e9 && n < 1e11
 }
 
+/**
+ * Strict-ish ISO 8601 matcher (date-only or datetime with timezone).
+ * We avoid `Date.parse()` on arbitrary strings because it can be permissive / surprising.
+ */
+function isIsoLikeDateString(s: string): boolean {
+  const t = s.trim()
+  if (t.length < 10 || t.length > 40) return false
+
+  // 2026-04-24
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return true
+
+  // 2026-04-24T10:12:17Z
+  // 2026-04-24T10:12:17.023Z
+  // 2026-04-24T10:12:17+02:00
+  // Allow space instead of 'T' just in case.
+  return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(t)
+}
+
 function isLikelyDateString(s: string): boolean {
   const t = s.trim()
-  if (t.length < 8 || t.length > 80) return false
-  if (/^\d+$/.test(t)) return false
+  if (!isIsoLikeDateString(t)) return false
   const ms = Date.parse(t)
   if (Number.isNaN(ms)) return false
   const y = new Date(ms).getUTCFullYear()
@@ -25,7 +42,7 @@ function isLikelyDateString(s: string): boolean {
 export function inferFormatForOverrideValue(
   value: unknown
 ): MockResponseDateOverride['format'] | undefined {
-  if (typeof value === 'string') return 'iso'
+  if (typeof value === 'string') return isLikelyDateString(value) ? 'iso' : undefined
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (isLikelyUnixMs(value)) return 'unix-ms'
     if (isLikelyUnixSeconds(value)) return 'unix-s'
