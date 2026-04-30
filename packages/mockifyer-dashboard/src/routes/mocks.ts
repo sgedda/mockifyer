@@ -280,6 +280,15 @@ router.put('/*', async (req: Request, res: Response) => {
                   error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
                 });
               }
+              if (
+                (item as any).base !== undefined &&
+                (item as any).base !== 'now' &&
+                (item as any).base !== 'response'
+              ) {
+                return res.status(400).json({
+                  error: "responseDateOverrides.base must be 'now' or 'response' when provided",
+                });
+              }
             }
             if (raw.length === 0) {
               delete (existingData as any).responseDateOverrides;
@@ -338,6 +347,11 @@ router.put('/*', async (req: Request, res: Response) => {
           if (!item || typeof item !== 'object' || typeof item.path !== 'string' || !item.path.trim()) {
             return res.status(400).json({
               error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
+            });
+          }
+          if (item.base !== undefined && item.base !== 'now' && item.base !== 'response') {
+            return res.status(400).json({
+              error: "responseDateOverrides.base must be 'now' or 'response' when provided",
             });
           }
         }

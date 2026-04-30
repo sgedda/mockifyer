@@ -118,6 +118,12 @@ export interface StoredResponse {
 export interface MockResponseDateOverride {
   /** Dot-separated path from `response.data` root. Use numeric segments for array indices (e.g. `items.0.expiresAt`). */
   path: string;
+  /**
+   * Which instant to offset from:
+   * - `now` (default): use manipulated "current" date (getCurrentDate) when configured, else real time.
+   * - `response`: use the existing value at `path` (if parseable), then apply offsets.
+   */
+  base?: 'now' | 'response';
   /** Milliseconds added to manipulated now (default 0). */
   offsetMs?: number;
   /** Optional day/hour/minute offsets (combined with offsetMs). */

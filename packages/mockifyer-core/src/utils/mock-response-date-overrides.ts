@@ -89,6 +89,27 @@ function formatResolvedDate(date: Date, format: 'iso' | 'unix-ms' | 'unix-s'): s
   }
 }
 
+function isLikelyUnixMs(n: number): boolean {
+  return n > 1e11 && n < 1e14;
+}
+
+function isLikelyUnixSeconds(n: number): boolean {
+  return n > 1e9 && n < 1e11;
+}
+
+function parseOriginalToMs(original: unknown): number | null {
+  if (typeof original === 'number' && Number.isFinite(original)) {
+    if (isLikelyUnixMs(original)) return original;
+    if (isLikelyUnixSeconds(original)) return original * 1000;
+    return null;
+  }
+  if (typeof original === 'string') {
+    const ms = Date.parse(original);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  return null;
+}
+
 /** Total offset in ms from optional shorthand fields. */
 export function totalOverrideOffsetMs(override: MockResponseDateOverride): number {
   let ms = override.offsetMs ?? 0;
@@ -132,7 +153,6 @@ export function applyResponseDateOverridesToData<T>(
   }
 
   const clone = deepCloneJson(data);
-  const base = getNow().getTime();
 
   for (const override of overrides) {
     const segments = parseResponseDataPath(override.path);
@@ -141,6 +161,11 @@ export function applyResponseDateOverridesToData<T>(
     }
     const original = getAtPath(clone, segments);
     const format = resolveFormat(override, original);
+    const nowMs = getNow().getTime();
+    const base =
+      override.base === 'response'
+        ? parseOriginalToMs(original) ?? nowMs
+        : nowMs;
     const next = new Date(base + totalOverrideOffsetMs(override));
     const value = formatResolvedDate(next, format);
     setAtPath(clone, segments, value);

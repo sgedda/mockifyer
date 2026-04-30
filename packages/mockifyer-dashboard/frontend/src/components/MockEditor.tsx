@@ -103,6 +103,7 @@ function estimateResponsePayloadSize(data: unknown): number {
 function normalizeOverrideRow(o: MockResponseDateOverride): MockResponseDateOverride {
   return {
     path: o.path ?? '',
+    base: o.base,
     offsetMs: o.offsetMs ?? 0,
     offsetDays: o.offsetDays ?? 0,
     offsetHours: o.offsetHours ?? 0,
@@ -118,6 +119,7 @@ function sanitizeOverridesForSave(overrides: MockResponseDateOverride[]): MockRe
     .map((o) => {
       const path = o.path.trim()
       const out: MockResponseDateOverride = { path }
+      if (o.base && o.base !== 'now') out.base = o.base
       if (o.offsetMs !== undefined && o.offsetMs !== 0) out.offsetMs = o.offsetMs
       if (o.offsetDays !== undefined && o.offsetDays !== 0) out.offsetDays = o.offsetDays
       if (o.offsetHours !== undefined && o.offsetHours !== 0) out.offsetHours = o.offsetHours
@@ -137,21 +139,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
   )
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
-  type MockResponseDateOverrideRow = MockResponseDateOverride & { enabled: boolean }
-
-  function normalizeOverrideRowWithEnabled(
-    o: MockResponseDateOverride,
-    enabled: boolean = true
-  ): MockResponseDateOverrideRow {
-    return { ...normalizeOverrideRow(o), enabled }
-  }
-
-  /** Persist only enabled overrides. */
-  function sanitizeOverridesForSaveFromRows(overrides: MockResponseDateOverrideRow[]): MockResponseDateOverride[] {
-    return sanitizeOverridesForSave(overrides.filter((o) => o.enabled))
-  }
-
-  const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverrideRow[]>([])
+  const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
   const { toast } = useToast()
 
   /** Same JSON the user is editing (form vs raw JSON tab). */
@@ -196,7 +184,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
           ? parsedData
           : JSON.stringify(parsedData)
     )
-    setDateOverrides((mock.data.responseDateOverrides ?? []).map((o) => normalizeOverrideRowWithEnabled(o, true)))
+    setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -264,7 +252,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
 
     try {
       setSaving(true)
-      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSaveFromRows(dateOverrides))
+      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides))
       toast({
         title: 'Success',
         description: 'Mock updated successfully',
@@ -667,13 +655,11 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                                 inferFormatForOverrideValue(currentVal) ?? c.suggestedFormat
                               setDateOverrides([
                                 ...dateOverrides,
-                                normalizeOverrideRowWithEnabled(
-                                  {
+                                normalizeOverrideRow({
                                   path: c.path,
+                                  base: 'now',
                                   ...(fmt ? { format: fmt } : {}),
-                                  },
-                                  true
-                                ),
+                                }),
                               ])
                             }}
                           >
@@ -705,18 +691,18 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                         <label className="flex items-center gap-2 text-xs text-muted-foreground">
                           <input
                             type="checkbox"
-                            checked={row.enabled}
+                            checked={(row.base ?? 'now') === 'now'}
                             onChange={(e) => {
                               const next = [...dateOverrides]
-                              next[i] = { ...next[i], enabled: e.target.checked }
+                              next[i] = { ...next[i], base: e.target.checked ? 'now' : 'response' }
                               setDateOverrides(next)
                             }}
                           />
                           Offset from now
                         </label>
-                        {!row.enabled && (
+                        {(row.base ?? 'now') !== 'now' && (
                           <span className="text-[11px] text-muted-foreground">
-                            Disabled — original stored value will be returned
+                            Offsetting from existing response value
                           </span>
                         )}
                       </div>
@@ -727,7 +713,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                             className="font-mono text-xs h-9"
                             placeholder="e.g. expiresAt or data.items.0.createdAt"
                             value={row.path}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const next = [...dateOverrides]
                               next[i] = { ...next[i], path: e.target.value }
@@ -753,7 +738,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                             type="number"
                             className="h-9 w-[88px] text-xs"
                             value={row.offsetMs ?? 0}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -768,7 +752,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetDays ?? 0}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -783,7 +766,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetHours ?? 0}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -798,7 +780,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetMinutes ?? 0}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -812,7 +793,6 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                           <select
                             className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             value={row.format ?? ''}
-                            disabled={!row.enabled}
                             onChange={(e) => {
                               const v = e.target.value as MockResponseDateOverride['format'] | ''
                               const next = [...dateOverrides]
@@ -842,7 +822,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
                 onClick={() =>
                   setDateOverrides([
                     ...dateOverrides,
-                    normalizeOverrideRowWithEnabled({ path: '' }, true),
+                    normalizeOverrideRow({ path: '', base: 'now' }),
                   ])
                 }
               >
