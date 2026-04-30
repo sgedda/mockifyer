@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-dashboard",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "description": "Standalone CLI dashboard for viewing and managing Mockifyer mock data",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
