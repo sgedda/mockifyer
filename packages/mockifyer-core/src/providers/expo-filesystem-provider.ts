@@ -1,4 +1,5 @@
 import { MockData, StoredRequest, ENV_VARS } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
@@ -507,7 +508,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
         // Generate key for this mock and compare with requested key
         const mockKey = generateRequestKey(mockData.request);
-        if (mockKey === requestKey) {
+        if (mockKey === requestKey && !mockPassesThroughToRealApi(mockData)) {
           // Get file modification time
           let fileMtime = 0;
           try {
@@ -610,11 +611,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           if (mockPath === requestPath &&
               (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            results.push({
-              mockData,
-              filename: file,
-              filePath: filePath
-            });
+            if (!mockPassesThroughToRealApi(mockData)) {
+              results.push({
+                mockData,
+                filename: file,
+                filePath: filePath
+              });
+            }
           }
         } catch (e) {
           // Invalid URL, skip

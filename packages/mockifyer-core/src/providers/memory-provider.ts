@@ -1,4 +1,5 @@
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -34,6 +35,10 @@ export class MemoryProvider implements DatabaseProvider {
       return undefined;
     }
 
+    if (mockPassesThroughToRealApi(mockData)) {
+      return undefined;
+    }
+
     return {
       mockData,
       filename: `memory_${requestKey.substring(0, 50)}.json`,
@@ -56,11 +61,13 @@ export class MemoryProvider implements DatabaseProvider {
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           
           if (mockPath === requestPath && mockMethod === requestMethod) {
-            results.push({
-              mockData,
-              filename: `memory_${key.substring(0, 50)}.json`,
-              filePath: 'memory://'
-            });
+            if (!mockPassesThroughToRealApi(mockData)) {
+              results.push({
+                mockData,
+                filename: `memory_${key.substring(0, 50)}.json`,
+                filePath: 'memory://'
+              });
+            }
           }
         } catch (e) {
           // Invalid URL, skip

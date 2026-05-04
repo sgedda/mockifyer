@@ -1,4 +1,5 @@
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -144,6 +145,10 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
+    if (mockPassesThroughToRealApi(mockData)) {
+      return undefined;
+    }
+
     return {
       mockData,
       filename: `sqlite_${row.id}.json`, // Virtual filename for compatibility
@@ -175,30 +180,32 @@ export class SQLiteProvider implements DatabaseProvider {
     
     const rows = stmt.all(requestPath, method) as any[];
 
-    return rows.map(row => {
-      const mockData: MockData = {
-        request: {
-          method: row.request_method,
-          url: row.request_url,
-          headers: JSON.parse(row.request_headers || '{}'),
-          data: row.request_data ? JSON.parse(row.request_data) : undefined,
-          queryParams: JSON.parse(row.request_query_params || '{}')
-        },
-        response: {
-          status: row.response_status,
-          data: JSON.parse(row.response_data),
-          headers: JSON.parse(row.response_headers || '{}')
-        },
-        timestamp: row.timestamp,
-        scenario: row.scenario || undefined
-      };
+    return rows
+      .map(row => {
+        const mockData: MockData = {
+          request: {
+            method: row.request_method,
+            url: row.request_url,
+            headers: JSON.parse(row.request_headers || '{}'),
+            data: row.request_data ? JSON.parse(row.request_data) : undefined,
+            queryParams: JSON.parse(row.request_query_params || '{}')
+          },
+          response: {
+            status: row.response_status,
+            data: JSON.parse(row.response_data),
+            headers: JSON.parse(row.response_headers || '{}')
+          },
+          timestamp: row.timestamp,
+          scenario: row.scenario || undefined
+        };
 
-      return {
-        mockData,
-        filename: `sqlite_${row.id}.json`,
-        filePath: this.dbPath
-      };
-    });
+        return {
+          mockData,
+          filename: `sqlite_${row.id}.json`,
+          filePath: this.dbPath
+        };
+      })
+      .filter((cached) => !mockPassesThroughToRealApi(cached.mockData));
   }
 
   exists(requestKey: string): boolean {

@@ -143,6 +143,11 @@ export interface MockData {
   sessionId?: string; // Unique identifier for grouping related requests
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
+  /**
+   * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
+   * The file is still kept (e.g. for documentation or for updating while recording).
+   */
+  alwaysUseRealApi?: boolean;
 }
 
 // Environment variable names

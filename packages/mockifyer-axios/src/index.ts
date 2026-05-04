@@ -12,7 +12,8 @@ import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
-  CachedMockData 
+  CachedMockData,
+  mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
@@ -112,7 +113,10 @@ class MockifyerClass {
     return generateRequestKeyUtil(request);
   }
 
-  private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
+  private async findBestMatchingMock(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
     // CRITICAL: Log the full request object to see what we have
     console.log(`[Mockifyer] 🔍 findBestMatchingMock - FULL REQUEST OBJECT:`, JSON.stringify({
       method: request.method,
@@ -137,13 +141,17 @@ class MockifyerClass {
     
     // Always read directly from files (no cache)
     console.log('[Mockifyer] Reading directly from files (cache disabled)');
-    return this.findBestMatchingMockFromFiles(request);
+    return this.findBestMatchingMockFromFiles(request, options);
   }
 
   /**
    * Find best matching mock by reading directly from files (no cache, reads on each request)
    */
-  private findBestMatchingMockFromFiles(request: StoredRequest): CachedMockData | undefined {
+  private findBestMatchingMockFromFiles(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
       return undefined;
@@ -245,14 +253,17 @@ class MockifyerClass {
           continue;
         }
         
-        // Check for exact match
+        // Check for exact match (skip passthrough files unless checking for duplicate save)
         if (mockKey === requestKey) {
-          exactMatch = {
-            mockData,
-            filename: file,
-            filePath: filePath
-          };
-          break; // Exact match found, no need to continue
+          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+            exactMatch = {
+              mockData,
+              filename: file,
+              filePath: filePath
+            };
+            break; // Exact match found, no need to continue
+          }
+          continue;
         }
         
         // If no exact match yet and similar matching is enabled, check for similar match
@@ -322,11 +333,13 @@ class MockifyerClass {
                   console.log('[Mockifyer] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
                 }
                 
-                similarMatch = {
-                  mockData,
-                  filename: file,
-                  filePath: filePath
-                };
+                if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+                  similarMatch = {
+                    mockData,
+                    filename: file,
+                    filePath: filePath
+                  };
+                }
               }
             } catch (e) {
               // Invalid URL, skip
@@ -1239,15 +1252,19 @@ class MockifyerClass {
     // This prevents creating duplicate files even if the Set check fails (e.g., after restart)
     // BUT: In record mode, if a mock exists, we should NOT have made a real API call in the first place!
     // This check is a safety net, but the real fix is ensuring the request interceptor finds mocks
-    const existingMock = await this.findBestMatchingMock({
-      method: response.config.method?.toUpperCase() || 'GET',
-      url: response.config.url || '',
-      headers: {},
-      data: response.config.data,
-      queryParams: response.config.params && Object.keys(response.config.params).length > 0 
-        ? response.config.params 
-        : undefined
-    });
+    const existingMock = await this.findBestMatchingMock(
+      {
+        method: response.config.method?.toUpperCase() || 'GET',
+        url: response.config.url || '',
+        headers: {},
+        data: response.config.data,
+        queryParams:
+          response.config.params && Object.keys(response.config.params).length > 0
+            ? response.config.params
+            : undefined,
+      },
+      { includePassthroughMocks: true }
+    );
     
     if (existingMock) {
       console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);

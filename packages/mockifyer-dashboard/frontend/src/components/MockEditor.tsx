@@ -140,6 +140,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
+  const [alwaysUseRealApi, setAlwaysUseRealApi] = useState(false)
   const { toast } = useToast()
 
   /** Same JSON the user is editing (form vs raw JSON tab). */
@@ -185,6 +186,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
           : JSON.stringify(parsedData)
     )
     setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
+    setAlwaysUseRealApi(mock.data.alwaysUseRealApi === true)
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -252,7 +254,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
 
     try {
       setSaving(true)
-      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides))
+      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides), alwaysUseRealApi)
       toast({
         title: 'Success',
         description: 'Mock updated successfully',
@@ -398,6 +400,26 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
           </TabsList>
 
           <TabsContent value="request" className="space-y-4">
+            <div className="rounded-lg border border-border/70 bg-muted/25 p-4 space-y-2">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="mockifyer-always-real-api"
+                  checked={alwaysUseRealApi}
+                  onChange={(e) => setAlwaysUseRealApi(e.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-input"
+                />
+                <div className="min-w-0 space-y-1">
+                  <label htmlFor="mockifyer-always-real-api" className="text-sm font-medium cursor-pointer leading-snug">
+                    Always use live API for this request
+                  </label>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    When Mockifyer replay is on, this recording is ignored and traffic goes to the real endpoint. The
+                    file stays on disk (for reference or when you record again). Save changes to apply.
+                  </p>
+                </div>
+              </div>
+            </div>
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Request Details</div>
               <Button

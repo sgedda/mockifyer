@@ -21,11 +21,15 @@ export async function getMock(filename: string): Promise<MockData> {
 export async function updateMock(
   filename: string,
   responseData: any,
-  responseDateOverrides?: MockResponseDateOverride[] | null
+  responseDateOverrides?: MockResponseDateOverride[] | null,
+  alwaysUseRealApi?: boolean
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
+  }
+  if (alwaysUseRealApi !== undefined) {
+    body.alwaysUseRealApi = alwaysUseRealApi
   }
   const response = await fetch(`${API_BASE}/mocks/${filename}`, {
     method: 'PUT',

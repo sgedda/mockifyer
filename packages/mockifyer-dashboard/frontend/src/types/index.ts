@@ -21,6 +21,8 @@ export interface MockFile {
     variables: any
   } | null
   sessionId: string | null
+  /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
+  alwaysUseRealApi?: boolean
 }
 
 export interface MockData {
@@ -44,6 +46,8 @@ export interface MockData {
     sessionId?: string
     /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
     responseDateOverrides?: MockResponseDateOverride[]
+    /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
+    alwaysUseRealApi?: boolean
   }
   metadata: {
     size: number

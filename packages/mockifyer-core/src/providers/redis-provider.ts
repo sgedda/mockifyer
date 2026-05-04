@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
@@ -104,6 +105,9 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
+    if (mockPassesThroughToRealApi(mockData)) {
+      return undefined;
+    }
     return {
       mockData,
       filename: `redis_${h.slice(0, 16)}.json`,
@@ -136,6 +140,9 @@ export class RedisProvider implements DatabaseProvider {
           const mockPath = mockUrl.pathname;
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           if (mockPath === requestPath && mockMethod === requestMethod) {
+            if (mockPassesThroughToRealApi(mockData)) {
+              continue;
+            }
             const h = members[i];
             results.push({
               mockData,

@@ -35,7 +35,8 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
-  shouldExcludeUrl
+  shouldExcludeUrl,
+  mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -273,8 +274,11 @@ class MockifyerClass {
         const mockKey = this.generateRequestKey(mockData.request);
         
         if (mockKey === requestKey) {
-          exactMatch = { mockData, filename: file, filePath };
-          break;
+          if (!mockPassesThroughToRealApi(mockData)) {
+            exactMatch = { mockData, filename: file, filePath };
+            break;
+          }
+          continue;
         }
         
         if (!exactMatch && this.config.useSimilarMatch && !similarMatch) {
@@ -350,7 +354,9 @@ class MockifyerClass {
                   }
                 }
               
-                similarMatch = { mockData, filename: file, filePath };
+                if (!mockPassesThroughToRealApi(mockData)) {
+                  similarMatch = { mockData, filename: file, filePath };
+                }
               }
             } catch (e) {
               continue;

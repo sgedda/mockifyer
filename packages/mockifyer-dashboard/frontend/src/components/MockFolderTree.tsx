@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import type { MockFile, MockData } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
-import { Copy, ExternalLink, Trash2, ChevronRight, ChevronDown, Folder } from 'lucide-react'
+import { Copy, ExternalLink, Trash2, ChevronRight, ChevronDown, Folder, Wifi } from 'lucide-react'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -134,6 +134,16 @@ export function MockFolderTree({
                     {mock.graphqlInfo && (
                       <Badge variant="outline" className="border-purple-500/30 bg-purple-500/20 text-purple-300">
                         GraphQL
+                      </Badge>
+                    )}
+                    {mock.alwaysUseRealApi && (
+                      <Badge
+                        variant="outline"
+                        className="inline-flex items-center gap-1 border-sky-500/30 bg-sky-500/15 text-sky-200"
+                        title="This mock is skipped — requests go to the live API"
+                      >
+                        <Wifi className="h-3 w-3 shrink-0" aria-hidden />
+                        Live API
                       </Badge>
                     )}
                   </div>
