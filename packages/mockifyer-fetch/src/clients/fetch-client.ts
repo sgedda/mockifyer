@@ -7,11 +7,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyBaseUrl?: string;
   private proxyScenario?: string;
   private proxyRecordOnMiss: boolean;
+  private clientId?: string;
 
   constructor(config?: {
     baseUrl?: string;
     defaultHeaders?: Record<string, string>;
     proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean };
+    clientId?: string;
   }) {
     super();
     this.baseUrl = config?.baseUrl;
@@ -19,6 +21,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
+    this.clientId = config?.clientId;
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
@@ -71,10 +74,14 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       const proxyUrl = new URL('/api/proxy', this.proxyBaseUrl).toString();
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(this.clientId ? { 'x-mockifyer-client-id': this.clientId } : {}),
+        },
         body: JSON.stringify({
           url,
           method: requestConfig.method,
+          clientId: this.clientId,
           headers: (() => {
             const out: Record<string, string> = {};
             headers.forEach((value, key) => {

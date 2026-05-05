@@ -1,5 +1,12 @@
 export interface MockifyerConfig {
   mockDataPath: string;
+  /**
+   * Optional logical client lane identifier used for scenario isolation.
+   *
+   * Preferred: set `process.env.MOCKIFYER_CLIENT_ID` in dev/CI (env should win).
+   * Fallback: set this field directly when env injection is not convenient.
+   */
+  clientId?: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
   /** When true, throws an error if no mock data is found for a request. 
@@ -143,6 +150,11 @@ export interface MockData {
   sessionId?: string; // Unique identifier for grouping related requests
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
+  /**
+   * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
+   * The file is still kept (e.g. for documentation or for updating while recording).
+   */
+  alwaysUseRealApi?: boolean;
 }
 
 // Environment variable names
@@ -151,6 +163,7 @@ export const ENV_VARS = {
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',
+  MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',

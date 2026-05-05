@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { getScenarioConfig, setScenario, createScenario } from '@/lib/api'
 import { Save } from 'lucide-react'
+import ClientLanes from './ClientLanes'
 
 interface SettingsProps {
   scenario: string
@@ -176,6 +177,8 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
           )}
         </CardContent>
       </Card>
+
+      <ClientLanes availableScenarios={availableScenarios} />
     </div>
   )
 }

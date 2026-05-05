@@ -27,7 +27,12 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
   }
 
-  const { url, method, headers, body, scenario, record } = req.body || {};
+  const { url, method, headers, body, scenario, record, clientId: clientIdFromBody } = req.body || {};
+  const clientIdFromHeader =
+    typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
+  const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
+    ? clientIdFromBody.trim()
+    : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
   const upperMethod = String(method || 'GET').toUpperCase();
@@ -52,7 +57,7 @@ router.post('/', async (req: Request, res: Response) => {
 
   try {
     // 1) Try Redis hit
-    const mock = await store.getByHash(hash, scenario);
+    const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {
       const responseWithOverrides = {
         ...mock.response,
@@ -62,6 +67,7 @@ router.post('/', async (req: Request, res: Response) => {
         proxied: false,
         source: 'redis',
         hash,
+        clientId: clientId || null,
         response: responseWithOverrides,
       });
     }
@@ -123,13 +129,14 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHash(hash, mockData as any, scenario);
+      await store.setByHash(hash, mockData as any, scenario, clientId);
     }
 
     return res.json({
       proxied: true,
       source: 'upstream',
       hash,
+      clientId: clientId || null,
       response,
     });
   } catch (error: any) {

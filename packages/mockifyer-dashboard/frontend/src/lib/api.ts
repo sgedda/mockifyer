@@ -21,11 +21,15 @@ export async function getMock(filename: string): Promise<MockData> {
 export async function updateMock(
   filename: string,
   responseData: any,
-  responseDateOverrides?: MockResponseDateOverride[] | null
+  responseDateOverrides?: MockResponseDateOverride[] | null,
+  alwaysUseRealApi?: boolean
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
+  }
+  if (alwaysUseRealApi !== undefined) {
+    body.alwaysUseRealApi = alwaysUseRealApi
   }
   const response = await fetch(`${API_BASE}/mocks/${filename}`, {
     method: 'PUT',
@@ -83,6 +87,47 @@ export async function setScenario(scenario: string): Promise<void> {
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.error || 'Failed to set scenario')
+  }
+}
+
+export interface ClientLane {
+  clientId: string
+  scenario: string
+  note: string | null
+}
+
+export async function getClientLanes(): Promise<{
+  enabled: boolean
+  reason?: string | null
+  lanes: ClientLane[]
+  globalScenario: string | null
+}> {
+  const response = await fetch(`${API_BASE}/client-lanes`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch client lanes')
+  return response.json()
+}
+
+export async function setClientLaneScenario(clientId: string, scenario: string | null): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to set lane scenario')
+  }
+}
+
+export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to set lane note')
   }
 }
 

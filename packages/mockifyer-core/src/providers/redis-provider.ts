@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
@@ -29,6 +30,7 @@ export class RedisProvider implements DatabaseProvider {
   private readonly redisUrl: string;
   private readonly activeScenarioKey: string;
   private readonly useCentralizedScenario: boolean;
+  private readonly clientId?: string;
 
   constructor(config: DatabaseProviderConfig) {
     this.redisUrl =
@@ -38,6 +40,7 @@ export class RedisProvider implements DatabaseProvider {
     this.activeScenarioKey =
       (config.options?.activeScenarioKey as string) || `${this.keyPrefix}:active_scenario`;
     this.useCentralizedScenario = (config.options?.useCentralizedScenario as boolean) ?? true;
+    this.clientId = (config.options?.clientId as string | undefined) || undefined;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RedisCtor: any;
@@ -58,14 +61,23 @@ export class RedisProvider implements DatabaseProvider {
 
   private async scenarioKey(scenarioOverride?: string): Promise<string> {
     if (scenarioOverride) return scenarioOverride;
-    if (!this.useCentralizedScenario) return getCurrentScenario(this.mockDataPath);
+    if (!this.useCentralizedScenario) return getCurrentScenario(this.mockDataPath, this.clientId);
+
+    // Per-client override (lane) takes precedence over centralized global scenario.
+    if (this.clientId && this.clientId.trim()) {
+      const clientScenarioKey = `${this.keyPrefix}:client_scenario:${this.clientId.trim()}`;
+      const clientScenario = await this.redis.get(clientScenarioKey);
+      if (typeof clientScenario === 'string' && clientScenario.trim()) {
+        return clientScenario.trim();
+      }
+    }
 
     const centralizedScenario = await this.redis.get(this.activeScenarioKey);
     if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
       return centralizedScenario.trim();
     }
 
-    return getCurrentScenario(this.mockDataPath);
+    return getCurrentScenario(this.mockDataPath, this.clientId);
   }
 
   private async indexKey(scenarioOverride?: string): Promise<string> {
@@ -104,6 +116,9 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
+    if (mockPassesThroughToRealApi(mockData)) {
+      return undefined;
+    }
     return {
       mockData,
       filename: `redis_${h.slice(0, 16)}.json`,
@@ -136,6 +151,9 @@ export class RedisProvider implements DatabaseProvider {
           const mockPath = mockUrl.pathname;
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           if (mockPath === requestPath && mockMethod === requestMethod) {
+            if (mockPassesThroughToRealApi(mockData)) {
+              continue;
+            }
             const h = members[i];
             results.push({
               mockData,
