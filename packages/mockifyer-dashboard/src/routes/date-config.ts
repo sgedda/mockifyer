@@ -203,7 +203,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (fixedDate !== undefined && fixedDate !== null && fixedDate !== '') {
       dateManipulation.fixedDate = fixedDate;
-    } else if (offset !== undefined && offset !== null) {
+    } else if (offset !== undefined && offset !== null && offset !== 0) {
+      // offset === 0 is the same as "no offset" — treat as clear so we do not persist a no-op override
       dateManipulation.offset = offset;
     } else {
       dateManipulation.fixedDate = null;
@@ -225,23 +226,25 @@ router.post('/', async (req: Request, res: Response) => {
         const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, store);
 
         if (noManipulation) {
-          await store.deleteDateConfig(scenario);
+          // Keep an explicit empty Redis document so GET does not fall through to legacy root date-config.json.
+          const clearedAt = new Date().toISOString();
+          await store.setDateConfig(scenario, {
+            dateManipulation: {},
+            updatedAt: clearedAt,
+          });
           const scenarioFsPath = getDateConfigPathForScenario(mockDataPath, scenario);
           if (fs.existsSync(scenarioFsPath)) {
             fs.unlinkSync(scenarioFsPath);
           }
-          const { dateManipulation: dm, source } = loadMergedDateConfig(mockDataPath, scenario);
           return res.json({
             success: true,
             message:
-              source !== 'none'
-                ? 'Date manipulation cleared (Redis + scenario file removed). Mock-data root date-config.json may still apply to fallbacks.'
-                : 'Date manipulation cleared for scenario (Redis key and scenario date-config file removed).',
-            dateManipulation: dm,
-            currentDate: computeCurrentDate(dm as Record<string, unknown> | null).toISOString(),
+              'Date manipulation cleared for this scenario (empty override stored in Redis). Legacy root date-config.json is ignored while this scenario key exists.',
+            dateManipulation: {},
+            currentDate: computeCurrentDate({}).toISOString(),
             scenario,
             currentScenario: await store.getActiveScenario(),
-            configSource: source,
+            configSource: 'redis' as const,
             storage: 'redis' as const,
             redisKey: store.dateConfigRedisKey(scenario),
           });
@@ -286,18 +289,20 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (noManipulation) {
-      if (fs.existsSync(configPath)) {
-        fs.unlinkSync(configPath);
-      }
-      const { dateManipulation: dm, source } = loadMergedDateConfig(mockDataPath, scenario);
+      // Write an explicit empty scenario file so load does not fall back to legacy root date-config.json.
+      const clearedPayload = {
+        dateManipulation: {} as Record<string, unknown>,
+        updatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(configPath, JSON.stringify(clearedPayload, null, 2), 'utf-8');
       return res.json({
         success: true,
-        message: 'Date manipulation cleared for scenario',
-        dateManipulation: dm,
-        currentDate: computeCurrentDate(dm as Record<string, unknown> | null).toISOString(),
+        message: 'Date manipulation cleared for scenario (empty override saved; legacy root no longer applies for this scenario).',
+        dateManipulation: {},
+        currentDate: computeCurrentDate({}).toISOString(),
         scenario,
         currentScenario: getCurrentScenario(mockDataPath),
-        configSource: source,
+        configSource: 'scenario' as const,
         storage: 'filesystem' as const,
       });
     }
