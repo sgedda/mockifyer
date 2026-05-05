@@ -12,8 +12,9 @@ export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; 
   return response.json()
 }
 
-export async function getMock(filename: string): Promise<MockData> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, noStore)
+export async function getMock(filename: string, scenario?: string): Promise<MockData> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -22,7 +23,8 @@ export async function updateMock(
   filename: string,
   responseData: any,
   responseDateOverrides?: MockResponseDateOverride[] | null,
-  alwaysUseRealApi?: boolean
+  alwaysUseRealApi?: boolean,
+  scenario?: string
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
@@ -31,7 +33,8 @@ export async function updateMock(
   if (alwaysUseRealApi !== undefined) {
     body.alwaysUseRealApi = alwaysUseRealApi
   }
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -42,15 +45,17 @@ export async function updateMock(
   }
 }
 
-export async function deleteMock(filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+export async function deleteMock(filename: string, scenario?: string): Promise<void> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error('Failed to delete mock')
 }
 
-export async function duplicateMock(filename: string): Promise<{ newFilename: string }> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate`, {
+export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
     method: 'POST',
   })
   if (!response.ok) throw new Error('Failed to duplicate mock')
