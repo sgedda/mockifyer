@@ -62,12 +62,23 @@ router.post('/', async (req: Request, res: Response) => {
       await store.recordLaneSeen(clientId).catch(() => undefined);
     }
 
+    const resolvedScenario = await store.getResolvedScenario(
+      typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined,
+      clientId
+    );
+
+    const getNow = () =>
+      getCurrentDate({
+        mockDataPath,
+        scenario: resolvedScenario,
+      });
+
     // 1) Try Redis hit
     const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(mock as any, getCurrentDate),
+        data: prepareMockResponseBody(mock as any, getNow),
       };
       if (debugProxy) {
         console.log(
