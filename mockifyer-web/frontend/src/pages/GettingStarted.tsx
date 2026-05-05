@@ -209,11 +209,13 @@ import express from 'express';
 MOCKIFYER_ENABLED=true
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
+MOCKIFYER_CLIENT_ID=web-dev
 
 # .env.test
 MOCKIFYER_ENABLED=true
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
+MOCKIFYER_CLIENT_ID=web-test
 
 # .env.production
 # Mockifyer not enabled - no variables set

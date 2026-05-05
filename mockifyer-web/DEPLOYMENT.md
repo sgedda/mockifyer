@@ -45,6 +45,8 @@ Railway offers a free tier with automatic deployments from GitHub.
      MOCKIFYER_ENABLED=true
      MOCKIFYER_RECORD=true  # Set to true initially to record mocks
      MOCKIFYER_PATH=/persisted/mock-data  # IMPORTANT: Set this to match your volume mount path
+     # Optional but recommended: stable lane id for scenario separation (e.g. market+version)
+     MOCKIFYER_CLIENT_ID=railway-prod
      GITHUB_TOKEN=your_github_token_with_read_packages_scope
      ```
    - Optional variables (see `.env.example` for details):
@@ -146,6 +148,7 @@ If you prefer using GitHub Actions for deployment, you can use the workflow file
 
 - `MOCKIFYER_MAX_SCENARIOS` - Maximum number of scenarios allowed (no limit if not set)
 - `MOCKIFYER_MAX_REQUESTS_PER_SCENARIO` - Maximum requests per scenario (no limit if not set)
+- `MOCKIFYER_CLIENT_ID` - Optional stable lane id for per-build scenario separation when using Redis
 
 ## Accessing Your Deployed App
 
