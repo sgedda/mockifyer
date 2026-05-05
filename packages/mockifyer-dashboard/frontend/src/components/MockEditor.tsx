@@ -21,6 +21,8 @@ import {
 
 interface MockEditorProps {
   mock: MockData
+  /** Must match the scenario used to list/load this mock (Redis vs filesystem active scenario). */
+  scenario?: string
   onClose: () => void
   onSave: () => void
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
@@ -129,7 +131,7 @@ function sanitizeOverridesForSave(overrides: MockResponseDateOverride[]): MockRe
     })
 }
 
-export default function MockEditor({ mock, onClose, onSave, variant = 'default' }: MockEditorProps) {
+export default function MockEditor({ mock, scenario, onClose, onSave, variant = 'default' }: MockEditorProps) {
   const [responseData, setResponseData] = useState('')
   const [responseObject, setResponseObject] = useState<any>(null)
   const [responseCharSize, setResponseCharSize] = useState(0)
@@ -252,7 +254,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
 
     try {
       setSaving(true)
-      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides))
+      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides), undefined, scenario)
       toast({
         title: 'Success',
         description: 'Mock updated successfully',

@@ -96,7 +96,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   async function handleSelectMock(file: MockFile) {
     try {
       setLoadingMock(true)
-      const mockData = await getMock(file.filename)
+      const mockData = await getMock(file.filename, scenario)
       setSelectedMock(mockData)
     } catch (error) {
       toast({
@@ -193,6 +193,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 <div className="space-y-6">
                   <MockList
                     mocks={filteredMocks}
+                    scenario={scenario}
                     loading={loading}
                     loadingMock={loadingMock}
                     searchQuery={searchQuery}
@@ -217,6 +218,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                           <MockEditor
                             variant="modal"
                             mock={selectedMock}
+                            scenario={scenario}
                             onClose={() => setSelectedMock(null)}
                             onSave={loadMocks}
                           />
