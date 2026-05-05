@@ -39,8 +39,30 @@ export interface ReactNativeMockifyerConfig {
   proxyRecordOnMiss?: boolean;
 }
 
+type DashboardHealth = {
+  status?: string;
+  provider?: string;
+  redisOk?: boolean | null;
+};
+
 // Lazy load bundled data (only used in production builds)
 let bundledMockData: MockData[] | null = null;
+
+async function canUseStrictRedisProxy(proxyBaseUrl?: string): Promise<boolean> {
+  if (!proxyBaseUrl) return false;
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
+    const timeout = setTimeout(() => controller?.abort(), 800);
+    const url = new URL('/api/health', proxyBaseUrl).toString();
+    const res = await fetch(url, { signal: controller?.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return false;
+    const data = (await res.json()) as DashboardHealth;
+    return data?.provider === 'redis' && data?.redisOk === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Load bundled mock data from a TypeScript/JavaScript module
@@ -120,6 +142,8 @@ export async function setupMockifyerForReactNative(
   }
 
   if (isDev === true) {
+    const strictProxyEnabled = await canUseStrictRedisProxy(proxyBaseUrl);
+
     // DEVELOPMENT MODE (React Native app running in dev)
     // Use Hybrid provider - saves to both device AND project folder simultaneously
     // Files are immediately available in project folder (no polling needed)
@@ -150,29 +174,40 @@ export async function setupMockifyerForReactNative(
 
     const instance = setupMockifyer({
       mockDataPath,
-      databaseProvider: databaseProviderConfig,
+      databaseProvider: strictProxyEnabled
+        ? {
+            // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
+            type: 'memory',
+          }
+        : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
-      proxy: proxyBaseUrl
+      proxy: strictProxyEnabled && proxyBaseUrl
         ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
       ...config,
     });
 
-    logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
-    logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
-    logger.info(
-      `[Mockifyer] Project→device sync: /mockifyer-sync-to-device-manifest + per-file fetch (on reloadMockData); Metro port ${metroPort}`
-    );
+    if (strictProxyEnabled) {
+      logger.info('[Mockifyer] Development mode: Strict proxy enabled (dashboard Redis is healthy) — local mocks disabled');
+    } else {
+      logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
+      logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
+      logger.info(
+        `[Mockifyer] Project→device sync: /mockifyer-sync-to-device-manifest + per-file fetch (on reloadMockData); Metro port ${metroPort}`
+      );
+    }
     if (recordMode) {
       logger.info('[Mockifyer] Recording mode enabled - new API responses will be saved');
     }
 
-    // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
-    try {
-      await instance.reloadMockData(true);
-    } catch (error) {
-      logger.warn('[Mockifyer] Initial project→device sync failed (Metro running with built mockifyer-fetch?):', error);
+    if (!strictProxyEnabled) {
+      // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
+      try {
+        await instance.reloadMockData(true);
+      } catch (error) {
+        logger.warn('[Mockifyer] Initial project→device sync failed (Metro running with built mockifyer-fetch?):', error);
+      }
     }
 
     return instance;
