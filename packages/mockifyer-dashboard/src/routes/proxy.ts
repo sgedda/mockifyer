@@ -67,10 +67,12 @@ router.post('/', async (req: Request, res: Response) => {
       clientId
     );
 
+    const redisDateDoc = await store.getDateConfig(resolvedScenario);
     const getNow = () =>
       getCurrentDate({
         mockDataPath,
         scenario: resolvedScenario,
+        explicitManipulation: redisDateDoc === null ? null : redisDateDoc.dateManipulation,
       });
 
     // 1) Try Redis hit

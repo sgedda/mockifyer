@@ -22,6 +22,21 @@ export interface GetCurrentDateContext {
   mockDataPath?: string;
   /** Load `{mockDataPath}/{scenario}/date-config.json` instead of the filesystem active scenario. */
   scenario?: string;
+  /**
+   * When the dashboard loads date settings from Redis: pass the `dateManipulation` object to apply.
+   * Pass `null` when Redis has no key for that scenario (falls through to disk).
+   * When omitted, only in-memory config + disk are used (default client behavior).
+   */
+  explicitManipulation?: Record<string, unknown> | null;
+}
+
+function manipulationPayloadIsEffective(dm: Record<string, unknown>): boolean {
+  const fixed = dm.fixedDate;
+  const hasFixed = fixed !== undefined && fixed !== null && fixed !== '';
+  const hasOffset = dm.offset !== undefined && dm.offset !== null && typeof dm.offset === 'number';
+  const tz = dm.timezone;
+  const hasTz = tz !== undefined && tz !== null && tz !== '';
+  return hasFixed || hasOffset || hasTz;
 }
 
 /**
@@ -186,6 +201,18 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
 
   // Try to get date manipulation from current config
   let dateManipulation = currentConfig?.dateManipulation;
+
+  // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
+  if (
+    !dateManipulation &&
+    context !== undefined &&
+    Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
+  ) {
+    const ex = context.explicitManipulation;
+    if (ex !== null && typeof ex === 'object' && manipulationPayloadIsEffective(ex)) {
+      dateManipulation = ex;
+    }
+  }
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
   if (!dateManipulation) {
