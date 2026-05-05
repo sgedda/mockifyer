@@ -25,6 +25,20 @@ function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleString()
 }
 
+function getGraphqlQueryPreview(query: string | null | undefined): string | null {
+  if (!query || typeof query !== 'string') return null
+  const compact = query.replace(/#[^\n]*\n/g, '\n').replace(/\s+/g, ' ').trim()
+  if (!compact) return null
+
+  // Heuristic: show the first top-level field and the first nested field.
+  // Example: myAccount { customerId ... }
+  const m = compact.match(/\{\s*([_A-Za-z][_0-9A-Za-z]*)\s*(?:\([^)]*\))?\s*\{\s*([_A-Za-z][_0-9A-Za-z]*)/m)
+  if (!m) return null
+  const top = m[1]
+  const nested = m[2]
+  return `"${top}": { ${nested}, … }`
+}
+
 interface FolderTreeBulkContextValue {
   /** Incremented on each Expand all / Collapse all so nested folders sync. */
   bulkGeneration: number
@@ -119,7 +133,7 @@ export function MockFolderTree({
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <CardTitle className="text-lg mb-2 text-foreground break-all font-mono text-sm">
+                  <CardTitle className="mb-2 text-foreground break-all font-mono text-sm">
                     {displayName}
                   </CardTitle>
                   <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -165,6 +179,17 @@ export function MockFolderTree({
                   <ExternalLink className="h-3 w-3 shrink-0" />
                   <span className="break-all">{mock.endpoint}</span>
                 </div>
+                {mock.graphqlInfo?.query ? (
+                  (() => {
+                    const preview = getGraphqlQueryPreview(mock.graphqlInfo?.query)
+                    if (!preview) return null
+                    return (
+                      <div className="mt-1 text-xs font-mono text-muted-foreground/90 break-words">
+                        {preview}
+                      </div>
+                    )
+                  })()
+                ) : null}
               </CardContent>
             )}
           </Card>
