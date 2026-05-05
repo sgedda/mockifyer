@@ -14,6 +14,15 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
 
+  const knownLaneIds = useMemo(() => {
+    return Array.from(new Set(lanes.map((l) => l.clientId).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [lanes])
+
+  const addLaneSuggestions = useMemo(() => {
+    const existing = new Set(lanes.map((l) => l.clientId))
+    return knownLaneIds.filter((id) => !existing.has(id))
+  }, [knownLaneIds, lanes])
+
   const scenarioOptions = useMemo(() => {
     const unique = Array.from(new Set(availableScenarios)).filter(Boolean)
     return unique
@@ -118,8 +127,8 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           </div>
         ) : lanes.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            No lanes configured yet. Add one below (or set <span className="font-mono">MOCKIFYER_CLIENT_ID</span> in a
-            client so it shows up in Redis as soon as it makes a request).
+            No lanes configured yet. Add one below (the lane id must match what your app uses as{' '}
+            <span className="font-mono">clientId</span>, typically via <span className="font-mono">MOCKIFYER_CLIENT_ID</span>).
           </div>
         ) : (
           <div className="space-y-3">
@@ -159,7 +168,15 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
             onChange={(e) => setNewLaneId(e.target.value)}
             className="min-w-[16rem] flex-1 font-mono"
             disabled={!enabled}
+            list="mockifyer-client-lanes-datalist"
           />
+          {enabled && addLaneSuggestions.length > 0 ? (
+            <datalist id="mockifyer-client-lanes-datalist">
+              {addLaneSuggestions.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+          ) : null}
           <Button type="button" variant="outline" onClick={handleAddLane} disabled={!enabled || !newLaneId.trim()}>
             Add lane
           </Button>
