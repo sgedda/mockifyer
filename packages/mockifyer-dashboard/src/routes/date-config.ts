@@ -1,35 +1,44 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { detectMockDataPath } from '../utils/path-detector';
 import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
+import { getDashboardContext } from '../utils/dashboard-context';
+import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
 const DATE_CONFIG_FILENAME = 'date-config.json';
 
-function getMockDataPath(): string {
-  try {
-    return detectMockDataPath();
-  } catch (error: unknown) {
-    console.error('[DateConfigRoute] Error detecting mock data path:', error);
-    return path.join(process.cwd(), 'mock-data');
-  }
+function sanitizeScenarioCandidate(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (sanitized !== trimmed) return null;
+  return sanitized;
 }
 
-/** Resolve scenario: query/body, validated against existing folders when possible */
-function resolveScenario(mockDataPath: string, raw?: string | null): string {
-  if (raw && typeof raw === 'string' && raw.trim() !== '') {
-    const trimmed = raw.trim();
-    const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-    if (sanitized !== trimmed) {
-      return getCurrentScenario(mockDataPath);
+async function resolveScenarioForRoute(
+  mockDataPath: string,
+  provider: 'filesystem' | 'sqlite' | 'redis',
+  raw: string | undefined | null,
+  redisStore: RedisMockStore | null
+): Promise<string> {
+  if (raw && typeof raw === 'string' && raw.trim()) {
+    const s = sanitizeScenarioCandidate(raw);
+    if (!s) {
+      return provider === 'redis' && redisStore
+        ? redisStore.getActiveScenario()
+        : getCurrentScenario(mockDataPath);
+    }
+    if (provider === 'redis') {
+      return s;
     }
     const scenarios = listScenarios(mockDataPath);
-    if (scenarios.includes(sanitized)) {
-      return sanitized;
-    }
+    if (scenarios.includes(s)) return s;
     return getCurrentScenario(mockDataPath);
+  }
+  if (provider === 'redis' && redisStore) {
+    return redisStore.getActiveScenario();
   }
   return getCurrentScenario(mockDataPath);
 }
@@ -64,10 +73,6 @@ function computeCurrentDate(dateManipulation: {
   return new Date();
 }
 
-/**
- * Load date config for a scenario: per-scenario file first, then legacy root mock-data/date-config.json.
- * If the scenario directory or `{scenario}/date-config.json` is missing, reads legacy root only.
- */
 function loadMergedDateConfig(mockDataPath: string, scenario: string): {
   dateManipulation: Record<string, unknown> | null;
   source: 'scenario' | 'legacy' | 'none';
@@ -99,15 +104,59 @@ function loadMergedDateConfig(mockDataPath: string, scenario: string): {
   return { dateManipulation: null, source: 'none' };
 }
 
-// Get current date config (per scenario; optional ?scenario=)
-router.get('/', (req: Request, res: Response) => {
-  try {
-    const mockDataPath = getMockDataPath();
-    const scenarioParam = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
-    const scenario = resolveScenario(mockDataPath, scenarioParam);
+function openRedisStore(mockDataPath: string, config: { redisUrl?: string; keyPrefix?: string }): RedisMockStore {
+  return new RedisMockStore({
+    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+    keyPrefix: config.keyPrefix,
+    mockDataPath,
+  });
+}
 
+// Get current date config (per scenario; optional ?scenario=)
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const scenarioParam = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
+
+    if (config.provider === 'redis') {
+      const store = openRedisStore(mockDataPath, config);
+      try {
+        const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, store);
+        const redisDoc = await store.getDateConfig(scenario);
+        if (redisDoc !== null) {
+          const dm = redisDoc.dateManipulation;
+          const currentDate = computeCurrentDate(dm as Record<string, unknown> | null);
+          console.log('[DateConfigRoute] GET - scenario:', scenario, 'source: redis');
+          return res.json({
+            dateManipulation: dm,
+            currentDate: currentDate.toISOString(),
+            scenario,
+            currentScenario: await store.getActiveScenario(),
+            configSource: 'redis' as const,
+            storage: 'redis' as const,
+            redisKey: store.dateConfigRedisKey(scenario),
+          });
+        }
+        const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
+        const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
+        console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source, '(redis miss → filesystem)');
+        return res.json({
+          dateManipulation,
+          currentDate: currentDate.toISOString(),
+          scenario,
+          currentScenario: await store.getActiveScenario(),
+          configSource: source,
+          storage: 'redis' as const,
+          redisKey: store.dateConfigRedisKey(scenario),
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, null);
     const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
-    const currentDate = computeCurrentDate(dateManipulation);
+    const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
 
     console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source);
 
@@ -117,6 +166,7 @@ router.get('/', (req: Request, res: Response) => {
       scenario,
       currentScenario: getCurrentScenario(mockDataPath),
       configSource: source,
+      storage: 'filesystem' as const,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -125,8 +175,8 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
-// Update date config for a scenario (body.scenario optional; defaults to current)
-router.post('/', (req: Request, res: Response) => {
+// Update date config for a scenario (body.scenario optional; defaults to active)
+router.post('/', async (req: Request, res: Response) => {
   try {
     const { fixedDate, offset, timezone, scenario: bodyScenario } = req.body as {
       fixedDate?: string | null;
@@ -134,19 +184,7 @@ router.post('/', (req: Request, res: Response) => {
       timezone?: string | null;
       scenario?: string | null;
     };
-    const mockDataPath = getMockDataPath();
-    const scenario = resolveScenario(mockDataPath, bodyScenario ?? undefined);
-
-    const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
-    const configPath = path.join(scenarioFolder, DATE_CONFIG_FILENAME);
-
-    // Create mock-data and scenario folder on first save (no need for them to exist when only reading)
-    if (!fs.existsSync(mockDataPath)) {
-      fs.mkdirSync(mockDataPath, { recursive: true });
-    }
-    if (!fs.existsSync(scenarioFolder)) {
-      fs.mkdirSync(scenarioFolder, { recursive: true });
-    }
+    const { mockDataPath, config } = getDashboardContext(req);
 
     if (fixedDate !== undefined && fixedDate !== null && fixedDate !== '') {
       const testDate = new Date(fixedDate);
@@ -181,6 +219,72 @@ router.post('/', (req: Request, res: Response) => {
       dateManipulation.offset === undefined &&
       !dateManipulation.timezone;
 
+    if (config.provider === 'redis') {
+      const store = openRedisStore(mockDataPath, config);
+      try {
+        const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, store);
+
+        if (noManipulation) {
+          await store.deleteDateConfig(scenario);
+          const scenarioFsPath = getDateConfigPathForScenario(mockDataPath, scenario);
+          if (fs.existsSync(scenarioFsPath)) {
+            fs.unlinkSync(scenarioFsPath);
+          }
+          const { dateManipulation: dm, source } = loadMergedDateConfig(mockDataPath, scenario);
+          return res.json({
+            success: true,
+            message:
+              source !== 'none'
+                ? 'Date manipulation cleared (Redis + scenario file removed). Mock-data root date-config.json may still apply to fallbacks.'
+                : 'Date manipulation cleared for scenario (Redis key and scenario date-config file removed).',
+            dateManipulation: dm,
+            currentDate: computeCurrentDate(dm as Record<string, unknown> | null).toISOString(),
+            scenario,
+            currentScenario: await store.getActiveScenario(),
+            configSource: source,
+            storage: 'redis' as const,
+            redisKey: store.dateConfigRedisKey(scenario),
+          });
+        }
+
+        const payload = {
+          dateManipulation,
+          updatedAt: new Date().toISOString(),
+        };
+        await store.setDateConfig(scenario, payload);
+
+        const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
+
+        console.log(`[DateConfigRoute] Updated Redis date config for scenario "${scenario}":`, dateManipulation);
+
+        return res.json({
+          success: true,
+          message: 'Date manipulation updated successfully',
+          dateManipulation,
+          currentDate: currentDate.toISOString(),
+          scenario,
+          currentScenario: await store.getActiveScenario(),
+          configSource: 'redis' as const,
+          storage: 'redis' as const,
+          redisKey: store.dateConfigRedisKey(scenario),
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, null);
+
+    const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
+    const configPath = path.join(scenarioFolder, DATE_CONFIG_FILENAME);
+
+    if (!fs.existsSync(mockDataPath)) {
+      fs.mkdirSync(mockDataPath, { recursive: true });
+    }
+    if (!fs.existsSync(scenarioFolder)) {
+      fs.mkdirSync(scenarioFolder, { recursive: true });
+    }
+
     if (noManipulation) {
       if (fs.existsSync(configPath)) {
         fs.unlinkSync(configPath);
@@ -190,19 +294,20 @@ router.post('/', (req: Request, res: Response) => {
         success: true,
         message: 'Date manipulation cleared for scenario',
         dateManipulation: dm,
-        currentDate: computeCurrentDate(dm).toISOString(),
+        currentDate: computeCurrentDate(dm as Record<string, unknown> | null).toISOString(),
         scenario,
         currentScenario: getCurrentScenario(mockDataPath),
         configSource: source,
+        storage: 'filesystem' as const,
       });
     }
 
-    const config = {
+    const payloadFs = {
       dateManipulation,
       updatedAt: new Date().toISOString(),
     };
 
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    fs.writeFileSync(configPath, JSON.stringify(payloadFs, null, 2), 'utf-8');
 
     const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
 
@@ -216,6 +321,7 @@ router.post('/', (req: Request, res: Response) => {
       scenario,
       currentScenario: getCurrentScenario(mockDataPath),
       configSource: 'scenario' as const,
+      storage: 'filesystem' as const,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

@@ -117,6 +117,8 @@ export default function DateConfig() {
   const [selectedScenario, setSelectedScenario] = useState<string>('')
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [configSource, setConfigSource] = useState<DateConfig['configSource']>()
+  const [dateStorage, setDateStorage] = useState<DateConfig['storage']>()
+  const [redisKey, setRedisKey] = useState<string | undefined>()
   const [mode, setMode] = useState<'fixed' | 'offset' | 'timezone' | 'none'>('none')
   const { toast } = useToast()
   const isEditingRef = useRef(false)
@@ -151,6 +153,27 @@ export default function DateConfig() {
     setOffsetSeconds(seconds > 0 ? String(seconds) : '')
   }
 
+  function resetDateFormFields(): void {
+    setMode('none')
+    setFixedDate('')
+    setOffset('')
+    setOffsetDays('')
+    setOffsetHours('')
+    setOffsetMinutes('')
+    setOffsetSeconds('')
+    setTimezone('')
+    setTimezoneSearch('')
+  }
+
+  /** True when API returned a non-empty manipulation (empty `{}` / all-null must not keep stale UI state). */
+  function dateManipulationHasEffect(dm: DateConfig['dateManipulation']): boolean {
+    if (dm == null) return false
+    const hasFixed = dm.fixedDate != null && String(dm.fixedDate).trim() !== ''
+    const hasOffset = dm.offset !== undefined && dm.offset !== null
+    const hasTz = dm.timezone != null && String(dm.timezone).trim() !== ''
+    return hasFixed || hasOffset || hasTz
+  }
+
   useEffect(() => {
     void (async () => {
       try {
@@ -169,43 +192,36 @@ export default function DateConfig() {
       const config = await getDateConfig(selectedScenario)
       setCurrentDate(config.currentDate)
       setConfigSource(config.configSource)
+      setDateStorage(config.storage)
+      setRedisKey(config.redisKey)
 
       // Only update form fields if user is not currently editing
       if (!isEditingRef.current) {
-        if (config.dateManipulation) {
-          if (config.dateManipulation.fixedDate) {
-            setFixedDate(config.dateManipulation.fixedDate)
+        if (!dateManipulationHasEffect(config.dateManipulation)) {
+          resetDateFormFields()
+        } else {
+          const dm = config.dateManipulation!
+          resetDateFormFields()
+          if (dm.fixedDate != null && String(dm.fixedDate).trim() !== '') {
+            setFixedDate(dm.fixedDate)
             setMode('fixed')
-          } else if (
-            config.dateManipulation.offset !== undefined &&
-            config.dateManipulation.offset !== null
-          ) {
-            const offsetMs = config.dateManipulation.offset
+          } else if (dm.offset !== undefined && dm.offset !== null) {
+            const offsetMs = dm.offset
             setOffset(String(offsetMs))
             setOffsetFromMilliseconds(offsetMs)
             setMode('offset')
           }
-          if (config.dateManipulation.timezone) {
-            setTimezone(config.dateManipulation.timezone)
+          if (dm.timezone != null && String(dm.timezone).trim() !== '') {
+            setTimezone(dm.timezone)
           }
-          const dm = config.dateManipulation
           if (
-            dm.timezone &&
-            !dm.fixedDate &&
+            dm.timezone != null &&
+            String(dm.timezone).trim() !== '' &&
+            !(dm.fixedDate != null && String(dm.fixedDate).trim() !== '') &&
             (dm.offset === undefined || dm.offset === null)
           ) {
             setMode('timezone')
           }
-        } else {
-          setMode('none')
-          setFixedDate('')
-          setOffset('')
-          setOffsetDays('')
-          setOffsetHours('')
-          setOffsetMinutes('')
-          setOffsetSeconds('')
-          setTimezone('')
-          setTimezoneSearch('')
         }
       }
     } catch (error: unknown) {
@@ -255,9 +271,15 @@ export default function DateConfig() {
       
       let updateData: any = {}
       
-      if (mode === 'fixed' && fixedDate.trim()) {
-        updateData.fixedDate = fixedDate.trim()
-        updateData.offset = null
+      if (mode === 'fixed') {
+        if (fixedDate.trim()) {
+          updateData.fixedDate = fixedDate.trim()
+          updateData.offset = null
+        } else {
+          updateData.fixedDate = null
+          updateData.offset = null
+          updateData.timezone = null
+        }
       } else if (mode === 'offset') {
         // Use milliseconds input if provided, otherwise calculate from components
         let offsetNum: number
@@ -286,6 +308,8 @@ export default function DateConfig() {
       const result = await updateDateConfig({ ...updateData, scenario: selectedScenario })
       setCurrentDate(result.currentDate)
       setConfigSource(result.configSource)
+      setDateStorage(result.storage)
+      setRedisKey(result.redisKey)
       isEditingRef.current = false // Allow config reload after save
       toast({
         title: 'Success',
@@ -313,6 +337,9 @@ export default function DateConfig() {
         scenario: selectedScenario,
       })
       setConfigSource(cleared.configSource)
+      setDateStorage(cleared.storage)
+      setRedisKey(cleared.redisKey)
+      setCurrentDate(cleared.currentDate)
       setFixedDate('')
       setOffset('')
       setOffsetDays('')
@@ -363,8 +390,8 @@ export default function DateConfig() {
         <CardHeader>
           <CardTitle>Date Manipulation</CardTitle>
           <CardDescription>
-            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the selected scenario only (runtime uses the active scenario from{' '}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario-config.json</code>).
+            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the <strong className="font-medium text-foreground">selected scenario</strong> only. With the Redis provider, the active scenario comes from Redis; otherwise from{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario-config.json</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -386,13 +413,33 @@ export default function DateConfig() {
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Saved to{' '}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">{`${selectedScenario}/date-config.json`}</code>{' '}
-              under your mock-data folder.
-              {configSource === 'legacy' && (
+              {dateStorage === 'redis' ? (
+                <>
+                  Stored in Redis per scenario
+                  {redisKey ? (
+                    <>
+                      : <code className="rounded bg-muted px-1 py-0.5 text-xs break-all">{redisKey}</code>
+                    </>
+                  ) : null}
+                  . If no Redis entry exists, the dashboard falls back to the same paths as filesystem mode.
+                </>
+              ) : (
+                <>
+                  Saved to{' '}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">{`${selectedScenario}/date-config.json`}</code>{' '}
+                  under your mock-data folder.
+                </>
+              )}
+              {configSource === 'legacy' && dateStorage !== 'redis' && (
                 <span className="mt-1 block">
                   Showing legacy root <code className="rounded bg-muted px-1 py-0.5 text-xs">date-config.json</code>{' '}
                   until you save for this scenario.
+                </span>
+              )}
+              {configSource === 'legacy' && dateStorage === 'redis' && (
+                <span className="mt-1 block">
+                  No Redis date config yet; showing legacy root{' '}
+                  <code className="rounded bg-muted px-1 py-0.5 text-xs">date-config.json</code> until you save.
                 </span>
               )}
             </p>

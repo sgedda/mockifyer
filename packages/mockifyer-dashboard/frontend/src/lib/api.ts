@@ -166,8 +166,12 @@ export interface DateConfig {
   scenario?: string
   /** Active scenario from scenario-config.json (runtime) */
   currentScenario?: string
-  /** Whether values came from per-scenario file or legacy root date-config.json */
-  configSource?: 'scenario' | 'legacy' | 'none'
+  /** Effective source: Redis, per-scenario file, legacy root, or none */
+  configSource?: 'scenario' | 'legacy' | 'none' | 'redis'
+  /** Where the dashboard persists date settings */
+  storage?: 'redis' | 'filesystem'
+  /** Redis key when `storage === 'redis'` (read hits Redis first, then filesystem fallback) */
+  redisKey?: string
 }
 
 export async function getDateConfig(scenario?: string): Promise<DateConfig> {

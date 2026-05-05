@@ -150,6 +150,44 @@ export class RedisMockStore {
     await this.redis.srem(indexKey, hash);
   }
 
+  /** Redis key for JSON `{ dateManipulation, updatedAt }` per scenario (dashboard Date Config + proxy). */
+  dateConfigRedisKey(scenario: string): string {
+    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    return `${this.keyPrefix}:date_config:${id}`;
+  }
+
+  async getDateConfig(scenario: string): Promise<{
+    dateManipulation: Record<string, unknown> | null;
+    updatedAt?: string;
+  } | null> {
+    const raw: string | null = await this.redis.get(this.dateConfigRedisKey(scenario));
+    if (raw === null || raw === '') return null;
+    try {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      const dm = o.dateManipulation;
+      return {
+        dateManipulation:
+          dm !== undefined && dm !== null && typeof dm === 'object'
+            ? (dm as Record<string, unknown>)
+            : null,
+        updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async setDateConfig(
+    scenario: string,
+    payload: { dateManipulation: Record<string, unknown>; updatedAt: string }
+  ): Promise<void> {
+    await this.redis.set(this.dateConfigRedisKey(scenario), JSON.stringify(payload));
+  }
+
+  async deleteDateConfig(scenario: string): Promise<void> {
+    await this.redis.del(this.dateConfigRedisKey(scenario));
+  }
+
   async close(): Promise<void> {
     await this.redis.quit();
   }

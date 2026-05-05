@@ -281,6 +281,44 @@ describe('Date Manipulation', () => {
       }
     });
 
+    it('getCurrentDate({ explicitManipulation }) prefers Redis payload over filesystem for same scenario', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'alpha', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2020-06-01T00:00:00.000Z' },
+        })
+      );
+
+      try {
+        resetDateManipulation();
+        initializeDateManipulation({ mockDataPath: mockData });
+        expect(
+          getCurrentDate({
+            mockDataPath: mockData,
+            scenario: 'alpha',
+            explicitManipulation: { fixedDate: '2025-01-15T12:00:00.000Z' },
+          }).toISOString()
+        ).toBe('2025-01-15T12:00:00.000Z');
+        expect(
+          getCurrentDate({
+            mockDataPath: mockData,
+            scenario: 'alpha',
+            explicitManipulation: null,
+          }).toISOString()
+        ).toBe('2020-06-01T00:00:00.000Z');
+      } finally {
+        resetDateManipulation();
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
     it('getCurrentDate({ scenario }) reads that scenario date-config when active scenario differs (Redis-aligned)', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
       const mockData = path.join(tmp, 'mock-data');
