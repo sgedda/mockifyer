@@ -22,6 +22,7 @@ function toRecordStringHeaders(headers: unknown): Record<string, string> {
 
 router.post('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
+  const debugProxy = process.env.MOCKIFYER_PROXY_DEBUG === 'true';
 
   if (config.provider !== 'redis') {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
@@ -68,6 +69,11 @@ router.post('/', async (req: Request, res: Response) => {
         ...mock.response,
         data: prepareMockResponseBody(mock as any, getCurrentDate),
       };
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+        );
+      }
       return res.json({
         proxied: false,
         source: 'redis',
@@ -137,6 +143,11 @@ router.post('/', async (req: Request, res: Response) => {
       await store.setByHash(hash, mockData as any, scenario, clientId);
     }
 
+    if (debugProxy) {
+      console.log(
+        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${record === true}`
+      );
+    }
     return res.json({
       proxied: true,
       source: 'upstream',

@@ -99,6 +99,22 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         throw new Error(`[FetchHTTPClient] Proxy error: ${proxyResponse.status} ${txt}`);
       }
       const payload = await proxyResponse.json();
+      try {
+        const source = String(payload?.source || '');
+        const hash = typeof payload?.hash === 'string' ? payload.hash : '';
+        if (source) {
+          const hashShort = hash ? `${hash.slice(0, 8)}…` : '';
+          const lane = this.clientId ? this.clientId : '—';
+          const kind = source === 'redis' ? 'mock hit' : 'upstream';
+          console.log(
+            `[Mockifyer-Fetch] Proxy ${kind}: ${requestConfig.method} ${url} ${
+              hashShort ? `(hash=${hashShort}) ` : ''
+            }(lane=${lane})`
+          );
+        }
+      } catch {
+        // ignore logging failures
+      }
       const data = payload?.response?.data;
       const status = payload?.response?.status ?? 200;
       const responseHeaders: Record<string, string> = payload?.response?.headers ?? {};

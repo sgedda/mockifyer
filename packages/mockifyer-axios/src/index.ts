@@ -78,6 +78,7 @@ class MockifyerClass {
     }
     
     this.config = { ...config, clientId: resolveClientId(config) };
+    console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
