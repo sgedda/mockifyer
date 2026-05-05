@@ -56,6 +56,11 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   try {
+    // Best-effort lane discovery for dashboard UX (autocomplete). No effect if clientId is absent.
+    if (clientId) {
+      await store.recordLaneSeen(clientId).catch(() => undefined);
+    }
+
     // 1) Try Redis hit
     const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {

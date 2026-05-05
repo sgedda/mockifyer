@@ -100,6 +100,7 @@ export async function getClientLanes(): Promise<{
   enabled: boolean
   reason?: string | null
   lanes: ClientLane[]
+  discoveredLanes?: string[]
   globalScenario: string | null
 }> {
   const response = await fetch(`${API_BASE}/client-lanes`, noStore)
