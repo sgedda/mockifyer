@@ -5,15 +5,21 @@ const API_BASE = '/api'
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
 
+function withScenario(url: string, scenario?: string): string {
+  if (!scenario) return url
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}scenario=${encodeURIComponent(scenario)}`
+}
+
 export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
-  const url = scenario ? `${API_BASE}/mocks?scenario=${encodeURIComponent(scenario)}` : `${API_BASE}/mocks`
+  const url = withScenario(`${API_BASE}/mocks`, scenario)
   const response = await fetch(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }
 
-export async function getMock(filename: string): Promise<MockData> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, noStore)
+export async function getMock(filename: string, scenario?: string): Promise<MockData> {
+  const response = await fetch(withScenario(`${API_BASE}/mocks/${filename}`, scenario), noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -21,13 +27,14 @@ export async function getMock(filename: string): Promise<MockData> {
 export async function updateMock(
   filename: string,
   responseData: any,
-  responseDateOverrides?: MockResponseDateOverride[] | null
+  responseDateOverrides?: MockResponseDateOverride[] | null,
+  scenario?: string
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
   }
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+  const response = await fetch(withScenario(`${API_BASE}/mocks/${filename}`, scenario), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -38,15 +45,15 @@ export async function updateMock(
   }
 }
 
-export async function deleteMock(filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+export async function deleteMock(filename: string, scenario?: string): Promise<void> {
+  const response = await fetch(withScenario(`${API_BASE}/mocks/${filename}`, scenario), {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error('Failed to delete mock')
 }
 
-export async function duplicateMock(filename: string): Promise<{ newFilename: string }> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate`, {
+export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
+  const response = await fetch(withScenario(`${API_BASE}/mocks/${filename}/duplicate`, scenario), {
     method: 'POST',
   })
   if (!response.ok) throw new Error('Failed to duplicate mock')

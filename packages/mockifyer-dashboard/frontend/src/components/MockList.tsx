@@ -12,6 +12,7 @@ import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
+  scenario: string
   loading: boolean
   loadingMock?: boolean
   searchQuery: string
@@ -31,6 +32,7 @@ export default function MockList(props: MockListProps) {
 
 function MockListContent({
   mocks,
+  scenario,
   loading,
   loadingMock = false,
   searchQuery,
@@ -66,7 +68,7 @@ function MockListContent({
 
     try {
       setDeleting(filename)
-      await deleteMock(filename)
+      await deleteMock(filename, scenario)
       toast({
         title: 'Success',
         description: 'Mock deleted successfully',
@@ -86,7 +88,7 @@ function MockListContent({
   async function handleDuplicate(filename: string, e: React.MouseEvent) {
     e.stopPropagation()
     try {
-      const result = await duplicateMock(filename)
+      const result = await duplicateMock(filename, scenario)
       toast({
         title: 'Success',
         description: `Mock duplicated as ${result.newFilename}`,

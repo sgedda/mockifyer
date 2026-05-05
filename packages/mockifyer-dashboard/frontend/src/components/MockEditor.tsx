@@ -23,6 +23,7 @@ interface MockEditorProps {
   mock: MockData
   onClose: () => void
   onSave: () => void
+  scenario?: string
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
   variant?: 'default' | 'modal'
 }
@@ -129,7 +130,7 @@ function sanitizeOverridesForSave(overrides: MockResponseDateOverride[]): MockRe
     })
 }
 
-export default function MockEditor({ mock, onClose, onSave, variant = 'default' }: MockEditorProps) {
+export default function MockEditor({ mock, onClose, onSave, scenario, variant = 'default' }: MockEditorProps) {
   const [responseData, setResponseData] = useState('')
   const [responseObject, setResponseObject] = useState<any>(null)
   const [responseCharSize, setResponseCharSize] = useState(0)
@@ -252,7 +253,7 @@ export default function MockEditor({ mock, onClose, onSave, variant = 'default' 
 
     try {
       setSaving(true)
-      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides))
+      await updateMock(mock.filename, dataToSave, sanitizeOverridesForSave(dateOverrides), scenario)
       toast({
         title: 'Success',
         description: 'Mock updated successfully',
