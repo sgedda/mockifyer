@@ -23,8 +23,9 @@ router.get('/', async (req: Request, res: Response) => {
     });
     try {
       const lanes = await store.listClientLanes();
+      const discoveredLanes = await store.listDiscoveredLanes();
       const globalScenario = await store.getActiveScenario();
-      return res.json({ enabled: true, lanes, globalScenario });
+      return res.json({ enabled: true, lanes, discoveredLanes, globalScenario });
     } finally {
       await store.close().catch(() => undefined);
     }

@@ -38,12 +38,14 @@ export class RedisMockStore {
   private readonly activeScenarioKey: string;
   private readonly useCentralizedScenario: boolean;
   private readonly laneNoteHashKey: string;
+  private readonly laneLastSeenZSetKey: string;
 
   constructor(config: RedisMockStoreConfig) {
     this.mockDataPath = config.mockDataPath;
     this.keyPrefix = config.keyPrefix || 'mockifyer:v1';
     this.activeScenarioKey = `${this.keyPrefix}:active_scenario`;
     this.laneNoteHashKey = `${this.keyPrefix}:client_lane_notes`;
+    this.laneLastSeenZSetKey = `${this.keyPrefix}:client_lane_last_seen`;
     this.useCentralizedScenario = true;
 
     const RedisCtor = requireIoRedis();
@@ -215,6 +217,32 @@ export class RedisMockStore {
       return;
     }
     await this.redis.hset(this.laneNoteHashKey, id, note.trim());
+  }
+
+  /**
+   * Best-effort lane discovery for UX (autocomplete / quick-add).
+   *
+   * Stores a "last seen" timestamp in a Redis sorted set keyed by clientId.
+   * Entries are trimmed by TTL to prevent unbounded growth.
+   */
+  async recordLaneSeen(clientId: string, nowMs: number = Date.now(), ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<void> {
+    const id = clientId.trim();
+    if (!id) return;
+    await this.redis.zadd(this.laneLastSeenZSetKey, nowMs, id);
+    const minScore = nowMs - ttlMs;
+    await this.redis.zremrangebyscore(this.laneLastSeenZSetKey, 0, minScore);
+  }
+
+  /**
+   * List discovered lanes seen recently, newest first.
+   * This list includes lanes that might not have an explicit scenario override yet.
+   */
+  async listDiscoveredLanes(limit: number = 50, ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<string[]> {
+    const nowMs = Date.now();
+    const minScore = nowMs - ttlMs;
+    // Newest first, within TTL window.
+    const ids: string[] = await this.redis.zrevrangebyscore(this.laneLastSeenZSetKey, nowMs, minScore, 'LIMIT', 0, limit);
+    return ids.map((s) => s.trim()).filter(Boolean);
   }
 }
 

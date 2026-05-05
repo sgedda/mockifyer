@@ -11,17 +11,18 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [enabled, setEnabled] = useState(true)
   const [disabledReason, setDisabledReason] = useState<string | null>(null)
   const [lanes, setLanes] = useState<ClientLane[]>([])
+  const [discoveredLanes, setDiscoveredLanes] = useState<string[]>([])
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
 
-  const knownLaneIds = useMemo(() => {
-    return Array.from(new Set(lanes.map((l) => l.clientId).filter(Boolean))).sort((a, b) => a.localeCompare(b))
-  }, [lanes])
-
   const addLaneSuggestions = useMemo(() => {
     const existing = new Set(lanes.map((l) => l.clientId))
-    return knownLaneIds.filter((id) => !existing.has(id))
-  }, [knownLaneIds, lanes])
+    return (discoveredLanes || [])
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((id) => !existing.has(id))
+      .sort((a, b) => a.localeCompare(b))
+  }, [discoveredLanes, lanes])
 
   const scenarioOptions = useMemo(() => {
     const unique = Array.from(new Set(availableScenarios)).filter(Boolean)
@@ -35,6 +36,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       setEnabled(data.enabled !== false)
       setDisabledReason((data as any).reason ?? null)
       setLanes(data.lanes || [])
+      setDiscoveredLanes((data as any).discoveredLanes || [])
       setGlobalScenario(data.globalScenario || 'default')
     } catch (e: any) {
       toast({
