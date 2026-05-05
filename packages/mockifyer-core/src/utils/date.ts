@@ -17,6 +17,13 @@ try {
 
 let currentConfig: MockifyerConfig | null = null;
 
+/** Optional context when resolving date manipulation from disk (e.g. dashboard proxy + Redis scenario). */
+export interface GetCurrentDateContext {
+  mockDataPath?: string;
+  /** Load `{mockDataPath}/{scenario}/date-config.json` instead of the filesystem active scenario. */
+  scenario?: string;
+}
+
 /**
  * Read dateManipulation payload from a single date-config.json file.
  */
@@ -44,8 +51,13 @@ function readDateManipulationFromJsonFile(filePath: string): { dateManipulation?
  *
  * If the scenario folder or per-scenario file does not exist yet, this falls through to the
  * legacy root file only (no error). If neither file exists, returns null.
+ *
+ * @param scenarioOverride When provided (e.g. Redis-resolved scenario), loads that folder instead of filesystem `scenario-config`.
  */
-function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
+function loadDateConfigFromFile(
+  mockDataPath?: string,
+  scenarioOverride?: string
+): { dateManipulation?: any } | null {
   // Skip file loading if fs/path are not available (React Native)
   if (!fs || !path) {
     return null;
@@ -53,7 +65,10 @@ function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any
 
   try {
     if (mockDataPath && fs.existsSync(mockDataPath)) {
-      const scenario = getCurrentScenario(mockDataPath);
+      const scenario =
+        typeof scenarioOverride === 'string' && scenarioOverride.trim()
+          ? scenarioOverride.trim()
+          : getCurrentScenario(mockDataPath);
       const scenarioDir = getScenarioFolderPath(mockDataPath, scenario);
       const scenarioPath = path.join(scenarioDir, 'date-config.json');
       if (fs.existsSync(scenarioPath)) {
@@ -147,8 +162,11 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
  * Note: This function returns a manipulated date object, but does NOT affect
  * global Date() or Date.now(). For global date manipulation, use Sinon or Jest fake timers.
  * See documentation for examples.
+ *
+ * @param context Optional; pass `mockDataPath`/`scenario` so server code (e.g. dashboard Redis proxy) reads the same
+ *                `date-config.json` as the UI instead of falling back to `process.cwd()/mock-data` discovery.
  */
-export function getCurrentDate(): Date {
+export function getCurrentDate(context?: GetCurrentDateContext): Date {
   // Check environment variables first (they take precedence)
   const envDate = process.env[ENV_VARS.MOCK_DATE];
   const envOffset = process.env[ENV_VARS.MOCK_DATE_OFFSET];
@@ -171,7 +189,8 @@ export function getCurrentDate(): Date {
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
   if (!dateManipulation) {
-    const fileConfig = loadDateConfigFromFile(currentConfig?.mockDataPath);
+    const pathForFile = context?.mockDataPath ?? currentConfig?.mockDataPath;
+    const fileConfig = loadDateConfigFromFile(pathForFile, context?.scenario);
     if (fileConfig && 'dateManipulation' in fileConfig) {
       dateManipulation = fileConfig.dateManipulation;
     }

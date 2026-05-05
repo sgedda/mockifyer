@@ -55,6 +55,14 @@ export class RedisMockStore {
     });
   }
 
+  /**
+   * Same scenario segment used for Redis mock keys ({@link dataKey}). Use when loading scenario-scoped files
+   * on disk (e.g. date-config.json) so they align with Redis active scenario and client lanes.
+   */
+  async getResolvedScenario(scenarioFromClient?: string, clientId?: string): Promise<string> {
+    return this.scenarioKey(scenarioFromClient, clientId);
+  }
+
   private async scenarioKey(scenarioOverride?: string, clientId?: string): Promise<string> {
     if (scenarioOverride) return scenarioOverride;
     if (this.useCentralizedScenario) {

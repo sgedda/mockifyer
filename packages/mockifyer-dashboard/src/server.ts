@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import { initializeDateManipulation } from '@sgedda/mockifyer-core';
 import { mocksRouter } from './routes/mocks';
 import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
@@ -20,6 +21,9 @@ export function createServer(
   const app = express();
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = config;
+
+  /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
+  initializeDateManipulation({ mockDataPath });
 
   // Middleware
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
