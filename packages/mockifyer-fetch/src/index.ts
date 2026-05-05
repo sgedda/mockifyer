@@ -111,6 +111,7 @@ class MockifyerClass {
 
     // Resolve client lane id (env/config/fallback); used for Redis per-client scenario overrides and proxy headers.
     this.config.clientId = resolveClientId(this.config);
+    logger.info(`[Mockifyer-Fetch] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
