@@ -22,6 +22,10 @@ function isIsoLikeDateString(s: string): boolean {
   // 2026-04-24
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return true
 
+  // 2026-04-24T10:12:17 (no timezone)
+  // Many APIs emit "local/naive" datetimes; we still want to allow overriding them.
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?$/.test(t)) return true
+
   // 2026-04-24T10:12:17Z
   // 2026-04-24T10:12:17.023Z
   // 2026-04-24T10:12:17+02:00
@@ -29,10 +33,18 @@ function isIsoLikeDateString(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(t)
 }
 
+function normalizeIsoForParse(s: string): string {
+  const t = s.trim()
+  // If no timezone suffix is present, append 'Z' so parsing is stable across environments.
+  if (/Z$/.test(t) || /[+-]\d{2}:\d{2}$/.test(t)) return t
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  return t + 'Z'
+}
+
 function isLikelyDateString(s: string): boolean {
   const t = s.trim()
   if (!isIsoLikeDateString(t)) return false
-  const ms = Date.parse(t)
+  const ms = Date.parse(normalizeIsoForParse(t))
   if (Number.isNaN(ms)) return false
   const y = new Date(ms).getUTCFullYear()
   return y >= 1970 && y <= 2100

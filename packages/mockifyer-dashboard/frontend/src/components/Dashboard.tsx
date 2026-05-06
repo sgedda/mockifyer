@@ -11,6 +11,7 @@ import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
 import { getMocks, getMock } from '@/lib/api'
 import type { MockFile, MockData } from '@/types'
+import { Badge } from '@/components/ui/badge'
 
 interface DashboardProps {
   scenario: string
@@ -172,6 +173,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               <h1 className="text-xl font-semibold">Mockifyer Dashboard</h1>
               <p className="text-sm text-muted-foreground">Manage and view your API mock data</p>
             </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Scenario</span>
+            <Badge variant="outline" className="font-mono">
+              {scenario}
+            </Badge>
           </div>
         </header>
         <main className="flex-1 overflow-auto p-6">
