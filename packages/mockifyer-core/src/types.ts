@@ -133,9 +133,13 @@ export interface MockResponseDateOverride {
   /** Dot-separated path from `response.data` root. Use numeric segments for array indices (e.g. `items.0.expiresAt`). */
   path: string;
   /**
-   * Which instant to offset from:
-   * - `now` (default): use manipulated "current" date (getCurrentDate) when configured, else real time.
-   * - `response`: use the existing value at `path` (if parseable), then apply offsets.
+   * Which instant to offset from.
+   *
+   * - `now` (default): use the manipulated "current" date (`getCurrentDate`) when configured, else real time.
+   * - `response`: **DEPRECATED.** Older recordings may still have this value persisted on disk/Redis.
+   *   Since core 1.8.20, `base: 'response'` is treated identically to `base: 'now'` to avoid drift caused
+   *   by stale recorded timestamps (e.g. the recorded value being "frozen" at an earlier fixed date).
+   *   The original recorded value is NEVER used as the offset base anymore.
    */
   base?: 'now' | 'response';
   /** Milliseconds added to manipulated now (default 0). */
