@@ -319,6 +319,40 @@ describe('Date Manipulation', () => {
       }
     });
 
+    it('getCurrentDate({ explicitManipulation: {} }) treats an empty Redis payload as a clear override', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2018-05-05T12:00:00.000Z' },
+        })
+      );
+
+      try {
+        resetDateManipulation();
+        initializeDateManipulation({ mockDataPath: mockData });
+        expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
+
+        const result = getCurrentDate({
+          mockDataPath: mockData,
+          scenario: 'alpha',
+          explicitManipulation: {},
+        });
+        const now = Date.now();
+
+        expect(Math.abs(result.getTime() - now)).toBeLessThan(2000);
+      } finally {
+        resetDateManipulation();
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
     it('getCurrentDate({ scenario }) reads that scenario date-config when active scenario differs (Redis-aligned)', () => {
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
       const mockData = path.join(tmp, 'mock-data');
