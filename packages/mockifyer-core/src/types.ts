@@ -28,6 +28,13 @@ export interface MockifyerConfig {
     // Optional timezone for date operations
     timezone?: string;
   };
+  /**
+   * When true (default), Mockifyer will NOT read date overrides from `date-config.json` on disk.
+   *
+   * This prevents accidental fixed-date overrides from local files when running with Redis/proxy.
+   * Set to `false` only if you explicitly want the legacy file-based date config fallback.
+   */
+  disableDateConfigFileFallback?: boolean;
   scenarios?: {
     default?: string;
     [key: string]: string | undefined;

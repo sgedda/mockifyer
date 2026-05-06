@@ -245,7 +245,7 @@ describe('Date Manipulation', () => {
       );
 
       try {
-        setupMockifyer({ mockDataPath: mockData });
+        setupMockifyer({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2020-06-01T00:00:00.000Z');
 
         fs.writeFileSync(
@@ -274,7 +274,7 @@ describe('Date Manipulation', () => {
       );
 
       try {
-        setupMockifyer({ mockDataPath: mockData });
+        setupMockifyer({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
       } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
@@ -298,7 +298,7 @@ describe('Date Manipulation', () => {
 
       try {
         resetDateManipulation();
-        initializeDateManipulation({ mockDataPath: mockData });
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(
           getCurrentDate({
             mockDataPath: mockData,
@@ -335,7 +335,7 @@ describe('Date Manipulation', () => {
 
       try {
         resetDateManipulation();
-        initializeDateManipulation({ mockDataPath: mockData });
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
 
         const result = getCurrentDate({
@@ -376,7 +376,7 @@ describe('Date Manipulation', () => {
 
       try {
         resetDateManipulation();
-        initializeDateManipulation({ mockDataPath: mockData });
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2020-06-01T00:00:00.000Z');
         expect(getCurrentDate({ mockDataPath: mockData, scenario: 'beta' }).toISOString()).toBe(
           '2021-07-01T00:00:00.000Z'

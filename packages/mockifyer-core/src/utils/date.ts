@@ -260,7 +260,8 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
   }
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
-  if (!dateManipulation && dateManipulation !== null) {
+  const disableDateConfigFileFallback = currentConfig?.disableDateConfigFileFallback ?? true;
+  if (!disableDateConfigFileFallback && !dateManipulation && dateManipulation !== null) {
     const pathForFile = context?.mockDataPath ?? currentConfig?.mockDataPath;
     const fileConfig = loadDateConfigFromFile(pathForFile, context?.scenario);
     if (fileConfig && 'dateManipulation' in fileConfig) {
