@@ -2,8 +2,46 @@ import express, { Request, Response } from 'express';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import fs from 'fs';
+import path from 'path';
 
 const router = express.Router();
+
+function sanitizeScenarioName(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return { ok: false, error: 'Scenario name is required' };
+  }
+  const trimmed = raw.trim();
+  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (sanitized !== trimmed) {
+    return {
+      ok: false,
+      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
+    };
+  }
+  return { ok: true, value: sanitized };
+}
+
+function copyDirectoryRecursive(srcDir: string, destDir: string): void {
+  if (!fs.existsSync(srcDir)) {
+    throw new Error(`Base scenario folder not found: ${srcDir}`);
+  }
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    // Skip common junk.
+    if (entry.name === '.DS_Store') continue;
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectoryRecursive(src, dest);
+      continue;
+    }
+    if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(src, dest);
+    }
+  }
+}
 
 // Get current scenario config
 router.get('/', async (req: Request, res: Response) => {
@@ -45,17 +83,9 @@ router.post('/set', async (req: Request, res: Response) => {
     const { scenario } = req.body;
     const { mockDataPath, config } = getDashboardContext(req);
     
-    if (!scenario || typeof scenario !== 'string' || scenario.trim() === '') {
-      return res.status(400).json({ error: 'Scenario name is required' });
-    }
-
-    // Validate scenario name
-    const sanitized = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-    if (sanitized !== scenario.trim()) {
-      return res.status(400).json({ 
-        error: `Invalid scenario name: "${scenario}". Use only letters, numbers, hyphens, and underscores.` 
-      });
-    }
+    const parsed = sanitizeScenarioName(scenario);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const sanitized = parsed.value;
 
     // Discover scenarios (filesystem + optionally Redis)
     let scenarios = listScenarios(mockDataPath);
@@ -114,19 +144,23 @@ router.post('/set', async (req: Request, res: Response) => {
 // Create new scenario
 router.post('/create', async (req: Request, res: Response) => {
   try {
-    const { scenario } = req.body;
+    const { scenario, deriveFrom } = req.body as { scenario?: unknown; deriveFrom?: unknown };
     const { mockDataPath, config } = getDashboardContext(req);
     
-    if (!scenario || typeof scenario !== 'string' || scenario.trim() === '') {
-      return res.status(400).json({ error: 'Scenario name is required' });
-    }
+    const parsedScenario = sanitizeScenarioName(scenario);
+    if (!parsedScenario.ok) return res.status(400).json({ error: parsedScenario.error });
+    const sanitized = parsedScenario.value;
 
-    // Validate and sanitize scenario name
-    const sanitized = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-    if (sanitized !== scenario.trim()) {
-      return res.status(400).json({ 
-        error: `Invalid scenario name: "${scenario}". Use only letters, numbers, hyphens, and underscores.` 
-      });
+    const parsedDerive =
+      deriveFrom === undefined || deriveFrom === null || deriveFrom === ''
+        ? null
+        : sanitizeScenarioName(deriveFrom);
+    if (parsedDerive !== null && !parsedDerive.ok) {
+      return res.status(400).json({ error: parsedDerive.error });
+    }
+    const deriveFromScenario = parsedDerive === null ? null : parsedDerive.value;
+    if (deriveFromScenario === sanitized) {
+      return res.status(400).json({ error: 'deriveFrom must be different from the new scenario name' });
     }
 
     // Check if scenario already exists (filesystem + optionally Redis)
@@ -153,6 +187,39 @@ router.post('/create', async (req: Request, res: Response) => {
 
     // Create scenario folder for filesystem flows; for redis it is optional but harmless.
     createScenario(mockDataPath, sanitized);
+
+    // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
+    if (deriveFromScenario) {
+      if (config.provider === 'redis') {
+        const store = new RedisMockStore({
+          redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+          keyPrefix: config.keyPrefix,
+          mockDataPath,
+        });
+        try {
+          const available = await store.listScenarios();
+          if (!available.includes(deriveFromScenario)) {
+            return res.status(404).json({
+              error: `Base scenario "${deriveFromScenario}" does not exist in Redis`,
+            });
+          }
+          await store.cloneScenario(deriveFromScenario, sanitized);
+        } finally {
+          await store.close().catch(() => undefined);
+        }
+      } else {
+        const available = listScenarios(mockDataPath);
+        if (!available.includes(deriveFromScenario)) {
+          return res.status(404).json({
+            error: `Base scenario "${deriveFromScenario}" does not exist`,
+          });
+        }
+        const src = path.join(mockDataPath, deriveFromScenario);
+        const dest = path.join(mockDataPath, sanitized);
+        copyDirectoryRecursive(src, dest);
+      }
+    }
+
     // Also set the scenario immediately, provider-aware.
     if (config.provider === 'redis') {
       const store = new RedisMockStore({

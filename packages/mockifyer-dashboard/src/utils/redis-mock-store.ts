@@ -39,6 +39,7 @@ export class RedisMockStore {
   private readonly useCentralizedScenario: boolean;
   private readonly laneNoteHashKey: string;
   private readonly laneLastSeenZSetKey: string;
+  private readonly scenarioRegistrySetKey: string;
 
   constructor(config: RedisMockStoreConfig) {
     this.mockDataPath = config.mockDataPath;
@@ -46,6 +47,7 @@ export class RedisMockStore {
     this.activeScenarioKey = `${this.keyPrefix}:active_scenario`;
     this.laneNoteHashKey = `${this.keyPrefix}:client_lane_notes`;
     this.laneLastSeenZSetKey = `${this.keyPrefix}:client_lane_last_seen`;
+    this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
     this.useCentralizedScenario = true;
 
     const RedisCtor = requireIoRedis();
@@ -95,6 +97,8 @@ export class RedisMockStore {
 
   async setActiveScenario(scenario: string): Promise<void> {
     await this.redis.set(this.activeScenarioKey, scenario);
+    // Best-effort registry so scenarios appear even with no mocks yet.
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
   async ping(): Promise<void> {
@@ -141,6 +145,10 @@ export class RedisMockStore {
     const indexKey = await this.indexKey(scenario, clientId);
     await this.redis.set(key, JSON.stringify(mockData));
     await this.redis.sadd(indexKey, hash);
+    // Best-effort registry so scenarios appear even if index scanning misses them.
+    if (scenario) {
+      await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    }
   }
 
   async deleteByHash(hash: string, scenario?: string, clientId?: string): Promise<void> {
@@ -182,10 +190,72 @@ export class RedisMockStore {
     payload: { dateManipulation: Record<string, unknown>; updatedAt: string }
   ): Promise<void> {
     await this.redis.set(this.dateConfigRedisKey(scenario), JSON.stringify(payload));
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
   async deleteDateConfig(scenario: string): Promise<void> {
     await this.redis.del(this.dateConfigRedisKey(scenario));
+  }
+
+  /**
+   * Clone all Redis-stored mock data (and date config) from one scenario into another.
+   *
+   * Notes:
+   * - Lane overrides are NOT copied; this is scenario->scenario only.
+   * - Existing destination scenario data is not deleted; caller should ensure it's new/empty.
+   */
+  async cloneScenario(fromScenario: string, toScenario: string): Promise<{
+    mocksCopied: number;
+    dateConfigCopied: boolean;
+  }> {
+    const from = fromScenario.trim();
+    const to = toScenario.trim();
+    if (!from) throw new Error('fromScenario is required');
+    if (!to) throw new Error('toScenario is required');
+    if (from === to) throw new Error('fromScenario and toScenario must differ');
+
+    // Copy date config if present.
+    let dateConfigCopied = false;
+    const dateDoc = await this.getDateConfig(from);
+    if (dateDoc !== null && dateDoc.dateManipulation !== null) {
+      await this.setDateConfig(to, {
+        dateManipulation: dateDoc.dateManipulation,
+        updatedAt: new Date().toISOString(),
+      });
+      dateConfigCopied = true;
+    }
+
+    // Copy mocks by walking the index set.
+    const fromIndexKey = await this.indexKey(from);
+    const hashes: string[] = await this.redis.smembers(fromIndexKey);
+    if (hashes.length === 0) {
+      // Still ensure the destination scenario is discoverable.
+      await this.redis.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
+      return { mocksCopied: 0, dateConfigCopied };
+    }
+
+    const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
+    const values: Array<string | null> = await this.redis.mget(...fromKeys);
+
+    const multi = this.redis.multi();
+    let copied = 0;
+    for (let i = 0; i < hashes.length; i++) {
+      const raw = values[i];
+      if (!raw) continue;
+      const hash = hashes[i];
+      const toKey = await this.dataKey(hash, to);
+      multi.set(toKey, raw);
+      copied++;
+    }
+    if (copied > 0) {
+      const toIndexKey = await this.indexKey(to);
+      multi.sadd(toIndexKey, ...hashes);
+    }
+    // Registry + best-effort: ensures scenarios appear even if empty.
+    multi.sadd(this.scenarioRegistrySetKey, to);
+
+    await multi.exec();
+    return { mocksCopied: copied, dateConfigCopied };
   }
 
   async close(): Promise<void> {
@@ -197,21 +267,51 @@ export class RedisMockStore {
    * Scans for `${keyPrefix}:index:*` keys and extracts the scenario suffix.
    */
   async listScenarios(): Promise<string[]> {
-    const pattern = `${this.keyPrefix}:index:*`;
-    const scenarios = new Set<string>();
-    let cursor = '0';
-    do {
-      const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
-      cursor = next;
-      for (const k of keys) {
-        const parts = k.split(':index:');
-        if (parts.length === 2 && parts[1]) {
-          scenarios.add(parts[1]);
-        }
-      }
-    } while (cursor !== '0');
+    const out = new Set<string>();
 
-    return Array.from(scenarios).sort();
+    // 1) Registry set (best-effort fast path).
+    try {
+      const members: string[] = await this.redis.smembers(this.scenarioRegistrySetKey);
+      for (const s of members) {
+        if (typeof s === 'string' && s.trim()) out.add(s.trim());
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2) Legacy discovery: scan index keys.
+    {
+      const pattern = `${this.keyPrefix}:index:*`;
+      let cursor = '0';
+      do {
+        const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
+        cursor = next;
+        for (const k of keys) {
+          const parts = k.split(':index:');
+          if (parts.length === 2 && parts[1]) {
+            out.add(parts[1]);
+          }
+        }
+      } while (cursor !== '0');
+    }
+
+    // 3) Date config keys can exist without any mocks/index.
+    {
+      const pattern = `${this.keyPrefix}:date_config:*`;
+      let cursor = '0';
+      do {
+        const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
+        cursor = next;
+        for (const k of keys) {
+          const parts = k.split(':date_config:');
+          if (parts.length === 2 && parts[1]) {
+            out.add(parts[1]);
+          }
+        }
+      } while (cursor !== '0');
+    }
+
+    return Array.from(out).sort();
   }
 
   async getLaneScenario(clientId: string): Promise<string | null> {
