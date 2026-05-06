@@ -9,6 +9,8 @@ import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
+type OverridePreview = { path: string; summary: string };
+
 function getMockDataPath(): string {
   return detectMockDataPath();
 }
@@ -40,6 +42,41 @@ function resolveFilesystemScenario(req: Request, mockDataPath: string): string {
   return getCurrentScenario(mockDataPath);
 }
 
+function buildOverrideSummary(override: Record<string, unknown>): string {
+  const pieces: string[] = [];
+  const offsetDays = override.offsetDays;
+  const offsetHours = override.offsetHours;
+  const offsetMinutes = override.offsetMinutes;
+  const offsetMs = override.offsetMs;
+
+  if (typeof offsetDays === 'number' && offsetDays !== 0) pieces.push(`${offsetDays}d`);
+  if (typeof offsetHours === 'number' && offsetHours !== 0) pieces.push(`${offsetHours}h`);
+  if (typeof offsetMinutes === 'number' && offsetMinutes !== 0) pieces.push(`${offsetMinutes}m`);
+  if (typeof offsetMs === 'number' && offsetMs !== 0) pieces.push(`${offsetMs}ms`);
+
+  const format = override.format;
+  if (typeof format === 'string' && format) pieces.push(`format=${format}`);
+
+  if (pieces.length === 0) return 'no offset';
+  return pieces.join(' ');
+}
+
+function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: OverridePreview[] } {
+  const overrides = mockData?.responseDateOverrides;
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    return { hasOverrides: false, preview: [] };
+  }
+  const preview: OverridePreview[] = [];
+  for (const o of overrides) {
+    if (!o || typeof o !== 'object') continue;
+    const pathVal = (o as any).path;
+    if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
+    preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
+    if (preview.length >= 3) break;
+  }
+  return { hasOverrides: preview.length > 0, preview };
+}
+
 // List all mock files (recursive)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -63,6 +100,7 @@ router.get('/', async (req: Request, res: Response) => {
             let endpoint: string | null = null;
             let graphqlInfo: any = null;
             let sessionId: string | null = null;
+            const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
               // Best-effort query params formatting, matching filesystem route behavior.
@@ -112,6 +150,8 @@ router.get('/', async (req: Request, res: Response) => {
               endpoint,
               graphqlInfo,
               sessionId,
+              hasResponseDateOverrides: hasOverrides,
+              responseDateOverridesPreview: preview,
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
@@ -138,6 +178,8 @@ router.get('/', async (req: Request, res: Response) => {
         let endpoint = null;
         let graphqlInfo = null;
         let sessionId = null;
+        let hasResponseDateOverrides = false;
+        let responseDateOverridesPreview: OverridePreview[] = [];
         try {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           if (mockData.request?.url) {
@@ -145,6 +187,10 @@ router.get('/', async (req: Request, res: Response) => {
           }
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
+
+          const overrideInfo = getOverridePreview(mockData);
+          hasResponseDateOverrides = overrideInfo.hasOverrides;
+          responseDateOverridesPreview = overrideInfo.preview;
 
           if (mockData.request?.data) {
             let bodyData = mockData.request.data;
@@ -177,6 +223,8 @@ router.get('/', async (req: Request, res: Response) => {
           endpoint,
           graphqlInfo,
           sessionId,
+          hasResponseDateOverrides,
+          responseDateOverridesPreview,
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
