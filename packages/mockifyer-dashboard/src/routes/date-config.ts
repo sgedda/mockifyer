@@ -137,15 +137,21 @@ router.get('/', async (req: Request, res: Response) => {
             redisKey: store.dateConfigRedisKey(scenario),
           });
         }
-        const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
-        const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
-        console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source, '(redis miss → filesystem)');
+        // Redis is the sole source of truth in redis mode. No filesystem fallback —
+        // a missing key means "no manipulation". This prevents stale `date-config.json`
+        // files (e.g. in the consumer app's mock-data/) from leaking through the dashboard.
+        const currentDate = new Date();
+        console.log(
+          '[DateConfigRoute] GET - scenario:',
+          scenario,
+          'source: none (redis miss; filesystem fallback disabled)'
+        );
         return res.json({
-          dateManipulation,
+          dateManipulation: null,
           currentDate: currentDate.toISOString(),
           scenario,
           currentScenario: await store.getActiveScenario(),
-          configSource: source,
+          configSource: 'none' as const,
           storage: 'redis' as const,
           redisKey: store.dateConfigRedisKey(scenario),
         });
