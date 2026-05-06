@@ -84,4 +84,27 @@ describe('mock response date overrides', () => {
     ) as string;
     expect(JSON.parse(out).x).toBe('2025-06-15T12:00:00.000Z');
   });
+
+  // Regression: legacy mocks with `base: 'response'` could anchor at the recorded
+  // (often stale or fixed) date and produce drifted dates long after the recording
+  // was made. Since core 1.8.20 we always anchor at `getNow()` so output is stable.
+  it('treats deprecated `base: "response"` identically to `base: "now"`', () => {
+    const data = { expiresAt: '2026-03-01T15:42:00.000Z' };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'expiresAt', base: 'response', offsetDays: 30 }],
+      fixedNow
+    );
+    expect((out as typeof data).expiresAt).toBe('2025-07-15T12:00:00.000Z');
+  });
+
+  it('ignores stale recorded value with no offset (`base: "response"` ⇒ now)', () => {
+    const data = { issuedAt: '2026-03-01T15:42:00.000Z' };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'issuedAt', base: 'response' }],
+      fixedNow
+    );
+    expect((out as typeof data).issuedAt).toBe('2025-06-15T12:00:00.000Z');
+  });
 });
