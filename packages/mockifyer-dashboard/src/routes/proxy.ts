@@ -72,7 +72,9 @@ router.post('/', async (req: Request, res: Response) => {
       getCurrentDate({
         mockDataPath,
         scenario: resolvedScenario,
-        explicitManipulation: redisDateDoc === null ? null : redisDateDoc.dateManipulation,
+        // If the Redis key exists but dateManipulation is missing/null, treat it as an explicit "clear"
+        // so we do NOT fall back to filesystem date-config.json.
+        explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
       });
 
     // 1) Try Redis hit
