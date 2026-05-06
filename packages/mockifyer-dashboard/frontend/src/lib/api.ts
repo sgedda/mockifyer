@@ -137,11 +137,11 @@ export async function setClientLaneNote(clientId: string, note: string | null): 
   }
 }
 
-export async function createScenario(scenario: string): Promise<ScenarioConfig> {
+export async function createScenario(scenario: string, deriveFrom?: string | null): Promise<ScenarioConfig> {
   const response = await fetch(`${API_BASE}/scenario-config/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario }),
+    body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
   })
   if (!response.ok) {
     const error = await response.json()
