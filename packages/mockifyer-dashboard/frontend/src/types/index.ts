@@ -21,6 +21,11 @@ export interface MockFile {
     variables: any
   } | null
   sessionId: string | null
+  hasResponseDateOverrides?: boolean
+  responseDateOverridesPreview?: Array<{
+    path: string
+    summary: string
+  }>
 }
 
 export interface MockData {

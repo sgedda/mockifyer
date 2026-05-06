@@ -193,6 +193,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 <div className="space-y-6">
                   <MockList
                     mocks={filteredMocks}
+                    allMocks={mocks}
                     scenario={scenario}
                     loading={loading}
                     loadingMock={loadingMock}

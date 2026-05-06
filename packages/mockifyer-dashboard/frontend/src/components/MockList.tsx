@@ -12,6 +12,8 @@ import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
+  /** Unfiltered mocks for the active scenario (used for "Recent" section). */
+  allMocks: MockFile[]
   /** Active scenario (same as mock list fetch); required for correct Redis/mock path on delete/duplicate. */
   scenario?: string
   loading: boolean
@@ -33,6 +35,7 @@ export default function MockList(props: MockListProps) {
 
 function MockListContent({
   mocks,
+  allMocks,
   scenario,
   loading,
   loadingMock = false,
@@ -47,6 +50,11 @@ function MockListContent({
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
   const didAutoSwitchGroupBy = useRef(false)
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error && error.message) return error.message
+    return 'Unexpected error'
+  }
 
   useEffect(() => {
     if (didAutoSwitchGroupBy.current) return
@@ -75,10 +83,10 @@ function MockListContent({
         description: 'Mock deleted successfully',
       })
       onRefresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to delete mock',
+        description: errorMessage(error) || 'Failed to delete mock',
         variant: 'destructive',
       })
     } finally {
@@ -95,10 +103,10 @@ function MockListContent({
         description: `Mock duplicated as ${result.newFilename}`,
       })
       onRefresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to duplicate mock',
+        description: errorMessage(error) || 'Failed to duplicate mock',
         variant: 'destructive',
       })
     }
@@ -111,6 +119,13 @@ function MockListContent({
       hasFolders: sortFolderEntries(tree).length > 0,
     }
   }, [groupBy, mocks])
+
+  const recentMocks = useMemo(() => {
+    const source = searchQuery.trim() ? mocks : allMocks
+    return [...source]
+      .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+      .slice(0, 5)
+  }, [allMocks, mocks, searchQuery])
 
   return (
     <div className="space-y-4">
@@ -164,6 +179,44 @@ function MockListContent({
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
+
+      {!loading && recentMocks.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-medium">
+                Recent {searchQuery.trim() ? '(matching search)' : ''} (last 5 saved)
+              </div>
+              <div className="text-xs text-muted-foreground">Sorted by modified time</div>
+            </div>
+            <div className="flex flex-col gap-2">
+              {recentMocks.map((m) => (
+                <button
+                  key={`recent:${m.filename}`}
+                  type="button"
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-left hover:bg-accent/40 transition-colors"
+                  onClick={() => onSelectMock(m)}
+                  title={m.filename}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-sm">{m.filename}</div>
+                      {m.endpoint ? (
+                        <div className="truncate text-xs text-muted-foreground">{m.endpoint}</div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">No endpoint metadata</div>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-xs text-muted-foreground">
+                      {new Date(m.modified).toLocaleString()}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {loading && mocks.length === 0 ? (
         <Card>

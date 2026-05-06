@@ -39,6 +39,12 @@ function getGraphqlQueryPreview(query: string | null | undefined): string | null
   return `"${top}": { ${nested}, … }`
 }
 
+function formatOverridePreviewLine(path: string, summary: string): string {
+  if (!path) return summary
+  if (!summary) return path
+  return `${path}: ${summary}`
+}
+
 interface FolderTreeBulkContextValue {
   /** Incremented on each Expand all / Collapse all so nested folders sync. */
   bulkGeneration: number
@@ -122,6 +128,10 @@ export function MockFolderTree({
           }
           return mock.filename.includes('/') ? mock.filename.split('/').pop()! : mock.filename
         })()
+        const hasOverrides = mock.hasResponseDateOverrides === true
+        const overridePreview = Array.isArray(mock.responseDateOverridesPreview)
+          ? mock.responseDateOverridesPreview.slice(0, 3)
+          : []
         return (
           <Card
             key={mock.filename}
@@ -150,6 +160,11 @@ export function MockFolderTree({
                         GraphQL
                       </Badge>
                     )}
+                    {hasOverrides && (
+                      <Badge variant="outline" className="border-sky-500/30 bg-sky-500/15 text-sky-200">
+                        Overrides
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -173,12 +188,14 @@ export function MockFolderTree({
                 </div>
               </div>
             </CardHeader>
-            {mock.endpoint && (
+            {(mock.endpoint || (hasOverrides && overridePreview.length > 0)) && (
               <CardContent>
-                <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                  <span className="break-all">{mock.endpoint}</span>
-                </div>
+                {mock.endpoint && (
+                  <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                    <span className="break-all">{mock.endpoint}</span>
+                  </div>
+                )}
                 {mock.graphqlInfo?.query ? (
                   (() => {
                     const preview = getGraphqlQueryPreview(mock.graphqlInfo?.query)
@@ -189,6 +206,18 @@ export function MockFolderTree({
                       </div>
                     )
                   })()
+                ) : null}
+                {hasOverrides && overridePreview.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {overridePreview.map((o) => (
+                      <div
+                        key={`override:${mock.filename}:${o.path}`}
+                        className="text-xs font-mono text-muted-foreground/90 break-words"
+                      >
+                        {formatOverridePreviewLine(o.path, o.summary)}
+                      </div>
+                    ))}
+                  </div>
                 ) : null}
               </CardContent>
             )}
