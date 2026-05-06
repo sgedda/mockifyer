@@ -192,6 +192,10 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
     Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
   ) {
     const ex = context.explicitManipulation;
+    // `null` means "explicitly cleared" for Redis/proxy mode: do not fall back to disk.
+    if (ex === null) {
+      return new Date();
+    }
     if (ex !== null && typeof ex === 'object') {
       // `{}` (or otherwise "ineffective") is an explicit "clear" signal: treat as no manipulation
       // and do not fall through to env vars / disk defaults.
@@ -237,7 +241,7 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
   }
 
   // Try to get date manipulation from current config
-  let dateManipulation = currentConfig?.dateManipulation;
+  let dateManipulation: Record<string, unknown> | null | undefined = currentConfig?.dateManipulation;
 
   // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
   if (
@@ -246,13 +250,17 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
     Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
   ) {
     const ex = context.explicitManipulation;
-    if (ex !== null && typeof ex === 'object') {
+    // If the caller explicitly provided `explicitManipulation` (even if null),
+    // we should not fall through to filesystem date-config.json.
+    if (ex === null) {
+      dateManipulation = null;
+    } else if (ex !== null && typeof ex === 'object') {
       dateManipulation = ex;
     }
   }
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
-  if (!dateManipulation) {
+  if (!dateManipulation && dateManipulation !== null) {
     const pathForFile = context?.mockDataPath ?? currentConfig?.mockDataPath;
     const fileConfig = loadDateConfigFromFile(pathForFile, context?.scenario);
     if (fileConfig && 'dateManipulation' in fileConfig) {
@@ -265,24 +273,29 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
     return new Date();
   }
 
+  const dm = dateManipulation as Record<string, unknown>;
+
   // Use config settings if no environment variables are set
-  if (dateManipulation.fixedDate) {
-    return typeof dateManipulation.fixedDate === 'string'
-      ? new Date(dateManipulation.fixedDate)
-      : new Date(dateManipulation.fixedDate);
+  const fixed = dm.fixedDate;
+  if (typeof fixed === 'string' && fixed) {
+    return new Date(fixed);
+  }
+  if (fixed instanceof Date) {
+    return new Date(fixed);
   }
 
-  if (dateManipulation.offset !== undefined) {
-    return new Date(Date.now() + dateManipulation.offset);
+  const offset = dm.offset;
+  if (typeof offset === 'number' && !Number.isNaN(offset)) {
+    return new Date(Date.now() + offset);
   }
 
   // If timezone is specified, adjust the date
-  const timezone = envTimezone || dateManipulation.timezone;
-  if (timezone) {
+  const timezone = envTimezone || dm.timezone;
+  if (typeof timezone === 'string' && timezone) {
     const date = new Date();
     try {
       return new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-    } catch (error) {
+    } catch {
       console.warn(`Invalid timezone: ${timezone}. Using system timezone instead.`);
     }
   }
