@@ -80,9 +80,21 @@ router.post('/', async (req: Request, res: Response) => {
     // 1) Try Redis hit
     const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {
+      // Guardrail: some projects recorded responseDateOverrides with base='response', which can drift
+      // based on stale recorded timestamps even when "now" is correct. In Redis-proxy mode we want
+      // overrides to be relative to the current manipulated date.
+      const sanitizedMock: any =
+        (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
+          ? {
+              ...(mock as any),
+              responseDateOverrides: (mock as any).responseDateOverrides.map((o: any) =>
+                o && typeof o === 'object' && o.base === 'response' ? { ...o, base: 'now' } : o
+              ),
+            }
+          : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(mock as any, getNow),
+        data: prepareMockResponseBody(sanitizedMock, getNow),
       };
       if (debugProxy) {
         console.log(
