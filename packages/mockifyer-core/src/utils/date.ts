@@ -182,12 +182,49 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
  *                `date-config.json` as the UI instead of falling back to `process.cwd()/mock-data` discovery.
  */
 export function getCurrentDate(context?: GetCurrentDateContext): Date {
-  // Check environment variables first (they take precedence)
+  // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
+  //
+  // IMPORTANT: This must take precedence over environment variables.
+  // Otherwise, a stale `MOCKIFYER_DATE*` env var (set by older servers / previous runs)
+  // can silently override the Redis-backed proxy configuration.
+  if (
+    context !== undefined &&
+    Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
+  ) {
+    const ex = context.explicitManipulation;
+    if (ex !== null && typeof ex === 'object') {
+      // `{}` (or otherwise "ineffective") is an explicit "clear" signal: treat as no manipulation
+      // and do not fall through to env vars / disk defaults.
+      if (!manipulationPayloadIsEffective(ex)) {
+        return new Date();
+      }
+      // Apply explicit manipulation directly (no env var precedence).
+      const fixedDate = (ex as Record<string, unknown>).fixedDate;
+      if (typeof fixedDate === 'string' && fixedDate) {
+        return new Date(fixedDate);
+      }
+      const offset = (ex as Record<string, unknown>).offset;
+      if (typeof offset === 'number' && !Number.isNaN(offset)) {
+        return new Date(Date.now() + offset);
+      }
+      const timezone = (ex as Record<string, unknown>).timezone;
+      if (typeof timezone === 'string' && timezone) {
+        const date = new Date();
+        try {
+          return new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+        } catch {
+          return new Date();
+        }
+      }
+      return new Date();
+    }
+  }
+
+  // Check environment variables (they take precedence over disk config)
   const envDate = process.env[ENV_VARS.MOCK_DATE];
   const envOffset = process.env[ENV_VARS.MOCK_DATE_OFFSET];
   const envTimezone = process.env[ENV_VARS.MOCK_TIMEZONE];
 
-  // Environment variables take precedence over config
   if (envDate) {
     return new Date(envDate);
   }
