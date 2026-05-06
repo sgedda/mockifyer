@@ -30,6 +30,15 @@ export interface GetCurrentDateContext {
   explicitManipulation?: Record<string, unknown> | null;
 }
 
+function manipulationPayloadIsEffective(dm: Record<string, unknown>): boolean {
+  const fixed = dm.fixedDate;
+  const hasFixed = fixed !== undefined && fixed !== null && fixed !== '';
+  const hasOffset = dm.offset !== undefined && dm.offset !== null && typeof dm.offset === 'number';
+  const tz = dm.timezone;
+  const hasTz = tz !== undefined && tz !== null && tz !== '';
+  return hasFixed || hasOffset || hasTz;
+}
+
 /**
  * Read dateManipulation payload from a single date-config.json file.
  */
