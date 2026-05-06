@@ -310,7 +310,6 @@ describe('Date Manipulation', () => {
           getCurrentDate({
             mockDataPath: mockData,
             scenario: 'alpha',
-            explicitManipulation: null,
           }).toISOString()
         ).toBe('2020-06-01T00:00:00.000Z');
       } finally {
