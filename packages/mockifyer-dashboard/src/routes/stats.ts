@@ -6,6 +6,7 @@ import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { sanitizeOptionalScenarioName } from '../utils/scenario-name';
 
 const router = express.Router();
 
@@ -18,8 +19,9 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
     /** Must match /api/mocks: prefer explicit ?scenario= (dashboard) over env-only getCurrentScenario(). */
-    const requestedScenario = req.query.scenario as string | undefined;
-    const currentScenario = requestedScenario || getCurrentScenario(mockDataPath);
+    const parsedScenario = sanitizeOptionalScenarioName(req.query.scenario);
+    if (!parsedScenario.ok) return res.status(400).json({ error: parsedScenario.error });
+    const currentScenario = parsedScenario.value ?? getCurrentScenario(mockDataPath);
     const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, currentScenario));
 
     if (config.provider === 'redis') {
