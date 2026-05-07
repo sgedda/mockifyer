@@ -94,8 +94,11 @@ function isCleanGit() {
 
 function tagForPackage(pkgName, version) {
   // Your GitHub Actions workflows trigger on:
-  // - "v*" for the full publish pipeline
+  // - "<pkg>-v*" for scoped publishes (avoids tag collisions across packages)
   // - "dashboard-v*" for dashboard-only publishes
+  if (pkgName === "@sgedda/mockifyer-core") return `core-v${version}`;
+  if (pkgName === "@sgedda/mockifyer-axios") return `axios-v${version}`;
+  if (pkgName === "@sgedda/mockifyer-fetch") return `fetch-v${version}`;
   if (pkgName === "@sgedda/mockifyer-dashboard") return `dashboard-v${version}`;
   return `v${version}`;
 }
