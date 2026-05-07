@@ -9,9 +9,18 @@ import Settings from './Settings'
 import Timeline from './Timeline'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
-import { getMocks, getMock } from '@/lib/api'
+import { getMocks, getMock, getScenarioConfig, setScenario } from '@/lib/api'
 import type { MockFile, MockData } from '@/types'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown } from 'lucide-react'
 
 interface DashboardProps {
   scenario: string
@@ -21,6 +30,9 @@ interface DashboardProps {
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
+  const [switchingScenario, setSwitchingScenario] = useState(false)
+  const [scenarioFilter, setScenarioFilter] = useState('')
   
   // Get active tab from URL path
   const getActiveTabFromPath = () => {
@@ -40,6 +52,40 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const { toast } = useToast()
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const config = await getScenarioConfig()
+        const scenarios = (config as any).scenarios || config.availableScenarios || ['default']
+        setAvailableScenarios(scenarios)
+      } catch {
+        setAvailableScenarios(['default'])
+      }
+    })()
+  }, [])
+
+  async function handleHeaderScenarioChange(nextScenario: string) {
+    if (!nextScenario || nextScenario === scenario) return
+    try {
+      setSwitchingScenario(true)
+      await setScenario(nextScenario)
+      onScenarioChange(nextScenario)
+      setSelectedMock(null)
+      toast({
+        title: 'Scenario changed',
+        description: `Switched to "${nextScenario}"`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to change scenario',
+        variant: 'destructive',
+      })
+    } finally {
+      setSwitchingScenario(false)
+    }
+  }
 
   // Sync activeTab with URL path
   useEffect(() => {
@@ -119,6 +165,19 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     )
   })
 
+  const filteredScenarioOptions = availableScenarios
+    .filter((s) => s && s.trim())
+    .filter((s) => {
+      const f = scenarioFilter.trim().toLowerCase()
+      if (!f) return true
+      return s.toLowerCase().includes(f)
+    })
+    .sort((a, b) => {
+      if (a === scenario) return -1
+      if (b === scenario) return 1
+      return a.localeCompare(b)
+    })
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile sidebar overlay */}
@@ -174,11 +233,57 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               <p className="text-sm text-muted-foreground">Manage and view your API mock data</p>
             </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Scenario</span>
-            <Badge variant="outline" className="font-mono">
-              {scenario}
-            </Badge>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-xs text-muted-foreground">Scenario</span>
+            <DropdownMenu
+              onOpenChange={(open) => {
+                if (!open) setScenarioFilter('')
+              }}
+            >
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2"
+                  disabled={switchingScenario}
+                  title="Change scenario"
+                >
+                  <Badge variant="outline" className="font-mono">
+                    {scenario}
+                  </Badge>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[min(24rem,92vw)] p-2">
+                <div className="p-1">
+                  <Input
+                    value={scenarioFilter}
+                    onChange={(e) => setScenarioFilter(e.target.value)}
+                    placeholder="Filter scenarios…"
+                    className="h-9"
+                    autoFocus
+                  />
+                </div>
+                <div className="mt-1 max-h-[18rem] overflow-auto">
+                  {filteredScenarioOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No scenarios match.</div>
+                  ) : (
+                    filteredScenarioOptions.map((s) => (
+                      <DropdownMenuItem
+                        key={s}
+                        onClick={() => handleHeaderScenarioChange(s)}
+                        disabled={s === scenario || switchingScenario}
+                        className={`font-mono ${s === scenario ? 'bg-primary/10' : ''}`}
+                      >
+                        {s}
+                        {s === scenario ? ' ✓' : ''}
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
         <main className="flex-1 overflow-auto p-6">

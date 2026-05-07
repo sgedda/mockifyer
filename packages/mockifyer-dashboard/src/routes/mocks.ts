@@ -334,6 +334,10 @@ router.put('/*', async (req: Request, res: Response) => {
         if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
         (existingData as any).response.data = parsedResponseData;
 
+        // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
+        // Update it on every save so recent edits are reflected in the UI ordering.
+        (existingData as any).timestamp = new Date().toISOString();
+
         // Keep behavior consistent with filesystem provider: allow saving responseDateOverrides.
         if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
           const raw = req.body.responseDateOverrides;
