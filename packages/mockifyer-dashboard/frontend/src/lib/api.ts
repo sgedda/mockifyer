@@ -155,6 +155,36 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
   }
 }
 
+export interface ProxyConfig {
+  scenario: string
+  recordOnMiss: boolean
+  allowUpstream: boolean
+  updatedAt: string | null
+}
+
+export async function getProxyConfig(scenario: string): Promise<ProxyConfig> {
+  const q = `?scenario=${encodeURIComponent(scenario)}`
+  const response = await fetch(`${API_BASE}/proxy-config${q}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch proxy config')
+  return response.json()
+}
+
+export async function updateProxyConfig(payload: {
+  scenario: string
+  recordOnMiss: boolean
+  allowUpstream: boolean
+}): Promise<void> {
+  const response = await fetch(`${API_BASE}/proxy-config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to update proxy config')
+  }
+}
+
 export interface DateConfig {
   dateManipulation: {
     fixedDate?: string | null
