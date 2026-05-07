@@ -4,18 +4,11 @@ import path from 'path';
 import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { sanitizeScenarioName } from '../utils/scenario-name';
 
 const router = express.Router();
 
 const DATE_CONFIG_FILENAME = 'date-config.json';
-
-function sanitizeScenarioCandidate(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== trimmed) return null;
-  return sanitized;
-}
 
 async function resolveScenarioForRoute(
   mockDataPath: string,
@@ -24,17 +17,17 @@ async function resolveScenarioForRoute(
   redisStore: RedisMockStore | null
 ): Promise<string> {
   if (raw && typeof raw === 'string' && raw.trim()) {
-    const s = sanitizeScenarioCandidate(raw);
-    if (!s) {
+    const parsed = sanitizeScenarioName(raw);
+    if (!parsed.ok) {
       return provider === 'redis' && redisStore
         ? redisStore.getActiveScenario()
         : getCurrentScenario(mockDataPath);
     }
     if (provider === 'redis') {
-      return s;
+      return parsed.value;
     }
     const scenarios = listScenarios(mockDataPath);
-    if (scenarios.includes(s)) return s;
+    if (scenarios.includes(parsed.value)) return parsed.value;
     return getCurrentScenario(mockDataPath);
   }
   if (provider === 'redis' && redisStore) {
