@@ -60,6 +60,8 @@ Minimum useful fields:
   - `GET /api/network-events?scenario=&clientId=&limit=&since=`
   - `POST /api/network-events` (append; used by SDKs)
   - `DELETE /api/network-events?scenario=&clientId=` (clear)
+- Lane/client ID integrity:
+  - Treat `clientId` as a **stable unique key** (no duplicates). Any “lane discovery” or metadata updates must be **idempotent upserts** keyed by `clientId` (e.g. Redis `SET`/`HSET`), not append-only lists.
 - Hook the proxy route (`packages/mockifyer-dashboard/src/routes/proxy.ts`) to append a `NetworkEvent` on:
   - redis hit
   - upstream miss
