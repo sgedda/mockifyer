@@ -43,7 +43,8 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
     if (config.provider !== 'redis') {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
-    if (!clientId || !clientId.trim()) return res.status(400).json({ error: 'clientId is required' });
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const scenarioValue =
       scenario === null
@@ -61,7 +62,7 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
       mockDataPath,
     });
     try {
-      await store.setLaneScenario(clientId, scenarioValue);
+      await store.setLaneScenario(canonicalClientId, scenarioValue);
       const lanes = await store.listClientLanes();
       const globalScenario = await store.getActiveScenario();
       return res.json({ success: true, lanes, globalScenario });
@@ -82,7 +83,8 @@ router.put('/:clientId', async (req: Request, res: Response) => {
     if (config.provider !== 'redis') {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
-    if (!clientId || !clientId.trim()) return res.status(400).json({ error: 'clientId is required' });
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const noteValue =
       note === null
@@ -100,7 +102,7 @@ router.put('/:clientId', async (req: Request, res: Response) => {
       mockDataPath,
     });
     try {
-      await store.setLaneNote(clientId, noteValue);
+      await store.setLaneNote(canonicalClientId, noteValue);
       const lanes = await store.listClientLanes();
       const globalScenario = await store.getActiveScenario();
       return res.json({ success: true, lanes, globalScenario });

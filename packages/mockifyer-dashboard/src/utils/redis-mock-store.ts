@@ -214,7 +214,8 @@ export class RedisMockStore {
     if (raw === null || raw === '') return null;
     try {
       const o = JSON.parse(raw) as Record<string, unknown>;
-      const recordOnMiss = o.recordOnMiss === true;
+      // Default to recording on cache miss unless explicitly disabled.
+      const recordOnMiss = o.recordOnMiss !== false;
       const allowUpstream = o.allowUpstream !== false; // default true
       return {
         recordOnMiss,

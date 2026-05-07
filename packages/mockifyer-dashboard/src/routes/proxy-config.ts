@@ -27,7 +27,7 @@ router.get('/', async (req: Request, res: Response) => {
       const doc = await store.getProxyConfig(scenario);
       return res.json({
         scenario,
-        recordOnMiss: doc?.recordOnMiss ?? false,
+        recordOnMiss: doc?.recordOnMiss ?? true,
         allowUpstream: doc?.allowUpstream ?? true,
         updatedAt: doc?.updatedAt ?? null,
       });

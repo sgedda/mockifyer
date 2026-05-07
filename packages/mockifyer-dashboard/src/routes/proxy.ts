@@ -69,7 +69,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     const proxyConfig = await store.getProxyConfig(resolvedScenario);
     const effectiveRecord =
-      typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? false);
+      typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? true);
     const effectiveAllowUpstream =
       typeof allowUpstream === 'boolean' ? allowUpstream : (proxyConfig?.allowUpstream ?? true);
 
