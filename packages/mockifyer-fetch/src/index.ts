@@ -148,6 +148,7 @@ class MockifyerClass {
       defaultHeaders: config.defaultHeaders,
       proxy: config.proxy,
       clientId: this.config.clientId,
+      deviceId: (this.config as any).deviceId,
     });
     
     if(!config.recordSameEndpoints) {
