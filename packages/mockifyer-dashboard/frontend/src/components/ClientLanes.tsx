@@ -14,6 +14,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [discoveredLanes, setDiscoveredLanes] = useState<string[]>([])
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
+  const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({})
 
   const addLaneSuggestions = useMemo(() => {
     const existing = new Set(lanes.map((l) => l.clientId))
@@ -137,7 +138,14 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
             {lanes.map((lane) => (
               <div key={lane.clientId} className="rounded-md border border-border p-3 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-mono text-sm break-all">{lane.clientId}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-mono text-sm break-all">{lane.clientId}</div>
+                    {typeof lane.devices?.count === 'number' ? (
+                      <div className="text-xs text-muted-foreground">
+                        {lane.devices.count} device{lane.devices.count === 1 ? '' : 's'} seen
+                      </div>
+                    ) : null}
+                  </div>
                   <select
                     className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     value={availableScenarios.includes(lane.scenario) ? lane.scenario : globalScenario}
@@ -158,6 +166,42 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                     onBlur={(e) => handleNoteChange(lane.clientId, e.target.value)}
                   />
                 </div>
+
+                {lane.devices?.recent && lane.devices.recent.length > 0 ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-muted-foreground">Recent devices</div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setExpandedDevices((prev) => ({
+                            ...prev,
+                            [lane.clientId]: !prev[lane.clientId],
+                          }))
+                        }
+                      >
+                        {expandedDevices[lane.clientId] ? 'Hide' : 'Show'}
+                      </Button>
+                    </div>
+                    {expandedDevices[lane.clientId] ? (
+                      <div className="space-y-1">
+                        {lane.devices.recent.map((d) => (
+                          <div
+                            key={d.deviceId}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1"
+                          >
+                            <div className="font-mono text-xs break-all">{d.deviceId}</div>
+                            <div className="text-xs text-muted-foreground whitespace-nowrap">
+                              {new Date(d.lastSeenAt).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

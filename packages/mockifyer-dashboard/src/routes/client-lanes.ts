@@ -23,9 +23,25 @@ router.get('/', async (req: Request, res: Response) => {
     });
     try {
       const lanes = await store.listClientLanes();
+      const lanesWithDevices = await Promise.all(
+        lanes.map(async (lane) => {
+          const devices = await store.listLaneDevices(lane.clientId, 10).catch(() => []);
+          const deviceCount = await store.countLaneDevices(lane.clientId).catch(() => 0);
+          return {
+            ...lane,
+            devices: {
+              count: deviceCount,
+              recent: devices.map((d) => ({
+                deviceId: d.deviceId,
+                lastSeenAt: new Date(d.lastSeenMs).toISOString(),
+              })),
+            },
+          };
+        })
+      );
       const discoveredLanes = await store.listDiscoveredLanes();
       const globalScenario = await store.getActiveScenario();
-      return res.json({ enabled: true, lanes, discoveredLanes, globalScenario });
+      return res.json({ enabled: true, lanes: lanesWithDevices, discoveredLanes, globalScenario });
     } finally {
       await store.close().catch(() => undefined);
     }
@@ -43,7 +59,8 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
     if (config.provider !== 'redis') {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
-    if (!clientId || !clientId.trim()) return res.status(400).json({ error: 'clientId is required' });
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const scenarioValue =
       scenario === null
@@ -61,7 +78,7 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
       mockDataPath,
     });
     try {
-      await store.setLaneScenario(clientId, scenarioValue);
+      await store.setLaneScenario(canonicalClientId, scenarioValue);
       const lanes = await store.listClientLanes();
       const globalScenario = await store.getActiveScenario();
       return res.json({ success: true, lanes, globalScenario });
@@ -82,7 +99,8 @@ router.put('/:clientId', async (req: Request, res: Response) => {
     if (config.provider !== 'redis') {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
-    if (!clientId || !clientId.trim()) return res.status(400).json({ error: 'clientId is required' });
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const noteValue =
       note === null
@@ -100,7 +118,7 @@ router.put('/:clientId', async (req: Request, res: Response) => {
       mockDataPath,
     });
     try {
-      await store.setLaneNote(clientId, noteValue);
+      await store.setLaneNote(canonicalClientId, noteValue);
       const lanes = await store.listClientLanes();
       const globalScenario = await store.getActiveScenario();
       return res.json({ success: true, lanes, globalScenario });

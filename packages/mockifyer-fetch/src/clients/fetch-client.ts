@@ -8,12 +8,14 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyScenario?: string;
   private proxyRecordOnMiss: boolean;
   private clientId?: string;
+  private deviceId?: string;
 
   constructor(config?: {
     baseUrl?: string;
     defaultHeaders?: Record<string, string>;
     proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean };
     clientId?: string;
+    deviceId?: string;
   }) {
     super();
     this.baseUrl = config?.baseUrl;
@@ -22,6 +24,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
     this.clientId = config?.clientId;
+    this.deviceId = config?.deviceId;
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
@@ -77,11 +80,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         headers: {
           'content-type': 'application/json',
           ...(this.clientId ? { 'x-mockifyer-client-id': this.clientId } : {}),
+          ...(this.deviceId ? { 'x-mockifyer-device-id': this.deviceId } : {}),
         },
         body: JSON.stringify({
           url,
           method: requestConfig.method,
           clientId: this.clientId,
+          deviceId: this.deviceId,
           headers: (() => {
             const out: Record<string, string> = {};
             headers.forEach((value, key) => {

@@ -39,6 +39,7 @@ export class RedisMockStore {
   private readonly useCentralizedScenario: boolean;
   private readonly laneNoteHashKey: string;
   private readonly laneLastSeenZSetKey: string;
+  private readonly laneDeviceLastSeenZSetPrefix: string;
   private readonly scenarioRegistrySetKey: string;
   private readonly proxyConfigPrefix: string;
 
@@ -48,6 +49,7 @@ export class RedisMockStore {
     this.activeScenarioKey = `${this.keyPrefix}:active_scenario`;
     this.laneNoteHashKey = `${this.keyPrefix}:client_lane_notes`;
     this.laneLastSeenZSetKey = `${this.keyPrefix}:client_lane_last_seen`;
+    this.laneDeviceLastSeenZSetPrefix = `${this.keyPrefix}:client_lane_devices:`;
     this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
     this.proxyConfigPrefix = `${this.keyPrefix}:proxy_config:`;
     this.useCentralizedScenario = true;
@@ -214,7 +216,8 @@ export class RedisMockStore {
     if (raw === null || raw === '') return null;
     try {
       const o = JSON.parse(raw) as Record<string, unknown>;
-      const recordOnMiss = o.recordOnMiss === true;
+      // Default to recording on cache miss unless explicitly disabled.
+      const recordOnMiss = o.recordOnMiss !== false;
       const allowUpstream = o.allowUpstream !== false; // default true
       return {
         recordOnMiss,
@@ -428,6 +431,70 @@ export class RedisMockStore {
     await this.redis.zadd(this.laneLastSeenZSetKey, nowMs, id);
     const minScore = nowMs - ttlMs;
     await this.redis.zremrangebyscore(this.laneLastSeenZSetKey, 0, minScore);
+  }
+
+  private laneDevicesZSetKey(clientId: string): string {
+    const id = clientId.trim();
+    return `${this.laneDeviceLastSeenZSetPrefix}${id || 'default'}`;
+  }
+
+  /**
+   * Record a device seen for a given lane (best-effort).
+   *
+   * Uses a sorted set per lane with score = lastSeenMs.
+   */
+  async recordLaneDeviceSeen(
+    clientId: string,
+    deviceId: string,
+    nowMs: number = Date.now(),
+    ttlMs: number = 1000 * 60 * 60 * 24 * 14
+  ): Promise<void> {
+    const lane = clientId.trim();
+    const device = deviceId.trim();
+    if (!lane || !device) return;
+    const key = this.laneDevicesZSetKey(lane);
+    await this.redis.zadd(key, nowMs, device);
+    const minScore = nowMs - ttlMs;
+    await this.redis.zremrangebyscore(key, 0, minScore);
+  }
+
+  /**
+   * List recent devices seen for a given lane, newest first.
+   */
+  async listLaneDevices(
+    clientId: string,
+    limit: number = 25,
+    ttlMs: number = 1000 * 60 * 60 * 24 * 14
+  ): Promise<Array<{ deviceId: string; lastSeenMs: number }>> {
+    const lane = clientId.trim();
+    if (!lane) return [];
+    const key = this.laneDevicesZSetKey(lane);
+    const nowMs = Date.now();
+    const minScore = nowMs - ttlMs;
+    // members newest first with their lastSeen score
+    const raw: string[] = await this.redis.zrevrangebyscore(key, nowMs, minScore, 'WITHSCORES', 'LIMIT', 0, limit);
+    const out: Array<{ deviceId: string; lastSeenMs: number }> = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const deviceId = raw[i];
+      const score = raw[i + 1];
+      const lastSeenMs = typeof score === 'string' ? Number(score) : NaN;
+      if (!deviceId || !Number.isFinite(lastSeenMs)) continue;
+      out.push({ deviceId: deviceId.trim(), lastSeenMs });
+    }
+    return out.filter((d) => d.deviceId);
+  }
+
+  /**
+   * Count devices seen recently for a given lane.
+   */
+  async countLaneDevices(clientId: string, ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<number> {
+    const lane = clientId.trim();
+    if (!lane) return 0;
+    const key = this.laneDevicesZSetKey(lane);
+    const nowMs = Date.now();
+    const minScore = nowMs - ttlMs;
+    const n: number = await this.redis.zcount(key, minScore, nowMs);
+    return typeof n === 'number' && Number.isFinite(n) ? n : 0;
   }
 
   /**
