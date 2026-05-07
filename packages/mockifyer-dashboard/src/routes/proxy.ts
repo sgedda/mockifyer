@@ -28,12 +28,17 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
   }
 
-  const { url, method, headers, body, scenario, record, allowUpstream, clientId: clientIdFromBody } = req.body || {};
+  const { url, method, headers, body, scenario, record, allowUpstream, clientId: clientIdFromBody, deviceId: deviceIdFromBody } = req.body || {};
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
     ? clientIdFromBody.trim()
     : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
+  const deviceIdFromHeader =
+    typeof req.header('x-mockifyer-device-id') === 'string' ? String(req.header('x-mockifyer-device-id')) : undefined;
+  const deviceId = typeof deviceIdFromBody === 'string' && deviceIdFromBody.trim()
+    ? deviceIdFromBody.trim()
+    : (deviceIdFromHeader && deviceIdFromHeader.trim() ? deviceIdFromHeader.trim() : undefined);
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
   const upperMethod = String(method || 'GET').toUpperCase();
@@ -60,6 +65,10 @@ router.post('/', async (req: Request, res: Response) => {
     // Best-effort lane discovery for dashboard UX (autocomplete). No effect if clientId is absent.
     if (clientId) {
       await store.recordLaneSeen(clientId).catch(() => undefined);
+    }
+    // Best-effort device discovery for dashboard UX. Only recorded when both lane + device are present.
+    if (clientId && deviceId) {
+      await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
     }
 
     const resolvedScenario = await store.getResolvedScenario(
@@ -112,6 +121,7 @@ router.post('/', async (req: Request, res: Response) => {
         source: 'redis',
         hash,
         clientId: clientId || null,
+        deviceId: deviceId || null,
         response: responseWithOverrides,
       });
     }
@@ -128,6 +138,7 @@ router.post('/', async (req: Request, res: Response) => {
         source: 'blocked',
         hash,
         clientId: clientId || null,
+        deviceId: deviceId || null,
         error: 'Upstream calls are disabled for this scenario (offline mode).',
       });
     }
@@ -200,6 +211,7 @@ router.post('/', async (req: Request, res: Response) => {
       source: 'upstream',
       hash,
       clientId: clientId || null,
+      deviceId: deviceId || null,
       response,
     });
   } catch (error: any) {

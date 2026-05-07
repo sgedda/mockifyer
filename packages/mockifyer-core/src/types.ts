@@ -7,6 +7,15 @@ export interface MockifyerConfig {
    * Fallback: set this field directly when env injection is not convenient.
    */
   clientId?: string;
+  /**
+   * Optional per-install/per-device identifier for observability in shared stores (e.g. dashboard + Redis proxy).
+   *
+   * This is NOT used for scenario isolation; it is intended to help the dashboard answer
+   * "which devices are currently using this lane?".
+   *
+   * Recommended: a UUID/ULID persisted on the client device.
+   */
+  deviceId?: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
   /** When true, throws an error if no mock data is found for a request. 
