@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
@@ -134,6 +135,9 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
+          if (mockPassesThroughToRealApi(mockData)) {
+            continue;
+          }
           return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
         }
       } catch (error) {
@@ -170,7 +174,9 @@ export class FilesystemProvider implements DatabaseProvider {
           const mockUrl = new URL(mockData.request.url);
           if (mockUrl.pathname === requestUrl.pathname &&
               (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            results.push({ mockData, filename: path.relative(scenarioPath, filePath), filePath });
+            if (!mockPassesThroughToRealApi(mockData)) {
+              results.push({ mockData, filename: path.relative(scenarioPath, filePath), filePath });
+            }
           }
         } catch (e) {
           continue;

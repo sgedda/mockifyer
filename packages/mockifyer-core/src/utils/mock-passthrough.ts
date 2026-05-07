@@ -7,4 +7,3 @@ import type { MockData } from '../types';
 export function mockPassesThroughToRealApi(mockData: MockData): boolean {
   return mockData.alwaysUseRealApi === true;
 }
-

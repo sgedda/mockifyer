@@ -100,6 +100,7 @@ router.get('/', async (req: Request, res: Response) => {
             let endpoint: string | null = null;
             let graphqlInfo: any = null;
             let sessionId: string | null = null;
+            let alwaysUseRealApi = false;
             const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
@@ -135,6 +136,7 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
+              alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
             } catch {
               // ignore
             }
@@ -150,6 +152,7 @@ router.get('/', async (req: Request, res: Response) => {
               endpoint,
               graphqlInfo,
               sessionId,
+              alwaysUseRealApi,
               hasResponseDateOverrides: hasOverrides,
               responseDateOverridesPreview: preview,
             };
@@ -178,12 +181,16 @@ router.get('/', async (req: Request, res: Response) => {
         let endpoint = null;
         let graphqlInfo = null;
         let sessionId = null;
+        let alwaysUseRealApi = false;
         let hasResponseDateOverrides = false;
         let responseDateOverridesPreview: OverridePreview[] = [];
         try {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
+          }
+          if (mockData.alwaysUseRealApi === true) {
+            alwaysUseRealApi = true;
           }
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
@@ -223,6 +230,7 @@ router.get('/', async (req: Request, res: Response) => {
           endpoint,
           graphqlInfo,
           sessionId,
+          alwaysUseRealApi,
           hasResponseDateOverrides,
           responseDateOverridesPreview,
         };
@@ -370,6 +378,17 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
+        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
+          const v = req.body.alwaysUseRealApi;
+          if (v === true) {
+            (existingData as any).alwaysUseRealApi = true;
+          } else if (v === false || v === null) {
+            delete (existingData as any).alwaysUseRealApi;
+          } else {
+            return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
+          }
+        }
+
         await store.setByHash(hash, existingData as any, scenario);
         const payload = JSON.stringify(existingData);
         const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
@@ -432,6 +451,17 @@ router.put('/*', async (req: Request, res: Response) => {
         }
       } else {
         return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
+      const v = req.body.alwaysUseRealApi;
+      if (v === true) {
+        existingData.alwaysUseRealApi = true;
+      } else if (v === false || v === null) {
+        delete existingData.alwaysUseRealApi;
+      } else {
+        return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
       }
     }
 
