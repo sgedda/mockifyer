@@ -1,0 +1,41 @@
+---
+description: When bumping/publishing packages, build changed package before PR
+alwaysApply: true
+---
+
+# Release / PR Build Check
+
+When doing the “bump + commit + PR” flow for any package in this repo, **add a build verification step before pushing / creating the PR** so CI doesn’t fail on obvious TypeScript/lint/build errors.
+
+## What to do
+
+- **Detect which package(s) were changed**:
+  - If edits touch `packages/<pkg>/...`, treat `<pkg>` as changed.
+  - If unsure, inspect `git diff --name-only` and list impacted `packages/*`.
+
+- **Run the package build(s) locally** for each changed package (fast, fail-fast). Prefer the most direct build command:
+  - If the package has a `build` script, run it via `npm --prefix packages/<pkg> run build`.
+  - If the package has multiple build parts, run the minimal ones that catch type errors (e.g. `build:backend` / `frontend run build`).
+
+## Mockifyer dashboard specifics
+
+If any of these files change:
+- `packages/mockifyer-dashboard/src/**`
+- `packages/mockifyer-dashboard/frontend/src/**`
+- `packages/mockifyer-dashboard/package.json`
+
+Then run both:
+
+```bash
+npm --prefix packages/mockifyer-dashboard/frontend run build
+npm --prefix packages/mockifyer-dashboard run build:backend
+```
+
+## Order of operations (when user asks “bump and create PR”)
+
+- Make code changes
+- **Run build checks (this rule)**
+- Stage + commit
+- Push
+- Create PR
+
