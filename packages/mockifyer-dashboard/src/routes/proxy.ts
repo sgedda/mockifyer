@@ -88,7 +88,7 @@ router.post('/', async (req: Request, res: Response) => {
     );
 
     const proxyConfig = await store.getProxyConfig(resolvedScenario);
-    const effectiveRecord =
+    let effectiveRecord =
       typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? true);
     const effectiveAllowUpstream =
       typeof allowUpstream === 'boolean' ? allowUpstream : (proxyConfig?.allowUpstream ?? true);
@@ -106,6 +106,18 @@ router.post('/', async (req: Request, res: Response) => {
     // 1) Try Redis hit
     const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {
+      // If this recording is marked as passthrough, do NOT serve it from Redis.
+      // Instead, force an upstream request (and never record that upstream response).
+      // This matches the filesystem provider behavior where `alwaysUseRealApi` means
+      // "skip this mock in replay mode".
+      if ((mock as any).alwaysUseRealApi === true) {
+        effectiveRecord = false;
+        if (debugProxy) {
+          console.log(
+            `[ProxyRoute] forced passthrough (alwaysUseRealApi): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+          );
+        }
+      } else {
       // Guardrail: some projects recorded responseDateOverrides with base='response', which can drift
       // based on stale recorded timestamps even when "now" is correct. In Redis-proxy mode we want
       // overrides to be relative to the current manipulated date.
@@ -135,6 +147,7 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         response: responseWithOverrides,
       });
+      }
     }
 
     // 2) Miss: proxy to real upstream
