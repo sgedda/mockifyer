@@ -40,6 +40,7 @@ export class RedisMockStore {
   private readonly laneNoteHashKey: string;
   private readonly laneLastSeenZSetKey: string;
   private readonly scenarioRegistrySetKey: string;
+  private readonly proxyConfigPrefix: string;
 
   constructor(config: RedisMockStoreConfig) {
     this.mockDataPath = config.mockDataPath;
@@ -48,6 +49,7 @@ export class RedisMockStore {
     this.laneNoteHashKey = `${this.keyPrefix}:client_lane_notes`;
     this.laneLastSeenZSetKey = `${this.keyPrefix}:client_lane_last_seen`;
     this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
+    this.proxyConfigPrefix = `${this.keyPrefix}:proxy_config:`;
     this.useCentralizedScenario = true;
 
     const RedisCtor = requireIoRedis();
@@ -197,6 +199,45 @@ export class RedisMockStore {
     await this.redis.del(this.dateConfigRedisKey(scenario));
   }
 
+  /** Redis key for JSON `{ recordOnMiss, allowUpstream, updatedAt }` per scenario (proxy behavior). */
+  proxyConfigRedisKey(scenario: string): string {
+    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    return `${this.proxyConfigPrefix}${id}`;
+  }
+
+  async getProxyConfig(scenario: string): Promise<{
+    recordOnMiss: boolean;
+    allowUpstream: boolean;
+    updatedAt?: string;
+  } | null> {
+    const raw: string | null = await this.redis.get(this.proxyConfigRedisKey(scenario));
+    if (raw === null || raw === '') return null;
+    try {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      const recordOnMiss = o.recordOnMiss === true;
+      const allowUpstream = o.allowUpstream !== false; // default true
+      return {
+        recordOnMiss,
+        allowUpstream,
+        updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async setProxyConfig(
+    scenario: string,
+    payload: { recordOnMiss: boolean; allowUpstream: boolean; updatedAt: string }
+  ): Promise<void> {
+    await this.redis.set(this.proxyConfigRedisKey(scenario), JSON.stringify(payload));
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+  }
+
+  async deleteProxyConfig(scenario: string): Promise<void> {
+    await this.redis.del(this.proxyConfigRedisKey(scenario));
+  }
+
   /**
    * Clone all Redis-stored mock data (and date config) from one scenario into another.
    *
@@ -223,6 +264,16 @@ export class RedisMockStore {
         updatedAt: new Date().toISOString(),
       });
       dateConfigCopied = true;
+    }
+
+    // Copy proxy config if present (best-effort).
+    const proxyDoc = await this.getProxyConfig(from);
+    if (proxyDoc !== null) {
+      await this.setProxyConfig(to, {
+        recordOnMiss: proxyDoc.recordOnMiss,
+        allowUpstream: proxyDoc.allowUpstream,
+        updatedAt: new Date().toISOString(),
+      }).catch(() => undefined);
     }
 
     // Copy mocks by walking the index set.

@@ -9,7 +9,7 @@ import Settings from './Settings'
 import Timeline from './Timeline'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
-import { getMocks, getMock, getScenarioConfig, setScenario } from '@/lib/api'
+import { getMocks, getMock, getScenarioConfig, getProxyConfig, setScenario, updateProxyConfig } from '@/lib/api'
 import type { MockFile, MockData } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,6 +33,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [switchingScenario, setSwitchingScenario] = useState(false)
   const [scenarioFilter, setScenarioFilter] = useState('')
+  const [proxyRecordOnMiss, setProxyRecordOnMiss] = useState<boolean | null>(null)
+  const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
+  const [proxySaving, setProxySaving] = useState(false)
   
   // Get active tab from URL path
   const getActiveTabFromPath = () => {
@@ -64,6 +67,41 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       }
     })()
   }, [])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const cfg = await getProxyConfig(scenario)
+        setProxyRecordOnMiss(cfg.recordOnMiss)
+        setProxyAllowUpstream(cfg.allowUpstream)
+      } catch {
+        // Provider might not be redis; keep null (hide)
+        setProxyRecordOnMiss(null)
+        setProxyAllowUpstream(null)
+      }
+    })()
+  }, [scenario])
+
+  async function saveProxyConfig(next: { recordOnMiss: boolean; allowUpstream: boolean }) {
+    try {
+      setProxySaving(true)
+      await updateProxyConfig({ scenario, ...next })
+      setProxyRecordOnMiss(next.recordOnMiss)
+      setProxyAllowUpstream(next.allowUpstream)
+      toast({
+        title: 'Saved',
+        description: `Proxy settings updated for "${scenario}"`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error?.message || 'Failed to update proxy settings',
+        variant: 'destructive',
+      })
+    } finally {
+      setProxySaving(false)
+    }
+  }
 
   async function handleHeaderScenarioChange(nextScenario: string) {
     if (!nextScenario || nextScenario === scenario) return
@@ -234,6 +272,46 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {proxyRecordOnMiss !== null && proxyAllowUpstream !== null && (
+              <div className="hidden md:flex items-center gap-2 mr-2">
+                <Button
+                  type="button"
+                  variant={proxyRecordOnMiss ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9"
+                  disabled={proxySaving}
+                  title="When enabled, proxy writes a mock to Redis on upstream miss."
+                  onClick={() =>
+                    saveProxyConfig({
+                      recordOnMiss: !proxyRecordOnMiss,
+                      allowUpstream: proxyAllowUpstream,
+                    })
+                  }
+                >
+                  Record: {proxyRecordOnMiss ? 'On' : 'Off'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={proxyAllowUpstream ? 'outline' : 'destructive'}
+                  size="sm"
+                  className="h-9"
+                  disabled={proxySaving}
+                  title={
+                    proxyAllowUpstream
+                      ? 'Upstream calls allowed on miss.'
+                      : 'Offline mode: upstream calls blocked on miss.'
+                  }
+                  onClick={() =>
+                    saveProxyConfig({
+                      recordOnMiss: proxyRecordOnMiss,
+                      allowUpstream: !proxyAllowUpstream,
+                    })
+                  }
+                >
+                  Upstream: {proxyAllowUpstream ? 'Allow' : 'Block'}
+                </Button>
+              </div>
+            )}
             <span className="hidden sm:inline text-xs text-muted-foreground">Scenario</span>
             <DropdownMenu
               onOpenChange={(open) => {

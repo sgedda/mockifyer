@@ -28,7 +28,7 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
   }
 
-  const { url, method, headers, body, scenario, record, clientId: clientIdFromBody } = req.body || {};
+  const { url, method, headers, body, scenario, record, allowUpstream, clientId: clientIdFromBody } = req.body || {};
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
@@ -66,6 +66,12 @@ router.post('/', async (req: Request, res: Response) => {
       typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined,
       clientId
     );
+
+    const proxyConfig = await store.getProxyConfig(resolvedScenario);
+    const effectiveRecord =
+      typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? false);
+    const effectiveAllowUpstream =
+      typeof allowUpstream === 'boolean' ? allowUpstream : (proxyConfig?.allowUpstream ?? true);
 
     const redisDateDoc = await store.getDateConfig(resolvedScenario);
     const getNow = () =>
@@ -111,6 +117,20 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // 2) Miss: proxy to real upstream
+    if (!effectiveAllowUpstream) {
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] upstream blocked: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+        );
+      }
+      return res.status(412).json({
+        proxied: false,
+        source: 'blocked',
+        hash,
+        clientId: clientId || null,
+        error: 'Upstream calls are disabled for this scenario (offline mode).',
+      });
+    }
     const upstreamHeaders = new Headers();
     for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
       // Avoid forwarding hop-by-hop headers; keep it minimal.
@@ -155,7 +175,7 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
-    if (record === true) {
+    if (effectiveRecord === true) {
       const mockData = {
         request: {
           method: upperMethod,
@@ -172,7 +192,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (debugProxy) {
       console.log(
-        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${record === true}`
+        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
       );
     }
     return res.json({
