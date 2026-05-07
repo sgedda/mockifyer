@@ -11,7 +11,6 @@ import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
-import { Button } from '@/components/ui/button'
 import { ChevronRight, ChevronDown, Folder } from 'lucide-react'
 
 interface FolderTreeBulkContextValue {
