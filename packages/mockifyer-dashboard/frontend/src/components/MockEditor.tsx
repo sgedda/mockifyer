@@ -279,6 +279,32 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
     }
   }
 
+  async function handleToggleAlwaysUseRealApi(next: boolean) {
+    setAlwaysUseRealApi(next)
+    try {
+      setSaving(true)
+      // Intentionally preserve the current on-disk/Redis mock body and overrides.
+      // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
+      await updateMock(mock.filename, mock.data.response.data, undefined, next, scenario)
+      toast({
+        title: 'Saved',
+        description: next
+          ? 'This mock will now pass through to the live API.'
+          : 'This mock will now be served from Mockifyer again.',
+      })
+      onSave()
+    } catch (error: any) {
+      setAlwaysUseRealApi((prev) => !prev)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update mock',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function generateCurlCommand(): string {
     const request = mock.data.request
     const method = request.method.toUpperCase()
@@ -414,7 +440,8 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                   type="checkbox"
                   id="mockifyer-always-real-api"
                   checked={alwaysUseRealApi}
-                  onChange={(e) => setAlwaysUseRealApi(e.target.checked)}
+                  onChange={(e) => handleToggleAlwaysUseRealApi(e.target.checked)}
+                  disabled={saving}
                   className="mt-1 h-4 w-4 shrink-0 rounded border-input"
                 />
                 <div className="min-w-0 space-y-1">
@@ -423,7 +450,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                   </label>
                   <p className="text-xs text-muted-foreground leading-relaxed">
                     When Mockifyer replay is on, this recording is ignored and traffic goes to the real endpoint. The
-                    file stays on disk (for reference or when you record again). Save changes to apply.
+                    file stays on disk (for reference or when you record again). Saved automatically when you toggle.
                   </p>
                 </div>
               </div>
