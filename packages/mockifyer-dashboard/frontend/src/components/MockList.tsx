@@ -9,7 +9,7 @@ import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
-import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
@@ -51,6 +51,8 @@ function MockListContent({
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
   const didAutoSwitchGroupBy = useRef(false)
+  const [overridesCollapsed, setOverridesCollapsed] = useState(true)
+  const [recentCollapsed, setRecentCollapsed] = useState(true)
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
@@ -128,6 +130,13 @@ function MockListContent({
       .slice(0, 5)
   }, [allMocks, mocks, searchQuery])
 
+  const overrideMocks = useMemo(() => {
+    const source = searchQuery.trim() ? mocks : allMocks
+    return [...source]
+      .filter((m) => m.hasResponseDateOverrides === true)
+      .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+  }, [allMocks, mocks, searchQuery])
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -181,26 +190,79 @@ function MockListContent({
         </Button>
       </div>
 
+      {!loading && overrideMocks.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setOverridesCollapsed((c) => !c)}
+              title={overridesCollapsed ? 'Expand overrides' : 'Collapse overrides'}
+            >
+              <div className="flex items-center gap-2">
+                {overridesCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div className="text-sm font-medium">
+                  Overrides {searchQuery.trim() ? '(matching search)' : ''}{' '}
+                  <span className="text-xs text-muted-foreground">({overrideMocks.length})</span>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">Sorted by modified time</div>
+            </button>
+            {!overridesCollapsed && (
+              <div className="flex flex-col gap-2">
+                {overrideMocks.map((m) => (
+                  <MockCard
+                    key={`override:${m.filename}`}
+                    mock={m}
+                    selectedMock={selectedMock}
+                    onSelectMock={onSelectMock}
+                    showActions={false}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && recentMocks.length > 0 && (
         <Card>
           <CardContent className="p-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-medium">
-                Recent {searchQuery.trim() ? '(matching search)' : ''} (last 5 saved)
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setRecentCollapsed((c) => !c)}
+              title={recentCollapsed ? 'Expand recent' : 'Collapse recent'}
+            >
+              <div className="flex items-center gap-2">
+                {recentCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <div className="text-sm font-medium">
+                  Recent {searchQuery.trim() ? '(matching search)' : ''} (last 5 saved)
+                </div>
               </div>
               <div className="text-xs text-muted-foreground">Sorted by modified time</div>
-            </div>
-            <div className="flex flex-col gap-2">
-              {recentMocks.map((m) => (
-                <MockCard
-                  key={`recent:${m.filename}`}
-                  mock={m}
-                  selectedMock={selectedMock}
-                  onSelectMock={onSelectMock}
-                  showActions={false}
-                />
-              ))}
-            </div>
+            </button>
+            {!recentCollapsed && (
+              <div className="flex flex-col gap-2">
+                {recentMocks.map((m) => (
+                  <MockCard
+                    key={`recent:${m.filename}`}
+                    mock={m}
+                    selectedMock={selectedMock}
+                    onSelectMock={onSelectMock}
+                    showActions={false}
+                  />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
