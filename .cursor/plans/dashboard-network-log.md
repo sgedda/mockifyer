@@ -92,7 +92,7 @@ Minimum useful fields:
   - default redact: `authorization`, `cookie`, `set-cookie`, `x-api-key`, etc.
   - query param anonymization option (align with existing `generateRequestKey` behavior)
 - Explicit toggles in Settings:
-  - enable/disable network logging
+  - enable/disable network logging (**default: enabled / recording ON per scenario**)
   - capture bodies (off by default)
   - per-scenario or global
 
