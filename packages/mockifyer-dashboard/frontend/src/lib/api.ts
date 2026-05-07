@@ -99,6 +99,13 @@ export interface ClientLane {
   clientId: string
   scenario: string
   note: string | null
+  devices?: {
+    count: number
+    recent: Array<{
+      deviceId: string
+      lastSeenAt: string
+    }>
+  }
 }
 
 export async function getClientLanes(): Promise<{
