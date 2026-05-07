@@ -14,6 +14,7 @@ export * from './utils/logger';
 export * from './utils/file-naming';
 export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
+export * from './utils/client-id';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)

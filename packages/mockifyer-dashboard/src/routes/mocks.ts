@@ -9,6 +9,8 @@ import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
+type OverridePreview = { path: string; summary: string };
+
 function getMockDataPath(): string {
   return detectMockDataPath();
 }
@@ -20,6 +22,59 @@ function parseRedisHashFromFilename(relativeName: string): string | null {
   const hash = relativeName.slice('redis/'.length, -'.json'.length);
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
   return hash;
+}
+
+/** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
+async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
+  const raw = req.query.scenario;
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.trim();
+  }
+  return store.getActiveScenario();
+}
+
+/** Scenario from ?scenario= or local scenario-config (align with GET /mocks list). */
+function resolveFilesystemScenario(req: Request, mockDataPath: string): string {
+  const raw = req.query.scenario;
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.trim();
+  }
+  return getCurrentScenario(mockDataPath);
+}
+
+function buildOverrideSummary(override: Record<string, unknown>): string {
+  const pieces: string[] = [];
+  const offsetDays = override.offsetDays;
+  const offsetHours = override.offsetHours;
+  const offsetMinutes = override.offsetMinutes;
+  const offsetMs = override.offsetMs;
+
+  if (typeof offsetDays === 'number' && offsetDays !== 0) pieces.push(`${offsetDays}d`);
+  if (typeof offsetHours === 'number' && offsetHours !== 0) pieces.push(`${offsetHours}h`);
+  if (typeof offsetMinutes === 'number' && offsetMinutes !== 0) pieces.push(`${offsetMinutes}m`);
+  if (typeof offsetMs === 'number' && offsetMs !== 0) pieces.push(`${offsetMs}ms`);
+
+  const format = override.format;
+  if (typeof format === 'string' && format) pieces.push(`format=${format}`);
+
+  if (pieces.length === 0) return 'no offset';
+  return pieces.join(' ');
+}
+
+function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: OverridePreview[] } {
+  const overrides = mockData?.responseDateOverrides;
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    return { hasOverrides: false, preview: [] };
+  }
+  const preview: OverridePreview[] = [];
+  for (const o of overrides) {
+    if (!o || typeof o !== 'object') continue;
+    const pathVal = (o as any).path;
+    if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
+    preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
+    if (preview.length >= 3) break;
+  }
+  return { hasOverrides: preview.length > 0, preview };
 }
 
 // List all mock files (recursive)
@@ -46,6 +101,7 @@ router.get('/', async (req: Request, res: Response) => {
             let graphqlInfo: any = null;
             let sessionId: string | null = null;
             let alwaysUseRealApi = false;
+            const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
               // Best-effort query params formatting, matching filesystem route behavior.
@@ -97,6 +153,8 @@ router.get('/', async (req: Request, res: Response) => {
               graphqlInfo,
               sessionId,
               alwaysUseRealApi,
+              hasResponseDateOverrides: hasOverrides,
+              responseDateOverridesPreview: preview,
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
@@ -124,6 +182,8 @@ router.get('/', async (req: Request, res: Response) => {
         let graphqlInfo = null;
         let sessionId = null;
         let alwaysUseRealApi = false;
+        let hasResponseDateOverrides = false;
+        let responseDateOverridesPreview: OverridePreview[] = [];
         try {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           if (mockData.request?.url) {
@@ -134,6 +194,10 @@ router.get('/', async (req: Request, res: Response) => {
           }
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
+
+          const overrideInfo = getOverridePreview(mockData);
+          hasResponseDateOverrides = overrideInfo.hasOverrides;
+          responseDateOverridesPreview = overrideInfo.preview;
 
           if (mockData.request?.data) {
             let bodyData = mockData.request.data;
@@ -167,6 +231,8 @@ router.get('/', async (req: Request, res: Response) => {
           graphqlInfo,
           sessionId,
           alwaysUseRealApi,
+          hasResponseDateOverrides,
+          responseDateOverridesPreview,
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -202,7 +268,7 @@ router.get('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = getCurrentScenario(mockDataPath);
+        const scenario = await resolveRedisScenario(req, store);
         const data = await store.getByHash(hash, scenario);
         if (!data) return res.status(404).json({ error: 'Mock not found' });
         const payload = JSON.stringify(data);
@@ -221,7 +287,7 @@ router.get('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -259,7 +325,7 @@ router.put('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = getCurrentScenario(mockDataPath);
+        const scenario = await resolveRedisScenario(req, store);
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -275,6 +341,10 @@ router.put('/*', async (req: Request, res: Response) => {
 
         if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
         (existingData as any).response.data = parsedResponseData;
+
+        // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
+        // Update it on every save so recent edits are reflected in the UI ordering.
+        (existingData as any).timestamp = new Date().toISOString();
 
         // Keep behavior consistent with filesystem provider: allow saving responseDateOverrides.
         if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
@@ -333,7 +403,7 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -421,7 +491,7 @@ router.delete('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = getCurrentScenario(mockDataPath);
+        const scenario = await resolveRedisScenario(req, store);
         await store.deleteByHash(hash, scenario);
         return res.json({ success: true, message: `Mock deleted successfully`, filename: relativeName });
       } finally {
@@ -429,7 +499,7 @@ router.delete('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -458,7 +528,7 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
       });
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, getCurrentScenario(mockDataPath));
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });

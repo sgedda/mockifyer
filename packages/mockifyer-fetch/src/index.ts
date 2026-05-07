@@ -36,7 +36,8 @@ import {
   prepareMockResponseBody,
   getCurrentDate,
   shouldExcludeUrl,
-  mockPassesThroughToRealApi
+  mockPassesThroughToRealApi,
+  resolveClientId
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -107,6 +108,10 @@ class MockifyerClass {
     
     // Store config BEFORE any modifications
     this.config = { ...config }; // Create a copy to avoid mutations
+
+    // Resolve client lane id (env/config/fallback); used for Redis per-client scenario overrides and proxy headers.
+    this.config.clientId = resolveClientId(this.config);
+    logger.info(`[Mockifyer-Fetch] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
@@ -121,6 +126,7 @@ class MockifyerClass {
           ...config.databaseProvider.options,
           mockDataPath:
             config.databaseProvider.options?.mockDataPath ?? config.mockDataPath,
+          clientId: this.config.clientId,
         },
       };
       this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
@@ -140,7 +146,8 @@ class MockifyerClass {
     this.httpClient = new FetchHTTPClient({ 
       baseUrl: config.baseUrl, 
       defaultHeaders: config.defaultHeaders,
-      proxy: config.proxy
+      proxy: config.proxy,
+      clientId: this.config.clientId,
     });
     
     if(!config.recordSameEndpoints) {
@@ -246,7 +253,7 @@ class MockifyerClass {
       return undefined;
     }
 
-    const currentScenario = getCurrentScenario(resolvedMockDataPath);
+    const currentScenario = getCurrentScenario(resolvedMockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(resolvedMockDataPath, currentScenario);
     
     if (!fs.existsSync(scenarioPath)) {
@@ -721,7 +728,7 @@ class MockifyerClass {
         const domain = urlParts[0].replace(/\./g, '_');
         const urlPathPart = urlParts.slice(1).join('_') || 'root';
         const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
-        const currentScenario = getCurrentScenario(this.config.mockDataPath);
+        const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
         const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
         ensureScenarioFolder(this.config.mockDataPath, currentScenario);
         

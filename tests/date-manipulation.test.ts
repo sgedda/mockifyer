@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
-import { getCurrentDate, resetDateManipulation } from '@sgedda/mockifyer-core';
+import { getCurrentDate, initializeDateManipulation, resetDateManipulation } from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
   const fixedBaseTime = new Date('2024-01-01T00:00:00.000Z').getTime();
@@ -245,7 +245,7 @@ describe('Date Manipulation', () => {
       );
 
       try {
-        setupMockifyer({ mockDataPath: mockData });
+        setupMockifyer({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2020-06-01T00:00:00.000Z');
 
         fs.writeFileSync(
@@ -274,9 +274,115 @@ describe('Date Manipulation', () => {
       );
 
       try {
-        setupMockifyer({ mockDataPath: mockData });
+        setupMockifyer({ mockDataPath: mockData, disableDateConfigFileFallback: false });
         expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
       } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('getCurrentDate({ explicitManipulation }) prefers Redis payload over filesystem for same scenario', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'alpha', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2020-06-01T00:00:00.000Z' },
+        })
+      );
+
+      try {
+        resetDateManipulation();
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
+        expect(
+          getCurrentDate({
+            mockDataPath: mockData,
+            scenario: 'alpha',
+            explicitManipulation: { fixedDate: '2025-01-15T12:00:00.000Z' },
+          }).toISOString()
+        ).toBe('2025-01-15T12:00:00.000Z');
+        expect(
+          getCurrentDate({
+            mockDataPath: mockData,
+            scenario: 'alpha',
+          }).toISOString()
+        ).toBe('2020-06-01T00:00:00.000Z');
+      } finally {
+        resetDateManipulation();
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('getCurrentDate({ explicitManipulation: {} }) treats an empty Redis payload as a clear override', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2018-05-05T12:00:00.000Z' },
+        })
+      );
+
+      try {
+        resetDateManipulation();
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
+        expect(getCurrentDate().toISOString()).toBe('2018-05-05T12:00:00.000Z');
+
+        const result = getCurrentDate({
+          mockDataPath: mockData,
+          scenario: 'alpha',
+          explicitManipulation: {},
+        });
+        const now = Date.now();
+
+        expect(Math.abs(result.getTime() - now)).toBeLessThan(2000);
+      } finally {
+        resetDateManipulation();
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('getCurrentDate({ scenario }) reads that scenario date-config when active scenario differs (Redis-aligned)', () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-date-'));
+      const mockData = path.join(tmp, 'mock-data');
+      fs.mkdirSync(path.join(mockData, 'alpha'), { recursive: true });
+      fs.mkdirSync(path.join(mockData, 'beta'), { recursive: true });
+      fs.writeFileSync(
+        path.join(mockData, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'alpha' })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'alpha', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2020-06-01T00:00:00.000Z' },
+        })
+      );
+      fs.writeFileSync(
+        path.join(mockData, 'beta', 'date-config.json'),
+        JSON.stringify({
+          dateManipulation: { fixedDate: '2021-07-01T00:00:00.000Z' },
+        })
+      );
+
+      try {
+        resetDateManipulation();
+        initializeDateManipulation({ mockDataPath: mockData, disableDateConfigFileFallback: false });
+        expect(getCurrentDate().toISOString()).toBe('2020-06-01T00:00:00.000Z');
+        expect(getCurrentDate({ mockDataPath: mockData, scenario: 'beta' }).toISOString()).toBe(
+          '2021-07-01T00:00:00.000Z'
+        );
+      } finally {
+        resetDateManipulation();
         fs.rmSync(tmp, { recursive: true, force: true });
       }
     });

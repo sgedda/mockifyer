@@ -11,6 +11,8 @@
     "test:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
     "test:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/fetch/fetch-auto-mock.ts",
     "test:watch": "jest --watch",
+    "tag:package": "node scripts/tag-package.mjs",
+    "tag:package:dry": "node scripts/tag-package.mjs --dry-run",
     "release:patch": "npm version patch && git push && git push --tags",
     "release:minor": "npm version minor && git push && git push --tags",
     "release:major": "npm version major && git push && git push --tags",

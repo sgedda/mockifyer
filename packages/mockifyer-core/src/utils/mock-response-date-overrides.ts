@@ -89,27 +89,6 @@ function formatResolvedDate(date: Date, format: 'iso' | 'unix-ms' | 'unix-s'): s
   }
 }
 
-function isLikelyUnixMs(n: number): boolean {
-  return n > 1e11 && n < 1e14;
-}
-
-function isLikelyUnixSeconds(n: number): boolean {
-  return n > 1e9 && n < 1e11;
-}
-
-function parseOriginalToMs(original: unknown): number | null {
-  if (typeof original === 'number' && Number.isFinite(original)) {
-    if (isLikelyUnixMs(original)) return original;
-    if (isLikelyUnixSeconds(original)) return original * 1000;
-    return null;
-  }
-  if (typeof original === 'string') {
-    const ms = Date.parse(original);
-    return Number.isNaN(ms) ? null : ms;
-  }
-  return null;
-}
-
 /** Total offset in ms from optional shorthand fields. */
 export function totalOverrideOffsetMs(override: MockResponseDateOverride): number {
   let ms = override.offsetMs ?? 0;
@@ -127,7 +106,15 @@ export function totalOverrideOffsetMs(override: MockResponseDateOverride): numbe
 
 /**
  * Applies relative date overrides to a cloned copy of response data.
+ *
  * Uses `getNow` (typically {@link getCurrentDate}) as the base "current" instant.
+ *
+ * NOTE: `base: 'response'` (a legacy/deprecated value that may still appear in older
+ * recordings) is treated identically to `base: 'now'`. This avoids drift caused by
+ * stale recorded timestamps — for example, mocks that were recorded while a fixed
+ * date was active would otherwise keep producing dates anchored at the *recorded*
+ * fixed date long after the fixed date is cleared. We always anchor at the
+ * manipulated current date (or real time when no manipulation is configured).
  */
 export function applyResponseDateOverridesToData<T>(
   data: T,
@@ -162,11 +149,7 @@ export function applyResponseDateOverridesToData<T>(
     const original = getAtPath(clone, segments);
     const format = resolveFormat(override, original);
     const nowMs = getNow().getTime();
-    const base =
-      override.base === 'response'
-        ? parseOriginalToMs(original) ?? nowMs
-        : nowMs;
-    const next = new Date(base + totalOverrideOffsetMs(override));
+    const next = new Date(nowMs + totalOverrideOffsetMs(override));
     const value = formatResolvedDate(next, format);
     setAtPath(clone, segments, value);
   }

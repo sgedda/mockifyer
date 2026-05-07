@@ -17,6 +17,28 @@ try {
 
 let currentConfig: MockifyerConfig | null = null;
 
+/** Optional context when resolving date manipulation from disk (e.g. dashboard proxy + Redis scenario). */
+export interface GetCurrentDateContext {
+  mockDataPath?: string;
+  /** Load `{mockDataPath}/{scenario}/date-config.json` instead of the filesystem active scenario. */
+  scenario?: string;
+  /**
+   * When the dashboard loads date settings from Redis: pass the `dateManipulation` object to apply.
+   * Pass `null` when Redis has no key for that scenario (falls through to disk).
+   * When omitted, only in-memory config + disk are used (default client behavior).
+   */
+  explicitManipulation?: Record<string, unknown> | null;
+}
+
+function manipulationPayloadIsEffective(dm: Record<string, unknown>): boolean {
+  const fixed = dm.fixedDate;
+  const hasFixed = fixed !== undefined && fixed !== null && fixed !== '';
+  const hasOffset = dm.offset !== undefined && dm.offset !== null && typeof dm.offset === 'number';
+  const tz = dm.timezone;
+  const hasTz = tz !== undefined && tz !== null && tz !== '';
+  return hasFixed || hasOffset || hasTz;
+}
+
 /**
  * Read dateManipulation payload from a single date-config.json file.
  */
@@ -44,8 +66,13 @@ function readDateManipulationFromJsonFile(filePath: string): { dateManipulation?
  *
  * If the scenario folder or per-scenario file does not exist yet, this falls through to the
  * legacy root file only (no error). If neither file exists, returns null.
+ *
+ * @param scenarioOverride When provided (e.g. Redis-resolved scenario), loads that folder instead of filesystem `scenario-config`.
  */
-function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any } | null {
+function loadDateConfigFromFile(
+  mockDataPath?: string,
+  scenarioOverride?: string
+): { dateManipulation?: any } | null {
   // Skip file loading if fs/path are not available (React Native)
   if (!fs || !path) {
     return null;
@@ -53,7 +80,10 @@ function loadDateConfigFromFile(mockDataPath?: string): { dateManipulation?: any
 
   try {
     if (mockDataPath && fs.existsSync(mockDataPath)) {
-      const scenario = getCurrentScenario(mockDataPath);
+      const scenario =
+        typeof scenarioOverride === 'string' && scenarioOverride.trim()
+          ? scenarioOverride.trim()
+          : getCurrentScenario(mockDataPath);
       const scenarioDir = getScenarioFolderPath(mockDataPath, scenario);
       const scenarioPath = path.join(scenarioDir, 'date-config.json');
       if (fs.existsSync(scenarioPath)) {
@@ -147,14 +177,58 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
  * Note: This function returns a manipulated date object, but does NOT affect
  * global Date() or Date.now(). For global date manipulation, use Sinon or Jest fake timers.
  * See documentation for examples.
+ *
+ * @param context Optional; pass `mockDataPath`/`scenario` so server code (e.g. dashboard Redis proxy) reads the same
+ *                `date-config.json` as the UI instead of falling back to `process.cwd()/mock-data` discovery.
  */
-export function getCurrentDate(): Date {
-  // Check environment variables first (they take precedence)
+export function getCurrentDate(context?: GetCurrentDateContext): Date {
+  // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
+  //
+  // IMPORTANT: This must take precedence over environment variables.
+  // Otherwise, a stale `MOCKIFYER_DATE*` env var (set by older servers / previous runs)
+  // can silently override the Redis-backed proxy configuration.
+  if (
+    context !== undefined &&
+    Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
+  ) {
+    const ex = context.explicitManipulation;
+    // `null` means "explicitly cleared" for Redis/proxy mode: do not fall back to disk.
+    if (ex === null) {
+      return new Date();
+    }
+    if (ex !== null && typeof ex === 'object') {
+      // `{}` (or otherwise "ineffective") is an explicit "clear" signal: treat as no manipulation
+      // and do not fall through to env vars / disk defaults.
+      if (!manipulationPayloadIsEffective(ex)) {
+        return new Date();
+      }
+      // Apply explicit manipulation directly (no env var precedence).
+      const fixedDate = (ex as Record<string, unknown>).fixedDate;
+      if (typeof fixedDate === 'string' && fixedDate) {
+        return new Date(fixedDate);
+      }
+      const offset = (ex as Record<string, unknown>).offset;
+      if (typeof offset === 'number' && !Number.isNaN(offset)) {
+        return new Date(Date.now() + offset);
+      }
+      const timezone = (ex as Record<string, unknown>).timezone;
+      if (typeof timezone === 'string' && timezone) {
+        const date = new Date();
+        try {
+          return new Date(date.toLocaleString('en-US', { timeZone: timezone }));
+        } catch {
+          return new Date();
+        }
+      }
+      return new Date();
+    }
+  }
+
+  // Check environment variables (they take precedence over disk config)
   const envDate = process.env[ENV_VARS.MOCK_DATE];
   const envOffset = process.env[ENV_VARS.MOCK_DATE_OFFSET];
   const envTimezone = process.env[ENV_VARS.MOCK_TIMEZONE];
 
-  // Environment variables take precedence over config
   if (envDate) {
     return new Date(envDate);
   }
@@ -167,11 +241,29 @@ export function getCurrentDate(): Date {
   }
 
   // Try to get date manipulation from current config
-  let dateManipulation = currentConfig?.dateManipulation;
+  let dateManipulation: Record<string, unknown> | null | undefined = currentConfig?.dateManipulation;
+
+  // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
+  if (
+    !dateManipulation &&
+    context !== undefined &&
+    Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
+  ) {
+    const ex = context.explicitManipulation;
+    // If the caller explicitly provided `explicitManipulation` (even if null),
+    // we should not fall through to filesystem date-config.json.
+    if (ex === null) {
+      dateManipulation = null;
+    } else if (ex !== null && typeof ex === 'object') {
+      dateManipulation = ex;
+    }
+  }
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
-  if (!dateManipulation) {
-    const fileConfig = loadDateConfigFromFile(currentConfig?.mockDataPath);
+  const disableDateConfigFileFallback = currentConfig?.disableDateConfigFileFallback ?? true;
+  if (!disableDateConfigFileFallback && !dateManipulation && dateManipulation !== null) {
+    const pathForFile = context?.mockDataPath ?? currentConfig?.mockDataPath;
+    const fileConfig = loadDateConfigFromFile(pathForFile, context?.scenario);
     if (fileConfig && 'dateManipulation' in fileConfig) {
       dateManipulation = fileConfig.dateManipulation;
     }
@@ -182,24 +274,29 @@ export function getCurrentDate(): Date {
     return new Date();
   }
 
+  const dm = dateManipulation as Record<string, unknown>;
+
   // Use config settings if no environment variables are set
-  if (dateManipulation.fixedDate) {
-    return typeof dateManipulation.fixedDate === 'string'
-      ? new Date(dateManipulation.fixedDate)
-      : new Date(dateManipulation.fixedDate);
+  const fixed = dm.fixedDate;
+  if (typeof fixed === 'string' && fixed) {
+    return new Date(fixed);
+  }
+  if (fixed instanceof Date) {
+    return new Date(fixed);
   }
 
-  if (dateManipulation.offset !== undefined) {
-    return new Date(Date.now() + dateManipulation.offset);
+  const offset = dm.offset;
+  if (typeof offset === 'number' && !Number.isNaN(offset)) {
+    return new Date(Date.now() + offset);
   }
 
   // If timezone is specified, adjust the date
-  const timezone = envTimezone || dateManipulation.timezone;
-  if (timezone) {
+  const timezone = envTimezone || dm.timezone;
+  if (typeof timezone === 'string' && timezone) {
     const date = new Date();
     try {
       return new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-    } catch (error) {
+    } catch {
       console.warn(`Invalid timezone: ${timezone}. Using system timezone instead.`);
     }
   }

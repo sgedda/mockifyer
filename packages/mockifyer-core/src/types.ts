@@ -1,5 +1,12 @@
 export interface MockifyerConfig {
   mockDataPath: string;
+  /**
+   * Optional logical client lane identifier used for scenario isolation.
+   *
+   * Preferred: set `process.env.MOCKIFYER_CLIENT_ID` in dev/CI (env should win).
+   * Fallback: set this field directly when env injection is not convenient.
+   */
+  clientId?: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
   /** When true, throws an error if no mock data is found for a request. 
@@ -21,6 +28,13 @@ export interface MockifyerConfig {
     // Optional timezone for date operations
     timezone?: string;
   };
+  /**
+   * When true (default), Mockifyer will NOT read date overrides from `date-config.json` on disk.
+   *
+   * This prevents accidental fixed-date overrides from local files when running with Redis/proxy.
+   * Set to `false` only if you explicitly want the legacy file-based date config fallback.
+   */
+  disableDateConfigFileFallback?: boolean;
   scenarios?: {
     default?: string;
     [key: string]: string | undefined;
@@ -119,9 +133,13 @@ export interface MockResponseDateOverride {
   /** Dot-separated path from `response.data` root. Use numeric segments for array indices (e.g. `items.0.expiresAt`). */
   path: string;
   /**
-   * Which instant to offset from:
-   * - `now` (default): use manipulated "current" date (getCurrentDate) when configured, else real time.
-   * - `response`: use the existing value at `path` (if parseable), then apply offsets.
+   * Which instant to offset from.
+   *
+   * - `now` (default): use the manipulated "current" date (`getCurrentDate`) when configured, else real time.
+   * - `response`: **DEPRECATED.** Older recordings may still have this value persisted on disk/Redis.
+   *   Since core 1.8.20, `base: 'response'` is treated identically to `base: 'now'` to avoid drift caused
+   *   by stale recorded timestamps (e.g. the recorded value being "frozen" at an earlier fixed date).
+   *   The original recorded value is NEVER used as the offset base anymore.
    */
   base?: 'now' | 'response';
   /** Milliseconds added to manipulated now (default 0). */
@@ -156,6 +174,7 @@ export const ENV_VARS = {
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',
+  MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',

@@ -1,37 +1,55 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
-import path from 'path';
-import { detectMockDataPath } from '../utils/path-detector';
+import { getDashboardContext } from '../utils/dashboard-context';
+import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
-function getMockDataPath(): string {
-  // Use the shared path detection function
-  return detectMockDataPath();
-}
+router.get('/', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const provider = config.provider ?? 'filesystem';
 
-router.get('/', (req: Request, res: Response) => {
-  const mockDataPath = getMockDataPath();
-  const exists = fs.existsSync(mockDataPath);
+  const exists = provider === 'redis' ? true : fs.existsSync(mockDataPath);
   let fileCount = 0;
-  
-  if (exists) {
+  if (exists && provider !== 'redis') {
     try {
-      const files = fs.readdirSync(mockDataPath)
-        .filter(file => file.endsWith('.json') && file !== 'date-config.json');
+      const files = fs
+        .readdirSync(mockDataPath)
+        .filter((file) => file.endsWith('.json') && file !== 'date-config.json');
       fileCount = files.length;
-    } catch (error) {
+    } catch {
       // Ignore errors
     }
   }
-  
-  res.json({
+
+  let redisOk: boolean | null = null;
+  let redisError: string | null = null;
+  if (provider === 'redis') {
+    const store = new RedisMockStore({
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+      keyPrefix: config.keyPrefix,
+      mockDataPath,
+    });
+    try {
+      await store.ping();
+      redisOk = true;
+    } catch (e: any) {
+      redisOk = false;
+      redisError = e?.message ?? String(e);
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  return res.json({
     status: 'ok',
+    provider,
     mockDataPath,
     exists,
     fileCount,
-    provider: 'filesystem', // Currently only filesystem is supported
-    timestamp: new Date().toISOString()
+    redisOk,
+    redisError,
+    timestamp: new Date().toISOString(),
   });
 });
 

@@ -15,6 +15,7 @@ import {
   CachedMockData,
   mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
+import { resolveClientId } from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -76,7 +77,8 @@ class MockifyerClass {
       }
     }
     
-    this.config = config;
+    this.config = { ...config, clientId: resolveClientId(config) };
+    console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
@@ -105,7 +107,7 @@ class MockifyerClass {
       fs.mkdirSync(this.config.mockDataPath, { recursive: true });
     }
     // Ensure scenario folder exists
-    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     ensureScenarioFolder(this.config.mockDataPath, currentScenario);
   }
 
@@ -157,7 +159,7 @@ class MockifyerClass {
       return undefined;
     }
 
-    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
     
     if (!fs.existsSync(scenarioPath)) {
@@ -374,7 +376,7 @@ class MockifyerClass {
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     } else {
-      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       if (fs.existsSync(scenarioPath)) {
         const files = fs.readdirSync(scenarioPath)
@@ -1371,7 +1373,7 @@ class MockifyerClass {
         .replace(/[^a-zA-Z0-9]/g, '_');
 
       const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       ensureScenarioFolder(this.config.mockDataPath, currentScenario);
       

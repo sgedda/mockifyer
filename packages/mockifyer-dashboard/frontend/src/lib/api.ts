@@ -12,8 +12,9 @@ export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; 
   return response.json()
 }
 
-export async function getMock(filename: string): Promise<MockData> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, noStore)
+export async function getMock(filename: string, scenario?: string): Promise<MockData> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -22,7 +23,8 @@ export async function updateMock(
   filename: string,
   responseData: any,
   responseDateOverrides?: MockResponseDateOverride[] | null,
-  alwaysUseRealApi?: boolean
+  alwaysUseRealApi?: boolean,
+  scenario?: string
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
@@ -31,7 +33,8 @@ export async function updateMock(
   if (alwaysUseRealApi !== undefined) {
     body.alwaysUseRealApi = alwaysUseRealApi
   }
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -42,15 +45,17 @@ export async function updateMock(
   }
 }
 
-export async function deleteMock(filename: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}`, {
+export async function deleteMock(filename: string, scenario?: string): Promise<void> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'DELETE',
   })
   if (!response.ok) throw new Error('Failed to delete mock')
 }
 
-export async function duplicateMock(filename: string): Promise<{ newFilename: string }> {
-  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate`, {
+export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
     method: 'POST',
   })
   if (!response.ok) throw new Error('Failed to duplicate mock')
@@ -90,11 +95,53 @@ export async function setScenario(scenario: string): Promise<void> {
   }
 }
 
-export async function createScenario(scenario: string): Promise<ScenarioConfig> {
+export interface ClientLane {
+  clientId: string
+  scenario: string
+  note: string | null
+}
+
+export async function getClientLanes(): Promise<{
+  enabled: boolean
+  reason?: string | null
+  lanes: ClientLane[]
+  discoveredLanes?: string[]
+  globalScenario: string | null
+}> {
+  const response = await fetch(`${API_BASE}/client-lanes`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch client lanes')
+  return response.json()
+}
+
+export async function setClientLaneScenario(clientId: string, scenario: string | null): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to set lane scenario')
+  }
+}
+
+export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to set lane note')
+  }
+}
+
+export async function createScenario(scenario: string, deriveFrom?: string | null): Promise<ScenarioConfig> {
   const response = await fetch(`${API_BASE}/scenario-config/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scenario }),
+    body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
   })
   if (!response.ok) {
     const error = await response.json()
@@ -105,6 +152,36 @@ export async function createScenario(scenario: string): Promise<ScenarioConfig> 
   return {
     currentScenario: data.currentScenario,
     availableScenarios: data.scenarios || []
+  }
+}
+
+export interface ProxyConfig {
+  scenario: string
+  recordOnMiss: boolean
+  allowUpstream: boolean
+  updatedAt: string | null
+}
+
+export async function getProxyConfig(scenario: string): Promise<ProxyConfig> {
+  const q = `?scenario=${encodeURIComponent(scenario)}`
+  const response = await fetch(`${API_BASE}/proxy-config${q}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch proxy config')
+  return response.json()
+}
+
+export async function updateProxyConfig(payload: {
+  scenario: string
+  recordOnMiss: boolean
+  allowUpstream: boolean
+}): Promise<void> {
+  const response = await fetch(`${API_BASE}/proxy-config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to update proxy config')
   }
 }
 
@@ -119,8 +196,12 @@ export interface DateConfig {
   scenario?: string
   /** Active scenario from scenario-config.json (runtime) */
   currentScenario?: string
-  /** Whether values came from per-scenario file or legacy root date-config.json */
-  configSource?: 'scenario' | 'legacy' | 'none'
+  /** Effective source: Redis, per-scenario file, legacy root, or none */
+  configSource?: 'scenario' | 'legacy' | 'none' | 'redis'
+  /** Where the dashboard persists date settings */
+  storage?: 'redis' | 'filesystem'
+  /** Redis key when `storage === 'redis'` (read hits Redis first, then filesystem fallback) */
+  redisKey?: string
 }
 
 export async function getDateConfig(scenario?: string): Promise<DateConfig> {

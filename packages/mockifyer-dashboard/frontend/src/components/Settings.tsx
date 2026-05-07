@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { getScenarioConfig, setScenario, createScenario } from '@/lib/api'
 import { Save } from 'lucide-react'
+import ClientLanes from './ClientLanes'
 
 interface SettingsProps {
   scenario: string
@@ -14,6 +15,7 @@ interface SettingsProps {
 export default function Settings({ scenario, onScenarioChange }: SettingsProps) {
   const [availableScenarios, setAvailableScenarios] = useState<string[]>(['default'])
   const [newScenario, setNewScenario] = useState('')
+  const [deriveFromScenario, setDeriveFromScenario] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +55,7 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
       const scenarioExists = availableScenarios.includes(newScenario)
       if (!scenarioExists) {
         // Create the scenario first - this returns the updated scenario list
-        const createResult = await createScenario(newScenario)
+        const createResult = await createScenario(newScenario, deriveFromScenario || null)
         // Update the available scenarios from the API response
         setAvailableScenarios(createResult.availableScenarios || [])
         toast({
@@ -66,6 +68,7 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
       onScenarioChange(newScenario)
       // Reload scenarios to ensure we have the latest list
       await loadScenarios()
+      setDeriveFromScenario('')
       toast({
         title: 'Success',
         description: `Scenario changed to ${newScenario}`,
@@ -143,6 +146,24 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Create New Scenario</label>
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Derive from existing scenario (optional)</label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    value={deriveFromScenario}
+                    onChange={(e) => setDeriveFromScenario(e.target.value)}
+                    disabled={saving || loading}
+                  >
+                    <option value="">None (empty scenario)</option>
+                    {availableScenarios
+                      .filter((s) => s !== newScenario.trim())
+                      .map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                  </select>
+                </div>
                 <div className="flex gap-2">
                   <Input
                     placeholder="Enter scenario name (e.g., api-error, no-data)"
@@ -176,6 +197,8 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
           )}
         </CardContent>
       </Card>
+
+      <ClientLanes availableScenarios={availableScenarios} />
     </div>
   )
 }

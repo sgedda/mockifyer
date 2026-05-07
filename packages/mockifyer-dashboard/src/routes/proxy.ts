@@ -22,12 +22,18 @@ function toRecordStringHeaders(headers: unknown): Record<string, string> {
 
 router.post('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
+  const debugProxy = process.env.MOCKIFYER_PROXY_DEBUG === 'true';
 
   if (config.provider !== 'redis') {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
   }
 
-  const { url, method, headers, body, scenario, record } = req.body || {};
+  const { url, method, headers, body, scenario, record, allowUpstream, clientId: clientIdFromBody } = req.body || {};
+  const clientIdFromHeader =
+    typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
+  const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
+    ? clientIdFromBody.trim()
+    : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
   const upperMethod = String(method || 'GET').toUpperCase();
@@ -51,22 +57,80 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   try {
+    // Best-effort lane discovery for dashboard UX (autocomplete). No effect if clientId is absent.
+    if (clientId) {
+      await store.recordLaneSeen(clientId).catch(() => undefined);
+    }
+
+    const resolvedScenario = await store.getResolvedScenario(
+      typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined,
+      clientId
+    );
+
+    const proxyConfig = await store.getProxyConfig(resolvedScenario);
+    const effectiveRecord =
+      typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? false);
+    const effectiveAllowUpstream =
+      typeof allowUpstream === 'boolean' ? allowUpstream : (proxyConfig?.allowUpstream ?? true);
+
+    const redisDateDoc = await store.getDateConfig(resolvedScenario);
+    const getNow = () =>
+      getCurrentDate({
+        mockDataPath,
+        scenario: resolvedScenario,
+        // If the Redis key exists but dateManipulation is missing/null, treat it as an explicit "clear"
+        // so we do NOT fall back to filesystem date-config.json.
+        explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
+      });
+
     // 1) Try Redis hit
-    const mock = await store.getByHash(hash, scenario);
+    const mock = await store.getByHash(hash, scenario, clientId);
     if (mock) {
+      // Guardrail: some projects recorded responseDateOverrides with base='response', which can drift
+      // based on stale recorded timestamps even when "now" is correct. In Redis-proxy mode we want
+      // overrides to be relative to the current manipulated date.
+      const sanitizedMock: any =
+        (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
+          ? {
+              ...(mock as any),
+              responseDateOverrides: (mock as any).responseDateOverrides.map((o: any) =>
+                o && typeof o === 'object' && o.base === 'response' ? { ...o, base: 'now' } : o
+              ),
+            }
+          : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(mock as any, getCurrentDate),
+        data: prepareMockResponseBody(sanitizedMock, getNow),
       };
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+        );
+      }
       return res.json({
         proxied: false,
         source: 'redis',
         hash,
+        clientId: clientId || null,
         response: responseWithOverrides,
       });
     }
 
     // 2) Miss: proxy to real upstream
+    if (!effectiveAllowUpstream) {
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] upstream blocked: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+        );
+      }
+      return res.status(412).json({
+        proxied: false,
+        source: 'blocked',
+        hash,
+        clientId: clientId || null,
+        error: 'Upstream calls are disabled for this scenario (offline mode).',
+      });
+    }
     const upstreamHeaders = new Headers();
     for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
       // Avoid forwarding hop-by-hop headers; keep it minimal.
@@ -111,7 +175,7 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
-    if (record === true) {
+    if (effectiveRecord === true) {
       const mockData = {
         request: {
           method: upperMethod,
@@ -123,13 +187,19 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHash(hash, mockData as any, scenario);
+      await store.setByHash(hash, mockData as any, scenario, clientId);
     }
 
+    if (debugProxy) {
+      console.log(
+        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
+      );
+    }
     return res.json({
       proxied: true,
       source: 'upstream',
       hash,
+      clientId: clientId || null,
       response,
     });
   } catch (error: any) {

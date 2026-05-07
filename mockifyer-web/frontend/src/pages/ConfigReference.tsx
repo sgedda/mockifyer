@@ -56,6 +56,12 @@ export default function ConfigReference() {
                     <p className="text-muted-foreground mt-1">Enable recording mode</p>
                   </div>
                   <div>
+                    <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_CLIENT_ID</code>
+                    <p className="text-muted-foreground mt-1">
+                      Optional stable lane id for per-build scenario separation (used with Redis + dashboard client lanes)
+                    </p>
+                  </div>
+                  <div>
                     <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_DATE</code>
                     <p className="text-muted-foreground mt-1">Fixed date (ISO format)</p>
                   </div>
