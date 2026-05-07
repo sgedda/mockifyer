@@ -7,6 +7,7 @@ import { deleteMock, duplicateMock } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
+import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
 import { RefreshCw, UnfoldVertical, FoldVertical } from 'lucide-react'
 
@@ -191,27 +192,13 @@ function MockListContent({
             </div>
             <div className="flex flex-col gap-2">
               {recentMocks.map((m) => (
-                <button
+                <MockCard
                   key={`recent:${m.filename}`}
-                  type="button"
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-left hover:bg-accent/40 transition-colors"
-                  onClick={() => onSelectMock(m)}
-                  title={m.filename}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-sm">{m.filename}</div>
-                      {m.endpoint ? (
-                        <div className="truncate text-xs text-muted-foreground">{m.endpoint}</div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">No endpoint metadata</div>
-                      )}
-                    </div>
-                    <div className="shrink-0 text-xs text-muted-foreground">
-                      {new Date(m.modified).toLocaleString()}
-                    </div>
-                  </div>
-                </button>
+                  mock={m}
+                  selectedMock={selectedMock}
+                  onSelectMock={onSelectMock}
+                  showActions={false}
+                />
               ))}
             </div>
           </CardContent>
