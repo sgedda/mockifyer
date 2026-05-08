@@ -6,6 +6,7 @@ import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { applyMockUpdates, hasAnyMockUpdateField } from '../utils/mock-updates';
 
 const router = express.Router();
 
@@ -315,8 +316,10 @@ router.put('/*', async (req: Request, res: Response) => {
     if (config.provider === 'redis') {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
-      if (!req.body || req.body.responseData === undefined) {
-        return res.status(400).json({ error: 'Request body must contain responseData field' });
+      if (!hasAnyMockUpdateField(req.body)) {
+        return res.status(400).json({
+          error: 'Request body must contain responseData, responseDateOverrides, or alwaysUseRealApi field',
+        });
       }
 
       const store = new RedisMockStore({
@@ -329,65 +332,12 @@ router.put('/*', async (req: Request, res: Response) => {
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
-        let parsedResponseData: any;
-        try {
-          parsedResponseData =
-            typeof req.body.responseData === 'string'
-              ? JSON.parse(req.body.responseData)
-              : req.body.responseData;
-        } catch (e: any) {
-          return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-        }
-
-        if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
-        (existingData as any).response.data = parsedResponseData;
+        const updateError = applyMockUpdates(existingData as any, req.body);
+        if (updateError) return res.status(400).json(updateError);
 
         // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
         // Update it on every save so recent edits are reflected in the UI ordering.
         (existingData as any).timestamp = new Date().toISOString();
-
-        // Keep behavior consistent with filesystem provider: allow saving responseDateOverrides.
-        if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
-          const raw = req.body.responseDateOverrides;
-          if (raw === null) {
-            delete (existingData as any).responseDateOverrides;
-          } else if (Array.isArray(raw)) {
-            for (const item of raw) {
-              if (!item || typeof item !== 'object' || typeof (item as any).path !== 'string' || !(item as any).path.trim()) {
-                return res.status(400).json({
-                  error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
-                });
-              }
-              if (
-                (item as any).base !== undefined &&
-                (item as any).base !== 'now' &&
-                (item as any).base !== 'response'
-              ) {
-                return res.status(400).json({
-                  error: "responseDateOverrides.base must be 'now' or 'response' when provided",
-                });
-              }
-            }
-            if (raw.length === 0) {
-              delete (existingData as any).responseDateOverrides;
-            } else {
-              (existingData as any).responseDateOverrides = raw;
-            }
-          } else {
-            return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
-          }
-        }
-
-        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
-          const v = req.body.alwaysUseRealApi;
-          if (v === true) {
-            (existingData as any).alwaysUseRealApi = true;
-          } else if (v === false || v === null) {
-            delete (existingData as any).alwaysUseRealApi;
-          } else {
-            return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
-          }
-        }
 
         await store.setByHash(hash, existingData as any, scenario);
         const payload = JSON.stringify(existingData);
@@ -408,62 +358,18 @@ router.put('/*', async (req: Request, res: Response) => {
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
-    if (!req.body || req.body.responseData === undefined) {
-      return res.status(400).json({ error: 'Request body must contain responseData field' });
+    if (!hasAnyMockUpdateField(req.body)) {
+      return res.status(400).json({
+        error: 'Request body must contain responseData, responseDateOverrides, or alwaysUseRealApi field',
+      });
     }
 
     let existingData: any;
     try { existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')); }
     catch { return res.status(400).json({ error: 'Existing file is not valid JSON' }); }
 
-    let parsedResponseData;
-    try {
-      parsedResponseData = typeof req.body.responseData === 'string'
-        ? JSON.parse(req.body.responseData) : req.body.responseData;
-    } catch (e: any) {
-      return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-    }
-
-    if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
-    existingData.response.data = parsedResponseData;
-
-    if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
-      const raw = req.body.responseDateOverrides;
-      if (raw === null) {
-        delete existingData.responseDateOverrides;
-      } else if (Array.isArray(raw)) {
-        for (const item of raw) {
-          if (!item || typeof item !== 'object' || typeof item.path !== 'string' || !item.path.trim()) {
-            return res.status(400).json({
-              error: 'Each responseDateOverrides entry must be an object with a non-empty path string',
-            });
-          }
-          if (item.base !== undefined && item.base !== 'now' && item.base !== 'response') {
-            return res.status(400).json({
-              error: "responseDateOverrides.base must be 'now' or 'response' when provided",
-            });
-          }
-        }
-        if (raw.length === 0) {
-          delete existingData.responseDateOverrides;
-        } else {
-          existingData.responseDateOverrides = raw;
-        }
-      } else {
-        return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
-      const v = req.body.alwaysUseRealApi;
-      if (v === true) {
-        existingData.alwaysUseRealApi = true;
-      } else if (v === false || v === null) {
-        delete existingData.alwaysUseRealApi;
-      } else {
-        return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
-      }
-    }
+    const updateError = applyMockUpdates(existingData, req.body);
+    if (updateError) return res.status(400).json(updateError);
 
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
 
