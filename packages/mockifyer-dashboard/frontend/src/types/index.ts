@@ -16,6 +16,8 @@ export interface MockFile {
   created: string
   modified: string
   endpoint: string | null
+  /** HTTP method when available (GET/POST/...). */
+  method?: string | null
   graphqlInfo: {
     query: string
     variables: any

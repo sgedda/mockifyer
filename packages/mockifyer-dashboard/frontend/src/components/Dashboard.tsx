@@ -9,7 +9,7 @@ import Settings from './Settings'
 import Timeline from './Timeline'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
-import { getMocks, getMock, getScenarioConfig, getProxyConfig, setScenario, updateProxyConfig } from '@/lib/api'
+import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
 import type { MockFile, MockData } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -50,6 +50,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [activeTab, setActiveTab] = useState(getActiveTabFromPath())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mocks, setMocks] = useState<MockFile[]>([])
+  const [allMocks, setAllMocks] = useState<MockFile[]>([])
   const [selectedMock, setSelectedMock] = useState<MockData | null>(null)
   const [loadingMock, setLoadingMock] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -167,6 +168,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       setLoading(true)
       const data = await getMocks(scenario)
       setMocks(data.files)
+      setAllMocks(data.files)
     } catch (error) {
       toast({
         title: 'Error',
@@ -177,6 +179,41 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (activeTab !== 'mocks') return
+
+    const q = searchQuery.trim()
+    if (!q) {
+      // Restore full list when clearing search.
+      if (allMocks.length > 0) {
+        setMocks(allMocks)
+        return
+      }
+      loadMocks()
+      return
+    }
+
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          setLoading(true)
+          const result = await searchMocks({ q, scenario, limit: 200 })
+          setMocks(result.files)
+        } catch (error) {
+          toast({
+            title: 'Error',
+            description: 'Failed to search mocks',
+            variant: 'destructive',
+          })
+        } finally {
+          setLoading(false)
+        }
+      })()
+    }, 350)
+
+    return () => window.clearTimeout(t)
+  }, [activeTab, scenario, searchQuery])
 
   async function handleSelectMock(file: MockFile) {
     try {
@@ -199,7 +236,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     return (
       mock.filename.toLowerCase().includes(query) ||
       mock.endpoint?.toLowerCase().includes(query) ||
-      mock.graphqlInfo?.query.toLowerCase().includes(query)
+      mock.graphqlInfo?.query.toLowerCase().includes(query) ||
+      mock.method?.toLowerCase().includes(query)
     )
   })
 
@@ -383,7 +421,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 <div className="space-y-6">
                   <MockList
                     mocks={filteredMocks}
-                    allMocks={mocks}
+                    allMocks={allMocks}
                     scenario={scenario}
                     loading={loading}
                     loadingMock={loadingMock}
