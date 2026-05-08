@@ -12,6 +12,24 @@ export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; 
   return response.json()
 }
 
+export async function searchMocks(params: {
+  q: string
+  scenario?: string
+  limit?: number
+}): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string; query: string; truncated?: boolean }> {
+  const q = params.q ?? ''
+  const scenario = params.scenario
+  const limit = params.limit
+  const qs = new URLSearchParams()
+  qs.set('q', q)
+  if (scenario) qs.set('scenario', scenario)
+  if (typeof limit === 'number' && Number.isFinite(limit)) qs.set('limit', String(limit))
+
+  const response = await fetch(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
+  if (!response.ok) throw new Error('Failed to search mocks')
+  return response.json()
+}
+
 export async function getMock(filename: string, scenario?: string): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
