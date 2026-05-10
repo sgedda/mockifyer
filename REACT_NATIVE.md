@@ -138,10 +138,44 @@ Run **`npx mockifyer-dashboard`** (or the package binary) to open a local UI for
 
 ---
 
+## Maestro E2E: `clientId` from launch arguments
+
+To keep **scenario** controllable from the **dashboard / Redis** (`client_scenario:{clientId}`) while Maestro picks the **lane**, pass **`mockifyerClientId`** in [`launchApp.arguments`](https://docs.maestro.dev/api-reference/commands/launchapp) and enable **`useLaunchArgumentsClientId`** (install optional peer **`react-native-launch-arguments`**).
+
+```typescript
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  useLaunchArgumentsClientId: true,
+  // default launchArgumentClientIdKey: 'mockifyerClientId'
+  proxyBaseUrl: process.env.MOCKIFYER_PROXY_URL, // optional: strict Redis proxy
+});
+```
+
+Or read the lane manually:
+
+```typescript
+import {
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+} from '@sgedda/mockifyer-fetch/react-native';
+
+setupMockifyer({
+  mockDataPath: 'mock-data',
+  clientId: tryGetClientIdFromLaunchArguments(MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY),
+  useGlobalFetch: true,
+});
+```
+
+See **`example-projects/maestro-login-flow`** for a minimal **`login.yaml`** (replace `appId` and accessibility `id`s for your app).
+
+---
+
 ## Summary
 
 | Goal | Approach |
 |------|----------|
+| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes |
 | Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + `MOCKIFYER_ENABLED` / `MOCKIFYER_RECORD` as needed |
 | Device-only, no repo sync | **`expo-filesystem`** provider |
 | Production / store build | **Memory** + **bundled** mock module |

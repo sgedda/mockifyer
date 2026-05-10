@@ -7,8 +7,11 @@
 
 import { setupMockifyer } from './index';
 import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
-import type { MockifyerConfig } from '@sgedda/mockifyer-core';
 import { logger } from '@sgedda/mockifyer-core';
+import {
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+} from './launch-arguments-client-id';
 
 // Re-export MockifyerInstance type to avoid circular dependency
 export interface MockifyerInstance extends HTTPClient {
@@ -37,6 +40,14 @@ export interface ReactNativeMockifyerConfig {
    * Deprecated: prefer using `recordMode` when `proxyBaseUrl` is provided.
    */
   proxyRecordOnMiss?: boolean;
+  /**
+   * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
+   * Use with {@link launchArgumentClientIdKey}; default key `mockifyerClientId` matches Maestro `launchApp.arguments`.
+   * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
+   */
+  useLaunchArgumentsClientId?: boolean;
+  /** Launch-argument key for the client lane id (default: `mockifyerClientId`). */
+  launchArgumentClientIdKey?: string;
 }
 
 type DashboardHealth = {
@@ -130,9 +141,26 @@ export async function setupMockifyerForReactNative(
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
+    useLaunchArgumentsClientId = false,
+    launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
+
+  let launchClientId: string | undefined;
+  if (useLaunchArgumentsClientId) {
+    launchClientId = tryGetClientIdFromLaunchArguments(launchArgumentClientIdKey);
+    if (launchClientId) {
+      logger.info(
+        `[Mockifyer] clientId from launch arguments (${launchArgumentClientIdKey}): ${launchClientId}`
+      );
+    }
+  }
+
+  const mergedConfig: typeof config = {
+    ...config,
+    ...(launchClientId ? { clientId: launchClientId } : {}),
+  };
 
   // Check if Mockifyer is enabled
   const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || isDev;
@@ -160,13 +188,13 @@ export async function setupMockifyerForReactNative(
     };
 
     // Merge with config.databaseProvider if provided
-    const databaseProviderConfig = config.databaseProvider 
+    const databaseProviderConfig = mergedConfig.databaseProvider 
       ? {
           ...baseDatabaseProvider,
-          ...config.databaseProvider,
+          ...mergedConfig.databaseProvider,
           options: {
             ...baseDatabaseProvider.options,
-            ...(config.databaseProvider.options || {}),
+            ...(mergedConfig.databaseProvider.options || {}),
             metroPort, // Always ensure metroPort is set
           },
         }
@@ -185,7 +213,7 @@ export async function setupMockifyerForReactNative(
       proxy: strictProxyEnabled && proxyBaseUrl
         ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
-      ...config,
+      ...mergedConfig,
     });
 
     if (strictProxyEnabled) {
@@ -240,11 +268,13 @@ export async function setupMockifyerForReactNative(
       proxy: proxyBaseUrl
         ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
-      ...config,
+      ...mergedConfig,
     });
 
     logger.info(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
     return instance;
   }
 }
+
+export { tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY };
 
