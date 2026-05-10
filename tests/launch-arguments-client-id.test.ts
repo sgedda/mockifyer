@@ -8,7 +8,7 @@ jest.mock(
   { virtual: true }
 );
 
-import { tryGetClientIdFromLaunchArguments } from '../packages/mockifyer-fetch/src/launch-arguments-client-id';
+import { tryGetClientIdFromLaunchArguments } from '@sgedda/mockifyer-core';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { LaunchArguments } = require('react-native-launch-arguments');

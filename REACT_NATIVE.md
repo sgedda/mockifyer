@@ -140,7 +140,7 @@ Run **`npx mockifyer-dashboard`** (or the package binary) to open a local UI for
 
 ## Maestro E2E: `clientId` from launch arguments
 
-To keep **scenario** controllable from the **dashboard / Redis** (`client_scenario:{clientId}`) while Maestro picks the **lane**, pass **`mockifyerClientId`** in [`launchApp.arguments`](https://docs.maestro.dev/api-reference/commands/launchapp) and enable **`useLaunchArgumentsClientId`** (install optional peer **`react-native-launch-arguments`**).
+Setup can use **`setupMockifyerForReactNative`** (`@sgedda/mockifyer-fetch`) or **`setupMockifyer`** with **`@sgedda/mockifyer-axios`**: set **`useLaunchArgumentsClientId: true`** on config (and optional **`launchArgumentClientIdKey`**). Install optional peer **`react-native-launch-arguments`**.
 
 ```typescript
 await setupMockifyerForReactNative({
@@ -152,13 +152,25 @@ await setupMockifyerForReactNative({
 });
 ```
 
-Or read the lane manually:
+Or with **Axios**:
+
+```typescript
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  useLaunchArgumentsClientId: true,
+  useGlobalAxios: true,
+});
+```
+
+Or read the lane manually (from **`@sgedda/mockifyer-core`** or **`@sgedda/mockifyer-fetch/react-native`**, which re-exports the same helpers):
 
 ```typescript
 import {
   tryGetClientIdFromLaunchArguments,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
-} from '@sgedda/mockifyer-fetch/react-native';
+} from '@sgedda/mockifyer-core';
 
 setupMockifyer({
   mockDataPath: 'mock-data',

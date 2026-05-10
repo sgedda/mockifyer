@@ -48,14 +48,6 @@
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../mockifyer-core"
   },
-  "peerDependencies": {
-    "react-native-launch-arguments": ">=1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react-native-launch-arguments": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "typescript": "^5.3.3"

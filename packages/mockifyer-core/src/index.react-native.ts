@@ -17,4 +17,5 @@ export * from './utils/file-naming';
 export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
 export * from './utils/client-id';
+export * from './utils/launch-arguments-client-id';
 export * from './utils/mock-response-date-overrides';

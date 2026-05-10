@@ -15,7 +15,7 @@ import {
   CachedMockData,
   mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
-import { resolveClientId } from '@sgedda/mockifyer-core';
+import { resolveClientId, tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -77,6 +77,15 @@ class MockifyerClass {
       }
     }
     
+    if (config.useLaunchArgumentsClientId) {
+      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+      const launchClientId = tryGetClientIdFromLaunchArguments(key);
+      if (launchClientId) {
+        config.clientId = launchClientId;
+        console.log(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
+      }
+    }
+
     this.config = { ...config, clientId: resolveClientId(config) };
     console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
     

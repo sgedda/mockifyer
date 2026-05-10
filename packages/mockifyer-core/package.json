@@ -36,10 +36,14 @@
   "author": "sgedda",
   "license": "MIT",
   "peerDependencies": {
-    "ioredis": ">=5.0.0"
+    "ioredis": ">=5.0.0",
+    "react-native-launch-arguments": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "ioredis": {
+      "optional": true
+    },
+    "react-native-launch-arguments": {
       "optional": true
     }
   },

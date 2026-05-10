@@ -7,11 +7,10 @@
 
 import { setupMockifyer } from './index';
 import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
-import { logger } from '@sgedda/mockifyer-core';
 import {
-  tryGetClientIdFromLaunchArguments,
+  logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
-} from './launch-arguments-client-id';
+} from '@sgedda/mockifyer-core';
 
 // Re-export MockifyerInstance type to avoid circular dependency
 export interface MockifyerInstance extends HTTPClient {
@@ -42,8 +41,8 @@ export interface ReactNativeMockifyerConfig {
   proxyRecordOnMiss?: boolean;
   /**
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
-   * Use with {@link launchArgumentClientIdKey}; default key `mockifyerClientId` matches Maestro `launchApp.arguments`.
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
+   * Forwards to {@link MockifyerConfig.useLaunchArgumentsClientId} on the merged config passed to `setupMockifyer`.
    */
   useLaunchArgumentsClientId?: boolean;
   /** Launch-argument key for the client lane id (default: `mockifyerClientId`). */
@@ -147,19 +146,15 @@ export async function setupMockifyerForReactNative(
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
 
-  let launchClientId: string | undefined;
-  if (useLaunchArgumentsClientId) {
-    launchClientId = tryGetClientIdFromLaunchArguments(launchArgumentClientIdKey);
-    if (launchClientId) {
-      logger.info(
-        `[Mockifyer] clientId from launch arguments (${launchArgumentClientIdKey}): ${launchClientId}`
-      );
-    }
-  }
-
   const mergedConfig: typeof config = {
     ...config,
-    ...(launchClientId ? { clientId: launchClientId } : {}),
+    ...(useLaunchArgumentsClientId
+      ? {
+          useLaunchArgumentsClientId: true as const,
+          launchArgumentClientIdKey:
+            launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+        }
+      : {}),
   };
 
   // Check if Mockifyer is enabled
@@ -276,5 +271,5 @@ export async function setupMockifyerForReactNative(
   }
 }
 
-export { tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY };
+export { tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
 

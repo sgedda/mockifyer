@@ -1,4 +1,4 @@
-import { logger } from '@sgedda/mockifyer-core';
+import { logger } from './logger';
 
 const DEFAULT_LAUNCH_KEY = 'mockifyerClientId';
 
@@ -20,7 +20,7 @@ export function tryGetClientIdFromLaunchArguments(
   }
 
   try {
-    // Optional peer — not listed as hard dependency so Node/tests work without RN.
+    // Optional peer — not a hard dependency so Node/tests work without RN.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('react-native-launch-arguments') as {
       LaunchArguments?: { value: () => Record<string, unknown> };
@@ -37,7 +37,10 @@ export function tryGetClientIdFromLaunchArguments(
     }
     return undefined;
   } catch (error) {
-    logger.debug('[Mockifyer] tryGetClientIdFromLaunchArguments: optional module missing or error', error);
+    logger.debug(
+      '[Mockifyer] tryGetClientIdFromLaunchArguments: optional module missing or error',
+      error
+    );
     return undefined;
   }
 }

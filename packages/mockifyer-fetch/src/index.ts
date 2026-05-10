@@ -37,7 +37,9 @@ import {
   getCurrentDate,
   shouldExcludeUrl,
   mockPassesThroughToRealApi,
-  resolveClientId
+  resolveClientId,
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -106,6 +108,15 @@ class MockifyerClass {
       }
     }
     
+    if (config.useLaunchArgumentsClientId) {
+      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+      const launchClientId = tryGetClientIdFromLaunchArguments(key);
+      if (launchClientId) {
+        config.clientId = launchClientId;
+        logger.info(`[Mockifyer-Fetch] clientId from launch arguments (${key}): ${launchClientId}`);
+      }
+    }
+
     // Store config BEFORE any modifications
     this.config = { ...config }; // Create a copy to avoid mutations
 
