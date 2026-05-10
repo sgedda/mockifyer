@@ -63,8 +63,8 @@ interface MockFolderTreeProps {
   level: number
   selectedMock: MockData | null
   onSelectMock: (file: MockFile) => void
-  onDelete: (filename: string, e: React.MouseEvent) => void
-  onDuplicate: (filename: string, e: React.MouseEvent) => void
+  onDelete?: (filename: string, e: React.MouseEvent) => void
+  onDuplicate?: (filename: string, e: React.MouseEvent) => void
   deleting: string | null
 }
 

@@ -1,5 +1,11 @@
 import express, { Request, Response } from 'express';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import {
+  setScenarioLockedFs,
+  isScenarioLockedFs,
+  findCaseInsensitiveScenarioConflict,
+  SCENARIO_META_FILENAME,
+} from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import fs from 'fs';
@@ -22,18 +28,24 @@ function sanitizeScenarioName(raw: unknown): { ok: true; value: string } | { ok:
   return { ok: true, value: sanitized };
 }
 
-function copyDirectoryRecursive(srcDir: string, destDir: string): void {
+function copyDirectoryRecursive(
+  srcDir: string,
+  destDir: string,
+  options?: { skipFilenames?: Set<string> }
+): void {
   if (!fs.existsSync(srcDir)) {
     throw new Error(`Base scenario folder not found: ${srcDir}`);
   }
+  const skip = options?.skipFilenames ?? new Set<string>();
   fs.mkdirSync(destDir, { recursive: true });
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
     // Skip common junk.
     if (entry.name === '.DS_Store') continue;
+    if (entry.isFile() && skip.has(entry.name)) continue;
     const src = path.join(srcDir, entry.name);
     const dest = path.join(destDir, entry.name);
     if (entry.isDirectory()) {
-      copyDirectoryRecursive(src, dest);
+      copyDirectoryRecursive(src, dest, options);
       continue;
     }
     if (entry.isFile()) {
@@ -60,15 +72,32 @@ router.get('/', async (req: Request, res: Response) => {
         currentScenario = await store.getActiveScenario();
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+        const scenarioLocks: Record<string, boolean> = {};
+        for (const name of scenarios) {
+          scenarioLocks[name] = await store.isScenarioLocked(name);
+        }
+        res.json({
+          currentScenario,
+          scenarios,
+          scenarioLocks,
+          success: true,
+        });
       } finally {
         await store.close().catch(() => undefined);
       }
+      return;
     }
-    
+
+    const scenarioLocks: Record<string, boolean> = {};
+    for (const name of scenarios) {
+      scenarioLocks[name] = isScenarioLockedFs(mockDataPath, name);
+    }
+
     res.json({
       currentScenario,
       scenarios,
-      success: true
+      scenarioLocks,
+      success: true,
     });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Get - Error:', error);
@@ -179,9 +208,15 @@ router.post('/create', async (req: Request, res: Response) => {
       }
     }
 
-    if (scenarios.includes(sanitized)) {
+    const nameConflict = findCaseInsensitiveScenarioConflict(sanitized, scenarios);
+    if (nameConflict) {
+      if (nameConflict === sanitized) {
+        return res.status(409).json({
+          error: `Scenario "${sanitized}" already exists`,
+        });
+      }
       return res.status(409).json({
-        error: `Scenario "${sanitized}" already exists`,
+        error: `Scenario name "${sanitized}" conflicts with existing "${nameConflict}" (names must be unique ignoring case)`,
       });
     }
 
@@ -216,7 +251,9 @@ router.post('/create', async (req: Request, res: Response) => {
         }
         const src = path.join(mockDataPath, deriveFromScenario);
         const dest = path.join(mockDataPath, sanitized);
-        copyDirectoryRecursive(src, dest);
+        copyDirectoryRecursive(src, dest, {
+          skipFilenames: new Set([SCENARIO_META_FILENAME]),
+        });
       }
     }
 
@@ -246,6 +283,78 @@ router.post('/create', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Create - Error:', error);
     res.status(500).json({ error: 'Failed to create scenario', details: error.message });
+  }
+});
+
+// Lock or unlock a scenario (blocks mock/date edits in dashboard & proxy record).
+router.post('/lock', async (req: Request, res: Response) => {
+  try {
+    const { scenario, locked } = req.body as { scenario?: unknown; locked?: unknown };
+    const { mockDataPath, config } = getDashboardContext(req);
+    const parsed = sanitizeScenarioName(scenario);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const sanitized = parsed.value;
+    const isLocked = locked === true || locked === 'true';
+
+    let scenarios = listScenarios(mockDataPath);
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await store.listScenarios();
+        scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+        if (!scenarios.some((s) => s === sanitized)) {
+          return res.status(404).json({ error: `Scenario "${sanitized}" does not exist` });
+        }
+        await store.setScenarioLocked(sanitized, isLocked);
+
+        console.log(`[ScenarioConfigRoute] Scenario "${sanitized}" locked=${isLocked}`);
+
+        const currentScenario = await store.getActiveScenario();
+        const scenarioLocks: Record<string, boolean> = {};
+        for (const name of scenarios) {
+          scenarioLocks[name] = await store.isScenarioLocked(name);
+        }
+        res.json({
+          success: true,
+          currentScenario,
+          scenarios,
+          scenarioLocks,
+          scenario: sanitized,
+          locked: isLocked,
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+      return;
+    }
+
+    if (!scenarios.includes(sanitized)) {
+      return res.status(404).json({ error: `Scenario "${sanitized}" does not exist` });
+    }
+    setScenarioLockedFs(mockDataPath, sanitized, isLocked);
+
+    console.log(`[ScenarioConfigRoute] Scenario "${sanitized}" locked=${isLocked}`);
+
+    const currentScenario = getCurrentScenario(mockDataPath);
+    const scenarioLocks: Record<string, boolean> = {};
+    for (const name of scenarios) {
+      scenarioLocks[name] = isScenarioLockedFs(mockDataPath, name);
+    }
+    res.json({
+      success: true,
+      currentScenario,
+      scenarios,
+      scenarioLocks,
+      scenario: sanitized,
+      locked: isLocked,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Lock - Error:', error);
+    res.status(500).json({ error: 'Failed to update scenario lock', details: error.message });
   }
 });
 

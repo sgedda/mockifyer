@@ -81,5 +81,7 @@ export interface Stats {
 export interface ScenarioConfig {
   currentScenario: string
   availableScenarios: string[]
+  /** When true, mock/date edits for that scenario are blocked server-side. */
+  scenarioLocks?: Record<string, boolean>
 }
 

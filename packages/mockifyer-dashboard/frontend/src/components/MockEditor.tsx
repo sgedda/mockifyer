@@ -23,6 +23,8 @@ interface MockEditorProps {
   mock: MockData
   /** Must match the scenario used to list/load this mock (Redis vs filesystem active scenario). */
   scenario?: string
+  /** When true, response edits and passthrough toggle cannot be saved (scenario locked). */
+  scenarioLocked?: boolean
   onClose: () => void
   onSave: () => void
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
@@ -69,9 +71,10 @@ interface JsonResponseCodeMirrorProps {
   value: string
   onChange: (text: string) => void
   isModal: boolean
+  readOnly?: boolean
 }
 
-function JsonResponseCodeMirror({ value, onChange, isModal }: JsonResponseCodeMirrorProps) {
+function JsonResponseCodeMirror({ value, onChange, isModal, readOnly = false }: JsonResponseCodeMirrorProps) {
   const vscodeTheme = useCodeMirrorVscodeTheme()
   return (
     <div className="w-full overflow-hidden rounded-md border border-input focus-within:ring-2 focus-within:ring-ring">
@@ -82,6 +85,7 @@ function JsonResponseCodeMirror({ value, onChange, isModal }: JsonResponseCodeMi
         theme={vscodeTheme}
         extensions={jsonLanguageExtensions}
         onChange={onChange}
+        readOnly={readOnly}
         className="text-sm font-mono"
         basicSetup={{
           lineNumbers: true,
@@ -131,7 +135,15 @@ function sanitizeOverridesForSave(overrides: MockResponseDateOverride[]): MockRe
     })
 }
 
-export default function MockEditor({ mock, scenario, onClose, onSave, variant = 'default' }: MockEditorProps) {
+export default function MockEditor({
+  mock,
+  scenario,
+  onClose,
+  onSave,
+  variant = 'default',
+  scenarioLocked = false,
+}: MockEditorProps) {
+  const readOnly = scenarioLocked === true
   const [responseData, setResponseData] = useState('')
   const [responseObject, setResponseObject] = useState<any>(null)
   const [responseCharSize, setResponseCharSize] = useState(0)
@@ -240,6 +252,14 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
   }
 
   async function handleSave() {
+    if (readOnly) {
+      toast({
+        title: 'Scenario locked',
+        description: 'Unlock this scenario in Settings to edit mocks.',
+        variant: 'destructive',
+      })
+      return
+    }
     let dataToSave = responseObject
     
     if (editMode === 'json') {
@@ -280,6 +300,14 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
   }
 
   async function handleToggleAlwaysUseRealApi(next: boolean) {
+    if (readOnly) {
+      toast({
+        title: 'Scenario locked',
+        description: 'Unlock this scenario in Settings to change passthrough.',
+        variant: 'destructive',
+      })
+      return
+    }
     setAlwaysUseRealApi(next)
     try {
       setSaving(true)
@@ -441,7 +469,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                   id="mockifyer-always-real-api"
                   checked={alwaysUseRealApi}
                   onChange={(e) => handleToggleAlwaysUseRealApi(e.target.checked)}
-                  disabled={saving}
+                  disabled={saving || readOnly}
                   className="mt-1 h-4 w-4 shrink-0 rounded border-input"
                 />
                 <div className="min-w-0 space-y-1">
@@ -526,6 +554,11 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
 
           <TabsContent value="response" className="space-y-4">
             <div className="space-y-4">
+              {readOnly && (
+                <p className="text-sm rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-amber-950 dark:text-amber-100">
+                  This scenario is locked. Mock edits are read-only until you unlock it in Settings.
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <div className="text-sm font-medium">Response Data</div>
                 <div className="text-xs text-muted-foreground">
@@ -549,6 +582,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                 <Button
                   variant={editMode === 'form' ? 'default' : 'ghost'}
                   size="sm"
+                  disabled={readOnly}
                   onClick={() => {
                     if (
                       preferJsonEditor &&
@@ -570,6 +604,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                 <Button
                   variant={editMode === 'json' ? 'default' : 'ghost'}
                   size="sm"
+                  disabled={readOnly}
                   onClick={() => {
                     setEditMode('json')
                     syncObjectFromJson()
@@ -585,6 +620,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                     variant="outline"
                     size="sm"
                     className="h-8 px-3 text-sm"
+                    disabled={readOnly}
                     onClick={handlePrettifyJson}
                     title="Parse and re-indent with 2 spaces"
                   >
@@ -603,6 +639,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={readOnly}
                           onClick={() => setResponseObject({ field1: '' })}
                         >
                           <Plus className="h-3 w-3 mr-1" />
@@ -615,6 +652,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={readOnly}
                           onClick={() => setResponseObject([''])}
                         >
                           <Plus className="h-3 w-3 mr-1" />
@@ -625,6 +663,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                       <JsonFieldEditor
                         data={responseObject}
                         onChange={setResponseObject}
+                        readOnly={readOnly}
                       />
                     )
                   ) : (
@@ -639,6 +678,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                     validateJSON(text)
                   }}
                   isModal={isModal}
+                  readOnly={readOnly}
                 />
               )}
               {jsonError && (
@@ -700,7 +740,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             variant="secondary"
                             size="sm"
                             className="h-7 shrink-0 text-[11px]"
-                            disabled={already}
+                            disabled={already || readOnly}
                             title={
                               already
                                 ? 'Already in overrides below'
@@ -749,6 +789,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                           <input
                             type="checkbox"
                             checked={(row.base ?? 'now') === 'now'}
+                            disabled={readOnly}
                             onChange={(e) => {
                               const next = [...dateOverrides]
                               next[i] = { ...next[i], base: e.target.checked ? 'now' : 'response' }
@@ -770,6 +811,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             className="font-mono text-xs h-9"
                             placeholder="e.g. expiresAt or data.items.0.createdAt"
                             value={row.path}
+                            readOnly={readOnly}
                             onChange={(e) => {
                               const next = [...dateOverrides]
                               next[i] = { ...next[i], path: e.target.value }
@@ -783,6 +825,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                           size="icon"
                           className="h-9 shrink-0 text-destructive hover:text-destructive sm:mt-5"
                           title="Remove override"
+                          disabled={readOnly}
                           onClick={() => setDateOverrides(dateOverrides.filter((_, j) => j !== i))}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -795,6 +838,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             type="number"
                             className="h-9 w-[88px] text-xs"
                             value={row.offsetMs ?? 0}
+                            readOnly={readOnly}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -809,6 +853,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetDays ?? 0}
+                            readOnly={readOnly}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -823,6 +868,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetHours ?? 0}
+                            readOnly={readOnly}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -837,6 +883,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetMinutes ?? 0}
+                            readOnly={readOnly}
                             onChange={(e) => {
                               const v = e.target.value === '' ? 0 : Number(e.target.value)
                               const next = [...dateOverrides]
@@ -850,6 +897,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                           <select
                             className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             value={row.format ?? ''}
+                            disabled={readOnly}
                             onChange={(e) => {
                               const v = e.target.value as MockResponseDateOverride['format'] | ''
                               const next = [...dateOverrides]
@@ -876,6 +924,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                 variant="outline"
                 size="sm"
                 className="h-8"
+                disabled={readOnly}
                 onClick={() =>
                   setDateOverrides([
                     ...dateOverrides,
@@ -900,7 +949,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
               <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || !!jsonError}>
+              <Button onClick={handleSave} disabled={readOnly || saving || !!jsonError}>
                 <Save className="h-4 w-4 mr-2" />
                 {saving ? 'Saving...' : 'Save Changes'}
               </Button>

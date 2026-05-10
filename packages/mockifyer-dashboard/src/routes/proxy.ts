@@ -211,18 +211,25 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     if (effectiveRecord === true) {
-      const mockData = {
-        request: {
-          method: upperMethod,
-          url,
-          headers: toRecordStringHeaders(headers),
-          data: body,
-          queryParams: {},
-        },
-        response,
-        timestamp: new Date().toISOString(),
-      };
-      await store.setByHash(hash, mockData as any, scenario, clientId);
+      const scenarioLocked = await store.isScenarioLocked(resolvedScenario);
+      if (!scenarioLocked) {
+        const mockData = {
+          request: {
+            method: upperMethod,
+            url,
+            headers: toRecordStringHeaders(headers),
+            data: body,
+            queryParams: {},
+          },
+          response,
+          timestamp: new Date().toISOString(),
+        };
+        await store.setByHash(hash, mockData as any, resolvedScenario, clientId);
+      } else if (debugProxy) {
+        console.log(
+          `[ProxyRoute] skip record (scenario locked): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenario}) (lane=${clientId || '—'})`
+        );
+      }
     }
 
     if (debugProxy) {

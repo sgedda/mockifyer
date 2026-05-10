@@ -8,6 +8,8 @@ interface JsonFieldEditorProps {
   path?: string
   onChange: (data: any) => void
   level?: number
+  /** When true, values cannot be edited and add/delete/rename are disabled. */
+  readOnly?: boolean
 }
 
 function getFieldType(value: any): 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null' {
@@ -17,7 +19,7 @@ function getFieldType(value: any): 'string' | 'number' | 'boolean' | 'object' | 
   return typeof value as 'string' | 'number' | 'boolean'
 }
 
-export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }: JsonFieldEditorProps) {
+export default function JsonFieldEditor({ data, path = '', onChange, level = 0, readOnly = false }: JsonFieldEditorProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
   function toggleCollapse(key: string) {
@@ -65,6 +67,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
           size="sm"
           onClick={() => onChange('')}
           className="h-6 px-2"
+          disabled={readOnly}
         >
           Change to string
         </Button>
@@ -81,6 +84,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
           <select
             value={String(data)}
             onChange={(e) => onChange(e.target.value === 'true')}
+            disabled={readOnly}
             className="h-8 px-2 rounded-md border border-input bg-background text-sm"
           >
             <option value="true">true</option>
@@ -90,6 +94,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
           <Input
             type="number"
             value={data}
+            readOnly={readOnly}
             onChange={(e) => {
               const num = e.target.value === '' ? 0 : parseFloat(e.target.value)
               onChange(isNaN(num) ? e.target.value : num)
@@ -101,12 +106,14 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
         ) : (
           <Input
             value={String(data)}
+            readOnly={readOnly}
             onChange={(e) => onChange(e.target.value)}
             className="h-8 text-sm"
           />
         )}
         <select
           value={type}
+          disabled={readOnly}
           onChange={(e) => {
             const newType = e.target.value
             if (newType === 'number') onChange(0)
@@ -162,6 +169,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
               {!isArray && (
                 <Input
                   value={key}
+                  readOnly={readOnly}
                   onChange={(e) => {
                     const newData = { ...data }
                     const oldValue = newData[key]
@@ -182,6 +190,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
                     path={fieldPath}
                     onChange={(newValue) => updateField(key, newValue)}
                     level={level}
+                    readOnly={readOnly}
                   />
                 </div>
               )}
@@ -194,6 +203,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
                 variant="ghost"
                 size="sm"
                 onClick={() => deleteField(key)}
+                disabled={readOnly}
                 className="h-6 w-6 p-0 text-destructive hover:text-destructive"
               >
                 <Trash2 className="h-3 w-3" />
@@ -206,6 +216,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
                   path={fieldPath}
                   onChange={(newValue) => updateField(key, newValue)}
                   level={level + 1}
+                  readOnly={readOnly}
                 />
               </div>
             )}
@@ -217,6 +228,7 @@ export default function JsonFieldEditor({ data, path = '', onChange, level = 0 }
           variant="outline"
           size="sm"
           onClick={() => addField()}
+          disabled={readOnly}
           className="h-7 text-xs"
         >
           <Plus className="h-3 w-3 mr-1" />

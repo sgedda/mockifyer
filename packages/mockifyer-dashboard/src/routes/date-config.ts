@@ -1,13 +1,16 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, getScenarioFolderPath, listScenarios, isScenarioLockedFs } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
 const DATE_CONFIG_FILENAME = 'date-config.json';
+
+/** HTTP 423 when scenario is locked — date manipulation writes are forbidden. */
+const SCENARIO_DATE_LOCKED_MESSAGE = 'Scenario is locked; date settings cannot be changed.';
 
 function sanitizeScenarioCandidate(raw: string): string | null {
   const trimmed = raw.trim();
@@ -231,6 +234,10 @@ router.post('/', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, store);
 
+        if (await store.isScenarioLocked(scenario)) {
+          return res.status(423).json({ error: SCENARIO_DATE_LOCKED_MESSAGE });
+        }
+
         if (noManipulation) {
           // Keep an explicit empty Redis document so GET does not fall through to legacy root date-config.json.
           const clearedAt = new Date().toISOString();
@@ -283,6 +290,10 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, null);
+
+    if (isScenarioLockedFs(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_DATE_LOCKED_MESSAGE });
+    }
 
     const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
     const configPath = path.join(scenarioFolder, DATE_CONFIG_FILENAME);

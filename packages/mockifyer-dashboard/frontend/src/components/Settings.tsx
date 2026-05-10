@@ -3,23 +3,53 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { getScenarioConfig, setScenario, createScenario } from '@/lib/api'
+import { getScenarioConfig, setScenario, createScenario, setScenarioLock } from '@/lib/api'
 import { Save } from 'lucide-react'
 import ClientLanes from './ClientLanes'
 
 interface SettingsProps {
   scenario: string
   onScenarioChange: (scenario: string) => void
+  scenarioLocks: Record<string, boolean>
+  onScenarioConfigRefresh?: () => void | Promise<void>
 }
 
-export default function Settings({ scenario, onScenarioChange }: SettingsProps) {
+export default function Settings({
+  scenario,
+  onScenarioChange,
+  scenarioLocks,
+  onScenarioConfigRefresh,
+}: SettingsProps) {
   const [availableScenarios, setAvailableScenarios] = useState<string[]>(['default'])
   const [newScenario, setNewScenario] = useState('')
   const [deriveFromScenario, setDeriveFromScenario] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [lockSaving, setLockSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
+
+  async function handleToggleScenarioLock(nextLocked: boolean) {
+    try {
+      setLockSaving(true)
+      await setScenarioLock(scenario, nextLocked)
+      await onScenarioConfigRefresh?.()
+      toast({
+        title: 'Success',
+        description: nextLocked
+          ? `Scenario "${scenario}" is locked (mocks and date settings are read-only).`
+          : `Scenario "${scenario}" is unlocked.`,
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update lock',
+        variant: 'destructive',
+      })
+    } finally {
+      setLockSaving(false)
+    }
+  }
 
   useEffect(() => {
     loadScenarios()
@@ -103,6 +133,26 @@ export default function Settings({ scenario, onScenarioChange }: SettingsProps) 
                   {error}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Scenario lock</label>
+                <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-input"
+                      checked={scenarioLocks[scenario] === true}
+                      disabled={lockSaving || loading}
+                      onChange={(e) => handleToggleScenarioLock(e.target.checked)}
+                    />
+                    Lock current scenario (read-only mocks &amp; date config)
+                  </label>
+                  <p className="text-xs text-muted-foreground basis-full">
+                    While locked, the dashboard cannot save mock bodies, delete mocks, duplicate files, or change date
+                    manipulation; Redis proxy recording is also skipped for this scenario.
+                  </p>
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Current Scenario</label>

@@ -17,6 +17,8 @@ interface MockListProps {
   allMocks: MockFile[]
   /** Active scenario (same as mock list fetch); required for correct Redis/mock path on delete/duplicate. */
   scenario?: string
+  /** When true, delete/duplicate actions are hidden (scenario locked server-side). */
+  scenarioLocked?: boolean
   loading: boolean
   loadingMock?: boolean
   searchQuery: string
@@ -38,6 +40,7 @@ function MockListContent({
   mocks,
   allMocks,
   scenario,
+  scenarioLocked = false,
   loading,
   loadingMock = false,
   searchQuery,
@@ -293,8 +296,8 @@ function MockListContent({
             level={0}
             selectedMock={selectedMock}
             onSelectMock={onSelectMock}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
+            onDelete={scenarioLocked ? undefined : handleDelete}
+            onDuplicate={scenarioLocked ? undefined : handleDuplicate}
             deleting={deleting}
           />
         </div>
