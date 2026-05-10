@@ -1,0 +1,21 @@
+# Replace with your application id (Android package / iOS bundle id).
+appId: com.example.yourapp
+---
+# Launches with a Mockifyer client lane; scenario can be set in dashboard/Redis for this lane.
+- launchApp:
+    clearState: true
+    arguments:
+      mockifyerClientId: e2e-maestro-login
+# Login: align these `id` values with your React Native testIDs (see README).
+- assertVisible:
+    id: login_screen
+- tapOn:
+    id: email_input
+- inputText: e2e.user@example.com
+- tapOn:
+    id: password_input
+- inputText: YourPasswordHere
+- tapOn:
+    id: sign_in_button
+- assertVisible:
+    id: home_screen

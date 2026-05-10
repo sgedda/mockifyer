@@ -138,10 +138,56 @@ Run **`npx mockifyer-dashboard`** (or the package binary) to open a local UI for
 
 ---
 
+## Maestro E2E: `clientId` from launch arguments
+
+Setup can use **`setupMockifyerForReactNative`** (`@sgedda/mockifyer-fetch`) or **`setupMockifyer`** with **`@sgedda/mockifyer-axios`**: set **`useLaunchArgumentsClientId: true`** on config (and optional **`launchArgumentClientIdKey`**). Install optional peer **`react-native-launch-arguments`**.
+
+```typescript
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  useLaunchArgumentsClientId: true,
+  // default launchArgumentClientIdKey: 'mockifyerClientId'
+  proxyBaseUrl: process.env.MOCKIFYER_PROXY_URL, // optional: strict Redis proxy
+});
+```
+
+Or with **Axios**:
+
+```typescript
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  useLaunchArgumentsClientId: true,
+  useGlobalAxios: true,
+});
+```
+
+Or read the lane manually (from **`@sgedda/mockifyer-core`** or **`@sgedda/mockifyer-fetch/react-native`**, which re-exports the same helpers):
+
+```typescript
+import {
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+} from '@sgedda/mockifyer-core';
+
+setupMockifyer({
+  mockDataPath: 'mock-data',
+  clientId: tryGetClientIdFromLaunchArguments(MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY),
+  useGlobalFetch: true,
+});
+```
+
+See **`example-projects/maestro-login-flow`** for a minimal **`login.yaml`** (replace `appId` and accessibility `id`s for your app).
+
+---
+
 ## Summary
 
 | Goal | Approach |
 |------|----------|
+| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes |
 | Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + `MOCKIFYER_ENABLED` / `MOCKIFYER_RECORD` as needed |
 | Device-only, no repo sync | **`expo-filesystem`** provider |
 | Production / store build | **Memory** + **bundled** mock module |

@@ -15,7 +15,7 @@ import {
   CachedMockData,
   mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
-import { resolveClientId } from '@sgedda/mockifyer-core';
+import { resolveClientId, tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -77,7 +77,21 @@ class MockifyerClass {
       }
     }
     
-    this.config = { ...config, clientId: resolveClientId(config) };
+    let launchClientId: string | undefined;
+    if (config.useLaunchArgumentsClientId) {
+      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+      launchClientId = tryGetClientIdFromLaunchArguments(key);
+      if (launchClientId) {
+        console.log(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
+      }
+    }
+
+    this.config = { ...config };
+    if (launchClientId) {
+      this.config.clientId = launchClientId;
+    } else {
+      this.config.clientId = resolveClientId(config);
+    }
     console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled

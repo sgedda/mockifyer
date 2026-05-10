@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-axios",
-  "version": "1.8.14",
+  "version": "1.8.15",
   "description": "Mockifyer for Axios - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -31,11 +31,15 @@
     "axios-mock-adapter": "^1.22.0"
   },
   "peerDependencies": {
-    "axios": "^1.6.0 || ^1.7.0"
+    "axios": "^1.6.0 || ^1.7.0",
+    "react-native-launch-arguments": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "axios": {
       "optional": false
+    },
+    "react-native-launch-arguments": {
+      "optional": true
     }
   },
   "publishConfig": {

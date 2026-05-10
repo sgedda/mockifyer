@@ -16,6 +16,17 @@ export interface MockifyerConfig {
    * Recommended: a UUID/ULID persisted on the client device.
    */
   deviceId?: string;
+  /**
+   * When true, read `clientId` from native launch arguments (optional peer `react-native-launch-arguments`).
+   * Maestro: `launchApp.arguments.mockifyerClientId`. See {@link launchArgumentClientIdKey}.
+   * If a non-empty value is read, it **takes precedence** over `MOCKIFYER_CLIENT_ID` and `config.clientId`.
+   * If the flag is on but the argument is missing, resolution falls back to `resolveClientId` (env, `config.clientId`, then defaults).
+   */
+  useLaunchArgumentsClientId?: boolean;
+  /**
+   * Default: `mockifyerClientId` (same as `MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY` export).
+   */
+  launchArgumentClientIdKey?: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
   /** When true, throws an error if no mock data is found for a request. 
