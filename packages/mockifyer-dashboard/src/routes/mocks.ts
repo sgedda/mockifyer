@@ -10,6 +10,7 @@ import { RedisMockStore } from '../utils/redis-mock-store';
 const router = express.Router();
 
 type OverridePreview = { path: string; summary: string };
+const SCENARIO_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function getMockDataPath(): string {
   return detectMockDataPath();
@@ -24,21 +25,38 @@ function parseRedisHashFromFilename(relativeName: string): string | null {
   return hash;
 }
 
-/** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
-async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
+function readScenarioQuery(req: Request, res: Response): string | undefined | null {
   const raw = req.query.scenario;
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.trim();
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') {
+    res.status(400).json({ error: 'Scenario name must be a string' });
+    return null;
   }
+
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (!SCENARIO_NAME_PATTERN.test(trimmed)) {
+    res.status(400).json({
+      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
+    });
+    return null;
+  }
+  return trimmed;
+}
+
+/** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
+async function resolveRedisScenario(req: Request, res: Response, store: RedisMockStore): Promise<string | null> {
+  const requested = readScenarioQuery(req, res);
+  if (requested === null) return null;
+  if (requested !== undefined) return requested;
   return store.getActiveScenario();
 }
 
 /** Scenario from ?scenario= or local scenario-config (align with GET /mocks list). */
-function resolveFilesystemScenario(req: Request, mockDataPath: string): string {
-  const raw = req.query.scenario;
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.trim();
-  }
+function resolveFilesystemScenario(req: Request, res: Response, mockDataPath: string): string | null {
+  const requested = readScenarioQuery(req, res);
+  if (requested === null) return null;
+  if (requested !== undefined) return requested;
   return getCurrentScenario(mockDataPath);
 }
 
@@ -93,7 +111,8 @@ function parseLimit(raw: unknown, fallback: number): number {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    const requestedScenario = req.query.scenario as string | undefined;
+    const requestedScenario = readScenarioQuery(req, res);
+    if (requestedScenario === null) return;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
     if (config.provider === 'redis') {
@@ -262,7 +281,8 @@ router.get('/search', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const q = normalizeSearchQuery(req.query.q);
     const limit = parseLimit(req.query.limit, 200);
-    const requestedScenario = req.query.scenario as string | undefined;
+    const requestedScenario = readScenarioQuery(req, res);
+    if (requestedScenario === null) return;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
     if (!q) {
@@ -479,7 +499,8 @@ router.get('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const data = await store.getByHash(hash, scenario);
         if (!data) return res.status(404).json({ error: 'Mock not found' });
         const payload = JSON.stringify(data);
@@ -498,7 +519,9 @@ router.get('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -536,7 +559,8 @@ router.put('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -614,7 +638,9 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -702,7 +728,8 @@ router.delete('/*', async (req: Request, res: Response) => {
         mockDataPath,
       });
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         await store.deleteByHash(hash, scenario);
         return res.json({ success: true, message: `Mock deleted successfully`, filename: relativeName });
       } finally {
@@ -710,7 +737,9 @@ router.delete('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -739,7 +768,9 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
       });
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
