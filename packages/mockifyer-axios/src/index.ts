@@ -77,16 +77,21 @@ class MockifyerClass {
       }
     }
     
+    let launchClientId: string | undefined;
     if (config.useLaunchArgumentsClientId) {
       const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
-      const launchClientId = tryGetClientIdFromLaunchArguments(key);
+      launchClientId = tryGetClientIdFromLaunchArguments(key);
       if (launchClientId) {
-        config.clientId = launchClientId;
         console.log(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
       }
     }
 
-    this.config = { ...config, clientId: resolveClientId(config) };
+    this.config = { ...config };
+    if (launchClientId) {
+      this.config.clientId = launchClientId;
+    } else {
+      this.config.clientId = resolveClientId(config);
+    }
     console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled

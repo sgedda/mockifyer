@@ -108,11 +108,11 @@ class MockifyerClass {
       }
     }
     
+    let launchClientId: string | undefined;
     if (config.useLaunchArgumentsClientId) {
       const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
-      const launchClientId = tryGetClientIdFromLaunchArguments(key);
+      launchClientId = tryGetClientIdFromLaunchArguments(key);
       if (launchClientId) {
-        config.clientId = launchClientId;
         logger.info(`[Mockifyer-Fetch] clientId from launch arguments (${key}): ${launchClientId}`);
       }
     }
@@ -120,8 +120,12 @@ class MockifyerClass {
     // Store config BEFORE any modifications
     this.config = { ...config }; // Create a copy to avoid mutations
 
-    // Resolve client lane id (env/config/fallback); used for Redis per-client scenario overrides and proxy headers.
-    this.config.clientId = resolveClientId(this.config);
+    // Launch arg wins over MOCKIFYER_CLIENT_ID / config.clientId when present (E2E).
+    if (launchClientId) {
+      this.config.clientId = launchClientId;
+    } else {
+      this.config.clientId = resolveClientId(this.config);
+    }
     logger.info(`[Mockifyer-Fetch] clientId: ${this.config.clientId}`);
     
     // Initialize test generator if test generation is enabled

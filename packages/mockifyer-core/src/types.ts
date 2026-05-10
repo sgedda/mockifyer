@@ -19,7 +19,8 @@ export interface MockifyerConfig {
   /**
    * When true, read `clientId` from native launch arguments (optional peer `react-native-launch-arguments`).
    * Maestro: `launchApp.arguments.mockifyerClientId`. See {@link launchArgumentClientIdKey}.
-   * Applied after copying config; `MOCKIFYER_CLIENT_ID` env still wins if set (see resolveClientId).
+   * If a non-empty value is read, it **takes precedence** over `MOCKIFYER_CLIENT_ID` and `config.clientId`.
+   * If the flag is on but the argument is missing, resolution falls back to `resolveClientId` (env, `config.clientId`, then defaults).
    */
   useLaunchArgumentsClientId?: boolean;
   /**
