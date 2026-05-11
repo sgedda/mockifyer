@@ -1,3 +1,7 @@
 [build]
 builder = "nixpacks"
 
+[deploy]
+# Lightweight endpoint; avoids serving the full SPA for platform probes
+healthcheckPath = "/health"
+healthcheckTimeout = 300
