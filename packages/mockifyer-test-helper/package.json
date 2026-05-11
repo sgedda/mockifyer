@@ -26,7 +26,7 @@
   },
   "peerDependencies": {
     "@sgedda/mockifyer-fetch": "^1.8.21",
-    "@sgedda/mockifyer-core": "^1.8.26"
+    "@sgedda/mockifyer-core": "^1.8.27"
   },
   "publishConfig": {
     "access": "public"
