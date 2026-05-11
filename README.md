@@ -48,7 +48,7 @@ setupMockifyer({
 });
 
 const response = await fetch('https://api.example.com/data');
-// Intercepted when MOCKIFYER_ENABLED=true and mocks exist / record mode configured
+// Intercepted when setupMockifyer ran (Node); RN uses MOCKIFYER_MODE — see REACT_NATIVE.md
 
 const currentDate = getCurrentDate();
 console.log(currentDate.toISOString()); // 2024-01-01T00:00:00.000Z
@@ -106,7 +106,7 @@ Priority: env vars → `setupMockifyer` config → system time.
 
 | Variable | Description |
 |----------|-------------|
-| `MOCKIFYER_ENABLED` | Master switch for mocking layer |
+| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |

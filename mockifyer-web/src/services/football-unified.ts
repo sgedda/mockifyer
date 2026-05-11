@@ -72,7 +72,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
     clientType,
     scope,
     mockDataPath,
-    mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+    mockEnabled: process.env.MOCKIFYER_MODE === 'on',
     mockRecord: process.env.MOCKIFYER_RECORD === 'true'
   });
 
@@ -101,7 +101,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
   }
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     if (config.useSimilarMatch === undefined && process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true') {
       config.useSimilarMatch = true;
@@ -168,7 +168,7 @@ function getHTTPClient(clientType: 'axios' | 'fetch'): HTTPClient {
   };
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     if (config.useSimilarMatch === undefined && process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true') {
       config.useSimilarMatch = true;
@@ -359,7 +359,7 @@ export async function getFixturesUnified(
       params,
       clientType,
       scope,
-      mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+      mockEnabled: process.env.MOCKIFYER_MODE === 'on',
       mockRecord: process.env.MOCKIFYER_RECORD === 'true'
     });
 
@@ -528,7 +528,7 @@ export async function getStandingsUnified(
       params,
       clientType,
       scope,
-      mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+      mockEnabled: process.env.MOCKIFYER_MODE === 'on',
       mockRecord: process.env.MOCKIFYER_RECORD === 'true'
     });
 
@@ -694,7 +694,7 @@ export async function getTeamInfoUnified(
       params,
       clientType,
       scope,
-      mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+      mockEnabled: process.env.MOCKIFYER_MODE === 'on',
       mockRecord: process.env.MOCKIFYER_RECORD === 'true'
     });
 

@@ -7,6 +7,17 @@
  */
 export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
 
+/**
+ * Whether `setupMockifyerForReactNative` patches `fetch` at startup (activation gate, not per-request {@link MockifyerActivationMode}).
+ *
+ * - **`off`** — never activate; launch arguments do **not** override (use for production builds that ship Mockifyer code but must not run it).
+ * - **`on`** — always activate when the helper is called.
+ * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`).
+ *
+ * Resolved from env **`MOCKIFYER_MODE`**, then optional `runtimeMode` in config / RN options (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
+ */
+export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
+
 export interface MockifyerConfig {
   mockDataPath: string;
   /**
@@ -56,6 +67,11 @@ export interface MockifyerConfig {
   useGlobalAxios?: boolean;
   /** When true and httpClientType is 'fetch', patches the global fetch function to use Mockifyer */
   useGlobalFetch?: boolean;
+  /**
+   * React Native / `setupMockifyerForReactNative`: when Mockifyer may patch `fetch` at startup.
+   * Prefer **`MOCKIFYER_MODE`** env; this field overrides env when set.
+   */
+  runtimeMode?: MockifyerRuntimeMode;
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
@@ -211,7 +227,8 @@ export interface MockData {
 
 // Environment variable names
 export const ENV_VARS = {
-  MOCK_ENABLED: 'MOCKIFYER_ENABLED',
+  /** `off` \| `on` \| `launch_client` — React Native startup gate; see {@link MockifyerRuntimeMode}. */
+  MOCK_RUNTIME_MODE: 'MOCKIFYER_MODE',
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',

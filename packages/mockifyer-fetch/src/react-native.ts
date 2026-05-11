@@ -10,6 +10,9 @@ import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@s
 import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  tryGetClientIdFromLaunchArguments,
+  resolveMockifyerRuntimeMode,
+  type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
 // Re-export MockifyerInstance type to avoid circular dependency
@@ -17,6 +20,33 @@ export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
+}
+
+/**
+ * Outcome of {@link setupMockifyerForReactNative}.
+ *
+ * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane, etc.).
+ *   Not the same as “permanently off” unless mode is **`off`** (then launch args do not activate).
+ * - **`active`** — Mockifyer initialized and patched `global.fetch`.
+ * - **`failed_no_bundled_mocks`** — Activation criteria were met and `isDev` was false, but bundled mock data was missing or empty.
+ */
+export type MockifyerReactNativeInitStatus =
+  | 'not_activated'
+  | 'active'
+  | 'failed_no_bundled_mocks';
+
+export type SetupMockifyerForReactNativeResult =
+  | { readonly status: 'not_activated'; readonly instance: null }
+  | { readonly status: 'failed_no_bundled_mocks'; readonly instance: null }
+  | { readonly status: 'active'; readonly instance: MockifyerInstance };
+
+/**
+ * Type guard: `true` when {@link setupMockifyerForReactNative} patched `fetch` and returned an instance.
+ */
+export function isMockifyerReactNativeActive(
+  result: SetupMockifyerForReactNativeResult
+): result is { readonly status: 'active'; readonly instance: MockifyerInstance } {
+  return result.status === 'active';
 }
 
 export interface ReactNativeMockifyerConfig {
@@ -43,10 +73,17 @@ export interface ReactNativeMockifyerConfig {
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
    * Forwards to {@link MockifyerConfig.useLaunchArgumentsClientId} on the merged config passed to `setupMockifyer`.
+   *
+   * If the launch argument is **set** (non-empty) for {@link launchArgumentClientIdKey}, the lane id is applied when Mockifyer activates (see **`runtimeMode`** / **`MOCKIFYER_MODE`**; with **`launch_client`** or default resolution, a set arg activates).
    */
   useLaunchArgumentsClientId?: boolean;
   /** Launch-argument key for the client lane id (default: `mockifyerClientId`). */
   launchArgumentClientIdKey?: string;
+  /**
+   * When Mockifyer may patch `fetch` at startup. Overrides **`MOCKIFYER_MODE`** env and `config.runtimeMode`.
+   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` (aliases e.g. `e2e`, `maestro` → `launch_client`).
+   */
+  runtimeMode?: MockifyerRuntimeMode;
 }
 
 type DashboardHealth = {
@@ -119,49 +156,75 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
  * @example
  * ```typescript
  * import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
- * 
- * await setupMockifyerForReactNative({
- *   isDev: __DEV__, // Pass React Native's __DEV__ variable
+ *
+ * // MOCKIFYER_MODE=on | launch_client | off — or Maestro launch mockifyerClientId when mode is launch_client (default).
+ * const result = await setupMockifyerForReactNative({
+ *   isDev: __DEV__, // Selects Hybrid vs Memory provider once enabled
  *   mockDataPath: 'mock-data',
  *   bundledDataPath: './assets/mock-data',
  *   recordMode: process.env.MOCKIFYER_RECORD === 'true',
  * });
+ * // result.status: 'not_activated' | 'active' | 'failed_no_bundled_mocks'
  * ```
  */
 export async function setupMockifyerForReactNative(
   options: ReactNativeMockifyerConfig
-): Promise<MockifyerInstance | null> {
+): Promise<SetupMockifyerForReactNativeResult> {
   const {
     isDev,
     mockDataPath = 'mock-data',
     bundledDataPath = './assets/mock-data',
     recordMode = false,
-    config = {},
+    config: userConfig = {},
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
     useLaunchArgumentsClientId = false,
     launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+    runtimeMode: runtimeModeOption,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
 
-  const mergedConfig: typeof config = {
-    ...config,
-    ...(useLaunchArgumentsClientId
+  const launchClientIdKey =
+    launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+  const clientIdFromLaunchArgs = tryGetClientIdFromLaunchArguments(launchClientIdKey);
+  const shouldApplyLaunchClientId =
+    useLaunchArgumentsClientId || Boolean(clientIdFromLaunchArgs);
+
+  const resolvedRuntimeMode = resolveMockifyerRuntimeMode({
+    configMode: runtimeModeOption ?? userConfig.runtimeMode,
+  });
+
+  const mergedConfig: typeof userConfig = {
+    ...userConfig,
+    runtimeMode: resolvedRuntimeMode,
+    ...(shouldApplyLaunchClientId
       ? {
           useLaunchArgumentsClientId: true as const,
-          launchArgumentClientIdKey:
-            launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+          launchArgumentClientIdKey: launchClientIdKey,
         }
       : {}),
   };
 
-  // Check if Mockifyer is enabled
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || isDev;
+  const isEnabled =
+    resolvedRuntimeMode === 'on' ||
+    (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
   if (!isEnabled) {
-    logger.info('[Mockifyer] Disabled');
-    return null;
+    const hint =
+      resolvedRuntimeMode === 'off'
+        ? 'MOCKIFYER_MODE=off (or runtimeMode off) — launch args are ignored.'
+        : resolvedRuntimeMode === 'launch_client'
+          ? 'MOCKIFYER_MODE=launch_client (default when unset) — pass mockifyerClientId via launch args, or set MOCKIFYER_MODE=on.'
+          : 'Adjust MOCKIFYER_MODE / runtimeMode.';
+    logger.info(`[Mockifyer] Not activated (${hint})`);
+    return { status: 'not_activated', instance: null } as const;
+  }
+
+  if (clientIdFromLaunchArgs && !useLaunchArgumentsClientId) {
+    logger.info(
+      `[Mockifyer] Enabled via launch argument "${launchClientIdKey}" (E2E lane "${clientIdFromLaunchArgs}")`
+    );
   }
 
   if (isDev === true) {
@@ -233,7 +296,7 @@ export async function setupMockifyerForReactNative(
       }
     }
 
-    return instance;
+    return { status: 'active', instance } as const;
   } else {
     // PRODUCTION BUILD MODE
     // Use Memory provider with bundled TypeScript file
@@ -244,8 +307,10 @@ export async function setupMockifyerForReactNative(
     const mockDataArray = await loadBundledMockData(bundledDataPath);
 
     if (mockDataArray.length === 0) {
-      logger.warn('[Mockifyer] No bundled mock data found. Make sure to run the build script first.');
-      return null;
+      logger.warn(
+        '[Mockifyer] Activation requested but no bundled mock data found (status: failed_no_bundled_mocks). Run the bundle/generate step for your mocks.'
+      );
+      return { status: 'failed_no_bundled_mocks', instance: null } as const;
     }
 
     // Pre-load all mocks into memory
@@ -267,7 +332,7 @@ export async function setupMockifyerForReactNative(
     });
 
     logger.info(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
-    return instance;
+    return { status: 'active', instance } as const;
   }
 }
 

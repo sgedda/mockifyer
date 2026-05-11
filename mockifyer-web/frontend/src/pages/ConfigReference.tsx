@@ -44,8 +44,16 @@ export default function ConfigReference() {
                 <h4 className="font-semibold mb-2">Environment Variables</h4>
                 <div className="space-y-2 text-sm">
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_ENABLED</code>
-                    <p className="text-muted-foreground mt-1">Enable/disable Mockifyer</p>
+                    <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_MODE</code>
+                    <p className="text-muted-foreground mt-1">
+                      React Native: <code className="bg-muted px-1 rounded">on</code> (always run),{' '}
+                      <code className="bg-muted px-1 rounded">launch_client</code> (Maestro / launch-arg lane only; default when unset),{' '}
+                      <code className="bg-muted px-1 rounded">off</code> (never run, ignores launch args)
+                    </p>
+                  </div>
+                  <div>
+                    <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_MODE</code>
+                    <p className="text-muted-foreground mt-1">Legacy master switch: true/false maps to on/off when MOCKIFYER_MODE is unset</p>
                   </div>
                   <div>
                     <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_PATH</code>

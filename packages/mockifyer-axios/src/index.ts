@@ -25,6 +25,10 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   type MockifyerActivationMode,
+  getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_DEVICE_ID_HEADER,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -137,6 +141,33 @@ class MockifyerClass {
       this.setupMockResponses();
     } else {
       this.setupInterceptors();
+    }
+  }
+
+  private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
+    const lane = this.config.clientId?.trim();
+    if (lane && !getOutboundMockifyerClientIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_CLIENT_ID_HEADER] = lane;
+      }
+    }
+    const device = this.config.deviceId?.trim();
+    if (device && !getOutboundMockifyerDeviceIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_DEVICE_ID_HEADER, device);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_DEVICE_ID_HEADER] = device;
+      }
     }
   }
 
@@ -430,9 +461,11 @@ class MockifyerClass {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
       if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
 
       // Debug: Log what we receive in the interceptor
       console.log('[Mockifyer] 📥 Interceptor received config:', {
@@ -595,9 +628,11 @@ class MockifyerClass {
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
       if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
 
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {

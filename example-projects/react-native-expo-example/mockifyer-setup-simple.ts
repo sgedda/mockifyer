@@ -9,7 +9,10 @@
  *   await initializeMockifyer();
  */
 
-import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+import {
+  setupMockifyerForReactNative,
+  type SetupMockifyerForReactNativeResult,
+} from '@sgedda/mockifyer-fetch';
 import { Platform } from 'react-native';
 
 function getDefaultDashboardBaseUrl(): string {
@@ -25,7 +28,7 @@ function getDefaultDashboardBaseUrl(): string {
  * Development: Uses Expo FileSystem provider (can record mocks)
  * Production: Uses Memory provider with bundled TypeScript file
  */
-export async function initializeMockifyer() {
+export async function initializeMockifyer(): Promise<SetupMockifyerForReactNativeResult> {
   // In React Native/Expo, process.env is not available at runtime
   // Environment variables set in shell aren't accessible in the bundle
   // 

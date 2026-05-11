@@ -3,10 +3,10 @@ import { ENV_VARS, type MockifyerActivationMode, type MockifyerConfig } from '..
 /** Canonical outbound header: presence (non-empty) gates Mockifyer when `activationMode` is `client_id_header`. */
 export const MOCKIFYER_CLIENT_ID_HEADER = 'x-mockifyer-client-id';
 
-/**
- * Reads `X-Mockifyer-Client-Id` from axios/fetch-style headers (plain object, AxiosHeaders, or Headers-like).
- */
-export function getOutboundMockifyerClientIdHeader(headers: unknown): string | undefined {
+/** Canonical outbound device header (dashboard proxy + optional upstream propagation). */
+export const MOCKIFYER_DEVICE_ID_HEADER = 'x-mockifyer-device-id';
+
+function getOutboundHeaderValue(headers: unknown, canonicalLower: string): string | undefined {
   if (!headers || typeof headers !== 'object') {
     return undefined;
   }
@@ -16,10 +16,7 @@ export function getOutboundMockifyerClientIdHeader(headers: unknown): string | u
   };
 
   if (typeof h.get === 'function') {
-    const v =
-      h.get('X-Mockifyer-Client-Id') ??
-      h.get('x-mockifyer-client-Id') ??
-      h.get('x-mockifyer-client-id');
+    const v = h.get(canonicalLower);
     if (v == null) {
       return undefined;
     }
@@ -30,7 +27,7 @@ export function getOutboundMockifyerClientIdHeader(headers: unknown): string | u
   if (typeof h.forEach === 'function') {
     let found: string | undefined;
     h.forEach((value: string, key: string) => {
-      if (key && key.toLowerCase() === MOCKIFYER_CLIENT_ID_HEADER && value != null) {
+      if (key && key.toLowerCase() === canonicalLower && value != null) {
         const s = String(value).trim();
         if (s) {
           found = s;
@@ -41,7 +38,7 @@ export function getOutboundMockifyerClientIdHeader(headers: unknown): string | u
   }
 
   for (const [k, v] of Object.entries(h)) {
-    if (k && k.toLowerCase() === MOCKIFYER_CLIENT_ID_HEADER && v != null) {
+    if (k && k.toLowerCase() === canonicalLower && v != null) {
       const s = String(v).trim();
       if (s) {
         return s;
@@ -49,6 +46,20 @@ export function getOutboundMockifyerClientIdHeader(headers: unknown): string | u
     }
   }
   return undefined;
+}
+
+/**
+ * Reads `X-Mockifyer-Client-Id` from axios/fetch-style headers (plain object, AxiosHeaders, or Headers-like).
+ */
+export function getOutboundMockifyerClientIdHeader(headers: unknown): string | undefined {
+  return getOutboundHeaderValue(headers, MOCKIFYER_CLIENT_ID_HEADER);
+}
+
+/**
+ * Reads `X-Mockifyer-Device-Id` from axios/fetch-style headers (plain object, AxiosHeaders, or Headers-like).
+ */
+export function getOutboundMockifyerDeviceIdHeader(headers: unknown): string | undefined {
+  return getOutboundHeaderValue(headers, MOCKIFYER_DEVICE_ID_HEADER);
 }
 
 export interface ShouldApplyMockifyerOptions {

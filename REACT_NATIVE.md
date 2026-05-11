@@ -11,19 +11,28 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 | **Development** (`isDev: true`) | **Hybrid** | Writes mocks to the **device** (Expo FileSystem) **and** to the **project** `mock-data` folder via Metro HTTP endpoints. |
 | **Production** (`isDev: false`) | **Memory** | Loads mocks from a **bundled** module (e.g. `assets/mock-data.ts`). |
 
-- **`MOCKIFYER_ENABLED=true`** or **`__DEV__`** enables Mockifyer in development (unless you override).
+- **`MOCKIFYER_MODE`** (preferred) — **`on`** always activates when `setupMockifyerForReactNative` runs; **`launch_client`** activates only when Maestro/native launch **`mockifyerClientId`** is non-empty (this is the default when neither mode nor legacy env is set); **`off`** never activates (launch args ignored — use in store builds that must not run mocks). Aliases: `e2e` / `maestro` → `launch_client`, `disabled` → `off`, `enabled` → `on`.
+- **`isDev` / `__DEV__` alone does not enable** Mockifyer (use **`MOCKIFYER_MODE`** or a launch-arg lane).
+- **Direct upstream `fetch`** (not the dashboard proxy POST) automatically adds **`X-Mockifyer-Client-Id`** / **`X-Mockifyer-Device-Id`** when missing, whenever Mockifyer has a resolved `clientId` / `deviceId` (same lane the library uses). Caller headers win if already set.
+- **Return value:** `setupMockifyerForReactNative` resolves to **`{ status, instance }`**. Use **`status`** instead of treating “no instance” as permanently disabled:
+  - **`not_activated`** — nothing patched this run; you can still activate on a **later** launch with env or launch args.
+  - **`active`** — `global.fetch` patched; **`instance`** is the Mockifyer handle.
+  - **`failed_no_bundled_mocks`** — activation was requested but the release bundle had no mock data module.
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
 
-Example:
+Example (local dev: **`MOCKIFYER_MODE=on`**; E2E: default **`launch_client`** + **`mockifyerClientId`** from Maestro):
 
 ```typescript
-import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+import {
+  setupMockifyerForReactNative,
+  isMockifyerReactNativeActive,
+} from '@sgedda/mockifyer-fetch';
 
 export async function initializeMockifyer() {
   const recordMode = __DEV__ && process.env.MOCKIFYER_RECORD === 'true';
 
-  return setupMockifyerForReactNative({
+  const result = await setupMockifyerForReactNative({
     isDev: __DEV__,
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
@@ -32,6 +41,11 @@ export async function initializeMockifyer() {
       logging: 'info',
     },
   });
+
+  if (isMockifyerReactNativeActive(result)) {
+    // result.instance available
+  }
+  return result;
 }
 ```
 
@@ -58,7 +72,7 @@ Middleware resolves **`projectRoot`** and **`mockDataPath`** (e.g. `./mock-data`
 
 **Build step:** if Metro `require`s `dist/metro-sync-middleware.js`, run **`npm run build`** in **`packages/mockifyer-fetch`** (and **`packages/mockifyer-core`**) so `dist/` exists, or use a project `metro.config.js` that builds those packages when missing.
 
-**Project → device:** call **`instance.reloadMockData(true)`** (or rely on the initial sync inside `setupMockifyerForReactNative`). Uses manifest + per-file downloads over `http://localhost:${metroPort}` (simulator) — ensure Metro is running.
+**Project → device:** when **`status === 'active'`**, call **`instance.reloadMockData(true)`** (or rely on the initial sync inside `setupMockifyerForReactNative`). Uses manifest + per-file downloads over `http://localhost:${metroPort}` (simulator) — ensure Metro is running.
 
 **Dashboard vs Metro:** **[`mockifyer-dashboard`](./packages/mockifyer-dashboard)** is a **separate** Express app (e.g. port **3002**) for browsing/editing mocks. Sync endpoints for the app run on **Metro**, not the dashboard, unless you mount the same middleware on Express yourself.
 
@@ -122,7 +136,7 @@ Listing files in app code depends on your **expo-file-system** API (legacy `read
 Typical:
 
 ```bash
-MOCKIFYER_ENABLED=true
+MOCKIFYER_MODE=on        # or: launch_client | off (see table above)
 MOCKIFYER_RECORD=true    # recording mode when supported
 MOCKIFYER_SCENARIO=default
 METRO_PORT=8081          # if not default
@@ -143,13 +157,14 @@ Run **`npx mockifyer-dashboard`** (or the package binary) to open a local UI for
 Setup can use **`setupMockifyerForReactNative`** (`@sgedda/mockifyer-fetch`) or **`setupMockifyer`** with **`@sgedda/mockifyer-axios`**: set **`useLaunchArgumentsClientId: true`** on config (and optional **`launchArgumentClientIdKey`**). Install optional peer **`react-native-launch-arguments`**.
 
 ```typescript
-await setupMockifyerForReactNative({
+const e2eResult = await setupMockifyerForReactNative({
   isDev: __DEV__,
   mockDataPath: 'mock-data',
   useLaunchArgumentsClientId: true,
   // default launchArgumentClientIdKey: 'mockifyerClientId'
   proxyBaseUrl: process.env.MOCKIFYER_PROXY_URL, // optional: strict Redis proxy
 });
+// e2eResult.status — 'not_activated' | 'active' | 'failed_no_bundled_mocks'
 ```
 
 Or with **Axios**:
@@ -188,7 +203,7 @@ See **`example-projects/maestro-login-flow`** for a minimal **`login.yaml`** (re
 | Goal | Approach |
 |------|----------|
 | Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes |
-| Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + `MOCKIFYER_ENABLED` / `MOCKIFYER_RECORD` as needed |
+| Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + **`MOCKIFYER_MODE`** / `MOCKIFYER_RECORD` as needed |
 | Device-only, no repo sync | **`expo-filesystem`** provider |
 | Production / store build | **Memory** + **bundled** mock module |
 | Edit mocks visually | **mockifyer-dashboard** (optional; separate server) |

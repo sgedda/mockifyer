@@ -46,7 +46,7 @@ export async function initializeMockifyer() {
 ### 2. Run with Recording
 
 ```bash
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 ```
 
 ### 3. Make API Calls

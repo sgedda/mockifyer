@@ -1,5 +1,6 @@
 import {
   getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
   resolveActivationMode,
   shouldApplyMockifyer,
   type MockifyerConfig,
@@ -42,6 +43,14 @@ describe('activation-mode', () => {
   it('getOutboundMockifyerClientIdHeader is case-insensitive on plain object', () => {
     expect(getOutboundMockifyerClientIdHeader({ 'X-Mockifyer-Client-Id': ' lane-a ' })).toBe('lane-a');
     expect(getOutboundMockifyerClientIdHeader({ 'x-mockifyer-client-id': '' })).toBeUndefined();
+  });
+
+  it('getOutboundMockifyerDeviceIdHeader reads plain object and Headers', () => {
+    expect(getOutboundMockifyerDeviceIdHeader({ 'X-Mockifyer-Device-Id': ' dev-1 ' })).toBe('dev-1');
+    expect(getOutboundMockifyerDeviceIdHeader({ 'x-mockifyer-device-id': '' })).toBeUndefined();
+    const h = new Headers();
+    h.set('x-mockifyer-device-id', 'ulid-xyz');
+    expect(getOutboundMockifyerDeviceIdHeader(h)).toBe('ulid-xyz');
   });
 
   it('shouldApplyMockifyer client_id_header requires header or proxy lane', () => {

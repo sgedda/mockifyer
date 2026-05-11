@@ -30,7 +30,7 @@ if (isEnabled) {
   
   console.log('✅ Mockifyer initialized\n');
 } else {
-  console.log('⚠️  Mockifyer is disabled. Set MOCKIFYER_ENABLED=true to enable.\n');
+  console.log('⚠️  Mockifyer is disabled. Set MOCKIFYER_MODE=on to enable.\n');
 }
 
 // Three simple API endpoints to demonstrate Mockifyer

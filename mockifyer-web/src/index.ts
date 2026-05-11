@@ -420,7 +420,7 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       deployedDate,
       githubRepo: 'https://github.com/sgedda/mockifyer',
       runtimeConfig: {
-        mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+        mockifyerEnabled: process.env.MOCKIFYER_MODE === 'on',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
         mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
         maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,
@@ -434,7 +434,7 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       deployedDate: new Date().toISOString(),
       githubRepo: 'https://github.com/sgedda/mockifyer',
       runtimeConfig: {
-        mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+        mockifyerEnabled: process.env.MOCKIFYER_MODE === 'on',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
         mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
         maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,

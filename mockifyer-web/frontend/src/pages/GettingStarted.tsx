@@ -152,13 +152,13 @@ console.log(data);`} language="typescript" />
                 Environment Variable Gating
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Always gate Mockifyer initialization with <code className="bg-muted px-1 rounded">MOCKIFYER_ENABLED</code>. 
+                Always gate Mockifyer initialization with <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code>. 
                 This ensures Mockifyer code never executes unless explicitly enabled:
               </p>
               <CodeBlock code={`// src/lib/mockifyer.ts
 export function initializeMockifyer(): void {
   // Only initialize if explicitly enabled
-  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+  if (process.env.MOCKIFYER_MODE !== 'on') {
     return; // No initialization, no side effects
   }
   
@@ -169,7 +169,7 @@ export function initializeMockifyer(): void {
   });
 }`} language="typescript" />
               <p className="text-sm text-muted-foreground mt-2">
-                <strong>Key Point:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_ENABLED</code> is not set, 
+                <strong>Key Point:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> is not set, 
                 Mockifyer code never runs. No HTTP client patching, no file system access, zero side effects.
               </p>
             </div>
@@ -187,7 +187,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Only initialize if enabled
-if (process.env.MOCKIFYER_ENABLED === 'true') {
+if (process.env.MOCKIFYER_MODE === 'on') {
   const { initializeMockifyer } = require('./lib/mockifyer');
   initializeMockifyer();
 }
@@ -206,13 +206,13 @@ import express from 'express';
                 Use different configurations per environment with <code className="bg-muted px-1 rounded">.env</code> files:
               </p>
               <CodeBlock code={`# .env.development
-MOCKIFYER_ENABLED=true
+MOCKIFYER_MODE=on
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_CLIENT_ID=web-dev
 
 # .env.test
-MOCKIFYER_ENABLED=true
+MOCKIFYER_MODE=on
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_CLIENT_ID=web-test
@@ -233,10 +233,10 @@ MOCKIFYER_CLIENT_ID=web-test
               <CodeBlock code={`{
   "scripts": {
     "dev": "NODE_ENV=development node src/index.ts",
-    "dev:mock": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false npm run dev",
-    "dev:record": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm run dev",
+    "dev:mock": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=false npm run dev",
+    "dev:record": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm run dev",
     "start": "NODE_ENV=production node src/index.ts",
-    "test": "MOCKIFYER_ENABLED=true jest"
+    "test": "MOCKIFYER_MODE=on jest"
   }
 }`} language="json" />
             </div>
@@ -248,7 +248,7 @@ MOCKIFYER_CLIENT_ID=web-test
               Production Safety Guarantees
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• <strong>No Code Execution:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_ENABLED</code> is not set, Mockifyer code never runs</li>
+              <li>• <strong>No Code Execution:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> is not set, Mockifyer code never runs</li>
               <li>• <strong>Runtime Safety:</strong> Conditional initialization prevents code execution and side effects when disabled</li>
               <li>• <strong>Explicit Opt-In:</strong> Must explicitly set environment variable to enable</li>
               <li>• <strong>Zero Side Effects:</strong> Early return means no HTTP client patching, no file system access</li>
@@ -290,7 +290,7 @@ import path from 'path';
 
 export function initializeMockifyer() {
   // Only initialize if explicitly enabled
-  if (process.env.MOCKIFYER_ENABLED !== 'true') {
+  if (process.env.MOCKIFYER_MODE !== 'on') {
     return null; // Return null when disabled
   }
 
@@ -306,7 +306,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Only initialize if enabled
-if (process.env.MOCKIFYER_ENABLED === 'true') {
+if (process.env.MOCKIFYER_MODE === 'on') {
   const { initializeMockifyer } = require('./lib/mockifyer');
   initializeMockifyer();
 }
@@ -314,12 +314,12 @@ if (process.env.MOCKIFYER_ENABLED === 'true') {
 import axios from 'axios';
 
 async function main() {
-  // Step 1: Record API responses (when MOCKIFYER_ENABLED=true and MOCKIFYER_RECORD=true)
+  // Step 1: Record API responses (when MOCKIFYER_MODE=on and MOCKIFYER_RECORD=true)
   const response1 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
   console.log('Response:', response1.data);
   // If recording enabled, file saved: mock-data/2025-11-23_10-53-52_GET_jsonplaceholder_typicode_com_posts_1.json
 
-  // Step 2: Use recorded mocks (when MOCKIFYER_ENABLED=true and MOCKIFYER_RECORD=false)
+  // Step 2: Use recorded mocks (when MOCKIFYER_MODE=on and MOCKIFYER_RECORD=false)
   const response2 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
   console.log('Response:', response2.data); // Same data, instant response!
 }
@@ -330,10 +330,10 @@ main();`} language="typescript" />
                 <div>
                   <h4 className="font-semibold mb-2">Usage</h4>
                   <CodeBlock code={`# Record mode (saves API responses)
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 
 # Mock mode (uses saved mocks)
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=false npm start
 
 # Production (Mockifyer disabled - normal API calls)
 npm start`} language="bash" />
@@ -372,19 +372,15 @@ module.exports = configureMetroForMockifyer(config);`} language="javascript" />
 import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
 
 export async function initializeMockifyer() {
-  // Only enable in development OR if explicitly enabled
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
-  
-  if (!isEnabled) {
-    return null; // Disabled in production builds
-  }
-
-  return await setupMockifyerForReactNative({
-    isDev: __DEV__, // Automatically false in production builds
+  const result = await setupMockifyerForReactNative({
+    isDev: __DEV__,
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode: __DEV__ && process.env.MOCKIFYER_RECORD === 'true',
   });
+  // result.status: 'not_activated' | 'active' | 'failed_no_bundled_mocks'
+  // 'not_activated' — set MOCKIFYER_MODE=on or pass Maestro mockifyerClientId (launch_client mode) on a later launch unless mode is off
+  return result;
 }
 
 // App.tsx
@@ -393,7 +389,11 @@ import { initializeMockifyer } from './mockifyer-setup';
 
 export default function App() {
   useEffect(() => {
-    initializeMockifyer();
+    initializeMockifyer().then((r) => {
+      if (r.status === 'active') {
+        // r.instance — reloadMockData, clearAllMocks, etc.
+      }
+    });
   }, []);
 
   // Your app code...
@@ -432,13 +432,13 @@ export default function App() {
               <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_ENABLED</code>
+                  <code className="bg-muted px-2 py-1 rounded text-sm font-mono">MOCKIFYER_MODE</code>
                   <Badge variant="outline">Required</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Enable or disable Mockifyer. Set to <code className="bg-muted px-1 rounded">true</code> to activate.
                 </p>
-                <CodeBlock code={`MOCKIFYER_ENABLED=true`} language="bash" className="mt-2" small />
+                <CodeBlock code={`MOCKIFYER_MODE=on`} language="bash" className="mt-2" small />
               </div>
             </div>
 
@@ -516,7 +516,7 @@ export default function App() {
           <div className="p-4 bg-muted rounded-md">
             <p className="text-sm font-semibold mb-2">Example .env file</p>
             <CodeBlock code={`# Mockifyer Configuration
-MOCKIFYER_ENABLED=true
+MOCKIFYER_MODE=on
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_RECORD=true
 
@@ -785,7 +785,7 @@ setupMockifyer({
           <div>
             <h4 className="font-semibold mb-2">Complete Workflow</h4>
             <CodeBlock code={`# 1. Record mocks with test generation enabled
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 
 # 2. Make API calls in your app
 # → Mocks saved

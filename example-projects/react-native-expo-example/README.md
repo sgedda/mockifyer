@@ -183,13 +183,14 @@ This project uses the **Simplified Setup** (✅ Active):
 import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
 
 export async function initializeMockifyer() {
-  return await setupMockifyerForReactNative({
+  return setupMockifyerForReactNative({
     isDev: __DEV__, // Pass React Native's __DEV__ variable
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode: process.env.MOCKIFYER_RECORD === 'true',
   });
 }
+// Resolved value: { status, instance } — see REACT_NATIVE.md
 ```
 
 **Note:** The `isDev` parameter is required and should be passed from your application code. This keeps the package framework-agnostic and gives you full control over dev/prod detection.
@@ -238,7 +239,7 @@ The app demonstrates fetching:
 
 ## Environment Variables
 
-- `MOCKIFYER_ENABLED=true` - Enable Mockifyer (default: enabled in `__DEV__`)
+- `MOCKIFYER_MODE=on` - Enable Mockifyer (default: enabled in `__DEV__`)
 - `MOCKIFYER_RECORD=true` - Enable recording mode (development only)
 
 ## Troubleshooting

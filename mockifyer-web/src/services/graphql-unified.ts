@@ -43,7 +43,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
     clientType,
     scope,
     mockDataPath,
-    mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+    mockEnabled: process.env.MOCKIFYER_MODE === 'on',
     mockRecord: process.env.MOCKIFYER_RECORD === 'true'
   });
 
@@ -67,7 +67,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
   }
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     if (config.useSimilarMatch === undefined && process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true') {
       config.useSimilarMatch = true;
@@ -126,7 +126,7 @@ function getHTTPClient(clientType: 'axios' | 'fetch'): HTTPClient {
   };
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     if (config.useSimilarMatch === undefined && process.env.MOCKIFYER_USE_SIMILAR_MATCH === 'true') {
       config.useSimilarMatch = true;
@@ -304,7 +304,7 @@ export async function executeQueryUnified<T = any>(
       hasVariables: !!variables,
       clientType,
       scope,
-      mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+      mockEnabled: process.env.MOCKIFYER_MODE === 'on',
       mockRecord: process.env.MOCKIFYER_RECORD === 'true'
     });
 
@@ -449,7 +449,7 @@ export async function executeQueryUnified<T = any>(
       message: error.message,
       status: error.response?.status,
       data: error.response?.data,
-      mockEnabled: process.env.MOCKIFYER_ENABLED,
+      mockEnabled: process.env.MOCKIFYER_MODE,
       mockRecord: process.env.MOCKIFYER_RECORD
     });
     throw new Error(`Failed to execute GraphQL query: ${error.message}`);
