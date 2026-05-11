@@ -1,3 +1,12 @@
+/**
+ * When Mockifyer applies mock lookup / recording to an outbound HTTP request.
+ *
+ * - **`always`** — Every request (default; historical behavior).
+ * - **`client_id_header`** — Only when the outbound request includes a non-empty `X-Mockifyer-Client-Id` header (propagate from another service or set manually, e.g. Postman).
+ * - **`off`** — Never; passthrough with no mock lookup and no recording.
+ */
+export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
+
 export interface MockifyerConfig {
   mockDataPath: string;
   /**
@@ -32,6 +41,18 @@ export interface MockifyerConfig {
   /** When true, throws an error if no mock data is found for a request. 
    * Note: This is automatically set to false when recordMode is true, as real API calls are needed for recording. */
   failOnMissingMock?: boolean;
+  /**
+   * When Mockifyer runs for each outbound HTTP call (mock replay, request limits, recording).
+   *
+   * | Mode | Behavior |
+   * |------|----------|
+   * | `always` (default) | All requests use Mockifyer (still subject to `excludedUrls` and internal bypasses). |
+   * | `client_id_header` | Only if the request has a **non-empty** `X-Mockifyer-Client-Id` header, **or** (fetch + dashboard proxy only) a configured `proxy.baseUrl` and resolved `clientId` so the lane is sent on the proxy envelope. |
+   * | `off` | Mockifyer does not intercept; plain HTTP. |
+   *
+   * Env **`MOCKIFYER_ACTIVATION_MODE`** overrides this when set to `always`, `client_id_header`, or `off`.
+   */
+  activationMode?: MockifyerActivationMode;
   useGlobalAxios?: boolean;
   /** When true and httpClientType is 'fetch', patches the global fetch function to use Mockifyer */
   useGlobalFetch?: boolean;
@@ -199,6 +220,8 @@ export const ENV_VARS = {
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',
   MOCK_USE_SIMILAR_MATCH: 'MOCKIFYER_USE_SIMILAR_MATCH',
-  MOCK_USE_SIMILAR_MATCH_CHECK_RESPONSE: 'MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE'
+  MOCK_USE_SIMILAR_MATCH_CHECK_RESPONSE: 'MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE',
+  /** `always` \| `client_id_header` \| `off` — see {@link MockifyerConfig.activationMode}. */
+  MOCK_ACTIVATION_MODE: 'MOCKIFYER_ACTIVATION_MODE'
 } as const;
 

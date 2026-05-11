@@ -16,6 +16,7 @@ export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
 export * from './utils/client-id';
 export * from './utils/launch-arguments-client-id';
+export * from './utils/activation-mode';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
