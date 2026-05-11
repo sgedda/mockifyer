@@ -490,10 +490,11 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Start server
+// Start server (bind 0.0.0.0 so PaaS health checks can reach the process)
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+  const host = process.env.HOST || '0.0.0.0';
+  app.listen(Number(port), host, () => {
+    console.log(`Server is running on ${host}:${port}`);
   });
 }
 
