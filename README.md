@@ -106,7 +106,7 @@ Priority: env vars → `setupMockifyer` config → system time.
 
 | Variable | Description |
 |----------|-------------|
-| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core) |
+| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |

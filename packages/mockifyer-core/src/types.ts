@@ -14,7 +14,7 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  * - **`on`** — always activate when the helper is called.
  * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`).
  *
- * Resolved from env **`MOCKIFYER_MODE`**, then optional `runtimeMode` in config / RN options (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
+ * Resolution: optional config **`runtimeMode`**, then env **`MOCKIFYER_MODE`**, else **`on`**. Set **`launch_client`** explicitly for E2E-only activation (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
  */
 export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
 
@@ -227,7 +227,7 @@ export interface MockData {
 
 // Environment variable names
 export const ENV_VARS = {
-  /** `off` \| `on` \| `launch_client` — React Native startup gate; see {@link MockifyerRuntimeMode}. */
+  /** `off` \| `on` \| `launch_client` — RN startup gate; unset defaults to **`on`** via {@link MockifyerRuntimeMode}. */
   MOCK_RUNTIME_MODE: 'MOCKIFYER_MODE',
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',

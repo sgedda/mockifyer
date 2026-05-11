@@ -25,7 +25,7 @@ export interface MockifyerInstance extends HTTPClient {
 /**
  * Outcome of {@link setupMockifyerForReactNative}.
  *
- * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane, etc.).
+ * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane).
  *   Not the same as “permanently off” unless mode is **`off`** (then launch args do not activate).
  * - **`active`** — Mockifyer initialized and patched `global.fetch`.
  * - **`failed_no_bundled_mocks`** — Activation criteria were met and `isDev` was false, but bundled mock data was missing or empty.
@@ -74,7 +74,7 @@ export interface ReactNativeMockifyerConfig {
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
    * Forwards to {@link MockifyerConfig.useLaunchArgumentsClientId} on the merged config passed to `setupMockifyer`.
    *
-   * If the launch argument is **set** (non-empty) for {@link launchArgumentClientIdKey}, the lane id is applied when Mockifyer activates (see **`runtimeMode`** / **`MOCKIFYER_MODE`**; with **`launch_client`** or default resolution, a set arg activates).
+   * If the launch argument is **set** (non-empty) for {@link launchArgumentClientIdKey}, the lane id is applied when Mockifyer activates (see **`runtimeMode`** / **`MOCKIFYER_MODE`**; with **`launch_client`**, a set arg is required to activate).
    */
   useLaunchArgumentsClientId?: boolean;
   /** Launch-argument key for the client lane id (default: `mockifyerClientId`). */
@@ -157,7 +157,7 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
  * ```typescript
  * import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
  *
- * // MOCKIFYER_MODE=on | launch_client | off — or Maestro launch mockifyerClientId when mode is launch_client (default).
+ * // MOCKIFYER_MODE=on | launch_client | off — default when unset is on; use launch_client for Maestro-only activation.
  * const result = await setupMockifyerForReactNative({
  *   isDev: __DEV__, // Selects Hybrid vs Memory provider once enabled
  *   mockDataPath: 'mock-data',
@@ -215,7 +215,7 @@ export async function setupMockifyerForReactNative(
       resolvedRuntimeMode === 'off'
         ? 'MOCKIFYER_MODE=off (or runtimeMode off) — launch args are ignored.'
         : resolvedRuntimeMode === 'launch_client'
-          ? 'MOCKIFYER_MODE=launch_client (default when unset) — pass mockifyerClientId via launch args, or set MOCKIFYER_MODE=on.'
+          ? 'MOCKIFYER_MODE=launch_client — pass mockifyerClientId via launch args, or set MOCKIFYER_MODE=on for always-on dev.'
           : 'Adjust MOCKIFYER_MODE / runtimeMode.';
     logger.info(`[Mockifyer] Not activated (${hint})`);
     return { status: 'not_activated', instance: null } as const;

@@ -11,7 +11,7 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 | **Development** (`isDev: true`) | **Hybrid** | Writes mocks to the **device** (Expo FileSystem) **and** to the **project** `mock-data` folder via Metro HTTP endpoints. |
 | **Production** (`isDev: false`) | **Memory** | Loads mocks from a **bundled** module (e.g. `assets/mock-data.ts`). |
 
-- **`MOCKIFYER_MODE`** (preferred) — **`on`** always activates when `setupMockifyerForReactNative` runs; **`launch_client`** activates only when Maestro/native launch **`mockifyerClientId`** is non-empty (this is the default when neither mode nor legacy env is set); **`off`** never activates (launch args ignored — use in store builds that must not run mocks). Aliases: `e2e` / `maestro` → `launch_client`, `disabled` → `off`, `enabled` → `on`.
+- **`MOCKIFYER_MODE`** (preferred) — **`on`** always activates when `setupMockifyerForReactNative` runs (**default when unset**); **`launch_client`** activates only when Maestro/native launch **`mockifyerClientId`** is non-empty (set explicitly for E2E-only runs); **`off`** never activates (launch args ignored — use in store builds that must not run mocks). Aliases: `e2e` / `maestro` → `launch_client`, `disabled` → `off`, `enabled` → `on`.
 - **`isDev` / `__DEV__` alone does not enable** Mockifyer (use **`MOCKIFYER_MODE`** or a launch-arg lane).
 - **Direct upstream `fetch`** (not the dashboard proxy POST) automatically adds **`X-Mockifyer-Client-Id`** / **`X-Mockifyer-Device-Id`** when missing, whenever Mockifyer has a resolved `clientId` / `deviceId` (same lane the library uses). Caller headers win if already set.
 - **Return value:** `setupMockifyerForReactNative` resolves to **`{ status, instance }`**. Use **`status`** instead of treating “no instance” as permanently disabled:
@@ -21,7 +21,7 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
 
-Example (local dev: **`MOCKIFYER_MODE=on`**; E2E: default **`launch_client`** + **`mockifyerClientId`** from Maestro):
+Example (local dev: unset or **`MOCKIFYER_MODE=on`**; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
 
 ```typescript
 import {

@@ -22,8 +22,8 @@ describe('resolveMockifyerRuntimeMode', () => {
     expect(resolveMockifyerRuntimeMode({})).toBe('launch_client');
   });
 
-  it('defaults to launch_client when unset', () => {
-    expect(resolveMockifyerRuntimeMode({})).toBe('launch_client');
+  it('defaults to on when unset', () => {
+    expect(resolveMockifyerRuntimeMode({})).toBe('on');
   });
 
   it('accepts aliases', () => {
