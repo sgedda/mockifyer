@@ -30,6 +30,9 @@ npx mockifyer-dashboard --port 8080
 
 # Don't open browser automatically
 npx mockifyer-dashboard --no-open
+
+# Serve under a URL prefix (e.g. /dashboard) — must match frontend build (see below)
+npx mockifyer-dashboard --base /dashboard
 ```
 
 ### Options
@@ -38,12 +41,36 @@ npx mockifyer-dashboard --no-open
 - `--port <port>` - Port to run dashboard on (default: 3002)
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
+- `--base <path>` - Mount the app under this URL path (default: `/`). Must match `VITE_MOCKIFYER_DASHBOARD_BASE` used when building the frontend.
 - `--provider <provider>` - Database provider type (currently only 'filesystem' supported)
 
 ### Environment Variables
 
 - `MOCKIFYER_PATH` - Path to mock data directory
 - `MOCKIFYER_DB_PROVIDER` - Database provider type
+- `MOCKIFYER_DASHBOARD_BASE` - Same as `--base` (e.g. `/dashboard`) for the standalone server
+
+### Subpath / embedding (e.g. `/dashboard`)
+
+Asset and API URLs are fixed at **frontend build time**. Default is root (`/`).
+
+1. **Build** the UI with a public base path (trailing slash optional; it is normalized):
+
+   ```bash
+   VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build
+   ```
+
+2. **Standalone CLI**: mount the server at the same path:
+
+   ```bash
+   MOCKIFYER_DASHBOARD_BASE=/dashboard npx mockifyer-dashboard
+   # or
+   npx mockifyer-dashboard --base /dashboard
+   ```
+
+3. **Embed in another Express app**: use the same built `public/` folder and `app.use('/dashboard', createServer(publicDir, mockDataPath, …))` with a matching build (`/dashboard/`).
+
+If the build uses `/` (default) but the server is only mounted at `/dashboard`, browsers will request `/assets/...` and `/api/...` at the host root and the UI will not load correctly.
 
 ## Features
 

@@ -52,6 +52,16 @@ The frontend automatically proxies API requests to the backend.
 
 ## Production Build
 
+### Build path prefix (optional)
+
+To serve the UI under a subpath (e.g. `/dashboard`), set **`VITE_MOCKIFYER_DASHBOARD_BASE`** when building the frontend (must match how you mount the Express app or the CLI `--base` / `MOCKIFYER_DASHBOARD_BASE`):
+
+```bash
+VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build
+```
+
+Default is `/` (root).
+
 ### Build Everything
 
 ```bash
