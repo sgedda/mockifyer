@@ -18,4 +18,6 @@ export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
 export * from './utils/client-id';
 export * from './utils/launch-arguments-client-id';
+export * from './utils/activation-mode';
+export * from './utils/runtime-mode';
 export * from './utils/mock-response-date-overrides';
