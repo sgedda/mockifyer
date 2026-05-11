@@ -39,7 +39,10 @@ import {
   mockPassesThroughToRealApi,
   resolveClientId,
   tryGetClientIdFromLaunchArguments,
-  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  resolveActivationMode,
+  shouldApplyMockifyer,
+  type MockifyerActivationMode,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -57,6 +60,7 @@ class MockifyerClass {
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
+  private readonly activationMode: MockifyerActivationMode;
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
@@ -127,7 +131,12 @@ class MockifyerClass {
       this.config.clientId = resolveClientId(this.config);
     }
     logger.info(`[Mockifyer-Fetch] clientId: ${this.config.clientId}`);
-    
+
+    this.activationMode = resolveActivationMode(this.config);
+    if (this.activationMode !== 'always') {
+      logger.info(`[Mockifyer-Fetch] activationMode: ${this.activationMode}`);
+    }
+
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
       this.testGenerator = new TestGenerator();
@@ -416,7 +425,16 @@ class MockifyerClass {
         (config as any).__mockifyer_bypass = true;
         return config;
       }
-      
+
+      if (
+        !shouldApplyMockifyer(this.activationMode, config.headers, {
+          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
+        })
+      ) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       // Normalize empty params: treat {} the same as undefined for consistent matching
       const rawParams = config.params || {};
       const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
@@ -524,7 +542,7 @@ class MockifyerClass {
         if ((response.config as any).__mockifyer_skip_save || (response.config as any).__mockifyer_bypass) {
           return response;
         }
-        
+
         // CRITICAL: Skip Mockifyer sync endpoints to prevent infinite loops
         // Check multiple ways to get the URL in case response.config is undefined
         const url = response.config?.url || response.request?.responseURL || response.url || (response as any).config?.url || '';

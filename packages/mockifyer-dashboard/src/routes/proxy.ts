@@ -1,7 +1,12 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
-import { generateRequestKey, getCurrentDate, prepareMockResponseBody } from '@sgedda/mockifyer-core';
+import {
+  generateRequestKey,
+  getCurrentDate,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  prepareMockResponseBody,
+} from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
 
 const router = express.Router();
@@ -171,6 +176,9 @@ router.post('/', async (req: Request, res: Response) => {
       // Avoid forwarding hop-by-hop headers; keep it minimal.
       if (k.toLowerCase() === 'host') continue;
       upstreamHeaders.set(k, v);
+    }
+    if (clientId) {
+      upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
 
     const init: RequestInit = {

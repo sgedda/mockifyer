@@ -1,5 +1,11 @@
 import { BaseHTTPClient } from '@sgedda/mockifyer-core';
 import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
+import {
+  getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_DEVICE_ID_HEADER,
+} from '@sgedda/mockifyer-core';
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
@@ -79,8 +85,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(this.clientId ? { 'x-mockifyer-client-id': this.clientId } : {}),
-          ...(this.deviceId ? { 'x-mockifyer-device-id': this.deviceId } : {}),
+          ...(this.clientId ? { [MOCKIFYER_CLIENT_ID_HEADER]: this.clientId } : {}),
+          ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
         },
         body: JSON.stringify({
           url,
@@ -131,6 +137,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         headers: responseHeaders,
         config,
       };
+    }
+
+    if (this.clientId && String(this.clientId).trim() && !getOutboundMockifyerClientIdHeader(headers)) {
+      headers.set(MOCKIFYER_CLIENT_ID_HEADER, String(this.clientId).trim());
+    }
+    if (this.deviceId && String(this.deviceId).trim() && !getOutboundMockifyerDeviceIdHeader(headers)) {
+      headers.set(MOCKIFYER_DEVICE_ID_HEADER, String(this.deviceId).trim());
     }
 
     const response = await fetchFn(url, requestConfig);

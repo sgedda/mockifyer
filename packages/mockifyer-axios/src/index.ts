@@ -7,7 +7,29 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions, checkRequestLimit, prepareMockResponseBody, getCurrentDate } from '@sgedda/mockifyer-core';
+import {
+  MockifyerConfig,
+  MockData,
+  StoredRequest,
+  StoredResponse,
+  initializeDateManipulation,
+  getCurrentScenario,
+  getScenarioFolderPath,
+  ensureScenarioFolder,
+  initializeScenario,
+  TestGenerator,
+  TestGenerationOptions,
+  checkRequestLimit,
+  prepareMockResponseBody,
+  getCurrentDate,
+  resolveActivationMode,
+  shouldApplyMockifyer,
+  type MockifyerActivationMode,
+  getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_DEVICE_ID_HEADER,
+} from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
@@ -27,6 +49,7 @@ class MockifyerClass {
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
+  private readonly activationMode: MockifyerActivationMode;
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
@@ -93,7 +116,12 @@ class MockifyerClass {
       this.config.clientId = resolveClientId(config);
     }
     console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
-    
+
+    this.activationMode = resolveActivationMode(this.config);
+    if (this.activationMode !== 'always') {
+      console.log(`[Mockifyer] activationMode: ${this.activationMode}`);
+    }
+
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
       this.testGenerator = new TestGenerator();
@@ -113,6 +141,33 @@ class MockifyerClass {
       this.setupMockResponses();
     } else {
       this.setupInterceptors();
+    }
+  }
+
+  private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
+    const lane = this.config.clientId?.trim();
+    if (lane && !getOutboundMockifyerClientIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_CLIENT_ID_HEADER] = lane;
+      }
+    }
+    const device = this.config.deviceId?.trim();
+    if (device && !getOutboundMockifyerDeviceIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_DEVICE_ID_HEADER, device);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_DEVICE_ID_HEADER] = device;
+      }
     }
   }
 
@@ -405,6 +460,13 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
+
       // Debug: Log what we receive in the interceptor
       console.log('[Mockifyer] 📥 Interceptor received config:', {
         method: config.method,
@@ -565,6 +627,13 @@ class MockifyerClass {
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
+
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {
         // CRITICAL: This log proves new code is running
@@ -938,6 +1007,10 @@ class MockifyerClass {
     if (!this.config.useGlobalAxios) {
       this.httpClient.interceptors.response.use(
       (response) => {
+        if ((response.config as any).__mockifyer_bypass) {
+          return response;
+        }
+
         console.log('[Mockifyer] 🎯 Response interceptor called!', {
           url: response.config?.url,
           status: response.status,
@@ -1056,6 +1129,10 @@ class MockifyerClass {
         return response;
       },
       (error) => {
+        if ((error.config as any)?.__mockifyer_bypass) {
+          return Promise.reject(error);
+        }
+
         // CRITICAL: Clean up processingRequests after request fails
         // This prevents infinite loops when useGlobalFetch: true
         if (error.config) {
@@ -1196,6 +1273,10 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
+    if ((response.config as any)?.__mockifyer_bypass) {
+      return;
+    }
+
     // CRITICAL: Skip saving responses from Resend API
     const url = response.config?.url || '';
     if (url && url.includes('api.resend.com')) {
@@ -1617,6 +1698,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             });
             
             try {
+              if ((axiosResponse.config as any)?.__mockifyer_bypass) {
+                return axiosResponse;
+              }
+
               // CRITICAL: Clean up processingRequests after request completes
               const requestKey = (axiosResponse.config as any).__mockifyer_requestKey;
               if (requestKey) {
@@ -1736,6 +1821,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             }
           },
           async function(error: any) {
+            if ((error.config as any)?.__mockifyer_bypass) {
+              return Promise.reject(error);
+            }
+
             // CRITICAL: Clean up processingRequests after request fails
             if (error.config) {
               const requestKey = (error.config as any).__mockifyer_requestKey;

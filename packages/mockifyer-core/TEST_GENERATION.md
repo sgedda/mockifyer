@@ -221,7 +221,7 @@ await setupMockifyer({
 
 ```bash
 # 1. Record mocks with test generation enabled
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 
 # 2. Make API calls in your app
 # → Mocks saved

@@ -48,7 +48,7 @@ setupMockifyer({
 });
 
 const response = await fetch('https://api.example.com/data');
-// Intercepted when MOCKIFYER_ENABLED=true and mocks exist / record mode configured
+// Intercepted when setupMockifyer ran (Node); RN uses MOCKIFYER_MODE — see REACT_NATIVE.md
 
 const currentDate = getCurrentDate();
 console.log(currentDate.toISOString()); // 2024-01-01T00:00:00.000Z
@@ -106,14 +106,53 @@ Priority: env vars → `setupMockifyer` config → system time.
 
 | Variable | Description |
 |----------|-------------|
-| `MOCKIFYER_ENABLED` | Master switch for mocking layer |
+| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-based fallback matching |
 | `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | Verify response when similar-matching |
+| `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` — when interceptors run (overrides `activationMode` in config) |
 
 See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
+
+## Activation modes (when interceptors run)
+
+Use `activationMode` on `setupMockifyer(...)` (or env **`MOCKIFYER_ACTIVATION_MODE`**) to control whether **each outbound request** goes through mock lookup and recording. Env wins over config when set to a valid value.
+
+| Mode | Behavior |
+|------|----------|
+| **`always`** (default) | Same as before: every request uses Mockifyer, subject to `excludedUrls` and built-in bypasses (e.g. Mockifyer Metro sync URLs). |
+| **`client_id_header`** | Mockifyer runs only when the outbound request carries a **non-empty** **`X-Mockifyer-Client-Id`** header. Omit the header for a normal real HTTP call; set it (or receive it from an upstream service) to opt that hop into mocks/recording. **Fetch + dashboard proxy:** if `proxy.baseUrl` is set and a **resolved `clientId`** exists, proxy traffic is treated as opted-in even when the inner URL headers do not repeat the field (the lane is sent on the proxy `POST`). |
+| **`off`** | Interceptors do not apply mock or record behavior; plain HTTP. |
+
+**Axios example (header-gated):**
+
+```typescript
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  activationMode: 'client_id_header',
+  recordMode: false,
+});
+
+// Bypasses Mockifyer (no header)
+await axios.get('https://api.example.com/health');
+
+// Uses Mockifyer for this request
+await axios.get('https://api.example.com/v1/profile', {
+  headers: { 'X-Mockifyer-Client-Id': 'ci-lane-eu-1' },
+});
+```
+
+**Fetch example:** same `activationMode: 'client_id_header'` in `setupMockifyer` from `@sgedda/mockifyer-fetch`; pass `headers: { 'X-Mockifyer-Client-Id': '<lane>' }` on `fetch` calls that should replay or record.
+
+**Multi-service flows:** have the caller set `X-Mockifyer-Client-Id` on HTTP requests to a downstream service that runs Mockifyer with `client_id_header`, so only traffic that is part of the mock/test graph is intercepted.
+
+**Dashboard proxy:** when the dashboard proxies to the real upstream, it sets **`X-Mockifyer-Client-Id`** on that upstream request when a lane `clientId` is resolved, so downstream APIs can apply the same rule. See [MULTI_CLIENT_ISOLATION.md](./MULTI_CLIENT_ISOLATION.md) for lane and proxy context.
+
+Implementation helpers (for custom middleware): `resolveActivationMode`, `shouldApplyMockifyer`, `getOutboundMockifyerClientIdHeader`, and `MOCKIFYER_CLIENT_ID_HEADER` are exported from `@sgedda/mockifyer-core`.
 
 ## Advanced testing
 

@@ -20,7 +20,7 @@ import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 import * as FileSystem from 'expo-file-system';
 
 export async function initializeMockifyer() {
-  if (__DEV__ && process.env.MOCKIFYER_ENABLED === 'true') {
+  if (__DEV__ && process.env.MOCKIFYER_MODE === 'on') {
     await setupMockifyer({
       mockDataPath: 'mock-data',
       databaseProvider: {
@@ -42,7 +42,7 @@ Run your app and make API calls. Mockifyer will save each response as a JSON fil
 
 ```bash
 # Start Metro with recording enabled
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true react-native start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true react-native start
 ```
 
 ### Step 3: Extract Recorded Files
@@ -149,7 +149,7 @@ Add to your `package.json`:
 {
   "scripts": {
     "dev": "react-native start",
-    "dev:record": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true react-native start",
+    "dev:record": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true react-native start",
     "generate:build-data": "ts-node scripts/generate-build-data.ts",
     "prebuild": "npm run generate:build-data",
     "build:ios": "npm run generate:build-data && react-native run-ios --configuration Release",
@@ -187,7 +187,7 @@ async function loadBundledMockData(): Promise<MockData[]> {
 }
 
 export async function initializeMockifyer() {
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
+  const isEnabled = process.env.MOCKIFYER_MODE === 'on' || __DEV__;
   if (!isEnabled) return;
 
   if (__DEV__) {

@@ -42,7 +42,7 @@ Railway offers a free tier with automatic deployments from GitHub.
      FOOTBALL_API_KEY=your_football_api_key_here
      PORT=3000
      NODE_ENV=production
-     MOCKIFYER_ENABLED=true
+     MOCKIFYER_MODE=on
      MOCKIFYER_RECORD=true  # Set to true initially to record mocks
      MOCKIFYER_PATH=/persisted/mock-data  # IMPORTANT: Set this to match your volume mount path
      # Optional but recommended: stable lane id for scenario separation (e.g. market+version)
@@ -137,7 +137,7 @@ If you prefer using GitHub Actions for deployment, you can use the workflow file
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Set to `production` for production
 - `GITHUB_TOKEN` - GitHub Personal Access Token with `read:packages` scope (required for GitHub Packages)
-- `MOCKIFYER_ENABLED` - Set to `true` to enable mockifyer
+- `MOCKIFYER_MODE` - Set to `on` to enable Mockifyer (Node/web; use `off` or `launch_client` as needed)
 - `MOCKIFYER_RECORD` - Set to `true` initially to record mocks, then `false` to use recorded mocks
 - `MOCKIFYER_PATH` - Path to mock data
   - On Railway: Set to `/persisted/mock-data` to match volume mount path
@@ -170,7 +170,7 @@ Visit the URL to see the web dashboard!
 - Make sure `WEATHER_API_KEY` is set
 
 ### Mock Data Not Working
-- Ensure `MOCKIFYER_ENABLED=true`
+- Ensure `MOCKIFYER_MODE=on`
 - Check that mock data files are included in the deployment
 - Verify `MOCKIFYER_PATH` is correct
 

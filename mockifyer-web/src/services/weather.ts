@@ -49,7 +49,7 @@ export class WeatherService {
       pathExists: require('fs').existsSync(mockDataPath)
     });
     
-    if (process.env.MOCKIFYER_ENABLED === 'true') {
+    if (process.env.MOCKIFYER_MODE === 'on') {
       this.httpClient = setupMockifyer({
         mockDataPath: mockDataPath,
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
@@ -70,7 +70,7 @@ export class WeatherService {
     console.log('[WeatherService] Initialized with:', {
       baseUrl: this.baseUrl,
       hasApiKey: !!this.apiKey,
-      mockEnabled: process.env.MOCKIFYER_ENABLED,
+      mockEnabled: process.env.MOCKIFYER_MODE,
       mockRecord: process.env.MOCKIFYER_RECORD,
       mockPath: process.env.MOCKIFYER_PATH,
       hasMockifyer: !!(this.httpClient as any).__mockifyer
@@ -82,7 +82,7 @@ export class WeatherService {
       console.log('[WeatherService] Making current weather request:', {
         url: `${this.baseUrl}/current.json`,
         city,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 
@@ -134,7 +134,7 @@ export class WeatherService {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD,
         config: error.config
       });
@@ -148,7 +148,7 @@ export class WeatherService {
         url: `${this.baseUrl}/forecast.json`,
         city,
         days,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 
@@ -192,7 +192,7 @@ export class WeatherService {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD,
         config: error.config
       });
