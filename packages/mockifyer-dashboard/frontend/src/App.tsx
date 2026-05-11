@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { useToast } from '@/components/ui/use-toast'
 import Dashboard from './components/Dashboard'
 import { getScenarioConfig } from './lib/api'
+import { getDashboardRouterBasename } from './lib/base-path'
 
 function App() {
   const [scenario, setScenario] = useState<string>('default')
@@ -38,7 +39,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getDashboardRouterBasename()}>
       <div className="min-h-screen bg-background">
         <Dashboard scenario={scenario} onScenarioChange={setScenario} />
         <Toaster />

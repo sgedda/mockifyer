@@ -1,6 +1,7 @@
 import type { MockFile, MockData, MockResponseDateOverride, Stats, ScenarioConfig } from '@/types'
+import { getApiBase } from '@/lib/base-path'
 
-const API_BASE = '/api'
+const API_BASE = getApiBase()
 
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }

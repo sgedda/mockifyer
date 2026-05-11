@@ -3,8 +3,10 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import open from 'open';
+import express from 'express';
 import { createServer } from './server';
 import { detectMockDataPath, detectProvider } from './utils/path-detector';
+import { normalizeExpressMountPath } from './utils/dashboard-base-path';
 import path from 'path';
 import fs from 'fs';
 
@@ -23,6 +25,10 @@ program
   .option(
     '--key-prefix <prefix>',
     'Redis key prefix (or use MOCKIFYER_REDIS_KEY_PREFIX env var; default: mockifyer:v1)'
+  )
+  .option(
+    '--base <path>',
+    'URL path to mount the dashboard (must match VITE_MOCKIFYER_DASHBOARD_BASE used at frontend build). Env: MOCKIFYER_DASHBOARD_BASE'
   )
   .parse(process.argv);
 
@@ -68,20 +74,40 @@ async function main() {
       process.exit(1);
     }
 
-    // Create and start server
-    const app = createServer(publicDir, mockDataPath, {
+    const mountPath = normalizeExpressMountPath(options.base ?? process.env.MOCKIFYER_DASHBOARD_BASE);
+
+    const innerApp = createServer(publicDir, mockDataPath, {
       provider,
       redisUrl,
       keyPrefix,
     });
+
+    const app =
+      mountPath === '/'
+        ? innerApp
+        : (() => {
+            const root = express();
+            root.get('/', (_req, res) => res.redirect(302, `${mountPath}/`));
+            root.use(mountPath, innerApp);
+            return root;
+          })();
+
     const port = parseInt(options.port, 10);
     const host = options.host;
+    const pathSuffix = mountPath === '/' ? '' : mountPath;
 
     const server = app.listen(port, host, () => {
-      const url = `http://${host}:${port}`;
+      const url = `http://${host}:${port}${pathSuffix}/`;
       
       console.log(chalk.green('\n✨ Mockifyer Dashboard is running!\n'));
       console.log(chalk.cyan(`   📊 Dashboard: ${chalk.bold(url)}`));
+      if (mountPath !== '/') {
+        console.log(
+          chalk.gray(
+            `   ℹ️  Mounted at ${chalk.bold(mountPath)} — build frontend with the same path (VITE_MOCKIFYER_DASHBOARD_BASE).`
+          )
+        );
+      }
       console.log(chalk.cyan(`   📁 Mock Data: ${chalk.bold(mockDataPath)}`));
       console.log(chalk.cyan(`   🔧 Provider: ${chalk.bold(provider)}\n`));
       if (provider === 'redis') {

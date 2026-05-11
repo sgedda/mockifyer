@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { getMocks } from '@/lib/api'
+import { getMocks, getMock } from '@/lib/api'
 import type { MockFile } from '@/types'
 import { Clock, List, Network, GitBranch } from 'lucide-react'
 
@@ -34,8 +34,7 @@ export default function Timeline({ scenario }: { scenario: string }) {
       const flowMocks = await Promise.all(
         data.files.map(async (file) => {
           try {
-            const response = await fetch(`/api/mocks/${file.filename}`)
-            const mockData = await response.json()
+            const mockData = await getMock(file.filename, scenario)
             return {
               ...file,
               sessionId: mockData.data?.sessionId || generateSessionId(file.modified),

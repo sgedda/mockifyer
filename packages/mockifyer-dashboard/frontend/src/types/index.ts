@@ -49,8 +49,15 @@ export interface MockData {
     }
     timestamp?: string
     duration?: number // Request duration in milliseconds
+    /** Alternate duration field from some recordings */
+    responseTime?: number
     scenario?: string
     sessionId?: string
+    requestId?: string
+    parentRequestId?: string
+    sequence?: number
+    source?: string
+    callStack?: string[]
     /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
     responseDateOverrides?: MockResponseDateOverride[]
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
