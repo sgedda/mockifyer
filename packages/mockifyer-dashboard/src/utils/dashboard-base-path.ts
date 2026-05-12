@@ -3,11 +3,15 @@
  * Build-time only (baked into `index.html` and chunk URLs).
  *
  * @param raw - Typically `process.env.VITE_MOCKIFYER_DASHBOARD_BASE`
- * @returns Vite-compatible `base`, e.g. `/` or `/dashboard/`
+ * @returns Vite-compatible `base`: default `./` (works at `/` or any mount like `/dashboard`),
+ *   `/` for root-absolute assets, or `/segment/` for a fixed subpath.
  */
 export function normalizeViteDashboardBase(raw?: string): string {
-  const trimmed = (raw ?? '/').trim();
-  if (trimmed === '' || trimmed === '/') {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '' || trimmed === '.' || trimmed === './') {
+    return './';
+  }
+  if (trimmed === '/') {
     return '/';
   }
   let segment = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;

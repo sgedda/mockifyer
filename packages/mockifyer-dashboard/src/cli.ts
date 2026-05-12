@@ -104,7 +104,7 @@ async function main() {
       if (mountPath !== '/') {
         console.log(
           chalk.gray(
-            `   ℹ️  Mounted at ${chalk.bold(mountPath)} — build frontend with the same path (VITE_MOCKIFYER_DASHBOARD_BASE).`
+            `   ℹ️  Mounted at ${chalk.bold(mountPath)} — default portable UI works here; only rebuild with VITE_MOCKIFYER_DASHBOARD_BASE if you use a fixed absolute base.`
           )
         );
       }

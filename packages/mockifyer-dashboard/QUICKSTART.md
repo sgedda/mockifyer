@@ -52,15 +52,12 @@ The frontend automatically proxies API requests to the backend.
 
 ## Production Build
 
-### Build path prefix (optional)
+### Vite base (optional)
 
-To serve the UI under a subpath (e.g. `/dashboard`), set **`VITE_MOCKIFYER_DASHBOARD_BASE`** when building the frontend (must match how you mount the Express app or the CLI `--base` / `MOCKIFYER_DASHBOARD_BASE`):
+By default, `npm run build` uses a **portable** base (`./`): the same `public/` works at **`/`** or under a mount like **`/dashboard`** without setting `VITE_MOCKIFYER_DASHBOARD_BASE`.
 
-```bash
-VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build
-```
-
-Default is `/` (root).
+- **Root-absolute** assets (legacy): `VITE_MOCKIFYER_DASHBOARD_BASE=/ npm run build`
+- **Fixed subpath** in the bundle: `VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build`
 
 ### Build Everything
 

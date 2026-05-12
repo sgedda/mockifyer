@@ -6,7 +6,7 @@ import { normalizeViteDashboardBase } from '../src/utils/dashboard-base-path'
 const base = normalizeViteDashboardBase(process.env.VITE_MOCKIFYER_DASHBOARD_BASE)
 
 function devApiProxy() {
-  if (base === '/') {
+  if (base === '/' || base === './') {
     return {
       '/api': {
         target: 'http://localhost:3002',
