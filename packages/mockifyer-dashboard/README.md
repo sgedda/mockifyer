@@ -70,6 +70,29 @@ app.use('/dashboard', createServer(publicDir, mockDataPath, config))
 
 Use the **`public/`** shipped with `npm install @sgedda/mockifyer-dashboard` (default portable build) unless you chose a fixed `VITE_*` base above.
 
+#### API Management / reverse proxies (extra path segments)
+
+If users reach the UI through a **gateway prefix** (e.g. Azure APIM: `/mobile-app/capp-graphql/preprd/v-2/dashboard/…`), the browser loads your JS from a URL like:
+
+`/mobile-app/capp-graphql/preprd/v-2/dashboard/assets/…`
+
+The portable build infers the **full** path before `/assets/` and calls APIs under that same prefix (e.g. `…/dashboard/api/...`).
+
+That only works if **your Node app actually mounts the dashboard at that full path**:
+
+```ts
+app.use(
+  '/mobile-app/capp-graphql/preprd/v-2/dashboard',
+  createServer(publicDir, mockDataPath, config)
+)
+```
+
+—or APIM (or another proxy) **rewrites** incoming URLs so the backend sees the path you did mount (e.g. strip the gateway prefix down to `/dashboard` **and** ensure HTML/JS are still served under URLs consistent with that, which is harder).
+
+If Express is mounted only at `/dashboard` while the public URL is longer, you get **404** on HTML, assets, or `/api` because the paths do not line up.
+
+Also ensure APIM routes **`…/dashboard/api/*`** to the same backend as the UI (not only `/graphql`).
+
 ## Features
 
 - 📁 **Browse Mock Files** - View all mock files with search and filtering
