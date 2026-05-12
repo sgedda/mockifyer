@@ -6,6 +6,7 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
 } from '@sgedda/mockifyer-core';
+import { joinProxyDashboardApiUrl } from '../utils/join-proxy-dashboard-api-url';
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
@@ -80,7 +81,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     
     // Proxy mode (e.g. React Native → dashboard → Redis)
     if (this.proxyBaseUrl) {
-      const proxyUrl = new URL('/api/proxy', this.proxyBaseUrl).toString();
+      const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
         headers: {
