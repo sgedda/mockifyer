@@ -90,3 +90,22 @@ export interface ScenarioConfig {
   availableScenarios: string[]
 }
 
+/** Scenario backup JSON (`formatVersion` 1) from Settings export or GET /api/scenario-config/export */
+export interface ScenarioBundleMockEntry {
+  relativePath: string
+  data: Record<string, unknown>
+}
+
+export interface ScenarioExportBundle {
+  formatVersion: 1
+  exportedAt: string
+  sourceScenario: string
+  dashboardProvider: 'filesystem' | 'sqlite' | 'redis'
+  mocks: ScenarioBundleMockEntry[]
+  dateManipulation: Record<string, unknown> | null
+  proxyConfig: {
+    recordOnMiss: boolean
+    allowUpstream: boolean
+  } | null
+}
+
