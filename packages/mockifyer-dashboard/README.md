@@ -41,7 +41,7 @@ npx mockifyer-dashboard --base /dashboard
 - `--port <port>` - Port to run dashboard on (default: 3002)
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
-- `--base <path>` - Mount the app under this URL path (default: `/`). Must match `VITE_MOCKIFYER_DASHBOARD_BASE` used when building the frontend.
+- `--base <path>` - Mount the app under this URL path (default: `/`). With the default **portable** UI build (`./`), the UI infers the mount for routing and `/api` from script URLs. If you built with a **fixed** `VITE_MOCKIFYER_DASHBOARD_BASE` (absolute path), that mount must match.
 - `--provider <provider>` - Database provider type (currently only 'filesystem' supported)
 
 ### Environment Variables
@@ -52,25 +52,23 @@ npx mockifyer-dashboard --base /dashboard
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
-Asset and API URLs are fixed at **frontend build time**. Default is root (`/`).
+The default UI build uses a **portable** Vite base (`./`): the same `public/` works at **`/`** or when mounted under **`/dashboard`** (no extra build for that path). The app infers the mount for React Router and `/api` from the main bundle script URL.
 
-1. **Build** the UI with a public base path (trailing slash optional; it is normalized):
+**Optional:** root-absolute assets — `VITE_MOCKIFYER_DASHBOARD_BASE=/ npm run build`. Fixed subpath in the bundle — e.g. `VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build` (mount Express at the same path).
 
-   ```bash
-   VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build
-   ```
+**Standalone CLI** under a prefix:
 
-2. **Standalone CLI**: mount the server at the same path:
+```bash
+npx mockifyer-dashboard --base /dashboard
+```
 
-   ```bash
-   MOCKIFYER_DASHBOARD_BASE=/dashboard npx mockifyer-dashboard
-   # or
-   npx mockifyer-dashboard --base /dashboard
-   ```
+**Embed** in another Express app:
 
-3. **Embed in another Express app**: use the same built `public/` folder and `app.use('/dashboard', createServer(publicDir, mockDataPath, …))` with a matching build (`/dashboard/`).
+```ts
+app.use('/dashboard', createServer(publicDir, mockDataPath, config))
+```
 
-If the build uses `/` (default) but the server is only mounted at `/dashboard`, browsers will request `/assets/...` and `/api/...` at the host root and the UI will not load correctly.
+Use the **`public/`** shipped with `npm install @sgedda/mockifyer-dashboard` (default portable build) unless you chose a fixed `VITE_*` base above.
 
 ## Features
 
