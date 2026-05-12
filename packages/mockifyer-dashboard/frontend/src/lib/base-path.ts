@@ -1,8 +1,25 @@
 /**
- * When Vite `base` is `./`, `import.meta.env.BASE_URL` is `./` and does not include the mount path.
- * Infer the Express mount prefix (e.g. `/dashboard`) from the loaded main bundle script URL.
+ * Infer Express mount prefix (e.g. `/dashboard`) from this module's emitted chunk URL.
+ * Vite/Rollup sets `import.meta.url` to the real file URL (e.g. `.../dashboard/assets/main-xxx.js`).
  */
-export function inferAppMountPrefix(): string {
+function inferAppMountPrefixFromImportMeta(): string {
+  try {
+    const u = new URL(import.meta.url);
+    const idx = u.pathname.indexOf('/assets/');
+    if (idx > 0) {
+      return u.pathname.slice(0, idx);
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+/**
+ * Fallback: infer from `<script src=".../assets/...">` when `import.meta.url` is not a network URL
+ * (e.g. some test runners) or does not contain `/assets/`.
+ */
+function inferAppMountPrefixFromDom(): string {
   if (typeof document === 'undefined') {
     return '';
   }
@@ -25,6 +42,11 @@ export function inferAppMountPrefix(): string {
   return '';
 }
 
+/** Mount prefix before `/assets/` (e.g. `/dashboard`), or `''` when served from site root. */
+export function inferAppMountPrefix(): string {
+  return inferAppMountPrefixFromImportMeta() || inferAppMountPrefixFromDom();
+}
+
 /**
  * Vite sets `import.meta.env.BASE_URL` from `base` in `vite.config.ts`
  * (e.g. `/`, `./`, or `/dashboard/`).
@@ -42,7 +64,10 @@ export function getDashboardRouterBasename(): string | undefined {
   return withoutTrailing === '' ? undefined : withoutTrailing;
 }
 
-/** Origin-relative API prefix (e.g. `/api` or `/dashboard/api`). */
+/**
+ * Origin path prefix for API calls (e.g. `/api` or `/dashboard/api`).
+ * With portable `base: './'`, mount is taken from the bundle URL so `/api` is never used incorrectly under a subpath.
+ */
 export function getApiBase(): string {
   const base = import.meta.env.BASE_URL;
   if (base === '/') {
