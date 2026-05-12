@@ -5,6 +5,7 @@
  * conditional provider selection (FileSystem in dev, Memory in prod)
  */
 
+import { joinProxyDashboardApiUrl } from './utils/join-proxy-dashboard-api-url';
 import { setupMockifyer } from './index';
 import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
 import {
@@ -100,7 +101,7 @@ async function canUseStrictRedisProxy(proxyBaseUrl?: string): Promise<boolean> {
   try {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
     const timeout = setTimeout(() => controller?.abort(), 800);
-    const url = new URL('/api/health', proxyBaseUrl).toString();
+    const url = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/health');
     const res = await fetch(url, { signal: controller?.signal });
     clearTimeout(timeout);
     if (!res.ok) return false;
