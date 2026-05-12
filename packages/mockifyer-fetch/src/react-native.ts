@@ -15,6 +15,11 @@ import {
   type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
+// React Native package-root resolution points at this entry. Keep the root
+// public API available for apps that import from '@sgedda/mockifyer-fetch'.
+export { setupMockifyer } from './index';
+export * from '@sgedda/mockifyer-core';
+
 // Re-export MockifyerInstance type to avoid circular dependency
 export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
