@@ -2,6 +2,12 @@ import express, { Request, Response } from 'express';
 import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import {
+  applyScenarioImport,
+  buildFilesystemScenarioBundle,
+  buildRedisScenarioBundle,
+  parseScenarioImportRequest,
+} from '../utils/scenario-bundle';
 import fs from 'fs';
 import path from 'path';
 
@@ -246,6 +252,117 @@ router.post('/create', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Create - Error:', error);
     res.status(500).json({ error: 'Failed to create scenario', details: error.message });
+  }
+});
+
+// Export scenario as JSON (mocks + optional date/proxy settings)
+router.get('/export', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const raw = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
+    const parsed = raw !== undefined && raw.trim() !== '' ? sanitizeScenarioName(raw) : null;
+    const scenario = parsed !== null ? (parsed.ok ? parsed.value : null) : null;
+    if (parsed !== null && !parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const effectiveScenario = scenario ?? getCurrentScenario(mockDataPath);
+
+    if (config.provider === 'redis') {
+      const bundle = await buildRedisScenarioBundle(
+        mockDataPath,
+        effectiveScenario,
+        config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        config.keyPrefix
+      );
+      return res.json(bundle);
+    }
+
+    const bundle = buildFilesystemScenarioBundle(
+      mockDataPath,
+      effectiveScenario,
+      config.provider === 'sqlite' ? 'sqlite' : 'filesystem'
+    );
+    return res.json(bundle);
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Export - Error:', error);
+    res.status(500).json({ error: 'Failed to export scenario', details: error.message });
+  }
+});
+
+// Import scenario from JSON (see SCENARIO_IMPORT_EXPORT.md)
+router.post('/import', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { meta, bundle, bundleHadDateKey, bundleHadProxyKey } = parseScenarioImportRequest(req.body);
+
+    const targetParsed = sanitizeScenarioName(meta.targetScenario ?? bundle.sourceScenario);
+    if (!targetParsed.ok) {
+      return res.status(400).json({ error: targetParsed.error });
+    }
+    const targetScenario = targetParsed.value;
+
+    let scenarios = listScenarios(mockDataPath);
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await store.listScenarios();
+        scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    if (!scenarios.includes(targetScenario)) {
+      createScenario(mockDataPath, targetScenario);
+      scenarios = Array.from(new Set([...scenarios, targetScenario])).sort();
+    }
+
+    const result = await applyScenarioImport({
+      mockDataPath,
+      targetScenario,
+      bundle,
+      replaceExistingMocks: meta.replaceExistingMocks,
+      applyDateConfig: meta.applyDateConfig,
+      bundleHadDateKey,
+      applyProxyConfig: meta.applyProxyConfig,
+      bundleHadProxyKey,
+      provider: config.provider,
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+      keyPrefix: config.keyPrefix,
+    });
+
+    let scenariosOut = listScenarios(mockDataPath);
+    if (config.provider === 'redis') {
+      const storeAfter = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const redisScenarios = await storeAfter.listScenarios();
+        scenariosOut = Array.from(new Set([...scenariosOut, ...redisScenarios])).sort();
+      } finally {
+        await storeAfter.close().catch(() => undefined);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Imported ${result.mocksWritten} mock(s) into "${targetScenario}"`,
+      targetScenario,
+      scenarios: scenariosOut,
+      mocksWritten: result.mocksWritten,
+      dateConfigApplied: result.dateConfigApplied,
+      proxyConfigApplied: result.proxyConfigApplied,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Import - Error:', error);
+    const status = /must|required|Unsupported|Invalid/i.test(error.message) ? 400 : 500;
+    res.status(status).json({ error: 'Failed to import scenario', details: error.message });
   }
 });
 

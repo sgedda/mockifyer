@@ -1,4 +1,11 @@
-import type { MockFile, MockData, MockResponseDateOverride, Stats, ScenarioConfig } from '@/types'
+import type {
+  MockFile,
+  MockData,
+  MockResponseDateOverride,
+  Stats,
+  ScenarioConfig,
+  ScenarioExportBundle,
+} from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
 const API_BASE = getApiBase()
@@ -179,6 +186,57 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
     currentScenario: data.currentScenario,
     availableScenarios: data.scenarios || []
   }
+}
+
+export async function exportScenarioBundle(scenario?: string): Promise<ScenarioExportBundle> {
+  const qs =
+    scenario !== undefined && scenario !== ''
+      ? `?scenario=${encodeURIComponent(scenario)}`
+      : ''
+  const response = await fetch(`${API_BASE}/scenario-config/export${qs}`, noStore)
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to export scenario')
+  }
+  return response.json()
+}
+
+export async function importScenarioBundle(payload: {
+  bundle: ScenarioExportBundle
+  targetScenario: string
+  replaceExistingMocks?: boolean
+  applyDateConfig?: boolean
+  applyProxyConfig?: boolean
+}): Promise<{
+  success: boolean
+  message: string
+  targetScenario: string
+  scenarios: string[]
+  mocksWritten: number
+  dateConfigApplied: boolean
+  proxyConfigApplied: boolean
+}> {
+  const body = {
+    ...payload.bundle,
+    targetScenario: payload.targetScenario,
+    replaceExistingMocks: payload.replaceExistingMocks ?? false,
+    applyDateConfig: payload.applyDateConfig !== false,
+    applyProxyConfig: payload.applyProxyConfig !== false,
+  }
+  const response = await fetch(`${API_BASE}/scenario-config/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(
+      (err as { details?: string }).details ||
+        (err as { error?: string }).error ||
+        'Failed to import scenario'
+    )
+  }
+  return response.json()
 }
 
 export interface ProxyConfig {

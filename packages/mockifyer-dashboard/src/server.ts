@@ -61,7 +61,7 @@ export function createServer(
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config, /api/proxy, /api/proxy-config, /api/client-lanes'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes'
   );
 
   // Serve static files from public directory (React build output)
