@@ -79,8 +79,10 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       console.warn('[FetchHTTPClient] _originalFetch not set! This may cause infinite loops if global fetch is patched.');
     }
     
+    const mockifyerBypassed = (config as any).__mockifyer_bypass === true;
+
     // Proxy mode (e.g. React Native → dashboard → Redis)
-    if (this.proxyBaseUrl) {
+    if (this.proxyBaseUrl && !mockifyerBypassed) {
       const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
