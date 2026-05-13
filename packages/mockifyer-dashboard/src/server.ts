@@ -11,8 +11,12 @@ import { clientLanesRouter } from './routes/client-lanes';
 import { proxyConfigRouter } from './routes/proxy-config';
 import type { DashboardContextConfig } from './utils/dashboard-context';
 
-/** Default express.json limit is 100kb — large GraphQL mocks exceed that (413 Payload Too Large). */
-const JSON_BODY_LIMIT = '50mb';
+/**
+ * Default express.json limit is 100kb — large scenario bundles (many mocks / GraphQL) exceed that (413).
+ * Override with MOCKIFYER_DASHBOARD_JSON_BODY_LIMIT (e.g. `100mb`, `200mb`).
+ */
+const JSON_BODY_LIMIT =
+  process.env.MOCKIFYER_DASHBOARD_JSON_BODY_LIMIT?.trim() || '50mb';
 
 export function createServer(
   publicDir: string,
