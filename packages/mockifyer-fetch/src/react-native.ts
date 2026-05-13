@@ -21,6 +21,8 @@ export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
 }
 
 /**

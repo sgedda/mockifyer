@@ -14,7 +14,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyBaseUrl?: string;
   private proxyScenario?: string;
   private proxyRecordOnMiss: boolean;
-  private clientId?: string;
+  private getClientId?: () => string | undefined;
+  private clientIdSnapshot?: string;
   private deviceId?: string;
 
   constructor(config?: {
@@ -22,6 +23,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     defaultHeaders?: Record<string, string>;
     proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean };
     clientId?: string;
+    getClientId?: () => string | undefined;
     deviceId?: string;
   }) {
     super();
@@ -30,8 +32,22 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
-    this.clientId = config?.clientId;
+    this.getClientId = config?.getClientId;
+    this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
+  }
+
+  private resolvedClientLane(): string | undefined {
+    if (this.getClientId) {
+      const v = this.getClientId();
+      if (v != null && String(v).trim() !== '') {
+        return String(v).trim();
+      }
+    }
+    if (this.clientIdSnapshot != null && String(this.clientIdSnapshot).trim() !== '') {
+      return String(this.clientIdSnapshot).trim();
+    }
+    return undefined;
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
@@ -79,6 +95,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       console.warn('[FetchHTTPClient] _originalFetch not set! This may cause infinite loops if global fetch is patched.');
     }
     
+    const lane = this.resolvedClientLane();
+
     // Proxy mode (e.g. React Native → dashboard → Redis)
     if (this.proxyBaseUrl) {
       const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
@@ -86,13 +104,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(this.clientId ? { [MOCKIFYER_CLIENT_ID_HEADER]: this.clientId } : {}),
+          ...(lane ? { [MOCKIFYER_CLIENT_ID_HEADER]: lane } : {}),
           ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
         },
         body: JSON.stringify({
           url,
           method: requestConfig.method,
-          clientId: this.clientId,
+          clientId: lane,
           deviceId: this.deviceId,
           headers: (() => {
             const out: Record<string, string> = {};
@@ -116,12 +134,12 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         const hash = typeof payload?.hash === 'string' ? payload.hash : '';
         if (source) {
           const hashShort = hash ? `${hash.slice(0, 8)}…` : '';
-          const lane = this.clientId ? this.clientId : '—';
+          const laneLabel = lane ? lane : '—';
           const kind = source === 'redis' ? 'mock hit' : 'upstream';
           console.log(
             `[Mockifyer-Fetch] Proxy ${kind}: ${requestConfig.method} ${url} ${
               hashShort ? `(hash=${hashShort}) ` : ''
-            }(lane=${lane})`
+            }(lane=${laneLabel})`
           );
         }
       } catch {
@@ -140,8 +158,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       };
     }
 
-    if (this.clientId && String(this.clientId).trim() && !getOutboundMockifyerClientIdHeader(headers)) {
-      headers.set(MOCKIFYER_CLIENT_ID_HEADER, String(this.clientId).trim());
+    if (lane && !getOutboundMockifyerClientIdHeader(headers)) {
+      headers.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
     }
     if (this.deviceId && String(this.deviceId).trim() && !getOutboundMockifyerDeviceIdHeader(headers)) {
       headers.set(MOCKIFYER_DEVICE_ID_HEADER, String(this.deviceId).trim());
