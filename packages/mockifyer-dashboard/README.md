@@ -65,10 +65,23 @@ npx mockifyer-dashboard --base /dashboard
 **Embed** in another Express app:
 
 ```ts
+import { createServer, getDashboardJsonBodyLimit } from '@sgedda/mockifyer-dashboard'
+
 app.use('/dashboard', createServer(publicDir, mockDataPath, config))
 ```
 
 Use the **`public/`** shipped with `npm install @sgedda/mockifyer-dashboard` (default portable build) unless you chose a fixed `VITE_*` base above.
+
+**413 on scenario import when embedding:** your host app’s `express.json()` runs **before** the mounted dashboard and still defaults to ~**100kb**. The dashboard’s own **50mb** limit never applies to that first parse. Either mount the dashboard **before** `app.use(express.json())`, or give the host the same limit, for example:
+
+```ts
+import express from 'express'
+import { createServer, getDashboardJsonBodyLimit } from '@sgedda/mockifyer-dashboard'
+
+const app = express()
+app.use(express.json({ limit: getDashboardJsonBodyLimit() }))
+app.use('/mockifyer', createServer(publicDir, mockDataPath, config))
+```
 
 ## Features
 
