@@ -21,7 +21,7 @@ export interface MockMatchingConfig {
 /**
  * Normalizes GraphQL query by removing extra whitespace and formatting
  */
-function normalizeGraphQLQuery(query: string): string {
+export function normalizeGraphQLQuery(query: string): string {
   if (!query) return '';
   // Remove extra whitespace, newlines, and normalize spacing
   return query.replace(/\s+/g, ' ').trim();

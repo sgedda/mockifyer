@@ -5,6 +5,7 @@ import type {
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
+  SimilarBodyGroupSummary,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -13,9 +14,25 @@ const API_BASE = getApiBase()
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
 
-export async function getMocks(scenario?: string): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
-  const url = scenario ? `${API_BASE}/mocks?scenario=${encodeURIComponent(scenario)}` : `${API_BASE}/mocks`
-  const response = await fetch(url, noStore)
+export async function getMocks(
+  scenario?: string,
+  opts?: { similarGroups?: boolean; similarThreshold?: number }
+): Promise<{
+  files: MockFile[]
+  mockDataPath: string
+  scenario: string
+  similarBodyGroups?: SimilarBodyGroupSummary[]
+}> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  if (opts?.similarGroups) {
+    qs.set('similarGroups', '1')
+    if (typeof opts.similarThreshold === 'number' && Number.isFinite(opts.similarThreshold)) {
+      qs.set('similarThreshold', String(opts.similarThreshold))
+    }
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const response = await fetch(`${API_BASE}/mocks${suffix}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }

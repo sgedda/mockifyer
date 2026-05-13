@@ -10,7 +10,7 @@ import Timeline from './Timeline'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
-import type { MockFile, MockData } from '@/types'
+import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +55,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [loadingMock, setLoadingMock] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const { toast } = useToast()
 
   useEffect(() => {
@@ -166,9 +167,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   async function loadMocks() {
     try {
       setLoading(true)
-      const data = await getMocks(scenario)
+      const data = await getMocks(scenario, { similarGroups: true })
       setMocks(data.files)
       setAllMocks(data.files)
+      setSimilarBodyGroups(data.similarBodyGroups ?? [])
     } catch (error) {
       toast({
         title: 'Error',
@@ -422,6 +424,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   <MockList
                     mocks={filteredMocks}
                     allMocks={allMocks}
+                    similarBodyGroups={similarBodyGroups}
                     scenario={scenario}
                     loading={loading}
                     loadingMock={loadingMock}

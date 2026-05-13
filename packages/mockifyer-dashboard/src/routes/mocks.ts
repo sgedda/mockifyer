@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
-import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, getScenarioFolderPath, buildSimilarMockGroups, MockListEntryForSimilarity } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 
@@ -89,6 +89,53 @@ function parseLimit(raw: unknown, fallback: number): number {
   return Math.max(1, Math.min(500, Math.floor(n)));
 }
 
+function parseSimilarGroupsQuery(raw: unknown): boolean {
+  if (typeof raw !== 'string') return false;
+  const s = raw.trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes';
+}
+
+function parseSimilarThresholdQuery(raw: unknown): number | undefined {
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(0.999, Math.max(0.5, n));
+}
+
+/**
+ * When `similarGroups=1`, clusters GraphQL mocks with the same URL, method, operation, and variables
+ * whose query documents differ only slightly (token Jaccard). Mutates each file with `similarBodyGroup`.
+ */
+function maybeAttachSimilarBodyGroups(files: any[], req: Request): { similarBodyGroups?: unknown[] } {
+  if (!parseSimilarGroupsQuery(req.query.similarGroups)) return {};
+  const threshold = parseSimilarThresholdQuery(req.query.similarThreshold);
+  const entries: MockListEntryForSimilarity[] = files.map((f) => ({
+    filename: String(f.filename),
+    endpoint: f.endpoint ?? null,
+    method: f.method ?? null,
+    graphqlInfo: f.graphqlInfo,
+  }));
+  const groups = buildSimilarMockGroups(entries, threshold !== undefined ? { threshold } : undefined);
+  const byFile = new Map<string, { id: string; size: number; minSimilarity: number }>();
+  for (const g of groups) {
+    for (const fn of g.filenames) {
+      byFile.set(fn, { id: g.id, size: g.filenames.length, minSimilarity: g.minSimilarity });
+    }
+  }
+  for (const f of files) {
+    f.similarBodyGroup = byFile.get(String(f.filename)) ?? null;
+  }
+  return {
+    similarBodyGroups: groups.map((g) => ({
+      id: g.id,
+      operationName: g.operationName ?? null,
+      minSimilarity: g.minSimilarity,
+      filenames: g.filenames,
+      size: g.filenames.length,
+    })),
+  };
+}
+
 // List all mock files (recursive)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -111,11 +158,15 @@ router.get('/', async (req: Request, res: Response) => {
 
             let endpoint: string | null = null;
             let graphqlInfo: any = null;
+            let method: string | null = null;
             let sessionId: string | null = null;
             let alwaysUseRealApi = false;
             const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
+              if (mockData.request?.method) {
+                method = String(mockData.request.method).toUpperCase();
+              }
               // Best-effort query params formatting, matching filesystem route behavior.
               if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
                 const params = new URLSearchParams();
@@ -145,6 +196,10 @@ router.get('/', async (req: Request, res: Response) => {
                 graphqlInfo = {
                   query: (parsedBody as any).query,
                   variables: (parsedBody as any).variables || null,
+                  operationName:
+                    typeof (parsedBody as any).operationName === 'string'
+                      ? (parsedBody as any).operationName
+                      : null,
                 };
               }
               sessionId = (mockData as any).sessionId || null;
@@ -162,6 +217,7 @@ router.get('/', async (req: Request, res: Response) => {
               created: ts.toISOString(),
               modified: ts.toISOString(),
               endpoint,
+              method,
               graphqlInfo,
               sessionId,
               alwaysUseRealApi,
@@ -170,7 +226,8 @@ router.get('/', async (req: Request, res: Response) => {
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-        return res.json({ files, mockDataPath, scenario });
+        const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+        return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
         console.error('[MocksRoute] Redis List - Error:', error);
         return res.status(500).json({ error: 'Failed to list Redis mocks', details: error.message });
@@ -182,7 +239,8 @@ router.get('/', async (req: Request, res: Response) => {
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
 
     if (!fs.existsSync(mockDataPath) || !fs.existsSync(scenarioPath)) {
-      return res.json({ files: [], mockDataPath, scenario });
+      const emptyFiles: any[] = [];
+      return res.json({ files: emptyFiles, mockDataPath, scenario, ...maybeAttachSimilarBodyGroups(emptyFiles, req) });
     }
 
     const files = getAllJsonFiles(scenarioPath)
@@ -192,6 +250,7 @@ router.get('/', async (req: Request, res: Response) => {
 
         let endpoint = null;
         let graphqlInfo = null;
+        let method: string | null = null;
         let sessionId = null;
         let alwaysUseRealApi = false;
         let hasResponseDateOverrides = false;
@@ -200,6 +259,9 @@ router.get('/', async (req: Request, res: Response) => {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
+          }
+          if (mockData.request?.method) {
+            method = String(mockData.request.method).toUpperCase();
           }
           if (mockData.alwaysUseRealApi === true) {
             alwaysUseRealApi = true;
@@ -217,7 +279,14 @@ router.get('/', async (req: Request, res: Response) => {
               try { bodyData = JSON.parse(bodyData); } catch { /* not JSON */ }
             }
             if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-              graphqlInfo = { query: bodyData.query, variables: bodyData.variables || null };
+              graphqlInfo = {
+                query: bodyData.query,
+                variables: bodyData.variables || null,
+                operationName:
+                  typeof (bodyData as any).operationName === 'string'
+                    ? (bodyData as any).operationName
+                    : null,
+              };
             }
           }
 
@@ -240,6 +309,7 @@ router.get('/', async (req: Request, res: Response) => {
           created: stats.birthtime,
           modified: stats.mtime,
           endpoint,
+          method,
           graphqlInfo,
           sessionId,
           alwaysUseRealApi,
@@ -249,7 +319,8 @@ router.get('/', async (req: Request, res: Response) => {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-    res.json({ files, mockDataPath, scenario });
+    const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+    res.json({ files, mockDataPath, scenario, ...similarExtras });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
     res.status(500).json({ error: 'Failed to list mock files', details: error.message });
