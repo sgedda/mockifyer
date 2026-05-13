@@ -191,8 +191,10 @@ router.post('/create', async (req: Request, res: Response) => {
       });
     }
 
-    // Create scenario folder for filesystem flows; for redis it is optional but harmless.
-    createScenario(mockDataPath, sanitized);
+    // Filesystem / sqlite: create on-disk scenario folder. Redis: scenarios materialize on first write — do not mkdir mockDataPath.
+    if (config.provider !== 'redis') {
+      createScenario(mockDataPath, sanitized);
+    }
 
     // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
     if (deriveFromScenario) {
@@ -317,7 +319,9 @@ router.post('/import', async (req: Request, res: Response) => {
     }
 
     if (!scenarios.includes(targetScenario)) {
-      createScenario(mockDataPath, targetScenario);
+      if (config.provider !== 'redis') {
+        createScenario(mockDataPath, targetScenario);
+      }
       scenarios = Array.from(new Set([...scenarios, targetScenario])).sort();
     }
 
