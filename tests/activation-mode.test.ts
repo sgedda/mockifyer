@@ -5,6 +5,10 @@ import {
   shouldApplyMockifyer,
   type MockifyerConfig,
 } from '@sgedda/mockifyer-core';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 describe('activation-mode', () => {
   const baseConfig: MockifyerConfig = {
@@ -71,5 +75,42 @@ describe('activation-mode', () => {
   it('shouldApplyMockifyer always and off', () => {
     expect(shouldApplyMockifyer('always', {})).toBe(true);
     expect(shouldApplyMockifyer('off', { 'x-mockifyer-client-id': 'x' })).toBe(false);
+  });
+
+  it('does not route through the dashboard proxy when activation mode is off', async () => {
+    const mockDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-activation-'));
+    const originalFetch = global.fetch;
+    delete (global as any).__mockifyer_original_fetch;
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      status: 204,
+      statusText: 'No Content',
+      headers: new Headers(),
+      text: async () => '',
+    } as Response);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const client = setupMockifyer({
+        mockDataPath,
+        recordMode: false,
+        activationMode: 'off',
+        useGlobalFetch: false,
+        proxy: {
+          baseUrl: 'http://dashboard.local/mockifyer',
+        },
+      });
+
+      const response = await client.get('https://api.example.com/items');
+
+      expect(response.status).toBe(204);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://api.example.com/items');
+      expect(fetchMock.mock.calls[0][1]?.method).toBe('GET');
+    } finally {
+      global.fetch = originalFetch;
+      delete (global as any).__mockifyer_original_fetch;
+      fs.rmSync(mockDataPath, { recursive: true, force: true });
+    }
   });
 });
