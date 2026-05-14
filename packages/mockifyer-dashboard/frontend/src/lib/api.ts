@@ -138,15 +138,24 @@ export async function setScenario(scenario: string): Promise<void> {
   }
 }
 
+export interface ClientLaneLastSeenResolved {
+  scenario: string
+  lastSeenAt: string
+  resolutionSource: 'body_override' | 'lane_redis' | 'global_redis' | 'filesystem_fallback'
+  clientBodyScenarioOverride: boolean
+}
+
 export interface ClientLane {
   clientId: string
   scenario: string
   note: string | null
+  lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
     count: number
     recent: Array<{
       deviceId: string
       lastSeenAt: string
+      lastSeenResolved?: ClientLaneLastSeenResolved | null
     }>
   }
 }

@@ -113,8 +113,11 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
           set an override here, that lane will read/write mocks under the selected scenario <em>without affecting other
-          builds</em>. The lane id must match what the app uses when initializing Mockifyer (typically via{' '}
-          <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or <span className="font-mono">MockifyerConfig.clientId</span>).
+          builds</em>. The lane id must match what the app uses when initializing Mockifyer (
+          typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
+          <span className="font-mono">MockifyerConfig.clientId</span>
+          ).
+          Last seen resolved is derived from proxied requests (approximate telemetry, not heartbeat-based).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -158,6 +161,22 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                     ))}
                   </select>
                 </div>
+                <div className="space-y-1 text-xs">
+                  <div className="text-muted-foreground font-medium text-[11px] uppercase tracking-wide">
+                    Last seen resolved
+                  </div>
+                  <div className="font-mono break-all">{lane.lastSeenResolved?.scenario ?? '—'}</div>
+                  {lane.lastSeenResolved?.lastSeenAt ? (
+                    <div className="text-muted-foreground">
+                      {new Date(lane.lastSeenResolved.lastSeenAt).toLocaleString()}
+                    </div>
+                  ) : (
+                    <div className="text-muted-foreground">No proxied requests recorded yet.</div>
+                  )}
+                  {lane.lastSeenResolved?.clientBodyScenarioOverride ? (
+                    <div className="text-amber-600 dark:text-amber-400">Client override</div>
+                  ) : null}
+                </div>
                 <div className="space-y-1">
                   <div className="text-xs text-muted-foreground">Note (optional)</div>
                   <Input
@@ -192,7 +211,20 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                             key={d.deviceId}
                             className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1"
                           >
-                            <div className="font-mono text-xs break-all">{d.deviceId}</div>
+                            <div className="flex min-w-[10rem] flex-col gap-0.5">
+                              <div className="font-mono text-xs break-all">{d.deviceId}</div>
+                              {d.lastSeenResolved?.scenario ? (
+                                <div className="text-[11px] text-muted-foreground">
+                                  Resolved:{' '}
+                                  <span className="font-mono text-foreground/90">{d.lastSeenResolved.scenario}</span>
+                                  {d.lastSeenResolved.clientBodyScenarioOverride ? (
+                                    <span className="text-amber-600 dark:text-amber-400"> · Client override</span>
+                                  ) : null}
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-muted-foreground">Last resolved: —</div>
+                              )}
+                            </div>
                             <div className="text-xs text-muted-foreground whitespace-nowrap">
                               {new Date(d.lastSeenAt).toLocaleString()}
                             </div>

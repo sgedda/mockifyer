@@ -16,7 +16,6 @@ function sha256Hex(input: string): string {
 }
 
 function deriveFallbackDeviceId(req: Request): string | undefined {
-  // Only derive when we have some reasonable entropy; keep it stable-ish per device/browser.
   const ip = req.ip || '';
   const ua = typeof req.header('user-agent') === 'string' ? String(req.header('user-agent')) : '';
   const raw = `${ip}|${ua}`.trim();
@@ -59,8 +58,8 @@ router.post('/', async (req: Request, res: Response) => {
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
   const upperMethod = String(method || 'GET').toUpperCase();
+  const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
-  // Build StoredRequest-like shape for request keying
   const storedRequest = {
     method: upperMethod,
     url,
@@ -79,53 +78,115 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   try {
-    // Best-effort lane discovery for dashboard UX (autocomplete). No effect if clientId is absent.
     if (clientId) {
       await store.recordLaneSeen(clientId).catch(() => undefined);
     }
-    // Best-effort device discovery for dashboard UX.
-    // If the SDK doesn't send a deviceId, we derive a stable-ish one so "devices seen" isn't stuck at 0.
     if (clientId && deviceId) await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
 
-    const resolvedScenario = await store.getResolvedScenario(
-      typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined,
-      clientId
-    );
+    const resolution = await store.resolveProxyScenario(bodyScenario, clientId);
 
-    const proxyConfig = await store.getProxyConfig(resolvedScenario);
-    let effectiveRecord =
-      typeof record === 'boolean' ? record : (proxyConfig?.recordOnMiss ?? true);
+    if (resolution.scenario !== null) {
+      await store
+        .recordProxyEffectiveObservation({
+          clientId: clientId || null,
+          deviceId: deviceId || null,
+          effectiveScenario: resolution.scenario,
+          resolutionSource: resolution.resolutionSource,
+          clientBodyScenarioOverride: resolution.hadBodyScenarioOverride,
+        })
+        .catch(() => undefined);
+    }
+
+    if (resolution.scenario === null) {
+      const effectiveAllowUpstream = typeof allowUpstream === 'boolean' ? allowUpstream : true;
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] strict lane unresolved — upstream passthrough (no mocks): ${upperMethod} ${url} (lane=${clientId || '—'})`
+        );
+      }
+      if (!effectiveAllowUpstream) {
+        return res.status(412).json({
+          proxied: false,
+          source: 'blocked_strict_lane',
+          hash,
+          clientId: clientId || null,
+          deviceId: deviceId || null,
+          error: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
+        });
+      }
+      const upstreamHeaders = new Headers();
+      for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
+        if (k.toLowerCase() === 'host') continue;
+        upstreamHeaders.set(k, v);
+      }
+      if (clientId) {
+        upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
+      }
+
+      const init: RequestInit = {
+        method: upperMethod,
+        headers: upstreamHeaders,
+      };
+
+      if (body !== undefined && body !== null && upperMethod !== 'GET' && upperMethod !== 'HEAD') {
+        init.body = typeof body === 'string' ? body : JSON.stringify(body);
+        if (!upstreamHeaders.has('content-type')) {
+          upstreamHeaders.set('content-type', 'application/json');
+        }
+      }
+
+      const upstreamRes = await fetch(url, init);
+      const contentType = upstreamRes.headers.get('content-type') || '';
+      const rawText = await upstreamRes.text();
+
+      let data: any = rawText;
+      if (contentType.includes('application/json')) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = rawText;
+        }
+      }
+
+      const responseHeaders: Record<string, string> = {};
+      upstreamRes.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      const response = {
+        status: upstreamRes.status,
+        data,
+        headers: responseHeaders,
+      };
+
+      return res.json({
+        proxied: true,
+        source: 'upstream_strict_lane_unresolved',
+        hash,
+        clientId: clientId || null,
+        deviceId: deviceId || null,
+        scenarioResolution: resolution,
+        response,
+      });
+    }
+
+    const resolvedScenarioName = resolution.scenario;
+
+    const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
+    let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
     const effectiveAllowUpstream =
-      typeof allowUpstream === 'boolean' ? allowUpstream : (proxyConfig?.allowUpstream ?? true);
+      typeof allowUpstream === 'boolean' ? allowUpstream : proxyConfig?.allowUpstream ?? true;
 
-    const redisDateDoc = await store.getDateConfig(resolvedScenario);
+    const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
     const getNow = () =>
       getCurrentDate({
         mockDataPath,
-        scenario: resolvedScenario,
-        // If the Redis key exists but dateManipulation is missing/null, treat it as an explicit "clear"
-        // so we do NOT fall back to filesystem date-config.json.
+        scenario: resolvedScenarioName,
         explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
       });
 
-    // 1) Try Redis hit
-    const mock = await store.getByHash(hash, scenario, clientId);
-    if (mock) {
-      // If this recording is marked as passthrough, do NOT serve it from Redis.
-      // Instead, force an upstream request (and never record that upstream response).
-      // This matches the filesystem provider behavior where `alwaysUseRealApi` means
-      // "skip this mock in replay mode".
-      if ((mock as any).alwaysUseRealApi === true) {
-        effectiveRecord = false;
-        if (debugProxy) {
-          console.log(
-            `[ProxyRoute] forced passthrough (alwaysUseRealApi): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
-          );
-        }
-      } else {
-      // Guardrail: some projects recorded responseDateOverrides with base='response', which can drift
-      // based on stale recorded timestamps even when "now" is correct. In Redis-proxy mode we want
-      // overrides to be relative to the current manipulated date.
+    const mock = await store.getByHashInScenario(hash, resolvedScenarioName);
+    if (mock && (mock as any).alwaysUseRealApi !== true) {
       const sanitizedMock: any =
         (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
           ? {
@@ -151,11 +212,18 @@ router.post('/', async (req: Request, res: Response) => {
         clientId: clientId || null,
         deviceId: deviceId || null,
         response: responseWithOverrides,
+        scenarioResolution: resolution,
       });
+    }
+    if (mock && (mock as any).alwaysUseRealApi === true) {
+      effectiveRecord = false;
+      if (debugProxy) {
+        console.log(
+          `[ProxyRoute] forced passthrough (alwaysUseRealApi): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+        );
       }
     }
 
-    // 2) Miss: proxy to real upstream
     if (!effectiveAllowUpstream) {
       if (debugProxy) {
         console.log(
@@ -169,11 +237,11 @@ router.post('/', async (req: Request, res: Response) => {
         clientId: clientId || null,
         deviceId: deviceId || null,
         error: 'Upstream calls are disabled for this scenario (offline mode).',
+        scenarioResolution: resolution,
       });
     }
     const upstreamHeaders = new Headers();
     for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-      // Avoid forwarding hop-by-hop headers; keep it minimal.
       if (k.toLowerCase() === 'host') continue;
       upstreamHeaders.set(k, v);
     }
@@ -187,7 +255,6 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     if (body !== undefined && body !== null && upperMethod !== 'GET' && upperMethod !== 'HEAD') {
-      // If already a string, send as-is; else JSON encode.
       init.body = typeof body === 'string' ? body : JSON.stringify(body);
       if (!upstreamHeaders.has('content-type')) {
         upstreamHeaders.set('content-type', 'application/json');
@@ -230,7 +297,7 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHash(hash, mockData as any, scenario, clientId);
+      await store.setByHashInScenario(hash, mockData as any, resolvedScenarioName);
     }
 
     if (debugProxy) {
@@ -244,6 +311,7 @@ router.post('/', async (req: Request, res: Response) => {
       hash,
       clientId: clientId || null,
       deviceId: deviceId || null,
+      scenarioResolution: resolution,
       response,
     });
   } catch (error: any) {
@@ -255,4 +323,3 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 export const proxyRouter = router;
-

@@ -109,11 +109,10 @@ router.post('/set', async (req: Request, res: Response) => {
       }
     }
 
-    // In redis mode, allow switching to a scenario even if it doesn't exist yet (created on first write).
+    // Filesystem/sqlite: create missing scenario folders on switch (mirror Redis switch-first UX).
     if (config.provider !== 'redis' && !scenarios.includes(sanitized)) {
-      return res.status(404).json({ 
-        error: `Scenario "${sanitized}" does not exist. Create it first.` 
-      });
+      createScenario(mockDataPath, sanitized);
+      scenarios = listScenarios(mockDataPath);
     }
 
     // Save scenario config:

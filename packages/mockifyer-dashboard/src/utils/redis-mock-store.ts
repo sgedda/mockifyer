@@ -8,12 +8,30 @@ export interface RedisMockStoreConfig {
   mockDataPath: string;
   /** ioredis options passthrough */
   redisOptions?: Record<string, unknown>;
+  /**
+   * When true: if the proxy request carries a non-empty **`clientId`** and no body **`scenario`** override,
+   * require **`client_scenario:{clientId}`** in Redis. If missing, do not serve or record mocks (upstream passthrough only).
+   *
+   * Defaults from **`MOCKIFYER_STRICT_LANE_SCENARIO`** (`true`|`1`|`yes`|`on`) when unset here.
+   */
+  strictLaneScenarioResolution?: boolean;
 }
 
 export interface RedisMockListItem {
   hash: string;
   mockData: MockData;
   redisKey: string;
+}
+
+/** How the dashboard proxy resolved the effective scenario name for Redis keys / date config / proxy settings. */
+export type ScenarioResolutionSource = 'body_override' | 'lane_redis' | 'global_redis' | 'filesystem_fallback';
+
+/** Observation record for `/api/client-lanes` (“last seen resolved”; not continuous heartbeats). */
+export interface LaneEffectiveObservation {
+  lastEffectiveScenario: string;
+  lastSeenAt: string;
+  resolutionSource: ScenarioResolutionSource;
+  clientBodyScenarioOverride: boolean;
 }
 
 function sha256Hex(input: string): string {
@@ -42,6 +60,8 @@ export class RedisMockStore {
   private readonly laneDeviceLastSeenZSetPrefix: string;
   private readonly scenarioRegistrySetKey: string;
   private readonly proxyConfigPrefix: string;
+  private readonly strictLaneScenarioResolution: boolean;
+  private static readonly EFFECTIVE_TTL_SEC = 60 * 60 * 24 * 14;
 
   constructor(config: RedisMockStoreConfig) {
     this.mockDataPath = config.mockDataPath;
@@ -53,6 +73,15 @@ export class RedisMockStore {
     this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
     this.proxyConfigPrefix = `${this.keyPrefix}:proxy_config:`;
     this.useCentralizedScenario = true;
+
+    if (config.strictLaneScenarioResolution !== undefined) {
+      this.strictLaneScenarioResolution = config.strictLaneScenarioResolution;
+    } else {
+      const raw =
+        typeof process !== 'undefined' ? String(process.env.MOCKIFYER_STRICT_LANE_SCENARIO || '').trim().toLowerCase() : '';
+      this.strictLaneScenarioResolution = raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+    }
+
 
     const RedisCtor = requireIoRedis();
     this.redis = new RedisCtor(config.redisUrl, {
@@ -67,6 +96,64 @@ export class RedisMockStore {
    */
   async getResolvedScenario(scenarioFromClient?: string, clientId?: string): Promise<string> {
     return this.scenarioKey(scenarioFromClient, clientId);
+  }
+
+  /**
+   * Dashboard `/api/proxy` resolution: body **`scenario`** → **`client_scenario:{clientId}`** → (**strict:** stop if lane missing)
+   * → **`active_scenario`** → filesystem **`getCurrentScenario`**.
+   */
+  async resolveProxyScenario(
+    scenarioOverride?: string,
+    clientId?: string
+  ): Promise<{
+    scenario: string | null;
+    resolutionSource: ScenarioResolutionSource;
+    hadBodyScenarioOverride: boolean;
+  }> {
+    const hadBodyScenarioOverride =
+      typeof scenarioOverride === 'string' && scenarioOverride.trim() !== '';
+
+    if (hadBodyScenarioOverride) {
+      return {
+        scenario: scenarioOverride!.trim(),
+        resolutionSource: 'body_override',
+        hadBodyScenarioOverride,
+      };
+    }
+
+    const laneId = typeof clientId === 'string' ? clientId.trim() : '';
+
+    if (this.useCentralizedScenario) {
+      if (laneId) {
+        const perClientKey = `${this.keyPrefix}:client_scenario:${laneId}`;
+        const perClientScenario = await this.redis.get(perClientKey);
+        if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
+          return {
+            scenario: perClientScenario.trim(),
+            resolutionSource: 'lane_redis',
+            hadBodyScenarioOverride: false,
+          };
+        }
+        if (this.strictLaneScenarioResolution) {
+          return { scenario: null, resolutionSource: 'lane_redis', hadBodyScenarioOverride: false };
+        }
+      }
+      const centralizedScenario = await this.redis.get(this.activeScenarioKey);
+      if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
+        return {
+          scenario: centralizedScenario.trim(),
+          resolutionSource: 'global_redis',
+          hadBodyScenarioOverride: false,
+        };
+      }
+    }
+
+    const fsScenario = getCurrentScenario(this.mockDataPath);
+    return {
+      scenario: fsScenario,
+      resolutionSource: 'filesystem_fallback',
+      hadBodyScenarioOverride: false,
+    };
   }
 
   private async scenarioKey(scenarioOverride?: string, clientId?: string): Promise<string> {
@@ -138,6 +225,18 @@ export class RedisMockStore {
     return JSON.parse(raw) as MockData;
   }
 
+  /**
+   * Read a mock when the effective scenario name is already resolved (proxy path after {@link resolveProxyScenario}).
+   */
+  async getByHashInScenario(hash: string, scenarioName: string): Promise<MockData | null> {
+    const id = scenarioName.trim();
+    if (!id) return null;
+    const key = `${this.keyPrefix}:mock:${id}:${hash}`;
+    const raw: string | null = await this.redis.get(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as MockData;
+  }
+
   /** Compute the canonical hash for a stored mock. */
   static hashForMock(mockData: MockData): string {
     const requestKey = generateRequestKey(mockData.request);
@@ -153,6 +252,17 @@ export class RedisMockStore {
     if (scenario) {
       await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
     }
+  }
+
+  /** Write mock into a known resolved scenario segment (dashboard proxy — avoids recomputing {@link scenarioKey}). */
+  async setByHashInScenario(hash: string, mockData: MockData, scenarioName: string): Promise<void> {
+    const id = scenarioName.trim();
+    if (!id) throw new Error('scenarioName is required');
+    const key = `${this.keyPrefix}:mock:${id}:${hash}`;
+    const indexKey = `${this.keyPrefix}:index:${id}`;
+    await this.redis.set(key, JSON.stringify(mockData));
+    await this.redis.sadd(indexKey, hash);
+    await this.redis.sadd(this.scenarioRegistrySetKey, id).catch(() => undefined);
   }
 
   async deleteByHash(hash: string, scenario?: string, clientId?: string): Promise<void> {
@@ -385,6 +495,7 @@ export class RedisMockStore {
       return;
     }
     await this.redis.set(key, scenario);
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
   }
 
   async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
@@ -417,6 +528,79 @@ export class RedisMockStore {
       return;
     }
     await this.redis.hset(this.laneNoteHashKey, id, note.trim());
+  }
+
+  private sanitizeObservationSegment(segment: string, maxLen: number): string {
+    const raw = segment.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const s = raw || '_';
+    return s.length <= maxLen ? s : s.slice(0, maxLen);
+  }
+
+  /**
+   * Best-effort telemetry: last effective scenario used by `/api/proxy` (14d TTL).
+   */
+  async recordProxyEffectiveObservation(input: {
+    clientId?: string | null;
+    deviceId?: string | null;
+    effectiveScenario: string;
+    resolutionSource: ScenarioResolutionSource;
+    clientBodyScenarioOverride: boolean;
+  }): Promise<void> {
+    const payload: LaneEffectiveObservation = {
+      lastEffectiveScenario: input.effectiveScenario,
+      lastSeenAt: new Date().toISOString(),
+      resolutionSource: input.resolutionSource,
+      clientBodyScenarioOverride: input.clientBodyScenarioOverride,
+    };
+    const ttl = RedisMockStore.EFFECTIVE_TTL_SEC;
+    try {
+      const lane = input.clientId && input.clientId.trim() ? input.clientId.trim() : '';
+      if (lane) {
+        const laneSeg = this.sanitizeObservationSegment(lane, 120);
+        const laneRedisKey = `${this.keyPrefix}:lane_last_resolved:${laneSeg}`;
+        await this.redis.set(laneRedisKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
+      }
+      const dev = input.deviceId && input.deviceId.trim() ? input.deviceId.trim() : '';
+      if (lane && dev) {
+        const laneSeg = this.sanitizeObservationSegment(lane, 120);
+        const devSeg = this.sanitizeObservationSegment(dev, 120);
+        const devKey = `${this.keyPrefix}:device_last_resolved:${laneSeg}:${devSeg}`;
+        await this.redis.set(devKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Read aggregated last proxy resolution for a lane (configured vs drift lives in dashboard UI). */
+  async readLaneLastResolved(clientId: string): Promise<LaneEffectiveObservation | null> {
+    const laneSeg = this.sanitizeObservationSegment(clientId, 120);
+    const laneRedisKey = `${this.keyPrefix}:lane_last_resolved:${laneSeg}`;
+    const raw = await this.redis.get(laneRedisKey);
+    if (!raw || typeof raw !== 'string') return null;
+    try {
+      const o = JSON.parse(raw) as LaneEffectiveObservation;
+      if (!o.lastEffectiveScenario || !o.lastSeenAt) return null;
+      return o;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Per-device sibling of {@link readLaneLastResolved}. */
+  async readDeviceLastResolved(clientId: string, deviceId: string): Promise<LaneEffectiveObservation | null> {
+    const laneSeg = this.sanitizeObservationSegment(clientId, 120);
+    const devSeg = this.sanitizeObservationSegment(deviceId, 120);
+    const devKey = `${this.keyPrefix}:device_last_resolved:${laneSeg}:${devSeg}`;
+    const raw = await this.redis.get(devKey);
+    if (!raw || typeof raw !== 'string') return null;
+    try {
+      const o = JSON.parse(raw) as LaneEffectiveObservation;
+      if (!o.lastEffectiveScenario || !o.lastSeenAt) return null;
+      return o;
+    } catch {
+      return null;
+    }
   }
 
   /**

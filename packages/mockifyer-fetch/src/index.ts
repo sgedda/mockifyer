@@ -42,6 +42,7 @@ import {
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   resolveActivationMode,
   shouldApplyMockifyer,
+  isExplicitProxyScenarioContext,
   type MockifyerActivationMode,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
@@ -433,6 +434,14 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
+      if (!isExplicitProxyScenarioContext(this.config)) {
+        logger.warn(
+          '[Mockifyer-Fetch] Strict proxy scenario: set clientId (lane) or proxy.scenario; passthrough HTTP for this request'
+        );
         (config as any).__mockifyer_bypass = true;
         return config;
       }

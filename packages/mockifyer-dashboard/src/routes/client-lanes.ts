@@ -27,14 +27,36 @@ router.get('/', async (req: Request, res: Response) => {
         lanes.map(async (lane) => {
           const devices = await store.listLaneDevices(lane.clientId, 10).catch(() => []);
           const deviceCount = await store.countLaneDevices(lane.clientId).catch(() => 0);
+          const laneEffective = await store.readLaneLastResolved(lane.clientId).catch(() => null);
           return {
             ...lane,
+            lastSeenResolved: laneEffective
+              ? {
+                  scenario: laneEffective.lastEffectiveScenario,
+                  lastSeenAt: laneEffective.lastSeenAt,
+                  resolutionSource: laneEffective.resolutionSource,
+                  clientBodyScenarioOverride: laneEffective.clientBodyScenarioOverride,
+                }
+              : null,
             devices: {
               count: deviceCount,
-              recent: devices.map((d) => ({
-                deviceId: d.deviceId,
-                lastSeenAt: new Date(d.lastSeenMs).toISOString(),
-              })),
+              recent: await Promise.all(
+                devices.map(async (d) => {
+                  const de = await store.readDeviceLastResolved(lane.clientId, d.deviceId).catch(() => null);
+                  return {
+                    deviceId: d.deviceId,
+                    lastSeenAt: new Date(d.lastSeenMs).toISOString(),
+                    lastSeenResolved: de
+                      ? {
+                          scenario: de.lastEffectiveScenario,
+                          lastSeenAt: de.lastSeenAt,
+                          resolutionSource: de.resolutionSource,
+                          clientBodyScenarioOverride: de.clientBodyScenarioOverride,
+                        }
+                      : null,
+                  };
+                })
+              ),
             },
           };
         })
