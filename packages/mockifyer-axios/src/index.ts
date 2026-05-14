@@ -1582,6 +1582,24 @@ class MockifyerClass {
   }
 
   /**
+   * Updates the logical client lane for subsequent requests (headers, scenario paths).
+   * Does not re-read native launch arguments or environment variables.
+   */
+  public setClientId(lane: string): void {
+    const t = String(lane).trim();
+    if (!t) {
+      throw new Error('[Mockifyer] setClientId requires a non-empty string');
+    }
+    this.config.clientId = t;
+    console.log(`[Mockifyer] clientId set to: ${t}`);
+  }
+
+  /** Current logical lane id (same value used for isolation). */
+  public getClientId(): string | undefined {
+    return this.config.clientId;
+  }
+
+  /**
    * Reload mock data from the filesystem
    * No-op since we don't use cache (files are read on each request)
    */
@@ -1602,6 +1620,8 @@ class MockifyerClass {
 export interface MockifyerInstance extends HTTPClient {
   reloadMockData: () => void;
   clearStaleCacheEntries: () => number;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -1929,7 +1949,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   const extendedClient = httpClient as MockifyerInstance;
   extendedClient.reloadMockData = () => mockifyer.reloadMockData();
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
-  
+  extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
+  extendedClient.getClientId = () => mockifyer.getClientId();
+
   console.log('[Mockifyer] setupMockifyer returning HTTP client:', {
     hasGet: typeof extendedClient.get === 'function',
     hasRequest: typeof extendedClient.request === 'function',

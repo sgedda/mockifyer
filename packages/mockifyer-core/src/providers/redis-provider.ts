@@ -17,6 +17,7 @@ function hashRequestKey(requestKey: string): string {
  * - `config.path`: Redis URL (default `redis://127.0.0.1:6379` or `MOCKIFYER_REDIS_URL`)
  * - `config.options.mockDataPath`: same as main Mockifyer `mockDataPath` (for scenario isolation)
  * - `config.options.keyPrefix`: Redis key prefix (default `mockifyer:v1`)
+ * - `config.options.getClientId`: optional live getter for the logical lane (mockifyer-fetch wires this when the lane can change at runtime)
  */
 export class RedisProvider implements DatabaseProvider {
   /** ioredis client (optional peer dependency). */
@@ -30,7 +31,10 @@ export class RedisProvider implements DatabaseProvider {
   private readonly redisUrl: string;
   private readonly activeScenarioKey: string;
   private readonly useCentralizedScenario: boolean;
-  private readonly clientId?: string;
+  /** When set (e.g. by mockifyer-fetch), called on each scenario/key resolution so lane can change at runtime. */
+  private readonly getClientId?: () => string | undefined;
+  /** Snapshot from `options.clientId` when no getter is provided. */
+  private readonly staticClientId?: string;
 
   constructor(config: DatabaseProviderConfig) {
     this.redisUrl =
@@ -40,7 +44,9 @@ export class RedisProvider implements DatabaseProvider {
     this.activeScenarioKey =
       (config.options?.activeScenarioKey as string) || `${this.keyPrefix}:active_scenario`;
     this.useCentralizedScenario = (config.options?.useCentralizedScenario as boolean) ?? true;
-    this.clientId = (config.options?.clientId as string | undefined) || undefined;
+    const opts = config.options || {};
+    this.getClientId = typeof opts.getClientId === 'function' ? (opts.getClientId as () => string | undefined) : undefined;
+    this.staticClientId = (opts.clientId as string | undefined) || undefined;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RedisCtor: any;
@@ -59,13 +65,28 @@ export class RedisProvider implements DatabaseProvider {
     });
   }
 
+  /** Current logical lane: live getter when configured, else static `options.clientId`. */
+  private resolvedClientLane(): string | undefined {
+    if (this.getClientId) {
+      const v = this.getClientId();
+      if (v != null && String(v).trim() !== '') {
+        return String(v).trim();
+      }
+    }
+    if (this.staticClientId != null && String(this.staticClientId).trim() !== '') {
+      return String(this.staticClientId).trim();
+    }
+    return undefined;
+  }
+
   private async scenarioKey(scenarioOverride?: string): Promise<string> {
     if (scenarioOverride) return scenarioOverride;
-    if (!this.useCentralizedScenario) return getCurrentScenario(this.mockDataPath, this.clientId);
+    const lane = this.resolvedClientLane();
+    if (!this.useCentralizedScenario) return getCurrentScenario(this.mockDataPath, lane);
 
     // Per-client override (lane) takes precedence over centralized global scenario.
-    if (this.clientId && this.clientId.trim()) {
-      const clientScenarioKey = `${this.keyPrefix}:client_scenario:${this.clientId.trim()}`;
+    if (lane) {
+      const clientScenarioKey = `${this.keyPrefix}:client_scenario:${lane}`;
       const clientScenario = await this.redis.get(clientScenarioKey);
       if (typeof clientScenario === 'string' && clientScenario.trim()) {
         return clientScenario.trim();
@@ -77,7 +98,7 @@ export class RedisProvider implements DatabaseProvider {
       return centralizedScenario.trim();
     }
 
-    return getCurrentScenario(this.mockDataPath, this.clientId);
+    return getCurrentScenario(this.mockDataPath, lane);
   }
 
   private async indexKey(scenarioOverride?: string): Promise<string> {

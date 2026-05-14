@@ -23,8 +23,10 @@ export interface MockifyerConfig {
   /**
    * Optional logical client lane identifier used for scenario isolation.
    *
-   * Preferred: set `process.env.MOCKIFYER_CLIENT_ID` in dev/CI (env should win).
+   * Preferred: set `process.env.MOCKIFYER_CLIENT_ID` in dev/CI (env should win at startup).
    * Fallback: set this field directly when env injection is not convenient.
+   * After `setupMockifyer`, you can call `setClientId(lane)` on the returned client to switch lanes at runtime
+   * (mockifyer-fetch and mockifyer-axios). Startup resolution is unchanged if you never call it.
    */
   clientId?: string;
   /**
@@ -138,7 +140,7 @@ export interface MockifyerConfig {
      * For Redis, defaults to `MOCKIFYER_REDIS_URL` or `redis://127.0.0.1:6379`.
      */
     path?: string;
-    /** Additional provider-specific options (e.g., metroPort for hybrid provider) */
+    /** Additional provider-specific options (e.g., metroPort for hybrid provider, getClientId for live lane updates with redis) */
     options?: Record<string, any>;
   };
   /** Test generation configuration */

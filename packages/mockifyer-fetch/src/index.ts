@@ -151,6 +151,7 @@ class MockifyerClass {
           mockDataPath:
             config.databaseProvider.options?.mockDataPath ?? config.mockDataPath,
           clientId: this.config.clientId,
+          getClientId: () => this.config.clientId,
         },
       };
       this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
@@ -172,6 +173,7 @@ class MockifyerClass {
       defaultHeaders: config.defaultHeaders,
       proxy: config.proxy,
       clientId: this.config.clientId,
+      getClientId: () => this.config.clientId,
       deviceId: (this.config as any).deviceId,
     });
     
@@ -980,6 +982,24 @@ class MockifyerClass {
     return anonymized;
   }
 
+  /**
+   * Updates the logical client lane for subsequent requests (headers, proxy envelope, scenario paths, Redis).
+   * Does not re-read native launch arguments or environment variables.
+   */
+  setClientId(lane: string): void {
+    const t = String(lane).trim();
+    if (!t) {
+      throw new Error('[Mockifyer-Fetch] setClientId requires a non-empty string');
+    }
+    this.config.clientId = t;
+    logger.info(`[Mockifyer-Fetch] clientId set to: ${t}`);
+  }
+
+  /** Current logical lane id (same value used for isolation). */
+  getClientId(): string | undefined {
+    return this.config.clientId;
+  }
+
   getHTTPClient(): HTTPClient {
     return this.httpClient;
   }
@@ -1020,6 +1040,8 @@ export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -1178,6 +1200,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
     await mockifyer.reloadMockData(syncFromProject);
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
+  extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
+  extendedClient.getClientId = () => mockifyer.getClientId();
   
   return extendedClient;
 }
