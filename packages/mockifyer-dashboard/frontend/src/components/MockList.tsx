@@ -8,13 +8,15 @@ import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
-import type { MockFile, MockData } from '@/types'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight } from 'lucide-react'
+import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2 } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
   /** Unfiltered mocks for the active scenario (used for "Recent" section). */
   allMocks: MockFile[]
+  /** Clusters of GraphQL mocks with nearly identical query documents (from GET /mocks?similarGroups=1). */
+  similarBodyGroups?: SimilarBodyGroupSummary[]
   /** Active scenario (same as mock list fetch); required for correct Redis/mock path on delete/duplicate. */
   scenario?: string
   loading: boolean
@@ -37,6 +39,7 @@ export default function MockList(props: MockListProps) {
 function MockListContent({
   mocks,
   allMocks,
+  similarBodyGroups = [],
   scenario,
   loading,
   loadingMock = false,
@@ -53,6 +56,7 @@ function MockListContent({
   const didAutoSwitchGroupBy = useRef(false)
   const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
+  const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
@@ -113,6 +117,19 @@ function MockListContent({
         variant: 'destructive',
       })
     }
+  }
+
+  function selectMockByFilename(filename: string) {
+    const hit = allMocks.find((m) => m.filename === filename) ?? mocks.find((m) => m.filename === filename)
+    if (hit) {
+      onSelectMock(hit)
+      return
+    }
+    toast({
+      title: 'Mock not in list',
+      description: `Could not find "${filename}" in the loaded scenario. Try clearing search or refreshing.`,
+      variant: 'destructive',
+    })
   }
 
   const { folderTree, hasFolders } = useMemo(() => {
@@ -222,6 +239,66 @@ function MockListContent({
                     onSelectMock={onSelectMock}
                     showActions={false}
                   />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && similarBodyGroups.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setSimilarClustersCollapsed((c) => !c)}
+              title={similarClustersCollapsed ? 'Expand similar bodies' : 'Collapse similar bodies'}
+            >
+              <div className="flex items-center gap-2">
+                {similarClustersCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <Link2 className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
+                <div className="text-sm font-medium">
+                  Near-duplicate GraphQL bodies{' '}
+                  <span className="text-xs text-muted-foreground">({similarBodyGroups.length} groups)</span>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">Same URL, method, op, variables — similar query text</div>
+            </button>
+            {!similarClustersCollapsed && (
+              <div className="space-y-3">
+                {similarBodyGroups.map((g) => (
+                  <div
+                    key={g.id}
+                    className="rounded-md border border-border/60 bg-muted/15 p-3 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{g.operationName || 'GraphQL'}</span>
+                      <span aria-hidden>·</span>
+                      <span>{g.size} mocks</span>
+                      <span aria-hidden>·</span>
+                      <span>min token overlap {(g.minSimilarity * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.filenames.map((fn) => (
+                        <Button
+                          key={fn}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 max-w-[min(100%,24rem)] truncate font-mono text-xs"
+                          title={fn}
+                          onClick={() => selectMockByFilename(fn)}
+                        >
+                          {fn.includes('/') ? fn.split('/').pop()! : fn}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             )}

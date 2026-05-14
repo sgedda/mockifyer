@@ -106,6 +106,15 @@ export function MockCard({
                   Overrides
                 </Badge>
               )}
+              {mock.similarBodyGroup && mock.similarBodyGroup.size >= 2 && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/15 text-amber-100"
+                  title={`Near-duplicate GraphQL query with ${mock.similarBodyGroup.size} mocks (min ${(mock.similarBodyGroup.minSimilarity * 100).toFixed(0)}% token overlap)`}
+                >
+                  Similar query ×{mock.similarBodyGroup.size}
+                </Badge>
+              )}
             </div>
           </div>
           {canShowActions && (

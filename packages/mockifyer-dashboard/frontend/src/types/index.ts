@@ -9,6 +9,14 @@ export interface MockResponseDateOverride {
   format?: 'iso' | 'unix-ms' | 'unix-s'
 }
 
+export interface SimilarBodyGroupSummary {
+  id: string
+  operationName: string | null
+  minSimilarity: number
+  filenames: string[]
+  size: number
+}
+
 export interface MockFile {
   filename: string
   filePath: string
@@ -21,6 +29,7 @@ export interface MockFile {
   graphqlInfo: {
     query: string
     variables: any
+    operationName?: string | null
   } | null
   sessionId: string | null
   hasResponseDateOverrides?: boolean
@@ -30,6 +39,11 @@ export interface MockFile {
   }>
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
+  /**
+   * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
+   * (same GraphQL op + variables + URL; high token overlap with other members).
+   */
+  similarBodyGroup?: { id: string; size: number; minSimilarity: number } | null
 }
 
 export interface MockData {

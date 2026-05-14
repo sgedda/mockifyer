@@ -3,6 +3,7 @@ export * from './types';
 export * from './types/http-client';
 export * from './clients/base-http-client';
 export * from './utils/mock-matcher';
+export * from './utils/mock-body-similarity';
 export * from './utils/date';
 export * from './utils/mock-response-date-overrides';
 export * from './utils/scenario';
