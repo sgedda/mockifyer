@@ -1,5 +1,8 @@
 # Mockifyer
 
+**Hosted site:** [mockifyer.up.railway.app](https://mockifyer.up.railway.app/) — public **playground / live demo** of the Mockifyer **dashboard**: explore the UI, how mocks and scenarios are presented, and the overall workflow **without cloning this repo**. It runs on Railway; the URL may change when a stable domain is set up. To **use Mockifyer in your own app**, install the npm packages below (the hosted app is for trying the product, not a hosted backend for your code).
+
+**Contact:** **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)) — [open an issue](https://github.com/sgedda/mockifyer/issues) for bugs and ideas, or a [pull request](https://github.com/sgedda/mockifyer/pulls) if you already have a change. General GitHub profile: [@sgedda](https://github.com/sgedda).
 
 API mocking and recording for **axios** and **fetch**, with date manipulation for tests. Mock data lives in your repo as JSON (per request/response), with optional **scenarios** and React Native / Expo support.
 Monorepo for **Mockifyer**: libraries for mocking and recording API calls, with special support for date manipulation in tests.
@@ -160,8 +163,16 @@ Combine Mockifyer (HTTP + dates) with [Sinon](https://sinonjs.org/) for spies/st
 
 ## Contributing
 
-Contributions welcome via Pull Request.
+Issues and pull requests are welcome — use the **Contact** links at the top of this README ([Issues](https://github.com/sgedda/mockifyer/issues), [PRs](https://github.com/sgedda/mockifyer/pulls)).
+
+## Maintainer
+
+**Mockifyer** is maintained by **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)). Prefer GitHub **[Issues](https://github.com/sgedda/mockifyer/issues)** and **[pull requests](https://github.com/sgedda/mockifyer/pulls)** so discussions stay searchable for everyone.
+
+## Trademark
+
+**Mockifyer** is the project **brand**. The [MIT License](LICENSE) grants permissions for the **software** in this repository; it does **not** grant rights to use the name **Mockifyer** in a way that implies affiliation, endorsement, or an official product without separate agreement.
 
 ## License
 
-MIT
+[MIT](LICENSE)

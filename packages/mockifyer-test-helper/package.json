@@ -14,7 +14,10 @@
     "test-helper",
     "auto-setup"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "dependencies": {
     "@sgedda/mockifyer-fetch": "file:../mockifyer-fetch",
