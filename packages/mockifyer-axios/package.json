@@ -24,7 +24,10 @@
     "intercept",
     "axios"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../mockifyer-core",

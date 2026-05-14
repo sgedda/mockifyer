@@ -33,7 +33,10 @@
     "http",
     "intercept"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "peerDependencies": {
     "ioredis": ">=5.0.0",
