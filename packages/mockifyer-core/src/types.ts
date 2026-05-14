@@ -94,10 +94,23 @@ export interface MockifyerConfig {
    * Set to `false` only if you explicitly want the legacy file-based date config fallback.
    */
   disableDateConfigFileFallback?: boolean;
+  /**
+   * Default scenario name before file-based defaults (see **`getCurrentScenario`** precedence table in docs).
+   * Same precedence as **`scenarios.default`**; **`defaultScenario`** wins when both are set.
+   *
+   * @example use when you prefer a flat config field rather than **`scenarios: { default: 'staging' }`**.
+   */
+  defaultScenario?: string;
   scenarios?: {
     default?: string;
     [key: string]: string | undefined;
   };
+  /**
+   * When true (or **`MOCKIFYER_STRICT_SCENARIO=true`**), and **`proxy.baseUrl`** is set, outbound traffic is not routed
+   * through Mockifyer until **`clientId`** (lane) or **`proxy.scenario`** is explicitly set — passthrough plain HTTP otherwise.
+   * See **`isExplicitProxyScenarioContext`** / **`resolveStrictScenarioResolution`** in **`@sgedda/mockifyer-core`**.
+   */
+  strictScenarioResolution?: boolean;
   requestMatching?: {
     headers?: string[];
     ignoreQueryParams?: string[];
@@ -241,6 +254,10 @@ export const ENV_VARS = {
   MOCK_USE_SIMILAR_MATCH: 'MOCKIFYER_USE_SIMILAR_MATCH',
   MOCK_USE_SIMILAR_MATCH_CHECK_RESPONSE: 'MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE',
   /** `always` \| `client_id_header` \| `off` — see {@link MockifyerConfig.activationMode}. */
-  MOCK_ACTIVATION_MODE: 'MOCKIFYER_ACTIVATION_MODE'
+  MOCK_ACTIVATION_MODE: 'MOCKIFYER_ACTIVATION_MODE',
+  /**
+   * **`true|false`** — overrides {@link MockifyerConfig.strictScenarioResolution} when set.
+   */
+  MOCK_STRICT_SCENARIO: 'MOCKIFYER_STRICT_SCENARIO'
 } as const;
 

@@ -110,11 +110,35 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
+| `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |
+| `MOCKIFYER_STRICT_LANE_SCENARIO` | Dashboard (**Redis**): **`true`/…** — `/api/proxy` requires **`client_scenario:{clientId}`** when **`clientId`** is present on the envelope (otherwise upstream passthrough, no mocks) |
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-based fallback matching |
 | `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | Verify response when similar-matching |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` — when interceptors run (overrides `activationMode` in config) |
 
+
 See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
+
+## Scenario name precedence
+
+### SDK / filesystem (`getCurrentScenario` — local mocks, fallbacks)
+
+| Priority | Source |
+| :--- | :--- |
+| 1 | **`MOCKIFYER_SCENARIO`** env |
+| 2 | **`MockifyerConfig.defaultScenario`** or **`scenarios.default`** ( **`defaultScenario`** wins when both are set ) |
+| 3 | **`scenario-config.json`** (preferred: **`scenario-config.{clientId}.json`** when that file exists ) |
+| 4 | **`default`** folder name |
+
+### Dashboard Redis **`/api/proxy`** (effective scenario used for mocks and recordings )
+
+Per proxied request: **`scenario`** in the POST body (**client override**) **→** **`client_scenario:{clientId}`** **→** Redis **`active_scenario`** **→** filesystem seed via **`getCurrentScenario`** on the dashboard.
+
+With **`MOCKIFYER_STRICT_LANE_SCENARIO`**: non-empty **`clientId`** plus missing lane mapping ⇒ upstream passthrough only (no Redis mock replay or recording).
+
+For optional app escape hatches (**`proxy.scenario`** SDK / proxy body **`scenario`**), **`last seen resolved`** in the Client Lanes UI can diverge from the configured lane scenario.
+
+
 
 ## Activation modes (when interceptors run)
 
