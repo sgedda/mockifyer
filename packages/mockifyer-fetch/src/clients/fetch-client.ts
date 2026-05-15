@@ -15,15 +15,17 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyScenario?: string;
   private proxyRecordOnMiss: boolean;
   private getClientId?: () => string | undefined;
+  private getStrictLaneScenario?: () => boolean;
   private clientIdSnapshot?: string;
   private deviceId?: string;
 
   constructor(config?: {
     baseUrl?: string;
     defaultHeaders?: Record<string, string>;
-    proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean };
+    proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean; strictLaneScenario?: boolean };
     clientId?: string;
     getClientId?: () => string | undefined;
+    getStrictLaneScenario?: () => boolean;
     deviceId?: string;
   }) {
     super();
@@ -33,6 +35,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
     this.getClientId = config?.getClientId;
+    this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
   }
@@ -122,6 +125,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           body: config.data ?? null,
           scenario: this.proxyScenario,
           record: this.proxyRecordOnMiss,
+          strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
         }),
       });
       if (!proxyResponse.ok) {

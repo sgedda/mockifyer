@@ -38,7 +38,9 @@ import {
   shouldExcludeUrl,
   mockPassesThroughToRealApi,
   resolveClientId,
+  resolveProxyStrictLaneScenario,
   registerMockifyerInstance,
+  logMockifyerInitSummary,
   tryGetClientIdFromLaunchArguments,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   resolveActivationMode,
@@ -132,12 +134,7 @@ class MockifyerClass {
     } else {
       this.config.clientId = resolveClientId(this.config);
     }
-    logger.info(`[Mockifyer-Fetch] clientId: ${this.config.clientId}`);
-
     this.activationMode = resolveActivationMode(this.config);
-    if (this.activationMode !== 'always') {
-      logger.info(`[Mockifyer-Fetch] activationMode: ${this.activationMode}`);
-    }
 
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
@@ -170,12 +167,13 @@ class MockifyerClass {
     }
     
     // Create fetch HTTP client
-    this.httpClient = new FetchHTTPClient({ 
-      baseUrl: config.baseUrl, 
+    this.httpClient = new FetchHTTPClient({
+      baseUrl: config.baseUrl,
       defaultHeaders: config.defaultHeaders,
       proxy: config.proxy,
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
+      getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
       deviceId: (this.config as any).deviceId,
     });
     
@@ -187,6 +185,11 @@ class MockifyerClass {
     
     // Set up response interceptor to save responses when recordMode is enabled
     this.setupResponseInterceptor();
+
+    logMockifyerInitSummary(this.config, {
+      runtimeMode: this.config.runtimeMode,
+      headline: this.config.initLog?.headline,
+    });
   }
 
   private ensureMockDataDirectory(): void {

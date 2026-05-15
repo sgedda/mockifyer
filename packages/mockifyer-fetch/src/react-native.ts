@@ -13,6 +13,7 @@ import {
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   tryGetClientIdFromLaunchArguments,
   resolveMockifyerRuntimeMode,
+  logMockifyerNotActivated,
   type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
@@ -210,24 +211,20 @@ export async function setupMockifyerForReactNative(
       : {}),
   };
 
+  const devInitHeadline = (strictProxy: boolean) =>
+    strictProxy
+      ? 'React Native dev · dashboard Redis proxy'
+      : 'React Native dev · hybrid (device + Metro)';
+
   const isEnabled =
     resolvedRuntimeMode === 'on' ||
     (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
   if (!isEnabled) {
-    const hint =
-      resolvedRuntimeMode === 'off'
-        ? 'MOCKIFYER_MODE=off (or runtimeMode off) — launch args are ignored.'
-        : resolvedRuntimeMode === 'launch_client'
-          ? 'MOCKIFYER_MODE=launch_client — pass mockifyerClientId via launch args, or set MOCKIFYER_MODE=on for always-on dev.'
-          : 'Adjust MOCKIFYER_MODE / runtimeMode.';
-    logger.info(`[Mockifyer] Not activated (${hint})`);
+    logMockifyerNotActivated(resolvedRuntimeMode, {
+      launchClientIdKey,
+      hadLaunchClientId: Boolean(clientIdFromLaunchArgs),
+    });
     return { status: 'not_activated', instance: null } as const;
-  }
-
-  if (clientIdFromLaunchArgs && !useLaunchArgumentsClientId) {
-    logger.info(
-      `[Mockifyer] Enabled via launch argument "${launchClientIdKey}" (E2E lane "${clientIdFromLaunchArgs}")`
-    );
   }
 
   if (isDev === true) {
@@ -275,19 +272,11 @@ export async function setupMockifyerForReactNative(
         ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
       ...mergedConfig,
+      initLog: { headline: mergedConfig.initLog?.headline ?? devInitHeadline(strictProxyEnabled) },
     });
 
-    if (strictProxyEnabled) {
-      logger.info('[Mockifyer] Development mode: Strict proxy enabled (dashboard Redis is healthy) — local mocks disabled');
-    } else {
-      logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
-      logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
-      logger.info(
-        `[Mockifyer] Project→device sync: /mockifyer-sync-to-device-manifest + per-file fetch (on reloadMockData); Metro port ${metroPort}`
-      );
-    }
-    if (recordMode) {
-      logger.info('[Mockifyer] Recording mode enabled - new API responses will be saved');
+    if (!strictProxyEnabled) {
+      logger.info(`[Mockifyer] Metro: http://localhost:${metroPort}/mockifyer-save · scenario: /mockifyer-scenario-config`);
     }
 
     if (!strictProxyEnabled) {
@@ -332,9 +321,13 @@ export async function setupMockifyerForReactNative(
         ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
         : undefined,
       ...mergedConfig,
+      initLog: {
+        headline:
+          mergedConfig.initLog?.headline ??
+          `React Native production · ${mockDataArray.length} bundled mock(s)`,
+      },
     });
 
-    logger.info(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
     return { status: 'active', instance } as const;
   }
 }

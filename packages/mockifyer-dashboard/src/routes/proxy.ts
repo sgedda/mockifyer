@@ -41,7 +41,20 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
   }
 
-  const { url, method, headers, body, scenario, record, allowUpstream, clientId: clientIdFromBody, deviceId: deviceIdFromBody } = req.body || {};
+  const {
+    url,
+    method,
+    headers,
+    body,
+    scenario,
+    record,
+    allowUpstream,
+    clientId: clientIdFromBody,
+    deviceId: deviceIdFromBody,
+    strictLaneScenario: strictLaneScenarioFromBody,
+  } = req.body || {};
+  const requestStrictLane =
+    typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
@@ -83,7 +96,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
     if (clientId && deviceId) await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
 
-    const resolution = await store.resolveProxyScenario(bodyScenario, clientId);
+    const resolution = await store.resolveProxyScenario(bodyScenario, clientId, {
+      strictLaneScenario: requestStrictLane,
+    });
 
     if (resolution.scenario !== null) {
       await store
