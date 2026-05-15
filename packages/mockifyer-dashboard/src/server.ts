@@ -10,6 +10,10 @@ import { proxyRouter } from './routes/proxy';
 import { clientLanesRouter } from './routes/client-lanes';
 import { proxyConfigRouter } from './routes/proxy-config';
 import type { DashboardContextConfig } from './utils/dashboard-context';
+import {
+  createDashboardBasicAuthMiddleware,
+  resolveDashboardBasicAuth,
+} from './middleware/optional-basic-auth';
 
 /**
  * Same limit string the dashboard uses for `express.json` / `urlencoded` (env
@@ -42,6 +46,14 @@ export function createServer(
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });
+
+  const basicAuthCreds = resolveDashboardBasicAuth(config);
+  if (basicAuthCreds) {
+    console.log(
+      '[Server] HTTP Basic Authentication enabled (GET/HEAD /api/health and OPTIONS requests stay unauthenticated).'
+    );
+    app.use(createDashboardBasicAuthMiddleware(basicAuthCreds));
+  }
 
   // Middleware
   const jsonBodyLimit = getDashboardJsonBodyLimit();
@@ -130,4 +142,6 @@ export function createServer(
 
   return app;
 }
+
+export type { DashboardContextConfig, DashboardBasicAuthCredentials } from './utils/dashboard-context';
 

@@ -42,6 +42,8 @@ npx mockifyer-dashboard --base /dashboard
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
 - `--base <path>` - Mount the app under this URL path (default: `/`). With the default **portable** UI build (`./`), the UI infers the mount for routing and `/api` from script URLs. If you built with a **fixed** `VITE_MOCKIFYER_DASHBOARD_BASE` (absolute path), that mount must match.
+- `--auth-user <user>` - Optional HTTP Basic Auth username (sets `MOCKIFYER_DASHBOARD_AUTH_USER`). Use with `--auth-password` or set the password via env; prefer env vars in production so the password is not visible in `ps`.
+- `--auth-password <password>` - Optional HTTP Basic Auth password (sets `MOCKIFYER_DASHBOARD_AUTH_PASSWORD`).
 - `--provider <provider>` - Database provider type (currently only 'filesystem' supported)
 
 ### Environment Variables
@@ -49,6 +51,12 @@ npx mockifyer-dashboard --base /dashboard
 - `MOCKIFYER_PATH` - Path to mock data directory
 - `MOCKIFYER_DB_PROVIDER` - Database provider type
 - `MOCKIFYER_DASHBOARD_BASE` - Same as `--base` (e.g. `/dashboard`) for the standalone server
+- `MOCKIFYER_DASHBOARD_AUTH_USER` - When set together with a non-empty `MOCKIFYER_DASHBOARD_AUTH_PASSWORD`, enables **HTTP Basic Auth** on the dashboard (static UI and `/api/*`). Omit either to leave auth disabled.
+- `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` - Password for Basic Auth. If `MOCKIFYER_DASHBOARD_AUTH_USER` is set but this is empty, auth stays disabled and a warning is logged.
+
+**Auth exceptions:** `OPTIONS` (for CORS preflight) and **`GET` / `HEAD` `/api/health`** are not challenged so probes can hit health without credentials.
+
+When **embedding** `createServer()`, you can pass `basicAuth: { username, password }` on the dashboard config instead of env vars (see `DashboardContextConfig` in the package types).
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
