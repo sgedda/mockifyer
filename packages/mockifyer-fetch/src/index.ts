@@ -51,6 +51,7 @@ import {
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
+import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -1220,6 +1221,171 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
 
   return extendedClient;
 }
+
+/** Drops `proxy` when merging partial config so filesystem fallback cannot accidentally keep proxy. */
+function omitProxyFromPartialConfig(config: Partial<MockifyerConfig>): Partial<MockifyerConfig> {
+  const { proxy: _drop, ...rest } = config;
+  void _drop;
+  return rest;
+}
+
+/** Options for {@link initMockifyerForDashboardProxy} — dashboard + `/api/proxy` (run `mockifyer-dashboard --provider redis`). */
+export interface InitMockifyerForDashboardProxyOptions {
+  /** mockifyer-dashboard origin (e.g. `http://localhost:3002`). Not the Redis URL. */
+  dashboardBaseUrl: string;
+  /** Mock root for scenario file fallbacks etc. Defaults `MOCKIFYER_PATH` env or `./mock-data`. */
+  mockDataPath?: string;
+  /** Client lane id (`X-Mockifyer-Client-Id` / proxy envelope). Defaults `MOCKIFYER_CLIENT_ID` env. */
+  clientId?: string;
+  deviceId?: string;
+  scenario?: string;
+  /**
+   * Proxy records on cache miss when the dashboard supports it (Redis).
+   * Defaults to `true` when `MOCKIFYER_RECORD=true`, else leaves dashboard/SDK defaults.
+   */
+  recordOnMiss?: boolean;
+  strictLaneScenario?: boolean;
+  useGlobalFetch?: boolean;
+  /** Use a local provider for mock hits before the proxy (default in-memory only) when **`/api/proxy`** is active. */
+  databaseProvider?: MockifyerConfig['databaseProvider'];
+  /** Additional `MockifyerConfig` fields — applied first, then preset fields win on `mockDataPath`, `proxy`, etc. */
+  config?: Partial<MockifyerConfig>;
+  /**
+   * When **`true`**, skips **`GET …/api/health`** and always sets **`proxy`**.
+   * Default **`false`**: if Redis is not healthy (or unreachable), omit **`proxy`** and use filesystem mocks + **`recordMode`** disk saves — aligns with **`setupMockifyerForReactNative`** dev fallback.
+   */
+  skipDashboardRedisHealthCheck?: boolean;
+}
+
+/**
+ * Preset: **`GET /api/health`** must report Redis ready before **`proxy`** is set; otherwise filesystem mocks without proxy (like RN Hybrid fallback vs strict proxy).
+ * Run **`mockifyer-dashboard --provider redis`** for the dashboard hop; use **`skipDashboardRedisHealthCheck`** to bypass the probe.
+ *
+ * For full control, use {@link setupMockifyer} directly.
+ */
+export async function initMockifyerForDashboardProxy(
+  options: InitMockifyerForDashboardProxyOptions
+): Promise<MockifyerInstance> {
+  const extra = options.config ?? {};
+  const dashboardBaseUrl = String(options.dashboardBaseUrl).trim();
+  if (!dashboardBaseUrl) {
+    throw new Error('initMockifyerForDashboardProxy: dashboardBaseUrl is required');
+  }
+
+  const mockDataPath =
+    options.mockDataPath ??
+    extra.mockDataPath ??
+    (typeof process !== 'undefined' && process.env?.MOCKIFYER_PATH
+      ? process.env.MOCKIFYER_PATH
+      : './mock-data');
+
+  const envRecord =
+    typeof process !== 'undefined' && process.env?.MOCKIFYER_RECORD === 'true';
+
+  const recordOnMiss =
+    options.recordOnMiss ??
+    extra.proxy?.recordOnMiss ??
+    (envRecord ? true : undefined);
+
+  const useRedisProxy =
+    options.skipDashboardRedisHealthCheck === true ||
+    (await canUseDashboardRedisProxy(dashboardBaseUrl));
+
+  if (!useRedisProxy) {
+    logger.warn(
+      `[Mockifyer] initMockifyerForDashboardProxy: "${dashboardBaseUrl}" did not report healthy Redis ` +
+        '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ' +
+        'Set skipDashboardRedisHealthCheck: true to force proxy anyway.'
+    );
+    const stripped = omitProxyFromPartialConfig(extra);
+    const fallbackDb = options.databaseProvider ?? extra.databaseProvider;
+    const mergedInitLogFs: MockifyerConfig['initLog'] = {
+      ...stripped.initLog,
+      headline:
+        stripped.initLog?.headline ??
+        '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)',
+    };
+    return setupMockifyer({
+      ...stripped,
+      mockDataPath,
+      ...(fallbackDb !== undefined ? { databaseProvider: fallbackDb } : {}),
+      useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
+      clientId: options.clientId ?? extra.clientId,
+      deviceId: options.deviceId ?? extra.deviceId,
+      initLog: mergedInitLogFs,
+    });
+  }
+
+  const upstreamProxy = extra.proxy as MockifyerConfig['proxy'] | undefined;
+  const mergedProxy = {
+    ...upstreamProxy,
+    baseUrl: upstreamProxy?.baseUrl ?? dashboardBaseUrl,
+    scenario:
+      options.scenario ??
+      upstreamProxy?.scenario ??
+      (typeof process !== 'undefined' && process.env?.MOCKIFYER_SCENARIO?.trim()
+        ? process.env.MOCKIFYER_SCENARIO.trim()
+        : undefined),
+    ...(typeof recordOnMiss === 'boolean' ? { recordOnMiss } : {}),
+  } as NonNullable<MockifyerConfig['proxy']>;
+  if (
+    options.strictLaneScenario !== undefined ||
+    upstreamProxy?.strictLaneScenario !== undefined
+  ) {
+    mergedProxy.strictLaneScenario =
+      options.strictLaneScenario ?? upstreamProxy?.strictLaneScenario;
+  }
+
+  const mergedInitLogProxy: MockifyerConfig['initLog'] = {
+    ...extra.initLog,
+    headline: extra.initLog?.headline ?? '[Mockifyer preset] Node · dashboard Redis proxy',
+  };
+
+  return setupMockifyer({
+    ...extra,
+    mockDataPath,
+    databaseProvider: options.databaseProvider ?? extra.databaseProvider ?? { type: 'memory' },
+    useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
+    clientId: options.clientId ?? extra.clientId,
+    deviceId: options.deviceId ?? extra.deviceId,
+    proxy: mergedProxy,
+    initLog: mergedInitLogProxy,
+  });
+}
+
+export interface InitMockifyerForLocalFilesystemOptions {
+  mockDataPath?: string;
+  useGlobalFetch?: boolean;
+  recordMode?: boolean;
+  /** Applied first; preset fills `mockDataPath` / `useGlobalFetch` when omitted. */
+  config?: Partial<MockifyerConfig>;
+}
+
+/**
+ * Preset: local **filesystem** mocks under {@link InitMockifyerForLocalFilesystemOptions.mockDataPath}
+ * (default `./mock-data` or `MOCKIFYER_PATH`). No dashboard proxy.
+ */
+export function initMockifyerForLocalFilesystem(
+  options: InitMockifyerForLocalFilesystemOptions = {}
+): MockifyerInstance {
+  const extra = options.config ?? {};
+  const mockDataPath =
+    options.mockDataPath ??
+    extra.mockDataPath ??
+    (typeof process !== 'undefined' && process.env?.MOCKIFYER_PATH
+      ? process.env.MOCKIFYER_PATH
+      : './mock-data');
+
+  return setupMockifyer({
+    ...extra,
+    mockDataPath,
+    useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
+    recordMode: options.recordMode ?? extra.recordMode ?? false,
+  });
+}
+
+/** Shared with {@link setupMockifyerForReactNative} strict-proxy branching. */
+export { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 
 // Re-export types from core
 export * from '@sgedda/mockifyer-core';

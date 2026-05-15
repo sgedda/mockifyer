@@ -5,7 +5,7 @@
  * conditional provider selection (FileSystem in dev, Memory in prod)
  */
 
-import { joinProxyDashboardApiUrl } from './utils/join-proxy-dashboard-api-url';
+import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 import { setupMockifyer } from './index';
 import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
 import {
@@ -90,34 +90,12 @@ export interface ReactNativeMockifyerConfig {
   runtimeMode?: MockifyerRuntimeMode;
 }
 
-type DashboardHealth = {
-  status?: string;
-  provider?: string;
-  redisOk?: boolean | null;
-};
-
 // Lazy load bundled data (only used in production builds)
 let bundledMockData: MockData[] | null = null;
 
-async function canUseStrictRedisProxy(proxyBaseUrl?: string): Promise<boolean> {
-  if (!proxyBaseUrl) return false;
-  try {
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
-    const timeout = setTimeout(() => controller?.abort(), 800);
-    const url = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/health');
-    const res = await fetch(url, { signal: controller?.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return false;
-    const data = (await res.json()) as DashboardHealth;
-    return data?.provider === 'redis' && data?.redisOk === true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Load bundled mock data from a TypeScript/JavaScript module
- * 
+ *
  * Note: For React Native/Metro, we need to handle dynamic imports differently
  * Metro doesn't support dynamic require() with variables, so we use a workaround
  */
@@ -228,7 +206,9 @@ export async function setupMockifyerForReactNative(
   }
 
   if (isDev === true) {
-    const strictProxyEnabled = await canUseStrictRedisProxy(proxyBaseUrl);
+    const strictProxyEnabled = proxyBaseUrl
+      ? await canUseDashboardRedisProxy(proxyBaseUrl)
+      : false;
 
     // DEVELOPMENT MODE (React Native app running in dev)
     // Use Hybrid provider - saves to both device AND project folder simultaneously
@@ -330,6 +310,46 @@ export async function setupMockifyerForReactNative(
 
     return { status: 'active', instance } as const;
   }
+}
+
+/** React Native options with an explicit dashboard alias (see {@link initMockifyerForReactNativeDashboard}). */
+export interface InitMockifyerForReactNativeDashboardOptions extends ReactNativeMockifyerConfig {
+  /**
+   * mockifyer-dashboard origin — same role as {@link ReactNativeMockifyerConfig.proxyBaseUrl}.
+   * Useful when you prefer naming that matches the Node preset {@link initMockifyerForDashboardProxy}.
+   */
+  dashboardBaseUrl?: string;
+}
+
+/**
+ * Preset: point the app at **mockifyer-dashboard** for `/api/proxy` (typically **`--provider redis`**).
+ *
+ * Resolves URL in order: **`proxyBaseUrl`** → **`dashboardBaseUrl`** → **`MOCKIFYER_PROXY_URL`** env.
+ * Then delegates to {@link setupMockifyerForReactNative}. For bespoke wiring, call that helper directly.
+ */
+export async function initMockifyerForReactNativeDashboard(
+  options: InitMockifyerForReactNativeDashboardOptions
+): Promise<SetupMockifyerForReactNativeResult> {
+  const fromEnv =
+    typeof process !== 'undefined' && process.env?.MOCKIFYER_PROXY_URL
+      ? process.env.MOCKIFYER_PROXY_URL.trim()
+      : '';
+
+  const resolved =
+    String(options.proxyBaseUrl ?? '').trim() ||
+    String(options.dashboardBaseUrl ?? '').trim() ||
+    fromEnv;
+
+  if (!resolved) {
+    throw new Error(
+      'initMockifyerForReactNativeDashboard: set proxyBaseUrl, dashboardBaseUrl, or MOCKIFYER_PROXY_URL'
+    );
+  }
+
+  return setupMockifyerForReactNative({
+    ...options,
+    proxyBaseUrl: resolved,
+  });
 }
 
 export {
