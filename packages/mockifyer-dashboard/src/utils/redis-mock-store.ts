@@ -12,7 +12,8 @@ export interface RedisMockStoreConfig {
    * When true: if the proxy request carries a non-empty **`clientId`** and no body **`scenario`** override,
    * require **`client_scenario:{clientId}`** in Redis. If missing, do not serve or record mocks (upstream passthrough only).
    *
-   * Defaults from **`MOCKIFYER_STRICT_LANE_SCENARIO`** (`true`|`1`|`yes`|`on`) when unset here.
+   * Defaults to **`true`** when unset (no global scenario fallback for proxied lanes).
+   * Set **`false`** or env **`MOCKIFYER_STRICT_LANE_SCENARIO=false`** to allow global/filesystem fallback.
    */
   strictLaneScenarioResolution?: boolean;
 }
@@ -79,7 +80,13 @@ export class RedisMockStore {
     } else {
       const raw =
         typeof process !== 'undefined' ? String(process.env.MOCKIFYER_STRICT_LANE_SCENARIO || '').trim().toLowerCase() : '';
-      this.strictLaneScenarioResolution = raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+      if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
+        this.strictLaneScenarioResolution = true;
+      } else if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') {
+        this.strictLaneScenarioResolution = false;
+      } else {
+        this.strictLaneScenarioResolution = true;
+      }
     }
 
 
@@ -104,12 +111,17 @@ export class RedisMockStore {
    */
   async resolveProxyScenario(
     scenarioOverride?: string,
-    clientId?: string
+    clientId?: string,
+    options?: { strictLaneScenario?: boolean }
   ): Promise<{
     scenario: string | null;
     resolutionSource: ScenarioResolutionSource;
     hadBodyScenarioOverride: boolean;
   }> {
+    const strictLane =
+      typeof options?.strictLaneScenario === 'boolean'
+        ? options.strictLaneScenario
+        : this.strictLaneScenarioResolution;
     const hadBodyScenarioOverride =
       typeof scenarioOverride === 'string' && scenarioOverride.trim() !== '';
 
@@ -134,7 +146,7 @@ export class RedisMockStore {
             hadBodyScenarioOverride: false,
           };
         }
-        if (this.strictLaneScenarioResolution) {
+        if (strictLane) {
           return { scenario: null, resolutionSource: 'lane_redis', hadBodyScenarioOverride: false };
         }
       }

@@ -74,6 +74,8 @@ export interface MockifyerConfig {
    * Prefer **`MOCKIFYER_MODE`** env; this field overrides env when set.
    */
   runtimeMode?: MockifyerRuntimeMode;
+  /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
+  initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
@@ -139,6 +141,12 @@ export interface MockifyerConfig {
     scenario?: string;
     /** If true, proxy will record responses on cache miss (if the proxy supports it) */
     recordOnMiss?: boolean;
+    /**
+     * When true (default when `baseUrl` is set), dashboard Redis proxy does not fall back to global
+     * `active_scenario` if `clientId` is set but `client_scenario:{clientId}` is missing — upstream passthrough only.
+     * Override via **`MOCKIFYER_STRICT_LANE_SCENARIO`** env (wins over this field).
+     */
+    strictLaneScenario?: boolean;
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
@@ -258,6 +266,8 @@ export const ENV_VARS = {
   /**
    * **`true|false`** — overrides {@link MockifyerConfig.strictScenarioResolution} when set.
    */
-  MOCK_STRICT_SCENARIO: 'MOCKIFYER_STRICT_SCENARIO'
+  MOCK_STRICT_SCENARIO: 'MOCKIFYER_STRICT_SCENARIO',
+  /** Dashboard proxy: lane-only scenario (no global fallback) when `clientId` is set. */
+  MOCK_STRICT_LANE_SCENARIO: 'MOCKIFYER_STRICT_LANE_SCENARIO',
 } as const;
 
