@@ -30,12 +30,27 @@ program
     '--base <path>',
     'URL path to mount the dashboard (must match VITE_MOCKIFYER_DASHBOARD_BASE used at frontend build). Env: MOCKIFYER_DASHBOARD_BASE'
   )
+  .option(
+    '--auth-user <user>',
+    'Optional HTTP Basic Auth username (sets MOCKIFYER_DASHBOARD_AUTH_USER). Requires --auth-password or env password.'
+  )
+  .option(
+    '--auth-password <password>',
+    'Optional HTTP Basic Auth password (sets MOCKIFYER_DASHBOARD_AUTH_PASSWORD). Prefer env vars in production.'
+  )
   .parse(process.argv);
-
-const options = program.opts();
 
 async function main() {
   try {
+    const options = program.opts();
+
+    if (options.authUser !== undefined && String(options.authUser).trim() !== '') {
+      process.env.MOCKIFYER_DASHBOARD_AUTH_USER = String(options.authUser).trim();
+    }
+    if (options.authPassword !== undefined) {
+      process.env.MOCKIFYER_DASHBOARD_AUTH_PASSWORD = String(options.authPassword);
+    }
+
     // Detect mock data path
     const mockDataPath = detectMockDataPath(options.path);
     const provider = options.provider || detectProvider(mockDataPath);
@@ -118,7 +133,19 @@ async function main() {
           chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}\n`)
         );
       }
-      
+
+      const basicAuthOn =
+        Boolean(process.env.MOCKIFYER_DASHBOARD_AUTH_USER?.trim()) &&
+        process.env.MOCKIFYER_DASHBOARD_AUTH_PASSWORD !== undefined &&
+        process.env.MOCKIFYER_DASHBOARD_AUTH_PASSWORD !== '';
+      if (basicAuthOn) {
+        console.log(
+          chalk.yellow(
+            `   🔐 HTTP Basic Auth: ${chalk.bold('enabled')} (GET/HEAD /api/health and OPTIONS stay public)\n`
+          )
+        );
+      }
+
       if (!options.noOpen) {
         open(url).catch(() => {
           console.log(chalk.yellow(`   ⚠️  Could not open browser automatically. Please visit ${url}`));
