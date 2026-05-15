@@ -97,8 +97,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     
     const lane = this.resolvedClientLane();
 
-    // Proxy mode (e.g. React Native → dashboard → Redis)
-    if (this.proxyBaseUrl) {
+    const bypassMockifyer =
+      Boolean((config as any).__mockifyer_bypass) || Boolean((config as any).__mockifyer_skip_save);
+
+    // Proxy mode (e.g. React Native -> dashboard -> Redis)
+    if (this.proxyBaseUrl && !bypassMockifyer) {
       const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
