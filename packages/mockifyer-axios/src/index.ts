@@ -37,7 +37,12 @@ import {
   CachedMockData,
   mockPassesThroughToRealApi
 } from '@sgedda/mockifyer-core';
-import { resolveClientId, tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
+import {
+  resolveClientId,
+  registerMockifyerInstance,
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+} from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -1951,6 +1956,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
+
+  registerMockifyerInstance(extendedClient);
 
   console.log('[Mockifyer] setupMockifyer returning HTTP client:', {
     hasGet: typeof extendedClient.get === 'function',

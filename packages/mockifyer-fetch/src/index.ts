@@ -38,6 +38,7 @@ import {
   shouldExcludeUrl,
   mockPassesThroughToRealApi,
   resolveClientId,
+  registerMockifyerInstance,
   tryGetClientIdFromLaunchArguments,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   resolveActivationMode,
@@ -1211,7 +1212,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
-  
+
+  registerMockifyerInstance(extendedClient);
+
   return extendedClient;
 }
 

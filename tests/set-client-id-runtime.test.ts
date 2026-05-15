@@ -1,4 +1,4 @@
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
+import { setupMockifyer, clearMockifyerClientIdRuntime } from '@sgedda/mockifyer-fetch';
 import type { MockifyerInstance } from '@sgedda/mockifyer-fetch';
 import path from 'path';
 import fs from 'fs';
@@ -7,10 +7,12 @@ describe('setClientId runtime (fetch)', () => {
   const testMockDataPath = path.join(__dirname, './test-mock-data-set-client-id');
 
   beforeEach(() => {
+    clearMockifyerClientIdRuntime();
     fs.mkdirSync(testMockDataPath, { recursive: true });
   });
 
   afterEach(() => {
+    clearMockifyerClientIdRuntime();
     if (fs.existsSync(testMockDataPath)) {
       fs.rmSync(testMockDataPath, { recursive: true, force: true });
     }
