@@ -339,5 +339,12 @@ export async function setupMockifyerForReactNative(
   }
 }
 
-export { tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
+export {
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  getClientId,
+  setClientId,
+  registerMockifyerInstance,
+  clearMockifyerClientIdRuntime,
+} from '@sgedda/mockifyer-core';
 
