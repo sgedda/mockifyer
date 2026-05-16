@@ -29,6 +29,8 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
+**Team workflow (recorded vs curated mocks, re-recording):** **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)**.
+
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
 
 ## Installation
@@ -112,7 +114,8 @@ Priority: env vars → `setupMockifyer` config → system time.
 | Variable | Description |
 |----------|-------------|
 | `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
-| `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
+| `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
+| `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** “Record on miss” |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |

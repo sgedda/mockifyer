@@ -145,6 +145,19 @@ export function logMockifyerInitSummary(
   if (config.recordMode) {
     logger.info('[Mockifyer] recordMode: true — cache misses can be recorded (proxy or provider permitting).');
   }
+  const proxyBase = config.proxy?.baseUrl?.trim();
+  if (proxyBase) {
+    const rom = config.proxy?.recordOnMiss;
+    if (typeof rom === 'boolean') {
+      logger.info(
+        `[Mockifyer] proxy.recordOnMiss: ${rom} — sends "record" on each /api/proxy request (dashboard cannot override per request).`
+      );
+    } else {
+      logger.info(
+        '[Mockifyer] proxy.recordOnMiss: (unset) — omits "record" on /api/proxy; dashboard uses per-scenario recordOnMiss (see Settings). Env MOCKIFYER_PROXY_RECORD_ON_MISS can set the client flag when unset.'
+      );
+    }
+  }
 }
 
 /**

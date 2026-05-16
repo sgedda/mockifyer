@@ -46,12 +46,38 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
+  parseProxyRecordOnMissEnv,
   type MockifyerActivationMode,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
 import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
+
+/**
+ * When `proxy.baseUrl` is set and `proxy.recordOnMiss` is omitted, apply `MOCKIFYER_PROXY_RECORD_ON_MISS` if set.
+ */
+function applyProxyRecordOnMissEnv(config: MockifyerConfig): MockifyerConfig {
+  const proxy = config.proxy;
+  const baseUrl = proxy?.baseUrl?.trim();
+  if (!proxy || !baseUrl || proxy.recordOnMiss !== undefined) {
+    return config;
+  }
+  const parsed = parseProxyRecordOnMissEnv();
+  if (parsed === undefined) {
+    return config;
+  }
+  return {
+    ...config,
+    proxy: {
+      baseUrl: proxy.baseUrl,
+      scenario: proxy.scenario,
+      recordOnMiss: parsed,
+      strictLaneScenario: proxy.strictLaneScenario,
+      mirrorRecordedMocksToClient: proxy.mirrorRecordedMocksToClient,
+    },
+  };
+}
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -1176,8 +1202,9 @@ export interface MockifyerInstance extends HTTPClient {
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+  const resolvedConfig = applyProxyRecordOnMissEnv(config);
   // Initialize logger with config level (default to 'info' if not specified)
-  setLogLevel(config.logging || 'info');
+  setLogLevel(resolvedConfig.logging || 'info');
   
   // Set environment variables for Metro middleware to read test generation config
   // This allows Metro middleware (which runs in Node.js) to generate tests
@@ -1204,11 +1231,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
     }
   }
   
-  initializeDateManipulation(config);
-  initializeScenario(config);
-  
+  initializeDateManipulation(resolvedConfig);
+  initializeScenario(resolvedConfig);
 
-  const mockifyer = new MockifyerClass(config);
+
+  const mockifyer = new MockifyerClass(resolvedConfig);
   const httpClient = mockifyer.getHTTPClient();
   
   // Always store original fetch (even if not patching global)
@@ -1226,7 +1253,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   }
   
   // Patch global fetch if useGlobalFetch is true
-  if (config.useGlobalFetch) {
+  if (resolvedConfig.useGlobalFetch) {
     const mockifyerInstance = mockifyer;
     const originalFetchForPatched = (global as any).__mockifyer_original_fetch || originalFetch;
     
@@ -1357,8 +1384,9 @@ export interface InitMockifyerForDashboardProxyOptions {
   deviceId?: string;
   scenario?: string;
   /**
-   * Proxy records on cache miss when the dashboard supports it (Redis).
-   * Defaults to `true` when `MOCKIFYER_RECORD=true`, else leaves dashboard/SDK defaults.
+   * When **`true`**, each `/api/proxy` request sends **`"record": true`**. When **`false`**, sends **`"record": false`**.
+   * When **omitted**, the **`record`** field is omitted so the **dashboard per-scenario** toggle applies; **`MOCKIFYER_PROXY_RECORD_ON_MISS`**
+   * and **`MOCKIFYER_RECORD=true`** (last) still set an explicit client flag when you want env-driven recording without code.
    */
   recordOnMiss?: boolean;
   strictLaneScenario?: boolean;
@@ -1407,6 +1435,7 @@ export async function initMockifyerForDashboardProxy(
   const recordOnMiss =
     options.recordOnMiss ??
     extra.proxy?.recordOnMiss ??
+    parseProxyRecordOnMissEnv() ??
     (envRecord ? true : undefined);
 
   const useRedisProxy =

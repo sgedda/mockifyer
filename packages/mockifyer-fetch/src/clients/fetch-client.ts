@@ -8,12 +8,51 @@ import {
 } from '@sgedda/mockifyer-core';
 import { joinProxyDashboardApiUrl } from '../utils/join-proxy-dashboard-api-url';
 
+function buildProxyEnvelope(params: {
+  url: string;
+  method: string;
+  lane: string | undefined;
+  deviceId: string | undefined;
+  headers: Record<string, string>;
+  body: unknown;
+  scenario: string | undefined;
+  recordOnMiss: boolean | undefined;
+  strictLaneScenario: boolean;
+}): Record<string, unknown> {
+  const {
+    url,
+    method,
+    lane,
+    deviceId,
+    headers,
+    body,
+    scenario,
+    recordOnMiss,
+    strictLaneScenario,
+  } = params;
+  const envelope: Record<string, unknown> = {
+    url,
+    method,
+    clientId: lane,
+    deviceId,
+    headers,
+    body,
+    scenario,
+    strictLaneScenario,
+  };
+  if (typeof recordOnMiss === 'boolean') {
+    envelope.record = recordOnMiss;
+  }
+  return envelope;
+}
+
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
   private defaultHeaders: Record<string, string>;
   private proxyBaseUrl?: string;
   private proxyScenario?: string;
-  private proxyRecordOnMiss: boolean;
+  /** When set, included as `record` on `/api/proxy`. When unset, dashboard per-scenario default applies. */
+  private proxyRecordOnMiss?: boolean;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
   private clientIdSnapshot?: string;
@@ -39,7 +78,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.defaultHeaders = config?.defaultHeaders || {};
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
-    this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
+    this.proxyRecordOnMiss = config?.proxy?.recordOnMiss;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.clientIdSnapshot = config?.clientId;
@@ -118,23 +157,25 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           ...(lane ? { [MOCKIFYER_CLIENT_ID_HEADER]: lane } : {}),
           ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
         },
-        body: JSON.stringify({
-          url,
-          method: requestConfig.method,
-          clientId: lane,
-          deviceId: this.deviceId,
-          headers: (() => {
-            const out: Record<string, string> = {};
-            headers.forEach((value, key) => {
-              out[key] = value;
-            });
-            return out;
-          })(),
-          body: config.data ?? null,
-          scenario: this.proxyScenario,
-          record: this.proxyRecordOnMiss,
-          strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
-        }),
+        body: JSON.stringify(
+          buildProxyEnvelope({
+            url,
+            method: String(requestConfig.method || 'GET'),
+            lane,
+            deviceId: this.deviceId,
+            headers: (() => {
+              const out: Record<string, string> = {};
+              headers.forEach((value, key) => {
+                out[key] = value;
+              });
+              return out;
+            })(),
+            body: config.data ?? null,
+            scenario: this.proxyScenario,
+            recordOnMiss: this.proxyRecordOnMiss,
+            strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
+          })
+        ),
       });
       if (!proxyResponse.ok) {
         const txt = await proxyResponse.text();

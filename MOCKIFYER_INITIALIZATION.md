@@ -1,7 +1,7 @@
 # Mockifyer initialization guide
 
 Reference for **how to start Mockifyer** in each runtime: primitives (full config) versus **presets** (opinionated defaults).  
-Related: **[REACT_NATIVE.md](./REACT_NATIVE.md)** (Expo/Metro/Hybrid), **[DATABASE_PROVIDER.md](./DATABASE_PROVIDER.md)** (storage backends), **`mockifyer-dashboard`** [README](./packages/mockifyer-dashboard/README.md).
+Related: **[REACT_NATIVE.md](./REACT_NATIVE.md)** (Expo/Metro/Hybrid), **[DATABASE_PROVIDER.md](./DATABASE_PROVIDER.md)** (storage backends), **`mockifyer-dashboard`** [README](./packages/mockifyer-dashboard/README.md), **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)** (recording vs curated mocks, re-record without losing edits).
 
 ---
 
@@ -28,6 +28,18 @@ setupMockifyer({
   clientId: process.env.MOCKIFYER_CLIENT_ID,
 });
 ```
+
+**Record on miss (`/api/proxy`):**
+
+| `proxy.recordOnMiss` | Behavior |
+|----------------------|----------|
+| `true` | Request body includes `"record": true` (force recording on miss when the server allows). |
+| `false` | Includes `"record": false` (this client never persists proxy misses). |
+| Omitted | **`record` is omitted** — Redis dashboard uses the **per-scenario** Settings toggle. Env **`MOCKIFYER_PROXY_RECORD_ON_MISS`** (`true` / `false`) can set the client flag when omitted. |
+
+> **Behavior change (fetch):** Older versions defaulted `record` to **`false`** when `proxy.recordOnMiss` was omitted, so the dashboard “Record on miss” toggle had no effect. Omitted now **defers to the dashboard** (and the server default is to record on miss). To keep the old “never record” behavior without touching the dashboard, set **`proxy: { ..., recordOnMiss: false }`** or **`MOCKIFYER_PROXY_RECORD_ON_MISS=false`**.
+
+**React Native** (`setupMockifyerForReactNative`): still sends an explicit boolean — `proxyRecordOnMiss ?? recordMode` — so a dev build with `recordMode: false` does not start writing to Redis unless you opt in.
 
 ---
 
@@ -258,7 +270,8 @@ MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis 
 |----------|------|
 | `MOCKIFYER_MODE` | **RN only** (with **`setupMockifyerForReactNative`**): startup gate — **`on`** \| **`launch_client`** \| **`off`** (see [MOCKIFYER_MODE compared to lane and scenario](#mockifyer_mode-compared-to-lane-and-scenario-two-layers)). Unset → **`on`**. |
 | `MOCKIFYER_STRICT_SCENARIO` | When **`true`** and **`proxy.baseUrl`** is set, require **`clientId`** or **`proxy.scenario`** before intercepting (per-request). |
-| `MOCKIFYER_RECORD` | Recording / often maps to `recordOnMiss` or `recordMode` |
+| `MOCKIFYER_RECORD` | Recording: local **`recordMode`** (filesystem saves) and/or preset **`recordOnMiss`** when using **`initMockifyerForDashboardProxy`** (see below) |
+| `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted in config, set to **`true`** or **`false`** to send that `record` flag on `/api/proxy`; if unset, the **`record`** field is omitted and the **dashboard per-scenario** “Record on miss” applies |
 | `MOCKIFYER_PROXY_URL` | Dashboard base URL for RN presets |
 | `MOCKIFYER_PATH` | Mock data root (filesystem / fallbacks) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
