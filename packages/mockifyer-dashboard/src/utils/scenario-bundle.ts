@@ -86,6 +86,24 @@ function resolveMockFilePath(scenarioPath: string, relativeName: string): string
   return resolved;
 }
 
+interface FilesystemMockWrite {
+  filePath: string;
+  data: MockData;
+}
+
+function prepareFilesystemMockWrites(
+  scenarioPath: string,
+  mocks: ScenarioBundleMockEntry[]
+): FilesystemMockWrite[] {
+  return mocks.map(({ relativePath, data }) => {
+    const filePath = resolveMockFilePath(scenarioPath, relativePath);
+    if (!filePath) {
+      throw new Error(`Invalid mock path in bundle: ${relativePath}`);
+    }
+    return { filePath, data };
+  });
+}
+
 export function buildFilesystemScenarioBundle(
   mockDataPath: string,
   scenario: string,
@@ -434,18 +452,16 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     fs.mkdirSync(scenarioFolder, { recursive: true });
   }
 
+  const mockWrites = prepareFilesystemMockWrites(scenarioFolder, bundle.mocks);
+
   if (replaceExistingMocks) {
     clearFilesystemScenarioMocks(scenarioFolder);
   }
 
-  for (const { relativePath, data } of bundle.mocks) {
-    const safe = resolveMockFilePath(scenarioFolder, relativePath);
-    if (!safe) {
-      throw new Error(`Invalid mock path in bundle: ${relativePath}`);
-    }
-    fs.mkdirSync(path.dirname(safe), { recursive: true });
+  for (const { filePath, data } of mockWrites) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const copy = { ...data, scenario: targetScenario } as MockData;
-    fs.writeFileSync(safe, JSON.stringify(copy, null, 2), 'utf-8');
+    fs.writeFileSync(filePath, JSON.stringify(copy, null, 2), 'utf-8');
     mocksWritten++;
   }
 
