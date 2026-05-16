@@ -105,9 +105,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     }
     
     const lane = this.resolvedClientLane();
+    const bypassMockifyer =
+      (config as any).__mockifyer_bypass === true || (config as any).__mockifyer_skip_save === true;
 
     // Proxy mode (e.g. React Native → dashboard → Redis)
-    if (this.proxyBaseUrl) {
+    if (this.proxyBaseUrl && !bypassMockifyer) {
       const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
@@ -187,10 +189,15 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       };
     }
 
-    if (lane && !getOutboundMockifyerClientIdHeader(headers)) {
+    if (!bypassMockifyer && lane && !getOutboundMockifyerClientIdHeader(headers)) {
       headers.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
     }
-    if (this.deviceId && String(this.deviceId).trim() && !getOutboundMockifyerDeviceIdHeader(headers)) {
+    if (
+      !bypassMockifyer &&
+      this.deviceId &&
+      String(this.deviceId).trim() &&
+      !getOutboundMockifyerDeviceIdHeader(headers)
+    ) {
       headers.set(MOCKIFYER_DEVICE_ID_HEADER, String(this.deviceId).trim());
     }
 
