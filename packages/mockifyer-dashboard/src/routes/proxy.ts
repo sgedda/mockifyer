@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
-import { getDashboardContext } from '../utils/dashboard-context';
+import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
 import {
   generateRequestKey,
   getCurrentDate,
@@ -89,6 +90,8 @@ router.post('/', async (req: Request, res: Response) => {
     keyPrefix: config.keyPrefix,
     mockDataPath,
   });
+
+  const redisDisk = resolveRedisDiskMirrorOptions(config);
 
   try {
     if (clientId) {
@@ -200,7 +203,17 @@ router.post('/', async (req: Request, res: Response) => {
         explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
       });
 
-    const mock = await store.getByHashInScenario(hash, resolvedScenarioName);
+    let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
+    let mockSource: 'redis' | 'disk' = 'redis';
+
+    if (!mock && redisDisk.readFallback) {
+      const diskMock: any = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
+      if (diskMock) {
+        mock = diskMock;
+        mockSource = 'disk';
+      }
+    }
+
     if (mock && (mock as any).alwaysUseRealApi !== true) {
       const sanitizedMock: any =
         (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
@@ -217,12 +230,14 @@ router.post('/', async (req: Request, res: Response) => {
       };
       if (debugProxy) {
         console.log(
-          `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+          mockSource === 'disk'
+            ? `[ProxyRoute] disk fallback hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+            : `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
       return res.json({
         proxied: false,
-        source: 'redis',
+        source: mockSource,
         hash,
         clientId: clientId || null,
         deviceId: deviceId || null,
@@ -300,8 +315,9 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    let storedMockForClient: Record<string, unknown> | null = null;
     if (effectiveRecord === true) {
-      const mockData = {
+      storedMockForClient = {
         request: {
           method: upperMethod,
           url,
@@ -312,7 +328,19 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHashInScenario(hash, mockData as any, resolvedScenarioName);
+      await store.setByHashInScenario(hash, storedMockForClient as any, resolvedScenarioName);
+      if (redisDisk.mirrorWrites) {
+        try {
+          mirrorRecordedMockToDisk({
+            mockDataPath,
+            scenarioName: resolvedScenarioName,
+            hash,
+            mockData: storedMockForClient as any,
+          });
+        } catch (mirrorErr: any) {
+          console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+        }
+      }
     }
 
     if (debugProxy) {
@@ -328,6 +356,10 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response,
+      recordedToStore: effectiveRecord === true,
+      ...(effectiveRecord === true && storedMockForClient
+        ? { storedMock: storedMockForClient }
+        : {}),
     });
   } catch (error: any) {
     console.error('[ProxyRoute] Error:', error);

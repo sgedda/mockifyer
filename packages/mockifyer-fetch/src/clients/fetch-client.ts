@@ -22,7 +22,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   constructor(config?: {
     baseUrl?: string;
     defaultHeaders?: Record<string, string>;
-    proxy?: { baseUrl: string; scenario?: string; recordOnMiss?: boolean; strictLaneScenario?: boolean };
+    proxy?: {
+      baseUrl: string;
+      scenario?: string;
+      recordOnMiss?: boolean;
+      strictLaneScenario?: boolean;
+      mirrorRecordedMocksToClient?: boolean;
+    };
     clientId?: string;
     getClientId?: () => string | undefined;
     getStrictLaneScenario?: () => boolean;
@@ -153,12 +159,31 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       const status = payload?.response?.status ?? 200;
       const responseHeaders: Record<string, string> = payload?.response?.headers ?? {};
 
+      const scenarioResolution = payload?.scenarioResolution as
+        | { scenario?: string | null }
+        | undefined;
+      const scenarioName =
+        typeof scenarioResolution?.scenario === 'string' && scenarioResolution.scenario.trim()
+          ? scenarioResolution.scenario.trim()
+          : undefined;
+
+      const mockifyerProxyRecording =
+        payload?.recordedToStore === true && payload?.storedMock
+          ? {
+              recordedToStore: true as const,
+              storedMock: payload.storedMock,
+              hash: typeof payload.hash === 'string' ? payload.hash : undefined,
+              scenarioName,
+            }
+          : undefined;
+
       return {
         data,
         status,
         statusText: String(status),
         headers: responseHeaders,
         config,
+        mockifyerProxyRecording,
       };
     }
 

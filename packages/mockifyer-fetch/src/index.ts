@@ -137,6 +137,16 @@ class MockifyerClass {
     }
     this.activationMode = resolveActivationMode(this.config);
 
+    if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
+      const raw =
+        typeof process !== 'undefined'
+          ? String(process.env?.MOCKIFYER_PROXY_MIRROR_TO_CLIENT || '').trim().toLowerCase()
+          : '';
+      if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
+        this.config.proxy = { ...this.config.proxy, mirrorRecordedMocksToClient: true };
+      }
+    }
+
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
       this.testGenerator = new TestGenerator();
@@ -634,7 +644,11 @@ class MockifyerClass {
         if (isMocked || isLimitReached) {
           return response;
         }
-        
+
+        if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
+          await this.maybeMirrorProxyRecordingToClient(response);
+        }
+
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
         // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
         if (this.config.recordMode && !this.config.proxy?.baseUrl) {
@@ -650,6 +664,109 @@ class MockifyerClass {
         throw error;
       }
     );
+  }
+
+  /**
+   * When dashboard proxy records to Redis, optionally persist the same payload next to the client
+   * (Node fs, database provider with `SaveMockOptions.scenario`, or Metro /mockifyer-save for strict RN).
+   */
+  private async maybeMirrorProxyRecordingToClient(response: HTTPResponse): Promise<void> {
+    const rec = response.mockifyerProxyRecording;
+    if (!rec?.recordedToStore || !rec.storedMock) {
+      return;
+    }
+    const hash = rec.hash?.trim();
+    const scenarioName = rec.scenarioName?.trim();
+    if (!hash || !scenarioName) {
+      logger.warn('[Mockifyer-Fetch] Proxy client mirror skipped: missing hash or scenario from proxy');
+      return;
+    }
+    const mockData = rec.storedMock as MockData;
+    const url = mockData?.request?.url || '';
+    if (shouldExcludeUrl(url, this.config.excludedUrls)) {
+      return;
+    }
+
+    await this.databaseProviderInitPromise;
+
+    const providerType = this.config.databaseProvider?.type;
+    if (this.databaseProvider && providerType !== 'memory') {
+      try {
+        const out = this.databaseProvider.save(mockData, {
+          relativePath: `redis/${hash}.json`,
+          scenario: scenarioName,
+        });
+        if (out instanceof Promise) {
+          await out;
+        }
+        logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (${providerType}): ${scenarioName}/redis/${hash}.json`);
+        if (providerType === 'hybrid') {
+          await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+        }
+      } catch (e) {
+        logger.error('[Mockifyer-Fetch] Proxy client mirror (provider) failed:', e);
+      }
+      return;
+    }
+
+    if (fs && path) {
+      try {
+        ensureScenarioFolder(this.config.mockDataPath, scenarioName);
+        const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, scenarioName);
+        const filePath = path.join(scenarioPath, 'redis', `${hash}.json`);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+        logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (filesystem): ${scenarioName}/redis/${hash}.json`);
+      } catch (e) {
+        logger.error('[Mockifyer-Fetch] Proxy client mirror (Node fs) failed:', e);
+      }
+      return;
+    }
+
+    await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+  }
+
+  private async tryMirrorProxyRecordingViaMetro(
+    mockData: MockData,
+    scenarioName: string,
+    hash: string
+  ): Promise<void> {
+    const metroPort = process.env.METRO_PORT ? parseInt(process.env.METRO_PORT, 10) : 8081;
+    const fetchFn = (global as any).__mockifyer_original_fetch || fetch;
+    if (!fetchFn) {
+      logger.warn('[Mockifyer-Fetch] Proxy client mirror: no fetch for Metro save');
+      return;
+    }
+    try {
+      const body = JSON.stringify({
+        __mockifyerProxyMirror: true,
+        mockData,
+        scenarioName,
+        relativePath: `redis/${hash}.json`,
+      });
+      const res = await fetchFn(`http://localhost:${metroPort}/mockifyer-save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      const text = await res.text().catch(() => '');
+      if (!res.ok) {
+        logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): HTTP ${res.status} ${text}`);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(text) as { success?: boolean; error?: string };
+        if (parsed.success === false) {
+          logger.warn(`[Mockifyer-Fetch] Proxy client mirror (Metro): ${parsed.error || 'save failed'}`);
+          return;
+        }
+      } catch {
+        // non-JSON response
+      }
+      logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (Metro): ${scenarioName}/redis/${hash}.json`);
+    } catch (e) {
+      logger.warn('[Mockifyer-Fetch] Proxy client mirror (Metro) failed:', e);
+    }
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
@@ -1255,6 +1372,11 @@ export interface InitMockifyerForDashboardProxyOptions {
    * Default **`false`**: if Redis is not healthy (or unreachable), omit **`proxy`** and use filesystem mocks + **`recordMode`** disk saves — aligns with **`setupMockifyerForReactNative`** dev fallback.
    */
   skipDashboardRedisHealthCheck?: boolean;
+  /**
+   * When the proxy records a response to Redis, also write the same mock under `mockDataPath` on this machine
+   * (or via Metro when using strict RN + in-memory). Env: `MOCKIFYER_PROXY_MIRROR_TO_CLIENT`.
+   */
+  mirrorRecordedMocksToClient?: boolean;
 }
 
 /**
@@ -1334,6 +1456,20 @@ export async function initMockifyerForDashboardProxy(
   ) {
     mergedProxy.strictLaneScenario =
       options.strictLaneScenario ?? upstreamProxy?.strictLaneScenario;
+  }
+
+  const envMirrorRaw =
+    typeof process !== 'undefined'
+      ? String(process.env?.MOCKIFYER_PROXY_MIRROR_TO_CLIENT || '').trim().toLowerCase()
+      : '';
+  const envMirror =
+    envMirrorRaw === '1' || envMirrorRaw === 'true' || envMirrorRaw === 'yes' || envMirrorRaw === 'on';
+  const mirrorRecordedMocksToClient =
+    options.mirrorRecordedMocksToClient ??
+    extra.proxy?.mirrorRecordedMocksToClient ??
+    (envMirror ? true : undefined);
+  if (mirrorRecordedMocksToClient !== undefined) {
+    mergedProxy.mirrorRecordedMocksToClient = mirrorRecordedMocksToClient;
   }
 
   const mergedInitLogProxy: MockifyerConfig['initLog'] = {

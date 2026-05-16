@@ -227,8 +227,14 @@ const result = await initMockifyerForReactNativeDashboard({
 > **Why:** The app still needs **`proxy.baseUrl`** (or presets above) pointing at this server; Redis URL is configured on the **dashboard** process.
 
 ```bash
-MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --port 3002
+MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --path ./mock-data --port 3002
+# Optional: mirror recorded mocks to disk + read disk when Redis misses (git-friendly fixtures):
+# mockifyer-dashboard --provider redis --path ./mock-data --redis-disk-dual --port 3002
 ```
+
+**Redis + disk (version control):** `--redis-disk-dual`, or `--redis-mirror-disk` / `--redis-disk-fallback`, or env `MOCKIFYER_REDIS_MIRROR_DISK` / `MOCKIFYER_REDIS_DISK_READ_FALLBACK`. Recorded mocks are written to `mock-data/<scenario>/redis/<hash>.json`; with fallback, the proxy checks Redis first, then JSON under that scenario folder. Details: **[mockifyer-dashboard README](./packages/mockifyer-dashboard/README.md)**.
+
+**Client-side mirror (app + remote proxy):** In **`@sgedda/mockifyer-fetch`**, set **`proxy.mirrorRecordedMocksToClient: true`** or env **`MOCKIFYER_PROXY_MIRROR_TO_CLIENT=true`**. When the dashboard proxy records to Redis, it returns **`storedMock`**; the SDK writes **`mock-data/<scenario>/redis/<hash>.json`** on the client (Node fs, hybrid/filesystem provider, or Metro **`POST /mockifyer-save`** for strict RN + in-memory). Requires a dashboard build that includes **`recordedToStore`** / **`storedMock`** on **`POST /api/proxy`** responses (current `mockifyer-dashboard`).
 
 ---
 
@@ -258,5 +264,8 @@ MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis 
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_CLIENT_ID` | Client lane for proxy / isolation (**not** the **`launch_client`** startup gate — use **`on`** if lane comes from env.) |
 | `MOCKIFYER_REDIS_URL` | Redis for **dashboard** or **in-process** `redis` provider |
+| `MOCKIFYER_REDIS_MIRROR_DISK` | Dashboard (`redis`): write `mock-data/<scenario>/redis/<hash>.json` when proxy records from upstream |
+| `MOCKIFYER_REDIS_DISK_READ_FALLBACK` | Dashboard (`redis`): if Redis has no mock, scan scenario JSON on disk before upstream |
+| `MOCKIFYER_PROXY_MIRROR_TO_CLIENT` | Fetch SDK: when dashboard proxy records to Redis, also save `mock-data/<scenario>/redis/<hash>.json` on the client (or via Metro on RN) |
 
 See repo **[README.md](./README.md)** and **`MockifyerConfig`** in **`@sgedda/mockifyer-core`** for the full list.

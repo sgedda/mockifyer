@@ -48,7 +48,7 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   /**
-   * Get the scenario-specific path for mock files
+   * Scenario folder path used for mock files (lookup still uses active scenario via getScenarioPath).
    */
   private getScenarioPath(): string {
     const currentScenario = getCurrentScenario(this.mockDataPath);
@@ -67,8 +67,9 @@ export class FilesystemProvider implements DatabaseProvider {
       return;
     }
     
-    const scenarioPath = this.getScenarioPath();
-    ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
+    const scenarioForSave = options?.scenario ?? getCurrentScenario(this.mockDataPath);
+    const scenarioPath = getScenarioFolderPath(this.mockDataPath, scenarioForSave);
+    ensureScenarioFolder(this.mockDataPath, scenarioForSave);
     
     if (!options?.relativePath) {
       const limitCheck = checkRequestLimit(this.mockDataPath);
@@ -94,8 +95,9 @@ export class FilesystemProvider implements DatabaseProvider {
     fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
 
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-    const currentScenario = getCurrentScenario(this.mockDataPath);
-    console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`);
+    console.log(
+      `[Mockifyer] Saved new mock to file: ${scenarioForSave}/${dir ? `${dir}/` : ''}${filename}`
+    );
   }
 
   private getAllJsonFiles(dir: string): string[] {

@@ -42,13 +42,22 @@ npx mockifyer-dashboard --base /dashboard
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
 - `--base <path>` - Mount the app under this URL path (default: `/`). With the default **portable** UI build (`./`), the UI infers the mount for routing and `/api` from script URLs. If you built with a **fixed** `VITE_MOCKIFYER_DASHBOARD_BASE` (absolute path), that mount must match.
-- `--provider <provider>` - Database provider type (currently only 'filesystem' supported)
+- `--provider <provider>` - Storage backend: `filesystem` (default), `sqlite`, or `redis`. The HTTP proxy at `/api/proxy` requires `redis`.
+- `--redis-url <url>` - Redis URL when using `--provider redis` (or `MOCKIFYER_REDIS_URL`).
+- `--key-prefix <prefix>` - Redis key prefix (or `MOCKIFYER_REDIS_KEY_PREFIX`; default `mockifyer:v1`).
+- `--redis-mirror-disk` - With `redis`: after recording from upstream, also write `mock-data/<scenario>/redis/<hash>.json` for version control (see env below).
+- `--redis-disk-fallback` - With `redis`: if Redis has no mock, scan JSON under `mock-data/<scenario>/` before calling upstream.
+- `--redis-disk-dual` - Shorthand for both `--redis-mirror-disk` and `--redis-disk-fallback`.
 
 ### Environment Variables
 
 - `MOCKIFYER_PATH` - Path to mock data directory
-- `MOCKIFYER_DB_PROVIDER` - Database provider type
+- `MOCKIFYER_DB_PROVIDER` - Database provider type (`filesystem`, `sqlite`, `redis`)
 - `MOCKIFYER_DASHBOARD_BASE` - Same as `--base` (e.g. `/dashboard`) for the standalone server
+- `MOCKIFYER_REDIS_URL` - Redis connection URL when using `redis` provider
+- `MOCKIFYER_REDIS_KEY_PREFIX` - Redis key prefix (default `mockifyer:v1`)
+- `MOCKIFYER_REDIS_MIRROR_DISK` - If `true`/`1`: same as `--redis-mirror-disk` (can combine with CLI / `createServer` config)
+- `MOCKIFYER_REDIS_DISK_READ_FALLBACK` - If `true`/`1`: same as `--redis-disk-fallback`
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
@@ -67,7 +76,14 @@ npx mockifyer-dashboard --base /dashboard
 ```ts
 import { createServer, getDashboardJsonBodyLimit } from '@sgedda/mockifyer-dashboard'
 
-app.use('/dashboard', createServer(publicDir, mockDataPath, config))
+app.use(
+  '/dashboard',
+  createServer(publicDir, mockDataPath, {
+    provider: 'redis',
+    redisUrl: process.env.MOCKIFYER_REDIS_URL,
+    redisDiskMirror: { mirrorWrites: true, readFallback: true },
+  })
+)
 ```
 
 Use the **`public/`** shipped with `npm install @sgedda/mockifyer-dashboard` (default portable build) unless you chose a fixed `VITE_*` base above.

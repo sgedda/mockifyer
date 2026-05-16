@@ -1,3 +1,13 @@
+import type { MockData } from '../types';
+
+/** Payload from dashboard `/api/proxy` when a mock was persisted to Redis (optional client-side mirror). */
+export interface MockifyerProxyRecordingMeta {
+  recordedToStore: boolean;
+  storedMock?: MockData;
+  hash?: string;
+  scenarioName?: string;
+}
+
 export interface HTTPRequestConfig<D = any> {
   url?: string;
   method?: string;
@@ -14,6 +24,7 @@ export interface HTTPResponse<T = any> {
   statusText: string;
   headers: Record<string, string>;
   config: HTTPRequestConfig;
+  mockifyerProxyRecording?: MockifyerProxyRecordingMeta;
 }
 
 export interface HTTPClient<T = any, R = HTTPResponse<T>> {
