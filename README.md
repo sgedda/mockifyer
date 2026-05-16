@@ -116,6 +116,7 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** “Record on miss” |
+| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy “replay mock immediately after capture” behavior |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |

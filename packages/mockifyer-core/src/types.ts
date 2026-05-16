@@ -255,6 +255,7 @@ export interface MockData {
   /**
    * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
    * The file is still kept (e.g. for documentation or for updating while recording).
+   * New recordings default this to **true** (store the body, keep calling live) until disabled in the dashboard; see **`MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API`**.
    */
   alwaysUseRealApi?: boolean;
 }
@@ -285,5 +286,9 @@ export const ENV_VARS = {
    * Does not apply to React Native presets that always pass an explicit boolean for proxy recording.
    */
   MOCK_PROXY_RECORD_ON_MISS: 'MOCKIFYER_PROXY_RECORD_ON_MISS',
+  /**
+   * When not `false`, new recordings get **`alwaysUseRealApi: true`** (store body, keep using live API until disabled in the UI).
+   */
+  MOCK_RECORD_DEFAULT_ALWAYS_USE_REAL_API: 'MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API',
 } as const;
 

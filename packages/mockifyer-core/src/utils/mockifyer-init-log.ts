@@ -1,4 +1,5 @@
 import type { MockifyerConfig, MockifyerRuntimeMode } from '../types';
+import { newRecordingUsesAlwaysUseRealApi } from './recording-default-always-live';
 import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
 import { resolveProxyStrictLaneScenario } from './proxy-strict-lane-scenario';
@@ -144,6 +145,11 @@ export function logMockifyerInitSummary(
   logger.info(`[Mockifyer] activationMode: ${activation} — controls when interceptors apply per request.`);
   if (config.recordMode) {
     logger.info('[Mockifyer] recordMode: true — cache misses can be recorded (proxy or provider permitting).');
+    if (newRecordingUsesAlwaysUseRealApi()) {
+      logger.info(
+        '[Mockifyer] New local recordings default to alwaysUseRealApi (live API until you uncheck in the dashboard). Set MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false to replay mocks immediately after capture.'
+      );
+    }
   }
   const proxyBase = config.proxy?.baseUrl?.trim();
   if (proxyBase) {

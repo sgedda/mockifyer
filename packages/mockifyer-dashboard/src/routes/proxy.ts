@@ -6,6 +6,7 @@ import {
   generateRequestKey,
   getCurrentDate,
   MOCKIFYER_CLIENT_ID_HEADER,
+  newRecordingUsesAlwaysUseRealApi,
   prepareMockResponseBody,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -327,6 +328,7 @@ router.post('/', async (req: Request, res: Response) => {
         },
         response,
         timestamp: new Date().toISOString(),
+        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
       await store.setByHashInScenario(hash, storedMockForClient as any, resolvedScenarioName);
       if (redisDisk.mirrorWrites) {

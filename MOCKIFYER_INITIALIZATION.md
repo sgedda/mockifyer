@@ -39,6 +39,8 @@ setupMockifyer({
 
 > **Behavior change (fetch):** Older versions defaulted `record` to **`false`** when `proxy.recordOnMiss` was omitted, so the dashboard “Record on miss” toggle had no effect. Omitted now **defers to the dashboard** (and the server default is to record on miss). To keep the old “never record” behavior without touching the dashboard, set **`proxy: { ..., recordOnMiss: false }`** or **`MOCKIFYER_PROXY_RECORD_ON_MISS=false`**.
 
+**After a new recording is saved:** the mock includes the real **response body** but defaults **`alwaysUseRealApi: true`** (“Always use live API” checked in the dashboard) so the next matching calls keep hitting the real API until you uncheck to replay from the fixture. Set **`MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false`** to restore immediate mock replay after capture.
+
 **React Native** (`setupMockifyerForReactNative`): still sends an explicit boolean — `proxyRecordOnMiss ?? recordMode` — so a dev build with `recordMode: false` does not start writing to Redis unless you opt in.
 
 ---
@@ -272,6 +274,7 @@ MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis 
 | `MOCKIFYER_STRICT_SCENARIO` | When **`true`** and **`proxy.baseUrl`** is set, require **`clientId`** or **`proxy.scenario`** before intercepting (per-request). |
 | `MOCKIFYER_RECORD` | Recording: local **`recordMode`** (filesystem saves) and/or preset **`recordOnMiss`** when using **`initMockifyerForDashboardProxy`** (see below) |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted in config, set to **`true`** or **`false`** to send that `record` flag on `/api/proxy`; if unset, the **`record`** field is omitted and the **dashboard per-scenario** “Record on miss” applies |
+| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not **`false`**, each **new recording** sets **`alwaysUseRealApi: true`** (body saved, **live API** until you uncheck in the dashboard). Set **`false`** for legacy replay-immediately behavior |
 | `MOCKIFYER_PROXY_URL` | Dashboard base URL for RN presets |
 | `MOCKIFYER_PATH` | Mock data root (filesystem / fallbacks) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |

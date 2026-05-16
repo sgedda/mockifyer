@@ -47,6 +47,7 @@ import {
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
   parseProxyRecordOnMissEnv,
+  newRecordingUsesAlwaysUseRealApi,
   type MockifyerActivationMode,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
@@ -896,7 +897,8 @@ class MockifyerClass {
         },
         timestamp: new Date().toISOString(),
         duration,
-        sessionId: this.currentSessionId
+        sessionId: this.currentSessionId,
+        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
       
       

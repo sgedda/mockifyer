@@ -29,6 +29,7 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  newRecordingUsesAlwaysUseRealApi,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -1457,7 +1458,8 @@ class MockifyerClass {
         timestamp: new Date().toISOString(),
         duration,
         scenario: this.config.scenarios?.default,
-        sessionId: this.currentSessionId
+        sessionId: this.currentSessionId,
+        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 
       // Format the datetime to be readable
