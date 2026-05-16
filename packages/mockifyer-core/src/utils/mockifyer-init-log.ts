@@ -1,6 +1,7 @@
 import type { MockifyerConfig, MockifyerRuntimeMode } from '../types';
 import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
+import { resolveRecordingExclusions } from './recording-exclusion';
 import { resolveProxyStrictLaneScenario } from './proxy-strict-lane-scenario';
 import {
   isExplicitProxyScenarioContext,
@@ -142,6 +143,12 @@ export function logMockifyerInitSummary(
   );
   logger.info(`[Mockifyer] strictLaneScenario (proxy): ${strictLane.enabled} — ${strictLane.meaning}`);
   logger.info(`[Mockifyer] activationMode: ${activation} — controls when interceptors apply per request.`);
+  const recordingExclusions = resolveRecordingExclusions(config);
+  if (recordingExclusions.length > 0) {
+    logger.info(
+      `[Mockifyer] recordingExclusions: ${recordingExclusions.length} rule(s) — matching hosts (and optional path prefixes) skip persisting recordings.`
+    );
+  }
   if (config.recordMode) {
     logger.info('[Mockifyer] recordMode: true — cache misses can be recorded (proxy or provider permitting).');
   }

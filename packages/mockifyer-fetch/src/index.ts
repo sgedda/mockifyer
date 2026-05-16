@@ -36,6 +36,8 @@ import {
   prepareMockResponseBody,
   getCurrentDate,
   shouldExcludeUrl,
+  resolveRecordingExclusions,
+  shouldExcludeRecording,
   mockPassesThroughToRealApi,
   resolveClientId,
   resolveProxyStrictLaneScenario,
@@ -686,6 +688,10 @@ class MockifyerClass {
     if (shouldExcludeUrl(url, this.config.excludedUrls)) {
       return;
     }
+    const recExclusions = resolveRecordingExclusions(this.config);
+    if (shouldExcludeRecording(url, recExclusions, this.config.baseUrl)) {
+      return;
+    }
 
     await this.databaseProviderInitPromise;
 
@@ -782,7 +788,14 @@ class MockifyerClass {
     }
     
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
+    const recordingExclusions = resolveRecordingExclusions(this.config);
     if (url && shouldExcludeUrl(url, this.config.excludedUrls)) {
+      return;
+    }
+    if (
+      url &&
+      shouldExcludeRecording(url, recordingExclusions, this.config.baseUrl)
+    ) {
       return;
     }
     
