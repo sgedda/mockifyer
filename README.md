@@ -29,6 +29,8 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
+**Team workflow (recorded vs curated mocks, re-recording):** **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)**.
+
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
 
 ## Installation

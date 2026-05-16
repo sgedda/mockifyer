@@ -1,7 +1,7 @@
 # Mockifyer initialization guide
 
 Reference for **how to start Mockifyer** in each runtime: primitives (full config) versus **presets** (opinionated defaults).  
-Related: **[REACT_NATIVE.md](./REACT_NATIVE.md)** (Expo/Metro/Hybrid), **[DATABASE_PROVIDER.md](./DATABASE_PROVIDER.md)** (storage backends), **`mockifyer-dashboard`** [README](./packages/mockifyer-dashboard/README.md).
+Related: **[REACT_NATIVE.md](./REACT_NATIVE.md)** (Expo/Metro/Hybrid), **[DATABASE_PROVIDER.md](./DATABASE_PROVIDER.md)** (storage backends), **`mockifyer-dashboard`** [README](./packages/mockifyer-dashboard/README.md), **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)** (recording vs curated mocks, re-record without losing edits).
 
 ---
 
