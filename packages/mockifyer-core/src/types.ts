@@ -147,6 +147,12 @@ export interface MockifyerConfig {
      * Override via **`MOCKIFYER_STRICT_LANE_SCENARIO`** env (wins over this field).
      */
     strictLaneScenario?: boolean;
+    /**
+     * When the dashboard proxy records a response to Redis, also persist the same mock on this client
+     * (filesystem, hybrid/expo scenario folder, or Metro `mockifyer-save` when using in-memory + strict proxy).
+     * Env **`MOCKIFYER_PROXY_MIRROR_TO_CLIENT`** (`true`/`1`) enables when this field is omitted.
+     */
+    mirrorRecordedMocksToClient?: boolean;
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.

@@ -23,9 +23,11 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | Package | Use case |
 |---------|----------|
 | [`@sgedda/mockifyer-core`](./packages/mockifyer-core) | Types, providers (filesystem, Expo, hybrid, memory), scenarios, date helpers, mock matching |
-| [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — recommended for Expo and `global.fetch` |
+| [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
 | [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** interceptors (Node and browser) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
+
+**Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
 

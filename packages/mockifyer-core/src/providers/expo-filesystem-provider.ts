@@ -364,7 +364,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
 
 
-    const scenarioPath = await this.ensureScenarioFolder();
+    const scenarioPath = await this.ensureScenarioFolder(options?.scenario);
 
     // Check request limit before saving (only if limit is set via env var)
     const MAX_REQUESTS_PER_SCENARIO = process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO
@@ -376,7 +376,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           .filter(f => f !== 'scenario-config.json' && f !== 'date-config.json');
 
         if (jsonFiles.length >= MAX_REQUESTS_PER_SCENARIO) {
-          const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${this.currentScenario}". Please delete some mock files or switch to a different scenario.`;
+          const label = options?.scenario ?? this.currentScenario;
+          const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${label}". Please delete some mock files or switch to a different scenario.`;
           logger.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
           // Don't throw - just log and return to prevent app crash
           return;

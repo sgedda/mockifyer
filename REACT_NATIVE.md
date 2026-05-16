@@ -51,6 +51,35 @@ export async function initializeMockifyer() {
 
 In **`App`** / root layout, **`await initializeMockifyer()`** before other network-heavy setup so interception is active early.
 
+### Preset: **`initMockifyerForReactNativeDashboard`**
+
+When using **mockifyer-dashboard** with **`--provider redis`**, you can resolve **`proxyBaseUrl`** from code or env with a single entrypoint (order: **`proxyBaseUrl`** → **`dashboardBaseUrl`** → **`MOCKIFYER_PROXY_URL`**):
+
+```typescript
+import {
+  initMockifyerForReactNativeDashboard,
+  isMockifyerReactNativeActive,
+} from '@sgedda/mockifyer-fetch';
+
+export async function initializeMockifyer() {
+  const result = await initMockifyerForReactNativeDashboard({
+    isDev: __DEV__,
+    mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data',
+    dashboardBaseUrl: 'http://localhost:3002',
+    recordMode: __DEV__ && process.env.MOCKIFYER_RECORD === 'true',
+    config: { logging: 'info' },
+  });
+
+  if (isMockifyerReactNativeActive(result)) {
+    /* result.instance */
+  }
+  return result;
+}
+```
+
+Node / Jest / server apps use **`await initMockifyerForDashboardProxy(...)`** (`dashboardBaseUrl`, **`skipDashboardRedisHealthCheck`**, etc.) — same **`/api/health`** idea as RN strict proxy vs Hybrid.
+
 ---
 
 ## Metro sync middleware (required for Hybrid)

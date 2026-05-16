@@ -9,6 +9,10 @@ import { detectMockDataPath, detectProvider } from './utils/path-detector';
 import { normalizeExpressMountPath } from './utils/dashboard-base-path';
 import path from 'path';
 import fs from 'fs';
+import {
+  resolveRedisDiskMirrorOptions,
+  type DashboardContextConfig,
+} from './utils/dashboard-context';
 
 const program = new Command();
 
@@ -29,6 +33,18 @@ program
   .option(
     '--base <path>',
     'URL path to mount the dashboard (must match VITE_MOCKIFYER_DASHBOARD_BASE used at frontend build). Env: MOCKIFYER_DASHBOARD_BASE'
+  )
+  .option(
+    '--redis-mirror-disk',
+    'With --provider redis: mirror proxy-recorded mocks to <mock-data>/<scenario>/redis/<hash>.json (env: MOCKIFYER_REDIS_MIRROR_DISK)'
+  )
+  .option(
+    '--redis-disk-fallback',
+    'With --provider redis: if Redis has no mock, load from disk before upstream (env: MOCKIFYER_REDIS_DISK_READ_FALLBACK)'
+  )
+  .option(
+    '--redis-disk-dual',
+    'With --provider redis: enable both --redis-mirror-disk and --redis-disk-fallback'
   )
   .parse(process.argv);
 
@@ -76,10 +92,24 @@ async function main() {
 
     const mountPath = normalizeExpressMountPath(options.base ?? process.env.MOCKIFYER_DASHBOARD_BASE);
 
+    let redisDiskMirror: DashboardContextConfig['redisDiskMirror'] = undefined;
+    if (provider === 'redis') {
+      const dual = Boolean(options.redisDiskDual);
+      const mirror = Boolean(options.redisMirrorDisk);
+      const fallback = Boolean(options.redisDiskFallback);
+      if (dual || mirror || fallback) {
+        redisDiskMirror = {
+          mirrorWrites: dual || mirror,
+          readFallback: dual || fallback,
+        };
+      }
+    }
+
     const innerApp = createServer(publicDir, mockDataPath, {
       provider,
       redisUrl,
       keyPrefix,
+      ...(redisDiskMirror !== undefined ? { redisDiskMirror } : {}),
     });
 
     const app =
@@ -115,8 +145,21 @@ async function main() {
           chalk.cyan(`   🧠 Redis URL: ${chalk.bold(redisUrl || 'redis://127.0.0.1:6379 (default)')}`)
         );
         console.log(
-          chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}\n`)
+          chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}`)
         );
+        const dm = resolveRedisDiskMirrorOptions({
+          provider,
+          redisUrl,
+          keyPrefix,
+          redisDiskMirror,
+        });
+        if (dm.mirrorWrites || dm.readFallback) {
+          const parts: string[] = [];
+          if (dm.mirrorWrites) parts.push('mirror recorded mocks → disk');
+          if (dm.readFallback) parts.push('read disk if Redis misses');
+          console.log(chalk.cyan(`   💾 Redis + disk: ${chalk.bold(parts.join(' · '))}`));
+        }
+        console.log('');
       }
       
       if (!options.noOpen) {

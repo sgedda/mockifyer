@@ -9,7 +9,13 @@ import { scenarioConfigRouter } from './routes/scenario-config';
 import { proxyRouter } from './routes/proxy';
 import { clientLanesRouter } from './routes/client-lanes';
 import { proxyConfigRouter } from './routes/proxy-config';
-import type { DashboardContextConfig } from './utils/dashboard-context';
+import type {
+  DashboardContextConfig,
+  RedisDiskMirrorConfigInput,
+  RedisDiskMirrorResolved,
+} from './utils/dashboard-context';
+
+export type { DashboardContextConfig, RedisDiskMirrorConfigInput, RedisDiskMirrorResolved };
 
 /**
  * Same limit string the dashboard uses for `express.json` / `urlencoded` (env
