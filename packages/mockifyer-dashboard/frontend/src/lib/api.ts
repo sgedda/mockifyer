@@ -62,6 +62,23 @@ export async function getMock(filename: string, scenario?: string): Promise<Mock
   return response.json()
 }
 
+async function sendMockUpdate(
+  filename: string,
+  body: Record<string, unknown>,
+  scenario?: string
+): Promise<void> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to update mock')
+  }
+}
+
 export async function updateMock(
   filename: string,
   responseData: any,
@@ -76,16 +93,15 @@ export async function updateMock(
   if (alwaysUseRealApi !== undefined) {
     body.alwaysUseRealApi = alwaysUseRealApi
   }
-  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || error.message || 'Failed to update mock')
-  }
+  await sendMockUpdate(filename, body, scenario)
+}
+
+export async function updateMockAlwaysUseRealApi(
+  filename: string,
+  alwaysUseRealApi: boolean,
+  scenario?: string
+): Promise<void> {
+  await sendMockUpdate(filename, { alwaysUseRealApi }, scenario)
 }
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {

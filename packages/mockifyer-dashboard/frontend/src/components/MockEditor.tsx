@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { updateMock } from '@/lib/api'
+import { updateMock, updateMockAlwaysUseRealApi } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData, MockResponseDateOverride } from '@/types'
 import { Input } from '@/components/ui/input'
@@ -283,9 +283,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
     setAlwaysUseRealApi(next)
     try {
       setSaving(true)
-      // Intentionally preserve the current on-disk/Redis mock body and overrides.
-      // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
-      await updateMock(mock.filename, mock.data.response.data, undefined, next, scenario)
+      await updateMockAlwaysUseRealApi(mock.filename, next, scenario)
       toast({
         title: 'Saved',
         description: next
