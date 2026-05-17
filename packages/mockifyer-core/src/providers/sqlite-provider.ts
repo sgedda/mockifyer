@@ -23,7 +23,8 @@ export class SQLiteProvider implements DatabaseProvider {
     // This will throw if better-sqlite3 is not installed
     let Database: any;
     try {
-      Database = require('better-sqlite3');
+      // Optional peer: skip resolution when consumers bundle with webpack (e.g. Next.js instrumentation).
+      Database = require(/* webpackIgnore: true */ 'better-sqlite3');
     } catch (e) {
       throw new Error(
         'better-sqlite3 is required for SQLiteProvider. Install it with: npm install better-sqlite3'
