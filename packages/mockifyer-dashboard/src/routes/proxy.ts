@@ -9,6 +9,7 @@ import {
   prepareMockResponseBody,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import { parseSafeScenarioName } from '../utils/scenario-name';
 
 const router = express.Router();
 
@@ -72,7 +73,12 @@ router.post('/', async (req: Request, res: Response) => {
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
   const upperMethod = String(method || 'GET').toUpperCase();
-  const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
+  const parsedBodyScenario =
+    typeof scenario === 'string' && scenario.trim() ? parseSafeScenarioName(scenario) : null;
+  if (parsedBodyScenario && !parsedBodyScenario.ok) {
+    return res.status(400).json({ error: parsedBodyScenario.error });
+  }
+  const bodyScenario = parsedBodyScenario?.ok ? parsedBodyScenario.value : undefined;
 
   const storedRequest = {
     method: upperMethod,

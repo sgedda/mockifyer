@@ -4,17 +4,15 @@ import path from 'path';
 import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { parseSafeScenarioName } from '../utils/scenario-name';
 
 const router = express.Router();
 
 const DATE_CONFIG_FILENAME = 'date-config.json';
 
 function sanitizeScenarioCandidate(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== trimmed) return null;
-  return sanitized;
+  const parsed = parseSafeScenarioName(raw);
+  return parsed.ok ? parsed.value : null;
 }
 
 async function resolveScenarioForRoute(
