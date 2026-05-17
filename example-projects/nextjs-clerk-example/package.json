@@ -1,0 +1,40 @@
+{
+  "name": "nextjs-clerk-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js + Clerk demo: dashboard loads data through server routes with Mockifyer (filesystem or dashboard proxy)",
+  "scripts": {
+    "dev": "MOCKIFYER_RUNTIME=filesystem MOCKIFYER_RECORD=false next dev --turbopack",
+    "dev:webpack": "MOCKIFYER_RUNTIME=filesystem MOCKIFYER_RECORD=false next dev",
+    "dev:mock": "MOCKIFYER_RUNTIME=filesystem MOCKIFYER_RECORD=false next dev --turbopack",
+    "dev:record": "MOCKIFYER_RUNTIME=filesystem MOCKIFYER_RECORD=true next dev --turbopack",
+    "dev:proxy": "MOCKIFYER_RUNTIME=proxy MOCKIFYER_RECORD=false next dev --turbopack",
+    "dev:proxy:record": "MOCKIFYER_RUNTIME=proxy MOCKIFYER_RECORD=true next dev --turbopack",
+    "dev:off": "MOCKIFYER_RUNTIME=off next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
+    "dashboard:redis": "MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --port 3002",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose down",
+    "redis:logs": "docker compose logs -f redis"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.14.0",
+    "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
+    "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "typescript": "^5.6.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.0"
+  }
+}
