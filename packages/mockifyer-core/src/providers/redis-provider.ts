@@ -51,7 +51,8 @@ export class RedisProvider implements DatabaseProvider {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RedisCtor: any;
     try {
-      RedisCtor = require('ioredis');
+      // Optional peer: allow dashboard proxy without ioredis on the app side until Redis provider is used.
+      RedisCtor = require(/* webpackIgnore: true */ 'ioredis');
     } catch {
       throw new Error(
         'Redis provider requires the optional dependency `ioredis`. Install with: npm install ioredis'

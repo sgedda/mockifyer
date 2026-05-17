@@ -42,8 +42,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     // Try to import expo-file-system
     try {
-      // Use dynamic import for React Native compatibility
-      this.FileSystem = require('expo-file-system');
+      // Optional peer: RN/Expo only; webpack must not resolve this in Node-only apps (e.g. Next.js).
+      this.FileSystem = require(/* webpackIgnore: true */ 'expo-file-system');
     } catch (e) {
       throw new Error(
         'expo-file-system is required for ExpoFileSystemProvider. Install it with: npx expo install expo-file-system'
