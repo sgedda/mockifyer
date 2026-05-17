@@ -158,7 +158,7 @@ function MockListContent({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="🔍 Search by filename, endpoint, or method..."
+          placeholder="🔍 Search mocks (URL, GraphQL query, variables, response body, …)"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="min-w-[12rem] flex-1"
