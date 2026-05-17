@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
+import { requireSafeScenarioName } from './scenario-name';
 
 export interface RedisMockStoreConfig {
   redisUrl: string;
@@ -127,7 +128,7 @@ export class RedisMockStore {
 
     if (hadBodyScenarioOverride) {
       return {
-        scenario: scenarioOverride!.trim(),
+        scenario: requireSafeScenarioName(scenarioOverride, 'proxy body scenario'),
         resolutionSource: 'body_override',
         hadBodyScenarioOverride,
       };
@@ -141,7 +142,7 @@ export class RedisMockStore {
         const perClientScenario = await this.redis.get(perClientKey);
         if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
           return {
-            scenario: perClientScenario.trim(),
+            scenario: requireSafeScenarioName(perClientScenario, `Redis ${perClientKey}`),
             resolutionSource: 'lane_redis',
             hadBodyScenarioOverride: false,
           };
@@ -153,14 +154,14 @@ export class RedisMockStore {
       const centralizedScenario = await this.redis.get(this.activeScenarioKey);
       if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
         return {
-          scenario: centralizedScenario.trim(),
+          scenario: requireSafeScenarioName(centralizedScenario, `Redis ${this.activeScenarioKey}`),
           resolutionSource: 'global_redis',
           hadBodyScenarioOverride: false,
         };
       }
     }
 
-    const fsScenario = getCurrentScenario(this.mockDataPath);
+    const fsScenario = requireSafeScenarioName(getCurrentScenario(this.mockDataPath), 'filesystem fallback scenario');
     return {
       scenario: fsScenario,
       resolutionSource: 'filesystem_fallback',

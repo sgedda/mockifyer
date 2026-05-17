@@ -8,25 +8,11 @@ import {
   buildRedisScenarioBundle,
   parseScenarioImportRequest,
 } from '../utils/scenario-bundle';
+import { parseSafeScenarioName } from '../utils/scenario-name';
 import fs from 'fs';
 import path from 'path';
 
 const router = express.Router();
-
-function sanitizeScenarioName(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    return { ok: false, error: 'Scenario name is required' };
-  }
-  const trimmed = raw.trim();
-  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== trimmed) {
-    return {
-      ok: false,
-      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
-    };
-  }
-  return { ok: true, value: sanitized };
-}
 
 function copyDirectoryRecursive(srcDir: string, destDir: string): void {
   if (!fs.existsSync(srcDir)) {
@@ -89,7 +75,7 @@ router.post('/set', async (req: Request, res: Response) => {
     const { scenario } = req.body;
     const { mockDataPath, config } = getDashboardContext(req);
     
-    const parsed = sanitizeScenarioName(scenario);
+    const parsed = parseSafeScenarioName(scenario);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     const sanitized = parsed.value;
 
@@ -152,14 +138,14 @@ router.post('/create', async (req: Request, res: Response) => {
     const { scenario, deriveFrom } = req.body as { scenario?: unknown; deriveFrom?: unknown };
     const { mockDataPath, config } = getDashboardContext(req);
     
-    const parsedScenario = sanitizeScenarioName(scenario);
+    const parsedScenario = parseSafeScenarioName(scenario);
     if (!parsedScenario.ok) return res.status(400).json({ error: parsedScenario.error });
     const sanitized = parsedScenario.value;
 
     const parsedDerive =
       deriveFrom === undefined || deriveFrom === null || deriveFrom === ''
         ? null
-        : sanitizeScenarioName(deriveFrom);
+        : parseSafeScenarioName(deriveFrom);
     if (parsedDerive !== null && !parsedDerive.ok) {
       return res.status(400).json({ error: parsedDerive.error });
     }
@@ -261,7 +247,7 @@ router.get('/export', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
     const raw = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
-    const parsed = raw !== undefined && raw.trim() !== '' ? sanitizeScenarioName(raw) : null;
+    const parsed = raw !== undefined && raw.trim() !== '' ? parseSafeScenarioName(raw) : null;
     const scenario = parsed !== null ? (parsed.ok ? parsed.value : null) : null;
     if (parsed !== null && !parsed.ok) {
       return res.status(400).json({ error: parsed.error });
@@ -296,7 +282,7 @@ router.post('/import', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const { meta, bundle, bundleHadDateKey, bundleHadProxyKey } = parseScenarioImportRequest(req.body);
 
-    const targetParsed = sanitizeScenarioName(meta.targetScenario ?? bundle.sourceScenario);
+    const targetParsed = parseSafeScenarioName(meta.targetScenario ?? bundle.sourceScenario);
     if (!targetParsed.ok) {
       return res.status(400).json({ error: targetParsed.error });
     }
