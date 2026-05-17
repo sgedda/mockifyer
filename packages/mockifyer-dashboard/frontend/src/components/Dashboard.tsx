@@ -233,15 +233,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }
 
-  const filteredMocks = mocks.filter(mock => {
-    const query = searchQuery.toLowerCase()
-    return (
-      mock.filename.toLowerCase().includes(query) ||
-      mock.endpoint?.toLowerCase().includes(query) ||
-      mock.graphqlInfo?.query.toLowerCase().includes(query) ||
-      mock.method?.toLowerCase().includes(query)
-    )
-  })
+  // Mocks come from GET /mocks or /mocks/search (full JSON); extra client filtering hid response-body hits.
 
   const filteredScenarioOptions = availableScenarios
     .filter((s) => s && s.trim())
@@ -422,7 +414,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={
                 <div className="space-y-6">
                   <MockList
-                    mocks={filteredMocks}
+                    mocks={mocks}
                     allMocks={allMocks}
                     similarBodyGroups={similarBodyGroups}
                     scenario={scenario}
