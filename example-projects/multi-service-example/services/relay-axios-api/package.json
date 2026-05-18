@@ -1,0 +1,23 @@
+{
+  "name": "@multi-service/relay-axios-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo tsx watch src/server.ts",
+    "dev:record": "cross-env MOCKIFYER_RECORD=true MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@multi-service/mock-axios-bootstrap": "file:../../packages/mock-axios-bootstrap",
+    "@sgedda/mockifyer-core": "file:../../../../packages/mockifyer-core",
+    "axios": "^1.7.9",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.0"
+  }
+}
