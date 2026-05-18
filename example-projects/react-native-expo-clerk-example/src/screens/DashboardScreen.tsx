@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useClerk, useUser } from '@clerk/clerk-expo';
+import { useAppAuth } from '@/auth/auth-context';
 import { useMockifyerApp } from '../mockifyer-context';
 
 interface ApiSnippetProps {
@@ -58,10 +58,13 @@ function ApiSnippet(props: ApiSnippetProps): React.ReactElement {
  * Post-login surface: varied HTTP hosts/methods so Mockifyer captures distinguishable traffic.
  */
 export function DashboardScreen(): React.ReactElement {
-  const { user } = useUser();
-  const { signOut } = useClerk();
+  const { user, signOut } = useAppAuth();
   const { initialized, instance } = useMockifyerApp();
   const [log, setLog] = useState<string>('Tap a card to fetch. Responses also flow through Mockifyer.');
+
+  if (!user) {
+    return <View />;
+  }
 
   const appendLog = useCallback((prefix: string, payload: unknown) => {
     const slice =
@@ -135,7 +138,8 @@ export function DashboardScreen(): React.ReactElement {
       <View style={styles.header}>
         <Text style={styles.heading}>Dashboard</Text>
         <Text style={styles.identity}>
-          {user?.primaryEmailAddress?.emailAddress ?? user?.username ?? user?.id ?? 'Signed in'}
+          {[user.name, user.email].filter(Boolean).join(' · ') || user.id}{' '}
+          <Text style={styles.identityProvider}>({user.provider})</Text>
         </Text>
         <Text style={styles.mockStatus}>
           Mockifyer: {initialized ? 'ready' : 'initializing…'}
@@ -215,6 +219,11 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 15,
     color: '#94a3b8',
+  },
+  identityProvider: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
   },
   mockStatus: {
     marginTop: 8,

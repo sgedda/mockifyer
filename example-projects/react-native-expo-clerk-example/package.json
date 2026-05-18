@@ -1,7 +1,7 @@
 {
   "name": "react-native-expo-clerk-example",
   "version": "1.0.0",
-  "description": "React Native Expo + Clerk + Mockifyer (login, dashboard, varied APIs)",
+  "description": "React Native Expo + local demo auth + Mockifyer (dashboard, varied APIs)",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -33,20 +33,13 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.28.4",
-    "@clerk/clerk-expo": "^2.14.23",
-    "@clerk/expo-passkeys": "^0.0.16",
     "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
     "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",
     "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
     "expo": "~51.0.0",
-    "expo-apple-authentication": "~7.1.2",
-    "expo-auth-session": "~5.5.2",
-    "expo-crypto": "~13.0.2",
     "expo-file-system": "~17.0.0",
-    "expo-local-authentication": "~14.0.1",
     "expo-secure-store": "~13.0.2",
     "expo-status-bar": "~1.12.1",
-    "expo-web-browser": "~13.0.3",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-native": "0.74.5"
