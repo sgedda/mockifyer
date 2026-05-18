@@ -60,6 +60,54 @@ describe('fetch proxy bypass', () => {
     const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(proxyBody.url).toBe('https://api.example.com/users');
     expect(proxyBody.clientId).toBe('lane-alpha');
+    expect(proxyBody).not.toHaveProperty('record');
+  });
+
+  it('only sends proxy record override when explicitly configured', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'upstream',
+        hash: 'abc123',
+        response: {
+          status: 200,
+          data: { ok: true },
+          headers: {},
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const baseConfig = {
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+    };
+
+    const defaultClient = setupMockifyer({
+      ...baseConfig,
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+    await defaultClient.get('https://api.example.com/default');
+
+    const recordOffClient = setupMockifyer({
+      ...baseConfig,
+      proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: false },
+    });
+    await recordOffClient.get('https://api.example.com/off');
+
+    const recordOnClient = setupMockifyer({
+      ...baseConfig,
+      proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: true },
+    });
+    await recordOnClient.get('https://api.example.com/on');
+
+    const bodies = fetchMock.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body))
+    );
+    expect(bodies[0]).not.toHaveProperty('record');
+    expect(bodies[1].record).toBe(false);
+    expect(bodies[2].record).toBe(true);
   });
 
   it('does not send bypassed requests to dashboard proxy', async () => {
