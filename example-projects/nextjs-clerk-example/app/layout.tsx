@@ -1,51 +1,35 @@
 import type { Metadata } from 'next';
-import { ClerkProvider, SignInButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
-import Link from 'next/link';
+import type { ReactElement, ReactNode } from 'react';
+import { auth } from '@/auth';
+import { SessionProviderShell } from '@/components/session-provider';
+import { TopBar } from '@/components/top-bar';
 import './globals.css';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Mockifyer · Next.js + Clerk',
-  description: 'Demo dashboard with server-side HTTP mocks',
+  title: 'Mockifyer · Next.js + OAuth',
+  description: 'Demo dashboard with Google/GitHub sign-in and server-side HTTP mocks',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
-}>) {
+  children: ReactNode;
+}>): Promise<ReactElement> {
+  const session = await auth();
+
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <head>
-          <link
-            href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap"
-            rel="stylesheet"
-          />
-        </head>
-        <body>
-          <header className="top-bar">
-            <Link href="/" className="brand">
-              Mockifyer demo
-            </Link>
-            <nav className="nav-actions">
-              <SignedIn>
-                <Link href="/dashboard">Dashboard</Link>
-                <UserButton afterSignOutUrl="/" />
-              </SignedIn>
-              <SignedOut>
-                <SignInButton mode="modal">
-                  <button type="button" className="btn-secondary">
-                    Sign in
-                  </button>
-                </SignInButton>
-              </SignedOut>
-            </nav>
-          </header>
+    <html lang="en">
+      <head>
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet" />
+      </head>
+      <body>
+        <SessionProviderShell session={session}>
+          <TopBar session={session} />
           <main className="main-shell">{children}</main>
-        </body>
-      </html>
-    </ClerkProvider>
+        </SessionProviderShell>
+      </body>
+    </html>
   );
 }

@@ -5,7 +5,7 @@ export default function HomePage() {
   return (
     <div>
       <h1 style={{ fontSize: '2rem', letterSpacing: '-0.03em', marginBottom: '0.5rem' }}>
-        Next.js + Clerk + Mockifyer
+        Next.js + Google/GitHub OAuth + Mockifyer
       </h1>
       <p className="muted" style={{ maxWidth: '34rem', lineHeight: 1.6 }}>
         The samples below call the same upstream services as the signed-in dashboard, via public

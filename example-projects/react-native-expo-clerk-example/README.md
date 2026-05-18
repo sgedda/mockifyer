@@ -1,49 +1,37 @@
-# React Native Expo + Clerk + Mockifyer
+# React Native Expo · local demo login + Mockifyer
 
-Example app alongside [`react-native-expo-example`](../react-native-expo-example): **Clerk** email/password auth (login → dashboard) and **several public HTTP APIs** so Mockifyer sees distinct hosts, query strings, headers, and a POST body.
+> **Note:** Folder is still named `react-native-expo-clerk-example` for stable docs links; auth is **Clerk-free** — a single **on-device demo user** (`SecureStore` / `localStorage`), no dashboards or OAuth apps.
 
-## Setup
+Companion to [`react-native-expo-example`](../react-native-expo-example): after **Continue as demo user**, the dashboard runs **several public HTTP APIs** so Mockifyer sees distinct hosts, query strings, headers, and a POST body.
 
-1. From this folder:
+## Zero external auth tooling
 
-   ```bash
-   npm install
-   ```
+1. **`npm install`**
+2. **`npm run dev`** (or `npm run start`)
 
-2. **Clerk**: create an application in the [Clerk Dashboard](https://dashboard.clerk.com/), enable **Email + password**, and copy the **publishable** key.
+No Clerk key, no Google/GitHub OAuth project, no `.env` for sign-in.
 
-3. Env (Expo inlines `EXPO_PUBLIC_*` at bundle time):
+Session is persisted only on this device/emulator/browser tab for convenience; it is **not** a verified identity.
 
-   ```bash
-   cp .env.example .env
-   # set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-   ```
+## Optional: bundled mocks for release
 
-4. Bundled mocks for release builds:
+```bash
+npm run generate:build-data
+```
 
-   ```bash
-   npm run generate:build-data
-   ```
+## Mockifyer env (optional)
 
-5. Start (same Mockifyer scripts as the other RN example):
+Same `EXPO_PUBLIC_MOCKIFYER_*` / `MOCKIFYER_*` patterns as the main RN example — see [REACT_NATIVE.md](../../REACT_NATIVE.md). No `.env` is required to try the dashboard with **replay mocks** if your `mock-data/` is populated.
 
-   ```bash
-   npm run dev
-   # or record:
-   npm run dev:hybrid:record
-   ```
-
-   Use `expo start -c` after changing `.env` so Metro picks up new env vars.
+Use `expo start -c` after changing bundled env-driven variables so Metro picks up new values.
 
 ### Local Redis (Docker)
 
-For **`npm run dashboard:redis`** and **`npm run dev:redis*`**, start Redis on **`127.0.0.1:6379`**:
+For **`npm run dashboard:redis`** and **`npm run dev:redis*`**:
 
 ```bash
 npm run redis:up
 ```
-
-Stop when finished:
 
 ```bash
 npm run redis:down
@@ -53,12 +41,11 @@ npm run redis:down
 
 | Area | Detail |
 |------|--------|
-| Auth | `ClerkProvider`, `tokenCache`, email/password via `signIn.password`, `SignedIn` / `SignedOut` |
-| Mockifyer order | `initializeMockifyer()` runs **before** `ClerkProvider` so Clerk’s HTTP traffic can be intercepted too |
+| Auth | Local **demo user** persisted with `expo-secure-store` (native) or `localStorage` (web demo) |
+| Mockifyer order | `initializeMockifyer()` before the auth gate |
 | APIs after login | RandomUser, Open-Meteo (query params), Nationalize.io, GitHub REST (`Accept` header), ReqRes **POST** JSON |
 
 ## Notes
 
-- **GitHub** may rate-limit anonymous API calls.
-- Icon/splash assets here are tiny placeholders; replace with real artwork before store builds.
-- For Mockifyer dashboard, Redis/hybrid usage, and sync commands, see the main example’s README and [REACT_NATIVE.md](../../REACT_NATIVE.md).
+- **GitHub REST** demo may rate-limit anonymous API calls — unrelated to “login”; it’s sample traffic for Mockifyer.
+- Assets are placeholders — replace before store submissions.

@@ -1,29 +1,60 @@
-# Next.js + Clerk + Mockifyer
+# Next.js + OAuth (Google / GitHub) + Mockifyer
 
-Full-stack example: [Clerk](https://clerk.com/) auth, an App Router **dashboard** that triggers several **Route Handlers**, each calling a different public API with server-side `fetch`. [Mockifyer](https://github.com/sgedda/mockifyer) runs in the **Node** process via root [`instrumentation.ts`](https://nextjs.org/docs/app/guides/instrumentation), so `fetch` in `app/api/**` is recorded or replayed from disk (or via the dashboard proxy when Redis is healthy).
+> **Note:** Directory name `example-projects/nextjs-clerk-example/` is unchanged for stable paths in docs; authentication here is **Auth.js** OAuth (Google / GitHub), not Clerk.
 
-## Setup
+Full-stack example: **[Auth.js (`next-auth` v5)](https://authjs.dev)** with optional **Google** and **GitHub** OAuth plus a **built-in demo user** when OAuth is not configured. The App Router **dashboard** triggers **Route Handlers** that each call a public API with server-side `fetch`. [Mockifyer](https://github.com/sgedda/mockifyer) runs in the **Node** process via root [`instrumentation.ts`](https://nextjs.org/docs/app/guides/instrumentation), so `fetch` in `app/api/**` is recorded or replayed from disk (or via the dashboard proxy when Redis is healthy).
 
-1. **Clerk** — create an app in the Clerk dashboard and set keys (see [Clerk Next.js docs](https://clerk.com/docs)):
+Configure **either or both** OAuth providers in `.env.local` when you want real identities; they are omitted from this example’s sign-in UI until both client id **and** secret are set.
+
+### Zero-configuration local run (`next dev`)
+
+1. `npm install`
+2. `npm run dev` (no `.env.local` required)
+3. Open [http://localhost:3000](http://localhost:3000); use **Load all three** on the home page **without signing in**.
+4. For `/dashboard`: you are redirected to sign-in → **Continue as demo user** → no Google/GitHub apps and no OAuth env vars needed.
+
+Demo sign-in uses a repo-known fallback `AUTH_SECRET` for cookie signing (**not secret** across clones — fine for scratching locally). When you OAuth **or** deploy anywhere shared, generate your own **`AUTH_SECRET`**.
+
+Production (`next build` / `next start`): demo login is **off** unless **`AUTH_ALLOW_DEMO=true`** (still not for real accounts). Prefer OAuth vars or a proper secret in deployed environments.
+
+---
+
+## Setup (OAuth + optional `.env`)
+
+1. **`AUTH_SECRET`** (recommended as soon as you leave pure local scratching)
+
+   Random string Auth.js uses to encrypt cookies/JWT slices — see [`AUTH_SECRET`](https://authjs.dev/getting-started/environment-variables).
+
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. **`AUTH_ALLOW_DEMO`** — set to `true` only if you need the passwordless demo user in a production **preview**.
+
+3. *(Optional)* **Copy env template** if you maintain many variables locally:
 
    ```bash
    cp .env.local.example .env.local
-   # fill NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY
    ```
 
-2. **Install**
+4. **Google OAuth** ([Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth client ID → Web application)
 
-   ```bash
-   npm install
-   ```
+   - Authorized JavaScript origins: `http://localhost:3000`
+   - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google`
+   - Put **Client ID** / **secret** into `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
 
-3. **Run** (pick a Mockifyer mode — see table below)
+5. **GitHub OAuth** ([Settings → Developer settings → OAuth Apps](https://github.com/settings/developers))
+
+   - Authorization callback URL: `http://localhost:3000/api/auth/callback/github`
+   - Put **Client ID** / **Client secret** into `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET`.
+
+6. **Run** (pick a Mockifyer mode — see table below)
 
    ```bash
    npm run dev
    ```
 
-   Open [http://localhost:3000](http://localhost:3000) and use **Load all three** (or individual buttons) on the home page — no sign-in needed for that. Or sign in and use the **Dashboard** for the same upstreams via `/api/demo/*`.
+   Home page demos use **Load all three** via open routes — no sign-in. The **dashboard** uses authenticated `/api/demo/*` after OAuth or demo login.
 
 ### Optional: Local Redis (Docker)
 
@@ -42,7 +73,7 @@ npm run redis:down
 ## Mockifyer modes (`package.json`)
 
 | Script | Purpose |
-|--------|--------|
+|--------|---------|
 | `npm run dev` / `dev:mock` | Filesystem mocks under `./mock-data`, **replay** (`MOCKIFYER_RECORD=false`), **Turbopack** |
 | `npm run dev:webpack` | Same as `dev` but **webpack** dev server (matches production bundling / externals) |
 | `npm run dev:record` | Same, but **record** real responses into `./mock-data` |
@@ -62,11 +93,13 @@ Environment knobs:
 
 - `instrumentation.ts` — Node-only bootstrap; awaits `lib/mockifyer-server-init.ts`
 - `lib/mockifyer-server-init.ts` — `MOCKIFYER_RUNTIME` → `off` | `filesystem` | `proxy`
+- `auth.ts` + `app/api/auth/[...nextauth]/route.ts` — Auth.js (**Google/GitHub OAuth** + optional **demo Credentials** provider `demo`; see `lib/auth-constants.ts`)
 - `app/api/demo/*` — three upstream calls (JSONPlaceholder, GitHub, Dog API), **auth required**
 - `app/api/open/demo/*` — same upstreams, **unauthenticated** (used on the home page so you can record without signing in)
 - **`next.config.ts`** — `serverExternalPackages` plus **webpack** `externals` so Mockifyer (`fs`, optional providers) is not bundled for the instrumentation hook. Use **`npm run dev:webpack`** if Turbopack warns about webpack-only config.
-- `middleware.ts` — Clerk `auth.protect()` except `/`, `/sign-in`, `/sign-up`, and `/api/open/demo/*`
-- **`export const dynamic = 'force-dynamic'`** in `app/layout.tsx` so static export does not require real Clerk keys at build time; use real keys from [Clerk](https://dashboard.clerk.com) for local sign-in.
+- `middleware.ts` — Auth.js `auth()`, redirect to `/sign-in` except `/`, `/sign-in`, `/api/auth/*`, `/api/open/*`
+- **`export const dynamic = 'force-dynamic'`** in `app/layout.tsx` so static export does not require Auth.js cookies at build time
+- **`SessionProvider`** in `components/session-provider.tsx` so the sign-in buttons can call `signIn(...)` client-side — see README above for configuring providers
 
 ## Note on client-side HTTP
 
