@@ -16,8 +16,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
-import { MockData, TestGenerator, TestGenerationOptions } from '@sgedda/mockifyer-core';
-import { logger } from '@sgedda/mockifyer-core';
+import {
+  assertValidScenarioName,
+  isValidScenarioName,
+  logger,
+  MockData,
+  normalizeMockRelativePath,
+  TestGenerator,
+  TestGenerationOptions,
+} from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
   /** Project root directory (default: process.cwd()) */
@@ -96,7 +103,12 @@ function getMockFilePathLocal(mockData: MockData, dateStr: string): { dir: strin
 function getCurrentScenario(mockDataPath: string): string {
   // Check environment variable first
   if (process.env.MOCKIFYER_SCENARIO) {
-    return process.env.MOCKIFYER_SCENARIO;
+    const scenarioName = process.env.MOCKIFYER_SCENARIO.trim();
+    if (isValidScenarioName(scenarioName)) {
+      return scenarioName;
+    }
+    logger.warn(`[MetroSyncMiddleware] Ignoring invalid MOCKIFYER_SCENARIO: ${process.env.MOCKIFYER_SCENARIO}`);
+    return DEFAULT_SCENARIO;
   }
 
   // Try to load from scenario-config.json
@@ -105,8 +117,12 @@ function getCurrentScenario(mockDataPath: string): string {
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(fileContent);
-      if (config.currentScenario) {
-        return config.currentScenario;
+      if (typeof config.currentScenario === 'string') {
+        const scenarioName = config.currentScenario.trim();
+        if (isValidScenarioName(scenarioName)) {
+          return scenarioName;
+        }
+        logger.warn(`[MetroSyncMiddleware] Ignoring invalid scenario-config.json value: ${config.currentScenario}`);
       }
     }
   } catch (error) {
@@ -121,7 +137,7 @@ function getCurrentScenario(mockDataPath: string): string {
  */
 function getScenarioPath(scenario: string, mockDataPath: string): string {
   // Always create scenario subfolder, even for 'default'
-  return path.join(mockDataPath, scenario);
+  return path.join(mockDataPath, assertValidScenarioName(scenario));
 }
 
 
@@ -334,14 +350,8 @@ function saveProxyMirrorMockToProject(
     if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear')) {
       return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
     }
-    const id = scenarioName.trim();
-    if (!id) {
-      return { success: false, error: 'scenarioName is required' };
-    }
-    const normalized = relativePath.replace(/\\/g, '/').replace(/^\//, '');
-    if (!normalized) {
-      return { success: false, error: 'relativePath is required' };
-    }
+    const id = assertValidScenarioName(scenarioName, 'scenarioName');
+    const normalized = normalizeMockRelativePath(relativePath);
     const scenarioPath = getScenarioPath(id, mockDataPath);
     fs.mkdirSync(scenarioPath, { recursive: true });
     const filePath = path.join(scenarioPath, normalized);
@@ -798,11 +808,12 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       try {
         // Check environment variable first (highest priority)
         if (process.env.MOCKIFYER_SCENARIO) {
-          logger.info(`[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${process.env.MOCKIFYER_SCENARIO}`);
+          const currentScenario = getCurrentScenario(mockDataPath);
+          logger.info(`[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${currentScenario}`);
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ 
             success: true, 
-            currentScenario: process.env.MOCKIFYER_SCENARIO 
+            currentScenario
           }));
           return;
         }
@@ -816,7 +827,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           const fileContent = fs.readFileSync(configPath, 'utf-8');
           logger.info(`[MetroSyncMiddleware] File content: ${fileContent}`);
           const config = JSON.parse(fileContent);
-          const scenario = config.currentScenario || DEFAULT_SCENARIO;
+          const scenario = getCurrentScenario(mockDataPath);
           logger.info(`[MetroSyncMiddleware] Found scenario in config: ${scenario} (from file: ${JSON.stringify(config)})`);
           
           res.setHeader('Content-Type', 'application/json');
@@ -851,6 +862,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       req.on('end', () => {
         try {
           const config = JSON.parse(body);
+          if (typeof config.currentScenario === 'string') {
+            config.currentScenario = assertValidScenarioName(config.currentScenario);
+          }
           const configPath = path.join(mockDataPath, 'scenario-config.json');
           fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
           res.setHeader('Content-Type', 'application/json');

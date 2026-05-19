@@ -2,6 +2,7 @@ import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
+import { assertValidScenarioName } from '../utils/scenario';
 
 /**
  * SQLite-based provider for storing mock data
@@ -64,7 +65,7 @@ export class SQLiteProvider implements DatabaseProvider {
     console.log(`[Mockifyer] SQLite database initialized at: ${this.dbPath}`);
   }
 
-  save(mockData: MockData, _options?: SaveMockOptions): void {
+  save(mockData: MockData, options?: SaveMockOptions): void {
     if (!this.db) {
       throw new Error('SQLiteProvider not initialized. Call initialize() first.');
     }
@@ -97,6 +98,9 @@ export class SQLiteProvider implements DatabaseProvider {
 
     // Generate request key using shared utility
     const requestKey = generateRequestKey(mockData.request);
+    const scenario = options?.scenario
+      ? assertValidScenarioName(options.scenario)
+      : mockData.scenario || null;
 
     stmt.run(
       requestKey,
@@ -110,7 +114,7 @@ export class SQLiteProvider implements DatabaseProvider {
       JSON.stringify(mockData.response.data),
       JSON.stringify(mockData.response.headers || {}),
       mockData.timestamp,
-      mockData.scenario || null
+      scenario
     );
 
     console.log(`[Mockifyer] Saved mock to SQLite database: ${requestKey.substring(0, 100)}...`);

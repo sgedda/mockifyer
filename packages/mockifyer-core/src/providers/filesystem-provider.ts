@@ -4,7 +4,13 @@ import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
-import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
+import {
+  getCurrentScenario,
+  getScenarioFolderPath,
+  ensureScenarioFolder,
+  checkRequestLimit,
+  normalizeMockRelativePath,
+} from '../utils/scenario';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
@@ -82,7 +88,7 @@ export class FilesystemProvider implements DatabaseProvider {
     let dir: string;
     let filename: string;
     if (options?.relativePath) {
-      const normalized = options.relativePath.replace(/\\/g, '/').replace(/^\//, '');
+      const normalized = normalizeMockRelativePath(options.relativePath);
       const lastSlash = normalized.lastIndexOf('/');
       dir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
       filename = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;

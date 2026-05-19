@@ -15,6 +15,60 @@ try {
 
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
+const SAFE_SCENARIO_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+export function isValidScenarioName(scenarioName: string | undefined | null): scenarioName is string {
+  return typeof scenarioName === 'string' &&
+    scenarioName.trim() === scenarioName &&
+    SAFE_SCENARIO_NAME_PATTERN.test(scenarioName);
+}
+
+export function normalizeScenarioName(scenarioName: string | undefined | null): string | undefined {
+  if (typeof scenarioName !== 'string') {
+    return undefined;
+  }
+  const trimmed = scenarioName.trim();
+  return isValidScenarioName(trimmed) ? trimmed : undefined;
+}
+
+export function assertValidScenarioName(scenarioName: string, label = 'scenario'): string {
+  const normalized = normalizeScenarioName(scenarioName);
+  if (!normalized) {
+    throw new Error(`Invalid ${label}: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
+  }
+  return normalized;
+}
+
+export function normalizeMockRelativePath(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
+  const segments = normalized.split('/');
+  if (
+    !normalized ||
+    normalized.includes('\0') ||
+    segments.some(segment => !segment || segment === '.' || segment === '..')
+  ) {
+    throw new Error(`Invalid mock relative path: "${relativePath}"`);
+  }
+  return segments.join('/');
+}
+
+function isSafeScenarioConfigClientId(clientId: string): boolean {
+  return clientId !== '' &&
+    !clientId.includes('/') &&
+    !clientId.includes('\\') &&
+    !clientId.includes('\0');
+}
+
+function safeScenarioOrDefault(candidate: string | undefined | null, source: string): string | undefined {
+  const normalized = normalizeScenarioName(candidate);
+  if (normalized) {
+    return normalized;
+  }
+  if (candidate != null && String(candidate).trim() !== '') {
+    console.warn(`[Mockifyer] Ignoring invalid scenario from ${source}: "${String(candidate)}"`);
+  }
+  return undefined;
+}
 
 /**
  * Simple path join helper that works in both Node.js and React Native
@@ -46,7 +100,9 @@ function loadScenarioConfigFromFile(
       const trimmedClientId = typeof clientId === 'string' ? clientId.trim() : '';
       const preferred = trimmedClientId ? joinPath(mockDataPath, `scenario-config.${trimmedClientId}.json`) : '';
       const fallback = joinPath(mockDataPath, 'scenario-config.json');
-      configPath = preferred && fs!.existsSync(preferred) ? preferred : fallback;
+      configPath = preferred && isSafeScenarioConfigClientId(trimmedClientId) && fs!.existsSync(preferred)
+        ? preferred
+        : fallback;
     } else {
       // Try common locations (only works in Node.js)
       const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '';
@@ -103,17 +159,19 @@ function configDefaultScenarioName(): string | undefined {
 export function getCurrentScenario(mockDataPath?: string, clientId?: string): string {
   const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
   if (envScenario != null && String(envScenario).trim() !== '') {
-    return String(envScenario).trim();
+    return safeScenarioOrDefault(String(envScenario), ENV_VARS.MOCK_SCENARIO) ?? DEFAULT_SCENARIO;
   }
 
   const configScenario = configDefaultScenarioName();
-  if (configScenario) {
-    return configScenario;
+  const safeConfigScenario = safeScenarioOrDefault(configScenario, 'config.defaultScenario');
+  if (safeConfigScenario) {
+    return safeConfigScenario;
   }
 
   const fileConfig = loadScenarioConfigFromFile(mockDataPath || currentConfig?.mockDataPath, clientId);
-  if (fileConfig?.currentScenario) {
-    return fileConfig.currentScenario;
+  const safeFileScenario = safeScenarioOrDefault(fileConfig?.currentScenario, 'scenario-config.json');
+  if (safeFileScenario) {
+    return safeFileScenario;
   }
 
   return DEFAULT_SCENARIO;
@@ -123,7 +181,7 @@ export function getCurrentScenario(mockDataPath?: string, clientId?: string): st
  * Get the scenario folder path for a given scenario name
  */
 export function getScenarioFolderPath(mockDataPath: string, scenario?: string): string {
-  const scenarioName = scenario || getCurrentScenario(mockDataPath);
+  const scenarioName = assertValidScenarioName(scenario || getCurrentScenario(mockDataPath));
   return joinPath(mockDataPath, scenarioName);
 }
 
@@ -199,11 +257,7 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
     throw new Error('Scenario name cannot be empty');
   }
 
-  // Validate scenario name (must be safe for filesystem)
-  const sanitized = scenarioName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== scenarioName.trim()) {
-    throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
-  }
+  const sanitized = assertValidScenarioName(scenarioName);
 
   // Check max scenarios limit (only if limit is set via env var)
   const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -256,9 +310,10 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
     return;
   }
 
+  const safeScenario = assertValidScenarioName(scenario);
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {
-    currentScenario: scenario,
+    currentScenario: safeScenario,
     updatedAt: new Date().toISOString()
   };
   

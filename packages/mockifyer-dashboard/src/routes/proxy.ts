@@ -6,6 +6,7 @@ import {
   generateRequestKey,
   getCurrentDate,
   MOCKIFYER_CLIENT_ID_HEADER,
+  normalizeScenarioName,
   prepareMockResponseBody,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -73,6 +74,11 @@ router.post('/', async (req: Request, res: Response) => {
 
   const upperMethod = String(method || 'GET').toUpperCase();
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
+  if (bodyScenario && !normalizeScenarioName(bodyScenario)) {
+    return res.status(400).json({
+      error: 'Invalid scenario. Use only letters, numbers, hyphens, and underscores.',
+    });
+  }
 
   const storedRequest = {
     method: upperMethod,
@@ -316,6 +322,7 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     let storedMockForClient: Record<string, unknown> | null = null;
+    let recordedToStore = false;
     if (effectiveRecord === true) {
       storedMockForClient = {
         request: {
@@ -328,18 +335,24 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHashInScenario(hash, storedMockForClient as any, resolvedScenarioName);
-      if (redisDisk.mirrorWrites) {
-        try {
-          mirrorRecordedMockToDisk({
-            mockDataPath,
-            scenarioName: resolvedScenarioName,
-            hash,
-            mockData: storedMockForClient as any,
-          });
-        } catch (mirrorErr: any) {
-          console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+      try {
+        await store.setByHashInScenario(hash, storedMockForClient as any, resolvedScenarioName);
+        recordedToStore = true;
+        if (redisDisk.mirrorWrites) {
+          try {
+            mirrorRecordedMockToDisk({
+              mockDataPath,
+              scenarioName: resolvedScenarioName,
+              hash,
+              mockData: storedMockForClient as any,
+            });
+          } catch (mirrorErr: any) {
+            console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+          }
         }
+      } catch (recordErr: any) {
+        console.error('[ProxyRoute] Redis record failed after upstream response:', recordErr?.message ?? recordErr);
+        storedMockForClient = null;
       }
     }
 
@@ -356,8 +369,8 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response,
-      recordedToStore: effectiveRecord === true,
-      ...(effectiveRecord === true && storedMockForClient
+      recordedToStore,
+      ...(recordedToStore && storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),
     });
