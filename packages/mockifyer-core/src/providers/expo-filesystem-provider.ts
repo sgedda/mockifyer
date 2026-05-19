@@ -6,6 +6,11 @@ import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './typ
 import { logger } from '../utils/logger';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
+import {
+  assertValidScenarioName,
+  isValidScenarioName,
+  normalizeMockRelativePath,
+} from '../utils/scenario';
 
 const DEFAULT_SCENARIO = 'default';
 
@@ -140,6 +145,19 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     return this.FileSystem.Paths!.info(uri);
   }
 
+  private async fsGetModificationTime(uri: string): Promise<number | undefined> {
+    if (this.useLegacyExpoFileSystem) {
+      const info = await this.fsGetInfo(uri);
+      return info.exists ? info.modificationTime : undefined;
+    }
+    try {
+      return this.newFile(uri).modificationTime;
+    } catch {
+      const info = await this.fsGetInfo(uri);
+      return info.exists ? info.modificationTime : undefined;
+    }
+  }
+
   private async fsEnsureDir(uri: string): Promise<void> {
     const info = await this.fsGetInfo(uri);
     if (!info.exists) {
@@ -228,16 +246,16 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         } as any);
         if (response.ok) {
           const data = await response.json() as { success?: boolean; currentScenario?: string };
-          if (data.success && data.currentScenario) {
+          if (data.success && data.currentScenario && isValidScenarioName(data.currentScenario.trim())) {
             // Always save to local config to keep it in sync with Metro
             const configPath = this.joinFsUri(this.mockDataPath, 'scenario-config.json');
             const config = {
-              currentScenario: data.currentScenario,
+              currentScenario: data.currentScenario.trim(),
               updatedAt: new Date().toISOString()
             };
             await this.fsWriteText(configPath, JSON.stringify(config, null, 2));
-            logger.info(`[ExpoFileSystemProvider] ✅ Synced scenario config from Metro: ${data.currentScenario}`);
-            return data.currentScenario;
+            logger.info(`[ExpoFileSystemProvider] ✅ Synced scenario config from Metro: ${data.currentScenario.trim()}`);
+            return data.currentScenario.trim();
           } else {
             logger.warn(
               `[ExpoFileSystemProvider] ⚠️ Metro scenario config sync failed: invalid response (expected success + currentScenario)`,
@@ -268,9 +286,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       if (configInfo.exists) {
         const fileContent = await this.fsReadText(configPath);
         const config = JSON.parse(fileContent);
-        if (config.currentScenario) {
-          logger.info(`[ExpoFileSystemProvider] Using local scenario config: ${config.currentScenario} (Metro sync failed or unavailable)`);
-          return config.currentScenario;
+        if (typeof config.currentScenario === 'string') {
+          const scenarioName = config.currentScenario.trim();
+          if (isValidScenarioName(scenarioName)) {
+            logger.info(`[ExpoFileSystemProvider] Using local scenario config: ${scenarioName} (Metro sync failed or unavailable)`);
+            return scenarioName;
+          }
+          logger.warn(`[ExpoFileSystemProvider] Ignoring invalid local scenario config: ${config.currentScenario}`);
         }
       }
     } catch (error) {
@@ -285,7 +307,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    * Get scenario folder path
    */
   private getScenarioPath(scenario?: string): string {
-    const scenarioName = scenario || this.currentScenario;
+    const scenarioName = assertValidScenarioName(scenario || this.currentScenario);
     return this.joinFsUri(this.mockDataPath, scenarioName);
   }
 
@@ -424,7 +446,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           try {
             const filePath = this.joinFsUri(scenarioPath, file);
             const info = await this.fsGetInfo(filePath);
-            const mtime = info.modificationTime;
+            const mtime = await this.fsGetModificationTime(filePath);
             if (info.exists && mtime !== undefined) {
               const cachedMtime = this.fileModTimes.get(file);
               if (cachedMtime === undefined || cachedMtime !== mtime) {
@@ -448,7 +470,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           try {
             const filePath = this.joinFsUri(scenarioPath, file);
             const info = await this.fsGetInfo(filePath);
-            const mtime = info.modificationTime;
+            const mtime = await this.fsGetModificationTime(filePath);
             if (info.exists && mtime !== undefined) {
               this.fileModTimes.set(file, mtime);
             }
@@ -469,7 +491,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
             try {
               const filePath = this.joinFsUri(scenarioPath, file);
               const info = await this.fsGetInfo(filePath);
-              const mtime = info.modificationTime;
+              const mtime = await this.fsGetModificationTime(filePath);
               if (info.exists && mtime !== undefined) {
                 this.fileModTimes.set(file, mtime);
               }
@@ -506,7 +528,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         try {
           const filePath = this.joinFsUri(scenarioPath, file);
           const info = await this.fsGetInfo(filePath);
-          const mtime = info.modificationTime;
+          const mtime = await this.fsGetModificationTime(filePath);
           if (info.exists && mtime !== undefined) {
             this.fileModTimes.set(file, mtime);
           }
@@ -572,7 +594,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     let filename: string;
     let relativeFilename: string;
     if (options?.relativePath) {
-      const normalized = options.relativePath.replace(/\\/g, '/').replace(/^\//, '');
+      const normalized = normalizeMockRelativePath(options.relativePath);
       const lastSlash = normalized.lastIndexOf('/');
       dir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
       filename = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized;
@@ -596,7 +618,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Update modification time cache
       const infoAfter = await this.fsGetInfo(filePath);
-      const mtime = infoAfter.modificationTime;
+      const mtime = await this.fsGetModificationTime(filePath);
       if (infoAfter.exists && mtime !== undefined) {
         this.fileModTimes.set(relativeFilename, mtime);
       }
@@ -616,7 +638,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const info = await this.fsGetInfo(filePath);
 
         if (info.exists) {
-          const currentMtime = info.modificationTime ?? Date.now();
+          const currentMtime = (await this.fsGetModificationTime(filePath)) ?? Date.now();
           const cachedMtime = cached.mtime;
 
           // If file hasn't changed, return cached result
@@ -689,8 +711,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           // Get file modification time
           let fileMtime = Date.now();
           try {
-            const info = await this.fsGetInfo(filePath);
-            fileMtime = info.modificationTime ?? Date.now();
+            fileMtime = (await this.fsGetModificationTime(filePath)) ?? Date.now();
           } catch {
             fileMtime = Date.now();
           }
@@ -711,14 +732,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Cache the result
       try {
-        const infoBest = await this.fsGetInfo(bestMatch.filePath);
         const cachedResult: CachedMockData = {
           mockData: bestMatch.mockData,
           filename: bestMatch.file,
           filePath: bestMatch.filePath
         };
         this.fileCache.set(requestKey, {
-          mtime: infoBest.modificationTime ?? bestMatch.mtime,
+          mtime: (await this.fsGetModificationTime(bestMatch.filePath)) ?? bestMatch.mtime,
           content: cachedResult
         });
       } catch {

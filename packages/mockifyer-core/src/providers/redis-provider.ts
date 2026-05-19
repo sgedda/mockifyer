@@ -3,7 +3,7 @@ import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
-import { getCurrentScenario } from '../utils/scenario';
+import { assertValidScenarioName, getCurrentScenario } from '../utils/scenario';
 import { logger } from '../utils/logger';
 
 function hashRequestKey(requestKey: string): string {
@@ -116,13 +116,16 @@ export class RedisProvider implements DatabaseProvider {
     logger.info(`[RedisProvider] Connected; prefix=${this.keyPrefix} scenario=${scenario}`);
   }
 
-  async save(mockData: MockData, _options?: SaveMockOptions): Promise<void> {
+  async save(mockData: MockData, options?: SaveMockOptions): Promise<void> {
+    const scenarioOverride = options?.scenario
+      ? assertValidScenarioName(options.scenario)
+      : undefined;
     const requestKey = generateRequestKey(mockData.request);
     const h = hashRequestKey(requestKey);
-    const key = await this.dataKey(h);
+    const key = await this.dataKey(h, scenarioOverride);
     const payload = JSON.stringify(mockData);
     await this.redis.set(key, payload);
-    const scenarioIndex = await this.indexKey();
+    const scenarioIndex = await this.indexKey(scenarioOverride);
     await this.redis.sadd(scenarioIndex, h);
     logger.debug(`[RedisProvider] Saved mock ${h.slice(0, 12)}… (${payload.length} bytes)`);
   }

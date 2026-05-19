@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { normalizeScenarioName } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
@@ -92,6 +93,11 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
           : undefined;
     if (scenarioValue === undefined) {
       return res.status(400).json({ error: 'scenario must be a non-empty string or null' });
+    }
+    if (scenarioValue !== null && !normalizeScenarioName(scenarioValue)) {
+      return res.status(400).json({
+        error: 'Invalid scenario. Use only letters, numbers, hyphens, and underscores.',
+      });
     }
 
     const store = new RedisMockStore({
