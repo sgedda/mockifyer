@@ -1,4 +1,4 @@
-import { MOCKIFYER_CLIENT_ID_HEADER } from '../../../../../../../../packages/mockifyer-core';
+import { MOCKIFYER_CLIENT_ID_HEADER } from '@sgedda/mockifyer-core';
 
 export const runtime = 'nodejs';
 

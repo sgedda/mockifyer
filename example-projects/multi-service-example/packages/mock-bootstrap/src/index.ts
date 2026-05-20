@@ -55,6 +55,7 @@ export async function initializeMockifyerFromEnv(options: { label: string }): Pr
       dashboardBaseUrl,
       mockDataPath,
       recordOnMiss: record,
+      strictLaneScenario: false,
       useGlobalFetch: true,
       clientId,
       config: {
