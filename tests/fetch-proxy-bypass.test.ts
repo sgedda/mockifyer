@@ -88,4 +88,32 @@ describe('fetch proxy bypass', () => {
     expect(init.method).toBe('GET');
     expect((init.headers as Headers).get('x-mockifyer-client-id')).toBeNull();
   });
+
+  it('forwards explicit non-strict lane mode to the dashboard proxy', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'upstream',
+        hash: 'abc123',
+        response: {
+          status: 200,
+          data: { recorded: true },
+          headers: {},
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: true,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local', strictLaneScenario: false },
+    });
+
+    await client.get('https://api.example.com/users');
+
+    const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(proxyBody.strictLaneScenario).toBe(false);
+  });
 });

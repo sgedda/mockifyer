@@ -3,13 +3,10 @@ import Credentials from 'next-auth/providers/credentials';
 import GitHub from 'next-auth/providers/github';
 import Google from 'next-auth/providers/google';
 import { DEMO_PROVIDER_ID } from '@/lib/auth-constants';
+import { resolveAuthSecret } from '@/lib/auth-secret';
 
 const PROVIDER_ENV_HINTS =
   'AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET and/or AUTH_GITHUB_ID + AUTH_GITHUB_SECRET';
-
-/** In-repo example only — set `AUTH_SECRET` for any deployed or shared environment. */
-const FALLBACK_SECRET_FOR_ZERO_CONFIG_LOCAL =
-  'mockifyer-next-example-insecure-fallback-change-auth-secret-if-shared';
 
 function readPair(clientIdEnv: string, secretEnv: string): { clientId: string; clientSecret: string } | undefined {
   const clientId = process.env[clientIdEnv]?.trim();
@@ -68,12 +65,9 @@ if (allowDemoCredentialLogin(providers.length)) {
   console.warn(`[auth] No auth providers configured. Set ${PROVIDER_ENV_HINTS} or production demo via AUTH_ALLOW_DEMO=true (+ AUTH_SECRET). See README.`);
 }
 
-const resolvedSecret =
-  process.env.AUTH_SECRET?.trim() || FALLBACK_SECRET_FOR_ZERO_CONFIG_LOCAL;
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
-  secret: resolvedSecret,
+  secret: resolveAuthSecret(),
   providers,
   callbacks: {
     async jwt(params) {

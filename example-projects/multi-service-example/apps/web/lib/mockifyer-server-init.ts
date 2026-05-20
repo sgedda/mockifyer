@@ -55,6 +55,7 @@ export async function initializeMockifyerOnServer(): Promise<void> {
       dashboardBaseUrl,
       mockDataPath,
       recordOnMiss: record,
+      strictLaneScenario: false,
       useGlobalFetch: true,
       clientId,
       config: {

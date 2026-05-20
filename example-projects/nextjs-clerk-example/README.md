@@ -13,7 +13,7 @@ Configure **either or both** OAuth providers in `.env.local` when you want real 
 3. Open [http://localhost:3000](http://localhost:3000); use **Load all three** on the home page **without signing in**.
 4. For `/dashboard`: you are redirected to sign-in → **Continue as demo user** → no Google/GitHub apps and no OAuth env vars needed.
 
-Demo sign-in uses a repo-known fallback `AUTH_SECRET` for cookie signing (**not secret** across clones — fine for scratching locally). When you OAuth **or** deploy anywhere shared, generate your own **`AUTH_SECRET`**.
+Demo sign-in in non-production uses a repo-known fallback `AUTH_SECRET` for cookie signing (**not secret** across clones — fine for scratching locally). Production never uses that fallback; when you OAuth **or** deploy anywhere shared, generate your own **`AUTH_SECRET`**.
 
 Production (`next build` / `next start`): demo login is **off** unless **`AUTH_ALLOW_DEMO=true`** (still not for real accounts). Prefer OAuth vars or a proper secret in deployed environments.
 

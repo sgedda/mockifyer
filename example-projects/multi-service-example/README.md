@@ -103,6 +103,8 @@ npm run dashboard:redis
 
 Then set `MOCKIFYER_RUNTIME=proxy` and `MOCKIFYER_PROXY_URL=http://127.0.0.1:3002` on **web**, **gateway**, and **catalog** (`@sgedda/mockifyer-fetch`). **relay-axios-api** uses `@sgedda/mockifyer-axios`; this example falls back to **filesystem** for that service if you set `MOCKIFYER_RUNTIME=proxy` there (dashboard Redis proxy is not wired for axios in the bootstrap package).
 
+The fetch-based services use one shared demo lane (`MOCKIFYER_CLIENT_ID=multi-service-demo`) but disable strict lane resolution in proxy mode. That keeps the proxy preset writing to the active/default scenario immediately; you do not need to assign the lane in the dashboard before `MOCKIFYER_RECORD=true` recordings are saved.
+
 ## Layout
 
 | Path | Role |
