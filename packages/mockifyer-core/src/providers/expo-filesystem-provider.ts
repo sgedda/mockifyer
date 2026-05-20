@@ -606,7 +606,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
   }
 
-  async findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> {
+  async findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
@@ -685,7 +690,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
         // Generate key for this mock and compare with requested key
         const mockKey = generateRequestKey(mockData.request);
-        if (mockKey === requestKey && !mockPassesThroughToRealApi(mockData)) {
+        if (
+          mockKey === requestKey &&
+          (includePassthroughMocks || !mockPassesThroughToRealApi(mockData))
+        ) {
           // Get file modification time
           let fileMtime = Date.now();
           try {

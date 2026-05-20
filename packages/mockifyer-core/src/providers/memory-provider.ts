@@ -28,14 +28,19 @@ export class MemoryProvider implements DatabaseProvider {
     console.log(`[Mockifyer] Saved mock to memory: ${requestKey.substring(0, 100)}... (Total: ${this.mockCounter})`);
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     const mockData = this.mocks.get(requestKey);
     
     if (!mockData) {
       return undefined;
     }
 
-    if (mockPassesThroughToRealApi(mockData)) {
+    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
       return undefined;
     }
 

@@ -77,6 +77,17 @@ export interface MockifyerConfig {
   /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
   initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
+  /**
+   * When true (and {@link MockifyerConfig.recordMode} is on), newly recorded mocks are saved with
+   * {@link MockData.alwaysUseRealApi} so they stay on the live API until activated in the dashboard.
+   * Env **`MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH`** overrides this field when set.
+   */
+  recordNewMocksAsPassthrough?: boolean;
+  /**
+   * When true, existing passthrough recordings (`alwaysUseRealApi`) are updated in place on each
+   * real API response instead of skipping save. Env **`MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS`** overrides.
+   */
+  refreshPassthroughRecordings?: boolean;
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
   similarMatchRequiredParams?: string[]; // Query parameters that must match for similar match to be used (e.g., ['season', 'league']). If not set, all query params are ignored by default.
@@ -275,5 +286,9 @@ export const ENV_VARS = {
   MOCK_STRICT_SCENARIO: 'MOCKIFYER_STRICT_SCENARIO',
   /** Dashboard proxy: lane-only scenario (no global fallback) when `clientId` is set. */
   MOCK_STRICT_LANE_SCENARIO: 'MOCKIFYER_STRICT_LANE_SCENARIO',
+  /** New recordings default to passthrough until activated in the dashboard. */
+  MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
+  /** Overwrite passthrough recordings on each live API response. */
+  MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
 } as const;
 

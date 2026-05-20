@@ -7,6 +7,10 @@ import {
   getCurrentDate,
   MOCKIFYER_CLIENT_ID_HEADER,
   prepareMockResponseBody,
+  resolveRecordNewMocksAsPassthrough,
+  resolveRefreshPassthroughRecordings,
+  applyRecordingPassthroughFlag,
+  type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
 
@@ -245,7 +249,8 @@ router.post('/', async (req: Request, res: Response) => {
         scenarioResolution: resolution,
       });
     }
-    if (mock && (mock as any).alwaysUseRealApi === true) {
+    const refreshPassthrough = resolveRefreshPassthroughRecordings({});
+    if (mock && (mock as any).alwaysUseRealApi === true && !refreshPassthrough) {
       effectiveRecord = false;
       if (debugProxy) {
         console.log(
@@ -315,8 +320,9 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
-    let storedMockForClient: Record<string, unknown> | null = null;
+    let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
+      const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
       storedMockForClient = {
         request: {
           method: upperMethod,
@@ -328,7 +334,13 @@ router.post('/', async (req: Request, res: Response) => {
         response,
         timestamp: new Date().toISOString(),
       };
-      await store.setByHashInScenario(hash, storedMockForClient as any, resolvedScenarioName);
+      const shouldMarkPassthrough =
+        (recordNewAsPassthrough && !mock) ||
+        (mock && (mock as MockData).alwaysUseRealApi === true);
+      if (shouldMarkPassthrough) {
+        applyRecordingPassthroughFlag(storedMockForClient, true);
+      }
+      await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
       if (redisDisk.mirrorWrites) {
         try {
           mirrorRecordedMockToDisk({

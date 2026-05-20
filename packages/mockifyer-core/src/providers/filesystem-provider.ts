@@ -114,7 +114,12 @@ export class FilesystemProvider implements DatabaseProvider {
     return results;
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!this.fsAvailable || !fs.existsSync(this.mockDataPath)) {
       return undefined;
     }
@@ -137,10 +142,10 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          if (mockPassesThroughToRealApi(mockData)) {
-            continue;
+          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+            return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
           }
-          return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
+          continue;
         }
       } catch (error) {
         console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);

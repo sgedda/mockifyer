@@ -37,6 +37,8 @@ import {
   getCurrentDate,
   shouldExcludeUrl,
   mockPassesThroughToRealApi,
+  resolveMockRecordingSaveDecision,
+  applyRecordingPassthroughFlag,
   resolveClientId,
   resolveProxyStrictLaneScenario,
   registerMockifyerInstance,
@@ -217,7 +219,10 @@ class MockifyerClass {
     return generateRequestKeyUtil(request);
   }
 
-  private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
+  private async findBestMatchingMock(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
     // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
     const requestUrl = request?.url || '';
     if (requestUrl.includes('/mockifyer-save') || 
@@ -237,13 +242,16 @@ class MockifyerClass {
     
     // Use database provider if available, otherwise fallback to filesystem
     if (this.databaseProvider) {
-      return await this.findBestMatchingMockFromProvider(request);
+      return await this.findBestMatchingMockFromProvider(request, options);
     }
     // Fallback to Node.js filesystem
-    return this.findBestMatchingMockFromFiles(request);
+    return this.findBestMatchingMockFromFiles(request, options);
   }
 
-  private async findBestMatchingMockFromProvider(request: StoredRequest): Promise<CachedMockData | undefined> {
+  private async findBestMatchingMockFromProvider(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
     if (!this.databaseProvider) {
       return undefined;
     }
@@ -266,7 +274,7 @@ class MockifyerClass {
     }
     
     // Try exact match first
-    const exactMatch = await this.databaseProvider.findExactMatch(request, requestKey);
+    const exactMatch = await this.databaseProvider.findExactMatch(request, requestKey, options);
     if (exactMatch) {
       return exactMatch;
     }
@@ -283,7 +291,11 @@ class MockifyerClass {
     return undefined;
   }
 
-  private findBestMatchingMockFromFiles(request: StoredRequest): CachedMockData | undefined {
+  private findBestMatchingMockFromFiles(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     // Only use fs if available (Node.js environment)
     // This method should never be called when using a database provider
     if (!fs || !path) {
@@ -324,7 +336,7 @@ class MockifyerClass {
         const mockKey = this.generateRequestKey(mockData.request);
         
         if (mockKey === requestKey) {
-          if (!mockPassesThroughToRealApi(mockData)) {
+          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
             exactMatch = { mockData, filename: file, filePath };
             break;
           }
@@ -821,37 +833,54 @@ class MockifyerClass {
     const rawParams = response.config.params || {};
     const normalizedParams = rawParams && Object.keys(rawParams).length > 0 ? rawParams : undefined;
     
-    const requestKey = this.generateRequestKey({
+    const saveLookupRequest: StoredRequest = {
       method: response.config.method?.toUpperCase() || 'GET',
       url: response.config.url || '',
       headers: {},
       data: response.config.data,
-      queryParams: normalizedParams
-    });
-    
+      queryParams: normalizedParams,
+    };
+
+    const requestKey = this.generateRequestKey(saveLookupRequest);
+
     if (this.savingResponses.has(requestKey)) {
       return;
     }
-    
+
+    const existingMock = await this.findBestMatchingMock(saveLookupRequest, {
+      includePassthroughMocks: true,
+    });
+
+    const saveDecision = resolveMockRecordingSaveDecision(
+      this.config,
+      existingMock?.mockData
+    );
+
+    if (saveDecision.action === 'skip') {
+      if (existingMock && mockPassesThroughToRealApi(existingMock.mockData)) {
+        logger.info(
+          `[Mockifyer-Fetch] Passthrough mock exists for ${requestKey}, skipping save (enable refreshPassthroughRecordings to update).`
+        );
+      }
+      return;
+    }
+
     this.savingResponses.add(requestKey);
-    
+
     try {
-      // Normalize empty params: treat {} the same as undefined for consistent matching
-      const rawParams = response.config.params || {};
-      const anonymizedQueryParams = this.anonymizeQueryParams(rawParams);
-      const normalizedParams = anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0 
-        ? anonymizedQueryParams 
-        : undefined;
-      
-      // Generate or reuse sessionId
+      const rawParamsForSave = response.config.params || {};
+      const anonymizedQueryParams = this.anonymizeQueryParams(rawParamsForSave);
+      const normalizedParamsForSave =
+        anonymizedQueryParams && Object.keys(anonymizedQueryParams).length > 0
+          ? anonymizedQueryParams
+          : undefined;
+
       const now = Date.now();
-      if (!this.currentSessionId || (now - this.sessionStartTime) > this.SESSION_TIMEOUT_MS) {
-        // Generate new session ID
+      if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
         this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
         this.sessionStartTime = now;
       }
 
-      // Calculate request duration if start time is available
       const startTime = (response.config as any).__mockifyer_startTime;
       const duration = startTime ? Date.now() - startTime : undefined;
 
@@ -861,57 +890,64 @@ class MockifyerClass {
           url: response.config?.url || '',
           headers: this.anonymizeHeaders(response.config?.headers || {}),
           data: response.config?.data,
-          queryParams: normalizedParams
+          queryParams: normalizedParamsForSave,
         },
         response: {
           status: response.status,
           data: response.data,
-          headers: response.headers || {}
+          headers: response.headers || {},
         },
         timestamp: new Date().toISOString(),
         duration,
-        sessionId: this.currentSessionId
+        sessionId:
+          saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
+            ? existingMock.mockData.sessionId
+            : this.currentSessionId,
       };
-      
-      
-      // Use database provider if available, otherwise fallback to filesystem
+
+      applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
+
       if (this.databaseProvider) {
         try {
           await this.databaseProvider.save(mockData);
-          
-          // Generate test if enabled (try to write test files even with database provider)
-          // Generate test if enabled
+
           if (this.config.generateTests?.enabled) {
             await this.generateTestForMock(mockData);
           }
         } catch (error) {
-          console.error(`[Mockifyer-Fetch] ❌ Error saving mock using ${this.config.databaseProvider?.type} provider:`, error);
+          console.error(
+            `[Mockifyer-Fetch] ❌ Error saving mock using ${this.config.databaseProvider?.type} provider:`,
+            error
+          );
           throw error;
         }
       } else if (fs && path) {
-        // Fallback to Node.js filesystem (only if fs/path are available)
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
-        const domain = urlParts[0].replace(/\./g, '_');
-        const urlPathPart = urlParts.slice(1).join('_') || 'root';
-        const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
         const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
         const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
         ensureScenarioFolder(this.config.mockDataPath, currentScenario);
-        
-        // Check request limit before saving (only if limit is set via env var)
+
         const limitCheck = checkRequestLimit(this.config.mockDataPath);
         if (limitCheck.limitReached && limitCheck.error) {
           console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
-          // Don't throw - just log and return to prevent app crash
           return;
         }
-        
-        const filePath = path.join(scenarioPath, filename);
-        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
-        
-        // Generate test if enabled
+
+        if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
+          fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
+          logger.info(
+            `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
+          );
+        } else {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
+          const domain = urlParts[0].replace(/\./g, '_');
+          const urlPathPart = urlParts.slice(1).join('_') || 'root';
+          const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
+          const filePath = path.join(scenarioPath, filename);
+          fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+          logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+        }
+
         if (this.config.generateTests?.enabled && this.testGenerator) {
           await this.generateTestForMock(mockData);
         }

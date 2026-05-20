@@ -129,8 +129,10 @@ export class RedisProvider implements DatabaseProvider {
 
   async findExactMatch(
     _request: StoredRequest,
-    requestKey: string
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     const h = hashRequestKey(requestKey);
     const dataKey = await this.dataKey(h);
     const raw = await this.redis.get(dataKey);
@@ -138,7 +140,7 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    if (mockPassesThroughToRealApi(mockData)) {
+    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
       return undefined;
     }
     return {
