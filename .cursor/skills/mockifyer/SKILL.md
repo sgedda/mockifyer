@@ -36,6 +36,8 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 | Variable | Purpose |
 |----------|---------|
 | `MOCKIFYER_RECORD` | Record real responses |
+| `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New recordings get `alwaysUseRealApi` until activated in dashboard |
+| `MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS` | Overwrite passthrough recordings on each live API call |
 | `MOCKIFYER_PATH` / `mockDataPath` | Mock data root |
 | `MOCKIFYER_SCENARIO` | Active scenario |
 | `MOCKIFYER_MODE` | RN: `on` \| `launch_client` \| `off` |

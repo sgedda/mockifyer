@@ -3,6 +3,10 @@ import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
 import { resolveProxyStrictLaneScenario } from './proxy-strict-lane-scenario';
 import {
+  resolveRecordNewMocksAsPassthrough,
+  resolveRefreshPassthroughRecordings,
+} from './record-passthrough-config';
+import {
   isExplicitProxyScenarioContext,
   resolveStrictScenarioResolution,
 } from './strict-proxy-scenario';
@@ -144,6 +148,16 @@ export function logMockifyerInitSummary(
   logger.info(`[Mockifyer] activationMode: ${activation} — controls when interceptors apply per request.`);
   if (config.recordMode) {
     logger.info('[Mockifyer] recordMode: true — cache misses can be recorded (proxy or provider permitting).');
+    if (resolveRecordNewMocksAsPassthrough(config)) {
+      logger.info(
+        '[Mockifyer] recordNewMocksAsPassthrough: true — new recordings use alwaysUseRealApi until activated in the dashboard.'
+      );
+    }
+    if (resolveRefreshPassthroughRecordings(config)) {
+      logger.info(
+        '[Mockifyer] refreshPassthroughRecordings: true — passthrough recordings are updated on each live API response.'
+      );
+    }
   }
 }
 

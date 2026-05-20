@@ -116,7 +116,12 @@ export class SQLiteProvider implements DatabaseProvider {
     console.log(`[Mockifyer] Saved mock to SQLite database: ${requestKey.substring(0, 100)}...`);
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!this.db) {
       return undefined;
     }
@@ -146,7 +151,7 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
-    if (mockPassesThroughToRealApi(mockData)) {
+    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
       return undefined;
     }
 

@@ -113,6 +113,8 @@ Priority: env vars → `setupMockifyer` config → system time.
 |----------|-------------|
 | `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
+| `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New recordings get `alwaysUseRealApi` (visible in dashboard, live API until activated) |
+| `MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS` | Update passthrough mock files in place on each live API response |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |

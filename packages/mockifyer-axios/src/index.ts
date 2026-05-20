@@ -35,7 +35,9 @@ import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
-  mockPassesThroughToRealApi
+  mockPassesThroughToRealApi,
+  resolveMockRecordingSaveDecision,
+  applyRecordingPassthroughFlag,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -1350,31 +1352,42 @@ class MockifyerClass {
       return;
     }
     
-    // CRITICAL: Also check if a file with this request key already exists
-    // This prevents creating duplicate files even if the Set check fails (e.g., after restart)
-    // BUT: In record mode, if a mock exists, we should NOT have made a real API call in the first place!
-    // This check is a safety net, but the real fix is ensuring the request interceptor finds mocks
-    const existingMock = await this.findBestMatchingMock(
-      {
-        method: response.config.method?.toUpperCase() || 'GET',
-        url: response.config.url || '',
-        headers: {},
-        data: response.config.data,
-        queryParams:
-          response.config.params && Object.keys(response.config.params).length > 0
-            ? response.config.params
-            : undefined,
-      },
-      { includePassthroughMocks: true }
+    const saveLookupRequest: StoredRequest = {
+      method: response.config.method?.toUpperCase() || 'GET',
+      url: response.config.url || '',
+      headers: {},
+      data: response.config.data,
+      queryParams:
+        response.config.params && Object.keys(response.config.params).length > 0
+          ? response.config.params
+          : undefined,
+    };
+
+    const existingMock = await this.findBestMatchingMock(saveLookupRequest, {
+      includePassthroughMocks: true,
+    });
+
+    const saveDecision = resolveMockRecordingSaveDecision(
+      this.config,
+      existingMock?.mockData
     );
-    
-    if (existingMock) {
-      console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
-      console.log(`[Mockifyer] ⚠️ WARNING: This should not happen in record mode - request interceptor should have found the mock!`);
-      console.log(`[Mockifyer] ⚠️ This suggests the request interceptor didn't find the mock, causing an unnecessary API call.`);
+
+    if (saveDecision.action === 'skip') {
+      if (existingMock) {
+        if (mockPassesThroughToRealApi(existingMock.mockData)) {
+          console.log(
+            `[Mockifyer] Passthrough mock exists for ${requestKey}, skipping save (enable refreshPassthroughRecordings to update).`
+          );
+        } else {
+          console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
+          console.log(
+            `[Mockifyer] ⚠️ WARNING: Active mock exists but a real API call was made — request interceptor should have served the mock.`
+          );
+        }
+      }
       return;
     }
-    
+
     this.savingResponses.add(requestKey);
     
     try {
@@ -1457,26 +1470,18 @@ class MockifyerClass {
         timestamp: new Date().toISOString(),
         duration,
         scenario: this.config.scenarios?.default,
-        sessionId: this.currentSessionId
+        sessionId:
+          saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
+            ? existingMock.mockData.sessionId
+            : this.currentSessionId,
       };
 
-      // Format the datetime to be readable
-      const now = new Date();
-      const dateStr = now.toISOString()
-        .replace(/T/, '_')
-        .replace(/\..+/, '')
-        .replace(/:/g, '-');
+      applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
-      // Create a safe filename from the URL
-      const urlSafe = request.url
-        .replace(/^https?:\/\//, '')
-        .replace(/[^a-zA-Z0-9]/g, '_');
-
-      const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
       const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       ensureScenarioFolder(this.config.mockDataPath, currentScenario);
-      
+
       // Check request limit before saving (only if limit is set via env var)
       const limitCheck = checkRequestLimit(this.config.mockDataPath);
       if (limitCheck.limitReached && limitCheck.error) {
@@ -1484,12 +1489,27 @@ class MockifyerClass {
         // Don't throw - just log and return to prevent app crash
         return;
       }
-      
-      const filePath = path.join(scenarioPath, filename);
-      
-      // Write to file (no cache)
-      fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-      console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+
+      if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
+        fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
+        console.log(
+          `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
+        );
+      } else {
+        const now = new Date();
+        const dateStr = now
+          .toISOString()
+          .replace(/T/, '_')
+          .replace(/\..+/, '')
+          .replace(/:/g, '-');
+        const urlSafe = request.url
+          .replace(/^https?:\/\//, '')
+          .replace(/[^a-zA-Z0-9]/g, '_');
+        const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
+        const filePath = path.join(scenarioPath, filename);
+        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+        console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+      }
       
       // Generate test if enabled
       if (this.config.generateTests?.enabled && this.testGenerator) {
