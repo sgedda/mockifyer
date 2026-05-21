@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast'
 import {
   clearNetworkEvents,
   getNetworkEvents,
+  promoteNetworkRequest,
   updateNetworkLogConfig,
 } from '@/lib/api'
 import type { NetworkEvent, NetworkEventSource } from '@/types'
@@ -45,6 +46,7 @@ export default function Network({ scenario }: NetworkProps) {
   const [logEnabled, setLogEnabled] = useState(true)
   const [captureBodies, setCaptureBodies] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
+  const [promoting, setPromoting] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [methodFilter, setMethodFilter] = useState('')
@@ -159,6 +161,38 @@ export default function Network({ scenario }: NetworkProps) {
       })
     } finally {
       setSavingConfig(false)
+    }
+  }
+
+  async function handlePromote(action: 'register' | 'capture_response' | 'activate') {
+    if (!selected) return
+    try {
+      setPromoting(true)
+      const result = await promoteNetworkRequest({
+        scenario,
+        action,
+        method: selected.method,
+        url: selected.url,
+        clientId: selected.clientId ?? undefined,
+        requestHash: selected.requestHash,
+      })
+      toast({
+        title: 'Done',
+        description:
+          action === 'register'
+            ? `Registered ${result.filename} (request only)`
+            : action === 'capture_response'
+              ? `Captured response for ${result.filename}`
+              : `Activated mock ${result.filename}`,
+      })
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Promote failed',
+        variant: 'destructive',
+      })
+    } finally {
+      setPromoting(false)
     }
   }
 
@@ -368,6 +402,38 @@ export default function Network({ scenario }: NetworkProps) {
                 {selected.responseBodyPreview && (
                   <PreviewBlock title="Response body" text={selected.responseBodyPreview} />
                 )}
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={promoting}
+                    onClick={() => void handlePromote('register')}
+                  >
+                    Register request
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={promoting}
+                    onClick={() => void handlePromote('capture_response')}
+                  >
+                    Capture response
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={promoting}
+                    onClick={() => void handlePromote('activate')}
+                  >
+                    Activate mock
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Register saves a request-only stub (live API). Capture hits upstream once. Activate
+                  enables replay (requires a captured response).
+                </p>
               </>
             )}
           </CardContent>

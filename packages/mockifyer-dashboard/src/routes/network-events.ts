@@ -1,8 +1,17 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario } from '@sgedda/mockifyer-core';
-import type { NetworkEvent } from '@sgedda/mockifyer-core';
+import * as crypto from 'crypto';
+import {
+  getCurrentScenario,
+  generateRequestKey,
+  buildRequestOnlyMockData,
+  applyCapturedResponse,
+  mockHasCapturableResponse,
+} from '@sgedda/mockifyer-core';
+import type { NetworkEvent, MockData } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
+import { RedisMockStore } from '../utils/redis-mock-store';
+import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 
 const router = express.Router();
 
@@ -135,6 +144,126 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(201).json({ ok: true, event: saved });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to append network event' });
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+});
+
+type PromoteAction = 'register' | 'capture_response' | 'activate';
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+/**
+ * Promote a network-log row into the mock corpus (request-only, capture, or activate).
+ */
+router.post('/promote', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const scenario = resolveScenario(req, mockDataPath);
+  const {
+    action,
+    method,
+    url,
+    clientId,
+    requestHash: requestHashFromBody,
+    headers,
+    body,
+  } = req.body || {};
+
+  if (!['register', 'capture_response', 'activate'].includes(action)) {
+    return res.status(400).json({ error: 'action must be register, capture_response, or activate' });
+  }
+  if (typeof method !== 'string' || !method.trim() || typeof url !== 'string' || !url.trim()) {
+    return res.status(400).json({ error: 'method and url are required' });
+  }
+
+  const upperMethod = method.trim().toUpperCase();
+  const storedRequest = {
+    method: upperMethod,
+    url: url.trim(),
+    headers: (headers && typeof headers === 'object' ? headers : {}) as Record<string, string>,
+    data: body,
+    queryParams: {},
+  };
+  const requestKey = generateRequestKey(storedRequest as any);
+  const hash =
+    typeof requestHashFromBody === 'string' && /^[a-f0-9]{64}$/i.test(requestHashFromBody)
+      ? requestHashFromBody
+      : sha256Hex(requestKey);
+
+  if (config.provider !== 'redis') {
+    return res.status(400).json({ error: 'Network promote requires dashboard provider redis' });
+  }
+
+  const store = new RedisMockStore({
+    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+    keyPrefix: config.keyPrefix,
+    mockDataPath,
+  });
+
+  try {
+    let mock = (await store.getByHashInScenario(hash, scenario)) as MockData | null;
+
+    if (action === 'register') {
+      if (!mock) {
+        mock = buildRequestOnlyMockData(storedRequest as any, { alwaysUseRealApi: true });
+        await store.setByHashInScenario(hash, mock, scenario);
+      }
+      return res.json({
+        ok: true,
+        action,
+        hash,
+        filename: `redis/${hash}.json`,
+        responsePending: mock.responsePending === true,
+        alwaysUseRealApi: mock.alwaysUseRealApi === true,
+      });
+    }
+
+    if (action === 'capture_response') {
+      const { response } = await fetchUpstreamResponse(storedRequest as any, {
+        clientId: typeof clientId === 'string' ? clientId : undefined,
+      });
+      if (!mock) {
+        mock = buildRequestOnlyMockData(storedRequest as any, { alwaysUseRealApi: true });
+      }
+      applyCapturedResponse(mock, response);
+      mock.timestamp = new Date().toISOString();
+      await store.setByHashInScenario(hash, mock, scenario);
+      return res.json({
+        ok: true,
+        action,
+        hash,
+        filename: `redis/${hash}.json`,
+        status: response.status,
+        responsePending: false,
+        alwaysUseRealApi: mock.alwaysUseRealApi === true,
+      });
+    }
+
+    // activate
+    if (!mock) {
+      return res.status(404).json({ error: 'No mock registered for this request. Use register or capture_response first.' });
+    }
+    if (!mockHasCapturableResponse(mock)) {
+      return res.status(400).json({
+        error: 'Response not captured yet. Run capture_response before activating the mock.',
+      });
+    }
+    delete mock.alwaysUseRealApi;
+    delete mock.responsePending;
+    mock.timestamp = new Date().toISOString();
+    await store.setByHashInScenario(hash, mock, scenario);
+    return res.json({
+      ok: true,
+      action,
+      hash,
+      filename: `redis/${hash}.json`,
+      alwaysUseRealApi: false,
+      responsePending: false,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'promote failed' });
   } finally {
     await store.close().catch(() => undefined);
   }

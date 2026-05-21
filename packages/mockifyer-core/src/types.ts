@@ -274,6 +274,11 @@ export interface MockData {
    * The file is still kept (e.g. for documentation or for updating while recording).
    */
   alwaysUseRealApi?: boolean;
+  /**
+   * Request registered in the corpus without a captured response yet.
+   * Implies live API until {@link alwaysUseRealApi} is cleared and a response is stored.
+   */
+  responsePending?: boolean;
 }
 
 // Environment variable names
@@ -299,6 +304,8 @@ export const ENV_VARS = {
   MOCK_STRICT_LANE_SCENARIO: 'MOCKIFYER_STRICT_LANE_SCENARIO',
   /** New recordings default to passthrough until activated in the dashboard. */
   MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
+  /** When `false`, proxy/SDK may persist request-only stubs (`responsePending`) instead of full responses. */
+  MOCK_RECORD_RESPONSES: 'MOCKIFYER_RECORD_RESPONSES',
   /** Overwrite passthrough recordings on each live API response. */
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */

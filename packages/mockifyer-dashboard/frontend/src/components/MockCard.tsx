@@ -106,6 +106,16 @@ export function MockCard({
                   Overrides
                 </Badge>
               )}
+              {mock.responsePending === true && (
+                <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-200">
+                  Pending response
+                </Badge>
+              )}
+              {mock.alwaysUseRealApi === true && mock.responsePending !== true && (
+                <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-200">
+                  Live API
+                </Badge>
+              )}
               {mock.similarBodyGroup && mock.similarBodyGroup.size >= 2 && (
                 <Badge
                   variant="outline"
