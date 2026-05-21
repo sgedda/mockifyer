@@ -6,6 +6,10 @@ import {
   applyScenarioImport,
   type ScenarioExportBundle,
 } from '../packages/mockifyer-dashboard/src/utils/scenario-bundle';
+import {
+  clearMirroredMocksForScenario,
+  deleteMirroredMockFromDisk,
+} from '../packages/mockifyer-dashboard/src/utils/redis-disk-mirror';
 
 const EXPORT_TIMESTAMP = '2026-05-14T00:00:00.000Z';
 
@@ -76,5 +80,30 @@ describe('dashboard scenario bundle import', () => {
 
     expect(fs.existsSync(existingPath)).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'escape.json'))).toBe(false);
+  });
+
+  it('deletes a Redis disk mirror by hash', () => {
+    const scenario = 'default';
+    const hash = 'a'.repeat(64);
+    const mirrorPath = path.join(tmpDir, scenario, 'redis', `${hash}.json`);
+    fs.mkdirSync(path.dirname(mirrorPath), { recursive: true });
+    fs.writeFileSync(mirrorPath, JSON.stringify(makeMock('https://api.example.com/mirrored'), null, 2));
+
+    expect(deleteMirroredMockFromDisk({ mockDataPath: tmpDir, scenarioName: scenario, hash })).toBe(true);
+    expect(fs.existsSync(mirrorPath)).toBe(false);
+  });
+
+  it('clears Redis disk mirrors for a scenario without removing other scenario files', () => {
+    const scenario = 'default';
+    const mirrorPath = path.join(tmpDir, scenario, 'redis', `${'b'.repeat(64)}.json`);
+    const regularPath = path.join(tmpDir, scenario, 'regular.json');
+    fs.mkdirSync(path.dirname(mirrorPath), { recursive: true });
+    fs.writeFileSync(mirrorPath, JSON.stringify(makeMock('https://api.example.com/mirrored'), null, 2));
+    fs.writeFileSync(regularPath, JSON.stringify(makeMock('https://api.example.com/regular'), null, 2));
+
+    clearMirroredMocksForScenario(tmpDir, scenario);
+
+    expect(fs.existsSync(mirrorPath)).toBe(false);
+    expect(fs.existsSync(regularPath)).toBe(true);
   });
 });
