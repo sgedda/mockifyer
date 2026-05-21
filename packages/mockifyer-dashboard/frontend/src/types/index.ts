@@ -39,6 +39,8 @@ export interface MockFile {
   }>
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
+  /** Request registered without a captured response yet. */
+  responsePending?: boolean
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).

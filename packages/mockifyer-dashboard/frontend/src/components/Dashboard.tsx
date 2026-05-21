@@ -36,6 +36,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [scenarioFilter, setScenarioFilter] = useState('')
   const [proxyRecordOnMiss, setProxyRecordOnMiss] = useState<boolean | null>(null)
   const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
+  const [proxyRecordResponses, setProxyRecordResponses] = useState<boolean | null>(null)
   const [proxySaving, setProxySaving] = useState(false)
   
   // Get active tab from URL path
@@ -78,20 +79,27 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
         const cfg = await getProxyConfig(scenario)
         setProxyRecordOnMiss(cfg.recordOnMiss)
         setProxyAllowUpstream(cfg.allowUpstream)
+        setProxyRecordResponses(cfg.recordResponses ?? true)
       } catch {
         // Provider might not be redis; keep null (hide)
         setProxyRecordOnMiss(null)
         setProxyAllowUpstream(null)
+        setProxyRecordResponses(null)
       }
     })()
   }, [scenario])
 
-  async function saveProxyConfig(next: { recordOnMiss: boolean; allowUpstream: boolean }) {
+  async function saveProxyConfig(next: {
+    recordOnMiss: boolean
+    allowUpstream: boolean
+    recordResponses: boolean
+  }) {
     try {
       setProxySaving(true)
       await updateProxyConfig({ scenario, ...next })
       setProxyRecordOnMiss(next.recordOnMiss)
       setProxyAllowUpstream(next.allowUpstream)
+      setProxyRecordResponses(next.recordResponses)
       toast({
         title: 'Saved',
         description: `Proxy settings updated for "${scenario}"`,
@@ -307,8 +315,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {proxyRecordOnMiss !== null && proxyAllowUpstream !== null && (
-              <div className="hidden md:flex items-center gap-2 mr-2">
+            {proxyRecordOnMiss !== null && proxyAllowUpstream !== null && proxyRecordResponses !== null && (
+              <div className="hidden lg:flex items-center gap-2 mr-2">
                 <Button
                   type="button"
                   variant={proxyRecordOnMiss ? 'default' : 'outline'}
@@ -320,10 +328,28 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                     saveProxyConfig({
                       recordOnMiss: !proxyRecordOnMiss,
                       allowUpstream: proxyAllowUpstream,
+                      recordResponses: proxyRecordResponses,
                     })
                   }
                 >
                   Record: {proxyRecordOnMiss ? 'On' : 'Off'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={proxyRecordResponses ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9"
+                  disabled={proxySaving || !proxyRecordOnMiss}
+                  title="When off, only request metadata is stored (use Network tab to capture responses)."
+                  onClick={() =>
+                    saveProxyConfig({
+                      recordOnMiss: proxyRecordOnMiss,
+                      allowUpstream: proxyAllowUpstream,
+                      recordResponses: !proxyRecordResponses,
+                    })
+                  }
+                >
+                  Responses: {proxyRecordResponses ? 'On' : 'Off'}
                 </Button>
                 <Button
                   type="button"
@@ -340,6 +366,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                     saveProxyConfig({
                       recordOnMiss: proxyRecordOnMiss,
                       allowUpstream: !proxyAllowUpstream,
+                      recordResponses: proxyRecordResponses,
                     })
                   }
                 >

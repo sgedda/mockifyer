@@ -3,13 +3,30 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
-import { getCurrentScenario, getScenarioFolderPath, buildSimilarMockGroups, MockListEntryForSimilarity } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  getScenarioFolderPath,
+  buildSimilarMockGroups,
+  MockListEntryForSimilarity,
+} from '@sgedda/mockifyer-core';
+import { endpointMatchesDomainPath } from '../utils/domain-tree-match';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
 type OverridePreview = { path: string; summary: string };
+
+function extractMockActivationFlags(mockData: unknown): {
+  alwaysUseRealApi: boolean;
+  responsePending: boolean;
+} {
+  const m = mockData as { alwaysUseRealApi?: boolean; responsePending?: boolean };
+  return {
+    alwaysUseRealApi: m.alwaysUseRealApi === true,
+    responsePending: m.responsePending === true,
+  };
+}
 
 function getMockDataPath(): string {
   return detectMockDataPath();
@@ -161,6 +178,7 @@ router.get('/', async (req: Request, res: Response) => {
             let method: string | null = null;
             let sessionId: string | null = null;
             let alwaysUseRealApi = false;
+            let responsePending = false;
             const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
@@ -203,7 +221,9 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
-              alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
+              const flags = extractMockActivationFlags(mockData);
+              alwaysUseRealApi = flags.alwaysUseRealApi;
+              responsePending = flags.responsePending;
             } catch {
               // ignore
             }
@@ -221,6 +241,7 @@ router.get('/', async (req: Request, res: Response) => {
               graphqlInfo,
               sessionId,
               alwaysUseRealApi,
+              responsePending,
               hasResponseDateOverrides: hasOverrides,
               responseDateOverridesPreview: preview,
             };
@@ -253,6 +274,7 @@ router.get('/', async (req: Request, res: Response) => {
         let method: string | null = null;
         let sessionId = null;
         let alwaysUseRealApi = false;
+        let responsePending = false;
         let hasResponseDateOverrides = false;
         let responseDateOverridesPreview: OverridePreview[] = [];
         try {
@@ -263,9 +285,9 @@ router.get('/', async (req: Request, res: Response) => {
           if (mockData.request?.method) {
             method = String(mockData.request.method).toUpperCase();
           }
-          if (mockData.alwaysUseRealApi === true) {
-            alwaysUseRealApi = true;
-          }
+          const flags = extractMockActivationFlags(mockData);
+          alwaysUseRealApi = flags.alwaysUseRealApi;
+          responsePending = flags.responsePending;
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
@@ -313,6 +335,7 @@ router.get('/', async (req: Request, res: Response) => {
           graphqlInfo,
           sessionId,
           alwaysUseRealApi,
+          responsePending,
           hasResponseDateOverrides,
           responseDateOverridesPreview,
         };
@@ -363,6 +386,7 @@ router.get('/search', async (req: Request, res: Response) => {
           let sessionId: string | null = null;
           let method: string | null = null;
           let alwaysUseRealApi = false;
+          let responsePending = false;
           const { hasOverrides, preview } = getOverridePreview(mockData);
 
           try {
@@ -400,7 +424,9 @@ router.get('/search', async (req: Request, res: Response) => {
               };
             }
             sessionId = (mockData as any).sessionId || null;
-            alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
+            const flags = extractMockActivationFlags(mockData);
+            alwaysUseRealApi = flags.alwaysUseRealApi;
+            responsePending = flags.responsePending;
           } catch {
             // ignore best-effort extraction errors
           }
@@ -416,6 +442,7 @@ router.get('/search', async (req: Request, res: Response) => {
             graphqlInfo,
             sessionId,
             alwaysUseRealApi,
+            responsePending,
             hasResponseDateOverrides: hasOverrides,
             responseDateOverridesPreview: preview,
           });
@@ -462,6 +489,7 @@ router.get('/search', async (req: Request, res: Response) => {
       let sessionId: string | null = null;
       let method: string | null = null;
       let alwaysUseRealApi = false;
+      let responsePending = false;
       let hasResponseDateOverrides = false;
       let responseDateOverridesPreview: OverridePreview[] = [];
 
@@ -469,7 +497,9 @@ router.get('/search', async (req: Request, res: Response) => {
         const mockData = JSON.parse(content);
         if (mockData.request?.url) endpoint = mockData.request.url;
         if (mockData.request?.method) method = String(mockData.request.method);
-        if (mockData.alwaysUseRealApi === true) alwaysUseRealApi = true;
+        const flags = extractMockActivationFlags(mockData);
+        alwaysUseRealApi = flags.alwaysUseRealApi;
+        responsePending = flags.responsePending;
         if (mockData.sessionId) sessionId = mockData.sessionId;
         else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
@@ -514,6 +544,7 @@ router.get('/search', async (req: Request, res: Response) => {
         graphqlInfo,
         sessionId,
         alwaysUseRealApi,
+        responsePending,
         hasResponseDateOverrides,
         responseDateOverridesPreview,
       });
@@ -666,6 +697,11 @@ router.put('/*', async (req: Request, res: Response) => {
             (existingData as any).alwaysUseRealApi = true;
           } else if (v === false || v === null) {
             delete (existingData as any).alwaysUseRealApi;
+            if ((existingData as any).responsePending === true) {
+              return res.status(400).json({
+                error: 'Cannot activate mock without a captured response. Capture response first from the Network tab.',
+              });
+            }
           } else {
             return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
           }
@@ -742,6 +778,11 @@ router.put('/*', async (req: Request, res: Response) => {
         existingData.alwaysUseRealApi = true;
       } else if (v === false || v === null) {
         delete existingData.alwaysUseRealApi;
+        if (existingData.responsePending === true) {
+          return res.status(400).json({
+            error: 'Cannot activate mock without a captured response. Capture response first from the Network tab.',
+          });
+        }
       } else {
         return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
       }
@@ -830,6 +871,89 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[MocksRoute] Duplicate - Error:', error);
     res.status(500).json({ error: 'Failed to duplicate mock file', details: error.message });
+  }
+});
+
+/** Bulk set live API (passthrough) for mocks under a domain-tree path prefix. */
+router.post('/bulk-live-api', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { scenario, domainPath, useLiveApi } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (typeof domainPath !== 'string' || !domainPath.trim()) {
+      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    }
+    if (typeof useLiveApi !== 'boolean') {
+      return res.status(400).json({ error: 'useLiveApi must be a boolean' });
+    }
+
+    const scenarioName = scenario.trim();
+    const prefix = domainPath.trim();
+    let updated = 0;
+    let skippedPending = 0;
+
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const items = await store.list(scenarioName);
+        for (const { hash, mockData } of items) {
+          const endpoint = mockData.request?.url ?? null;
+          if (!endpointMatchesDomainPath(endpoint, prefix)) continue;
+          if (!useLiveApi && mockData.responsePending === true) {
+            skippedPending += 1;
+            continue;
+          }
+          if (useLiveApi) {
+            mockData.alwaysUseRealApi = true;
+          } else {
+            delete mockData.alwaysUseRealApi;
+          }
+          await store.setByHashInScenario(hash, mockData, scenarioName);
+          updated += 1;
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else {
+      const scenarioPath = getScenarioFolderPath(mockDataPath, scenarioName);
+      for (const filePath of getAllJsonFiles(scenarioPath)) {
+        let mockData: any;
+        try {
+          mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        } catch {
+          continue;
+        }
+        if (!endpointMatchesDomainPath(mockData.request?.url, prefix)) continue;
+        if (!useLiveApi && mockData.responsePending === true) {
+          skippedPending += 1;
+          continue;
+        }
+        if (useLiveApi) {
+          mockData.alwaysUseRealApi = true;
+        } else {
+          delete mockData.alwaysUseRealApi;
+        }
+        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
+        updated += 1;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      scenario: scenarioName,
+      domainPath: prefix,
+      useLiveApi,
+      updated,
+      skippedPending,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'bulk-live-api failed' });
   }
 });
 

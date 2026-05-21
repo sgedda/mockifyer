@@ -10,6 +10,9 @@ import {
   resolveRecordNewMocksAsPassthrough,
   resolveRefreshPassthroughRecordings,
   applyRecordingPassthroughFlag,
+  buildRequestOnlyMockData,
+  resolveRecordResponses,
+  applyCapturedResponse,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -378,23 +381,36 @@ router.post('/', async (req: Request, res: Response) => {
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
-      storedMockForClient = {
-        request: {
-          method: upperMethod,
-          url,
-          headers: toRecordStringHeaders(headers),
-          data: body,
-          queryParams: {},
-        },
-        response,
-        timestamp: new Date().toISOString(),
+      const recordResponses = resolveRecordResponses(proxyConfig?.recordResponses);
+      const requestPayload = {
+        method: upperMethod,
+        url,
+        headers: toRecordStringHeaders(headers),
+        data: body,
+        queryParams: {},
       };
       const shouldMarkPassthrough =
         (recordNewAsPassthrough && !mock) ||
         (mock && (mock as MockData).alwaysUseRealApi === true);
-      if (shouldMarkPassthrough) {
-        applyRecordingPassthroughFlag(storedMockForClient, true);
+
+      if (!recordResponses) {
+        storedMockForClient = buildRequestOnlyMockData(requestPayload as any, {
+          alwaysUseRealApi: true,
+        });
+      } else {
+        storedMockForClient = {
+          request: requestPayload as any,
+          response,
+          timestamp: new Date().toISOString(),
+        };
+        applyCapturedResponse(storedMockForClient, response);
+        if (shouldMarkPassthrough) {
+          applyRecordingPassthroughFlag(storedMockForClient, true);
+        } else {
+          delete (storedMockForClient as MockData).alwaysUseRealApi;
+        }
       }
+
       await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
       if (redisDisk.mirrorWrites) {
         try {

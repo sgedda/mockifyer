@@ -272,6 +272,7 @@ export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean
   allowUpstream: boolean
+  recordResponses: boolean
   updatedAt: string | null
 }
 
@@ -286,6 +287,7 @@ export async function updateProxyConfig(payload: {
   scenario: string
   recordOnMiss: boolean
   allowUpstream: boolean
+  recordResponses?: boolean
 }): Promise<void> {
   const response = await fetch(`${API_BASE}/proxy-config`, {
     method: 'POST',
@@ -369,6 +371,52 @@ export async function updateNetworkLogConfig(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error((error as { error?: string }).error || 'Failed to update network log config')
+  }
+  return response.json()
+}
+
+export type NetworkPromoteAction = 'register' | 'capture_response' | 'activate'
+
+export async function promoteNetworkRequest(payload: {
+  scenario: string
+  action: NetworkPromoteAction
+  method: string
+  url: string
+  clientId?: string
+  requestHash?: string
+}): Promise<{
+  ok: boolean
+  hash: string
+  filename: string
+  responsePending?: boolean
+  alwaysUseRealApi?: boolean
+  status?: number
+}> {
+  const response = await fetch(`${API_BASE}/network-events/promote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to promote network request')
+  }
+  return response.json()
+}
+
+export async function bulkSetLiveApiForDomain(payload: {
+  scenario: string
+  domainPath: string
+  useLiveApi: boolean
+}): Promise<{ updated: number; skippedPending: number }> {
+  const response = await fetch(`${API_BASE}/mocks/bulk-live-api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update domain live API setting')
   }
   return response.json()
 }

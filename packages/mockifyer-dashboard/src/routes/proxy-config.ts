@@ -29,6 +29,7 @@ router.get('/', async (req: Request, res: Response) => {
         scenario,
         recordOnMiss: doc?.recordOnMiss ?? true,
         allowUpstream: doc?.allowUpstream ?? true,
+        recordResponses: doc?.recordResponses ?? true,
         updatedAt: doc?.updatedAt ?? null,
       });
     } finally {
@@ -47,7 +48,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Proxy config requires dashboard provider 'redis'." });
     }
 
-    const { scenario, recordOnMiss, allowUpstream } = req.body || {};
+    const { scenario, recordOnMiss, allowUpstream, recordResponses } = req.body || {};
     if (typeof scenario !== 'string' || !scenario.trim()) {
       return res.status(400).json({ error: 'scenario is required' });
     }
@@ -57,6 +58,9 @@ router.post('/', async (req: Request, res: Response) => {
     if (typeof allowUpstream !== 'boolean') {
       return res.status(400).json({ error: 'allowUpstream must be a boolean' });
     }
+    if (recordResponses !== undefined && typeof recordResponses !== 'boolean') {
+      return res.status(400).json({ error: 'recordResponses must be a boolean' });
+    }
 
     const store = new RedisMockStore({
       redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
@@ -64,9 +68,12 @@ router.post('/', async (req: Request, res: Response) => {
       mockDataPath,
     });
     try {
+      const existing = await store.getProxyConfig(scenario.trim());
       await store.setProxyConfig(scenario.trim(), {
         recordOnMiss,
         allowUpstream,
+        recordResponses:
+          typeof recordResponses === 'boolean' ? recordResponses : (existing?.recordResponses ?? true),
         updatedAt: new Date().toISOString(),
       });
       return res.json({ success: true });
