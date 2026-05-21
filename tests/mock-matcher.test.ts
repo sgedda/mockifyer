@@ -527,6 +527,26 @@ describe('mock-matcher', () => {
       expect(result).toBeUndefined();
     });
 
+    it('should not fall back to a similar mock when exact match passes through to real API', () => {
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/users',
+        headers: {},
+        queryParams: { page: '1' }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const passthroughExactMock = createMockData('GET', 'https://api.example.com/users', { page: '1' });
+      passthroughExactMock.mockData.alwaysUseRealApi = true;
+      const similarMock = createMockData('GET', 'https://api.example.com/users', { page: '2' });
+
+      mockCache.set(generateRequestKey(passthroughExactMock.mockData.request), passthroughExactMock);
+      mockCache.set(generateRequestKey(similarMock.mockData.request), similarMock);
+
+      const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
+      expect(result).toBeUndefined();
+    });
+
     it('should return passthrough mock when includePassthroughMocks is true', () => {
       const request: StoredRequest = {
         method: 'GET',

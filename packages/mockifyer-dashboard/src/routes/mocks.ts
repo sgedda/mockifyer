@@ -6,6 +6,7 @@ import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath, buildSimilarMockGroups, MockListEntryForSimilarity } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { deleteMirroredMockFromDisk } from '../utils/redis-disk-mirror';
 
 const router = express.Router();
 
@@ -775,6 +776,7 @@ router.delete('/*', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, store);
         await store.deleteByHash(hash, scenario);
+        deleteMirroredMockFromDisk({ mockDataPath, scenarioName: scenario, hash });
         return res.json({ success: true, message: `Mock deleted successfully`, filename: relativeName });
       } finally {
         await store.close().catch(() => undefined);

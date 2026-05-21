@@ -19,6 +19,35 @@ export function mirroredMockRelativePath(hash: string): string {
   return `redis/${hash}.json`;
 }
 
+export function deleteMirroredMockFromDisk(params: {
+  mockDataPath: string;
+  scenarioName: string;
+  hash: string;
+}): boolean {
+  const { mockDataPath, scenarioName, hash } = params;
+  try {
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenarioName);
+    const filePath = path.join(scenarioPath, 'redis', `${hash}.json`);
+    if (!fs.existsSync(filePath)) {
+      return false;
+    }
+    fs.unlinkSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearMirroredMocksForScenario(mockDataPath: string, scenarioName: string): void {
+  try {
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenarioName);
+    const redisMirrorPath = path.join(scenarioPath, 'redis');
+    fs.rmSync(redisMirrorPath, { recursive: true, force: true });
+  } catch {
+    // best-effort mirror cleanup; Redis remains the source of truth
+  }
+}
+
 /**
  * Find a mock on disk for the given scenario whose canonical hash matches {@link RedisMockStore.hashForMock}.
  * Walks all `.json` files under `mockDataPath/<scenario>/` recursively (same as filesystem provider matching).

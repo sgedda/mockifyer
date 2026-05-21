@@ -35,6 +35,7 @@ import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
+  isGraphQLRequest,
   mockPassesThroughToRealApi,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
@@ -341,27 +342,12 @@ class MockifyerClass {
             };
             break; // Exact match found, no need to continue
           }
-          continue;
+          return undefined;
         }
         
         // If no exact match yet and similar matching is enabled, check for similar match
         if (!exactMatch && this.config.useSimilarMatch && !similarMatch) {
-          // Check if it's a GraphQL request - skip similar matching for GraphQL
-          const isGraphQL = ['POST', 'PUT', 'PATCH'].includes((request.method || 'GET').toUpperCase()) &&
-                           request.data &&
-                           (() => {
-                             try {
-                               let bodyData = request.data;
-                               if (typeof request.data === 'string') {
-                                 bodyData = JSON.parse(request.data);
-                               }
-                               return typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string';
-                             } catch {
-                               return false;
-                             }
-                           })();
-          
-          if (!isGraphQL) {
+          if (!isGraphQLRequest(request)) {
             // Check if path and method match
             try {
               const requestUrl = new URL(request.url);
@@ -1352,15 +1338,24 @@ class MockifyerClass {
       return;
     }
     
+    const rawLookupParams = response.config.params || {};
+    const anonymizedLookupQueryParams = this.anonymizeQueryParams(rawLookupParams);
+    const normalizedLookupParams =
+      anonymizedLookupQueryParams && Object.keys(anonymizedLookupQueryParams).length > 0
+        ? anonymizedLookupQueryParams
+        : undefined;
+
+    let normalizedLookupUrl = response.config.url || '';
+    if (normalizedLookupUrl.endsWith('?') && !normalizedLookupParams) {
+      normalizedLookupUrl = normalizedLookupUrl.slice(0, -1);
+    }
+
     const saveLookupRequest: StoredRequest = {
       method: response.config.method?.toUpperCase() || 'GET',
-      url: response.config.url || '',
+      url: normalizedLookupUrl,
       headers: {},
       data: response.config.data,
-      queryParams:
-        response.config.params && Object.keys(response.config.params).length > 0
-          ? response.config.params
-          : undefined,
+      queryParams: normalizedLookupParams,
     };
 
     const existingMock = await this.findBestMatchingMock(saveLookupRequest, {

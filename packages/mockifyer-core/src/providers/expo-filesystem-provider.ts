@@ -140,6 +140,18 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     return this.FileSystem.Paths!.info(uri);
   }
 
+  private async fsGetFileModificationTime(uri: string): Promise<number | undefined> {
+    if (this.useLegacyExpoFileSystem) {
+      const info = await this.fsGetInfo(uri);
+      return info.modificationTime;
+    }
+    try {
+      return this.newFile(uri).modificationTime ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async fsEnsureDir(uri: string): Promise<void> {
     const info = await this.fsGetInfo(uri);
     if (!info.exists) {
@@ -697,8 +709,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           // Get file modification time
           let fileMtime = Date.now();
           try {
-            const info = await this.fsGetInfo(filePath);
-            fileMtime = info.modificationTime ?? Date.now();
+            fileMtime = (await this.fsGetFileModificationTime(filePath)) ?? Date.now();
           } catch {
             fileMtime = Date.now();
           }
@@ -719,14 +730,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Cache the result
       try {
-        const infoBest = await this.fsGetInfo(bestMatch.filePath);
         const cachedResult: CachedMockData = {
           mockData: bestMatch.mockData,
           filename: bestMatch.file,
           filePath: bestMatch.filePath
         };
         this.fileCache.set(requestKey, {
-          mtime: infoBest.modificationTime ?? bestMatch.mtime,
+          mtime: (await this.fsGetFileModificationTime(bestMatch.filePath)) ?? bestMatch.mtime,
           content: cachedResult
         });
       } catch {

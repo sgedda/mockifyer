@@ -23,6 +23,7 @@ import {
   HTTPResponse,
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
+  isGraphQLRequest,
   initializeDateManipulation,
   DatabaseProvider,
   createProvider,
@@ -273,14 +274,22 @@ class MockifyerClass {
       return undefined;
     }
     
-    // Try exact match first
-    const exactMatch = await this.databaseProvider.findExactMatch(request, requestKey, options);
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
+
+    // Try exact match first. A passthrough exact match is authoritative: do not
+    // fall through to a similar mock when the request should hit the real API.
+    const exactMatch = await this.databaseProvider.findExactMatch(request, requestKey, {
+      includePassthroughMocks: true,
+    });
     if (exactMatch) {
+      if (!includePassthroughMocks && mockPassesThroughToRealApi(exactMatch.mockData)) {
+        return undefined;
+      }
       return exactMatch;
     }
 
     // Try similar match if enabled
-    if (this.config.useSimilarMatch) {
+    if (this.config.useSimilarMatch && !isGraphQLRequest(request)) {
       const similarMatches = await this.databaseProvider.findAllForSimilarMatch(request);
       if (similarMatches && similarMatches.length > 0) {
         // Return first similar match
@@ -340,26 +349,11 @@ class MockifyerClass {
             exactMatch = { mockData, filename: file, filePath };
             break;
           }
-          continue;
+          return undefined;
         }
         
         if (!exactMatch && this.config.useSimilarMatch && !similarMatch) {
-          // Check if it's a GraphQL request - skip similar matching for GraphQL
-          const isGraphQL = ['POST', 'PUT', 'PATCH'].includes((request.method || 'GET').toUpperCase()) &&
-                           request.data &&
-                           (() => {
-                             try {
-                               let bodyData = request.data;
-                               if (typeof request.data === 'string') {
-                                 bodyData = JSON.parse(request.data);
-                               }
-                               return typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string';
-                             } catch {
-                               return false;
-                             }
-                           })();
-          
-          if (!isGraphQL) {
+          if (!isGraphQLRequest(request)) {
             try {
               const requestUrl = new URL(request.url);
               const mockUrl = new URL(mockData.request.url);
@@ -831,7 +825,11 @@ class MockifyerClass {
     
     // Normalize empty params: treat {} the same as undefined for consistent matching
     const rawParams = response.config.params || {};
-    const normalizedParams = rawParams && Object.keys(rawParams).length > 0 ? rawParams : undefined;
+    const anonymizedLookupQueryParams = this.anonymizeQueryParams(rawParams);
+    const normalizedParams =
+      anonymizedLookupQueryParams && Object.keys(anonymizedLookupQueryParams).length > 0
+        ? anonymizedLookupQueryParams
+        : undefined;
     
     const saveLookupRequest: StoredRequest = {
       method: response.config.method?.toUpperCase() || 'GET',

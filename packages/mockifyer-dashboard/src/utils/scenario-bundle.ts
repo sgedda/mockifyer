@@ -4,6 +4,7 @@ import type { MockData } from '@sgedda/mockifyer-core';
 import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { RedisMockStore } from './redis-mock-store';
+import { clearMirroredMocksForScenario } from './redis-disk-mirror';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
 
@@ -270,11 +271,16 @@ function clearFilesystemScenarioMocks(scenarioPath: string): void {
   }
 }
 
-async function clearRedisScenarioMocks(store: RedisMockStore, scenario: string): Promise<void> {
+async function clearRedisScenarioMocks(
+  store: RedisMockStore,
+  scenario: string,
+  mockDataPath: string
+): Promise<void> {
   const items = await store.list(scenario);
   for (const { hash } of items) {
     await store.deleteByHash(hash, scenario);
   }
+  clearMirroredMocksForScenario(mockDataPath, scenario);
 }
 
 function writeDateConfigFilesystem(scenarioFolder: string, dateManipulation: Record<string, unknown> | null): void {
@@ -402,7 +408,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     });
     try {
       if (replaceExistingMocks) {
-        await clearRedisScenarioMocks(store, targetScenario);
+        await clearRedisScenarioMocks(store, targetScenario, mockDataPath);
       }
       for (const { relativePath, data } of bundle.mocks) {
         const copy = { ...data, scenario: targetScenario } as MockData;

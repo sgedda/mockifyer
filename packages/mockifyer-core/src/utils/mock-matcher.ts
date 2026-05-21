@@ -182,7 +182,7 @@ export function doRequiredParamsMatch(
 /**
  * Checks if a request is a GraphQL request based on its body data
  */
-function isGraphQLRequest(request: StoredRequest): boolean {
+export function isGraphQLRequest(request: StoredRequest): boolean {
   if (!['POST', 'PUT', 'PATCH'].includes((request.method || 'GET').toUpperCase())) {
     return false;
   }
@@ -232,6 +232,7 @@ export function findBestMatchingMock(
     if (includePassthroughMocks || !mockPassesThroughToRealApi(exactMatch.mockData)) {
       return exactMatch;
     }
+    return undefined;
   }
 
   // For GraphQL requests, only allow exact matches (query + variables must match exactly)
