@@ -9,14 +9,19 @@ function parseBoolEnv(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
+/** Env override for {@link resolveRecordResponses}; undefined when unset. */
+export function envRecordResponsesOverride(): boolean | undefined {
+  return parseBoolEnv(
+    typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_RECORD_RESPONSES] : undefined
+  );
+}
+
 /**
  * Whether upstream recordings should include response bodies.
  * Env **`MOCKIFYER_RECORD_RESPONSES`** wins; else explicit `recordResponses` argument; default `false`.
  */
 export function resolveRecordResponses(explicit?: boolean): boolean {
-  const fromEnv = parseBoolEnv(
-    typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_RECORD_RESPONSES] : undefined
-  );
+  const fromEnv = envRecordResponsesOverride();
   if (fromEnv !== undefined) return fromEnv;
   if (typeof explicit === 'boolean') return explicit;
   return false;

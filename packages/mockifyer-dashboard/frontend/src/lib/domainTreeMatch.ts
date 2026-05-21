@@ -1,4 +1,5 @@
 import type { MockFile } from '@/types'
+import type { DomainPathRulesMap } from '@/lib/api'
 
 export function endpointMatchesDomainPath(endpoint: string | null | undefined, domainPath: string): boolean {
   if (!endpoint || !domainPath.trim()) return false
@@ -15,19 +16,39 @@ export function endpointMatchesDomainPath(endpoint: string | null | undefined, d
 
 export type LiveApiAggregate = 'all_live' | 'all_mock' | 'mixed' | 'empty'
 
+export interface DomainFolderCounts {
+  total: number
+  live: number
+  pending: number
+  mocked: number
+}
+
+export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string): DomainFolderCounts {
+  const counts: DomainFolderCounts = { total: 0, live: 0, pending: 0, mocked: 0 }
+  for (const m of mocks) {
+    if (!endpointMatchesDomainPath(m.endpoint ?? null, domainPath)) continue
+    counts.total += 1
+    if (m.responsePending === true) {
+      counts.pending += 1
+      counts.live += 1
+      continue
+    }
+    if (m.alwaysUseRealApi === true) {
+      counts.live += 1
+    } else {
+      counts.mocked += 1
+    }
+  }
+  return counts
+}
+
 export function countLiveApiInMocks(mocks: MockFile[], domainPath: string): {
   total: number
   live: number
   pending: number
 } {
-  const counts = { total: 0, live: 0, pending: 0 }
-  for (const m of mocks) {
-    if (!endpointMatchesDomainPath(m.endpoint ?? null, domainPath)) continue
-    counts.total += 1
-    if (m.responsePending === true) counts.pending += 1
-    if (m.alwaysUseRealApi === true || m.responsePending === true) counts.live += 1
-  }
-  return counts
+  const c = countMocksInDomainFolder(mocks, domainPath)
+  return { total: c.total, live: c.live, pending: c.pending }
 }
 
 export function aggregateLiveApiState(counts: { total: number; live: number }): LiveApiAggregate {
@@ -37,6 +58,22 @@ export function aggregateLiveApiState(counts: { total: number; live: number }): 
   return 'mixed'
 }
 
-export function countPendingInMocks(mocks: MockFile[], domainPath: string): number {
-  return countLiveApiInMocks(mocks, domainPath).pending
+export function findEffectiveDomainPathRule(
+  folderPath: string,
+  rules: DomainPathRulesMap
+): { domainPath: string; rule: DomainPathRulesMap[string] } | null {
+  const normalized = folderPath.trim().replace(/^\/+|\/+$/g, '')
+  if (!normalized) return null
+
+  let best: { domainPath: string; rule: DomainPathRulesMap[string]; len: number } | null = null
+  for (const [domainPath, rule] of Object.entries(rules)) {
+    if (!domainPath.trim() || !rule) continue
+    const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '')
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+      if (!best || prefix.length > best.len) {
+        best = { domainPath: prefix, rule, len: prefix.length }
+      }
+    }
+  }
+  return best ? { domainPath: best.domainPath, rule: best.rule } : null
 }

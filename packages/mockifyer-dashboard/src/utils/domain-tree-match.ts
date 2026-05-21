@@ -1,18 +1,15 @@
+import { endpointUrlToDomainPath } from '@sgedda/mockifyer-core';
+
 /**
  * Matches mock endpoint URLs to domain-tree `fullPath` keys
  * (host/path segments as built by {@link buildMockRequestTree}).
  */
 export function endpointMatchesDomainPath(endpoint: string | null | undefined, domainPath: string): boolean {
   if (!endpoint || !domainPath.trim()) return false;
+  const full = endpointUrlToDomainPath(endpoint);
+  if (!full) return false;
   const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '');
-  try {
-    const u = new URL(endpoint);
-    const segments = u.pathname.replace(/\/+/g, '/').replace(/^\/|\/$/g, '').split('/').filter(Boolean);
-    const full = [u.host, ...segments].join('/');
-    return full === prefix || full.startsWith(`${prefix}/`);
-  } catch {
-    return false;
-  }
+  return full === prefix || full.startsWith(`${prefix}/`);
 }
 
 export type LiveApiAggregate = 'all_live' | 'all_mock' | 'mixed' | 'empty';

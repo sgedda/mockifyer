@@ -13,11 +13,16 @@ import type { MockFolderNode } from '@/lib/mockFolderTree'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
 import {
   aggregateLiveApiState,
-  countLiveApiInMocks,
-  countPendingInMocks,
+  countMocksInDomainFolder,
+  findEffectiveDomainPathRule,
   type LiveApiAggregate,
 } from '@/lib/domainTreeMatch'
-import { bulkCaptureResponsesForDomain, bulkSetLiveApiForDomain } from '@/lib/api'
+import {
+  bulkCaptureResponsesForDomain,
+  bulkSetLiveApiForDomain,
+  setDomainPathRule,
+  type DomainPathRulesMap,
+} from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { ChevronRight, ChevronDown, Folder } from 'lucide-react'
@@ -70,6 +75,8 @@ export function useFolderTreeBulkActions(): FolderTreeBulkContextValue {
 export interface DomainTreeModeProps {
   scenario: string
   catalogMocks: MockFile[]
+  pathRules: DomainPathRulesMap
+  onPathRulesChange: (rules: DomainPathRulesMap) => void
   onRefresh: () => void
 }
 
@@ -135,6 +142,13 @@ export function MockFolderTree({
   )
 }
 
+function aggregateMockReplayState(counts: ReturnType<typeof countMocksInDomainFolder>): 'all_mock' | 'mixed' | 'none' {
+  if (counts.total === 0 || counts.mocked === 0) return 'none'
+  const passthrough = counts.live - counts.pending
+  if (counts.mocked === counts.total - counts.pending && passthrough === 0) return 'all_mock'
+  return 'mixed'
+}
+
 function FolderSection({
   title,
   defaultOpen,
@@ -151,23 +165,38 @@ function FolderSection({
   const bulkCtx = useContext(FolderTreeBulkContext)
   const { toast } = useToast()
   const [open, setOpen] = useState(defaultOpen)
-  const [busy, setBusy] = useState<'live' | 'mock' | 'capture' | null>(null)
+  const [busy, setBusy] = useState<'live' | 'mock' | 'capture' | 'auto' | null>(null)
 
   useEffect(() => {
     if (!bulkCtx || bulkCtx.bulkGeneration === 0) return
     setOpen(bulkCtx.bulkMode === 'expand')
   }, [bulkCtx, bulkCtx?.bulkGeneration, bulkCtx?.bulkMode])
 
-  const liveState = useMemo((): LiveApiAggregate => {
-    if (!domainTreeMode || !domainPath) return 'empty'
-    const counts = countLiveApiInMocks(domainTreeMode.catalogMocks, domainPath)
-    return aggregateLiveApiState(counts)
+  const folderCounts = useMemo(() => {
+    if (!domainTreeMode || !domainPath) return null
+    return countMocksInDomainFolder(domainTreeMode.catalogMocks, domainPath)
   }, [domainTreeMode, domainPath])
 
-  const pendingCount = useMemo(() => {
-    if (!domainTreeMode || !domainPath) return 0
-    return countPendingInMocks(domainTreeMode.catalogMocks, domainPath)
+  const liveState = useMemo((): LiveApiAggregate => {
+    if (!folderCounts) return 'empty'
+    return aggregateLiveApiState(folderCounts)
+  }, [folderCounts])
+
+  const mockReplayState = useMemo(() => {
+    if (!folderCounts) return 'none' as const
+    return aggregateMockReplayState(folderCounts)
+  }, [folderCounts])
+
+  const pendingCount = folderCounts?.pending ?? 0
+
+  const effectivePathRule = useMemo(() => {
+    if (!domainTreeMode || !domainPath) return null
+    return findEffectiveDomainPathRule(domainPath, domainTreeMode.pathRules)
   }, [domainTreeMode, domainPath])
+
+  const autoRecordOn = effectivePathRule?.rule.recordResponses === true
+  const autoRecordExact =
+    domainPath != null && domainTreeMode?.pathRules[domainPath.trim()]?.recordResponses === true
 
   async function handleLiveToggle(useLiveApi: boolean) {
     if (!domainTreeMode || !domainPath) return
@@ -226,6 +255,57 @@ function FolderSection({
     }
   }
 
+  async function handleMocked() {
+    if (!domainTreeMode || !domainPath) return
+    if (pendingCount > 0) {
+      await handleBulkCapture()
+    }
+    await handleLiveToggle(false)
+  }
+
+  async function handleAutoRecordToggle() {
+    if (!domainTreeMode || !domainPath) return
+    try {
+      setBusy('auto')
+      let rule: { recordResponses: boolean; autoMock?: boolean } | null
+      if (autoRecordExact) {
+        rule = null
+      } else if (autoRecordOn) {
+        rule = { recordResponses: false, autoMock: false }
+      } else {
+        rule = { recordResponses: true, autoMock: true }
+      }
+      const rules = await setDomainPathRule({
+        scenario: domainTreeMode.scenario,
+        domainPath,
+        rule,
+      })
+      domainTreeMode.onPathRulesChange(rules)
+      const enabling = rule?.recordResponses === true
+      toast({
+        title: enabling ? 'Auto-record enabled' : 'Auto-record disabled',
+        description: enabling
+          ? `New requests under ${domainPath} will save full responses and replay automatically.`
+          : autoRecordExact || autoRecordOn
+            ? `Removed auto-record policy for ${domainPath}. Existing mocks unchanged.`
+            : `Blocked inherited auto-record under ${domainPath}.`,
+      })
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update auto-record',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const countsLabel =
+    folderCounts && folderCounts.total > 0
+      ? `${folderCounts.pending} pending · ${folderCounts.mocked} mocked · ${folderCounts.live - folderCounts.pending} live`
+      : null
+
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -236,10 +316,32 @@ function FolderSection({
         >
           <Folder className="h-4 w-4 shrink-0 text-primary" />
           {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
-          <span className="font-mono truncate">{title}</span>
+          <span className="min-w-0 truncate">
+            <span className="font-mono">{title}</span>
+            {countsLabel && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">{countsLabel}</span>
+            )}
+          </span>
         </button>
         {domainTreeMode && domainPath && liveState !== 'empty' && (
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            <Button
+              type="button"
+              variant={autoRecordOn ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 text-xs"
+              disabled={busy !== null}
+              title={
+                autoRecordOn
+                  ? autoRecordExact
+                    ? 'New requests under this path auto-save responses and replay. Click to disable.'
+                    : `Auto-record inherited from ${effectivePathRule?.domainPath}. Click to set explicit rule on this path.`
+                  : 'Persist policy: new requests under this path save full responses and replay automatically'
+              }
+              onClick={() => void handleAutoRecordToggle()}
+            >
+              {busy === 'auto' ? '…' : 'Auto-record'}
+            </Button>
             {pendingCount > 0 && (
               <Button
                 type="button"
@@ -259,25 +361,25 @@ function FolderSection({
               size="sm"
               className="h-7 text-xs"
               disabled={busy !== null}
-              title="Always call live API for mocks under this path"
+              title="Existing mocks only: always call live API. Does not affect new requests unless Auto-record is on."
               onClick={() => void handleLiveToggle(true)}
             >
               {busy === 'live' ? '…' : 'Live API'}
             </Button>
             <Button
               type="button"
-              variant={liveState === 'all_mock' ? 'default' : 'outline'}
+              variant={mockReplayState === 'all_mock' ? 'default' : mockReplayState === 'mixed' ? 'secondary' : 'outline'}
               size="sm"
               className="h-7 text-xs"
               disabled={busy !== null}
               title={
                 pendingCount > 0
-                  ? 'Replay mocks with captured responses; pending stubs are skipped'
-                  : 'Replay saved mocks under this path'
+                  ? 'Captures pending stubs first, then replays saved mocks. New requests stay request-only unless Auto-record is on.'
+                  : 'Existing mocks only: replay saved responses. New requests stay request-only unless Auto-record is on.'
               }
-              onClick={() => void handleLiveToggle(false)}
+              onClick={() => void handleMocked()}
             >
-              {busy === 'mock' ? '…' : 'Mocked'}
+              {busy === 'mock' || busy === 'capture' ? '…' : mockReplayState === 'mixed' ? 'Mocked (mixed)' : 'Mocked'}
             </Button>
           </div>
         )}

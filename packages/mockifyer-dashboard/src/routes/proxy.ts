@@ -11,8 +11,8 @@ import {
   resolveRefreshPassthroughRecordings,
   applyRecordingPassthroughFlag,
   buildRequestOnlyMockData,
-  resolveRecordResponses,
   applyCapturedResponse,
+  resolveRecordResponsesForRequest,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -382,11 +382,15 @@ router.post('/', async (req: Request, res: Response) => {
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
-      const recordResponses = resolveRecordResponses(
-        typeof recordResponsesFromBody === 'boolean'
-          ? recordResponsesFromBody
-          : proxyConfig?.recordResponses
-      );
+      const pathRules = await store.getDomainPathRules(resolvedScenarioName);
+      const recordResolution = resolveRecordResponsesForRequest({
+        url,
+        pathRules,
+        fromBody: typeof recordResponsesFromBody === 'boolean' ? recordResponsesFromBody : undefined,
+        fromScenario: proxyConfig?.recordResponses,
+      });
+      const recordResponses = recordResolution.recordResponses;
+      const pathAutoMock = recordResolution.matchedPathRule?.autoMock === true;
       const requestPayload = {
         method: upperMethod,
         url,
@@ -409,7 +413,9 @@ router.post('/', async (req: Request, res: Response) => {
           timestamp: new Date().toISOString(),
         };
         applyCapturedResponse(storedMockForClient, response);
-        if (shouldMarkPassthrough) {
+        if (pathAutoMock) {
+          delete storedMockForClient.alwaysUseRealApi;
+        } else if (shouldMarkPassthrough) {
           applyRecordingPassthroughFlag(storedMockForClient, true);
         } else {
           delete storedMockForClient.alwaysUseRealApi;

@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import type { MockData } from '@sgedda/mockifyer-core';
+import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
 import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
 
 export interface RedisMockStoreConfig {
@@ -369,6 +369,59 @@ export class RedisMockStore {
 
   async deleteProxyConfig(scenario: string): Promise<void> {
     await this.redis.del(this.proxyConfigRedisKey(scenario));
+  }
+
+  domainPathRulesRedisKey(scenario: string): string {
+    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    return `${this.keyPrefix}:path_rules:${id}`;
+  }
+
+  async getDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
+    const raw: string | null = await this.redis.get(this.domainPathRulesRedisKey(scenario));
+    if (raw === null || raw === '') return {};
+    try {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      const out: DomainPathRulesMap = {};
+      for (const [path, val] of Object.entries(o)) {
+        if (!val || typeof val !== 'object') continue;
+        const r = val as Record<string, unknown>;
+        if (typeof r.recordResponses !== 'boolean') continue;
+        out[path] = {
+          recordResponses: r.recordResponses,
+          autoMock: r.autoMock === true,
+          updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+        };
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  async setDomainPathRule(
+    scenario: string,
+    domainPath: string,
+    rule: { recordResponses: boolean; autoMock?: boolean } | null
+  ): Promise<DomainPathRulesMap> {
+    const key = this.domainPathRulesRedisKey(scenario);
+    const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
+    const rules = await this.getDomainPathRules(scenario);
+    if (rule === null) {
+      delete rules[normalized];
+    } else {
+      rules[normalized] = {
+        recordResponses: rule.recordResponses,
+        autoMock: rule.autoMock === true,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (Object.keys(rules).length === 0) {
+      await this.redis.del(key);
+    } else {
+      await this.redis.set(key, JSON.stringify(rules));
+    }
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    return rules;
   }
 
   /**
