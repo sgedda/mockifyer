@@ -48,6 +48,8 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
+  shouldBlockLocalMockRecording,
+  resolveStrictScenarioResolution,
   type MockifyerActivationMode,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
@@ -842,6 +844,13 @@ class MockifyerClass {
     if (this.config.proxy?.baseUrl) {
       return;
     }
+
+    if (shouldBlockLocalMockRecording(this.config)) {
+      logger.info(
+        '[Mockifyer-Fetch] Strict proxy-only mode: skipping local mock save (dashboard proxy unavailable).'
+      );
+      return;
+    }
     
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
     if (url && shouldExcludeUrl(url, this.config.excludedUrls)) {
@@ -1509,9 +1518,15 @@ export async function initMockifyerForDashboardProxy(
     (await canUseDashboardRedisProxy(dashboardBaseUrl));
 
   if (!useRedisProxy) {
+    const strictProxyOnly = resolveStrictScenarioResolution({
+      strictScenarioResolution:
+        options.config?.strictScenarioResolution ?? extra.strictScenarioResolution,
+    });
     logger.warn(
       `[Mockifyer] initMockifyerForDashboardProxy: "${dashboardBaseUrl}" did not report healthy Redis ` +
-        '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ' +
+        (strictProxyOnly
+          ? '(strict proxy-only — local recording disabled). '
+          : '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ') +
         'Set skipDashboardRedisHealthCheck: true to force proxy anyway.'
     );
     const stripped = omitProxyFromPartialConfig(extra);
@@ -1520,12 +1535,15 @@ export async function initMockifyerForDashboardProxy(
       ...stripped.initLog,
       headline:
         stripped.initLog?.headline ??
-        '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)',
+        (strictProxyOnly
+          ? '[Mockifyer preset] Node · strict proxy-only (dashboard Redis health check failed)'
+          : '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)'),
     };
     return setupMockifyer({
       ...stripped,
       mockDataPath,
       ...(fallbackDb !== undefined ? { databaseProvider: fallbackDb } : {}),
+      ...(strictProxyOnly ? { intendedProxyBaseUrl: dashboardBaseUrl.trim() } : {}),
       useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
       clientId: options.clientId ?? extra.clientId,
       deviceId: options.deviceId ?? extra.deviceId,

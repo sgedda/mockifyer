@@ -121,9 +121,16 @@ export interface MockifyerConfig {
   /**
    * When true (or **`MOCKIFYER_STRICT_SCENARIO=true`**), and **`proxy.baseUrl`** is set, outbound traffic is not routed
    * through Mockifyer until **`clientId`** (lane) or **`proxy.scenario`** is explicitly set — passthrough plain HTTP otherwise.
+   * When combined with {@link intendedProxyBaseUrl} (dashboard proxy intended but unavailable), local hybrid/filesystem
+   * recording is blocked.
    * See **`isExplicitProxyScenarioContext`** / **`resolveStrictScenarioResolution`** in **`@sgedda/mockifyer-core`**.
    */
   strictScenarioResolution?: boolean;
+  /**
+   * Set when init intended dashboard/Redis proxy but the proxy is not active (e.g. health check failed).
+   * With {@link strictScenarioResolution}, blocks local filesystem/hybrid/Metro mock saves.
+   */
+  intendedProxyBaseUrl?: string;
   requestMatching?: {
     headers?: string[];
     ignoreQueryParams?: string[];
