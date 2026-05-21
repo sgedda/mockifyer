@@ -7,6 +7,7 @@ import MockEditor from './MockEditor'
 import StatsView from './StatsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
+import Network from './Network'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
@@ -42,6 +43,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
     if (path === '/timeline') return 'timeline'
+    if (path === '/network') return 'network'
     if (path === '/date-config') return 'date-config'
     if (path === '/settings') return 'settings'
     return 'stats' // default to stats (root path)
@@ -157,6 +159,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
       'timeline': '/timeline',
+      'network': '/network',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -454,6 +457,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"

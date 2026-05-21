@@ -38,6 +38,8 @@ import {
   mockPassesThroughToRealApi,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
+  emitMockifyerNetworkEvent,
+  networkEventHashFromRequestKey,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -57,6 +59,18 @@ class MockifyerClass {
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
   private readonly activationMode: MockifyerActivationMode;
+
+  private logNetworkEvent(
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' }
+  ): void {
+    if (this.config.proxy?.baseUrl) return;
+    emitMockifyerNetworkEvent({
+      config: this.config,
+      scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
+      clientId: this.config.clientId,
+      event: { ...partial, transport: partial.transport ?? 'axios' },
+    });
+  }
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
@@ -569,6 +583,13 @@ class MockifyerClass {
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        this.logNetworkEvent({
+          method: (request.method || 'GET').toUpperCase(),
+          url: request.url,
+          source: 'mock-hit',
+          status: mockData.response.status,
+          requestHash: networkEventHashFromRequestKey(requestKey),
+        });
         // Add mockifyer headers to indicate this is a mocked response
         const responseHeaders = {
           ...mockData.response.headers,
@@ -1131,6 +1152,13 @@ class MockifyerClass {
         
         // Store the request key on the response config so saveResponse can use it
         (response.config as any).__mockifyer_requestKey = requestKeyForRecording;
+
+        this.logNetworkEvent({
+          method: (response.config.method || 'GET').toUpperCase(),
+          url: response.config.url || '',
+          source: 'upstream',
+          status: response.status,
+        });
         
         this.saveResponse(response as HTTPResponse);
         return response;
@@ -1138,6 +1166,17 @@ class MockifyerClass {
       (error) => {
         if ((error.config as any)?.__mockifyer_bypass) {
           return Promise.reject(error);
+        }
+
+        const errUrl = error.config?.url || '';
+        if (errUrl) {
+          this.logNetworkEvent({
+            method: (error.config?.method || 'GET').toUpperCase(),
+            url: errUrl,
+            source: 'error',
+            status: error.response?.status,
+            errorMessage: error?.message ?? String(error),
+          });
         }
 
         // CRITICAL: Clean up processingRequests after request fails
