@@ -149,3 +149,54 @@ export interface ScenarioExportBundle {
   } | null
 }
 
+export type NetworkEventSource =
+  | 'mock-hit'
+  | 'mock-miss'
+  | 'upstream'
+  | 'blocked'
+  | 'error'
+
+export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy'
+
+export interface NetworkEvent {
+  id: string
+  timestamp: string
+  scenario: string
+  clientId?: string | null
+  deviceId?: string | null
+  sessionId?: string | null
+  requestId?: string | null
+  parentRequestId?: string | null
+  sequence?: number
+  phase?: 'request_start' | 'request_end' | 'complete'
+  transport: NetworkEventTransport
+  method: string
+  url: string
+  host?: string
+  path?: string
+  query?: string
+  status?: number
+  durationMs?: number
+  source: NetworkEventSource
+  requestHash?: string
+  requestHeaders?: Record<string, string>
+  responseHeaders?: Record<string, string>
+  requestBodyPreview?: string
+  responseBodyPreview?: string
+  errorMessage?: string
+}
+
+export interface NetworkLogConfig {
+  enabled: boolean
+  captureBodies: boolean
+  updatedAt: string
+}
+
+export interface NetworkEventsResponse {
+  scenario: string
+  provider: string
+  ephemeral: boolean
+  networkLogConfig: NetworkLogConfig
+  events: NetworkEvent[]
+}
+

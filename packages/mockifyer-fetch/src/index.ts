@@ -49,6 +49,8 @@ import {
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
   type MockifyerActivationMode,
+  emitMockifyerNetworkEvent,
+  networkEventHashFromRequestKey,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -68,6 +70,22 @@ class MockifyerClass {
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
   private readonly activationMode: MockifyerActivationMode;
+
+  /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
+  private logNetworkEvent(
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'fetch' }
+  ): void {
+    if (this.config.proxy?.baseUrl) return;
+    const scenario =
+      this.config.proxy?.scenario?.trim() ||
+      getCurrentScenario(this.config.mockDataPath);
+    emitMockifyerNetworkEvent({
+      config: this.config,
+      scenario,
+      clientId: this.config.clientId,
+      event: { ...partial, transport: partial.transport ?? 'fetch' },
+    });
+  }
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - filesystem, expo-filesystem, hybrid, and memory are supported
@@ -505,6 +523,13 @@ class MockifyerClass {
           `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
             (filePath ? ` (${filePath})` : '')
         );
+        this.logNetworkEvent({
+          method: (request.method || 'GET').toUpperCase(),
+          url: request.url,
+          source: 'mock-hit',
+          status: mockData.response.status,
+          requestHash: networkEventHashFromRequestKey(requestKey),
+        });
         const responseHeaders = {
           ...mockData.response.headers,
           'x-mockifyer': 'true',
@@ -666,12 +691,36 @@ class MockifyerClass {
         if (this.config.recordMode && !this.config.proxy?.baseUrl) {
           await this.saveResponse(response);
         }
+
+        const reqUrl = response.config?.url || url;
+        const reqMethod = (response.config?.method || 'GET').toUpperCase();
+        this.logNetworkEvent({
+          method: reqMethod,
+          url: reqUrl,
+          source: 'upstream',
+          status: response.status,
+          durationMs:
+            typeof response.config?.metadata?.durationMs === 'number'
+              ? response.config.metadata.durationMs
+              : undefined,
+        });
+
         return response;
       },
       async (error: any) => {
         const requestKey = (error.config as any)?.__mockifyer_requestKey;
         if (requestKey) {
           this.processingRequests.delete(requestKey);
+        }
+        const reqUrl = error.config?.url || '';
+        if (reqUrl) {
+          this.logNetworkEvent({
+            method: (error.config?.method || 'GET').toUpperCase(),
+            url: reqUrl,
+            source: 'error',
+            status: error.response?.status,
+            errorMessage: error?.message ?? String(error),
+          });
         }
         throw error;
       }

@@ -9,6 +9,7 @@ import { scenarioConfigRouter } from './routes/scenario-config';
 import { proxyRouter } from './routes/proxy';
 import { clientLanesRouter } from './routes/client-lanes';
 import { proxyConfigRouter } from './routes/proxy-config';
+import { networkEventsRouter } from './routes/network-events';
 import type {
   DashboardContextConfig,
   RedisDiskMirrorConfigInput,
@@ -82,10 +83,11 @@ export function createServer(
   app.use('/api/proxy', proxyRouter);
   app.use('/api/proxy-config', proxyConfigRouter);
   app.use('/api/client-lanes', clientLanesRouter);
+  app.use('/api/network-events', networkEventsRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events'
   );
 
   // Serve static files from public directory (React build output)

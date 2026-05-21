@@ -166,6 +166,17 @@ export interface MockifyerConfig {
     mirrorRecordedMocksToClient?: boolean;
   };
   /**
+   * Best-effort traffic log to mockifyer-dashboard (`POST /api/network-events`).
+   * Uses `proxy.baseUrl` when `dashboardBaseUrl` is omitted. Env **`MOCKIFYER_DASHBOARD_URL`** overrides.
+   */
+  networkLog?: {
+    /** When false, disables SDK-side network log POSTs (dashboard proxy may still log). */
+    enabled?: boolean;
+    dashboardBaseUrl?: string;
+    /** When true, include truncated request/response body previews in events. */
+    captureBodies?: boolean;
+  };
+  /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
    * Use `redis` with `mockifyer-fetch` (Node) for a shared Redis-backed store; requires `ioredis`.
    * `mockifyer-axios` currently supports filesystem only for mock lookup.
@@ -290,5 +301,7 @@ export const ENV_VARS = {
   MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
   /** Overwrite passthrough recordings on each live API response. */
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
+  /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
+  MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
 } as const;
 

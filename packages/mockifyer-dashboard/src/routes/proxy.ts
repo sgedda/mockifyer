@@ -13,6 +13,12 @@ import {
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import {
+  appendProxyNetworkEvent,
+  closeProxyNetworkLog,
+  openProxyNetworkLog,
+  resolveNetworkLogScenario,
+} from '../utils/proxy-network-log';
 
 const router = express.Router();
 
@@ -96,6 +102,7 @@ router.post('/', async (req: Request, res: Response) => {
   });
 
   const redisDisk = resolveRedisDiskMirrorOptions(config);
+  let networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>> = null;
 
   try {
     if (clientId) {
@@ -120,6 +127,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (resolution.scenario === null) {
+      const logScenario = resolveNetworkLogScenario(mockDataPath, null, bodyScenario);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario);
+
       const effectiveAllowUpstream = typeof allowUpstream === 'boolean' ? allowUpstream : true;
       if (debugProxy) {
         console.log(
@@ -127,6 +137,17 @@ router.post('/', async (req: Request, res: Response) => {
         );
       }
       if (!effectiveAllowUpstream) {
+        await appendProxyNetworkEvent(networkLogCtx, {
+          method: upperMethod,
+          url,
+          clientId: clientId || null,
+          deviceId: deviceId || null,
+          source: 'blocked',
+          status: 412,
+          requestHash: hash,
+          requestHeaders: toRecordStringHeaders(headers),
+          errorMessage: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
+        });
         return res.status(412).json({
           proxied: false,
           source: 'blocked_strict_lane',
@@ -181,6 +202,17 @@ router.post('/', async (req: Request, res: Response) => {
         headers: responseHeaders,
       };
 
+      await appendProxyNetworkEvent(networkLogCtx, {
+        method: upperMethod,
+        url,
+        clientId: clientId || null,
+        deviceId: deviceId || null,
+        source: 'upstream',
+        status: upstreamRes.status,
+        requestHash: hash,
+        requestHeaders: toRecordStringHeaders(headers),
+        responseHeaders,
+      });
       return res.json({
         proxied: true,
         source: 'upstream_strict_lane_unresolved',
@@ -193,6 +225,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const resolvedScenarioName = resolution.scenario;
+    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName);
 
     const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
@@ -239,6 +272,17 @@ router.post('/', async (req: Request, res: Response) => {
             : `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
+      await appendProxyNetworkEvent(networkLogCtx, {
+        method: upperMethod,
+        url,
+        clientId: clientId || null,
+        deviceId: deviceId || null,
+        source: 'mock-hit',
+        status: mock.response?.status ?? 200,
+        requestHash: hash,
+        requestHeaders: toRecordStringHeaders(headers),
+        responseHeaders: mock.response?.headers as Record<string, string> | undefined,
+      });
       return res.json({
         proxied: false,
         source: mockSource,
@@ -265,6 +309,17 @@ router.post('/', async (req: Request, res: Response) => {
           `[ProxyRoute] upstream blocked: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
+      await appendProxyNetworkEvent(networkLogCtx, {
+        method: upperMethod,
+        url,
+        clientId: clientId || null,
+        deviceId: deviceId || null,
+        source: 'blocked',
+        status: 412,
+        requestHash: hash,
+        requestHeaders: toRecordStringHeaders(headers),
+        errorMessage: 'Upstream calls are disabled for this scenario (offline mode).',
+      });
       return res.status(412).json({
         proxied: false,
         source: 'blocked',
@@ -360,6 +415,17 @@ router.post('/', async (req: Request, res: Response) => {
         `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
       );
     }
+    await appendProxyNetworkEvent(networkLogCtx, {
+      method: upperMethod,
+      url,
+      clientId: clientId || null,
+      deviceId: deviceId || null,
+      source: mock ? 'upstream' : 'mock-miss',
+      status: upstreamRes.status,
+      requestHash: hash,
+      requestHeaders: toRecordStringHeaders(headers),
+      responseHeaders,
+    });
     return res.json({
       proxied: true,
       source: 'upstream',
@@ -375,8 +441,28 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[ProxyRoute] Error:', error);
+    const logScenario = resolveNetworkLogScenario(
+      mockDataPath,
+      networkLogCtx?.scenario ?? null,
+      bodyScenario
+    );
+    if (!networkLogCtx && logScenario) {
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario);
+    }
+    await appendProxyNetworkEvent(networkLogCtx, {
+      method: upperMethod,
+      url,
+      clientId: clientId || null,
+      deviceId: deviceId || null,
+      source: 'error',
+      status: 500,
+      requestHash: hash,
+      requestHeaders: toRecordStringHeaders(headers),
+      errorMessage: error?.message ?? String(error),
+    });
     return res.status(500).json({ error: 'Proxy failed', details: error.message });
   } finally {
+    await closeProxyNetworkLog(networkLogCtx);
     await store.close().catch(() => undefined);
   }
 });

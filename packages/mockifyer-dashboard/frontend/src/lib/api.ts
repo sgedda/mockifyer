@@ -6,6 +6,9 @@ import type {
   ScenarioConfig,
   ScenarioExportBundle,
   SimilarBodyGroupSummary,
+  NetworkEventsResponse,
+  NetworkLogConfig,
+  NetworkEvent,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -322,6 +325,64 @@ export async function getDateConfig(scenario?: string): Promise<DateConfig> {
   const response = await fetch(`${API_BASE}/date-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
+}
+
+export async function getNetworkEvents(params: {
+  scenario: string
+  clientId?: string
+  limit?: number
+  since?: string
+}): Promise<NetworkEventsResponse> {
+  const qs = new URLSearchParams()
+  qs.set('scenario', params.scenario)
+  if (params.clientId) qs.set('clientId', params.clientId)
+  if (params.limit != null) qs.set('limit', String(params.limit))
+  if (params.since) qs.set('since', params.since)
+  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch network events')
+  return response.json()
+}
+
+export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<void> {
+  const qs = new URLSearchParams({ scenario })
+  if (clientId) qs.set('clientId', clientId)
+  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error('Failed to clear network events')
+}
+
+export async function getNetworkLogConfig(scenario: string): Promise<NetworkLogConfig & { scenario: string }> {
+  const q = `?scenario=${encodeURIComponent(scenario)}`
+  const response = await fetch(`${API_BASE}/network-events/config${q}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch network log config')
+  return response.json()
+}
+
+export async function updateNetworkLogConfig(
+  scenario: string,
+  patch: Partial<Pick<NetworkLogConfig, 'enabled' | 'captureBodies'>>
+): Promise<NetworkLogConfig & { scenario: string }> {
+  const response = await fetch(`${API_BASE}/network-events/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, ...patch }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { error?: string }).error || 'Failed to update network log config')
+  }
+  return response.json()
+}
+
+export async function appendNetworkEvent(
+  scenario: string,
+  event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'>
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/network-events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, event }),
+  })
+  if (!response.ok) throw new Error('Failed to append network event')
 }
 
 export async function updateDateConfig(config: {

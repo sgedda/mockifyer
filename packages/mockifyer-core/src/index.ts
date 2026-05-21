@@ -24,6 +24,7 @@ export * from './utils/runtime-mode';
 export * from './utils/strict-proxy-scenario';
 export * from './utils/proxy-strict-lane-scenario';
 export * from './utils/mockifyer-init-log';
+export * from './utils/network-log';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
