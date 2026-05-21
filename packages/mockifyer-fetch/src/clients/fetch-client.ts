@@ -14,6 +14,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyBaseUrl?: string;
   private proxyScenario?: string;
   private proxyRecordOnMiss: boolean;
+  private proxyRecordResponses: boolean;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
   private clientIdSnapshot?: string;
@@ -26,6 +27,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       baseUrl: string;
       scenario?: string;
       recordOnMiss?: boolean;
+      recordResponses?: boolean;
       strictLaneScenario?: boolean;
       mirrorRecordedMocksToClient?: boolean;
     };
@@ -40,6 +42,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
+    this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
     this.clientIdSnapshot = config?.clientId;
@@ -133,6 +136,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           body: config.data ?? null,
           scenario: this.proxyScenario,
           record: this.proxyRecordOnMiss,
+          recordResponses: this.proxyRecordResponses,
           strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
         }),
       });

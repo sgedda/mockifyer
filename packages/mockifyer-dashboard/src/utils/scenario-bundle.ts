@@ -29,6 +29,7 @@ export interface ScenarioExportBundle {
   proxyConfig: {
     recordOnMiss: boolean;
     allowUpstream: boolean;
+    recordResponses: boolean;
   } | null;
 }
 
@@ -172,7 +173,11 @@ export async function buildRedisScenarioBundle(
     const p = await store.getProxyConfig(scenario);
     const proxyConfig =
       p !== null
-        ? { recordOnMiss: p.recordOnMiss, allowUpstream: p.allowUpstream }
+        ? {
+            recordOnMiss: p.recordOnMiss,
+            allowUpstream: p.allowUpstream,
+            recordResponses: p.recordResponses === true,
+          }
         : null;
 
     return {
@@ -237,6 +242,7 @@ export function assertValidImportBundle(body: unknown): ScenarioExportBundle {
       proxyConfig = {
         recordOnMiss: p.recordOnMiss !== false,
         allowUpstream: p.allowUpstream !== false,
+        recordResponses: p.recordResponses === true,
       };
     } else {
       throw new Error('proxyConfig must be null or an object when provided');
@@ -433,6 +439,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
           await store.setProxyConfig(targetScenario, {
             recordOnMiss: pc.recordOnMiss,
             allowUpstream: pc.allowUpstream,
+            recordResponses: pc.recordResponses === true,
             updatedAt: new Date().toISOString(),
           });
         }

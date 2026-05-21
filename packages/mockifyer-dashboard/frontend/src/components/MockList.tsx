@@ -373,6 +373,11 @@ function MockListContent({
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
             deleting={deleting}
+            domainTreeMode={
+              groupBy === 'domains' && scenario
+                ? { scenario, catalogMocks: mocks, onRefresh }
+                : undefined
+            }
           />
         </div>
       )}

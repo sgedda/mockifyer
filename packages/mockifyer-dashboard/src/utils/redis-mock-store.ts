@@ -332,6 +332,7 @@ export class RedisMockStore {
   async getProxyConfig(scenario: string): Promise<{
     recordOnMiss: boolean;
     allowUpstream: boolean;
+    recordResponses: boolean;
     updatedAt?: string;
   } | null> {
     const raw: string | null = await this.redis.get(this.proxyConfigRedisKey(scenario));
@@ -341,9 +342,11 @@ export class RedisMockStore {
       // Default to recording on cache miss unless explicitly disabled.
       const recordOnMiss = o.recordOnMiss !== false;
       const allowUpstream = o.allowUpstream !== false; // default true
+      const recordResponses = o.recordResponses === true;
       return {
         recordOnMiss,
         allowUpstream,
+        recordResponses,
         updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : undefined,
       };
     } catch {
@@ -353,7 +356,12 @@ export class RedisMockStore {
 
   async setProxyConfig(
     scenario: string,
-    payload: { recordOnMiss: boolean; allowUpstream: boolean; updatedAt: string }
+    payload: {
+      recordOnMiss: boolean;
+      allowUpstream: boolean;
+      recordResponses: boolean;
+      updatedAt: string;
+    }
   ): Promise<void> {
     await this.redis.set(this.proxyConfigRedisKey(scenario), JSON.stringify(payload));
     await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
@@ -397,6 +405,7 @@ export class RedisMockStore {
       await this.setProxyConfig(to, {
         recordOnMiss: proxyDoc.recordOnMiss,
         allowUpstream: proxyDoc.allowUpstream,
+        recordResponses: proxyDoc.recordResponses,
         updatedAt: new Date().toISOString(),
       }).catch(() => undefined);
     }

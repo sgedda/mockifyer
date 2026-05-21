@@ -14,6 +14,7 @@ import {
   tryGetClientIdFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
+  resolveRecordResponses,
   type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
@@ -73,6 +74,11 @@ export interface ReactNativeMockifyerConfig {
    * Deprecated: prefer using `recordMode` when `proxyBaseUrl` is provided.
    */
   proxyRecordOnMiss?: boolean;
+  /**
+   * When false, dashboard proxy stores request-only stubs on cache miss (Responses: Off).
+   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+   */
+  proxyRecordResponses?: boolean;
   /**
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
@@ -161,12 +167,16 @@ export async function setupMockifyerForReactNative(
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
+    proxyRecordResponses,
     useLaunchArgumentsClientId = false,
     launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
     runtimeMode: runtimeModeOption,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
+  const proxyShouldRecordResponses = resolveRecordResponses(
+    proxyRecordResponses ?? userConfig.proxy?.recordResponses
+  );
 
   const launchClientIdKey =
     launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
@@ -249,7 +259,12 @@ export async function setupMockifyerForReactNative(
       recordMode,
       useGlobalFetch: true,
       proxy: strictProxyEnabled && proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
+        ? {
+            baseUrl: proxyBaseUrl,
+            scenario: proxyScenario,
+            recordOnMiss: proxyShouldRecordOnMiss,
+            recordResponses: proxyShouldRecordResponses,
+          }
         : undefined,
       ...mergedConfig,
       initLog: { headline: mergedConfig.initLog?.headline ?? devInitHeadline(strictProxyEnabled) },
@@ -298,7 +313,12 @@ export async function setupMockifyerForReactNative(
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
+        ? {
+            baseUrl: proxyBaseUrl,
+            scenario: proxyScenario,
+            recordOnMiss: proxyShouldRecordOnMiss,
+            recordResponses: proxyShouldRecordResponses,
+          }
         : undefined,
       ...mergedConfig,
       initLog: {

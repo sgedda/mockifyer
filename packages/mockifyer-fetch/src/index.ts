@@ -51,6 +51,7 @@ import {
   type MockifyerActivationMode,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
+  resolveRecordResponses,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -1446,6 +1447,11 @@ export interface InitMockifyerForDashboardProxyOptions {
    * Defaults to `true` when `MOCKIFYER_RECORD=true`, else leaves dashboard/SDK defaults.
    */
   recordOnMiss?: boolean;
+  /**
+   * When false, dashboard proxy stores request-only stubs on cache miss.
+   * Defaults via {@link resolveRecordResponses} (`MOCKIFYER_RECORD_RESPONSES` env, else `false`).
+   */
+  recordResponses?: boolean;
   strictLaneScenario?: boolean;
   useGlobalFetch?: boolean;
   /** Use a local provider for mock hits before the proxy (default in-memory only) when **`/api/proxy`** is active. */
@@ -1494,6 +1500,10 @@ export async function initMockifyerForDashboardProxy(
     extra.proxy?.recordOnMiss ??
     (envRecord ? true : undefined);
 
+  const recordResponses = resolveRecordResponses(
+    options.recordResponses ?? extra.proxy?.recordResponses
+  );
+
   const useRedisProxy =
     options.skipDashboardRedisHealthCheck === true ||
     (await canUseDashboardRedisProxy(dashboardBaseUrl));
@@ -1534,6 +1544,7 @@ export async function initMockifyerForDashboardProxy(
         ? process.env.MOCKIFYER_SCENARIO.trim()
         : undefined),
     ...(typeof recordOnMiss === 'boolean' ? { recordOnMiss } : {}),
+    recordResponses,
   } as NonNullable<MockifyerConfig['proxy']>;
   if (
     options.strictLaneScenario !== undefined ||
