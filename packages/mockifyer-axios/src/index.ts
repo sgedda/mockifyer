@@ -36,6 +36,11 @@ import {
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
   mockPassesThroughToRealApi,
+  mockShouldServeStoredBody,
+  mockShouldBeIncludedInRequestMatch,
+  buildClientResponseFromLiveCapture,
+  buildMockDataAfterLiveCapture,
+  resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
   emitMockifyerNetworkEvent,
@@ -347,7 +352,7 @@ class MockifyerClass {
         
         // Check for exact match (skip passthrough files unless checking for duplicate save)
         if (mockKey === requestKey) {
-          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
             exactMatch = {
               mockData,
               filename: file,
@@ -583,6 +588,11 @@ class MockifyerClass {
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        if (!mockShouldServeStoredBody(mockData)) {
+          (config as any).__mockifyer_matchedMock = cachedMock;
+          (config as any).__mockifyer_requestKey = requestKey;
+          (config as any).__mockifyer_startTime = Date.now();
+        } else {
         this.logNetworkEvent({
           method: (request.method || 'GET').toUpperCase(),
           url: request.url,
@@ -639,6 +649,7 @@ class MockifyerClass {
             return Promise.resolve(mockResponse);
           }
         } as any;
+        }
       }
 
       if (this.config.failOnMissingMock) {
@@ -773,8 +784,14 @@ class MockifyerClass {
         
         // If mock found, use it regardless of processingRequests status
         if (cachedMock) {
-          console.log(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           const { mockData, filename, filePath } = cachedMock;
+          if (!mockShouldServeStoredBody(mockData)) {
+            console.log(`[Mockifyer] 🔄 Live refresh for ${requestKey}, deferring to upstream`);
+            (config as any).__mockifyer_matchedMock = cachedMock;
+            (config as any).__mockifyer_requestKey = requestKey;
+            (config as any).__mockifyer_startTime = Date.now();
+          } else {
+          console.log(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
           const responseHeaders = {
@@ -792,10 +809,6 @@ class MockifyerClass {
 
           console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
           
-          // For mocks, we can delete immediately since performRequest() won't be called
-          // But keep it in the set briefly to prevent loops if the mock response triggers another request
-          // We'll delete it when the mock response is actually returned (in BaseHTTPClient)
-          
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
             data: prepareMockResponseBody(mockData, getCurrentDate),
@@ -810,13 +823,6 @@ class MockifyerClass {
             ...config,
             adapter: () => {
               console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
-              console.log(`[Mockifyer] 📦 Mock response headers:`, mockResponse.headers);
-              console.log(`[Mockifyer] 📦 Mock response headers type:`, typeof mockResponse.headers);
-              if (typeof (mockResponse.headers as any).get === 'function') {
-                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any).get('x-mockifyer'));
-              } else {
-                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any)['x-mockifyer']);
-              }
               
               // CRITICAL: Mark this as a mock response so response interceptor can detect it
               (mockResponse.config as any).__mockifyer_isMock = true;
@@ -849,6 +855,7 @@ class MockifyerClass {
           
           console.log(`[Mockifyer] ✅ Returning config with adapter for mock response. Has adapter: ${!!adapterConfig.adapter}`);
           return adapterConfig;
+          }
         }
         
         // No mock found - check if already processing to prevent infinite loops
@@ -1122,6 +1129,11 @@ class MockifyerClass {
         } else {
           console.log('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
         }
+
+        const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+        if (matchedMock) {
+          return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock);
+        }
         
         // Use the request key from the request interceptor if available
         // This ensures we use the same key that was used for matching
@@ -1316,6 +1328,54 @@ class MockifyerClass {
     }
     
     return anonymized;
+  }
+
+  private async applyLiveRefreshToAxiosResponse(
+    response: HTTPResponse,
+    matchedMock: CachedMockData
+  ): Promise<HTTPResponse> {
+    const capturedResponse: StoredResponse = {
+      status: response.status,
+      data: response.data,
+      headers: (response.headers as Record<string, string>) || {},
+    };
+    const startTime = (response.config as any).__mockifyer_startTime;
+    const durationMs = startTime ? Date.now() - startTime : undefined;
+
+    if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
+      await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
+    }
+
+    const clientResponse = buildClientResponseFromLiveCapture(
+      matchedMock.mockData,
+      capturedResponse,
+      getCurrentDate
+    );
+    response.data = clientResponse.data;
+    response.status = clientResponse.status;
+    delete (response.config as any).__mockifyer_matchedMock;
+
+    this.logNetworkEvent({
+      method: (response.config?.method || 'GET').toUpperCase(),
+      url: response.config?.url || '',
+      source: 'upstream',
+      status: response.status,
+      durationMs,
+    });
+
+    return response;
+  }
+
+  private async persistMatchedMockAfterLiveCapture(
+    cachedMock: CachedMockData,
+    capturedResponse: StoredResponse,
+    durationMs?: number
+  ): Promise<void> {
+    const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
+    if (cachedMock.filePath) {
+      fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
+      console.log(`[Mockifyer] Refreshed mock from live API: ${cachedMock.filename}`);
+    }
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {

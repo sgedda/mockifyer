@@ -1,5 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -40,7 +41,7 @@ export class MemoryProvider implements DatabaseProvider {
       return undefined;
     }
 
-    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
 

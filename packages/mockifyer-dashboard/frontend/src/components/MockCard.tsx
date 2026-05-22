@@ -116,6 +116,16 @@ export function MockCard({
                   Live API
                 </Badge>
               )}
+              {mock.alwaysRefreshFromLive === true && mock.responsePending !== true && (
+                <Badge variant="outline" className="border-cyan-500/40 bg-cyan-500/10 text-cyan-100">
+                  Auto-refresh
+                </Badge>
+              )}
+              {mock.refreshOnNextRequest === true && mock.responsePending !== true && (
+                <Badge variant="outline" className="border-violet-500/40 bg-violet-500/10 text-violet-100">
+                  Refresh next
+                </Badge>
+              )}
               {mock.similarBodyGroup && mock.similarBodyGroup.size >= 2 && (
                 <Badge
                   variant="outline"

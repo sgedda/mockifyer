@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
@@ -142,7 +143,7 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
             return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
           }
           continue;

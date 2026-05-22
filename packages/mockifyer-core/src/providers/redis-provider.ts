@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
@@ -140,7 +141,7 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
     return {

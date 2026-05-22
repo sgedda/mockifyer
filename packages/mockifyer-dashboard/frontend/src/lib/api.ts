@@ -9,6 +9,7 @@ import type {
   NetworkEventsResponse,
   NetworkLogConfig,
   NetworkEvent,
+  MockReplayMode,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -69,15 +70,15 @@ export async function updateMock(
   filename: string,
   responseData: any,
   responseDateOverrides?: MockResponseDateOverride[] | null,
-  alwaysUseRealApi?: boolean,
+  replayMode?: MockReplayMode | null,
   scenario?: string
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
   }
-  if (alwaysUseRealApi !== undefined) {
-    body.alwaysUseRealApi = alwaysUseRealApi
+  if (replayMode !== undefined) {
+    body.replayMode = replayMode
   }
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
@@ -89,6 +90,25 @@ export async function updateMock(
     const error = await response.json()
     throw new Error(error.error || error.message || 'Failed to update mock')
   }
+}
+
+export async function refreshMockFromLive(
+  filename: string,
+  scenario?: string,
+  clientId?: string
+): Promise<MockData> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/refresh-from-live${q}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(clientId ? { clientId } : {}),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to refresh mock from live API')
+  }
+  const payload = await response.json()
+  return payload.data as MockData
 }
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {

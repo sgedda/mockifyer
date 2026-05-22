@@ -287,6 +287,16 @@ export interface MockData {
    */
   alwaysUseRealApi?: boolean;
   /**
+   * When true, the next outbound request fetches upstream, updates the stored response body, clears this flag,
+   * and returns the live response (with {@link responseDateOverrides} applied when configured).
+   */
+  refreshOnNextRequest?: boolean;
+  /**
+   * When true, every request fetches upstream, updates the stored response body, and returns the live response
+   * (with {@link responseDateOverrides} applied when configured). The mock remains active (not passthrough).
+   */
+  alwaysRefreshFromLive?: boolean;
+  /**
    * Request registered in the corpus without a captured response yet.
    * Implies live API until a response is stored and {@link alwaysUseRealApi} is cleared.
    */
