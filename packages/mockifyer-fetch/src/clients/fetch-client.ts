@@ -1,6 +1,8 @@
-import { BaseHTTPClient } from '@sgedda/mockifyer-core';
-import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 import {
+  BaseHTTPClient,
+  HTTPRequestConfig,
+  HTTPResponse,
+  logger,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
@@ -152,7 +154,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           const hashShort = hash ? `${hash.slice(0, 8)}…` : '';
           const laneLabel = lane ? lane : '—';
           const kind = source === 'redis' ? 'mock hit' : 'upstream';
-          console.log(
+          logger.debug(
             `[Mockifyer-Fetch] Proxy ${kind}: ${requestConfig.method} ${url} ${
               hashShort ? `(hash=${hashShort}) ` : ''
             }(lane=${laneLabel})`
