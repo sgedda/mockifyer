@@ -247,7 +247,15 @@ describe('ExpoFileSystemProvider', () => {
 
       const dir = makeMockDir({ exists: true, listResult: [makeListItem(olderFile), makeListItem(newerFile)] });
       mockFileSystem.Directory = jest.fn().mockReturnValue(dir);
-      mockFileSystem.Paths.info = jest.fn().mockReturnValue({ exists: true, isDirectory: true });
+      mockFileSystem.Paths.info = jest.fn().mockImplementation((uri: string) => {
+        if (typeof uri === 'string' && uri.includes('older_file')) {
+          return { exists: true, modificationTime: olderMtime };
+        }
+        if (typeof uri === 'string' && uri.includes('newer_file')) {
+          return { exists: true, modificationTime: newerMtime };
+        }
+        return { exists: true, isDirectory: true };
+      });
 
       mockFileSystem.File = jest.fn().mockImplementation((uri: string) => {
         if (typeof uri === 'string' && uri.includes('older_file')) {

@@ -37,6 +37,11 @@ import {
   getCurrentDate,
   shouldExcludeUrl,
   mockPassesThroughToRealApi,
+  mockShouldServeStoredBody,
+  mockShouldBeIncludedInRequestMatch,
+  buildClientResponseFromLiveCapture,
+  buildMockDataAfterLiveCapture,
+  resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
   resolveClientId,
@@ -357,7 +362,7 @@ class MockifyerClass {
         const mockKey = this.generateRequestKey(mockData.request);
         
         if (mockKey === requestKey) {
-          if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
             exactMatch = { mockData, filename: file, filePath };
             break;
           }
@@ -522,38 +527,46 @@ class MockifyerClass {
       
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        if (mockShouldServeStoredBody(mockData)) {
+          logger.info(
+            `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
+              (filePath ? ` (${filePath})` : '')
+          );
+          this.logNetworkEvent({
+            method: (request.method || 'GET').toUpperCase(),
+            url: request.url,
+            source: 'mock-hit',
+            status: mockData.response.status,
+            requestHash: networkEventHashFromRequestKey(requestKey),
+          });
+          const responseHeaders = {
+            ...mockData.response.headers,
+            'x-mockifyer': 'true',
+            'x-mockifyer-timestamp': mockData.timestamp,
+            'x-mockifyer-filename': filename,
+            'x-mockifyer-filepath': filePath
+          };
+
+          const mockResponse = {
+            data: prepareMockResponseBody(mockData, getCurrentDate),
+            status: mockData.response.status,
+            statusText: 'OK',
+            headers: responseHeaders,
+            config: config as any
+          };
+
+          return {
+            ...config,
+            __mockResponse: Promise.resolve(mockResponse),
+            __mockifyer_requestKey: requestKey
+          } as any;
+        }
+
         logger.info(
-          `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
+          `[Mockifyer-Fetch] Live refresh: ${request.method} ${request.url} → ${filename}` +
             (filePath ? ` (${filePath})` : '')
         );
-        this.logNetworkEvent({
-          method: (request.method || 'GET').toUpperCase(),
-          url: request.url,
-          source: 'mock-hit',
-          status: mockData.response.status,
-          requestHash: networkEventHashFromRequestKey(requestKey),
-        });
-        const responseHeaders = {
-          ...mockData.response.headers,
-          'x-mockifyer': 'true',
-          'x-mockifyer-timestamp': mockData.timestamp,
-          'x-mockifyer-filename': filename,
-          'x-mockifyer-filepath': filePath
-        };
-        
-        const mockResponse = {
-          data: prepareMockResponseBody(mockData, getCurrentDate),
-          status: mockData.response.status,
-          statusText: 'OK',
-          headers: responseHeaders,
-          config: config as any
-        };
-        
-        return {
-          ...config,
-          __mockResponse: Promise.resolve(mockResponse),
-          __mockifyer_requestKey: requestKey
-        } as any;
+        (config as any).__mockifyer_matchedMock = cachedMock;
       }
 
       // Check request limit BEFORE making real API call (only if no mock found and in record mode)
@@ -687,6 +700,41 @@ class MockifyerClass {
 
         if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
           await this.maybeMirrorProxyRecordingToClient(response);
+        }
+
+        const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+        if (matchedMock) {
+          const capturedResponse: StoredResponse = {
+            status: response.status,
+            data: response.data,
+            headers: (response.headers as Record<string, string>) || {},
+          };
+          const startTime = (response.config as any).__mockifyer_startTime;
+          const durationMs = startTime ? Date.now() - startTime : undefined;
+
+          if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
+            await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
+          }
+
+          const clientResponse = buildClientResponseFromLiveCapture(
+            matchedMock.mockData,
+            capturedResponse,
+            getCurrentDate
+          );
+          response.data = clientResponse.data;
+          response.status = clientResponse.status;
+          delete (response.config as any).__mockifyer_matchedMock;
+
+          const reqUrl = response.config?.url || url;
+          const reqMethod = (response.config?.method || 'GET').toUpperCase();
+          this.logNetworkEvent({
+            method: reqMethod,
+            url: reqUrl,
+            source: 'upstream',
+            status: response.status,
+            durationMs,
+          });
+          return response;
         }
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
@@ -1015,6 +1063,24 @@ class MockifyerClass {
       }
     } finally {
       this.savingResponses.delete(requestKey);
+    }
+  }
+
+  private async persistMatchedMockAfterLiveCapture(
+    cachedMock: CachedMockData,
+    capturedResponse: StoredResponse,
+    durationMs?: number
+  ): Promise<void> {
+    const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
+
+    if (this.databaseProvider) {
+      await this.databaseProvider.save(updated);
+      return;
+    }
+
+    if (fs && cachedMock.filePath) {
+      fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
+      logger.info(`[Mockifyer-Fetch] Refreshed mock from live API: ${cachedMock.filename}`);
     }
   }
 

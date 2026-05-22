@@ -8,11 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { updateMock } from '@/lib/api'
+import { updateMock, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
-import type { MockData, MockResponseDateOverride } from '@/types'
+import type { MockData, MockReplayMode, MockResponseDateOverride } from '@/types'
 import { Input } from '@/components/ui/input'
-import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft } from 'lucide-react'
+import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft, RefreshCw } from 'lucide-react'
 import {
   detectDateLikeFields,
   getValueAtResponsePath,
@@ -28,6 +28,36 @@ interface MockEditorProps {
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
   variant?: 'default' | 'modal'
 }
+
+function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
+  if (mock.data.alwaysUseRealApi === true) return 'passthrough'
+  if (mock.data.alwaysRefreshFromLive === true) return 'always-refresh'
+  if (mock.data.refreshOnNextRequest === true) return 'refresh-next'
+  return 'stored'
+}
+
+const REPLAY_MODE_OPTIONS: Array<{ value: MockReplayMode; label: string; description: string }> = [
+  {
+    value: 'stored',
+    label: 'Use saved mock',
+    description: 'Serve the stored response body (date overrides still apply).',
+  },
+  {
+    value: 'refresh-next',
+    label: 'Refresh on next request',
+    description: 'The next app request fetches upstream, updates this file, then returns to saved mock mode.',
+  },
+  {
+    value: 'always-refresh',
+    label: 'Always refresh from live',
+    description: 'Every request hits the live API, updates the stored snapshot, and returns fresh data (+ overrides).',
+  },
+  {
+    value: 'passthrough',
+    label: 'Always use live API',
+    description: 'Never serve the mock; traffic always goes upstream (file kept for reference).',
+  },
+]
 
 /** Above this serialized size, default to JSON tab — form editor is too heavy for huge GraphQL payloads. */
 const LARGE_RESPONSE_CHAR_THRESHOLD = 48_000
@@ -142,7 +172,8 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
-  const [alwaysUseRealApi, setAlwaysUseRealApi] = useState(false)
+  const [replayMode, setReplayMode] = useState<MockReplayMode>('stored')
+  const [refreshingLive, setRefreshingLive] = useState(false)
   const { toast } = useToast()
 
   /** Same JSON the user is editing (form vs raw JSON tab). */
@@ -188,7 +219,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
           : JSON.stringify(parsedData)
     )
     setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
-    setAlwaysUseRealApi(mock.data.alwaysUseRealApi === true)
+    setReplayMode(resolveReplayModeFromMock(mock))
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -260,7 +291,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
         mock.filename,
         dataToSave,
         sanitizeOverridesForSave(dateOverrides),
-        alwaysUseRealApi,
+        replayMode,
         scenario
       )
       toast({
@@ -279,29 +310,48 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
     }
   }
 
-  async function handleToggleAlwaysUseRealApi(next: boolean) {
-    setAlwaysUseRealApi(next)
+  async function handleReplayModeChange(next: MockReplayMode) {
+    setReplayMode(next)
     try {
       setSaving(true)
-      // Intentionally preserve the current on-disk/Redis mock body and overrides.
-      // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
       await updateMock(mock.filename, mock.data.response.data, undefined, next, scenario)
       toast({
         title: 'Saved',
-        description: next
-          ? 'This mock will now pass through to the live API.'
-          : 'This mock will now be served from Mockifyer again.',
+        description:
+          next === 'stored'
+            ? 'This mock will be served from Mockifyer.'
+            : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
       })
       onSave()
     } catch (error: any) {
-      setAlwaysUseRealApi((prev) => !prev)
+      setReplayMode(resolveReplayModeFromMock(mock))
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update mock',
+        description: error.message || 'Failed to update replay mode',
         variant: 'destructive',
       })
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleRefreshFromLiveNow() {
+    try {
+      setRefreshingLive(true)
+      await refreshMockFromLive(mock.filename, scenario)
+      toast({
+        title: 'Refreshed',
+        description: 'Captured the latest live response into this mock file.',
+      })
+      onSave()
+    } catch (error: any) {
+      toast({
+        title: 'Refresh failed',
+        description: error.message || 'Could not fetch from live API',
+        variant: 'destructive',
+      })
+    } finally {
+      setRefreshingLive(false)
     }
   }
 
@@ -434,25 +484,51 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
           </TabsList>
 
           <TabsContent value="request" className="space-y-4">
-            <div className="rounded-lg border border-border/70 bg-muted/25 p-4 space-y-2">
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="mockifyer-always-real-api"
-                  checked={alwaysUseRealApi}
-                  onChange={(e) => handleToggleAlwaysUseRealApi(e.target.checked)}
-                  disabled={saving}
-                  className="mt-1 h-4 w-4 shrink-0 rounded border-input"
-                />
-                <div className="min-w-0 space-y-1">
-                  <label htmlFor="mockifyer-always-real-api" className="text-sm font-medium cursor-pointer leading-snug">
-                    Always use live API for this request
+            <div className="rounded-lg border border-border/70 bg-muted/25 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium">Replay mode</div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={refreshingLive || saving}
+                  onClick={() => void handleRefreshFromLiveNow()}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${refreshingLive ? 'animate-spin' : ''}`} />
+                  Refresh now
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                The stored response below is the last captured snapshot. Refresh modes update it from upstream;
+                date overrides apply on top when serving live or saved responses.
+              </p>
+              <div className="space-y-2">
+                {REPLAY_MODE_OPTIONS.map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
+                      replayMode === option.value
+                        ? 'border-primary/50 bg-primary/5'
+                        : 'border-border/70 hover:bg-muted/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="mockifyer-replay-mode"
+                      value={option.value}
+                      checked={replayMode === option.value}
+                      disabled={saving}
+                      onChange={() => void handleReplayModeChange(option.value)}
+                      className="mt-1 h-4 w-4 shrink-0"
+                    />
+                    <span className="min-w-0 space-y-1">
+                      <span className="text-sm font-medium leading-snug block">{option.label}</span>
+                      <span className="text-xs text-muted-foreground leading-relaxed block">
+                        {option.description}
+                      </span>
+                    </span>
                   </label>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    When Mockifyer replay is on, this recording is ignored and traffic goes to the real endpoint. The
-                    file stays on disk (for reference or when you record again). Saved automatically when you toggle.
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
             <div className="flex items-center justify-between">
@@ -653,8 +729,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
                   Paths are relative to the response JSON body (e.g.{' '}
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">expiresAt</code> or{' '}
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">items.0.createdAt</code>
-                  ). When this mock is served, each field is set to the dashboard &quot;current&quot; date (Date
-                  settings) plus the offsets below.
+                  ). Applied when serving the mock or when returning a live/refreshed response.
                 </p>
               </div>
 

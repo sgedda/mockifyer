@@ -1,5 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -151,7 +152,7 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
-    if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
 

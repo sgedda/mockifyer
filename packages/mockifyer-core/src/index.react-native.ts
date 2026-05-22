@@ -16,6 +16,7 @@ export * from './utils/logger';
 export * from './utils/file-naming';
 export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
+export * from './utils/mock-replay-mode';
 export * from './utils/client-id';
 export * from './utils/runtime-client-id';
 export * from './utils/launch-arguments-client-id';

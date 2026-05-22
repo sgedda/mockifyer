@@ -15,6 +15,7 @@ export * from './utils/logger';
 export * from './utils/file-naming';
 export * from './utils/url-exclusion';
 export * from './utils/mock-passthrough';
+export * from './utils/mock-replay-mode';
 export * from './utils/request-only-mock';
 export * from './utils/domain-path-rules';
 export * from './utils/record-passthrough-config';

@@ -1,5 +1,6 @@
 import { MockData, StoredRequest, ENV_VARS } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
@@ -692,7 +693,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const mockKey = generateRequestKey(mockData.request);
         if (
           mockKey === requestKey &&
-          (includePassthroughMocks || !mockPassesThroughToRealApi(mockData))
+          mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })
         ) {
           // Get file modification time
           let fileMtime = Date.now();

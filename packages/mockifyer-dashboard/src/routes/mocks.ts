@@ -3,14 +3,24 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
-import { getCurrentScenario, getScenarioFolderPath, buildSimilarMockGroups, MockListEntryForSimilarity } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  getScenarioFolderPath,
+  buildSimilarMockGroups,
+  MockListEntryForSimilarity,
+  applyCapturedResponse,
+  buildMockDataAfterLiveCapture,
+  type MockData,
+  type DomainPathRulesMap,
+} from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
 } from '../utils/bulk-domain-mocks';
-import type { DomainPathRulesMap } from '@sgedda/mockifyer-core';
+import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
+import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 
 const router = express.Router();
 
@@ -19,11 +29,18 @@ type OverridePreview = { path: string; summary: string };
 function extractMockActivationFlags(mockData: unknown): {
   alwaysUseRealApi: boolean;
   responsePending: boolean;
+  replayMode: ReturnType<typeof getMockReplayModeListFlags>['replayMode'];
+  refreshOnNextRequest: boolean;
+  alwaysRefreshFromLive: boolean;
 } {
   const m = mockData as { alwaysUseRealApi?: boolean; responsePending?: boolean };
+  const replay = getMockReplayModeListFlags(mockData);
   return {
     alwaysUseRealApi: m.alwaysUseRealApi === true,
     responsePending: m.responsePending === true,
+    replayMode: replay.replayMode,
+    refreshOnNextRequest: replay.refreshOnNextRequest,
+    alwaysRefreshFromLive: replay.alwaysRefreshFromLive,
   };
 }
 
@@ -176,8 +193,7 @@ router.get('/', async (req: Request, res: Response) => {
             let graphqlInfo: any = null;
             let method: string | null = null;
             let sessionId: string | null = null;
-            let alwaysUseRealApi = false;
-            let responsePending = false;
+            let activation = extractMockActivationFlags({});
             const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
@@ -220,9 +236,7 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
-              const flags = extractMockActivationFlags(mockData);
-              alwaysUseRealApi = flags.alwaysUseRealApi;
-              responsePending = flags.responsePending;
+              const activation = extractMockActivationFlags(mockData);
             } catch {
               // ignore
             }
@@ -239,8 +253,7 @@ router.get('/', async (req: Request, res: Response) => {
               method,
               graphqlInfo,
               sessionId,
-              alwaysUseRealApi,
-              responsePending,
+              ...activation,
               hasResponseDateOverrides: hasOverrides,
               responseDateOverridesPreview: preview,
             };
@@ -272,8 +285,7 @@ router.get('/', async (req: Request, res: Response) => {
         let graphqlInfo = null;
         let method: string | null = null;
         let sessionId = null;
-        let alwaysUseRealApi = false;
-        let responsePending = false;
+        let activation = extractMockActivationFlags({});
         let hasResponseDateOverrides = false;
         let responseDateOverridesPreview: OverridePreview[] = [];
         try {
@@ -284,9 +296,7 @@ router.get('/', async (req: Request, res: Response) => {
           if (mockData.request?.method) {
             method = String(mockData.request.method).toUpperCase();
           }
-          const flags = extractMockActivationFlags(mockData);
-          alwaysUseRealApi = flags.alwaysUseRealApi;
-          responsePending = flags.responsePending;
+          activation = extractMockActivationFlags(mockData);
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
@@ -333,8 +343,7 @@ router.get('/', async (req: Request, res: Response) => {
           method,
           graphqlInfo,
           sessionId,
-          alwaysUseRealApi,
-          responsePending,
+          ...activation,
           hasResponseDateOverrides,
           responseDateOverridesPreview,
         };
@@ -682,14 +691,13 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
-        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
-          const v = req.body.alwaysUseRealApi;
-          if (v === true) {
-            (existingData as any).alwaysUseRealApi = true;
-          } else if (v === false || v === null) {
-            delete (existingData as any).alwaysUseRealApi;
-          } else {
-            return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
+        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
+            Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
+            Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
+            Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+          const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
+          if (replayErr) {
+            return res.status(400).json({ error: replayErr });
           }
         }
 
@@ -758,14 +766,13 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi')) {
-      const v = req.body.alwaysUseRealApi;
-      if (v === true) {
-        existingData.alwaysUseRealApi = true;
-      } else if (v === false || v === null) {
-        delete existingData.alwaysUseRealApi;
-      } else {
-        return res.status(400).json({ error: 'alwaysUseRealApi must be true, false, or null' });
+    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
+        Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
+        Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
+        Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+      const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
+      if (replayErr) {
+        return res.status(400).json({ error: replayErr });
       }
     }
 
@@ -933,6 +940,73 @@ router.delete('/*', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[MocksRoute] Delete - Error:', error);
     res.status(500).json({ error: 'Failed to delete mock file', details: error.message });
+  }
+});
+
+router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
+  try {
+    const relativeName = req.params[0];
+    const { mockDataPath, config } = getDashboardContext(req);
+    const clientId =
+      typeof req.body?.clientId === 'string' && req.body.clientId.trim()
+        ? req.body.clientId.trim()
+        : undefined;
+
+    if (config.provider === 'redis') {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+      try {
+        const scenario = await resolveRedisScenario(req, store);
+        const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
+        if (!existingData?.request?.url) {
+          return res.status(404).json({ error: 'Mock not found' });
+        }
+
+        const { response, durationMs } = await fetchUpstreamResponse(existingData.request, { clientId });
+        const updated = buildMockDataAfterLiveCapture(existingData, response, durationMs);
+        await store.setByHash(hash, updated, scenario);
+
+        return res.json({
+          success: true,
+          message: 'Mock refreshed from live API',
+          filename: relativeName,
+          data: updated,
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const filePath = resolveFilePath(scenarioPath, relativeName);
+    if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
+
+    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    if (!existingData?.request?.url) {
+      return res.status(400).json({ error: 'Mock has no request URL' });
+    }
+
+    const { response, durationMs } = await fetchUpstreamResponse(existingData.request, { clientId });
+    const updated = buildMockDataAfterLiveCapture(existingData, response, durationMs);
+    fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8');
+
+    return res.json({
+      success: true,
+      message: 'Mock refreshed from live API',
+      filename: relativeName,
+      data: updated,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[MocksRoute] refresh-from-live - Error:', error);
+    return res.status(500).json({ error: 'Failed to refresh mock from live API', details: message });
   }
 });
 

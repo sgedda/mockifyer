@@ -1,5 +1,6 @@
 import { StoredRequest, MockData } from '../types';
 import { mockPassesThroughToRealApi } from './mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from './mock-replay-mode';
 
 export interface CachedMockData {
   mockData: MockData;
@@ -229,7 +230,7 @@ export function findBestMatchingMock(
   // Try exact match first
   const exactMatch = mockCache.get(requestKey);
   if (exactMatch) {
-    if (includePassthroughMocks || !mockPassesThroughToRealApi(exactMatch.mockData)) {
+    if (mockShouldBeIncludedInRequestMatch(exactMatch.mockData, { includePassthroughMocks })) {
       return exactMatch;
     }
   }

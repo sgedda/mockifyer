@@ -17,6 +17,9 @@ export interface SimilarBodyGroupSummary {
   size: number
 }
 
+/** How Mockifyer serves this recording on the next request. */
+export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'passthrough'
+
 export interface MockFile {
   filename: string
   filePath: string
@@ -39,6 +42,9 @@ export interface MockFile {
   }>
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
+  replayMode?: MockReplayMode
+  refreshOnNextRequest?: boolean
+  alwaysRefreshFromLive?: boolean
   /** Request registered without a captured response yet. */
   responsePending?: boolean
   /**
@@ -78,6 +84,8 @@ export interface MockData {
     responseDateOverrides?: MockResponseDateOverride[]
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
     alwaysUseRealApi?: boolean
+    refreshOnNextRequest?: boolean
+    alwaysRefreshFromLive?: boolean
   }
   metadata: {
     size: number
