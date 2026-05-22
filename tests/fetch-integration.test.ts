@@ -3,6 +3,23 @@ import { HTTPClient } from '@sgedda/mockifyer-core';
 import path from 'path';
 import fs from 'fs';
 
+function listJsonFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...listJsonFiles(fullPath));
+    } else if (entry.name.endsWith('.json')) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
 describe('Mockifyer Fetch Integration', () => {
   const testMockDataPath = path.join(__dirname, './test-mock-data-fetch');
   let httpClient: HTTPClient;
@@ -311,6 +328,68 @@ describe('Mockifyer Fetch Integration', () => {
 
     // Restore original fetch
     global.fetch = originalFetch;
+  });
+
+  it('should refresh passthrough recordings in place with filesystem database provider', async () => {
+    const testUrl = 'https://api.example.com/passthrough-refresh';
+    const originalFetch = global.fetch;
+    const originalStoredFetch = (global as any).__mockifyer_original_fetch;
+
+    const makeResponse = (data: Record<string, unknown>) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'content-type': 'application/json',
+      }),
+      text: async () => JSON.stringify(data),
+    } as Response);
+
+    delete (global as any).__mockifyer_original_fetch;
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(makeResponse({ version: 1 }))
+      .mockResolvedValueOnce(makeResponse({ version: 2 }));
+
+    try {
+      const recordClient = setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: true,
+        recordNewMocksAsPassthrough: true,
+        refreshPassthroughRecordings: true,
+        useGlobalFetch: false,
+        databaseProvider: {
+          type: 'filesystem',
+          path: testMockDataPath,
+        },
+      });
+
+      const firstResponse = await recordClient.get(testUrl);
+      expect(firstResponse.data).toEqual({ version: 1 });
+
+      // Ensure the old timestamp-based save path would choose a different filename.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      const secondResponse = await recordClient.get(testUrl);
+      expect(secondResponse.data).toEqual({ version: 2 });
+
+      const defaultScenarioPath = path.join(testMockDataPath, 'default');
+      const files = listJsonFiles(defaultScenarioPath);
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(files).toHaveLength(1);
+
+      const savedMock = JSON.parse(fs.readFileSync(files[0], 'utf-8'));
+      expect(savedMock.alwaysUseRealApi).toBe(true);
+      expect(savedMock.response.data).toEqual({ version: 2 });
+    } finally {
+      global.fetch = originalFetch;
+      if (originalStoredFetch) {
+        (global as any).__mockifyer_original_fetch = originalStoredFetch;
+      } else {
+        delete (global as any).__mockifyer_original_fetch;
+      }
+    }
   });
 });
 

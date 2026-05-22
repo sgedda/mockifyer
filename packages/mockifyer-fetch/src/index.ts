@@ -958,7 +958,24 @@ class MockifyerClass {
 
       if (this.databaseProvider) {
         try {
-          await this.databaseProvider.save(mockData);
+          const providerType = this.config.databaseProvider?.type;
+          const providerRoot = this.config.databaseProvider?.path || this.config.mockDataPath;
+          const providerSaveOptions =
+            saveDecision.action === 'overwrite' &&
+            existingMock?.filename &&
+            (providerType === 'filesystem' || providerType === 'expo-filesystem')
+              ? {
+                  relativePath: existingMock.filename,
+                  scenario: getCurrentScenario(providerRoot, this.config.clientId),
+                }
+              : undefined;
+
+          await this.databaseProvider.save(mockData, providerSaveOptions);
+          if (providerSaveOptions) {
+            logger.info(
+              `[Mockifyer] Refreshed passthrough mock: ${providerSaveOptions.scenario}/${providerSaveOptions.relativePath}`
+            );
+          }
 
           if (this.config.generateTests?.enabled) {
             await this.generateTestForMock(mockData);

@@ -140,6 +140,20 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     return this.FileSystem.Paths!.info(uri);
   }
 
+  private async fsGetFileInfo(uri: string): Promise<{
+    exists: boolean;
+    modificationTime?: number;
+  }> {
+    if (this.useLegacyExpoFileSystem) {
+      return this.fsGetInfo(uri);
+    }
+    const file = this.newFile(uri);
+    return {
+      exists: file.exists,
+      modificationTime: file.modificationTime ?? undefined,
+    };
+  }
+
   private async fsEnsureDir(uri: string): Promise<void> {
     const info = await this.fsGetInfo(uri);
     if (!info.exists) {
@@ -423,7 +437,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         for (const file of files) {
           try {
             const filePath = this.joinFsUri(scenarioPath, file);
-            const info = await this.fsGetInfo(filePath);
+            const info = await this.fsGetFileInfo(filePath);
             const mtime = info.modificationTime;
             if (info.exists && mtime !== undefined) {
               const cachedMtime = this.fileModTimes.get(file);
@@ -447,7 +461,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         for (const file of files) {
           try {
             const filePath = this.joinFsUri(scenarioPath, file);
-            const info = await this.fsGetInfo(filePath);
+            const info = await this.fsGetFileInfo(filePath);
             const mtime = info.modificationTime;
             if (info.exists && mtime !== undefined) {
               this.fileModTimes.set(file, mtime);
@@ -468,7 +482,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           if (!this.fileModTimes.has(file)) {
             try {
               const filePath = this.joinFsUri(scenarioPath, file);
-              const info = await this.fsGetInfo(filePath);
+              const info = await this.fsGetFileInfo(filePath);
               const mtime = info.modificationTime;
               if (info.exists && mtime !== undefined) {
                 this.fileModTimes.set(file, mtime);
@@ -505,7 +519,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       for (const file of files) {
         try {
           const filePath = this.joinFsUri(scenarioPath, file);
-          const info = await this.fsGetInfo(filePath);
+          const info = await this.fsGetFileInfo(filePath);
           const mtime = info.modificationTime;
           if (info.exists && mtime !== undefined) {
             this.fileModTimes.set(file, mtime);
@@ -595,7 +609,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       await this.fsWriteText(filePath, JSON.stringify(mockData, null, 2));
 
       // Update modification time cache
-      const infoAfter = await this.fsGetInfo(filePath);
+      const infoAfter = await this.fsGetFileInfo(filePath);
       const mtime = infoAfter.modificationTime;
       if (infoAfter.exists && mtime !== undefined) {
         this.fileModTimes.set(relativeFilename, mtime);
@@ -618,18 +632,23 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       // Verify the cached file still exists and hasn't been modified
       try {
         const filePath = cached.content.filePath;
-        const info = await this.fsGetInfo(filePath);
+        const info = await this.fsGetFileInfo(filePath);
 
         if (info.exists) {
           const currentMtime = info.modificationTime ?? Date.now();
           const cachedMtime = cached.mtime;
 
-          // If file hasn't changed, return cached result
+          // If file hasn't changed, return cached result unless this lookup must ignore passthrough mocks.
           if (currentMtime === cachedMtime) {
-            return cached.content;
+            if (!includePassthroughMocks && mockPassesThroughToRealApi(cached.content.mockData)) {
+              this.fileCache.delete(requestKey);
+            } else {
+              return cached.content;
+            }
+          } else {
+            // File has been modified, clear cache entry and re-read
+            this.fileCache.delete(requestKey);
           }
-          // File has been modified, clear cache entry and re-read
-          this.fileCache.delete(requestKey);
         } else {
           // File no longer exists, clear cache
           this.fileCache.delete(requestKey);
@@ -697,7 +716,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           // Get file modification time
           let fileMtime = Date.now();
           try {
-            const info = await this.fsGetInfo(filePath);
+            const info = await this.fsGetFileInfo(filePath);
             fileMtime = info.modificationTime ?? Date.now();
           } catch {
             fileMtime = Date.now();
@@ -719,7 +738,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Cache the result
       try {
-        const infoBest = await this.fsGetInfo(bestMatch.filePath);
+        const infoBest = await this.fsGetFileInfo(bestMatch.filePath);
         const cachedResult: CachedMockData = {
           mockData: bestMatch.mockData,
           filename: bestMatch.file,
