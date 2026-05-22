@@ -10,6 +10,7 @@ import Timeline from './Timeline'
 import Network from './Network'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
+import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Badge } from '@/components/ui/badge'
@@ -399,6 +400,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </DropdownMenu>
           </div>
         </header>
+        <ClientConnectionsPanel />
         <main className="flex-1 overflow-auto p-6">
           <Routes>
             <Route

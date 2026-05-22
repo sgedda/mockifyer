@@ -183,11 +183,25 @@ export interface ClientLane {
   }
 }
 
+export type ClientConnectionStatus = 'connected' | 'mapped_idle' | 'unmapped'
+
+export interface ClientConnectionRow {
+  clientId: string
+  configuredScenario: string | null
+  lastResolvedScenario: string | null
+  lastSeenAt: string | null
+  lastResolvedAt: string | null
+  deviceCount: number
+  note: string | null
+  status: ClientConnectionStatus
+}
+
 export async function getClientLanes(): Promise<{
   enabled: boolean
   reason?: string | null
   lanes: ClientLane[]
   discoveredLanes?: string[]
+  connections?: ClientConnectionRow[]
   globalScenario: string | null
 }> {
   const response = await fetch(`${API_BASE}/client-lanes`, noStore)

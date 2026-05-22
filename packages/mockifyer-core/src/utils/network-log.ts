@@ -1,5 +1,5 @@
-import * as crypto from 'crypto';
 import { ENV_VARS, type MockifyerConfig } from '../types';
+import { randomEventId, sha256Hex, truncateUtf8, utf8ByteLength } from './crypto-digest';
 
 /** How the request was resolved (proxy / SDK). */
 export type NetworkEventSource =
@@ -70,12 +70,8 @@ export function parseNetworkLogIntEnv(raw: string | undefined, fallback: number)
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function sha256Hex(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
-}
-
 function newEventId(): string {
-  return crypto.randomUUID();
+  return randomEventId();
 }
 
 /** Redact sensitive header values (case-insensitive names). */
@@ -127,9 +123,8 @@ function truncatePreview(value: unknown, maxBytes: number): string | undefined {
       text = String(value);
     }
   }
-  const buf = Buffer.from(text, 'utf8');
-  if (buf.length <= maxBytes) return text;
-  return `${buf.subarray(0, maxBytes).toString('utf8')}…[truncated]`;
+  if (utf8ByteLength(text) <= maxBytes) return text;
+  return truncateUtf8(text, maxBytes);
 }
 
 export interface SanitizeNetworkEventOptions {
@@ -172,7 +167,7 @@ export function sanitizeNetworkEvent(
   };
 
   const serialized = JSON.stringify(event);
-  if (Buffer.byteLength(serialized, 'utf8') <= maxBytes) {
+  if (utf8ByteLength(serialized) <= maxBytes) {
     return event;
   }
 

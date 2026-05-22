@@ -21,6 +21,10 @@ import {
 } from '../utils/bulk-domain-mocks';
 import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
+import {
+  readDomainPathRulesFile,
+  writeDomainPathRulesFile,
+} from '../utils/domain-path-rules-store';
 
 const router = express.Router();
 
@@ -236,7 +240,7 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
-              const activation = extractMockActivationFlags(mockData);
+              activation = extractMockActivationFlags(mockData);
             } catch {
               // ignore
             }
@@ -566,6 +570,93 @@ function resolveFilePath(scenarioPath: string, relativeName: string): string | n
   return resolved;
 }
 
+router.get('/domain-path-rules', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const dataPath = mockDataPath || detectMockDataPath();
+
+    if (config.provider !== 'redis') {
+      const scenario = resolveFilesystemScenario(req, dataPath);
+      const rules = readDomainPathRulesFile(dataPath, scenario);
+      return res.json({ scenario, rules });
+    }
+
+    const store = new RedisMockStore({
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+      keyPrefix: config.keyPrefix,
+      mockDataPath: dataPath,
+    });
+    try {
+      const scenario = await resolveRedisScenario(req, store);
+      const fromRedis = await store.getDomainPathRules(scenario);
+      const fromFile = readDomainPathRulesFile(dataPath, scenario);
+      const rules = { ...fromFile, ...fromRedis };
+      return res.json({ scenario, rules });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'domain-path-rules GET failed' });
+  }
+});
+
+router.post('/domain-path-rules', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const dataPath = mockDataPath || detectMockDataPath();
+    const { scenario, domainPath, rule } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (typeof domainPath !== 'string' || !domainPath.trim()) {
+      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    }
+    if (rule !== null && (typeof rule !== 'object' || typeof rule.recordResponses !== 'boolean')) {
+      return res.status(400).json({ error: 'rule must be null or { recordResponses: boolean, autoMock?: boolean }' });
+    }
+
+    const scenarioName = scenario.trim();
+    const normalizedRule =
+      rule === null
+        ? null
+        : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true };
+
+    let rules: DomainPathRulesMap;
+
+    if (config.provider !== 'redis') {
+      rules = readDomainPathRulesFile(dataPath, scenarioName);
+      const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '');
+      if (normalizedRule === null) {
+        delete rules[normalizedPath];
+      } else {
+        rules[normalizedPath] = {
+          ...normalizedRule,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      writeDomainPathRulesFile(dataPath, scenarioName, rules);
+      return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
+    }
+
+    const store = new RedisMockStore({
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+      keyPrefix: config.keyPrefix,
+      mockDataPath: dataPath,
+    });
+    try {
+      rules = await store.setDomainPathRule(scenarioName, domainPath.trim(), normalizedRule);
+      writeDomainPathRulesFile(dataPath, scenarioName, rules);
+      return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'domain-path-rules POST failed' });
+  }
+});
+
 // Get a specific mock file — filename may contain slashes (e.g. host/graphql/file.json)
 router.get('/*', async (req: Request, res: Response) => {
   try {
@@ -784,63 +875,6 @@ router.put('/*', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[MocksRoute] Update - Error:', error);
     res.status(500).json({ error: 'Failed to update mock file', details: error.message });
-  }
-});
-
-// Bulk set live API (passthrough) for mocks under a domain-tree path prefix.
-router.get('/domain-path-rules', async (req: Request, res: Response) => {
-  try {
-    const { config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
-      return res.json({ rules: {} satisfies DomainPathRulesMap });
-    }
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath: detectMockDataPath(),
-    });
-    const scenario = await resolveRedisScenario(req, store);
-    const rules = await store.getDomainPathRules(scenario);
-    return res.json({ scenario, rules });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: message || 'domain-path-rules GET failed' });
-  }
-});
-
-router.post('/domain-path-rules', async (req: Request, res: Response) => {
-  try {
-    const { config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
-      return res.status(400).json({ error: 'Domain path rules require Redis provider' });
-    }
-    const { scenario, domainPath, rule } = req.body || {};
-    if (typeof scenario !== 'string' || !scenario.trim()) {
-      return res.status(400).json({ error: 'scenario is required' });
-    }
-    if (typeof domainPath !== 'string' || !domainPath.trim()) {
-      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
-    }
-    if (rule !== null && (typeof rule !== 'object' || typeof rule.recordResponses !== 'boolean')) {
-      return res.status(400).json({ error: 'rule must be null or { recordResponses: boolean, autoMock?: boolean }' });
-    }
-
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath: detectMockDataPath(),
-    });
-    const rules = await store.setDomainPathRule(
-      scenario.trim(),
-      domainPath.trim(),
-      rule === null
-        ? null
-        : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true }
-    );
-    return res.json({ scenario: scenario.trim(), domainPath: domainPath.trim(), rules });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: message || 'domain-path-rules POST failed' });
   }
 });
 

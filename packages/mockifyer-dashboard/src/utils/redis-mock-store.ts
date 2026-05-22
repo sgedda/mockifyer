@@ -760,11 +760,35 @@ export class RedisMockStore {
    * This list includes lanes that might not have an explicit scenario override yet.
    */
   async listDiscoveredLanes(limit: number = 50, ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<string[]> {
+    const detailed = await this.listDiscoveredLanesDetailed(limit, ttlMs);
+    return detailed.map((d) => d.clientId);
+  }
+
+  /** Discovered lanes with last-seen timestamps (newest first). */
+  async listDiscoveredLanesDetailed(
+    limit: number = 50,
+    ttlMs: number = 1000 * 60 * 60 * 24 * 14
+  ): Promise<Array<{ clientId: string; lastSeenMs: number }>> {
     const nowMs = Date.now();
     const minScore = nowMs - ttlMs;
-    // Newest first, within TTL window.
-    const ids: string[] = await this.redis.zrevrangebyscore(this.laneLastSeenZSetKey, nowMs, minScore, 'LIMIT', 0, limit);
-    return ids.map((s) => s.trim()).filter(Boolean);
+    const raw: string[] = await this.redis.zrevrangebyscore(
+      this.laneLastSeenZSetKey,
+      nowMs,
+      minScore,
+      'WITHSCORES',
+      'LIMIT',
+      0,
+      limit
+    );
+    const out: Array<{ clientId: string; lastSeenMs: number }> = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const clientId = raw[i]?.trim();
+      const score = raw[i + 1];
+      const lastSeenMs = typeof score === 'string' ? Number(score) : NaN;
+      if (!clientId || !Number.isFinite(lastSeenMs)) continue;
+      out.push({ clientId, lastSeenMs });
+    }
+    return out;
   }
 }
 

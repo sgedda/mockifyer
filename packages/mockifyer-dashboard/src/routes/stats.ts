@@ -68,51 +68,6 @@ router.get('/', async (req: Request, res: Response) => {
           .slice(0, 10)
           .map(([endpoint, count]) => ({ endpoint, count }));
 
-        const lanes = await store.listClientLanes().catch(() => [] as Array<{ clientId: string; scenario: string; note: string | null }>);
-        type RedisRecentDeviceRow = {
-          clientId: string;
-          configuredScenario: string;
-          note: string | null;
-          laneLastSeenResolvedScenario: string | null;
-          laneLastSeenResolvedAt: string | null;
-          deviceId: string;
-          deviceLastSeenAt: string;
-          lastSeenResolvedScenario: string | null;
-          lastSeenResolvedAt: string | null;
-          resolutionSource: string | null;
-          clientBodyScenarioOverride: boolean;
-        };
-        const redisDeviceRows: RedisRecentDeviceRow[] = [];
-        for (const lane of lanes) {
-          const devices = await store.listLaneDevices(lane.clientId, 35).catch(() => []);
-          const laneEffective = await store.readLaneLastResolved(lane.clientId).catch(() => null);
-          for (const d of devices) {
-            const deviceEffective = await store.readDeviceLastResolved(lane.clientId, d.deviceId).catch(() => null);
-            redisDeviceRows.push({
-              clientId: lane.clientId,
-              configuredScenario: lane.scenario,
-              note: lane.note && lane.note.trim() ? lane.note.trim() : null,
-              laneLastSeenResolvedScenario: laneEffective?.lastEffectiveScenario ?? null,
-              laneLastSeenResolvedAt: laneEffective?.lastSeenAt ?? null,
-              deviceId: d.deviceId,
-              deviceLastSeenAt: new Date(d.lastSeenMs).toISOString(),
-              lastSeenResolvedScenario: deviceEffective?.lastEffectiveScenario ?? null,
-              lastSeenResolvedAt: deviceEffective?.lastSeenAt ?? null,
-              resolutionSource: deviceEffective?.resolutionSource ?? null,
-              clientBodyScenarioOverride: deviceEffective?.clientBodyScenarioOverride ?? false,
-            });
-          }
-        }
-        redisDeviceRows.sort(
-          (a, b) => new Date(b.deviceLastSeenAt).getTime() - new Date(a.deviceLastSeenAt).getTime()
-        );
-        let globalRedisScenario = currentScenario;
-        try {
-          globalRedisScenario = await store.getActiveScenario();
-        } catch {
-          globalRedisScenario = currentScenario;
-        }
-
         return res.json({
           totalFiles: items.length,
           totalSize,
@@ -128,11 +83,6 @@ router.get('/', async (req: Request, res: Response) => {
           scenario: currentScenario,
           mockDataPath,
           scenarioPath: `redis://${config.keyPrefix || 'mockifyer:v1'}:index:${currentScenario}`,
-          redisRecentDevices: {
-            enabled: true,
-            globalScenario: globalRedisScenario,
-            rows: redisDeviceRows.slice(0, 40),
-          },
         });
       } finally {
         await store.close().catch(() => undefined);

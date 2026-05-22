@@ -21,10 +21,12 @@ export interface DomainFolderCounts {
   live: number
   pending: number
   mocked: number
+  /** Mocks with a captured response body (not request-only / pending). */
+  recorded: number
 }
 
 export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string): DomainFolderCounts {
-  const counts: DomainFolderCounts = { total: 0, live: 0, pending: 0, mocked: 0 }
+  const counts: DomainFolderCounts = { total: 0, live: 0, pending: 0, mocked: 0, recorded: 0 }
   for (const m of mocks) {
     if (!endpointMatchesDomainPath(m.endpoint ?? null, domainPath)) continue
     counts.total += 1
@@ -33,6 +35,7 @@ export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string):
       counts.live += 1
       continue
     }
+    counts.recorded += 1
     if (m.alwaysUseRealApi === true) {
       counts.live += 1
     } else {

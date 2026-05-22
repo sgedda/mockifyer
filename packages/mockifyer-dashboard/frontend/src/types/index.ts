@@ -94,26 +94,6 @@ export interface MockData {
   }
 }
 
-/** Row for Statistics “recent devices” when dashboard uses Redis proxy lanes. */
-export interface StatsRedisRecentDeviceRow {
-  clientId: string
-  configuredScenario: string
-  note: string | null
-  laneLastSeenResolvedScenario: string | null
-  laneLastSeenResolvedAt: string | null
-  deviceId: string
-  deviceLastSeenAt: string
-  lastSeenResolvedScenario: string | null
-  lastSeenResolvedAt: string | null
-  resolutionSource?:
-    | 'body_override'
-    | 'lane_redis'
-    | 'global_redis'
-    | 'filesystem_fallback'
-    | null
-  clientBodyScenarioOverride?: boolean
-}
-
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -127,12 +107,6 @@ export interface Stats {
   scenario: string
   mockDataPath?: string
   scenarioPath?: string
-  /** Redis only: lanes + devices with last-seen timestamps and proxy resolution telemetry. */
-  redisRecentDevices?: {
-    enabled: boolean
-    globalScenario?: string
-    rows: StatsRedisRecentDeviceRow[]
-  }
 }
 
 export interface ScenarioConfig {

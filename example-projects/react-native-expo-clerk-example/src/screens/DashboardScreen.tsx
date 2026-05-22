@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,111 +9,135 @@ import {
 } from 'react-native';
 import { useAppAuth } from '@/auth/auth-context';
 import { useMockifyerApp } from '../mockifyer-context';
+import {
+  DEMO_APIS,
+  formatPreview,
+  type DemoApiDefinition,
+} from '../api/demo-requests';
 
-interface ApiSnippetProps {
-  title: string;
-  description: string;
-  onPress: () => Promise<void>;
-  disabled?: boolean;
+type ApiCardState =
+  | { phase: 'idle' }
+  | { phase: 'loading' }
+  | { phase: 'done'; status: number; preview: string }
+  | { phase: 'error'; message: string };
+
+interface ApiResultCardProps {
+  definition: DemoApiDefinition;
+  state: ApiCardState;
+  disabled: boolean;
+  onRetry: () => void;
 }
 
-function ApiSnippet(props: ApiSnippetProps): React.ReactElement {
-  const { title, description, onPress, disabled } = props;
-  const [loading, setLoading] = useState(false);
-
-  const handlePress = async () => {
-    setLoading(true);
-    try {
-      await onPress();
-    } finally {
-      setLoading(false);
-    }
-  };
+function ApiResultCard(props: ApiResultCardProps): React.ReactElement {
+  const { definition, state, disabled, onRetry } = props;
 
   return (
     <View style={styles.snippetCard}>
-      <Text style={styles.snippetTitle}>{title}</Text>
-      <Text style={styles.snippetDescription}>{description}</Text>
-      <Pressable
-        style={({ pressed }) => [
-          styles.snippetButton,
-          (disabled || pressed || loading) && styles.snippetButtonDimmed,
-        ]}
-        onPress={() => {
-          void handlePress();
-        }}
-        disabled={disabled || loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#e2e8f0" size="small" />
-        ) : (
-          <Text style={styles.snippetButtonText}>Run request</Text>
-        )}
-      </Pressable>
+      <Text style={styles.snippetTitle}>{definition.title}</Text>
+      <Text style={styles.snippetDescription}>{definition.description}</Text>
+
+      {state.phase === 'loading' ? (
+        <View style={styles.cardStatusRow}>
+          <ActivityIndicator color="#38bdf8" size="small" />
+          <Text style={styles.cardStatusText}>Loading…</Text>
+        </View>
+      ) : null}
+
+      {state.phase === 'done' ? (
+        <View style={styles.cardResult}>
+          <Text style={styles.cardStatusBadge}>HTTP {state.status}</Text>
+          <Text style={styles.cardPreview}>{state.preview}</Text>
+        </View>
+      ) : null}
+
+      {state.phase === 'error' ? (
+        <Text style={styles.cardError}>{state.message}</Text>
+      ) : null}
+
+      {state.phase !== 'loading' ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.snippetButton,
+            (disabled || pressed) && styles.snippetButtonDimmed,
+          ]}
+          onPress={onRetry}
+          disabled={disabled}
+        >
+          <Text style={styles.snippetButtonText}>
+            {state.phase === 'idle' ? 'Run request' : 'Retry'}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 /**
  * Post-login surface: varied HTTP hosts/methods so Mockifyer captures distinguishable traffic.
+ * Requests run automatically once Mockifyer is ready.
  */
 export function DashboardScreen(): React.ReactElement {
   const { user, signOut } = useAppAuth();
   const { initialized, instance } = useMockifyerApp();
-  const [log, setLog] = useState<string>('Tap a card to fetch. Responses also flow through Mockifyer.');
+  const [apiStates, setApiStates] = useState<Record<string, ApiCardState>>({});
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [log, setLog] = useState<string>(
+    'APIs load automatically after login. Use Refresh all to re-run.',
+  );
 
-  if (!user) {
-    return <View />;
-  }
-
-  const appendLog = useCallback((prefix: string, payload: unknown) => {
-    const slice =
-      typeof payload === 'string'
-        ? payload.slice(0, 600)
-        : JSON.stringify(payload, null, 2).slice(0, 600);
-    setLog(`${prefix}\n${slice}${slice.length >= 600 ? '…' : ''}`);
+  const runSingleApi = useCallback(async (definition: DemoApiDefinition) => {
+    setApiStates((prev) => ({ ...prev, [definition.id]: { phase: 'loading' } }));
+    try {
+      const outcome = await definition.run();
+      const preview = formatPreview(outcome.body);
+      setApiStates((prev) => ({
+        ...prev,
+        [definition.id]: {
+          phase: 'done',
+          status: outcome.status,
+          preview,
+        },
+      }));
+      return { id: definition.id, ok: true as const, status: outcome.status, preview };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setApiStates((prev) => ({
+        ...prev,
+        [definition.id]: { phase: 'error', message },
+      }));
+      return { id: definition.id, ok: false as const, message };
+    }
   }, []);
 
-  const runRandomUser = useCallback(async () => {
-    const res = await fetch('https://randomuser.me/api/?nat=us&results=1');
-    const json = (await res.json()) as unknown;
-    appendLog(`randomuser.me (${res.status})`, json);
-  }, [appendLog]);
+  const runAllApis = useCallback(async () => {
+    if (!initialized) {
+      return;
+    }
+    setBulkLoading(true);
+    setLog('Running sample APIs…');
 
-  const runOpenMeteo = useCallback(async () => {
-    const url =
-      'https://api.open-meteo.com/v1/forecast?latitude=59.33&longitude=18.06&current_weather=true';
-    const res = await fetch(url);
-    const json = (await res.json()) as unknown;
-    appendLog(`open-meteo (${res.status})`, json);
-  }, [appendLog]);
+    const results = await Promise.all(DEMO_APIS.map((definition) => runSingleApi(definition)));
 
-  const runNationalize = useCallback(async () => {
-    const res = await fetch('https://api.nationalize.io?name=alex');
-    const json = (await res.json()) as unknown;
-    appendLog(`nationalize.io (${res.status})`, json);
-  }, [appendLog]);
+    const okCount = results.filter((r) => r.ok).length;
+    const failCount = results.length - okCount;
+    const lastOk = [...results].reverse().find((r) => r.ok);
 
-  const runGitHubRepo = useCallback(async () => {
-    const res = await fetch('https://api.github.com/repos/axios/axios', {
-      headers: { Accept: 'application/vnd.github+json' },
-    });
-    const json = (await res.json()) as unknown;
-    appendLog(`api.github.com (${res.status})`, json);
-  }, [appendLog]);
+    if (lastOk && lastOk.ok) {
+      setLog(
+        `Loaded ${okCount}/${results.length} APIs (${failCount} failed).\nLast OK: ${lastOk.id} (${lastOk.status})\n${lastOk.preview}`,
+      );
+    } else {
+      setLog(`Finished: ${okCount} succeeded, ${failCount} failed.`);
+    }
+    setBulkLoading(false);
+  }, [initialized, runSingleApi]);
 
-  const runReqResPost = useCallback(async () => {
-    const res = await fetch('https://reqres.in/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Mockifyer Demo',
-        job: 'recording HTTP',
-      }),
-    });
-    const json = (await res.json()) as unknown;
-    appendLog(`reqres.in POST (${res.status})`, json);
-  }, [appendLog]);
+  useEffect(() => {
+    if (!user || !initialized) {
+      return;
+    }
+    void runAllApis();
+  }, [user, initialized, runAllApis]);
 
   const reloadMocks = useCallback(async () => {
     if (instance && typeof instance.reloadMockData === 'function') {
@@ -133,6 +157,10 @@ export function DashboardScreen(): React.ReactElement {
     }
   }, [signOut]);
 
+  if (!user) {
+    return <View />;
+  }
+
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollInner}>
       <View style={styles.header}>
@@ -149,38 +177,35 @@ export function DashboardScreen(): React.ReactElement {
         </Pressable>
       </View>
 
-      <Text style={styles.sectionLabel}>Sample APIs (different hosts / one POST)</Text>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionLabel}>Sample APIs (auto-loaded)</Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.refreshAll,
+            (!initialized || bulkLoading || pressed) && styles.refreshAllDimmed,
+          ]}
+          onPress={() => void runAllApis()}
+          disabled={!initialized || bulkLoading}
+        >
+          {bulkLoading ? (
+            <ActivityIndicator color="#0f172a" size="small" />
+          ) : (
+            <Text style={styles.refreshAllLabel}>Refresh all</Text>
+          )}
+        </Pressable>
+      </View>
 
-      <ApiSnippet
-        title="RandomUser — GET JSON"
-        description="https://randomuser.me/api/"
-        onPress={runRandomUser}
-        disabled={!initialized}
-      />
-      <ApiSnippet
-        title="Open-Meteo — GET query string"
-        description="Forecast with latitude/longitude params"
-        onPress={runOpenMeteo}
-        disabled={!initialized}
-      />
-      <ApiSnippet
-        title="Nationalize — GET JSON"
-        description="https://api.nationalize.io?name=alex"
-        onPress={runNationalize}
-        disabled={!initialized}
-      />
-      <ApiSnippet
-        title="GitHub REST — GET + Accept header"
-        description="Public repo metadata (rate limits apply)"
-        onPress={runGitHubRepo}
-        disabled={!initialized}
-      />
-      <ApiSnippet
-        title="ReqRes — POST JSON body"
-        description="Illustrates POST body hashing in Mockifyer"
-        onPress={runReqResPost}
-        disabled={!initialized}
-      />
+      {DEMO_APIS.map((definition) => (
+        <ApiResultCard
+          key={definition.id}
+          definition={definition}
+          state={apiStates[definition.id] ?? { phase: 'idle' }}
+          disabled={!initialized || bulkLoading}
+          onRetry={() => {
+            void runSingleApi(definition);
+          }}
+        />
+      ))}
 
       <Pressable
         style={styles.secondaryButton}
@@ -191,7 +216,7 @@ export function DashboardScreen(): React.ReactElement {
       </Pressable>
 
       <View style={styles.logBox}>
-        <Text style={styles.logTitle}>Last response preview</Text>
+        <Text style={styles.logTitle}>Activity log</Text>
         <Text style={styles.logBody}>{log}</Text>
       </View>
     </ScrollView>
@@ -244,13 +269,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 12,
+  },
   sectionLabel: {
+    flex: 1,
     fontSize: 13,
     fontWeight: '700',
     color: '#94a3b8',
-    marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+  refreshAll: {
+    backgroundColor: '#38bdf8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 96,
+    alignItems: 'center',
+  },
+  refreshAllDimmed: {
+    opacity: 0.65,
+  },
+  refreshAllLabel: {
+    color: '#0f172a',
+    fontWeight: '700',
+    fontSize: 13,
   },
   snippetCard: {
     backgroundColor: '#1e293b',
@@ -271,6 +319,42 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     marginBottom: 12,
     lineHeight: 18,
+  },
+  cardStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  cardStatusText: {
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  cardResult: {
+    marginBottom: 12,
+  },
+  cardStatusBadge: {
+    alignSelf: 'flex-start',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#34d399',
+    backgroundColor: '#064e3b',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  cardPreview: {
+    fontSize: 12,
+    color: '#cbd5e1',
+    lineHeight: 17,
+    fontFamily: 'monospace',
+  },
+  cardError: {
+    fontSize: 13,
+    color: '#f87171',
+    marginBottom: 12,
   },
   snippetButton: {
     alignSelf: 'flex-start',

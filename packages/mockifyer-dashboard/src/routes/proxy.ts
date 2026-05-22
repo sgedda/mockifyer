@@ -12,6 +12,7 @@ import {
   buildMockDataAfterLiveCapture,
   resolveShouldPersistLiveCapture,
   resolveMockReplayMode,
+  mockRequiresUpstreamFetch,
   resolveRecordNewMocksAsPassthrough,
   resolveRefreshPassthroughRecordings,
   applyRecordingPassthroughFlag,
@@ -260,6 +261,14 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    const pathRules = await store.getDomainPathRules(resolvedScenarioName);
+    const recordResolution = resolveRecordResponsesForRequest({
+      url,
+      pathRules,
+      fromBody: typeof recordResponsesFromBody === 'boolean' ? recordResponsesFromBody : undefined,
+      fromScenario: proxyConfig?.recordResponses,
+    });
+
     if (mock && mockShouldServeStoredBody(mock as MockData)) {
       const sanitizedMock: any =
         (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
@@ -310,7 +319,8 @@ router.post('/', async (req: Request, res: Response) => {
       mock &&
       resolveMockReplayMode(mock as MockData) === 'passthrough' &&
       !refreshPassthrough &&
-      !shouldPersistLiveCapture
+      !shouldPersistLiveCapture &&
+      !recordResolution.recordResponses
     ) {
       effectiveRecord = false;
       if (debugProxy) {
@@ -318,6 +328,11 @@ router.post('/', async (req: Request, res: Response) => {
           `[ProxyRoute] forced passthrough (alwaysUseRealApi): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
+    }
+
+    const mockNeedsUpstream = !mock || mockRequiresUpstreamFetch(mock as MockData);
+    if (recordResolution.recordResponses && mockNeedsUpstream) {
+      effectiveRecord = true;
     }
 
     if (!effectiveAllowUpstream) {
@@ -417,13 +432,6 @@ router.post('/', async (req: Request, res: Response) => {
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
-      const pathRules = await store.getDomainPathRules(resolvedScenarioName);
-      const recordResolution = resolveRecordResponsesForRequest({
-        url,
-        pathRules,
-        fromBody: typeof recordResponsesFromBody === 'boolean' ? recordResponsesFromBody : undefined,
-        fromScenario: proxyConfig?.recordResponses,
-      });
       const recordResponses = recordResolution.recordResponses;
       const pathAutoMock = recordResolution.matchedPathRule?.autoMock === true;
       const requestPayload = {
