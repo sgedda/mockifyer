@@ -6,10 +6,26 @@ import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath, buildSimilarMockGroups, MockListEntryForSimilarity } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import {
+  bulkCaptureResponsesForDomain,
+  bulkSetLiveApiForDomain,
+} from '../utils/bulk-domain-mocks';
+import type { DomainPathRulesMap } from '@sgedda/mockifyer-core';
 
 const router = express.Router();
 
 type OverridePreview = { path: string; summary: string };
+
+function extractMockActivationFlags(mockData: unknown): {
+  alwaysUseRealApi: boolean;
+  responsePending: boolean;
+} {
+  const m = mockData as { alwaysUseRealApi?: boolean; responsePending?: boolean };
+  return {
+    alwaysUseRealApi: m.alwaysUseRealApi === true,
+    responsePending: m.responsePending === true,
+  };
+}
 
 function getMockDataPath(): string {
   return detectMockDataPath();
@@ -161,6 +177,7 @@ router.get('/', async (req: Request, res: Response) => {
             let method: string | null = null;
             let sessionId: string | null = null;
             let alwaysUseRealApi = false;
+            let responsePending = false;
             const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
@@ -203,7 +220,9 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
-              alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
+              const flags = extractMockActivationFlags(mockData);
+              alwaysUseRealApi = flags.alwaysUseRealApi;
+              responsePending = flags.responsePending;
             } catch {
               // ignore
             }
@@ -221,6 +240,7 @@ router.get('/', async (req: Request, res: Response) => {
               graphqlInfo,
               sessionId,
               alwaysUseRealApi,
+              responsePending,
               hasResponseDateOverrides: hasOverrides,
               responseDateOverridesPreview: preview,
             };
@@ -253,6 +273,7 @@ router.get('/', async (req: Request, res: Response) => {
         let method: string | null = null;
         let sessionId = null;
         let alwaysUseRealApi = false;
+        let responsePending = false;
         let hasResponseDateOverrides = false;
         let responseDateOverridesPreview: OverridePreview[] = [];
         try {
@@ -263,9 +284,9 @@ router.get('/', async (req: Request, res: Response) => {
           if (mockData.request?.method) {
             method = String(mockData.request.method).toUpperCase();
           }
-          if (mockData.alwaysUseRealApi === true) {
-            alwaysUseRealApi = true;
-          }
+          const flags = extractMockActivationFlags(mockData);
+          alwaysUseRealApi = flags.alwaysUseRealApi;
+          responsePending = flags.responsePending;
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
@@ -313,6 +334,7 @@ router.get('/', async (req: Request, res: Response) => {
           graphqlInfo,
           sessionId,
           alwaysUseRealApi,
+          responsePending,
           hasResponseDateOverrides,
           responseDateOverridesPreview,
         };
@@ -755,6 +777,124 @@ router.put('/*', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[MocksRoute] Update - Error:', error);
     res.status(500).json({ error: 'Failed to update mock file', details: error.message });
+  }
+});
+
+// Bulk set live API (passthrough) for mocks under a domain-tree path prefix.
+router.get('/domain-path-rules', async (req: Request, res: Response) => {
+  try {
+    const { config } = getDashboardContext(req);
+    if (config.provider !== 'redis') {
+      return res.json({ rules: {} satisfies DomainPathRulesMap });
+    }
+    const store = new RedisMockStore({
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+      keyPrefix: config.keyPrefix,
+      mockDataPath: detectMockDataPath(),
+    });
+    const scenario = await resolveRedisScenario(req, store);
+    const rules = await store.getDomainPathRules(scenario);
+    return res.json({ scenario, rules });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'domain-path-rules GET failed' });
+  }
+});
+
+router.post('/domain-path-rules', async (req: Request, res: Response) => {
+  try {
+    const { config } = getDashboardContext(req);
+    if (config.provider !== 'redis') {
+      return res.status(400).json({ error: 'Domain path rules require Redis provider' });
+    }
+    const { scenario, domainPath, rule } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (typeof domainPath !== 'string' || !domainPath.trim()) {
+      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    }
+    if (rule !== null && (typeof rule !== 'object' || typeof rule.recordResponses !== 'boolean')) {
+      return res.status(400).json({ error: 'rule must be null or { recordResponses: boolean, autoMock?: boolean }' });
+    }
+
+    const store = new RedisMockStore({
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+      keyPrefix: config.keyPrefix,
+      mockDataPath: detectMockDataPath(),
+    });
+    const rules = await store.setDomainPathRule(
+      scenario.trim(),
+      domainPath.trim(),
+      rule === null
+        ? null
+        : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true }
+    );
+    return res.json({ scenario: scenario.trim(), domainPath: domainPath.trim(), rules });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'domain-path-rules POST failed' });
+  }
+});
+
+router.post('/bulk-live-api', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { scenario, domainPath, useLiveApi } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (typeof domainPath !== 'string' || !domainPath.trim()) {
+      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    }
+    if (typeof useLiveApi !== 'boolean') {
+      return res.status(400).json({ error: 'useLiveApi must be a boolean' });
+    }
+
+    const result = await bulkSetLiveApiForDomain({
+      provider: config.provider,
+      mockDataPath,
+      scenario: scenario.trim(),
+      domainPath: domainPath.trim(),
+      useLiveApi,
+      redisUrl: config.redisUrl,
+      keyPrefix: config.keyPrefix,
+    });
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'bulk-live-api failed' });
+  }
+});
+
+/** Bulk capture upstream responses for pending mocks under a domain-tree path prefix. */
+router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { scenario, domainPath, clientId } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (typeof domainPath !== 'string' || !domainPath.trim()) {
+      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    }
+    if (clientId !== undefined && typeof clientId !== 'string') {
+      return res.status(400).json({ error: 'clientId must be a string when provided' });
+    }
+
+    const result = await bulkCaptureResponsesForDomain({
+      provider: config.provider,
+      mockDataPath,
+      scenario: scenario.trim(),
+      domainPath: domainPath.trim(),
+      clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
+      redisUrl: config.redisUrl,
+      keyPrefix: config.keyPrefix,
+    });
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'bulk-capture-responses failed' });
   }
 });
 

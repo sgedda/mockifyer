@@ -373,6 +373,89 @@ export async function updateNetworkLogConfig(
   return response.json()
 }
 
+export async function bulkSetLiveApiForDomain(payload: {
+  scenario: string
+  domainPath: string
+  useLiveApi: boolean
+}): Promise<{
+  ok: boolean
+  updated: number
+  skippedPending: number
+  domainPath: string
+}> {
+  const response = await fetch(`${API_BASE}/mocks/bulk-live-api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update domain live API setting')
+  }
+  return response.json()
+}
+
+export async function bulkCaptureResponsesForDomain(payload: {
+  scenario: string
+  domainPath: string
+  clientId?: string
+}): Promise<{
+  ok: boolean
+  captured: number
+  skippedAlready: number
+  failed: number
+  errors: Array<{ endpoint: string | null; message: string }>
+  domainPath: string
+}> {
+  const response = await fetch(`${API_BASE}/mocks/bulk-capture-responses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to bulk capture responses')
+  }
+  return response.json()
+}
+
+export interface DomainPathRule {
+  recordResponses: boolean
+  autoMock?: boolean
+  updatedAt?: string
+}
+
+export type DomainPathRulesMap = Record<string, DomainPathRule>
+
+export async function fetchDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
+  const params = new URLSearchParams({ scenario })
+  const response = await fetch(`${API_BASE}/mocks/domain-path-rules?${params}`)
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to load domain path rules')
+  }
+  const data = (await response.json()) as { rules?: DomainPathRulesMap }
+  return data.rules ?? {}
+}
+
+export async function setDomainPathRule(payload: {
+  scenario: string
+  domainPath: string
+  rule: { recordResponses: boolean; autoMock?: boolean } | null
+}): Promise<DomainPathRulesMap> {
+  const response = await fetch(`${API_BASE}/mocks/domain-path-rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update domain path rule')
+  }
+  const data = (await response.json()) as { rules?: DomainPathRulesMap }
+  return data.rules ?? {}
+}
+
 export async function appendNetworkEvent(
   scenario: string,
   event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'>

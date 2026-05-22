@@ -67,6 +67,19 @@ function resolveProxyRecordOnMiss(): boolean | undefined {
   return undefined;
 }
 
+function resolveProxyRecordResponses(): boolean | undefined {
+  const a = readEnv('EXPO_PUBLIC_MOCKIFYER_RECORD_RESPONSES');
+  const b = readEnv('MOCKIFYER_RECORD_RESPONSES');
+  const raw = (a ?? b)?.toLowerCase();
+  if (raw === 'true' || raw === '1') {
+    return true;
+  }
+  if (raw === 'false' || raw === '0') {
+    return false;
+  }
+  return undefined;
+}
+
 function resolveRuntimeMode(): MockifyerRuntimeMode | undefined {
   const fromPublic = readEnv('EXPO_PUBLIC_MOCKIFYER_MODE');
   const fromPlain = readEnv('MOCKIFYER_MODE');
@@ -118,6 +131,7 @@ export async function initializeMockifyer(): Promise<SetupMockifyerForReactNativ
   const recordMode = resolveRecordMode();
   const runtimeMode = resolveRuntimeMode();
   const proxyRecordOnMiss = resolveProxyRecordOnMiss();
+  const proxyRecordResponses = resolveProxyRecordResponses();
 
   if (backend === 'redis') {
     return initMockifyerForReactNativeDashboard({
@@ -127,6 +141,7 @@ export async function initializeMockifyer(): Promise<SetupMockifyerForReactNativ
       dashboardBaseUrl: resolveProxyBaseUrl(),
       recordMode,
       proxyRecordOnMiss,
+      proxyRecordResponses,
       runtimeMode,
       config: __DEV__ ? { ...devSharedConfig(), databaseProvider: { type: 'memory' } } : {},
     });
@@ -139,6 +154,7 @@ export async function initializeMockifyer(): Promise<SetupMockifyerForReactNativ
     recordMode,
     runtimeMode,
     proxyRecordOnMiss,
+    proxyRecordResponses,
     config: __DEV__ ? devSharedConfig() : {},
   });
 }

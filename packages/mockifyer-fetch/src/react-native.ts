@@ -14,6 +14,8 @@ import {
   tryGetClientIdFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
+  resolveRecordResponses,
+  resolveStrictScenarioResolution,
   type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
@@ -73,6 +75,15 @@ export interface ReactNativeMockifyerConfig {
    * Deprecated: prefer using `recordMode` when `proxyBaseUrl` is provided.
    */
   proxyRecordOnMiss?: boolean;
+  /**
+   * When false, dashboard proxy stores request-only stubs on cache miss (Responses: Off).
+   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+   */
+  proxyRecordResponses?: boolean;
+  /**
+   * When true, skip `GET /api/health` and always wire dashboard proxy (same as Node preset).
+   */
+  skipDashboardRedisHealthCheck?: boolean;
   /**
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
@@ -161,12 +172,17 @@ export async function setupMockifyerForReactNative(
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
+    proxyRecordResponses,
+    skipDashboardRedisHealthCheck,
     useLaunchArgumentsClientId = false,
     launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
     runtimeMode: runtimeModeOption,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
+  const proxyShouldRecordResponses = resolveRecordResponses(
+    proxyRecordResponses ?? userConfig.proxy?.recordResponses
+  );
 
   const launchClientIdKey =
     launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
@@ -189,10 +205,13 @@ export async function setupMockifyerForReactNative(
       : {}),
   };
 
-  const devInitHeadline = (strictProxy: boolean) =>
-    strictProxy
-      ? 'React Native dev · dashboard Redis proxy'
-      : 'React Native dev · hybrid (device + Metro)';
+  const devInitHeadline = (strictProxy: boolean, strictProxyOnlyFallback: boolean) => {
+    if (strictProxy) return 'React Native dev · dashboard Redis proxy';
+    if (strictProxyOnlyFallback) {
+      return 'React Native dev · strict proxy-only (dashboard unhealthy — local recording disabled)';
+    }
+    return 'React Native dev · hybrid (device + Metro)';
+  };
 
   const isEnabled =
     resolvedRuntimeMode === 'on' ||
@@ -207,8 +226,22 @@ export async function setupMockifyerForReactNative(
 
   if (isDev === true) {
     const strictProxyEnabled = proxyBaseUrl
-      ? await canUseDashboardRedisProxy(proxyBaseUrl)
+      ? skipDashboardRedisHealthCheck === true ||
+        (await canUseDashboardRedisProxy(proxyBaseUrl))
       : false;
+
+    const strictProxyOnlyFallback =
+      Boolean(proxyBaseUrl?.trim()) &&
+      !strictProxyEnabled &&
+      resolveStrictScenarioResolution(mergedConfig);
+
+    if (strictProxyOnlyFallback) {
+      logger.warn(
+        `[Mockifyer] Strict proxy-only: "${proxyBaseUrl}" did not report healthy Redis. ` +
+          'Using memory provider without local recording. Start mockifyer-dashboard --provider redis ' +
+          'or set skipDashboardRedisHealthCheck: true to force proxy.'
+      );
+    }
 
     // DEVELOPMENT MODE (React Native app running in dev)
     // Use Hybrid provider - saves to both device AND project folder simultaneously
@@ -240,26 +273,43 @@ export async function setupMockifyerForReactNative(
 
     const instance = setupMockifyer({
       mockDataPath,
-      databaseProvider: strictProxyEnabled
-        ? {
-            // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
-            type: 'memory',
-          }
-        : databaseProviderConfig,
+      databaseProvider:
+        strictProxyEnabled || strictProxyOnlyFallback
+          ? {
+              // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
+              type: 'memory',
+            }
+          : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
-      proxy: strictProxyEnabled && proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
-        : undefined,
+      proxy:
+        strictProxyEnabled && proxyBaseUrl
+          ? {
+              baseUrl: proxyBaseUrl,
+              scenario: proxyScenario,
+              recordOnMiss: proxyShouldRecordOnMiss,
+              recordResponses: proxyShouldRecordResponses,
+            }
+          : undefined,
       ...mergedConfig,
-      initLog: { headline: mergedConfig.initLog?.headline ?? devInitHeadline(strictProxyEnabled) },
+      ...(strictProxyOnlyFallback
+        ? {
+            databaseProvider: { type: 'memory' as const },
+            intendedProxyBaseUrl: proxyBaseUrl!.trim(),
+          }
+        : {}),
+      initLog: {
+        headline:
+          mergedConfig.initLog?.headline ??
+          devInitHeadline(strictProxyEnabled, strictProxyOnlyFallback),
+      },
     });
 
-    if (!strictProxyEnabled) {
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
       logger.info(`[Mockifyer] Metro: http://localhost:${metroPort}/mockifyer-save · scenario: /mockifyer-scenario-config`);
     }
 
-    if (!strictProxyEnabled) {
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
       // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
       try {
         await instance.reloadMockData(true);
@@ -298,7 +348,12 @@ export async function setupMockifyerForReactNative(
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
+        ? {
+            baseUrl: proxyBaseUrl,
+            scenario: proxyScenario,
+            recordOnMiss: proxyShouldRecordOnMiss,
+            recordResponses: proxyShouldRecordResponses,
+          }
         : undefined,
       ...mergedConfig,
       initLog: {

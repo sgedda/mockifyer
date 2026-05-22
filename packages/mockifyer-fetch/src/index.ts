@@ -48,9 +48,12 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
+  shouldBlockLocalMockRecording,
+  resolveStrictScenarioResolution,
   type MockifyerActivationMode,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
+  resolveRecordResponses,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
@@ -841,6 +844,13 @@ class MockifyerClass {
     if (this.config.proxy?.baseUrl) {
       return;
     }
+
+    if (shouldBlockLocalMockRecording(this.config)) {
+      logger.info(
+        '[Mockifyer-Fetch] Strict proxy-only mode: skipping local mock save (dashboard proxy unavailable).'
+      );
+      return;
+    }
     
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
     if (url && shouldExcludeUrl(url, this.config.excludedUrls)) {
@@ -1446,6 +1456,11 @@ export interface InitMockifyerForDashboardProxyOptions {
    * Defaults to `true` when `MOCKIFYER_RECORD=true`, else leaves dashboard/SDK defaults.
    */
   recordOnMiss?: boolean;
+  /**
+   * When false, dashboard proxy stores request-only stubs on cache miss.
+   * Defaults via {@link resolveRecordResponses} (`MOCKIFYER_RECORD_RESPONSES` env, else `false`).
+   */
+  recordResponses?: boolean;
   strictLaneScenario?: boolean;
   useGlobalFetch?: boolean;
   /** Use a local provider for mock hits before the proxy (default in-memory only) when **`/api/proxy`** is active. */
@@ -1494,14 +1509,24 @@ export async function initMockifyerForDashboardProxy(
     extra.proxy?.recordOnMiss ??
     (envRecord ? true : undefined);
 
+  const recordResponses = resolveRecordResponses(
+    options.recordResponses ?? extra.proxy?.recordResponses
+  );
+
   const useRedisProxy =
     options.skipDashboardRedisHealthCheck === true ||
     (await canUseDashboardRedisProxy(dashboardBaseUrl));
 
   if (!useRedisProxy) {
+    const strictProxyOnly = resolveStrictScenarioResolution({
+      strictScenarioResolution:
+        options.config?.strictScenarioResolution ?? extra.strictScenarioResolution,
+    });
     logger.warn(
       `[Mockifyer] initMockifyerForDashboardProxy: "${dashboardBaseUrl}" did not report healthy Redis ` +
-        '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ' +
+        (strictProxyOnly
+          ? '(strict proxy-only — local recording disabled). '
+          : '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ') +
         'Set skipDashboardRedisHealthCheck: true to force proxy anyway.'
     );
     const stripped = omitProxyFromPartialConfig(extra);
@@ -1510,12 +1535,15 @@ export async function initMockifyerForDashboardProxy(
       ...stripped.initLog,
       headline:
         stripped.initLog?.headline ??
-        '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)',
+        (strictProxyOnly
+          ? '[Mockifyer preset] Node · strict proxy-only (dashboard Redis health check failed)'
+          : '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)'),
     };
     return setupMockifyer({
       ...stripped,
       mockDataPath,
       ...(fallbackDb !== undefined ? { databaseProvider: fallbackDb } : {}),
+      ...(strictProxyOnly ? { intendedProxyBaseUrl: dashboardBaseUrl.trim() } : {}),
       useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
       clientId: options.clientId ?? extra.clientId,
       deviceId: options.deviceId ?? extra.deviceId,
@@ -1534,6 +1562,7 @@ export async function initMockifyerForDashboardProxy(
         ? process.env.MOCKIFYER_SCENARIO.trim()
         : undefined),
     ...(typeof recordOnMiss === 'boolean' ? { recordOnMiss } : {}),
+    recordResponses,
   } as NonNullable<MockifyerConfig['proxy']>;
   if (
     options.strictLaneScenario !== undefined ||

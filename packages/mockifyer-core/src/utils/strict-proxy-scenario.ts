@@ -45,3 +45,14 @@ export function isExplicitProxyScenarioContext(
     typeof config.proxy?.scenario === 'string' ? config.proxy.scenario.trim() : '';
   return Boolean(lane) || Boolean(proxyScenario);
 }
+
+/**
+ * When strict scenario resolution is on and {@link MockifyerConfig.intendedProxyBaseUrl} is set,
+ * local mock saves (filesystem, hybrid, Metro) must not run — recording belongs on the dashboard proxy only.
+ */
+export function shouldBlockLocalMockRecording(
+  config: Pick<MockifyerConfig, 'strictScenarioResolution' | 'intendedProxyBaseUrl'>
+): boolean {
+  if (!resolveStrictScenarioResolution(config)) return false;
+  return Boolean(config.intendedProxyBaseUrl?.trim());
+}

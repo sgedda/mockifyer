@@ -121,9 +121,16 @@ export interface MockifyerConfig {
   /**
    * When true (or **`MOCKIFYER_STRICT_SCENARIO=true`**), and **`proxy.baseUrl`** is set, outbound traffic is not routed
    * through Mockifyer until **`clientId`** (lane) or **`proxy.scenario`** is explicitly set — passthrough plain HTTP otherwise.
+   * When combined with {@link intendedProxyBaseUrl} (dashboard proxy intended but unavailable), local hybrid/filesystem
+   * recording is blocked.
    * See **`isExplicitProxyScenarioContext`** / **`resolveStrictScenarioResolution`** in **`@sgedda/mockifyer-core`**.
    */
   strictScenarioResolution?: boolean;
+  /**
+   * Set when init intended dashboard/Redis proxy but the proxy is not active (e.g. health check failed).
+   * With {@link strictScenarioResolution}, blocks local filesystem/hybrid/Metro mock saves.
+   */
+  intendedProxyBaseUrl?: string;
   requestMatching?: {
     headers?: string[];
     ignoreQueryParams?: string[];
@@ -152,6 +159,11 @@ export interface MockifyerConfig {
     scenario?: string;
     /** If true, proxy will record responses on cache miss (if the proxy supports it) */
     recordOnMiss?: boolean;
+    /**
+     * When false, proxy stores request-only stubs (`responsePending`) on cache miss instead of full responses.
+     * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+     */
+    recordResponses?: boolean;
     /**
      * When true (default when `baseUrl` is set), dashboard Redis proxy does not fall back to global
      * `active_scenario` if `clientId` is set but `client_scenario:{clientId}` is missing — upstream passthrough only.
@@ -274,6 +286,11 @@ export interface MockData {
    * The file is still kept (e.g. for documentation or for updating while recording).
    */
   alwaysUseRealApi?: boolean;
+  /**
+   * Request registered in the corpus without a captured response yet.
+   * Implies live API until a response is stored and {@link alwaysUseRealApi} is cleared.
+   */
+  responsePending?: boolean;
 }
 
 // Environment variable names
@@ -299,6 +316,8 @@ export const ENV_VARS = {
   MOCK_STRICT_LANE_SCENARIO: 'MOCKIFYER_STRICT_LANE_SCENARIO',
   /** New recordings default to passthrough until activated in the dashboard. */
   MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
+  /** When `false`, proxy may persist request-only stubs (`responsePending`) instead of full responses. */
+  MOCK_RECORD_RESPONSES: 'MOCKIFYER_RECORD_RESPONSES',
   /** Overwrite passthrough recordings on each live API response. */
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */

@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { deleteMock, duplicateMock } from '@/lib/api'
+import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
@@ -53,6 +53,7 @@ function MockListContent({
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
+  const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
   const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
@@ -77,6 +78,24 @@ function MockListContent({
       didAutoSwitchGroupBy.current = true
     }
   }, [loading, mocks])
+
+  useEffect(() => {
+    if (groupBy !== 'domains' || !scenario) {
+      setDomainPathRules({})
+      return
+    }
+    let cancelled = false
+    void fetchDomainPathRules(scenario)
+      .then((rules) => {
+        if (!cancelled) setDomainPathRules(rules)
+      })
+      .catch(() => {
+        if (!cancelled) setDomainPathRules({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [groupBy, scenario, mocks])
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -373,6 +392,17 @@ function MockListContent({
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
             deleting={deleting}
+            domainTreeMode={
+              groupBy === 'domains' && scenario
+                ? {
+                    scenario,
+                    catalogMocks: mocks,
+                    pathRules: domainPathRules,
+                    onPathRulesChange: setDomainPathRules,
+                    onRefresh,
+                  }
+                : undefined
+            }
           />
         </div>
       )}
