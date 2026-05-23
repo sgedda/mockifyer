@@ -27,6 +27,7 @@ import {
   openProxyNetworkLog,
   resolveNetworkLogScenario,
 } from '../utils/proxy-network-log';
+import { shouldWriteProxyRecordingAfterUpstream } from '../utils/proxy-recording';
 
 const router = express.Router();
 
@@ -392,10 +393,12 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    let storedMockForClient: MockData | null = null;
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
+      storedMockForClient = updatedMock;
       if (redisDisk.mirrorWrites) {
         try {
           mirrorRecordedMockToDisk({
@@ -414,8 +417,12 @@ router.post('/', async (req: Request, res: Response) => {
       ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
       : response;
 
-    let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
+    if (
+      shouldWriteProxyRecordingAfterUpstream({
+        effectiveRecord,
+        shouldPersistLiveCapture,
+      })
+    ) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
       const pathRules = await store.getDomainPathRules(resolvedScenarioName);
       const recordResolution = resolveRecordResponsesForRequest({
@@ -496,8 +503,8 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response: clientResponse,
-      recordedToStore: effectiveRecord === true,
-      ...(effectiveRecord === true && storedMockForClient
+      recordedToStore: effectiveRecord === true || shouldPersistLiveCapture,
+      ...(storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),

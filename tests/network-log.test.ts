@@ -3,6 +3,7 @@ import {
   redactHeaders,
   sanitizeQueryString,
   sanitizeNetworkEvent,
+  sanitizeUrlQuery,
 } from '@sgedda/mockifyer-core';
 
 describe('network-log', () => {
@@ -23,6 +24,13 @@ describe('network-log', () => {
     expect(sanitizeQueryString('?page=1')).toContain('page=1');
   });
 
+  it('sanitizeUrlQuery redacts sensitive params in the persisted URL', () => {
+    const redacted = sanitizeUrlQuery('https://api.example.com/users?access_token=secret&page=1');
+    expect(redacted).not.toContain('secret');
+    expect(decodeURIComponent(redacted)).toContain('access_token=[REDACTED]');
+    expect(redacted).toContain('page=1');
+  });
+
   it('sanitizeNetworkEvent strips body previews by default', () => {
     const event = buildNetworkEvent({
       scenario: 'default',
@@ -35,7 +43,21 @@ describe('network-log', () => {
     });
     expect(event.requestBodyPreview).toBeUndefined();
     expect(event.responseBodyPreview).toBeUndefined();
+    expect(event.url).not.toContain('secret');
     expect(decodeURIComponent(event.query ?? '')).toContain('[REDACTED]');
+  });
+
+  it('sanitizeNetworkEvent redacts caller-provided query fields', () => {
+    const event = buildNetworkEvent({
+      scenario: 'default',
+      transport: 'proxy',
+      method: 'GET',
+      url: 'https://api.example.com/users',
+      query: '?key=secret',
+      source: 'upstream',
+    });
+    expect(event.query).not.toContain('secret');
+    expect(decodeURIComponent(event.query ?? '')).toContain('key=[REDACTED]');
   });
 
   it('sanitizeNetworkEvent keeps truncated bodies when captureBodies is on', () => {
