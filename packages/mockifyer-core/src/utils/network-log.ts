@@ -58,7 +58,20 @@ const DEFAULT_REDACT_HEADER_NAMES = [
   'proxy-authorization',
 ];
 
-const SENSITIVE_QUERY_PARAMS = ['api_key', 'apikey', 'token', 'access_token', 'password', 'secret'];
+const SENSITIVE_QUERY_PARAMS = [
+  'api_key',
+  'apikey',
+  'key',
+  'token',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'password',
+  'secret',
+  'client_secret',
+  'signature',
+  'sig',
+];
 
 export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
@@ -115,6 +128,21 @@ export function sanitizeQueryString(query: string | undefined): string | undefin
   }
 }
 
+/** Mask common secret query params in a full URL while preserving non-sensitive parts. */
+export function sanitizeUrlQuery(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const sanitizedQuery = sanitizeQueryString(parsed.search || undefined);
+    if (!sanitizedQuery || sanitizedQuery === parsed.search) {
+      return url;
+    }
+    parsed.search = sanitizedQuery;
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function truncatePreview(value: unknown, maxBytes: number): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
@@ -149,11 +177,13 @@ export function sanitizeNetworkEvent(
   let host: string | undefined;
   let path: string | undefined;
   let query: string | undefined;
+  let sanitizedUrl = input.url;
   try {
     const u = new URL(input.url);
     host = u.host;
     path = u.pathname;
     query = sanitizeQueryString(u.search || undefined);
+    sanitizedUrl = sanitizeUrlQuery(input.url);
   } catch {
     // keep url as-is
   }
@@ -162,9 +192,10 @@ export function sanitizeNetworkEvent(
     ...input,
     id: input.id || newEventId(),
     timestamp: input.timestamp || new Date().toISOString(),
+    url: sanitizedUrl,
     host: input.host ?? host,
     path: input.path ?? path,
-    query: input.query ?? query,
+    query: sanitizeQueryString(input.query ?? query),
     requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
     responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
     requestBodyPreview: captureBodies ? truncatePreview(input.requestBodyPreview, maxBytes) : undefined,
