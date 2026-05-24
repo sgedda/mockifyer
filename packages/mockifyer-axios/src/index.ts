@@ -658,6 +658,14 @@ class MockifyerClass {
 
       return config;
     });
+
+    this.httpClient.interceptors.response.use(async (response) => {
+      const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+      if (matchedMock) {
+        return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock) as any;
+      }
+      return response;
+    });
   }
 
   private setupInterceptors(): void {
@@ -1828,6 +1836,17 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       } else {
         console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
       }
+
+      if (!config.recordMode && baseClient.responseInterceptors && baseClient.responseInterceptors.length > 0) {
+        baseClient.responseInterceptors.forEach((interceptor: any) => {
+          globalAxios.interceptors.response.use(
+            interceptor.onFulfilled
+              ? async (response: any) => interceptor.onFulfilled(response)
+              : undefined,
+            interceptor.onRejected
+          );
+        });
+      }
       
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
@@ -1896,6 +1915,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               if (isMocked) {
                 console.log('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
                 return axiosResponse;
+              }
+
+              const matchedMock = (axiosResponse.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+              if (matchedMock) {
+                return await mockifyer['applyLiveRefreshToAxiosResponse'](axiosResponse as HTTPResponse, matchedMock);
               }
               
               console.log('[Mockifyer] ⚠️ Global axios interceptor: Response is NOT mocked, will record it');

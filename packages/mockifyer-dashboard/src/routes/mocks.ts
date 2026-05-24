@@ -236,7 +236,7 @@ router.get('/', async (req: Request, res: Response) => {
                 };
               }
               sessionId = (mockData as any).sessionId || null;
-              const activation = extractMockActivationFlags(mockData);
+              activation = extractMockActivationFlags(mockData);
             } catch {
               // ignore
             }

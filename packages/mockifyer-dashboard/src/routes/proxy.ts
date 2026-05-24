@@ -260,6 +260,8 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
+    const hadMockAtRequestStart = Boolean(mock);
+
     if (mock && mockShouldServeStoredBody(mock as MockData)) {
       const sanitizedMock: any =
         (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
@@ -415,7 +417,8 @@ router.post('/', async (req: Request, res: Response) => {
       : response;
 
     let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
+    let recordedNewMock = false;
+    if (effectiveRecord === true && !hadMockAtRequestStart) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
       const pathRules = await store.getDomainPathRules(resolvedScenarioName);
       const recordResolution = resolveRecordResponsesForRequest({
@@ -458,6 +461,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
 
       await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
+      recordedNewMock = true;
       if (redisDisk.mirrorWrites) {
         try {
           mirrorRecordedMockToDisk({
@@ -474,7 +478,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (debugProxy) {
       console.log(
-        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
+        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${recordedNewMock}`
       );
     }
     await appendProxyNetworkEvent(networkLogCtx, {
@@ -496,8 +500,8 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response: clientResponse,
-      recordedToStore: effectiveRecord === true,
-      ...(effectiveRecord === true && storedMockForClient
+      recordedToStore: recordedNewMock,
+      ...(recordedNewMock && storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),

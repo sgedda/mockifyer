@@ -1,5 +1,6 @@
 import {
   applyLiveFetchMockUpdates,
+  applyMockReplayModeSetting,
   buildClientResponseFromLiveCapture,
   buildMockDataAfterLiveCapture,
   mockHasResponseDateOverrides,
@@ -88,5 +89,33 @@ describe('mock replay mode', () => {
     expect(original.refreshOnNextRequest).toBe(true);
     expect(updated.refreshOnNextRequest).toBeUndefined();
     expect((updated.response.data as { fresh: boolean }).fresh).toBe(true);
+  });
+
+  it('activates a captured pending mock when switching to stored replay mode', () => {
+    const mock = baseMock({
+      alwaysUseRealApi: true,
+      responsePending: true,
+      response: { status: 200, data: { captured: true }, headers: {} },
+    });
+
+    applyMockReplayModeSetting(mock, 'stored');
+
+    expect(mock.alwaysUseRealApi).toBeUndefined();
+    expect(mock.responsePending).toBeUndefined();
+    expect(resolveMockReplayMode(mock)).toBe('stored');
+  });
+
+  it('keeps empty request-only placeholders pending when switching to stored mode', () => {
+    const mock = baseMock({
+      alwaysUseRealApi: true,
+      responsePending: true,
+      response: { status: 0, data: null, headers: {} },
+    });
+
+    applyMockReplayModeSetting(mock, 'stored');
+
+    expect(mock.alwaysUseRealApi).toBeUndefined();
+    expect(mock.responsePending).toBe(true);
+    expect(resolveMockReplayMode(mock)).toBe('passthrough');
   });
 });
