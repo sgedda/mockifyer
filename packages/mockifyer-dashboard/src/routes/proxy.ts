@@ -27,6 +27,7 @@ import {
   openProxyNetworkLog,
   resolveNetworkLogScenario,
 } from '../utils/proxy-network-log';
+import { shouldRecordNewProxyMock } from '../utils/proxy-recording';
 
 const router = express.Router();
 
@@ -418,7 +419,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     let storedMockForClient: MockData | null = null;
     let recordedNewMock = false;
-    if (effectiveRecord === true && !hadMockAtRequestStart) {
+    if (shouldRecordNewProxyMock(effectiveRecord === true, hadMockAtRequestStart)) {
       const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
       const pathRules = await store.getDomainPathRules(resolvedScenarioName);
       const recordResolution = resolveRecordResponsesForRequest({

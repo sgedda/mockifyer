@@ -58,7 +58,7 @@ describe('bulk domain mock operations', () => {
       provider: 'filesystem',
       mockDataPath: tempDir,
       scenario: 'default',
-      domainPath: 'https://api.example.com',
+      domainPath: 'api.example.com',
     });
 
     const updated = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
@@ -81,7 +81,7 @@ describe('bulk domain mock operations', () => {
       provider: 'filesystem',
       mockDataPath: tempDir,
       scenario: 'default',
-      domainPath: 'https://api.example.com',
+      domainPath: 'api.example.com',
       useLiveApi: false,
     });
 
