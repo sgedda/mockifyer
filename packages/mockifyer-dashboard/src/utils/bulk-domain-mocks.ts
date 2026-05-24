@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {
+  applyMockReplayModeSetting,
   applyCapturedResponse,
   getScenarioFolderPath,
   mockHasCapturableResponse,
@@ -79,11 +80,7 @@ export async function bulkSetLiveApiForDomain(opts: {
           skippedPending += 1;
           continue;
         }
-        if (opts.useLiveApi) {
-          mockData.alwaysUseRealApi = true;
-        } else {
-          delete mockData.alwaysUseRealApi;
-        }
+        applyMockReplayModeSetting(mockData, opts.useLiveApi ? 'passthrough' : 'stored');
         await store.setByHashInScenario(hash, mockData, scenarioName);
         updated += 1;
       }
@@ -105,11 +102,7 @@ export async function bulkSetLiveApiForDomain(opts: {
         skippedPending += 1;
         continue;
       }
-      if (opts.useLiveApi) {
-        mockData.alwaysUseRealApi = true;
-      } else {
-        delete mockData.alwaysUseRealApi;
-      }
+      applyMockReplayModeSetting(mockData, opts.useLiveApi ? 'passthrough' : 'stored');
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
       updated += 1;
     }
@@ -153,6 +146,7 @@ export async function bulkCaptureResponsesForDomain(opts: {
         clientId: opts.clientId,
       });
       applyCapturedResponse(mockData, response);
+      delete mockData.alwaysUseRealApi;
       mockData.duration = durationMs;
       mockData.timestamp = new Date().toISOString();
       return true;

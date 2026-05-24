@@ -127,6 +127,12 @@ export function buildMockDataAfterLiveCapture(
   return updated;
 }
 
+function hasCapturedResponseBody(mockData: MockData): boolean {
+  const response = mockData.response;
+  if (!response) return false;
+  return !(response.status === 0 && response.data === null);
+}
+
 /** Applies a mutually exclusive replay mode to a mock recording. */
 export function applyMockReplayModeSetting(mockData: MockData, mode: MockReplayMode): void {
   delete mockData.alwaysUseRealApi;
@@ -145,6 +151,9 @@ export function applyMockReplayModeSetting(mockData: MockData, mode: MockReplayM
       break;
     case 'stored':
     default:
+      if (hasCapturedResponseBody(mockData)) {
+        delete mockData.responsePending;
+      }
       break;
   }
 }
