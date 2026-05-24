@@ -165,6 +165,7 @@ class MockifyerClass {
     }
     if (!config.recordMode) {
       this.setupMockResponses();
+      this.setupMatchedMockLiveResponseInterceptor();
     } else {
       this.setupInterceptors();
     }
@@ -657,6 +658,21 @@ class MockifyerClass {
       }
 
       return config;
+    });
+  }
+
+  private setupMatchedMockLiveResponseInterceptor(): void {
+    this.httpClient.interceptors.response.use(async (response) => {
+      if ((response.config as any)?.__mockifyer_bypass) {
+        return response;
+      }
+
+      const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+      if (!matchedMock) {
+        return response;
+      }
+
+      return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock);
     });
   }
 
