@@ -662,7 +662,7 @@ class MockifyerClass {
   }
 
   private setupMatchedMockLiveResponseInterceptor(): void {
-    this.httpClient.interceptors.response.use(async (response) => {
+    this.httpClient.interceptors.response.use(async (response: HTTPResponse) => {
       if ((response.config as any)?.__mockifyer_bypass) {
         return response;
       }
