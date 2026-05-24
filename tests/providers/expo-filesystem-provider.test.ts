@@ -349,6 +349,47 @@ describe('ExpoFileSystemProvider', () => {
       expect(result).toBeDefined();
       expect(result?.mockData.response.data).toEqual({ message: 'valid' });
     });
+
+    it('should not replay cached passthrough mocks when passthrough mocks are excluded', async () => {
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/live',
+        headers: {},
+        queryParams: {},
+      };
+      const requestKey = generateRequestKey(request);
+      const mockMtime = Date.now();
+
+      const passthroughMock: MockData = {
+        request,
+        response: { status: 200, data: { message: 'stale passthrough' }, headers: {} },
+        timestamp: new Date().toISOString(),
+        alwaysUseRealApi: true,
+      };
+
+      const filename = 'passthrough_file.json';
+      const dir = makeMockDir({ exists: true, listResult: [makeListItem(filename)] });
+      mockFileSystem.Directory = jest.fn().mockReturnValue(dir);
+      mockFileSystem.Paths.info = jest.fn().mockReturnValue({ exists: true, isDirectory: true });
+      mockFileSystem.File = jest.fn().mockImplementation(() =>
+        makeMockFile({
+          exists: true,
+          modificationTime: mockMtime,
+          textResult: JSON.stringify(passthroughMock),
+        })
+      );
+
+      await provider.initialize();
+
+      const saveLookup = await provider.findExactMatch(request, requestKey, {
+        includePassthroughMocks: true,
+      });
+      expect(saveLookup).toBeDefined();
+
+      const replayLookup = await provider.findExactMatch(request, requestKey);
+
+      expect(replayLookup).toBeUndefined();
+    });
   });
 
   describe('reload', () => {
