@@ -65,6 +65,18 @@ app.get('/health', (req: express.Request, res: express.Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Google Search Console HTML file verification (must be 200, no redirect, no SPA shell)
+const GOOGLE_SITE_VERIFICATION_PATH = '/google2b75624942a5cc82.html';
+const GOOGLE_SITE_VERIFICATION_BODY =
+  'google-site-verification: google2b75624942a5cc82.html';
+
+app.get(GOOGLE_SITE_VERIFICATION_PATH, (_req: express.Request, res: express.Response) => {
+  res.status(200);
+  res.type('text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.send(GOOGLE_SITE_VERIFICATION_BODY);
+});
+
 // Test generation endpoint
 app.post('/api/test/generate', (req: express.Request, res: express.Response) => {
   try {
@@ -487,6 +499,9 @@ app.get('*', (req, res) => {
   }
   if (req.path.startsWith('/assets/')) {
     return res.status(404).send('Asset not found');
+  }
+  if (req.path === GOOGLE_SITE_VERIFICATION_PATH) {
+    return res.status(404).send('Verification file not found');
   }
   // Never cache index.html - always serve fresh version
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
