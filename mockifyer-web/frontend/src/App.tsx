@@ -10,6 +10,7 @@ import ConfigReference from './pages/ConfigReference'
 import Settings from './pages/Settings'
 import Contact from './pages/Contact'
 import { ThemeProvider } from './lib/use-theme'
+import PageSeoManager from './components/PageSeoManager'
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         }}
       >
         <div className="min-h-screen bg-background">
+          <PageSeoManager />
           <Navigation />
           <main className="container mx-auto px-4 py-8">
             <Routes>

@@ -13,11 +13,32 @@ if (config.resolver && !config.resolver.unstable_enablePackageExports) {
 
 // Check if we're using local packages (file: paths)
 const packageJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
-const isUsingLocalPackages = 
+const isUsingLocalPackages =
   packageJson.dependencies['@sgedda/mockifyer-core']?.startsWith('file:') ||
   packageJson.dependencies['@sgedda/mockifyer-fetch']?.startsWith('file:');
 
-// Helper function to resolve Mockifyer package path
+let useSource =
+  process.env.MOCKIFYER_USE_SOURCE === 'true' || process.env.MOCKIFYER_USE_SOURCE === '1';
+
+if (useSource && !isUsingLocalPackages) {
+  console.warn(
+    '[Metro] MOCKIFYER_USE_SOURCE requires local file: packages — falling back to dist/',
+  );
+  useSource = false;
+}
+
+const MOCKIFYER_SOURCE_ENTRIES = {
+  '@sgedda/mockifyer-core': 'src/index.react-native.ts',
+  '@sgedda/mockifyer-fetch': 'src/react-native.ts',
+};
+
+function getMockifyerCorePath() {
+  if (isUsingLocalPackages) {
+    return path.resolve(__dirname, '../../packages/mockifyer-core');
+  }
+  return path.resolve(__dirname, 'node_modules/@sgedda/mockifyer-core');
+}
+
 function getMockifyerFetchPath() {
   if (isUsingLocalPackages) {
     return path.resolve(__dirname, '../../packages/mockifyer-fetch');
@@ -25,12 +46,37 @@ function getMockifyerFetchPath() {
   return path.resolve(__dirname, 'node_modules/@sgedda/mockifyer-fetch');
 }
 
+function getFetchSubpathMap() {
+  if (useSource) {
+    return {
+      'react-native': 'src/react-native.ts',
+      'metro-config': 'src/metro-config.ts',
+      'metro-sync-middleware': 'src/metro-sync-middleware.ts',
+      'test-generation-hook': 'src/test-generation-hook.ts',
+      'metro-polyfills/empty-module': 'metro-polyfills/empty-module.js',
+    };
+  }
+  return {
+    'react-native': 'dist/react-native.js',
+    'metro-config': 'dist/metro-config.js',
+    'metro-sync-middleware': 'dist/metro-sync-middleware.js',
+    'test-generation-hook': 'dist/test-generation-hook.js',
+    'metro-polyfills/empty-module': 'metro-polyfills/empty-module.js',
+  };
+}
+
+function loadConfigureMetroForMockifyer() {
+  const mockifyerFetchPath = getMockifyerFetchPath();
+  // metro.config.js runs in Node — always load the compiled helper (dynamic requires inside
+  // metro-config.ts break under ts-node). App bundle code still resolves to src/ when useSource.
+  const metroConfig = require(path.join(mockifyerFetchPath, 'dist/metro-config.js'));
+  return metroConfig.configureMetroForMockifyer;
+}
+
 // Try to require Mockifyer Metro config helper (may fail if package not installed yet)
 let configureMetroForMockifyer;
 try {
-  const mockifyerFetchPath = getMockifyerFetchPath();
-  const metroConfig = require(path.join(mockifyerFetchPath, 'dist/metro-config.js'));
-  configureMetroForMockifyer = metroConfig.configureMetroForMockifyer;
+  configureMetroForMockifyer = loadConfigureMetroForMockifyer();
 } catch (e) {
   // Package not installed yet - will be resolved by Metro resolver
   console.warn('[Metro] Mockifyer package not found, skipping Metro config helper');
@@ -39,7 +85,12 @@ try {
 // If using local packages, configure Metro to watch and resolve them
 if (isUsingLocalPackages) {
   console.log('[Metro] Using LOCAL Mockifyer packages');
-  
+  if (useSource) {
+    console.log('[Metro] Mockifyer bundle: SOURCE (packages/*/src — no tsc rebuild for app code)');
+  } else {
+    console.log('[Metro] Mockifyer bundle: DIST (packages/*/dist — run tsc or npm run watch in packages)');
+  }
+
   // Add watchFolders to include the monorepo packages
   config.watchFolders = [
     ...(config.watchFolders || []),
@@ -111,6 +162,8 @@ if (configureMetroForMockifyer) {
 
 // Custom resolver to handle @babel/runtime and Mockifyer packages
 const defaultResolver = config.resolver.resolveRequest;
+const fetchSubpathMap = getFetchSubpathMap();
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // Handle @babel/runtime resolution - always resolve from project node_modules
   if (moduleName.startsWith('@babel/runtime')) {
@@ -122,28 +175,29 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       };
     }
   }
-  
-  // For main Mockifyer package, let Metro's default resolver handle it
-  // We've added it to extraNodeModules and watchFolders, so Metro should discover and index it
-  // Metro will automatically respect the "react-native" field in package.json
-  // We don't intercept it to avoid SHA-1 indexing issues
-  
+
+  // Bundle Mockifyer packages from TypeScript source (MOCKIFYER_USE_SOURCE=true)
+  if (useSource && MOCKIFYER_SOURCE_ENTRIES[moduleName]) {
+    const pkgRoot =
+      moduleName === '@sgedda/mockifyer-core'
+        ? getMockifyerCorePath()
+        : getMockifyerFetchPath();
+    const filePath = path.join(pkgRoot, MOCKIFYER_SOURCE_ENTRIES[moduleName]);
+    if (fs.existsSync(filePath)) {
+      return {
+        filePath,
+        type: 'sourceFile',
+      };
+    }
+  }
+
   // Handle Mockifyer subpath exports (e.g., @sgedda/mockifyer-fetch/react-native)
   if (moduleName.startsWith('@sgedda/mockifyer-fetch/')) {
     const subpath = moduleName.replace('@sgedda/mockifyer-fetch/', '');
     const packagePath = getMockifyerFetchPath();
-    
-    // Map subpaths to their dist files
-    const subpathMap = {
-      'react-native': 'dist/react-native.js',
-      'metro-config': 'dist/metro-config.js',
-      'metro-sync-middleware': 'dist/metro-sync-middleware.js',
-      'test-generation-hook': 'dist/test-generation-hook.js',
-      'metro-polyfills/empty-module': 'metro-polyfills/empty-module.js',
-    };
-    
-    if (subpathMap[subpath]) {
-      const filePath = path.join(packagePath, subpathMap[subpath]);
+
+    if (fetchSubpathMap[subpath]) {
+      const filePath = path.join(packagePath, fetchSubpathMap[subpath]);
       if (fs.existsSync(filePath)) {
         return {
           filePath,
@@ -151,7 +205,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
         };
       }
     }
-    
+
     // Try require.resolve as fallback
     try {
       const resolvedPath = require.resolve(moduleName);
@@ -163,7 +217,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       // Will fall through to default resolver
     }
   }
-  
+
   // Use default resolution (includes Mockifyer's Node.js built-in stubs)
   if (defaultResolver) {
     return defaultResolver(context, moduleName, platform);

@@ -2,6 +2,10 @@ import type { MockData, MockifyerConfig } from '../types';
 import { applyCapturedResponse } from './request-only-mock';
 import { mockPassesThroughToRealApi } from './mock-passthrough';
 import { applyResponseDateOverridesToData } from './mock-response-date-overrides';
+import {
+  applyResponseFieldOverridesToData,
+  mockHasResponseFieldOverrides,
+} from './mock-response-field-overrides';
 import { resolveRefreshPassthroughRecordings } from './record-passthrough-config';
 
 /** How a matched mock is served on the next outbound request. */
@@ -57,7 +61,7 @@ export function mockShouldBeIncludedInRequestMatch(
     return true;
   }
   if (mockPassesThroughToRealApi(mockData)) {
-    return mockHasResponseDateOverrides(mockData);
+    return mockHasResponseDateOverrides(mockData) || mockHasResponseFieldOverrides(mockData);
   }
   return true;
 }
@@ -103,16 +107,23 @@ export function buildClientResponseFromLiveCapture(
   capturedResponse: MockData['response'],
   getNow: () => Date
 ): MockData['response'] {
-  if (!mockHasResponseDateOverrides(mockData)) {
+  const hasDate = mockHasResponseDateOverrides(mockData);
+  const hasField = mockHasResponseFieldOverrides(mockData);
+  if (!hasDate && !hasField) {
     return capturedResponse;
   }
+
+  let data = capturedResponse.data;
+  if (hasField) {
+    data = applyResponseFieldOverridesToData(data, mockData.responseFieldOverrides ?? []);
+  }
+  if (hasDate) {
+    data = applyResponseDateOverridesToData(data, mockData.responseDateOverrides ?? [], getNow);
+  }
+
   return {
     ...capturedResponse,
-    data: applyResponseDateOverridesToData(
-      capturedResponse.data,
-      mockData.responseDateOverrides ?? [],
-      getNow
-    ),
+    data,
   };
 }
 

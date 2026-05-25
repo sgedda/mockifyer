@@ -94,24 +94,50 @@ export interface MockData {
   }
 }
 
-/** Row for Statistics “recent devices” when dashboard uses Redis proxy lanes. */
-export interface StatsRedisRecentDeviceRow {
-  clientId: string
-  configuredScenario: string
-  note: string | null
-  laneLastSeenResolvedScenario: string | null
-  laneLastSeenResolvedAt: string | null
-  deviceId: string
-  deviceLastSeenAt: string
-  lastSeenResolvedScenario: string | null
-  lastSeenResolvedAt: string | null
-  resolutionSource?:
-    | 'body_override'
-    | 'lane_redis'
-    | 'global_redis'
-    | 'filesystem_fallback'
-    | null
-  clientBodyScenarioOverride?: boolean
+export type AiContextMode = 'profile' | 'schema' | 'suggest' | 'full'
+
+export interface AiFieldSchemaInfo {
+  type: string
+  enum?: unknown[]
+  nullable?: boolean
+}
+
+export interface AiStateHint {
+  path: string
+  observed: unknown[]
+}
+
+export interface ScoredAiPath {
+  path: string
+  score: number
+  reasons: string[]
+  sampleValue?: unknown
+}
+
+export interface AiContextDiscoveryMeta {
+  sources: string[]
+  includedPaths: number
+  omittedPaths: number
+  omittedBytes: number
+  mode: AiContextMode
+}
+
+export interface AiContextProfile {
+  fields: Record<string, unknown>
+  schema: Record<string, AiFieldSchemaInfo>
+  stateHints: AiStateHint[]
+}
+
+export interface MockAiContext {
+  filename: string
+  scenario: string
+  endpoint: { method: string; url: string; pathname: string }
+  status: number
+  mode: AiContextMode
+  profile: AiContextProfile
+  discovery: AiContextDiscoveryMeta
+  suggestions?: ScoredAiPath[]
+  data?: MockData['data']
 }
 
 export interface Stats {
@@ -127,12 +153,6 @@ export interface Stats {
   scenario: string
   mockDataPath?: string
   scenarioPath?: string
-  /** Redis only: lanes + devices with last-seen timestamps and proxy resolution telemetry. */
-  redisRecentDevices?: {
-    enabled: boolean
-    globalScenario?: string
-    rows: StatsRedisRecentDeviceRow[]
-  }
 }
 
 export interface ScenarioConfig {

@@ -272,6 +272,27 @@ export interface MockResponseDateOverride {
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }
 
+/**
+ * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
+ * Applied at replay before {@link MockResponseDateOverride}.
+ */
+export interface MockResponseFieldOverride {
+  /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
+  path: string;
+  value: unknown;
+}
+
+export interface CopyArrayItemParams {
+  /** Dot path to the array from `response.data` root (e.g. `bookings` or `data.bookings`). */
+  arrayPath: string;
+  /** Index of the existing item to clone. */
+  fromIndex: number;
+  /** Fields to merge onto the clone (keys are dot-paths relative to the item root). */
+  itemOverrides?: Record<string, unknown>;
+  /** Where to insert the clone. Default `append`. */
+  insertAt?: 'append' | 'prepend' | number;
+}
+
 export interface MockData {
   request: StoredRequest;
   response: StoredResponse;
@@ -279,8 +300,14 @@ export interface MockData {
   duration?: number; // Request duration in milliseconds
   scenario?: string;
   sessionId?: string; // Unique identifier for grouping related requests
+  /** Unique id for this outbound hop (see request correlation headers). */
+  requestId?: string;
+  /** Id of the outbound request that triggered this hop. */
+  parentRequestId?: string;
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
+  /** Optional: when serving this mock, replace field values at the given paths (overlay on stored body). */
+  responseFieldOverrides?: MockResponseFieldOverride[];
   /**
    * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
    * The file is still kept (e.g. for documentation or for updating while recording).

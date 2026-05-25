@@ -89,13 +89,20 @@ function MockListContent({
       .then((rules) => {
         if (!cancelled) setDomainPathRules(rules)
       })
-      .catch(() => {
-        if (!cancelled) setDomainPathRules({})
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDomainPathRules({})
+          toast({
+            title: 'Could not load record response rules',
+            description: error instanceof Error ? error.message : 'Request failed',
+            variant: 'destructive',
+          })
+        }
       })
     return () => {
       cancelled = true
     }
-  }, [groupBy, scenario, mocks])
+  }, [groupBy, scenario, mocks, toast])
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
     e.stopPropagation()

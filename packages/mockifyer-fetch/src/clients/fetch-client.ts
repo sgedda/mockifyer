@@ -7,6 +7,8 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_HEADER,
 } from '@sgedda/mockifyer-core';
 import { joinProxyDashboardApiUrl } from '../utils/join-proxy-dashboard-api-url';
 
@@ -116,6 +118,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     const lane = this.resolvedClientLane();
     const bypassMockifyer =
       (config as any).__mockifyer_bypass === true || (config as any).__mockifyer_skip_save === true;
+    const hopRequestId = (config as any).__mockifyer_requestId as string | undefined;
+    const hopParentRequestId = (config as any).__mockifyer_parentRequestId as string | undefined;
 
     const explicitProxyContext = this.getExplicitProxyScenarioContext?.() ?? true;
 
@@ -128,12 +132,16 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           'content-type': 'application/json',
           ...(lane ? { [MOCKIFYER_CLIENT_ID_HEADER]: lane } : {}),
           ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
+          ...(hopRequestId ? { [MOCKIFYER_REQUEST_ID_HEADER]: hopRequestId } : {}),
+          ...(hopParentRequestId ? { [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: hopParentRequestId } : {}),
         },
         body: JSON.stringify({
           url,
           method: requestConfig.method,
           clientId: lane,
           deviceId: this.deviceId,
+          requestId: hopRequestId,
+          parentRequestId: hopParentRequestId,
           headers: (() => {
             const out: Record<string, string> = {};
             headers.forEach((value, key) => {
