@@ -1591,12 +1591,14 @@ export async function initMockifyerForDashboardProxy(
     logger.warn(
       `[Mockifyer] initMockifyerForDashboardProxy: "${dashboardBaseUrl}" did not report healthy Redis ` +
         (strictProxyOnly
-          ? '(strict proxy-only — local recording disabled). '
+          ? '(strict proxy-only — local recording and replay disabled). '
           : '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ') +
         'Set skipDashboardRedisHealthCheck: true to force proxy anyway.'
     );
     const stripped = omitProxyFromPartialConfig(extra);
-    const fallbackDb = options.databaseProvider ?? extra.databaseProvider;
+    const fallbackDb = strictProxyOnly
+      ? { type: 'memory' as const }
+      : options.databaseProvider ?? extra.databaseProvider;
     const mergedInitLogFs: MockifyerConfig['initLog'] = {
       ...stripped.initLog,
       headline:
