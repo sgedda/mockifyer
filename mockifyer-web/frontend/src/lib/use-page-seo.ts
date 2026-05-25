@@ -4,6 +4,7 @@ import {
   DEFAULT_DESCRIPTION,
   DEFAULT_KEYWORDS,
   DEFAULT_TITLE,
+  GOOGLE_SITE_VERIFICATION_META,
   HERO_TAGLINE,
   OG_IMAGE_URL,
   SITE_NAME,
@@ -82,6 +83,7 @@ export function usePageSeo(config: PageSeoConfig): void {
     upsertMeta('keywords', DEFAULT_KEYWORDS)
     upsertMeta('author', 'Sebastian Gedda')
     upsertMeta('robots', robots)
+    upsertMeta('google-site-verification', GOOGLE_SITE_VERIFICATION_META)
 
     upsertLink('canonical', canonicalUrl)
 

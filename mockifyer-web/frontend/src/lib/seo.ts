@@ -27,13 +27,8 @@ export const TWITTER_HANDLE = '@sgedda'
 
 export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`
 
-/** Google Search Console — HTML file + meta tag verification for mockifyer.dev */
-export const GOOGLE_SITE_VERIFICATION_FILE = 'google2b75624942a5cc82.html'
-export const GOOGLE_SITE_VERIFICATION_PATH = `/${GOOGLE_SITE_VERIFICATION_FILE}`
-export const GOOGLE_SITE_VERIFICATION_BODY =
-  'google-site-verification: google2b75624942a5cc82.html'
-/** Meta tag token (HTML tag method in Search Console) */
-export const GOOGLE_SITE_VERIFICATION_META = '2b75624942a5cc82'
+/** Google Search Console — HTML tag verification for mockifyer.dev */
+export const GOOGLE_SITE_VERIFICATION_META = 'za4sE0woq42QVV2_O1lCpLPr7gk806c4CTNGvSpK0Mc'
 
 export interface PageSeoConfig {
   title: string
