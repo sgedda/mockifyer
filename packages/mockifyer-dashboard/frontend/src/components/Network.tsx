@@ -10,7 +10,15 @@ import {
   updateNetworkLogConfig,
 } from '@/lib/api'
 import type { NetworkEvent, NetworkEventSource } from '@/types'
-import { RefreshCw, Trash2, Radio } from 'lucide-react'
+import { RefreshCw, Trash2, Radio, GitBranch, ChevronRight } from 'lucide-react'
+import {
+  buildNetworkEventChainMaps,
+  chainDepth,
+  formatNetworkHopLabel,
+  getNetworkEventChain,
+  hasChainChildren,
+  isChainRoot,
+} from '@/lib/network-event-chains'
 
 const SOURCE_LABELS: Record<NetworkEventSource, string> = {
   'mock-hit': 'Mock',
@@ -50,6 +58,7 @@ export default function Network({ scenario }: NetworkProps) {
   const [methodFilter, setMethodFilter] = useState('')
   const [sourceFilter, setSourceFilter] = useState<NetworkEventSource | ''>('')
   const [laneFilter, setLaneFilter] = useState('')
+  const [chainOnly, setChainOnly] = useState(false)
   const sinceRef = useRef<string | undefined>(undefined)
   const [live, setLive] = useState(true)
 
@@ -104,18 +113,27 @@ export default function Network({ scenario }: NetworkProps) {
     return () => window.clearInterval(t)
   }, [live, load])
 
+  const chainMaps = useMemo(() => buildNetworkEventChainMaps(events), [events])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return events.filter((e) => {
       if (methodFilter && e.method !== methodFilter) return false
       if (sourceFilter && e.source !== sourceFilter) return false
+      if (chainOnly) {
+        const inChain =
+          Boolean(e.parentRequestId) ||
+          (e.requestId ? hasChainChildren(e, chainMaps.childrenByParent) : false)
+        if (!inChain) return false
+      }
       if (!q) return true
-      const hay = `${e.method} ${e.url} ${e.path ?? ''} ${e.host ?? ''} ${e.clientId ?? ''}`.toLowerCase()
+      const hay = `${e.method} ${e.url} ${e.path ?? ''} ${e.host ?? ''} ${e.clientId ?? ''} ${e.requestId ?? ''} ${e.parentRequestId ?? ''}`.toLowerCase()
       return hay.includes(q)
     })
-  }, [events, search, methodFilter, sourceFilter])
+  }, [events, search, methodFilter, sourceFilter, chainOnly, chainMaps.childrenByParent])
 
   const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const selectedChain = selected ? getNetworkEventChain(selected, chainMaps.byRequestId) : []
 
   useEffect(() => {
     if (selected && selected.id !== selectedId) {
@@ -276,6 +294,15 @@ export default function Network({ scenario }: NetworkProps) {
             </option>
           ))}
         </select>
+        <Button
+          type="button"
+          size="sm"
+          variant={chainOnly ? 'default' : 'outline'}
+          onClick={() => setChainOnly((v) => !v)}
+        >
+          <GitBranch className="h-4 w-4 mr-1" />
+          Chains only
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[24rem]">
@@ -295,13 +322,18 @@ export default function Network({ scenario }: NetworkProps) {
               </p>
             ) : (
               <div className="max-h-[32rem] overflow-auto divide-y divide-border">
-                {filtered.map((ev) => (
+                {filtered.map((ev) => {
+                  const depth = chainDepth(ev, chainMaps.byRequestId)
+                  const isRoot = isChainRoot(ev)
+                  const hasChildren = hasChainChildren(ev, chainMaps.childrenByParent)
+                  return (
                   <button
                     key={ev.id}
                     type="button"
                     className={`w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors ${
                       selected?.id === ev.id ? 'bg-accent' : ''
                     }`}
+                    style={{ paddingLeft: `${12 + Math.min(depth, 4) * 12}px` }}
                     onClick={() => setSelectedId(ev.id)}
                   >
                     <div className="flex items-center gap-2 flex-wrap">
@@ -309,6 +341,16 @@ export default function Network({ scenario }: NetworkProps) {
                       <Badge variant={SOURCE_VARIANT[ev.source]} className="text-[10px]">
                         {SOURCE_LABELS[ev.source]}
                       </Badge>
+                      {isRoot && hasChildren && (
+                        <Badge variant="outline" className="text-[10px]">
+                          chain root
+                        </Badge>
+                      )}
+                      {!isRoot && (
+                        <Badge variant="outline" className="text-[10px]">
+                          hop {depth + 1}
+                        </Badge>
+                      )}
                       {ev.status != null && (
                         <span className="text-xs text-muted-foreground">{ev.status}</span>
                       )}
@@ -324,7 +366,8 @@ export default function Network({ scenario }: NetworkProps) {
                       <div className="text-[10px] text-muted-foreground mt-0.5">lane: {ev.clientId}</div>
                     )}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
@@ -339,11 +382,35 @@ export default function Network({ scenario }: NetworkProps) {
               <p className="text-muted-foreground">Select a request</p>
             ) : (
               <>
+                {selectedChain.length > 1 && (
+                  <CallChainPanel
+                    chain={selectedChain}
+                    selectedId={selected.id}
+                    onSelectHop={setSelectedId}
+                  />
+                )}
                 <DetailRow label="Time" value={new Date(selected.timestamp).toLocaleString()} />
                 <DetailRow label="URL" value={selected.url} mono />
                 <DetailRow label="Method" value={selected.method} />
                 <DetailRow label="Source" value={SOURCE_LABELS[selected.source]} />
                 <DetailRow label="Transport" value={selected.transport} />
+                {selected.requestId && <DetailRow label="Request id" value={selected.requestId} mono />}
+                {selected.parentRequestId && (
+                  <div>
+                    <div className="text-xs text-muted-foreground">Triggered by</div>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-sm font-mono"
+                      onClick={() => {
+                        const parent = chainMaps.byRequestId.get(selected.parentRequestId!)
+                        if (parent) setSelectedId(parent.id)
+                      }}
+                    >
+                      {selected.parentRequestId}
+                    </Button>
+                  </div>
+                )}
                 {selected.status != null && <DetailRow label="Status" value={String(selected.status)} />}
                 {selected.durationMs != null && (
                   <DetailRow label="Duration" value={`${selected.durationMs} ms`} />
@@ -414,6 +481,46 @@ function PreviewBlock({ title, text }: { title: string; text: string }) {
       <pre className="text-[11px] bg-muted p-2 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
         {text}
       </pre>
+    </div>
+  )
+}
+
+function CallChainPanel({
+  chain,
+  selectedId,
+  onSelectHop,
+}: {
+  chain: NetworkEvent[]
+  selectedId: string
+  onSelectHop: (id: string) => void
+}) {
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+      <div className="text-xs font-medium flex items-center gap-1.5">
+        <GitBranch className="h-3.5 w-3.5" />
+        Call chain ({chain.length} hops)
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        {chain.map((hop, index) => (
+          <span key={hop.id} className="flex items-center gap-1">
+            {index > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+            <button
+              type="button"
+              className={`text-left rounded px-2 py-1 text-[11px] font-mono border transition-colors ${
+                hop.id === selectedId
+                  ? 'border-primary bg-primary/10'
+                  : 'border-transparent hover:border-border hover:bg-background'
+              }`}
+              onClick={() => onSelectHop(hop.id)}
+            >
+              {formatNetworkHopLabel(hop)}
+            </button>
+          </span>
+        ))}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Each service hop gets its own id. Downstream calls inherit the caller as parent — useful for multi-service chains.
+      </p>
     </div>
   )
 }

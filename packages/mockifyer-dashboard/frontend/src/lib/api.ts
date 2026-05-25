@@ -1,6 +1,8 @@
 import type {
   MockFile,
   MockData,
+  MockAiContext,
+  AiContextMode,
   MockResponseDateOverride,
   Stats,
   ScenarioConfig,
@@ -63,6 +65,36 @@ export async function getMock(filename: string, scenario?: string): Promise<Mock
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
+  return response.json()
+}
+
+export async function getMockAiContext(
+  filename: string,
+  opts?: {
+    scenario?: string
+    mode?: AiContextMode
+    includePaths?: string[]
+    excludePaths?: string[]
+    maxPaths?: number
+    includeRelated?: boolean
+  }
+): Promise<MockAiContext> {
+  const qs = new URLSearchParams()
+  if (opts?.scenario) qs.set('scenario', opts.scenario)
+  if (opts?.mode) qs.set('mode', opts.mode)
+  if (opts?.includePaths?.length) qs.set('includePaths', opts.includePaths.join(','))
+  if (opts?.excludePaths?.length) qs.set('excludePaths', opts.excludePaths.join(','))
+  if (typeof opts?.maxPaths === 'number' && Number.isFinite(opts.maxPaths)) {
+    qs.set('maxPaths', String(opts.maxPaths))
+  }
+  if (opts?.includeRelated === false) qs.set('includeRelated', '0')
+
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/ai-context${suffix}`, noStore)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error || error.details || 'Failed to fetch AI context')
+  }
   return response.json()
 }
 

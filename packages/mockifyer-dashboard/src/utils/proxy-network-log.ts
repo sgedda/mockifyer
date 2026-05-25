@@ -7,21 +7,37 @@ export interface ProxyNetworkLogContext {
   scenario: string;
   startedAt: number;
   requestId: string;
+  parentRequestId?: string | null;
+}
+
+export interface ProxyNetworkLogCorrelation {
+  requestId?: string;
+  parentRequestId?: string | null;
 }
 
 export async function openProxyNetworkLog(
   mockDataPath: string,
   config: import('./dashboard-context').DashboardContextConfig,
-  scenario: string | null
+  scenario: string | null,
+  correlation?: ProxyNetworkLogCorrelation
 ): Promise<ProxyNetworkLogContext | null> {
   if (scenario === null) return null;
   try {
     const store = createNetworkLogStore(config);
+    const requestId =
+      typeof correlation?.requestId === 'string' && correlation.requestId.trim()
+        ? correlation.requestId.trim()
+        : newRequestId();
+    const parentRequestId =
+      typeof correlation?.parentRequestId === 'string' && correlation.parentRequestId.trim()
+        ? correlation.parentRequestId.trim()
+        : null;
     return {
       store,
       scenario,
       startedAt: Date.now(),
-      requestId: newRequestId(),
+      requestId,
+      parentRequestId,
     };
   } catch {
     return null;
@@ -55,6 +71,7 @@ export async function appendProxyNetworkEvent(
   await ctx.store
     .append(ctx.scenario, {
       requestId: ctx.requestId,
+      parentRequestId: ctx.parentRequestId ?? null,
       phase: 'complete',
       transport: partial.transport ?? 'proxy',
       method: partial.method,
@@ -83,5 +100,47 @@ export function resolveNetworkLogScenario(
     return getCurrentScenario(mockDataPath);
   } catch {
     return 'default';
+  }
+}
+
+function readCorrelationHeader(req: import('express').Request, name: string): string | undefined {
+  const raw = req.header(name);
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function resolveProxyInboundCorrelation(req: import('express').Request, body: unknown): ProxyNetworkLogCorrelation {
+  const payload = (body ?? {}) as { requestId?: unknown; parentRequestId?: unknown };
+  const requestIdFromBody =
+    typeof payload.requestId === 'string' && payload.requestId.trim() ? payload.requestId.trim() : undefined;
+  const parentFromBody =
+    typeof payload.parentRequestId === 'string' && payload.parentRequestId.trim()
+      ? payload.parentRequestId.trim()
+      : undefined;
+
+  const requestId = requestIdFromBody ?? readCorrelationHeader(req, 'x-mockifyer-request-id');
+  const parentRequestId = parentFromBody ?? readCorrelationHeader(req, 'x-mockifyer-parent-request-id');
+
+  return {
+    requestId,
+    parentRequestId: parentRequestId ?? null,
+  };
+}
+
+export function applyUpstreamRequestCorrelationHeaders(
+  upstreamHeaders: Headers,
+  correlation: ProxyNetworkLogCorrelation | ProxyNetworkLogContext
+): void {
+  const requestId =
+    'requestId' in correlation && typeof correlation.requestId === 'string' ? correlation.requestId : undefined;
+  const parentRequestId =
+    'parentRequestId' in correlation ? correlation.parentRequestId ?? undefined : undefined;
+
+  if (requestId) {
+    upstreamHeaders.set('x-mockifyer-request-id', requestId);
+  }
+  if (parentRequestId) {
+    upstreamHeaders.set('x-mockifyer-parent-request-id', parentRequestId);
   }
 }

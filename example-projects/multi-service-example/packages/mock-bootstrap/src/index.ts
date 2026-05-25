@@ -2,6 +2,7 @@ import {
   initMockifyerForDashboardProxy,
   initMockifyerForLocalFilesystem,
 } from '@sgedda/mockifyer-fetch';
+export { createMockifyerCorrelationMiddleware } from '@sgedda/mockifyer-core';
 
 /**
  * Shared bootstrap for Node services (`tsx`). The Next.js app duplicates this logic in

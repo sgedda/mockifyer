@@ -130,6 +130,14 @@ npx mockifyer-dashboard --host 0.0.0.0
 
 ⚠️ **Note**: The dashboard reads files directly from the filesystem, so it must run on the same machine where your mock data files are located. For remote access, you would need to run the dashboard on the server and access it via network.
 
+## MCP (Cursor / Claude Desktop)
+
+Use [`@sgedda/mockifyer-mcp`](../mockifyer-mcp) to expose dashboard APIs as MCP tools — including **`mockifyer_get_mock_ai_context`** for lightweight mock projections (avoids sending full response bodies to the AI).
+
+1. Start the dashboard (`npx mockifyer-dashboard --path ./mock-data`).
+2. Build the MCP server: `npm --prefix ../mockifyer-mcp run build`.
+3. Add to Cursor MCP config — see [mockifyer-mcp README](../mockifyer-mcp/README.md).
+
 ## Development
 
 ```bash

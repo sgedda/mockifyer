@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "node",
+      "args": ["/absolute/path/to/mockifyer/packages/mockifyer-mcp/dist/cli.js"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002",
+        "MOCKIFYER_DASHBOARD_BASE": "",
+        "MOCKIFYER_DASHBOARD_AUTH_USER": "",
+        "MOCKIFYER_DASHBOARD_AUTH_PASSWORD": ""
+      }
+    }
+  }
+}

@@ -156,15 +156,3 @@ export function applyResponseDateOverridesToData<T>(
 
   return clone;
 }
-
-/**
- * Returns response body for a mock hit: unchanged if no overrides; otherwise a deep-cloned
- * body with date fields rewritten relative to the manipulated current date.
- */
-export function prepareMockResponseBody(mockData: MockData, getNow: () => Date): unknown {
-  const overrides = mockData.responseDateOverrides;
-  if (!overrides?.length) {
-    return mockData.response.data;
-  }
-  return applyResponseDateOverridesToData(mockData.response.data, overrides, getNow);
-}

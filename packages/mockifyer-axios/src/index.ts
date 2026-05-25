@@ -29,6 +29,9 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  applyOutboundRequestCorrelation,
+  type RequestCorrelationContext,
+  installNodeInboundRequestCorrelationCapture,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -66,15 +69,35 @@ class MockifyerClass {
   private readonly activationMode: MockifyerActivationMode;
 
   private logNetworkEvent(
-    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' }
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' },
+    correlation?: RequestCorrelationContext
   ): void {
     if (this.config.proxy?.baseUrl) return;
     emitMockifyerNetworkEvent({
       config: this.config,
       scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
       clientId: this.config.clientId,
-      event: { ...partial, transport: partial.transport ?? 'axios' },
+      event: {
+        ...partial,
+        transport: partial.transport ?? 'axios',
+        requestId: correlation?.requestId ?? partial.requestId,
+        parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId,
+      },
     });
+  }
+
+  private stashRequestCorrelation(config: unknown, correlation: RequestCorrelationContext): void {
+    (config as { __mockifyer_requestId?: string; __mockifyer_parentRequestId?: string }).__mockifyer_requestId =
+      correlation.requestId;
+    (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
+      correlation.parentRequestId;
+  }
+
+  private readRequestCorrelation(config: unknown): RequestCorrelationContext | undefined {
+    const requestId = (config as { __mockifyer_requestId?: string }).__mockifyer_requestId;
+    if (!requestId) return undefined;
+    const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
+    return parentRequestId ? { requestId, parentRequestId } : { requestId };
   }
 
   constructor(config: MockifyerConfig) {
@@ -492,6 +515,8 @@ class MockifyerClass {
         return config;
       }
       this.applyOutboundLaneHeadersToAxiosRequest(config);
+      const correlation = applyOutboundRequestCorrelation(config);
+      this.stashRequestCorrelation(config, correlation);
 
       // Debug: Log what we receive in the interceptor
       console.log('[Mockifyer] 📥 Interceptor received config:', {
@@ -593,13 +618,16 @@ class MockifyerClass {
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
         } else {
-        this.logNetworkEvent({
-          method: (request.method || 'GET').toUpperCase(),
-          url: request.url,
-          source: 'mock-hit',
-          status: mockData.response.status,
-          requestHash: networkEventHashFromRequestKey(requestKey),
-        });
+        this.logNetworkEvent(
+          {
+            method: (request.method || 'GET').toUpperCase(),
+            url: request.url,
+            source: 'mock-hit',
+            status: mockData.response.status,
+            requestHash: networkEventHashFromRequestKey(requestKey),
+          },
+          correlation
+        );
         // Add mockifyer headers to indicate this is a mocked response
         const responseHeaders = {
           ...mockData.response.headers,
@@ -672,6 +700,8 @@ class MockifyerClass {
         return config;
       }
       this.applyOutboundLaneHeadersToAxiosRequest(config);
+      const correlation = applyOutboundRequestCorrelation(config);
+      this.stashRequestCorrelation(config, correlation);
 
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {
@@ -1165,12 +1195,15 @@ class MockifyerClass {
         // Store the request key on the response config so saveResponse can use it
         (response.config as any).__mockifyer_requestKey = requestKeyForRecording;
 
-        this.logNetworkEvent({
-          method: (response.config.method || 'GET').toUpperCase(),
-          url: response.config.url || '',
-          source: 'upstream',
-          status: response.status,
-        });
+        this.logNetworkEvent(
+          {
+            method: (response.config.method || 'GET').toUpperCase(),
+            url: response.config.url || '',
+            source: 'upstream',
+            status: response.status,
+          },
+          this.readRequestCorrelation(response.config)
+        );
         
         this.saveResponse(response as HTTPResponse);
         return response;
@@ -1182,13 +1215,16 @@ class MockifyerClass {
 
         const errUrl = error.config?.url || '';
         if (errUrl) {
-          this.logNetworkEvent({
-            method: (error.config?.method || 'GET').toUpperCase(),
-            url: errUrl,
-            source: 'error',
-            status: error.response?.status,
-            errorMessage: error?.message ?? String(error),
-          });
+          this.logNetworkEvent(
+            {
+              method: (error.config?.method || 'GET').toUpperCase(),
+              url: errUrl,
+              source: 'error',
+              status: error.response?.status,
+              errorMessage: error?.message ?? String(error),
+            },
+            this.readRequestCorrelation(error.config)
+          );
         }
 
         // CRITICAL: Clean up processingRequests after request fails
@@ -1355,13 +1391,16 @@ class MockifyerClass {
     response.status = clientResponse.status;
     delete (response.config as any).__mockifyer_matchedMock;
 
-    this.logNetworkEvent({
-      method: (response.config?.method || 'GET').toUpperCase(),
-      url: response.config?.url || '',
-      source: 'upstream',
-      status: response.status,
-      durationMs,
-    });
+    this.logNetworkEvent(
+      {
+        method: (response.config?.method || 'GET').toUpperCase(),
+        url: response.config?.url || '',
+        source: 'upstream',
+        status: response.status,
+        durationMs,
+      },
+      this.readRequestCorrelation(response.config)
+    );
 
     return response;
   }
@@ -1563,6 +1602,8 @@ class MockifyerClass {
       const startTime = (response.config as any).__mockifyer_startTime;
       const duration = startTime ? Date.now() - startTime : undefined;
 
+      const correlation = this.readRequestCorrelation(response.config);
+
       const mockData: MockData = {
         request,
         response: storedResponse,
@@ -1573,6 +1614,8 @@ class MockifyerClass {
           saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
             ? existingMock.mockData.sessionId
             : this.currentSessionId,
+        requestId: correlation?.requestId,
+        parentRequestId: correlation?.parentRequestId,
       };
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
@@ -1749,6 +1792,7 @@ export interface MockifyerInstance extends HTTPClient {
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+  installNodeInboundRequestCorrelationCapture();
   console.log('[Mockifyer] ⚡⚡⚡ setupMockifyer called:', config);
   // Initialize date manipulation
   initializeDateManipulation(config);

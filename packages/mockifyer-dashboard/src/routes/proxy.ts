@@ -24,9 +24,11 @@ import {
 import * as crypto from 'crypto';
 import {
   appendProxyNetworkEvent,
+  applyUpstreamRequestCorrelationHeaders,
   closeProxyNetworkLog,
   openProxyNetworkLog,
   resolveNetworkLogScenario,
+  resolveProxyInboundCorrelation,
 } from '../utils/proxy-network-log';
 
 const router = express.Router();
@@ -91,6 +93,8 @@ router.post('/', async (req: Request, res: Response) => {
         : deriveFallbackDeviceId(req);
   if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
 
+  const inboundCorrelation = resolveProxyInboundCorrelation(req, req.body);
+
   const upperMethod = String(method || 'GET').toUpperCase();
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
@@ -138,7 +142,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (resolution.scenario === null) {
       const logScenario = resolveNetworkLogScenario(mockDataPath, null, bodyScenario);
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
 
       const effectiveAllowUpstream = typeof allowUpstream === 'boolean' ? allowUpstream : true;
       if (debugProxy) {
@@ -175,6 +179,10 @@ router.post('/', async (req: Request, res: Response) => {
       if (clientId) {
         upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
       }
+      applyUpstreamRequestCorrelationHeaders(
+        upstreamHeaders,
+        networkLogCtx ?? inboundCorrelation
+      );
 
       const init: RequestInit = {
         method: upperMethod,
@@ -235,7 +243,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const resolvedScenarioName = resolution.scenario;
-    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName);
+    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, inboundCorrelation);
 
     const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
@@ -370,6 +378,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (clientId) {
       upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
+    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? inboundCorrelation);
 
     const init: RequestInit = {
       method: upperMethod,
@@ -518,7 +527,7 @@ router.post('/', async (req: Request, res: Response) => {
       bodyScenario
     );
     if (!networkLogCtx && logScenario) {
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
     }
     await appendProxyNetworkEvent(networkLogCtx, {
       method: upperMethod,

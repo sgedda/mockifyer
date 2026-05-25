@@ -1,5 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
+export { createMockifyerCorrelationMiddleware } from '@sgedda/mockifyer-core';
 
 /**
  * Axios + Mockifyer bootstrap for Node examples (`tsx`).

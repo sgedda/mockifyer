@@ -94,6 +94,52 @@ export interface MockData {
   }
 }
 
+export type AiContextMode = 'profile' | 'schema' | 'suggest' | 'full'
+
+export interface AiFieldSchemaInfo {
+  type: string
+  enum?: unknown[]
+  nullable?: boolean
+}
+
+export interface AiStateHint {
+  path: string
+  observed: unknown[]
+}
+
+export interface ScoredAiPath {
+  path: string
+  score: number
+  reasons: string[]
+  sampleValue?: unknown
+}
+
+export interface AiContextDiscoveryMeta {
+  sources: string[]
+  includedPaths: number
+  omittedPaths: number
+  omittedBytes: number
+  mode: AiContextMode
+}
+
+export interface AiContextProfile {
+  fields: Record<string, unknown>
+  schema: Record<string, AiFieldSchemaInfo>
+  stateHints: AiStateHint[]
+}
+
+export interface MockAiContext {
+  filename: string
+  scenario: string
+  endpoint: { method: string; url: string; pathname: string }
+  status: number
+  mode: AiContextMode
+  profile: AiContextProfile
+  discovery: AiContextDiscoveryMeta
+  suggestions?: ScoredAiPath[]
+  data?: MockData['data']
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number

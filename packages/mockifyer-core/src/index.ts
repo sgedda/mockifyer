@@ -23,11 +23,16 @@ export * from './utils/client-id';
 export * from './utils/runtime-client-id';
 export * from './utils/launch-arguments-client-id';
 export * from './utils/activation-mode';
+export * from './utils/outbound-header';
+export * from './utils/request-correlation';
 export * from './utils/runtime-mode';
 export * from './utils/strict-proxy-scenario';
 export * from './utils/proxy-strict-lane-scenario';
 export * from './utils/mockifyer-init-log';
+export * from './utils/mock-response-field-overrides';
+export * from './utils/mock-response-prepare';
 export * from './utils/network-log';
+export * from './utils/ai-context';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
