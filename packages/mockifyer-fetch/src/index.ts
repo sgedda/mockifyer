@@ -45,6 +45,7 @@ import {
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
   resolveClientId,
+  resolveExplicitClientIdOnly,
   resolveProxyStrictLaneScenario,
   registerMockifyerInstance,
   logMockifyerInitSummary,
@@ -183,6 +184,12 @@ class MockifyerClass {
     // Launch arg wins over MOCKIFYER_CLIENT_ID / config.clientId when present (E2E).
     if (launchClientId) {
       this.config.clientId = launchClientId;
+    } else if (
+      resolveStrictScenarioResolution(this.config) &&
+      Boolean(this.config.proxy?.baseUrl?.trim())
+    ) {
+      // Strict proxy: no auto lane until explicit clientId / setClientId (devtools show real URLs).
+      this.config.clientId = resolveExplicitClientIdOnly(this.config);
     } else {
       this.config.clientId = resolveClientId(this.config);
     }
@@ -236,6 +243,7 @@ class MockifyerClass {
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
+      getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
       deviceId: (this.config as any).deviceId,
     });
     
@@ -1700,9 +1708,15 @@ export async function initMockifyerForDashboardProxy(
     headline: extra.initLog?.headline ?? '[Mockifyer preset] Node · dashboard Redis proxy',
   };
 
+  const strictScenarioResolution =
+    extra.strictScenarioResolution ??
+    options.config?.strictScenarioResolution ??
+    true;
+
   return setupMockifyer({
     ...extra,
     mockDataPath,
+    strictScenarioResolution,
     databaseProvider: options.databaseProvider ?? extra.databaseProvider ?? { type: 'memory' },
     useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
     clientId: options.clientId ?? extra.clientId,
