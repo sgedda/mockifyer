@@ -291,6 +291,11 @@ export async function setupMockifyerForReactNative(
               recordResponses: proxyShouldRecordResponses,
             }
           : undefined,
+      ...(strictProxyEnabled
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
       ...(strictProxyOnlyFallback
         ? {
@@ -355,6 +360,11 @@ export async function setupMockifyerForReactNative(
             recordResponses: proxyShouldRecordResponses,
           }
         : undefined,
+      ...(proxyBaseUrl
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
       initLog: {
         headline:
