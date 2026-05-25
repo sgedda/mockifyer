@@ -84,12 +84,12 @@ describe('bulk domain mock actions', () => {
         2
       )
     );
-    global.fetch = jest.fn(async () =>
+    global.fetch = jest.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ fresh: true }), {
         status: 201,
         headers: { 'content-type': 'application/json' },
       })
-    ) as jest.MockedFunction<typeof fetch>;
+    ) as unknown as typeof fetch;
 
     const result = await bulkCaptureResponsesForDomain({
       provider: 'filesystem',
