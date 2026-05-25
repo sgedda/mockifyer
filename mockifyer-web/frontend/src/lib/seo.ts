@@ -27,6 +27,9 @@ export const TWITTER_HANDLE = '@sgedda'
 
 export const OG_IMAGE_URL = `${SITE_URL}/og-image.png`
 
+/** Google Search Console — HTML tag verification for mockifyer.dev */
+export const GOOGLE_SITE_VERIFICATION_META = 'za4sE0woq42QVV2_O1lCpLPr7gk806c4CTNGvSpK0Mc'
+
 export interface PageSeoConfig {
   title: string
   description: string
