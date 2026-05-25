@@ -457,6 +457,18 @@ app.use('/assets', (req, res, next) => {
   }
 });
 
+// Markdown / llms.txt: explicit content types for crawlers
+app.use((req, res, next) => {
+  if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api/')) {
+    if (req.path.endsWith('.md')) {
+      res.type('text/markdown; charset=utf-8');
+    } else if (req.path.endsWith('.txt')) {
+      res.type('text/plain; charset=utf-8');
+    }
+  }
+  next();
+});
+
 // Serve static files from public directory (but not for API routes)
 app.use((req, res, next) => {
   // Only serve static files for GET/HEAD requests that aren't API routes

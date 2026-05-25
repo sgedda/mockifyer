@@ -7,14 +7,18 @@ test.describe('Introduction Page', () => {
     // Check main heading (in main content area, not nav)
     await expect(page.getByRole('main').getByText(/Mockifyer/i).first()).toBeVisible();
     
-    // Check description
-    await expect(page.getByText(/powerful Node\.js library/i)).toBeVisible();
+    // Check hero tagline
+    await expect(page.getByText(/record and replay axios, fetch, and GraphQL/i)).toBeVisible();
     
     // Check key benefits section
     await expect(page.getByRole('heading', { name: /What is Mockifyer\?/i })).toBeVisible();
     await expect(page.getByText(/No more API rate limits/i)).toBeVisible();
     await expect(page.getByText(/Faster tests/i)).toBeVisible();
     await expect(page.getByText(/Deterministic testing:/i).first()).toBeVisible();
+
+    // FAQ section (SEO / AI answer engines)
+    await expect(page.getByRole('heading', { name: /Frequently Asked Questions/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /How is Mockifyer different from MSW\?/i })).toBeVisible();
   });
 
   test('should have working links to other pages', async ({ page }) => {
