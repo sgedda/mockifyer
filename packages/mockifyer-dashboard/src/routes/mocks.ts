@@ -18,6 +18,7 @@ import {
   validateResponseFieldOverrides,
   copyArrayItemInResponseData,
   type MockResponseFieldOverride,
+  isScenarioLockedFs,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
@@ -33,6 +34,9 @@ import {
 } from '../utils/domain-path-rules-store';
 
 const router = express.Router();
+
+/** HTTP 423: scenario lock — mock writes are forbidden while locked. */
+const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
 
 type OverridePreview = { path: string; summary: string };
 
@@ -1054,6 +1058,9 @@ router.put('/*', async (req: Request, res: Response) => {
       });
       try {
         const scenario = await resolveRedisScenario(req, store);
+        if (await store.isScenarioLocked(scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1130,7 +1137,11 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    if (isScenarioLockedFs(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -1279,6 +1290,9 @@ router.delete('/*', async (req: Request, res: Response) => {
       });
       try {
         const scenario = await resolveRedisScenario(req, store);
+        if (await store.isScenarioLocked(scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         await store.deleteByHash(hash, scenario);
         return res.json({ success: true, message: `Mock deleted successfully`, filename: relativeName });
       } finally {
@@ -1286,7 +1300,11 @@ router.delete('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    if (isScenarioLockedFs(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -1382,7 +1400,11 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
       });
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    if (isScenarioLockedFs(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });

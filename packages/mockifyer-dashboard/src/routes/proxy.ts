@@ -440,51 +440,60 @@ router.post('/', async (req: Request, res: Response) => {
 
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
-      const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
-      const recordResponses = recordResolution.recordResponses;
-      const pathAutoMock = recordResolution.matchedPathRule?.autoMock === true;
-      const requestPayload = {
-        method: upperMethod,
-        url,
-        headers: toRecordStringHeaders(headers),
-        data: body,
-        queryParams: {},
-      };
-      const shouldMarkPassthrough =
-        (recordNewAsPassthrough && !mock) ||
-        (mock && (mock as MockData).alwaysUseRealApi === true);
-
-      if (!recordResponses) {
-        storedMockForClient = buildRequestOnlyMockData(requestPayload as MockData['request'], {
-          alwaysUseRealApi: true,
-        });
-      } else {
-        storedMockForClient = {
-          request: requestPayload as MockData['request'],
-          response,
-          timestamp: new Date().toISOString(),
-        };
-        applyCapturedResponse(storedMockForClient, response);
-        if (pathAutoMock) {
-          delete storedMockForClient.alwaysUseRealApi;
-        } else if (shouldMarkPassthrough) {
-          applyRecordingPassthroughFlag(storedMockForClient, true);
-        } else {
-          delete storedMockForClient.alwaysUseRealApi;
+      const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
+      if (scenarioLocked) {
+        if (debugProxy) {
+          console.log(
+            `[ProxyRoute] skip record (scenario locked): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+          );
         }
-      }
+      } else {
+        const recordNewAsPassthrough = resolveRecordNewMocksAsPassthrough({});
+        const recordResponses = recordResolution.recordResponses;
+        const pathAutoMock = recordResolution.matchedPathRule?.autoMock === true;
+        const requestPayload = {
+          method: upperMethod,
+          url,
+          headers: toRecordStringHeaders(headers),
+          data: body,
+          queryParams: {},
+        };
+        const shouldMarkPassthrough =
+          (recordNewAsPassthrough && !mock) ||
+          (mock && (mock as MockData).alwaysUseRealApi === true);
 
-      await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
-      if (redisDisk.mirrorWrites) {
-        try {
-          mirrorRecordedMockToDisk({
-            mockDataPath,
-            scenarioName: resolvedScenarioName,
-            hash,
-            mockData: storedMockForClient as any,
+        if (!recordResponses) {
+          storedMockForClient = buildRequestOnlyMockData(requestPayload as MockData['request'], {
+            alwaysUseRealApi: true,
           });
-        } catch (mirrorErr: any) {
-          console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+        } else {
+          storedMockForClient = {
+            request: requestPayload as MockData['request'],
+            response,
+            timestamp: new Date().toISOString(),
+          };
+          applyCapturedResponse(storedMockForClient, response);
+          if (pathAutoMock) {
+            delete storedMockForClient.alwaysUseRealApi;
+          } else if (shouldMarkPassthrough) {
+            applyRecordingPassthroughFlag(storedMockForClient, true);
+          } else {
+            delete storedMockForClient.alwaysUseRealApi;
+          }
+        }
+
+        await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
+        if (redisDisk.mirrorWrites) {
+          try {
+            mirrorRecordedMockToDisk({
+              mockDataPath,
+              scenarioName: resolvedScenarioName,
+              hash,
+              mockData: storedMockForClient as any,
+            });
+          } catch (mirrorErr: any) {
+            console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+          }
         }
       }
     }

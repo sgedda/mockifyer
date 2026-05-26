@@ -496,10 +496,6 @@ export class RedisMockStore {
     return { mocksCopied: copied, dateConfigCopied };
   }
 
-  async close(): Promise<void> {
-    await this.redis.quit();
-  }
-
   /**
    * Best-effort scenario discovery for dashboard UI.
    * Scans for `${keyPrefix}:index:*` keys and extracts the scenario suffix.
@@ -789,6 +785,39 @@ export class RedisMockStore {
       out.push({ clientId, lastSeenMs });
     }
     return out;
+  }
+
+  private scenarioMetaRedisKey(scenario: string): string {
+    return `${this.keyPrefix}:scenario_meta:${scenario.trim()}`;
+  }
+
+  async getScenarioMetaJson(scenario: string): Promise<{ locked?: boolean; updatedAt?: string } | null> {
+    const raw = await this.redis.get(this.scenarioMetaRedisKey(scenario));
+    if (raw === null || raw === '') return null;
+    try {
+      return JSON.parse(raw) as { locked?: boolean; updatedAt?: string };
+    } catch {
+      return null;
+    }
+  }
+
+  async isScenarioLocked(scenario: string): Promise<boolean> {
+    const m = await this.getScenarioMetaJson(scenario);
+    return m?.locked === true;
+  }
+
+  async setScenarioLocked(scenario: string, locked: boolean): Promise<void> {
+    const prev = (await this.getScenarioMetaJson(scenario)) || {};
+    const payload = {
+      ...prev,
+      locked: locked === true,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.redis.set(this.scenarioMetaRedisKey(scenario), JSON.stringify(payload));
+  }
+
+  async close(): Promise<void> {
+    await this.redis.quit();
   }
 }
 

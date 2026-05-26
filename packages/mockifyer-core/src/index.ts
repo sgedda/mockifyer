@@ -7,6 +7,7 @@ export * from './utils/mock-body-similarity';
 export * from './utils/date';
 export * from './utils/mock-response-date-overrides';
 export * from './utils/scenario';
+export * from './utils/scenario-meta';
 export * from './providers';
 // build-utils uses Node fs/path — not in main entry (breaks React Native / Metro).
 // Import from '@sgedda/mockifyer-core/utils/build-utils' in Node.js build scripts only.

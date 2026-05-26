@@ -158,6 +158,8 @@ export interface Stats {
 export interface ScenarioConfig {
   currentScenario: string
   availableScenarios: string[]
+  /** When true, mock/date edits for that scenario are blocked server-side. */
+  scenarioLocks?: Record<string, boolean>
 }
 
 /** Scenario backup JSON (`formatVersion` 1) from Settings export or GET /api/scenario-config/export */

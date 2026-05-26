@@ -20,6 +20,32 @@ const API_BASE = getApiBase()
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
 
+function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig {
+  return {
+    currentScenario: String(data.currentScenario ?? ''),
+    availableScenarios: (Array.isArray(data.scenarios)
+      ? data.scenarios
+      : Array.isArray(data.availableScenarios)
+        ? data.availableScenarios
+        : []) as string[],
+    scenarioLocks:
+      data.scenarioLocks && typeof data.scenarioLocks === 'object' && data.scenarioLocks !== null
+        ? (data.scenarioLocks as Record<string, boolean>)
+        : {},
+  }
+}
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const err = (await response.json()) as { error?: string; message?: string }
+    if (typeof err.error === 'string' && err.error) return err.error
+    if (typeof err.message === 'string' && err.message) return err.message
+  } catch {
+    // ignore
+  }
+  return fallback
+}
+
 export async function getMocks(
   scenario?: string,
   opts?: { similarGroups?: boolean; similarThreshold?: number }
@@ -119,8 +145,8 @@ export async function updateMock(
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || error.message || 'Failed to update mock')
+    const message = await readErrorMessage(response, 'Failed to update mock')
+    throw new Error(message)
   }
 }
 
@@ -148,7 +174,10 @@ export async function deleteMock(filename: string, scenario?: string): Promise<v
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'DELETE',
   })
-  if (!response.ok) throw new Error('Failed to delete mock')
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete mock')
+    throw new Error(message)
+  }
 }
 
 export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
@@ -156,7 +185,10 @@ export async function duplicateMock(filename: string, scenario?: string): Promis
   const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
     method: 'POST',
   })
-  if (!response.ok) throw new Error('Failed to duplicate mock')
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to duplicate mock')
+    throw new Error(message)
+  }
   return response.json()
 }
 
@@ -173,12 +205,21 @@ export async function getScenarioConfig(): Promise<ScenarioConfig> {
   const response = await fetch(`${API_BASE}/scenario-config`, noStore)
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
-  // Map the API response to match ScenarioConfig interface
-  // API returns 'scenarios' but frontend expects 'availableScenarios'
-  return {
-    currentScenario: data.currentScenario,
-    availableScenarios: data.scenarios || data.availableScenarios || []
+  return mapScenarioConfigPayload(data)
+}
+
+export async function setScenarioLock(scenario: string, locked: boolean): Promise<ScenarioConfig> {
+  const response = await fetch(`${API_BASE}/scenario-config/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, locked }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to update scenario lock')
+    throw new Error(message)
   }
+  const data = await response.json()
+  return mapScenarioConfigPayload(data)
 }
 
 export async function setScenario(scenario: string): Promise<void> {
@@ -276,11 +317,7 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
     throw new Error(error.error || 'Failed to create scenario')
   }
   const data = await response.json()
-  // Map the API response to match ScenarioConfig interface
-  return {
-    currentScenario: data.currentScenario,
-    availableScenarios: data.scenarios || []
-  }
+  return mapScenarioConfigPayload(data)
 }
 
 export async function exportScenarioBundle(scenario?: string): Promise<ScenarioExportBundle> {
@@ -546,8 +583,8 @@ export async function updateDateConfig(config: {
     body: JSON.stringify(config),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Failed to update date config')
+    const message = await readErrorMessage(response, 'Failed to update date config')
+    throw new Error(message)
   }
   return response.json()
 }

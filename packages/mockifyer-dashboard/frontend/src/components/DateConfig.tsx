@@ -116,6 +116,7 @@ export default function DateConfig() {
   const [saving, setSaving] = useState(false)
   const [selectedScenario, setSelectedScenario] = useState<string>('')
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
+  const [scenarioLocks, setScenarioLocks] = useState<Record<string, boolean>>({})
   const [configSource, setConfigSource] = useState<DateConfig['configSource']>()
   const [dateStorage, setDateStorage] = useState<DateConfig['storage']>()
   const [redisKey, setRedisKey] = useState<string | undefined>()
@@ -179,6 +180,7 @@ export default function DateConfig() {
       try {
         const sc = await getScenarioConfig()
         setAvailableScenarios(sc.availableScenarios)
+        setScenarioLocks(sc.scenarioLocks ?? {})
         setSelectedScenario(sc.currentScenario)
       } catch (e) {
         console.error('Failed to load scenarios:', e)
@@ -266,6 +268,14 @@ export default function DateConfig() {
   }
 
   async function handleSave() {
+    if (scenarioLocks[selectedScenario] === true) {
+      toast({
+        title: 'Scenario locked',
+        description: 'Unlock this scenario in Settings to change date manipulation.',
+        variant: 'destructive',
+      })
+      return
+    }
     try {
       setSaving(true)
       
@@ -328,6 +338,14 @@ export default function DateConfig() {
   }
 
   async function handleClear() {
+    if (scenarioLocks[selectedScenario] === true) {
+      toast({
+        title: 'Scenario locked',
+        description: 'Unlock this scenario in Settings to clear date manipulation.',
+        variant: 'destructive',
+      })
+      return
+    }
     try {
       setSaving(true)
       const cleared = await updateDateConfig({
@@ -384,6 +402,9 @@ export default function DateConfig() {
     )
   }
 
+  const selectedScenarioLocked = scenarioLocks[selectedScenario] === true
+  const formDisabled = saving || selectedScenarioLocked
+
   return (
     <div className="space-y-6">
       <Card>
@@ -395,6 +416,11 @@ export default function DateConfig() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {selectedScenarioLocked && (
+            <p className="text-sm rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-amber-950 dark:text-amber-100">
+              This scenario is locked. Date changes cannot be saved until you unlock it in Settings.
+            </p>
+          )}
           <div className="space-y-2">
             <label htmlFor="date-scenario" className="text-sm font-medium">
               Edit dates for scenario
@@ -404,7 +430,7 @@ export default function DateConfig() {
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               value={selectedScenario}
               onChange={(e) => setSelectedScenario(e.target.value)}
-              disabled={saving}
+              disabled={formDisabled}
             >
               {availableScenarios.map((s) => (
                 <option key={s} value={s}>
@@ -506,7 +532,7 @@ export default function DateConfig() {
                 }, 500)
               }}
               placeholder="Select a fixed date"
-              disabled={saving}
+              disabled={formDisabled}
             />
             <Input
               type="text"
@@ -530,7 +556,7 @@ export default function DateConfig() {
               }}
               placeholder="Or enter ISO 8601 format (e.g., 2024-12-25T00:00:00.000Z)"
               className="font-mono text-xs"
-              disabled={saving}
+              disabled={formDisabled}
             />
             <p className="text-xs text-muted-foreground">
               Set a fixed date that will always be returned. All dates will be relative to this fixed date.
@@ -572,7 +598,7 @@ export default function DateConfig() {
                     }, 500)
                   }}
                   placeholder="0"
-                  disabled={saving}
+                  disabled={formDisabled}
                 />
               </div>
               <div className="space-y-1">
@@ -601,7 +627,7 @@ export default function DateConfig() {
                     }, 500)
                   }}
                   placeholder="0"
-                  disabled={saving}
+                  disabled={formDisabled}
                 />
               </div>
               <div className="space-y-1">
@@ -630,7 +656,7 @@ export default function DateConfig() {
                     }, 500)
                   }}
                   placeholder="0"
-                  disabled={saving}
+                  disabled={formDisabled}
                 />
               </div>
               <div className="space-y-1">
@@ -659,7 +685,7 @@ export default function DateConfig() {
                     }, 500)
                   }}
                   placeholder="0"
-                  disabled={saving}
+                  disabled={formDisabled}
                 />
               </div>
             </div>
@@ -681,7 +707,7 @@ export default function DateConfig() {
                     isEditingRef.current = false
                   }, 1000)
                 }}
-                disabled={saving}
+                disabled={formDisabled}
               >
                 +1 Day
               </Button>
@@ -700,7 +726,7 @@ export default function DateConfig() {
                     isEditingRef.current = false
                   }, 1000)
                 }}
-                disabled={saving}
+                disabled={formDisabled}
               >
                 -1 Day
               </Button>
@@ -719,7 +745,7 @@ export default function DateConfig() {
                     isEditingRef.current = false
                   }, 1000)
                 }}
-                disabled={saving}
+                disabled={formDisabled}
               >
                 +1 Week
               </Button>
@@ -738,7 +764,7 @@ export default function DateConfig() {
                     isEditingRef.current = false
                   }, 1000)
                 }}
-                disabled={saving}
+                disabled={formDisabled}
               >
                 +1 Hour
               </Button>
@@ -780,7 +806,7 @@ export default function DateConfig() {
                 }}
                 placeholder="Total offset in milliseconds"
                 className="font-mono text-xs"
-                disabled={saving}
+                disabled={formDisabled}
               />
               {offset && (
                 <p className="text-xs text-muted-foreground">
@@ -846,7 +872,7 @@ export default function DateConfig() {
                   }, 200)
                 }}
                 placeholder="Search timezone (e.g., America/New_York, Europe/London)"
-                disabled={saving}
+                disabled={formDisabled}
               />
               {showTimezoneDropdown && (
                 <div
@@ -907,14 +933,14 @@ export default function DateConfig() {
           <div className="flex gap-2 pt-4 border-t">
             <Button
               onClick={handleSave}
-              disabled={saving}
+              disabled={formDisabled}
             >
               {saving ? 'Saving...' : 'Save Configuration'}
             </Button>
             <Button
               variant="outline"
               onClick={handleClear}
-              disabled={saving || mode === 'none'}
+              disabled={formDisabled || mode === 'none'}
             >
               Clear Date Manipulation
             </Button>
