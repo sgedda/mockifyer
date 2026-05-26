@@ -12,13 +12,23 @@ import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './typ
 export class MemoryProvider implements DatabaseProvider {
   private mocks: Map<string, MockData> = new Map();
   private mockCounter: number = 0;
+  private readonly initialMocks: MockData[];
+  private initialized: boolean = false;
 
   constructor(config: DatabaseProviderConfig) {
-    // Memory provider doesn't need any config, but we accept it for consistency
+    const configuredInitialMocks = config.options?.initialMocks;
+    this.initialMocks = Array.isArray(configuredInitialMocks)
+      ? (configuredInitialMocks as MockData[])
+      : [];
   }
 
   initialize(): void {
-    // Nothing to initialize for in-memory storage
+    if (!this.initialized) {
+      for (const mockData of this.initialMocks) {
+        this.save(mockData);
+      }
+      this.initialized = true;
+    }
     console.log('[Mockifyer] MemoryProvider initialized (in-memory storage)');
   }
 

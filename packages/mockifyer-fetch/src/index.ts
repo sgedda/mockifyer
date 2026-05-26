@@ -186,7 +186,8 @@ class MockifyerClass {
       this.config.clientId = launchClientId;
     } else if (
       resolveStrictScenarioResolution(this.config) &&
-      Boolean(this.config.proxy?.baseUrl?.trim())
+      (Boolean(this.config.proxy?.baseUrl?.trim()) ||
+        Boolean(this.config.intendedProxyBaseUrl?.trim()))
     ) {
       // Strict proxy: no auto lane until explicit clientId / setClientId (devtools show real URLs).
       this.config.clientId = resolveExplicitClientIdOnly(this.config);

@@ -20,8 +20,27 @@ export interface LiveApiCounts {
   pending: number;
 }
 
+function hasLiveReplayMode(m: {
+  alwaysUseRealApi?: boolean;
+  refreshOnNextRequest?: boolean;
+  alwaysRefreshFromLive?: boolean;
+  responsePending?: boolean;
+  replayMode?: string | null;
+}): boolean {
+  if (m.responsePending === true || m.alwaysUseRealApi === true) return true;
+  if (m.replayMode && m.replayMode !== 'stored') return true;
+  return m.refreshOnNextRequest === true || m.alwaysRefreshFromLive === true;
+}
+
 export function countLiveApiInMocks(
-  mocks: Array<{ endpoint?: string | null; alwaysUseRealApi?: boolean; responsePending?: boolean }>,
+  mocks: Array<{
+    endpoint?: string | null;
+    alwaysUseRealApi?: boolean;
+    refreshOnNextRequest?: boolean;
+    alwaysRefreshFromLive?: boolean;
+    responsePending?: boolean;
+    replayMode?: string | null;
+  }>,
   domainPath: string
 ): LiveApiCounts {
   const counts: LiveApiCounts = { total: 0, live: 0, pending: 0 };
@@ -29,7 +48,7 @@ export function countLiveApiInMocks(
     if (!endpointMatchesDomainPath(m.endpoint ?? null, domainPath)) continue;
     counts.total += 1;
     if (m.responsePending === true) counts.pending += 1;
-    if (m.alwaysUseRealApi === true || m.responsePending === true) counts.live += 1;
+    if (hasLiveReplayMode(m)) counts.live += 1;
   }
   return counts;
 }

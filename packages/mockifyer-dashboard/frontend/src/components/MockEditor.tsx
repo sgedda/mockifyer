@@ -270,9 +270,7 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
     }
   }
 
-  async function handleSave() {
-    let dataToSave = responseObject
-    
+  function resolveResponseDataForSave(): { ok: true; data: unknown } | { ok: false } {
     if (editMode === 'json') {
       if (!validateJSON(responseData)) {
         toast({
@@ -280,16 +278,22 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
           description: jsonError || 'Please fix JSON syntax errors',
           variant: 'destructive',
         })
-        return
+        return { ok: false }
       }
-      dataToSave = JSON.parse(responseData)
+      return { ok: true, data: JSON.parse(responseData) }
     }
+    return { ok: true, data: responseObject }
+  }
+
+  async function handleSave() {
+    const responseDataToSave = resolveResponseDataForSave()
+    if (!responseDataToSave.ok) return
 
     try {
       setSaving(true)
       await updateMock(
         mock.filename,
-        dataToSave,
+        responseDataToSave.data,
         sanitizeOverridesForSave(dateOverrides),
         replayMode,
         scenario
@@ -311,10 +315,13 @@ export default function MockEditor({ mock, scenario, onClose, onSave, variant = 
   }
 
   async function handleReplayModeChange(next: MockReplayMode) {
+    const responseDataToSave = resolveResponseDataForSave()
+    if (!responseDataToSave.ok) return
+
     setReplayMode(next)
     try {
       setSaving(true)
-      await updateMock(mock.filename, mock.data.response.data, undefined, next, scenario)
+      await updateMock(mock.filename, responseDataToSave.data, undefined, next, scenario)
       toast({
         title: 'Saved',
         description:

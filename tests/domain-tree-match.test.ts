@@ -24,4 +24,16 @@ describe('domain-tree-match', () => {
     expect(counts.live).toBe(1);
     expect(aggregateLiveApiState(counts)).toBe('mixed');
   });
+
+  it('aggregateLiveApiState reflects refresh replay modes as live', () => {
+    const mocks = [
+      { endpoint: 'https://api.example.com/a', alwaysRefreshFromLive: true },
+      { endpoint: 'https://api.example.com/b', refreshOnNextRequest: true },
+      { endpoint: 'https://api.example.com/c', replayMode: 'stored' },
+    ];
+    const counts = countLiveApiInMocks(mocks, 'api.example.com');
+    expect(counts.total).toBe(3);
+    expect(counts.live).toBe(2);
+    expect(aggregateLiveApiState(counts)).toBe('mixed');
+  });
 });
