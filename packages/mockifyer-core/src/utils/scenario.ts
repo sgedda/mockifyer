@@ -16,6 +16,30 @@ try {
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
 
+/** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
+let scenarioLaunchOverride: string | null = null;
+
+/**
+ * Set a scenario that wins over env, config, scenario-config.json, and Metro-synced scenario.
+ * Use for E2E (e.g. react-native-launch-arguments) so `args.scenario` always applies.
+ * Pass null, undefined, or '' to clear.
+ */
+export function setScenarioLaunchOverride(scenario: string | null | undefined): void {
+  if (scenario === null || scenario === undefined) {
+    scenarioLaunchOverride = null;
+    return;
+  }
+  const trimmed = String(scenario).trim();
+  scenarioLaunchOverride = trimmed === '' ? null : trimmed;
+}
+
+/**
+ * Returns the launch-override scenario if set, otherwise null.
+ */
+export function getScenarioLaunchOverride(): string | null {
+  return scenarioLaunchOverride;
+}
+
 /**
  * Simple path join helper that works in both Node.js and React Native
  */
@@ -91,16 +115,22 @@ function configDefaultScenarioName(): string | undefined {
  *
  * | Order | Source |
  * | :--- | :--- |
- * | 1 | **`MOCKIFYER_SCENARIO`** env |
- * | 2 | **`config.defaultScenario`** or **`config.scenarios.default`** (**`defaultScenario`** wins when both set) |
- * | 3 | **`scenario-config.json`** (**`scenario-config.{clientId}.json`** preferred when **`clientId`** is set and that file exists) |
- * | 4 | **`'default'`** literal seed name |
+ * | 1 | **`setScenarioLaunchOverride`** (E2E / Detox via launch arguments) |
+ * | 2 | **`MOCKIFYER_SCENARIO`** env |
+ * | 3 | **`config.defaultScenario`** or **`config.scenarios.default`** (**`defaultScenario`** wins when both set) |
+ * | 4 | **`scenario-config.json`** (**`scenario-config.{clientId}.json`** preferred when **`clientId`** is set and that file exists) |
+ * | 5 | **`'default'`** literal seed name |
  *
  * **Dashboard Redis proxy**: per-request **`scenario`** body / proxy envelope overrides **`client_scenario:{clientId}`**,
  * then global **`active_scenario`**, then this filesystem-derived fallback (unless strict lane-only mode disables global for mapped lanes —
  * see dashboard **`MOCKIFYER_STRICT_LANE_SCENARIO`**). Documented fully in README (Scenario precedence).
  */
 export function getCurrentScenario(mockDataPath?: string, clientId?: string): string {
+  if (scenarioLaunchOverride) {
+    return scenarioLaunchOverride;
+  }
+
+  // Check environment variable
   const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
   if (envScenario != null && String(envScenario).trim() !== '') {
     return String(envScenario).trim();
