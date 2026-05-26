@@ -211,8 +211,12 @@ export class HybridProvider implements DatabaseProvider {
   /**
    * Find exact match - delegate to device provider
    */
-  async findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> {
-    return this.deviceProvider.findExactMatch(request, requestKey);
+  async findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
+    return this.deviceProvider.findExactMatch(request, requestKey, options);
   }
 
   /**

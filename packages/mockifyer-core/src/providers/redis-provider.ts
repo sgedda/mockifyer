@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
@@ -51,7 +52,8 @@ export class RedisProvider implements DatabaseProvider {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RedisCtor: any;
     try {
-      RedisCtor = require('ioredis');
+      // Optional peer: allow dashboard proxy without ioredis on the app side until Redis provider is used.
+      RedisCtor = require(/* webpackIgnore: true */ 'ioredis');
     } catch {
       throw new Error(
         'Redis provider requires the optional dependency `ioredis`. Install with: npm install ioredis'
@@ -128,8 +130,10 @@ export class RedisProvider implements DatabaseProvider {
 
   async findExactMatch(
     _request: StoredRequest,
-    requestKey: string
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     const h = hashRequestKey(requestKey);
     const dataKey = await this.dataKey(h);
     const raw = await this.redis.get(dataKey);
@@ -137,7 +141,7 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    if (mockPassesThroughToRealApi(mockData)) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
     return {

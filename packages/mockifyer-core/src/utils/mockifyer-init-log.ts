@@ -4,6 +4,10 @@ import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
 import { resolveProxyStrictLaneScenario } from './proxy-strict-lane-scenario';
 import {
+  resolveRecordNewMocksAsPassthrough,
+  resolveRefreshPassthroughRecordings,
+} from './record-passthrough-config';
+import {
   isExplicitProxyScenarioContext,
   resolveStrictScenarioResolution,
 } from './strict-proxy-scenario';
@@ -148,6 +152,16 @@ export function logMockifyerInitSummary(
     if (newRecordingUsesAlwaysUseRealApi()) {
       logger.info(
         '[Mockifyer] New local recordings default to alwaysUseRealApi (live API until you uncheck in the dashboard). Set MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false to replay mocks immediately after capture.'
+      );
+    }
+    if (resolveRecordNewMocksAsPassthrough(config)) {
+      logger.info(
+        '[Mockifyer] recordNewMocksAsPassthrough: true — new recordings use alwaysUseRealApi until activated in the dashboard.'
+      );
+    }
+    if (resolveRefreshPassthroughRecordings(config)) {
+      logger.info(
+        '[Mockifyer] refreshPassthroughRecordings: true — passthrough recordings are updated on each live API response.'
       );
     }
   }

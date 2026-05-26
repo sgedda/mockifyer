@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -7,8 +7,10 @@ import MockEditor from './MockEditor'
 import StatsView from './StatsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
+import Network from './Network'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
+import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Badge } from '@/components/ui/badge'
@@ -20,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Lock } from 'lucide-react'
 
 interface DashboardProps {
   scenario: string
@@ -31,6 +33,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const location = useLocation()
   const navigate = useNavigate()
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
+  const [scenarioLocks, setScenarioLocks] = useState<Record<string, boolean>>({})
   const [switchingScenario, setSwitchingScenario] = useState(false)
   const [scenarioFilter, setScenarioFilter] = useState('')
   const [proxyRecordOnMiss, setProxyRecordOnMiss] = useState<boolean | null>(null)
@@ -42,6 +45,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
     if (path === '/timeline') return 'timeline'
+    if (path === '/network') return 'network'
     if (path === '/date-config') return 'date-config'
     if (path === '/settings') return 'settings'
     return 'stats' // default to stats (root path)
@@ -58,17 +62,21 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const { toast } = useToast()
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const config = await getScenarioConfig()
-        const scenarios = (config as any).scenarios || config.availableScenarios || ['default']
-        setAvailableScenarios(scenarios)
-      } catch {
-        setAvailableScenarios(['default'])
-      }
-    })()
+  const refreshScenarioConfig = useCallback(async () => {
+    try {
+      const cfg = await getScenarioConfig()
+      const next = cfg.availableScenarios?.length ? cfg.availableScenarios : ['default']
+      setAvailableScenarios(next)
+      setScenarioLocks(cfg.scenarioLocks ?? {})
+    } catch {
+      setAvailableScenarios(['default'])
+      setScenarioLocks({})
+    }
   }, [])
+
+  useEffect(() => {
+    void refreshScenarioConfig()
+  }, [scenario, refreshScenarioConfig])
 
   useEffect(() => {
     void (async () => {
@@ -157,6 +165,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
       'timeline': '/timeline',
+      'network': '/network',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -233,15 +242,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }
 
-  const filteredMocks = mocks.filter(mock => {
-    const query = searchQuery.toLowerCase()
-    return (
-      mock.filename.toLowerCase().includes(query) ||
-      mock.endpoint?.toLowerCase().includes(query) ||
-      mock.graphqlInfo?.query.toLowerCase().includes(query) ||
-      mock.method?.toLowerCase().includes(query)
-    )
-  })
+  // Mocks come from GET /mocks or /mocks/search (full JSON); extra client filtering hid response-body hits.
 
   const filteredScenarioOptions = availableScenarios
     .filter((s) => s && s.trim())
@@ -255,6 +256,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       if (b === scenario) return 1
       return a.localeCompare(b)
     })
+
+  const scenarioLocked = scenarioLocks[scenario] === true
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -365,8 +368,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   size="sm"
                   className="h-9 gap-2"
                   disabled={switchingScenario}
-                  title="Change scenario"
+                  title={scenarioLocked ? 'Scenario is locked (read-only mocks)' : 'Change scenario'}
                 >
+                  {scenarioLocked ? (
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                  ) : null}
                   <Badge variant="outline" className="font-mono">
                     {scenario}
                   </Badge>
@@ -404,6 +410,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </DropdownMenu>
           </div>
         </header>
+        <ClientConnectionsPanel />
         <main className="flex-1 overflow-auto p-6">
           <Routes>
             <Route
@@ -422,10 +429,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={
                 <div className="space-y-6">
                   <MockList
-                    mocks={filteredMocks}
+                    mocks={mocks}
                     allMocks={allMocks}
                     similarBodyGroups={similarBodyGroups}
                     scenario={scenario}
+                    scenarioLocked={scenarioLocked}
                     loading={loading}
                     loadingMock={loadingMock}
                     searchQuery={searchQuery}
@@ -451,6 +459,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                             variant="modal"
                             mock={selectedMock}
                             scenario={scenario}
+                            scenarioLocked={scenarioLocked}
                             onClose={() => setSelectedMock(null)}
                             onSave={loadMocks}
                           />
@@ -462,16 +471,19 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"
               element={
                 <Settings
                   scenario={scenario}
+                  scenarioLocks={scenarioLocks}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)
                     setSelectedMock(null)
                   }}
+                  onScenarioConfigRefresh={refreshScenarioConfig}
                 />
               }
             />

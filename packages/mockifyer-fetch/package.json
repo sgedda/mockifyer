@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-fetch",
-  "version": "1.8.30",
+  "version": "1.8.32",
   "description": "Mockifyer for Fetch - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -55,8 +55,20 @@
     "@types/node": "^20.11.24",
     "typescript": "^5.3.3"
   },
+  "peerDependencies": {
+    "react-native-launch-arguments": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native-launch-arguments": {
+      "optional": true
+    }
+  },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
   },
   "repository": {
     "type": "git",

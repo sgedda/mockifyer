@@ -7,13 +7,15 @@
 
 import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 import { setupMockifyer } from './index';
-import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
+import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient, setScenarioLaunchOverride } from '@sgedda/mockifyer-core';
 import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   tryGetClientIdFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
+  resolveRecordResponses,
+  resolveStrictScenarioResolution,
   type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
@@ -62,6 +64,16 @@ export interface ReactNativeMockifyerConfig {
   bundledDataPath?: string;
   /** Enable recording mode (development only) */
   recordMode?: boolean;
+  /**
+   * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
+   * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
+   */
+  useLaunchArgumentsScenario?: boolean;
+  /**
+   * Sets the same highest-priority scenario as {@link useLaunchArgumentsScenario} when you pass the value yourself
+   * (e.g. after reading launch args). Ignored if empty after trim.
+   */
+  defaultScenario?: string;
   /** Additional Mockifyer config options */
   config?: Partial<Parameters<typeof setupMockifyer>[0]>;
   /** Optional: route real network calls through a proxy service (e.g. mockifyer-dashboard in Redis mode) */
@@ -73,6 +85,15 @@ export interface ReactNativeMockifyerConfig {
    * Deprecated: prefer using `recordMode` when `proxyBaseUrl` is provided.
    */
   proxyRecordOnMiss?: boolean;
+  /**
+   * When false, dashboard proxy stores request-only stubs on cache miss (Responses: Off).
+   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+   */
+  proxyRecordResponses?: boolean;
+  /**
+   * When true, skip `GET /api/health` and always wire dashboard proxy (same as Node preset).
+   */
+  skipDashboardRedisHealthCheck?: boolean;
   /**
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
@@ -88,6 +109,36 @@ export interface ReactNativeMockifyerConfig {
    * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` (aliases e.g. `e2e`, `maestro` → `launch_client`).
    */
   runtimeMode?: MockifyerRuntimeMode;
+}
+
+/**
+ * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ */
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): void {
+  let applied = false;
+  if (options.useLaunchArgumentsScenario) {
+    try {
+      // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
+      const LaunchArguments = mod.LaunchArguments;
+      const raw =
+        LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;
+      const scenario = raw?.scenario;
+      if (scenario !== undefined && scenario !== null && String(scenario).trim() !== '') {
+        setScenarioLaunchOverride(String(scenario).trim());
+        applied = true;
+      }
+    } catch {
+      // Package not installed or native module unavailable
+    }
+  }
+  if (!applied && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+    const t = String(options.defaultScenario).trim();
+    if (t !== '') {
+      setScenarioLaunchOverride(t);
+    }
+  }
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -145,6 +196,7 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
  *   mockDataPath: 'mock-data',
  *   bundledDataPath: './assets/mock-data',
  *   recordMode: process.env.MOCKIFYER_RECORD === 'true',
+ *   useLaunchArgumentsScenario: true, // optional: scenario from react-native-launch-arguments (highest priority)
  * });
  * // result.status: 'not_activated' | 'active' | 'failed_no_bundled_mocks'
  * ```
@@ -161,12 +213,17 @@ export async function setupMockifyerForReactNative(
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
+    proxyRecordResponses,
+    skipDashboardRedisHealthCheck,
     useLaunchArgumentsClientId = false,
     launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
     runtimeMode: runtimeModeOption,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
+  const proxyShouldRecordResponses = resolveRecordResponses(
+    proxyRecordResponses ?? userConfig.proxy?.recordResponses
+  );
 
   const launchClientIdKey =
     launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
@@ -189,10 +246,13 @@ export async function setupMockifyerForReactNative(
       : {}),
   };
 
-  const devInitHeadline = (strictProxy: boolean) =>
-    strictProxy
-      ? 'React Native dev · dashboard Redis proxy'
-      : 'React Native dev · hybrid (device + Metro)';
+  const devInitHeadline = (strictProxy: boolean, strictProxyOnlyFallback: boolean) => {
+    if (strictProxy) return 'React Native dev · dashboard Redis proxy';
+    if (strictProxyOnlyFallback) {
+      return 'React Native dev · strict proxy-only (dashboard unhealthy — local recording disabled)';
+    }
+    return 'React Native dev · hybrid (device + Metro)';
+  };
 
   const isEnabled =
     resolvedRuntimeMode === 'on' ||
@@ -205,10 +265,26 @@ export async function setupMockifyerForReactNative(
     return { status: 'not_activated', instance: null } as const;
   }
 
+  applyReactNativeScenarioOptions(options);
+
   if (isDev === true) {
     const strictProxyEnabled = proxyBaseUrl
-      ? await canUseDashboardRedisProxy(proxyBaseUrl)
+      ? skipDashboardRedisHealthCheck === true ||
+        (await canUseDashboardRedisProxy(proxyBaseUrl))
       : false;
+
+    const strictProxyOnlyFallback =
+      Boolean(proxyBaseUrl?.trim()) &&
+      !strictProxyEnabled &&
+      resolveStrictScenarioResolution(mergedConfig);
+
+    if (strictProxyOnlyFallback) {
+      logger.warn(
+        `[Mockifyer] Strict proxy-only: "${proxyBaseUrl}" did not report healthy Redis. ` +
+          'Using memory provider without local recording. Start mockifyer-dashboard --provider redis ' +
+          'or set skipDashboardRedisHealthCheck: true to force proxy.'
+      );
+    }
 
     // DEVELOPMENT MODE (React Native app running in dev)
     // Use Hybrid provider - saves to both device AND project folder simultaneously
@@ -240,26 +316,48 @@ export async function setupMockifyerForReactNative(
 
     const instance = setupMockifyer({
       mockDataPath,
-      databaseProvider: strictProxyEnabled
-        ? {
-            // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
-            type: 'memory',
-          }
-        : databaseProviderConfig,
+      databaseProvider:
+        strictProxyEnabled || strictProxyOnlyFallback
+          ? {
+              // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
+              type: 'memory',
+            }
+          : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
-      proxy: strictProxyEnabled && proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
-        : undefined,
+      proxy:
+        strictProxyEnabled && proxyBaseUrl
+          ? {
+              baseUrl: proxyBaseUrl,
+              scenario: proxyScenario,
+              recordOnMiss: proxyShouldRecordOnMiss,
+              recordResponses: proxyShouldRecordResponses,
+            }
+          : undefined,
+      ...(strictProxyEnabled
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
-      initLog: { headline: mergedConfig.initLog?.headline ?? devInitHeadline(strictProxyEnabled) },
+      ...(strictProxyOnlyFallback
+        ? {
+            databaseProvider: { type: 'memory' as const },
+            intendedProxyBaseUrl: proxyBaseUrl!.trim(),
+          }
+        : {}),
+      initLog: {
+        headline:
+          mergedConfig.initLog?.headline ??
+          devInitHeadline(strictProxyEnabled, strictProxyOnlyFallback),
+      },
     });
 
-    if (!strictProxyEnabled) {
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
       logger.info(`[Mockifyer] Metro: http://localhost:${metroPort}/mockifyer-save · scenario: /mockifyer-scenario-config`);
     }
 
-    if (!strictProxyEnabled) {
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
       // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
       try {
         await instance.reloadMockData(true);
@@ -298,8 +396,18 @@ export async function setupMockifyerForReactNative(
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
+        ? {
+            baseUrl: proxyBaseUrl,
+            scenario: proxyScenario,
+            recordOnMiss: proxyShouldRecordOnMiss,
+            recordResponses: proxyShouldRecordResponses,
+          }
         : undefined,
+      ...(proxyBaseUrl
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
       initLog: {
         headline:

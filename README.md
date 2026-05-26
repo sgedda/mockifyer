@@ -1,6 +1,6 @@
 # Mockifyer
 
-**Hosted site:** [mockifyer.up.railway.app](https://mockifyer.up.railway.app/) — public **playground / live demo** of the Mockifyer **dashboard**: explore the UI, how mocks and scenarios are presented, and the overall workflow **without cloning this repo**. It runs on Railway; the URL may change when a stable domain is set up. To **use Mockifyer in your own app**, install the npm packages below (the hosted app is for trying the product, not a hosted backend for your code).
+**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code).
 
 **Contact:** **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)) — [open an issue](https://github.com/sgedda/mockifyer/issues) for bugs and ideas, or a [pull request](https://github.com/sgedda/mockifyer/pulls) if you already have a change. General GitHub profile: [@sgedda](https://github.com/sgedda).
 
@@ -115,8 +115,10 @@ Priority: env vars → `setupMockifyer` config → system time.
 |----------|-------------|
 | `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
-| `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** “Record on miss” |
-| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy “replay mock immediately after capture” behavior |
+| `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** "Record on miss" |
+| `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy "replay mock immediately after capture" behavior |
+| `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New recordings get `alwaysUseRealApi` (visible in dashboard, live API until activated) |
+| `MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS` | Update passthrough mock files in place on each live API response |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |

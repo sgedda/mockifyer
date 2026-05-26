@@ -77,6 +77,17 @@ export interface MockifyerConfig {
   /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
   initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
+  /**
+   * When true (and {@link MockifyerConfig.recordMode} is on), newly recorded mocks are saved with
+   * {@link MockData.alwaysUseRealApi} so they stay on the live API until activated in the dashboard.
+   * Env **`MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH`** overrides this field when set.
+   */
+  recordNewMocksAsPassthrough?: boolean;
+  /**
+   * When true, existing passthrough recordings (`alwaysUseRealApi`) are updated in place on each
+   * real API response instead of skipping save. Env **`MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS`** overrides.
+   */
+  refreshPassthroughRecordings?: boolean;
   useSimilarMatch?: boolean; // When true, try to find similar path matches
   useSimilarMatchCheckResponse?: boolean; // When true, check response data when using similar match
   similarMatchRequiredParams?: string[]; // Query parameters that must match for similar match to be used (e.g., ['season', 'league']). If not set, all query params are ignored by default.
@@ -110,9 +121,16 @@ export interface MockifyerConfig {
   /**
    * When true (or **`MOCKIFYER_STRICT_SCENARIO=true`**), and **`proxy.baseUrl`** is set, outbound traffic is not routed
    * through Mockifyer until **`clientId`** (lane) or **`proxy.scenario`** is explicitly set — passthrough plain HTTP otherwise.
+   * When combined with {@link intendedProxyBaseUrl} (dashboard proxy intended but unavailable), local hybrid/filesystem
+   * recording is blocked.
    * See **`isExplicitProxyScenarioContext`** / **`resolveStrictScenarioResolution`** in **`@sgedda/mockifyer-core`**.
    */
   strictScenarioResolution?: boolean;
+  /**
+   * Set when init intended dashboard/Redis proxy but the proxy is not active (e.g. health check failed).
+   * With {@link strictScenarioResolution}, blocks local filesystem/hybrid/Metro mock saves.
+   */
+  intendedProxyBaseUrl?: string;
   requestMatching?: {
     headers?: string[];
     ignoreQueryParams?: string[];
@@ -147,6 +165,11 @@ export interface MockifyerConfig {
      */
     recordOnMiss?: boolean;
     /**
+     * When false, proxy stores request-only stubs (`responsePending`) on cache miss instead of full responses.
+     * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+     */
+    recordResponses?: boolean;
+    /**
      * When true (default when `baseUrl` is set), dashboard Redis proxy does not fall back to global
      * `active_scenario` if `clientId` is set but `client_scenario:{clientId}` is missing — upstream passthrough only.
      * Override via **`MOCKIFYER_STRICT_LANE_SCENARIO`** env (wins over this field).
@@ -158,6 +181,17 @@ export interface MockifyerConfig {
      * Env **`MOCKIFYER_PROXY_MIRROR_TO_CLIENT`** (`true`/`1`) enables when this field is omitted.
      */
     mirrorRecordedMocksToClient?: boolean;
+  };
+  /**
+   * Best-effort traffic log to mockifyer-dashboard (`POST /api/network-events`).
+   * Uses `proxy.baseUrl` when `dashboardBaseUrl` is omitted. Env **`MOCKIFYER_DASHBOARD_URL`** overrides.
+   */
+  networkLog?: {
+    /** When false, disables SDK-side network log POSTs (dashboard proxy may still log). */
+    enabled?: boolean;
+    dashboardBaseUrl?: string;
+    /** When true, include truncated request/response body previews in events. */
+    captureBodies?: boolean;
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
@@ -243,6 +277,27 @@ export interface MockResponseDateOverride {
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }
 
+/**
+ * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
+ * Applied at replay before {@link MockResponseDateOverride}.
+ */
+export interface MockResponseFieldOverride {
+  /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
+  path: string;
+  value: unknown;
+}
+
+export interface CopyArrayItemParams {
+  /** Dot path to the array from `response.data` root (e.g. `bookings` or `data.bookings`). */
+  arrayPath: string;
+  /** Index of the existing item to clone. */
+  fromIndex: number;
+  /** Fields to merge onto the clone (keys are dot-paths relative to the item root). */
+  itemOverrides?: Record<string, unknown>;
+  /** Where to insert the clone. Default `append`. */
+  insertAt?: 'append' | 'prepend' | number;
+}
+
 export interface MockData {
   request: StoredRequest;
   response: StoredResponse;
@@ -250,14 +305,35 @@ export interface MockData {
   duration?: number; // Request duration in milliseconds
   scenario?: string;
   sessionId?: string; // Unique identifier for grouping related requests
+  /** Unique id for this outbound hop (see request correlation headers). */
+  requestId?: string;
+  /** Id of the outbound request that triggered this hop. */
+  parentRequestId?: string;
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
+  /** Optional: when serving this mock, replace field values at the given paths (overlay on stored body). */
+  responseFieldOverrides?: MockResponseFieldOverride[];
   /**
    * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
    * The file is still kept (e.g. for documentation or for updating while recording).
    * New recordings default this to **true** (store the body, keep calling live) until disabled in the dashboard; see **`MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API`**.
    */
   alwaysUseRealApi?: boolean;
+  /**
+   * When true, the next outbound request fetches upstream, updates the stored response body, clears this flag,
+   * and returns the live response (with {@link responseDateOverrides} applied when configured).
+   */
+  refreshOnNextRequest?: boolean;
+  /**
+   * When true, every request fetches upstream, updates the stored response body, and returns the live response
+   * (with {@link responseDateOverrides} applied when configured). The mock remains active (not passthrough).
+   */
+  alwaysRefreshFromLive?: boolean;
+  /**
+   * Request registered in the corpus without a captured response yet.
+   * Implies live API until a response is stored and {@link alwaysUseRealApi} is cleared.
+   */
+  responsePending?: boolean;
 }
 
 // Environment variable names
@@ -290,5 +366,13 @@ export const ENV_VARS = {
    * When not `false`, new recordings get **`alwaysUseRealApi: true`** (store body, keep using live API until disabled in the UI).
    */
   MOCK_RECORD_DEFAULT_ALWAYS_USE_REAL_API: 'MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API',
+  /** New recordings default to passthrough until activated in the dashboard. */
+  MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
+  /** When `false`, proxy may persist request-only stubs (`responsePending`) instead of full responses. */
+  MOCK_RECORD_RESPONSES: 'MOCKIFYER_RECORD_RESPONSES',
+  /** Overwrite passthrough recordings on each live API response. */
+  MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
+  /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
+  MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
 } as const;
 

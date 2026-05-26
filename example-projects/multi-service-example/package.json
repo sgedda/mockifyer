@@ -1,0 +1,29 @@
+{
+  "name": "multi-service-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js + gateway + axios relay + catalog, Mockifyer-enabled with one MOCKIFYER_CLIENT_ID lane",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
+    "dev:record": "cross-env MOCKIFYER_RECORD=true concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
+    "dev:web": "npm run dev -w @multi-service/web",
+    "dev:gateway": "npm run dev -w @multi-service/gateway-api",
+    "dev:relay": "npm run dev -w @multi-service/relay-axios-api",
+    "dev:catalog": "npm run dev -w @multi-service/catalog-api",
+    "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
+    "dashboard:redis": "MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --port 3002",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose down",
+    "redis:logs": "docker compose logs -f redis"
+  },
+  "devDependencies": {
+    "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3"
+  }
+}

@@ -1,0 +1,82 @@
+# Mockifyer — full reference for AI assistants
+
+> Mockifyer records and replays HTTP requests made via axios or fetch. Mock data is stored as JSON files under `mock-data/<scenario>/`. Official site: https://mockifyer.dev
+
+## Packages (install these, not the repo root)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@sgedda/mockifyer-core` | 1.8.37 | Types, matching, scenarios, dates, activation, AI context |
+| `@sgedda/mockifyer-axios` | 1.8.21 | `setupMockifyer` for Axios |
+| `@sgedda/mockifyer-fetch` | 1.8.31 | fetch, React Native, dashboard proxy |
+| `@sgedda/mockifyer-dashboard` | 1.4.50 | CLI + UI, Redis proxy, client lanes |
+| `@sgedda/mockifyer-mcp` | 0.1.0 | MCP for Cursor/Claude (requires dashboard) |
+| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities |
+
+## Setup (axios)
+
+Initialize **before** importing axios:
+
+```typescript
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
+setupMockifyer({
+  mockDataPath: './mock-data',
+  recordMode: process.env.MOCKIFYER_RECORD === 'true',
+  useGlobalAxios: true,
+});
+
+import axios from 'axios';
+```
+
+## Activation modes (Node axios/fetch)
+
+| Mode | Behavior |
+|------|----------|
+| `always` | Default — all requests use Mockifyer |
+| `client_id_header` | Only when `X-Mockifyer-Client-Id` is set |
+| `off` | Plain HTTP |
+
+Env: `MOCKIFYER_ACTIVATION_MODE` overrides config.
+
+## React Native startup
+
+`MOCKIFYER_MODE`: `on` (default) | `launch_client` | `off` — gates fetch patching at startup via `setupMockifyerForReactNative`.
+
+## Common environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `MOCKIFYER_RECORD` | Record real responses |
+| `MOCKIFYER_PATH` | Mock data root |
+| `MOCKIFYER_SCENARIO` | Active scenario |
+| `MOCKIFYER_CLIENT_ID` | Client lane (multi-service / Redis proxy) |
+| `MOCKIFYER_ACTIVATION_MODE` | always \| client_id_header \| off |
+| `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New mocks stay on live API until dashboard activation |
+| `MOCKIFYER_USE_SIMILAR_MATCH` | Path fallback matching |
+| `MOCKIFYER_DATE` / `OFFSET` / `TIMEZONE` | Date manipulation |
+
+## GraphQL
+
+Request keys: normalized query + sorted variables JSON.
+
+## Dashboard & MCP
+
+```bash
+npx @sgedda/mockifyer-dashboard --path ./mock-data
+```
+
+MCP tools (with dashboard running): `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`.
+
+Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight field/schema projections.
+
+## Request correlation
+
+Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for multi-hop tracing.
+
+## Links
+
+- https://mockifyer.dev
+- https://mockifyer.dev/getting-started.md
+- https://mockifyer.dev/config-reference.md
+- https://github.com/sgedda/mockifyer

@@ -1,10 +1,14 @@
-import { BaseHTTPClient } from '@sgedda/mockifyer-core';
-import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 import {
+  BaseHTTPClient,
+  HTTPRequestConfig,
+  HTTPResponse,
+  logger,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_HEADER,
 } from '@sgedda/mockifyer-core';
 import { joinProxyDashboardApiUrl } from '../utils/join-proxy-dashboard-api-url';
 
@@ -13,10 +17,13 @@ function buildProxyEnvelope(params: {
   method: string;
   lane: string | undefined;
   deviceId: string | undefined;
+  requestId: string | undefined;
+  parentRequestId: string | undefined;
   headers: Record<string, string>;
   body: unknown;
   scenario: string | undefined;
   recordOnMiss: boolean | undefined;
+  recordResponses: boolean;
   strictLaneScenario: boolean;
 }): Record<string, unknown> {
   const {
@@ -24,10 +31,13 @@ function buildProxyEnvelope(params: {
     method,
     lane,
     deviceId,
+    requestId,
+    parentRequestId,
     headers,
     body,
     scenario,
     recordOnMiss,
+    recordResponses,
     strictLaneScenario,
   } = params;
   const envelope: Record<string, unknown> = {
@@ -35,9 +45,12 @@ function buildProxyEnvelope(params: {
     method,
     clientId: lane,
     deviceId,
+    requestId,
+    parentRequestId,
     headers,
     body,
     scenario,
+    recordResponses,
     strictLaneScenario,
   };
   if (typeof recordOnMiss === 'boolean') {
@@ -53,8 +66,10 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyScenario?: string;
   /** When set, included as `record` on `/api/proxy`. When unset, dashboard per-scenario default applies. */
   private proxyRecordOnMiss?: boolean;
+  private proxyRecordResponses: boolean;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
+  private getExplicitProxyScenarioContext?: () => boolean;
   private clientIdSnapshot?: string;
   private deviceId?: string;
 
@@ -65,12 +80,15 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       baseUrl: string;
       scenario?: string;
       recordOnMiss?: boolean;
+      recordResponses?: boolean;
       strictLaneScenario?: boolean;
       mirrorRecordedMocksToClient?: boolean;
     };
     clientId?: string;
     getClientId?: () => string | undefined;
     getStrictLaneScenario?: () => boolean;
+    /** When false, skip `/api/proxy` and call the real URL (devtools-friendly passthrough). */
+    getExplicitProxyScenarioContext?: () => boolean;
     deviceId?: string;
   }) {
     super();
@@ -79,8 +97,10 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyBaseUrl = config?.proxy?.baseUrl;
     this.proxyScenario = config?.proxy?.scenario;
     this.proxyRecordOnMiss = config?.proxy?.recordOnMiss;
+    this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
+    this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
   }
@@ -146,9 +166,13 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     const lane = this.resolvedClientLane();
     const bypassMockifyer =
       (config as any).__mockifyer_bypass === true || (config as any).__mockifyer_skip_save === true;
+    const hopRequestId = (config as any).__mockifyer_requestId as string | undefined;
+    const hopParentRequestId = (config as any).__mockifyer_parentRequestId as string | undefined;
+
+    const explicitProxyContext = this.getExplicitProxyScenarioContext?.() ?? true;
 
     // Proxy mode (e.g. React Native → dashboard → Redis)
-    if (this.proxyBaseUrl && !bypassMockifyer) {
+    if (this.proxyBaseUrl && !bypassMockifyer && explicitProxyContext) {
       const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
       const proxyResponse = await fetchFn(proxyUrl, {
         method: 'POST',
@@ -156,6 +180,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           'content-type': 'application/json',
           ...(lane ? { [MOCKIFYER_CLIENT_ID_HEADER]: lane } : {}),
           ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
+          ...(hopRequestId ? { [MOCKIFYER_REQUEST_ID_HEADER]: hopRequestId } : {}),
+          ...(hopParentRequestId ? { [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: hopParentRequestId } : {}),
         },
         body: JSON.stringify(
           buildProxyEnvelope({
@@ -163,6 +189,8 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
             method: String(requestConfig.method || 'GET'),
             lane,
             deviceId: this.deviceId,
+            requestId: hopRequestId,
+            parentRequestId: hopParentRequestId,
             headers: (() => {
               const out: Record<string, string> = {};
               headers.forEach((value, key) => {
@@ -173,6 +201,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
             body: config.data ?? null,
             scenario: this.proxyScenario,
             recordOnMiss: this.proxyRecordOnMiss,
+            recordResponses: this.proxyRecordResponses,
             strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
           })
         ),
@@ -189,7 +218,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
           const hashShort = hash ? `${hash.slice(0, 8)}…` : '';
           const laneLabel = lane ? lane : '—';
           const kind = source === 'redis' ? 'mock hit' : 'upstream';
-          console.log(
+          logger.debug(
             `[Mockifyer-Fetch] Proxy ${kind}: ${requestConfig.method} ${url} ${
               hashShort ? `(hash=${hashShort}) ` : ''
             }(lane=${laneLabel})`

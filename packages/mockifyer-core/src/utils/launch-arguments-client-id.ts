@@ -22,7 +22,7 @@ export function tryGetClientIdFromLaunchArguments(
   try {
     // Optional peer — not a hard dependency so Node/tests work without RN.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-launch-arguments') as {
+    const mod = require(/* webpackIgnore: true */ 'react-native-launch-arguments') as {
       LaunchArguments?: { value: () => Record<string, unknown> };
     };
     const LaunchArguments = mod?.LaunchArguments;
