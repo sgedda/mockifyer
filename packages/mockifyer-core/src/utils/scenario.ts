@@ -131,6 +131,7 @@ export function getCurrentScenario(mockDataPath?: string, clientId?: string): st
   }
 
   // Check environment variable
+  const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
   if (envScenario != null && String(envScenario).trim() !== '') {
     return String(envScenario).trim();
   }
