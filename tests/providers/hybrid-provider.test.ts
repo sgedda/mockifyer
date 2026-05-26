@@ -1,5 +1,4 @@
 import { HybridProvider } from '../../packages/mockifyer-core/src/providers/hybrid-provider';
-import { ExpoFileSystemProvider } from '../../packages/mockifyer-core/src/providers/expo-filesystem-provider';
 import { MockData, StoredRequest } from '../../packages/mockifyer-core/src/types';
 import { generateRequestKey } from '../../packages/mockifyer-core/src/utils/mock-matcher';
 
@@ -20,12 +19,6 @@ describe('HybridProvider', () => {
   const mockMetroUrl = `http://localhost:${mockMetroPort}`;
 
   /** Expo FS v2 API mocks (Directory.create / File.write), shared for assertions */
-  let defaultDir: {
-    exists: boolean;
-    create: jest.Mock;
-    list: jest.Mock;
-    delete: jest.Mock;
-  };
   let defaultFile: {
     exists: boolean;
     modificationTime: number | null;
@@ -36,24 +29,44 @@ describe('HybridProvider', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Setup default FileSystem mocks (Paths.document.uri is used by ExpoFileSystemProvider)
+
     mockFileSystem.documentDirectory = '/mock/document/dir/';
+    let rootEnsured = false;
+    let scenarioEnsured = false;
     mockFileSystem.Paths = {
       document: { uri: '/mock/document/dir/' },
-      info: jest.fn().mockReturnValue({ exists: true, isDirectory: true }),
+      info: jest.fn((uri: string) => {
+        const n = uri.replace(/\/$/, '');
+        const isScenario = n.endsWith('/mock-data/default');
+        const isMockRoot = n.endsWith('/mock-data') && !isScenario;
+        if (isMockRoot) {
+          return { exists: rootEnsured, isDirectory: rootEnsured };
+        }
+        if (isScenario) {
+          return { exists: scenarioEnsured, isDirectory: scenarioEnsured };
+        }
+        return { exists: true, isDirectory: true };
+      }),
     };
     mockFileSystem.readDirectoryAsync.mockResolvedValue([]);
     mockFileSystem.getInfoAsync.mockResolvedValue({ exists: false });
     mockFileSystem.makeDirectoryAsync.mockResolvedValue(undefined);
     mockFileSystem.writeAsStringAsync.mockResolvedValue(undefined);
 
-    defaultDir = {
+    mockFileSystem.Directory = jest.fn().mockImplementation((uri: string) => ({
       exists: false,
-      create: jest.fn(),
+      uri,
+      create: jest.fn(() => {
+        const n = String(uri).replace(/\/$/, '');
+        if (n.endsWith('/mock-data/default')) {
+          scenarioEnsured = true;
+        } else if (n.endsWith('/mock-data')) {
+          rootEnsured = true;
+        }
+      }),
       list: jest.fn().mockReturnValue([]),
       delete: jest.fn(),
-    };
+    }));
     defaultFile = {
       exists: false,
       modificationTime: null,
@@ -62,7 +75,6 @@ describe('HybridProvider', () => {
       delete: jest.fn(),
     };
     mockFileSystem.File = jest.fn().mockReturnValue(defaultFile);
-    mockFileSystem.Directory = jest.fn().mockReturnValue(defaultDir);
 
     // Setup default fetch mock
     mockFetch.mockResolvedValue({
@@ -87,7 +99,7 @@ describe('HybridProvider', () => {
   describe('initialization', () => {
     it('should initialize successfully', async () => {
       await provider.initialize();
-      expect(defaultDir.create).toHaveBeenCalled();
+      expect(mockFileSystem.Directory).toHaveBeenCalled();
     });
 
     it('should use default metro port if not specified', () => {

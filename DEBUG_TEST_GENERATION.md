@@ -76,7 +76,7 @@ outputPath: '/tests/generated'  // ❌ Wrong - absolute path might not work
 Make sure recording is enabled:
 
 ```bash
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 ```
 
 ### 7. Check File System Access

@@ -9,6 +9,17 @@ export interface MockResponseDateOverride {
   format?: 'iso' | 'unix-ms' | 'unix-s'
 }
 
+export interface SimilarBodyGroupSummary {
+  id: string
+  operationName: string | null
+  minSimilarity: number
+  filenames: string[]
+  size: number
+}
+
+/** How Mockifyer serves this recording on the next request. */
+export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'passthrough'
+
 export interface MockFile {
   filename: string
   filePath: string
@@ -21,6 +32,7 @@ export interface MockFile {
   graphqlInfo: {
     query: string
     variables: any
+    operationName?: string | null
   } | null
   sessionId: string | null
   hasResponseDateOverrides?: boolean
@@ -30,6 +42,16 @@ export interface MockFile {
   }>
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
+  replayMode?: MockReplayMode
+  refreshOnNextRequest?: boolean
+  alwaysRefreshFromLive?: boolean
+  /** Request registered without a captured response yet. */
+  responsePending?: boolean
+  /**
+   * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
+   * (same GraphQL op + variables + URL; high token overlap with other members).
+   */
+  similarBodyGroup?: { id: string; size: number; minSimilarity: number } | null
 }
 
 export interface MockData {
@@ -49,18 +71,73 @@ export interface MockData {
     }
     timestamp?: string
     duration?: number // Request duration in milliseconds
+    /** Alternate duration field from some recordings */
+    responseTime?: number
     scenario?: string
     sessionId?: string
+    requestId?: string
+    parentRequestId?: string
+    sequence?: number
+    source?: string
+    callStack?: string[]
     /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
     responseDateOverrides?: MockResponseDateOverride[]
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
     alwaysUseRealApi?: boolean
+    refreshOnNextRequest?: boolean
+    alwaysRefreshFromLive?: boolean
   }
   metadata: {
     size: number
     created: string
     modified: string
   }
+}
+
+export type AiContextMode = 'profile' | 'schema' | 'suggest' | 'full'
+
+export interface AiFieldSchemaInfo {
+  type: string
+  enum?: unknown[]
+  nullable?: boolean
+}
+
+export interface AiStateHint {
+  path: string
+  observed: unknown[]
+}
+
+export interface ScoredAiPath {
+  path: string
+  score: number
+  reasons: string[]
+  sampleValue?: unknown
+}
+
+export interface AiContextDiscoveryMeta {
+  sources: string[]
+  includedPaths: number
+  omittedPaths: number
+  omittedBytes: number
+  mode: AiContextMode
+}
+
+export interface AiContextProfile {
+  fields: Record<string, unknown>
+  schema: Record<string, AiFieldSchemaInfo>
+  stateHints: AiStateHint[]
+}
+
+export interface MockAiContext {
+  filename: string
+  scenario: string
+  endpoint: { method: string; url: string; pathname: string }
+  status: number
+  mode: AiContextMode
+  profile: AiContextProfile
+  discovery: AiContextDiscoveryMeta
+  suggestions?: ScoredAiPath[]
+  data?: MockData['data']
 }
 
 export interface Stats {
@@ -83,5 +160,75 @@ export interface ScenarioConfig {
   availableScenarios: string[]
   /** When true, mock/date edits for that scenario are blocked server-side. */
   scenarioLocks?: Record<string, boolean>
+}
+
+/** Scenario backup JSON (`formatVersion` 1) from Settings export or GET /api/scenario-config/export */
+export interface ScenarioBundleMockEntry {
+  relativePath: string
+  data: Record<string, unknown>
+}
+
+export interface ScenarioExportBundle {
+  formatVersion: 1
+  exportedAt: string
+  sourceScenario: string
+  dashboardProvider: 'filesystem' | 'sqlite' | 'redis'
+  mocks: ScenarioBundleMockEntry[]
+  dateManipulation: Record<string, unknown> | null
+  proxyConfig: {
+    recordOnMiss: boolean
+    allowUpstream: boolean
+  } | null
+}
+
+export type NetworkEventSource =
+  | 'mock-hit'
+  | 'mock-miss'
+  | 'upstream'
+  | 'blocked'
+  | 'error'
+
+export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy'
+
+export interface NetworkEvent {
+  id: string
+  timestamp: string
+  scenario: string
+  clientId?: string | null
+  deviceId?: string | null
+  sessionId?: string | null
+  requestId?: string | null
+  parentRequestId?: string | null
+  sequence?: number
+  phase?: 'request_start' | 'request_end' | 'complete'
+  transport: NetworkEventTransport
+  method: string
+  url: string
+  host?: string
+  path?: string
+  query?: string
+  status?: number
+  durationMs?: number
+  source: NetworkEventSource
+  requestHash?: string
+  requestHeaders?: Record<string, string>
+  responseHeaders?: Record<string, string>
+  requestBodyPreview?: string
+  responseBodyPreview?: string
+  errorMessage?: string
+}
+
+export interface NetworkLogConfig {
+  enabled: boolean
+  captureBodies: boolean
+  updatedAt: string
+}
+
+export interface NetworkEventsResponse {
+  scenario: string
+  provider: string
+  ephemeral: boolean
+  networkLogConfig: NetworkLogConfig
+  events: NetworkEvent[]
 }
 

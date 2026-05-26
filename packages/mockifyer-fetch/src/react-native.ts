@@ -5,11 +5,18 @@
  * conditional provider selection (FileSystem in dev, Memory in prod)
  */
 
+import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 import { setupMockifyer } from './index';
-import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
+import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient, setScenarioLaunchOverride } from '@sgedda/mockifyer-core';
 import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  tryGetClientIdFromLaunchArguments,
+  resolveMockifyerRuntimeMode,
+  logMockifyerNotActivated,
+  resolveRecordResponses,
+  resolveStrictScenarioResolution,
+  type MockifyerRuntimeMode,
 } from '@sgedda/mockifyer-core';
 
 // Re-export MockifyerInstance type to avoid circular dependency
@@ -17,6 +24,35 @@ export interface MockifyerInstance extends HTTPClient {
   reloadMockData: (syncFromProject?: boolean) => Promise<void>;
   clearStaleCacheEntries: () => number;
   clearAllMocks: () => Promise<void>;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
+}
+
+/**
+ * Outcome of {@link setupMockifyerForReactNative}.
+ *
+ * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane).
+ *   Not the same as “permanently off” unless mode is **`off`** (then launch args do not activate).
+ * - **`active`** — Mockifyer initialized and patched `global.fetch`.
+ * - **`failed_no_bundled_mocks`** — Activation criteria were met and `isDev` was false, but bundled mock data was missing or empty.
+ */
+export type MockifyerReactNativeInitStatus =
+  | 'not_activated'
+  | 'active'
+  | 'failed_no_bundled_mocks';
+
+export type SetupMockifyerForReactNativeResult =
+  | { readonly status: 'not_activated'; readonly instance: null }
+  | { readonly status: 'failed_no_bundled_mocks'; readonly instance: null }
+  | { readonly status: 'active'; readonly instance: MockifyerInstance };
+
+/**
+ * Type guard: `true` when {@link setupMockifyerForReactNative} patched `fetch` and returned an instance.
+ */
+export function isMockifyerReactNativeActive(
+  result: SetupMockifyerForReactNativeResult
+): result is { readonly status: 'active'; readonly instance: MockifyerInstance } {
+  return result.status === 'active';
 }
 
 export interface ReactNativeMockifyerConfig {
@@ -28,6 +64,16 @@ export interface ReactNativeMockifyerConfig {
   bundledDataPath?: string;
   /** Enable recording mode (development only) */
   recordMode?: boolean;
+  /**
+   * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
+   * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
+   */
+  useLaunchArgumentsScenario?: boolean;
+  /**
+   * Sets the same highest-priority scenario as {@link useLaunchArgumentsScenario} when you pass the value yourself
+   * (e.g. after reading launch args). Ignored if empty after trim.
+   */
+  defaultScenario?: string;
   /** Additional Mockifyer config options */
   config?: Partial<Parameters<typeof setupMockifyer>[0]>;
   /** Optional: route real network calls through a proxy service (e.g. mockifyer-dashboard in Redis mode) */
@@ -40,43 +86,67 @@ export interface ReactNativeMockifyerConfig {
    */
   proxyRecordOnMiss?: boolean;
   /**
+   * When false, dashboard proxy stores request-only stubs on cache miss (Responses: Off).
+   * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+   */
+  proxyRecordResponses?: boolean;
+  /**
+   * When true, skip `GET /api/health` and always wire dashboard proxy (same as Node preset).
+   */
+  skipDashboardRedisHealthCheck?: boolean;
+  /**
    * When true, read `clientId` from Maestro/native launch arguments (optional peer `react-native-launch-arguments`).
    * Prefer this over passing scenario from E2E if the dashboard/Redis should control scenario on the fly for that lane.
    * Forwards to {@link MockifyerConfig.useLaunchArgumentsClientId} on the merged config passed to `setupMockifyer`.
+   *
+   * If the launch argument is **set** (non-empty) for {@link launchArgumentClientIdKey}, the lane id is applied when Mockifyer activates (see **`runtimeMode`** / **`MOCKIFYER_MODE`**; with **`launch_client`**, a set arg is required to activate).
    */
   useLaunchArgumentsClientId?: boolean;
   /** Launch-argument key for the client lane id (default: `mockifyerClientId`). */
   launchArgumentClientIdKey?: string;
+  /**
+   * When Mockifyer may patch `fetch` at startup. Overrides **`MOCKIFYER_MODE`** env and `config.runtimeMode`.
+   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` (aliases e.g. `e2e`, `maestro` → `launch_client`).
+   */
+  runtimeMode?: MockifyerRuntimeMode;
 }
 
-type DashboardHealth = {
-  status?: string;
-  provider?: string;
-  redisOk?: boolean | null;
-};
+/**
+ * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ */
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): void {
+  let applied = false;
+  if (options.useLaunchArgumentsScenario) {
+    try {
+      // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
+      const LaunchArguments = mod.LaunchArguments;
+      const raw =
+        LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;
+      const scenario = raw?.scenario;
+      if (scenario !== undefined && scenario !== null && String(scenario).trim() !== '') {
+        setScenarioLaunchOverride(String(scenario).trim());
+        applied = true;
+      }
+    } catch {
+      // Package not installed or native module unavailable
+    }
+  }
+  if (!applied && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+    const t = String(options.defaultScenario).trim();
+    if (t !== '') {
+      setScenarioLaunchOverride(t);
+    }
+  }
+}
 
 // Lazy load bundled data (only used in production builds)
 let bundledMockData: MockData[] | null = null;
 
-async function canUseStrictRedisProxy(proxyBaseUrl?: string): Promise<boolean> {
-  if (!proxyBaseUrl) return false;
-  try {
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
-    const timeout = setTimeout(() => controller?.abort(), 800);
-    const url = new URL('/api/health', proxyBaseUrl).toString();
-    const res = await fetch(url, { signal: controller?.signal });
-    clearTimeout(timeout);
-    if (!res.ok) return false;
-    const data = (await res.json()) as DashboardHealth;
-    return data?.provider === 'redis' && data?.redisOk === true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Load bundled mock data from a TypeScript/JavaScript module
- * 
+ *
  * Note: For React Native/Metro, we need to handle dynamic imports differently
  * Metro doesn't support dynamic require() with variables, so we use a workaround
  */
@@ -119,53 +189,102 @@ async function loadBundledMockData(bundledDataPath: string): Promise<MockData[]>
  * @example
  * ```typescript
  * import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
- * 
- * await setupMockifyerForReactNative({
- *   isDev: __DEV__, // Pass React Native's __DEV__ variable
+ *
+ * // MOCKIFYER_MODE=on | launch_client | off — default when unset is on; use launch_client for Maestro-only activation.
+ * const result = await setupMockifyerForReactNative({
+ *   isDev: __DEV__, // Selects Hybrid vs Memory provider once enabled
  *   mockDataPath: 'mock-data',
  *   bundledDataPath: './assets/mock-data',
  *   recordMode: process.env.MOCKIFYER_RECORD === 'true',
+ *   useLaunchArgumentsScenario: true, // optional: scenario from react-native-launch-arguments (highest priority)
  * });
+ * // result.status: 'not_activated' | 'active' | 'failed_no_bundled_mocks'
  * ```
  */
 export async function setupMockifyerForReactNative(
   options: ReactNativeMockifyerConfig
-): Promise<MockifyerInstance | null> {
+): Promise<SetupMockifyerForReactNativeResult> {
   const {
     isDev,
     mockDataPath = 'mock-data',
     bundledDataPath = './assets/mock-data',
     recordMode = false,
-    config = {},
+    config: userConfig = {},
     proxyBaseUrl,
     proxyScenario,
     proxyRecordOnMiss,
+    proxyRecordResponses,
+    skipDashboardRedisHealthCheck,
     useLaunchArgumentsClientId = false,
     launchArgumentClientIdKey = MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+    runtimeMode: runtimeModeOption,
   } = options;
 
   const proxyShouldRecordOnMiss = proxyRecordOnMiss ?? recordMode;
+  const proxyShouldRecordResponses = resolveRecordResponses(
+    proxyRecordResponses ?? userConfig.proxy?.recordResponses
+  );
 
-  const mergedConfig: typeof config = {
-    ...config,
-    ...(useLaunchArgumentsClientId
+  const launchClientIdKey =
+    launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+  const clientIdFromLaunchArgs = tryGetClientIdFromLaunchArguments(launchClientIdKey);
+  const shouldApplyLaunchClientId =
+    useLaunchArgumentsClientId || Boolean(clientIdFromLaunchArgs);
+
+  const resolvedRuntimeMode = resolveMockifyerRuntimeMode({
+    configMode: runtimeModeOption ?? userConfig.runtimeMode,
+  });
+
+  const mergedConfig: typeof userConfig = {
+    ...userConfig,
+    runtimeMode: resolvedRuntimeMode,
+    ...(shouldApplyLaunchClientId
       ? {
           useLaunchArgumentsClientId: true as const,
-          launchArgumentClientIdKey:
-            launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+          launchArgumentClientIdKey: launchClientIdKey,
         }
       : {}),
   };
 
-  // Check if Mockifyer is enabled
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || isDev;
+  const devInitHeadline = (strictProxy: boolean, strictProxyOnlyFallback: boolean) => {
+    if (strictProxy) return 'React Native dev · dashboard Redis proxy';
+    if (strictProxyOnlyFallback) {
+      return 'React Native dev · strict proxy-only (dashboard unhealthy — local recording disabled)';
+    }
+    return 'React Native dev · hybrid (device + Metro)';
+  };
+
+  const isEnabled =
+    resolvedRuntimeMode === 'on' ||
+    (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
   if (!isEnabled) {
-    logger.info('[Mockifyer] Disabled');
-    return null;
+    logMockifyerNotActivated(resolvedRuntimeMode, {
+      launchClientIdKey,
+      hadLaunchClientId: Boolean(clientIdFromLaunchArgs),
+    });
+    return { status: 'not_activated', instance: null } as const;
   }
 
+  applyReactNativeScenarioOptions(options);
+
   if (isDev === true) {
-    const strictProxyEnabled = await canUseStrictRedisProxy(proxyBaseUrl);
+    const strictProxyEnabled = proxyBaseUrl
+      ? skipDashboardRedisHealthCheck === true ||
+        (await canUseDashboardRedisProxy(proxyBaseUrl))
+      : false;
+
+    const strictProxyOnlyFallback =
+      Boolean(proxyBaseUrl?.trim()) &&
+      !strictProxyEnabled &&
+      resolveStrictScenarioResolution(mergedConfig);
+
+    if (strictProxyOnlyFallback) {
+      logger.warn(
+        `[Mockifyer] Strict proxy-only: "${proxyBaseUrl}" did not report healthy Redis. ` +
+          'Using memory provider without local recording. Start mockifyer-dashboard --provider redis ' +
+          'or set skipDashboardRedisHealthCheck: true to force proxy.'
+      );
+    }
 
     // DEVELOPMENT MODE (React Native app running in dev)
     // Use Hybrid provider - saves to both device AND project folder simultaneously
@@ -197,34 +316,48 @@ export async function setupMockifyerForReactNative(
 
     const instance = setupMockifyer({
       mockDataPath,
-      databaseProvider: strictProxyEnabled
-        ? {
-            // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
-            type: 'memory',
-          }
-        : databaseProviderConfig,
+      databaseProvider:
+        strictProxyEnabled || strictProxyOnlyFallback
+          ? {
+              // Strict proxy source of truth: disable local mock lookup so all requests go through the dashboard proxy.
+              type: 'memory',
+            }
+          : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
-      proxy: strictProxyEnabled && proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
-        : undefined,
+      proxy:
+        strictProxyEnabled && proxyBaseUrl
+          ? {
+              baseUrl: proxyBaseUrl,
+              scenario: proxyScenario,
+              recordOnMiss: proxyShouldRecordOnMiss,
+              recordResponses: proxyShouldRecordResponses,
+            }
+          : undefined,
+      ...(strictProxyEnabled
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
+      ...(strictProxyOnlyFallback
+        ? {
+            databaseProvider: { type: 'memory' as const },
+            intendedProxyBaseUrl: proxyBaseUrl!.trim(),
+          }
+        : {}),
+      initLog: {
+        headline:
+          mergedConfig.initLog?.headline ??
+          devInitHeadline(strictProxyEnabled, strictProxyOnlyFallback),
+      },
     });
 
-    if (strictProxyEnabled) {
-      logger.info('[Mockifyer] Development mode: Strict proxy enabled (dashboard Redis is healthy) — local mocks disabled');
-    } else {
-      logger.info('[Mockifyer] Development mode: Using Hybrid provider (device + project folder)');
-      logger.info(`[Mockifyer] Metro endpoint: http://localhost:${metroPort}/mockifyer-save`);
-      logger.info(
-        `[Mockifyer] Project→device sync: /mockifyer-sync-to-device-manifest + per-file fetch (on reloadMockData); Metro port ${metroPort}`
-      );
-    }
-    if (recordMode) {
-      logger.info('[Mockifyer] Recording mode enabled - new API responses will be saved');
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
+      logger.info(`[Mockifyer] Metro: http://localhost:${metroPort}/mockifyer-save · scenario: /mockifyer-scenario-config`);
     }
 
-    if (!strictProxyEnabled) {
+    if (!strictProxyEnabled && !strictProxyOnlyFallback) {
       // Pull repo mock-data onto device once Metro + provider are ready (HybridProvider.reload)
       try {
         await instance.reloadMockData(true);
@@ -233,7 +366,7 @@ export async function setupMockifyerForReactNative(
       }
     }
 
-    return instance;
+    return { status: 'active', instance } as const;
   } else {
     // PRODUCTION BUILD MODE
     // Use Memory provider with bundled TypeScript file
@@ -244,8 +377,10 @@ export async function setupMockifyerForReactNative(
     const mockDataArray = await loadBundledMockData(bundledDataPath);
 
     if (mockDataArray.length === 0) {
-      logger.warn('[Mockifyer] No bundled mock data found. Make sure to run the build script first.');
-      return null;
+      logger.warn(
+        '[Mockifyer] Activation requested but no bundled mock data found (status: failed_no_bundled_mocks). Run the bundle/generate step for your mocks.'
+      );
+      return { status: 'failed_no_bundled_mocks', instance: null } as const;
     }
 
     // Pre-load all mocks into memory
@@ -261,15 +396,76 @@ export async function setupMockifyerForReactNative(
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
       proxy: proxyBaseUrl
-        ? { baseUrl: proxyBaseUrl, scenario: proxyScenario, recordOnMiss: proxyShouldRecordOnMiss }
+        ? {
+            baseUrl: proxyBaseUrl,
+            scenario: proxyScenario,
+            recordOnMiss: proxyShouldRecordOnMiss,
+            recordResponses: proxyShouldRecordResponses,
+          }
         : undefined,
+      ...(proxyBaseUrl
+        ? {
+            strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
+          }
+        : {}),
       ...mergedConfig,
+      initLog: {
+        headline:
+          mergedConfig.initLog?.headline ??
+          `React Native production · ${mockDataArray.length} bundled mock(s)`,
+      },
     });
 
-    logger.info(`[Mockifyer] Production mode: Loaded ${mockDataArray.length} mocks from bundle`);
-    return instance;
+    return { status: 'active', instance } as const;
   }
 }
 
-export { tryGetClientIdFromLaunchArguments, MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY } from '@sgedda/mockifyer-core';
+/** React Native options with an explicit dashboard alias (see {@link initMockifyerForReactNativeDashboard}). */
+export interface InitMockifyerForReactNativeDashboardOptions extends ReactNativeMockifyerConfig {
+  /**
+   * mockifyer-dashboard origin — same role as {@link ReactNativeMockifyerConfig.proxyBaseUrl}.
+   * Useful when you prefer naming that matches the Node preset {@link initMockifyerForDashboardProxy}.
+   */
+  dashboardBaseUrl?: string;
+}
+
+/**
+ * Preset: point the app at **mockifyer-dashboard** for `/api/proxy` (typically **`--provider redis`**).
+ *
+ * Resolves URL in order: **`proxyBaseUrl`** → **`dashboardBaseUrl`** → **`MOCKIFYER_PROXY_URL`** env.
+ * Then delegates to {@link setupMockifyerForReactNative}. For bespoke wiring, call that helper directly.
+ */
+export async function initMockifyerForReactNativeDashboard(
+  options: InitMockifyerForReactNativeDashboardOptions
+): Promise<SetupMockifyerForReactNativeResult> {
+  const fromEnv =
+    typeof process !== 'undefined' && process.env?.MOCKIFYER_PROXY_URL
+      ? process.env.MOCKIFYER_PROXY_URL.trim()
+      : '';
+
+  const resolved =
+    String(options.proxyBaseUrl ?? '').trim() ||
+    String(options.dashboardBaseUrl ?? '').trim() ||
+    fromEnv;
+
+  if (!resolved) {
+    throw new Error(
+      'initMockifyerForReactNativeDashboard: set proxyBaseUrl, dashboardBaseUrl, or MOCKIFYER_PROXY_URL'
+    );
+  }
+
+  return setupMockifyerForReactNative({
+    ...options,
+    proxyBaseUrl: resolved,
+  });
+}
+
+export {
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
+  getClientId,
+  setClientId,
+  registerMockifyerInstance,
+  clearMockifyerClientIdRuntime,
+} from '@sgedda/mockifyer-core';
 

@@ -8,7 +8,7 @@ describe('WeatherService', () => {
 
   beforeEach(() => {
     // Setup mockifyer for tests
-    process.env.MOCKIFYER_ENABLED = 'true';
+    process.env.MOCKIFYER_MODE = 'on';
     process.env.MOCKIFYER_PATH = mockDataPath;
     process.env.MOCKIFYER_RECORD = 'false';
     process.env.WEATHER_API_KEY = 'test-key';
@@ -97,7 +97,7 @@ describe('WeatherService', () => {
       fs.rmSync(mockDataPath, { recursive: true });
     }
 
-    delete process.env.MOCKIFYER_ENABLED;
+    delete process.env.MOCKIFYER_MODE;
     delete process.env.MOCKIFYER_PATH;
     delete process.env.MOCKIFYER_RECORD;
     delete process.env.WEATHER_API_KEY;

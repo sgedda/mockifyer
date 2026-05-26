@@ -2,24 +2,18 @@
 name: Dashboard network log
 overview: Add a sustainable “Network” view in the dashboard by capturing Mockifyer SDK traffic into a bounded, privacy-aware event log (Redis ring buffer with TTL + in-memory fallback) and rendering it with filters and request detail panes.
 todos:
-  - id: event-schema
-    content: Define `NetworkEvent` schema + redaction/size policy (shared between dashboard backend and frontend types).
-    status: pending
-  - id: backend-store
-    content: Implement Redis + in-memory network log store abstraction in dashboard backend.
-    status: pending
-  - id: backend-routes
-    content: Add `/api/network-events` GET/POST/DELETE routes and register in `src/server.ts`.
-    status: pending
-  - id: proxy-emit
-    content: Append `NetworkEvent`s from `src/routes/proxy.ts` for hit/miss/blocked/error.
-    status: pending
-  - id: frontend-network-tab
-    content: Add a `Network` view component + route/tab wiring in dashboard UI.
-    status: pending
-  - id: sdk-emitters
-    content: Add best-effort network logging emitters to `mockifyer-axios` and `mockifyer-fetch` (configurable dashboard URL).
-    status: pending
+  - id: phase-1-schema-store-routes-proxy
+    content: "Phase 1 — NetworkEvent schema + redaction policy; Redis + in-memory network log store; /api/network-events GET/POST/DELETE; proxy.ts emits hit/miss/blocked/error."
+    status: completed
+  - id: phase-2-network-tab
+    content: "Phase 2 — Network view component, Dashboard route/tab, list + filters + detail pane, polling with since cursor."
+    status: completed
+  - id: phase-3-sdk-emitters
+    content: "Phase 3 — Best-effort POST emitters in mockifyer-axios + mockifyer-fetch when dashboard URL configured."
+    status: completed
+  - id: phase-4-polish
+    content: "Phase 4 — Settings toggles (enable/bodies), sampling, optional start/end correlation or HAR-ish export."
+    status: completed
 ---
 
 ## Goal
@@ -28,6 +22,27 @@ Provide a Chrome DevTools-like Network view inside Mockifyer Dashboard that show
 ## What’s already there (we’ll build on)
 - The dashboard already has a request-flow UI concept in `Timeline`, built from mock metadata (`packages/mockifyer-dashboard/frontend/src/components/Timeline.tsx`).
 - Redis-provider mode already centralizes request visibility through the dashboard proxy (`packages/mockifyer-dashboard/src/routes/proxy.ts`) and Redis store patterns already exist (`RedisMockStore` used across routes like `mocks.ts`, `stats.ts`).
+
+## Phase 1 — Backend + proxy events (first shippable slice)
+This **merges** the old “Milestone 1” with the spec sections below: ship a working event pipeline in **Redis-proxy mode** before the Network tab or SDK POST emitters. Tracks YAML todo **`phase-1-schema-store-routes-proxy`**.
+
+| Piece | What to build |
+|--------|----------------|
+| **Schema** | `NetworkEvent` + redaction/size defaults — full field list under **Event model**; guardrails under **Privacy & performance guardrails** (defaults only). |
+| **Store** | Network log abstraction: `append`, `list({ scenario, clientId?, limit, since? })`, `clear` — **Recommended retention** + **Backend plumbing** (Redis ring + TTL; in-memory fallback for filesystem provider). |
+| **Routes** | `GET` / `POST` / `DELETE` `/api/network-events` — register in `src/server.ts` (**Backend plumbing**). |
+| **Proxy** | `proxy.ts` appends events: Redis hit, upstream miss, blocked, proxy failure (**Backend plumbing** hook list). |
+
+**Deferred to Phase 2–4:** UI (`frontend-network-tab`), SDK sinks (`sdk-emitters`), explicit Settings toggles and advanced sampling/export (`phase-4-polish`).
+
+## Phase 2 — Network tab UI
+Tracks **`phase-2-network-tab`**. Implements **Frontend: Network tab UI** — new route/tab in `Dashboard.tsx`, `Network.tsx` with DevTools-style table, filters, detail pane, polling with `since`.
+
+## Phase 3 — SDK integration
+Tracks **`phase-3-sdk-emitters`**. Implements **SDK integration** — optional `networkLog` sink / `MOCKIFYER_DASHBOARD_URL`, non-blocking POSTs, `request_start` / `request_end` (or merged server-side).
+
+## Phase 4 — Polish
+Tracks **`phase-4-polish`**. Explicit Settings toggles (network logging on/off, body capture), sampling under load, optional waterfall correlation or export.
 
 ## Recommended retention (sustainable default)
 - **Primary**: **Redis ring buffer + TTL** per scenario (and optionally per client lane).
@@ -93,7 +108,7 @@ Minimum useful fields:
 - Redaction:
   - default redact: `authorization`, `cookie`, `set-cookie`, `x-api-key`, etc.
   - query param anonymization option (align with existing `generateRequestKey` behavior)
-- Explicit toggles in Settings:
+- Explicit toggles in Settings (Phase 4):
   - enable/disable network logging (**default: enabled / recording ON per scenario**)
   - capture bodies (off by default)
   - per-scenario or global
@@ -102,10 +117,3 @@ Minimum useful fields:
 - Unit tests for network log store (ring behavior, TTL setup, size caps, redaction).
 - Basic integration test for `/api/network-events` routes.
 - Manual: generate requests via SDK, confirm they appear in Network tab with correct scenario/lane and filtering.
-
-## Milestones (smallest useful first)
-1. Backend event store + routes + proxy emits events (immediately useful in Redis-proxy mode).
-2. Network tab UI showing events with filtering + detail pane.
-3. SDK emitters (axios + fetch) posting to dashboard when configured.
-4. Optional: correlate start/end events for waterfall/timing, export (HAR-ish) if requested later.
-

@@ -44,7 +44,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
     clientType,
     scope,
     mockDataPath,
-    mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+    mockEnabled: process.env.MOCKIFYER_MODE === 'on',
     mockRecord: process.env.MOCKIFYER_RECORD === 'true'
   });
 
@@ -69,7 +69,7 @@ function ensureMockifyerInitialized(clientType: 'axios' | 'fetch', scope: 'local
   }
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     // useSimilarMatch will be auto-enabled by Mockifyer if similarMatchRequiredParams is set
     // Otherwise, use env var if explicitly set
@@ -135,7 +135,7 @@ function getHTTPClient(clientType: 'axios' | 'fetch'): HTTPClient {
   };
 
   // Add additional config options if Mockifyer is enabled
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     config.recordSameEndpoints = process.env.MOCKIFYER_RECORD_SAME_ENDPOINTS === 'true';
     // useSimilarMatch will be auto-enabled by Mockifyer if similarMatchRequiredParams is set
     // Otherwise, use env var if explicitly set
@@ -187,7 +187,7 @@ export async function getCurrentWeatherUnified(
       city,
       clientType,
       scope,
-      mockEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+      mockEnabled: process.env.MOCKIFYER_MODE === 'on',
       mockRecord: process.env.MOCKIFYER_RECORD === 'true'
     });
 

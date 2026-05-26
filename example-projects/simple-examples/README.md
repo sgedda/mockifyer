@@ -36,7 +36,7 @@ npm run record
 or
 
 ```bash
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
 ```
 
 This will:
@@ -55,7 +55,7 @@ npm run mock
 or
 
 ```bash
-MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=false npm start
+MOCKIFYER_MODE=on MOCKIFYER_RECORD=false npm start
 ```
 
 This will:
@@ -73,7 +73,7 @@ npm start
 
 ## Environment Variables
 
-- `MOCKIFYER_ENABLED` - Set to `true` to enable Mockifyer
+- `MOCKIFYER_MODE` - Set to `on` to enable Mockifyer (Node examples; RN also supports `launch_client` / `off`)
 - `MOCKIFYER_RECORD` - Set to `true` to record real API responses, `false` to use mocks
 - `MOCKIFYER_PATH` - Optional path to mock data directory (defaults to `./mock-data`)
 

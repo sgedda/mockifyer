@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
+import { buildClientConnectionRows } from '../utils/client-connections';
 
 const router = express.Router();
 
@@ -12,6 +13,8 @@ router.get('/', async (req: Request, res: Response) => {
         enabled: false,
         reason: "Client lanes are only available when the dashboard provider is 'redis'.",
         lanes: [],
+        discoveredLanes: [],
+        connections: [],
         globalScenario: null,
       });
     }
@@ -27,21 +30,51 @@ router.get('/', async (req: Request, res: Response) => {
         lanes.map(async (lane) => {
           const devices = await store.listLaneDevices(lane.clientId, 10).catch(() => []);
           const deviceCount = await store.countLaneDevices(lane.clientId).catch(() => 0);
+          const laneEffective = await store.readLaneLastResolved(lane.clientId).catch(() => null);
           return {
             ...lane,
+            lastSeenResolved: laneEffective
+              ? {
+                  scenario: laneEffective.lastEffectiveScenario,
+                  lastSeenAt: laneEffective.lastSeenAt,
+                  resolutionSource: laneEffective.resolutionSource,
+                  clientBodyScenarioOverride: laneEffective.clientBodyScenarioOverride,
+                }
+              : null,
             devices: {
               count: deviceCount,
-              recent: devices.map((d) => ({
-                deviceId: d.deviceId,
-                lastSeenAt: new Date(d.lastSeenMs).toISOString(),
-              })),
+              recent: await Promise.all(
+                devices.map(async (d) => {
+                  const de = await store.readDeviceLastResolved(lane.clientId, d.deviceId).catch(() => null);
+                  return {
+                    deviceId: d.deviceId,
+                    lastSeenAt: new Date(d.lastSeenMs).toISOString(),
+                    lastSeenResolved: de
+                      ? {
+                          scenario: de.lastEffectiveScenario,
+                          lastSeenAt: de.lastSeenAt,
+                          resolutionSource: de.resolutionSource,
+                          clientBodyScenarioOverride: de.clientBodyScenarioOverride,
+                        }
+                      : null,
+                  };
+                })
+              ),
             },
           };
         })
       );
-      const discoveredLanes = await store.listDiscoveredLanes();
+      const discoveredDetailed = await store.listDiscoveredLanesDetailed();
+      const discoveredLanes = discoveredDetailed.map((d) => d.clientId);
       const globalScenario = await store.getActiveScenario();
-      return res.json({ enabled: true, lanes: lanesWithDevices, discoveredLanes, globalScenario });
+      const connections = buildClientConnectionRows(lanesWithDevices, discoveredDetailed);
+      return res.json({
+        enabled: true,
+        lanes: lanesWithDevices,
+        discoveredLanes,
+        connections,
+        globalScenario,
+      });
     } finally {
       await store.close().catch(() => undefined);
     }

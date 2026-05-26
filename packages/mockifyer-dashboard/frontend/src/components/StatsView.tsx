@@ -5,7 +5,15 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import type { Stats } from '@/types'
-import { BarChart3, FileText, Database, Activity, ChevronDown, ExternalLink, Folder } from 'lucide-react'
+import {
+  BarChart3,
+  FileText,
+  Database,
+  Activity,
+  ChevronDown,
+  ExternalLink,
+  Folder,
+} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,

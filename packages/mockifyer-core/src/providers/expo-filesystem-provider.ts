@@ -1,13 +1,73 @@
 import { MockData, StoredRequest, ENV_VARS } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { logger } from '../utils/logger';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
+import { getScenarioLaunchOverride } from '../utils/scenario';
 
 const DEFAULT_SCENARIO = 'default';
+
+/**
+ * expo-file-system v18+ exposes `Paths`, `File`, and `Directory` classes.
+ * Expo SDK 51 (and peers) ships v17 — only legacy `documentDirectory` + async helpers.
+ */
+function isModernExpoFileSystemApi(FS: ExpoFileSystemModule): boolean {
+  return Boolean(
+    FS &&
+      typeof FS.File === 'function' &&
+      typeof FS.Directory === 'function' &&
+      FS.Paths?.document?.uri &&
+      typeof FS.Paths.info === 'function'
+  );
+}
+
+/** Minimal surface we read from expo-file-system (legacy + modern overlap). */
+interface ExpoFileSystemModule {
+  /** Legacy API */
+  documentDirectory?: string | null;
+  readAsStringAsync(uri: string, options?: unknown): Promise<string>;
+  writeAsStringAsync(uri: string, contents: string, options?: unknown): Promise<void>;
+  deleteAsync(uri: string, options?: unknown): Promise<void>;
+  getInfoAsync(
+    uri: string,
+    options?: unknown
+  ): Promise<{ exists: boolean; isDirectory?: boolean; modificationTime?: number }>;
+  makeDirectoryAsync(uri: string, options?: { intermediates?: boolean }): Promise<void>;
+  readDirectoryAsync(uri: string): Promise<string[]>;
+
+  /** Modern API */
+  File?: new (uri: string) => ExpoModernFileLike;
+  Directory?: new (uri: string) => ExpoModernDirectoryLike;
+  Paths?: {
+    document: { uri: string };
+    info: (
+      uri: string
+    ) => { exists: boolean; isDirectory?: boolean; modificationTime?: number };
+  };
+
+}
+
+interface ExpoModernFileLike {
+  exists: boolean;
+  modificationTime?: number;
+  write(content: string): void | Promise<void>;
+  delete(): void;
+  text(): Promise<string>;
+}
+
+interface ExpoModernDirectoryLike {
+  exists: boolean;
+  uri: string;
+  create(options?: { intermediates?: boolean }): void;
+  list(): Array<
+    ExpoModernFileLike &
+      ExpoModernDirectoryLike & { name: string; uri: string; constructor: unknown }
+  >;
+}
 
 /**
  * Expo FileSystem provider for React Native/Expo applications
@@ -18,7 +78,9 @@ const DEFAULT_SCENARIO = 'default';
  */
 export class ExpoFileSystemProvider implements DatabaseProvider {
   private mockDataPath: string;
-  private FileSystem: any; // expo-file-system module
+  private FileSystem: ExpoFileSystemModule;
+  /** True when using expo-file-system v17-style APIs (SDK 51, etc.). */
+  private readonly useLegacyExpoFileSystem: boolean;
   private fileCache: Map<string, { mtime: number; content: CachedMockData }> = new Map(); // Key: requestKey
   private fileModTimes: Map<string, number> = new Map(); // Key: filename, Value: mtime
   private watchInterval: NodeJS.Timeout | null = null;
@@ -42,27 +104,100 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     // Try to import expo-file-system
     try {
-      // Use dynamic import for React Native compatibility
-      this.FileSystem = require('expo-file-system');
+      // Optional peer: RN/Expo only; webpack must not resolve this in Node-only apps (e.g. Next.js).
+      this.FileSystem = require(/* webpackIgnore: true */ 'expo-file-system') as ExpoFileSystemModule;
     } catch (e) {
       throw new Error(
         'expo-file-system is required for ExpoFileSystemProvider. Install it with: npx expo install expo-file-system'
       );
+    }
+    this.useLegacyExpoFileSystem = !isModernExpoFileSystemApi(this.FileSystem);
+    if (
+      this.useLegacyExpoFileSystem &&
+      typeof this.FileSystem.documentDirectory !== 'string'
+    ) {
+      throw new Error(
+        '[ExpoFileSystemProvider] Legacy expo-file-system API requires documentDirectory to be defined (physical device/simulator)'
+      );
+    }
+  }
+
+  private joinFsUri(segment: string, ...rest: string[]): string {
+    const base = segment.replace(/\/$/, '');
+    const tail = rest
+      .map((s) => String(s).replace(/^\/+/, '').replace(/\/+$/, ''))
+      .filter(Boolean)
+      .join('/');
+    return tail ? `${base}/${tail}` : base;
+  }
+
+  private async fsGetInfo(uri: string): Promise<{
+    exists: boolean;
+    isDirectory?: boolean;
+    modificationTime?: number;
+  }> {
+    if (this.useLegacyExpoFileSystem) {
+      return this.FileSystem.getInfoAsync(uri);
+    }
+    return this.FileSystem.Paths!.info(uri);
+  }
+
+  private async fsEnsureDir(uri: string): Promise<void> {
+    const info = await this.fsGetInfo(uri);
+    if (!info.exists) {
+      if (this.useLegacyExpoFileSystem) {
+        await this.FileSystem.makeDirectoryAsync(uri, { intermediates: true });
+        return;
+      }
+      const dir = this.newDirectory(uri);
+      if (!dir.exists) {
+        dir.create({ intermediates: true });
+      }
+    }
+  }
+
+  private async fsReadText(uri: string): Promise<string> {
+    if (this.useLegacyExpoFileSystem) {
+      return this.FileSystem.readAsStringAsync(uri);
+    }
+    return this.newFile(uri).text();
+  }
+
+  private async fsWriteText(uri: string, contents: string): Promise<void> {
+    if (this.useLegacyExpoFileSystem) {
+      await this.FileSystem.writeAsStringAsync(uri, contents);
+      return;
+    }
+    const result = this.newFile(uri).write(contents);
+    await Promise.resolve(result);
+  }
+
+  private async fsUnlink(uri: string): Promise<void> {
+    if (this.useLegacyExpoFileSystem) {
+      const info = await this.fsGetInfo(uri);
+      if (info.exists) {
+        await this.FileSystem.deleteAsync(uri, { idempotent: true });
+      }
+      return;
+    }
+    const f = this.newFile(uri);
+    if (f.exists) {
+      f.delete();
     }
   }
 
   /**
    * Helper: create a File instance using the new expo-file-system API
    */
-  private newFile(uri: string): any {
-    return new this.FileSystem.File(uri);
+  private newFile(uri: string): ExpoModernFileLike {
+    return new this.FileSystem.File!(uri);
   }
 
   /**
    * Helper: create a Directory instance using the new expo-file-system API
    */
-  private newDirectory(uri: string): any {
-    return new this.FileSystem.Directory(uri);
+  private newDirectory(uri: string): ExpoModernDirectoryLike {
+    return new this.FileSystem.Directory!(uri);
   }
 
   /**
@@ -70,7 +205,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    * Tries local config first, then Metro endpoint as fallback
    */
   private async getCurrentScenario(): Promise<string> {
-    // Check environment variable first
+    const launchScenario = getScenarioLaunchOverride();
+    if (launchScenario) {
+      return launchScenario;
+    }
+
+    // Check environment variable
     const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
     if (envScenario) {
       return envScenario;
@@ -97,12 +237,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           const data = await response.json() as { success?: boolean; currentScenario?: string };
           if (data.success && data.currentScenario) {
             // Always save to local config to keep it in sync with Metro
-            const configPath = this.mockDataPath + '/scenario-config.json';
+            const configPath = this.joinFsUri(this.mockDataPath, 'scenario-config.json');
             const config = {
               currentScenario: data.currentScenario,
               updatedAt: new Date().toISOString()
             };
-            this.newFile(configPath).write(JSON.stringify(config, null, 2));
+            await this.fsWriteText(configPath, JSON.stringify(config, null, 2));
             logger.info(`[ExpoFileSystemProvider] ✅ Synced scenario config from Metro: ${data.currentScenario}`);
             return data.currentScenario;
           } else {
@@ -130,10 +270,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     // Fallback: Try to load from local scenario-config.json
     try {
-      const configPath = this.mockDataPath + '/scenario-config.json';
-      const configFile = this.newFile(configPath);
-      if (configFile.exists) {
-        const fileContent = await configFile.text();
+      const configPath = this.joinFsUri(this.mockDataPath, 'scenario-config.json');
+      const configInfo = await this.fsGetInfo(configPath);
+      if (configInfo.exists) {
+        const fileContent = await this.fsReadText(configPath);
         const config = JSON.parse(fileContent);
         if (config.currentScenario) {
           logger.info(`[ExpoFileSystemProvider] Using local scenario config: ${config.currentScenario} (Metro sync failed or unavailable)`);
@@ -153,7 +293,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    */
   private getScenarioPath(scenario?: string): string {
     const scenarioName = scenario || this.currentScenario;
-    return this.mockDataPath + '/' + scenarioName;
+    return this.joinFsUri(this.mockDataPath, scenarioName);
   }
 
   /**
@@ -161,30 +301,73 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    */
   private async ensureScenarioFolder(scenario?: string): Promise<string> {
     const scenarioPath = this.getScenarioPath(scenario);
-    const dir = this.newDirectory(scenarioPath);
-    if (!dir.exists) {
-      dir.create({ intermediates: true });
-    }
+    await this.fsEnsureDir(scenarioPath);
     return scenarioPath;
   }
 
+  private async fsListJsonRecursive(dirUri: string, baseUri: string): Promise<string[]> {
+    if (this.useLegacyExpoFileSystem) {
+      const dirInfo = await this.fsGetInfo(dirUri);
+      if (!dirInfo.exists || !dirInfo.isDirectory) {
+        return [];
+      }
+      const names = await this.FileSystem.readDirectoryAsync(dirUri);
+      const out: string[] = [];
+      const prefix = `${baseUri.replace(/\/$/, '')}/`;
+      for (const name of names) {
+        const childUri = this.joinFsUri(dirUri, name);
+        const childInfo = await this.fsGetInfo(childUri);
+        if (childInfo.isDirectory) {
+          out.push(...(await this.fsListJsonRecursive(childUri, baseUri)));
+        } else if (name.endsWith('.json')) {
+          const rel = childUri.startsWith(prefix) ? childUri.slice(prefix.length) : name;
+          out.push(rel);
+        }
+      }
+      return out;
+    }
+    try {
+      const items = this.newDirectory(dirUri).list();
+      const results: string[] = [];
+      for (const item of items as any[]) {
+        if (typeof this.FileSystem.Directory === 'function' && item instanceof this.FileSystem.Directory) {
+          results.push(...(await this.fsListJsonRecursive(item.uri as string, baseUri)));
+        } else if (typeof item?.name === 'string' && item.name.endsWith('.json')) {
+          const relUri = typeof item.uri === 'string' ? item.uri : '';
+          const relative = relUri.startsWith(baseUri + '/')
+            ? relUri.slice(baseUri.length + 1)
+            : item.name;
+          results.push(relative);
+        }
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  }
+
   async initialize(): Promise<void> {
-    // Get the document directory path
-    const documentDir = this.FileSystem.Paths.document.uri;
-    if (!documentDir) {
-      throw new Error('Could not access document directory');
+    let fullPath: string;
+    if (this.useLegacyExpoFileSystem) {
+      const documentDir = this.FileSystem.documentDirectory as string;
+      fullPath = this.joinFsUri(documentDir.replace(/\/$/, ''), this.mockDataPath.replace(/^\/*/, ''));
+    } else {
+      const documentDir = this.FileSystem.Paths!.document.uri;
+      if (!documentDir) {
+        throw new Error('Could not access document directory');
+      }
+      fullPath = documentDir.replace(/\/?$/, '') + '/' + this.mockDataPath.replace(/^\//, '');
     }
 
-    // Resolve the full path
-    const fullPath = documentDir + this.mockDataPath;
+    await this.fsEnsureDir(fullPath);
 
-    // Check if directory exists, create if not
-    const dir = this.newDirectory(fullPath);
-    if (!dir.exists) {
-      dir.create({ intermediates: true });
-      logger.info(`[Mockifyer] Created mock data directory: ${fullPath}`);
-    } else {
-      logger.info(`[Mockifyer] Using existing mock data directory: ${fullPath}`);
+    const existedInfo = await this.fsGetInfo(fullPath);
+    if (existedInfo.exists) {
+      logger.info(
+        existedInfo.isDirectory !== false
+          ? `[Mockifyer] Using mock data directory: ${fullPath}`
+          : `[Mockifyer] Mock data path resolved: ${fullPath}`
+      );
     }
 
     this.mockDataPath = fullPath;
@@ -246,17 +429,17 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const scenarioPath = this.getScenarioPath();
         for (const file of files) {
           try {
-            const filePath = scenarioPath + '/' + file;
-            const f = this.newFile(filePath);
-
-            if (f.exists && f.modificationTime) {
+            const filePath = this.joinFsUri(scenarioPath, file);
+            const info = await this.fsGetInfo(filePath);
+            const mtime = info.modificationTime;
+            if (info.exists && mtime !== undefined) {
               const cachedMtime = this.fileModTimes.get(file);
-              if (cachedMtime === undefined || cachedMtime !== f.modificationTime) {
+              if (cachedMtime === undefined || cachedMtime !== mtime) {
                 hasChanges = true;
                 break;
               }
             }
-          } catch (error) {
+          } catch {
             // Ignore errors checking individual files
           }
         }
@@ -270,12 +453,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const scenarioPath = this.getScenarioPath();
         for (const file of files) {
           try {
-            const filePath = scenarioPath + '/' + file;
-            const f = this.newFile(filePath);
-            if (f.exists && f.modificationTime) {
-              this.fileModTimes.set(file, f.modificationTime);
+            const filePath = this.joinFsUri(scenarioPath, file);
+            const info = await this.fsGetInfo(filePath);
+            const mtime = info.modificationTime;
+            if (info.exists && mtime !== undefined) {
+              this.fileModTimes.set(file, mtime);
             }
-          } catch (error) {
+          } catch {
             // Ignore errors
           }
         }
@@ -290,12 +474,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         for (const file of files) {
           if (!this.fileModTimes.has(file)) {
             try {
-              const filePath = scenarioPath + '/' + file;
-              const f = this.newFile(filePath);
-              if (f.exists && f.modificationTime) {
-                this.fileModTimes.set(file, f.modificationTime);
+              const filePath = this.joinFsUri(scenarioPath, file);
+              const info = await this.fsGetInfo(filePath);
+              const mtime = info.modificationTime;
+              if (info.exists && mtime !== undefined) {
+                this.fileModTimes.set(file, mtime);
               }
-            } catch (error) {
+            } catch {
               // Ignore errors
             }
           }
@@ -326,12 +511,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       const scenarioPath = this.getScenarioPath();
       for (const file of files) {
         try {
-          const filePath = scenarioPath + '/' + file;
-          const f = this.newFile(filePath);
-          if (f.exists && f.modificationTime) {
-            this.fileModTimes.set(file, f.modificationTime);
+          const filePath = this.joinFsUri(scenarioPath, file);
+          const info = await this.fsGetInfo(filePath);
+          const mtime = info.modificationTime;
+          if (info.exists && mtime !== undefined) {
+            this.fileModTimes.set(file, mtime);
           }
-        } catch (error) {
+        } catch {
           // Ignore errors for individual files
         }
       }
@@ -364,7 +550,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
 
 
-    const scenarioPath = await this.ensureScenarioFolder();
+    const scenarioPath = await this.ensureScenarioFolder(options?.scenario);
 
     // Check request limit before saving (only if limit is set via env var)
     const MAX_REQUESTS_PER_SCENARIO = process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO
@@ -372,11 +558,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       : undefined;
     if (MAX_REQUESTS_PER_SCENARIO !== undefined && !options?.relativePath) {
       try {
-        const jsonFiles = this.listJsonFilesRecursive(scenarioPath, scenarioPath)
+        const jsonFiles = (await this.fsListJsonRecursive(scenarioPath, scenarioPath))
           .filter(f => f !== 'scenario-config.json' && f !== 'date-config.json');
 
         if (jsonFiles.length >= MAX_REQUESTS_PER_SCENARIO) {
-          const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${this.currentScenario}". Please delete some mock files or switch to a different scenario.`;
+          const label = options?.scenario ?? this.currentScenario;
+          const errorMessage = `Maximum ${MAX_REQUESTS_PER_SCENARIO} requests per scenario reached for scenario "${label}". Please delete some mock files or switch to a different scenario.`;
           logger.warn(`[Mockifyer] ⚠️ ${errorMessage}`);
           // Don't throw - just log and return to prevent app crash
           return;
@@ -403,24 +590,22 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       filename = parts.filename;
       relativeFilename = dir ? `${dir}/${filename}` : filename;
     }
-    const filePath = scenarioPath + '/' + relativeFilename;
+    const filePath = this.joinFsUri(scenarioPath, relativeFilename);
 
     // Ensure subdirectory exists
     if (dir) {
-      const subDir = this.newDirectory(scenarioPath + '/' + dir);
-      if (!subDir.exists) {
-        subDir.create({ intermediates: true });
-      }
+      await this.fsEnsureDir(this.joinFsUri(scenarioPath, dir));
     }
 
     // Write to file
     try {
-      this.newFile(filePath).write(JSON.stringify(mockData, null, 2));
+      await this.fsWriteText(filePath, JSON.stringify(mockData, null, 2));
 
       // Update modification time cache
-      const f = this.newFile(filePath);
-      if (f.exists && f.modificationTime) {
-        this.fileModTimes.set(relativeFilename, f.modificationTime);
+      const infoAfter = await this.fsGetInfo(filePath);
+      const mtime = infoAfter.modificationTime;
+      if (infoAfter.exists && mtime !== undefined) {
+        this.fileModTimes.set(relativeFilename, mtime);
       }
     } catch (error) {
       logger.error(`[ExpoFileSystemProvider] ❌ Error saving mock file:`, error);
@@ -428,26 +613,30 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
   }
 
-  async findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> {
+  async findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
       // Verify the cached file still exists and hasn't been modified
       try {
         const filePath = cached.content.filePath;
-        const f = this.newFile(filePath);
+        const info = await this.fsGetInfo(filePath);
 
-        if (f.exists) {
-          const currentMtime = f.modificationTime || Date.now();
+        if (info.exists) {
+          const currentMtime = info.modificationTime ?? Date.now();
           const cachedMtime = cached.mtime;
 
           // If file hasn't changed, return cached result
           if (currentMtime === cachedMtime) {
             return cached.content;
-          } else {
-            // File has been modified, clear cache entry and re-read
-            this.fileCache.delete(requestKey);
           }
+          // File has been modified, clear cache entry and re-read
+          this.fileCache.delete(requestKey);
         } else {
           // File no longer exists, clear cache
           this.fileCache.delete(requestKey);
@@ -481,8 +670,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     for (const file of files) {
       try {
-        const filePath = scenarioPath + '/' + file;
-        const fileContent = await this.newFile(filePath).text();
+        const filePath = this.joinFsUri(scenarioPath, file);
+        const fileContent = await this.fsReadText(filePath);
 
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
         if (fileContent.includes('/mockifyer-save') ||
@@ -508,13 +697,16 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
         // Generate key for this mock and compare with requested key
         const mockKey = generateRequestKey(mockData.request);
-        if (mockKey === requestKey && !mockPassesThroughToRealApi(mockData)) {
+        if (
+          mockKey === requestKey &&
+          mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })
+        ) {
           // Get file modification time
-          let fileMtime = 0;
+          let fileMtime = Date.now();
           try {
-            const f = this.newFile(filePath);
-            fileMtime = f.modificationTime || Date.now();
-          } catch (error) {
+            const info = await this.fsGetInfo(filePath);
+            fileMtime = info.modificationTime ?? Date.now();
+          } catch {
             fileMtime = Date.now();
           }
 
@@ -534,17 +726,17 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Cache the result
       try {
-        const f = this.newFile(bestMatch.filePath);
+        const infoBest = await this.fsGetInfo(bestMatch.filePath);
         const cachedResult: CachedMockData = {
           mockData: bestMatch.mockData,
           filename: bestMatch.file,
           filePath: bestMatch.filePath
         };
         this.fileCache.set(requestKey, {
-          mtime: f.modificationTime || bestMatch.mtime,
+          mtime: infoBest.modificationTime ?? bestMatch.mtime,
           content: cachedResult
         });
-      } catch (error) {
+      } catch {
         // Ignore cache errors
       }
 
@@ -575,8 +767,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     for (const file of files) {
       try {
-        const filePath = scenarioPath + '/' + file;
-        const fileContent = await this.newFile(filePath).text();
+        const filePath = this.joinFsUri(scenarioPath, file);
+        const fileContent = await this.fsReadText(filePath);
 
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
         if (fileContent.includes('/mockifyer-save') ||
@@ -644,8 +836,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     for (const file of files) {
       try {
-        const filePath = scenarioPath + '/' + file;
-        const fileContent = await this.newFile(filePath).text();
+        const filePath = this.joinFsUri(scenarioPath, file);
+        const fileContent = await this.fsReadText(filePath);
 
         // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
         if (fileContent.includes('/mockifyer-save') ||
@@ -677,40 +869,26 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   }
 
   /**
-   * List all JSON files in the mock data directory
+   * List all JSON files in the mock data directory (relative to scenario folder)
    */
-  private listJsonFilesRecursive(dirUri: string, baseUri: string): string[] {
-    try {
-      const items = this.newDirectory(dirUri).list();
-      const results: string[] = [];
-      for (const item of items) {
-        if (item instanceof this.FileSystem.Directory) {
-          results.push(...this.listJsonFilesRecursive(item.uri, baseUri));
-        } else if (item.name.endsWith('.json')) {
-          const relative = item.uri.startsWith(baseUri + '/')
-            ? item.uri.slice(baseUri.length + 1)
-            : item.name;
-          results.push(relative);
-        }
-      }
-      return results;
-    } catch {
-      return [];
-    }
-  }
-
   private async listMockFiles(): Promise<string[]> {
     try {
       const scenarioPath = this.getScenarioPath();
-      logger.debug(`[ExpoFileSystemProvider] listMockFiles - Reading from scenario: ${this.currentScenario}, path: ${scenarioPath}`);
-      const pathInfo = this.FileSystem.Paths.info(scenarioPath);
+      logger.debug(
+        `[ExpoFileSystemProvider] listMockFiles - Reading from scenario: ${this.currentScenario}, path: ${scenarioPath}`
+      );
+      const pathInfo = await this.fsGetInfo(scenarioPath);
       if (!pathInfo.exists || !pathInfo.isDirectory) {
-        logger.debug(`[ExpoFileSystemProvider] listMockFiles - Scenario directory does not exist: ${scenarioPath}`);
+        logger.debug(
+          `[ExpoFileSystemProvider] listMockFiles - Scenario directory does not exist: ${scenarioPath}`
+        );
         return [];
       }
 
-      const files = this.listJsonFilesRecursive(scenarioPath, scenarioPath);
-      logger.debug(`[ExpoFileSystemProvider] listMockFiles - Found ${files.length} files in scenario ${this.currentScenario}`);
+      const files = await this.fsListJsonRecursive(scenarioPath, scenarioPath);
+      logger.debug(
+        `[ExpoFileSystemProvider] listMockFiles - Found ${files.length} files in scenario ${this.currentScenario}`
+      );
       return files;
     } catch (error) {
       logger.warn(`[Mockifyer] Failed to list mock files:`, error);
@@ -742,12 +920,9 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       const scenarioPath = this.getScenarioPath();
       for (const file of files) {
-        const filePath = scenarioPath + '/' + file;
+        const filePath = this.joinFsUri(scenarioPath, file);
         try {
-          const f = this.newFile(filePath);
-          if (f.exists) {
-            f.delete();
-          }
+          await this.fsUnlink(filePath);
         } catch (error) {
           logger.warn(`[ExpoFileSystemProvider] Failed to delete ${file}:`, error);
         }

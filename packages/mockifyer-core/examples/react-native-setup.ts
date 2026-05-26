@@ -52,7 +52,7 @@ async function loadBundledMockData(): Promise<MockData[]> {
  */
 export async function initializeMockifyer() {
   // Check if Mockifyer is enabled
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true' || __DEV__;
+  const isEnabled = process.env.MOCKIFYER_MODE === 'on' || __DEV__;
   if (!isEnabled) {
     return; // Disabled
   }

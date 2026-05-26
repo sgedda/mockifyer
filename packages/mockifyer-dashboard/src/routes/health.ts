@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
-import { getDashboardContext } from '../utils/dashboard-context';
+import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
@@ -41,6 +41,8 @@ router.get('/', async (req: Request, res: Response) => {
     }
   }
 
+  const redisDiskMirror = provider === 'redis' ? resolveRedisDiskMirrorOptions(config) : null;
+
   return res.json({
     status: 'ok',
     provider,
@@ -49,6 +51,7 @@ router.get('/', async (req: Request, res: Response) => {
     fileCount,
     redisOk,
     redisError,
+    ...(redisDiskMirror ? { redisDiskMirror } : {}),
     timestamp: new Date().toISOString(),
   });
 });

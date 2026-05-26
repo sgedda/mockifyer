@@ -7,10 +7,12 @@ import MockEditor from './MockEditor'
 import StatsView from './StatsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
+import Network from './Network'
 import DateConfig from './DateConfig'
 import SidebarNav from './SidebarNav'
+import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
-import type { MockFile, MockData } from '@/types'
+import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -43,6 +45,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
     if (path === '/timeline') return 'timeline'
+    if (path === '/network') return 'network'
     if (path === '/date-config') return 'date-config'
     if (path === '/settings') return 'settings'
     return 'stats' // default to stats (root path)
@@ -56,6 +59,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [loadingMock, setLoadingMock] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const { toast } = useToast()
 
   const refreshScenarioConfig = useCallback(async () => {
@@ -161,6 +165,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
       'timeline': '/timeline',
+      'network': '/network',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -171,9 +176,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   async function loadMocks() {
     try {
       setLoading(true)
-      const data = await getMocks(scenario)
+      const data = await getMocks(scenario, { similarGroups: true })
       setMocks(data.files)
       setAllMocks(data.files)
+      setSimilarBodyGroups(data.similarBodyGroups ?? [])
     } catch (error) {
       toast({
         title: 'Error',
@@ -236,15 +242,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }
 
-  const filteredMocks = mocks.filter(mock => {
-    const query = searchQuery.toLowerCase()
-    return (
-      mock.filename.toLowerCase().includes(query) ||
-      mock.endpoint?.toLowerCase().includes(query) ||
-      mock.graphqlInfo?.query.toLowerCase().includes(query) ||
-      mock.method?.toLowerCase().includes(query)
-    )
-  })
+  // Mocks come from GET /mocks or /mocks/search (full JSON); extra client filtering hid response-body hits.
 
   const filteredScenarioOptions = availableScenarios
     .filter((s) => s && s.trim())
@@ -412,6 +410,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </DropdownMenu>
           </div>
         </header>
+        <ClientConnectionsPanel />
         <main className="flex-1 overflow-auto p-6">
           <Routes>
             <Route
@@ -430,8 +429,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={
                 <div className="space-y-6">
                   <MockList
-                    mocks={filteredMocks}
+                    mocks={mocks}
                     allMocks={allMocks}
+                    similarBodyGroups={similarBodyGroups}
                     scenario={scenario}
                     scenarioLocked={scenarioLocked}
                     loading={loading}
@@ -471,6 +471,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"

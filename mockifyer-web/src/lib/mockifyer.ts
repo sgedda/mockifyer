@@ -5,7 +5,7 @@ import fs from 'fs';
 
 // Initialize mockifyer if enabled
 export function initializeMockifyer(): void {
-  if (process.env.MOCKIFYER_ENABLED === 'true') {
+  if (process.env.MOCKIFYER_MODE === 'on') {
     // Determine mock data path:
     // 1. Use MOCKIFYER_PATH if explicitly set (Railway volume path)
     // 2. Check for Railway volume at /data/mock-data (common Railway volume mount)
@@ -103,5 +103,5 @@ export function initializeMockifyer(): void {
     // Note: Return values are intentionally discarded - initialization is side-effect only
     // Function returns void as declared in the type signature
   }
-  // When MOCKIFYER_ENABLED is false, function returns undefined (implicit void)
+  // When MOCKIFYER_MODE is not `on`, function returns undefined (implicit void)
 } 

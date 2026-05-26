@@ -5,5 +5,5 @@ import type { MockData } from '../types';
  * pass through to the real upstream API.
  */
 export function mockPassesThroughToRealApi(mockData: MockData): boolean {
-  return mockData.alwaysUseRealApi === true;
+  return mockData.alwaysUseRealApi === true || mockData.responsePending === true;
 }

@@ -33,7 +33,10 @@
     "http",
     "intercept"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "peerDependencies": {
     "ioredis": ">=5.0.0",
@@ -55,6 +58,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
   },
   "repository": {
     "type": "git",

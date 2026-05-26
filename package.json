@@ -1,15 +1,15 @@
 {
   "name": "mockifyer-monorepo",
-  "version": "1.8.9",
+  "version": "1.8.10",
   "private": true,
   "description": "Monorepo for Mockifyer libraries: @sgedda/mockifyer-core, @sgedda/mockifyer-axios, @sgedda/mockifyer-fetch, @sgedda/mockifyer-dashboard, @sgedda/mockifyer-test-helper",
   "scripts": {
     "build": "sh packages/build-all.sh",
     "start": "npm run start --prefix mockifyer-web",
     "test": "jest",
-    "test:axios": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
-    "test:axios:local": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
-    "test:fetch": "MOCKIFYER_ENABLED=true MOCKIFYER_RECORD=true npx ts-node tests/fetch/fetch-auto-mock.ts",
+    "test:axios": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-auto-mock.ts",
+    "test:axios:local": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node tests/axios/axios-local-mock.ts",
+    "test:fetch": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npx ts-node tests/fetch/fetch-auto-mock.ts",
     "test:watch": "jest --watch",
     "tag:package": "node scripts/tag-package.mjs",
     "tag:package:dry": "node scripts/tag-package.mjs --dry-run",
@@ -26,7 +26,10 @@
     "http",
     "intercept"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "devDependencies": {
     "@types/jest": "^29.5.14",
@@ -44,5 +47,5 @@
   "bugs": {
     "url": "https://github.com/sgedda/mockifyer/issues"
   },
-  "homepage": "https://github.com/sgedda/mockifyer#readme"
+  "homepage": "https://mockifyer.dev"
 }

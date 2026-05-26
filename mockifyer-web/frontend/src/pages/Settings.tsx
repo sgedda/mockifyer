@@ -750,7 +750,7 @@ export default function Settings() {
                     <h4 className="font-semibold mb-2">Environment Variables</h4>
                     <div className="space-y-2 text-sm">
                       <div>
-                        <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_ENABLED</code>
+                        <code className="bg-muted px-2 py-1 rounded">MOCKIFYER_MODE</code>
                         <p className="text-muted-foreground mt-1">Enable/disable Mockifyer</p>
                       </div>
                       <div>
@@ -815,7 +815,7 @@ const currentDate = getCurrentDate();`}
                     <div>
                       <p className="text-sm font-semibold">Mockifyer Enabled</p>
                       <p className="text-xs text-muted-foreground">
-                        Controlled by MOCKIFYER_ENABLED environment variable
+                        Controlled by MOCKIFYER_MODE environment variable
                       </p>
                     </div>
                     <Badge variant={runtimeConfig.mockifyerEnabled ? 'default' : 'outline'}>

@@ -1,5 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -23,7 +24,8 @@ export class SQLiteProvider implements DatabaseProvider {
     // This will throw if better-sqlite3 is not installed
     let Database: any;
     try {
-      Database = require('better-sqlite3');
+      // Optional peer: skip resolution when consumers bundle with webpack (e.g. Next.js instrumentation).
+      Database = require(/* webpackIgnore: true */ 'better-sqlite3');
     } catch (e) {
       throw new Error(
         'better-sqlite3 is required for SQLiteProvider. Install it with: npm install better-sqlite3'
@@ -115,7 +117,12 @@ export class SQLiteProvider implements DatabaseProvider {
     console.log(`[Mockifyer] Saved mock to SQLite database: ${requestKey.substring(0, 100)}...`);
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!this.db) {
       return undefined;
     }
@@ -145,7 +152,7 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
-    if (mockPassesThroughToRealApi(mockData)) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
 

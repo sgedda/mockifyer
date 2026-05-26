@@ -34,7 +34,7 @@ This web application demonstrates how to use `mockifyer` to mock external API ca
    PORT=3000
    
    # Mockifyer Configuration (optional)
-   MOCKIFYER_ENABLED=true
+   MOCKIFYER_MODE=on
    MOCKIFYER_RECORD=true
    MOCKIFYER_PATH=./mock-data
    # Optional: stable lane id for scenario separation (e.g. market+version)

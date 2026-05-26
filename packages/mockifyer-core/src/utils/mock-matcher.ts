@@ -1,5 +1,6 @@
 import { StoredRequest, MockData } from '../types';
 import { mockPassesThroughToRealApi } from './mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from './mock-replay-mode';
 
 export interface CachedMockData {
   mockData: MockData;
@@ -21,7 +22,7 @@ export interface MockMatchingConfig {
 /**
  * Normalizes GraphQL query by removing extra whitespace and formatting
  */
-function normalizeGraphQLQuery(query: string): string {
+export function normalizeGraphQLQuery(query: string): string {
   if (!query) return '';
   // Remove extra whitespace, newlines, and normalize spacing
   return query.replace(/\s+/g, ' ').trim();
@@ -229,7 +230,7 @@ export function findBestMatchingMock(
   // Try exact match first
   const exactMatch = mockCache.get(requestKey);
   if (exactMatch) {
-    if (includePassthroughMocks || !mockPassesThroughToRealApi(exactMatch.mockData)) {
+    if (mockShouldBeIncludedInRequestMatch(exactMatch.mockData, { includePassthroughMocks })) {
       return exactMatch;
     }
   }

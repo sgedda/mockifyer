@@ -58,6 +58,11 @@ API sketch ([`packages/mockifyer-dashboard/src/routes/client-lanes.ts`](packages
 
 - [`packages/mockifyer-fetch/src/clients/fetch-client.ts`](packages/mockifyer-fetch/src/clients/fetch-client.ts): send `X-Mockifyer-Client-Id: <resolved>` and include `clientId` in the proxy JSON body (value = resolved lane id).
 - [`packages/mockifyer-dashboard/src/routes/proxy.ts`](packages/mockifyer-dashboard/src/routes/proxy.ts): read header/body, resolve scenario using `clientId`. **No** requirement to upsert a “devices seen” hash for Phase 1.
+- The proxy also sets **`X-Mockifyer-Client-Id`** on the **real upstream** HTTP request when a lane `clientId` is resolved, so a downstream service can gate Mockifyer with `activationMode: 'client_id_header'` (see [README — Activation modes](./README.md#activation-modes-when-interceptors-run)).
+
+### Runtime: `activationMode` + `X-Mockifyer-Client-Id`
+
+Libraries respect **`MockifyerConfig.activationMode`** / **`MOCKIFYER_ACTIVATION_MODE`**. In **`client_id_header`** mode, a non-empty **`X-Mockifyer-Client-Id`** on the **outgoing** request is the switch that turns Mockifyer on for that hop (manual, or propagated from another service). **`@sgedda/mockifyer-fetch`** with **`proxy.baseUrl`** and a resolved **`clientId`** still opts in for proxy calls without repeating the header on every inner URL. Full table and examples: [README](./README.md#activation-modes-when-interceptors-run).
 
 **UI**
 

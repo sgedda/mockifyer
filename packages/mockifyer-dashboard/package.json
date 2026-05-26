@@ -30,7 +30,10 @@
     "testing",
     "mockifyer"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../mockifyer-core",
@@ -50,6 +53,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
   },
   "repository": {
     "type": "git",

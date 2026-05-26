@@ -39,7 +39,7 @@ Configure watch behavior in your setup:
 ```typescript
 import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
 
-const instance = await setupMockifyerForReactNative({
+const result = await setupMockifyerForReactNative({
   isDev: __DEV__,
   mockDataPath: 'mock-data',
   recordMode: true,
@@ -57,6 +57,7 @@ const instance = await setupMockifyerForReactNative({
     },
   },
 });
+const instance = result.status === 'active' ? result.instance : null;
 ```
 
 ## Benefits

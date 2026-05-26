@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
@@ -48,7 +49,7 @@ export class FilesystemProvider implements DatabaseProvider {
   }
 
   /**
-   * Get the scenario-specific path for mock files
+   * Scenario folder path used for mock files (lookup still uses active scenario via getScenarioPath).
    */
   private getScenarioPath(): string {
     const currentScenario = getCurrentScenario(this.mockDataPath);
@@ -67,8 +68,9 @@ export class FilesystemProvider implements DatabaseProvider {
       return;
     }
     
-    const scenarioPath = this.getScenarioPath();
-    ensureScenarioFolder(this.mockDataPath, getCurrentScenario(this.mockDataPath));
+    const scenarioForSave = options?.scenario ?? getCurrentScenario(this.mockDataPath);
+    const scenarioPath = getScenarioFolderPath(this.mockDataPath, scenarioForSave);
+    ensureScenarioFolder(this.mockDataPath, scenarioForSave);
     
     if (!options?.relativePath) {
       const limitCheck = checkRequestLimit(this.mockDataPath);
@@ -94,8 +96,9 @@ export class FilesystemProvider implements DatabaseProvider {
     fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
 
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-    const currentScenario = getCurrentScenario(this.mockDataPath);
-    console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`);
+    console.log(
+      `[Mockifyer] Saved new mock to file: ${scenarioForSave}/${dir ? `${dir}/` : ''}${filename}`
+    );
   }
 
   private getAllJsonFiles(dir: string): string[] {
@@ -112,7 +115,12 @@ export class FilesystemProvider implements DatabaseProvider {
     return results;
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!this.fsAvailable || !fs.existsSync(this.mockDataPath)) {
       return undefined;
     }
@@ -135,10 +143,10 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          if (mockPassesThroughToRealApi(mockData)) {
-            continue;
+          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+            return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
           }
-          return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
+          continue;
         }
       } catch (error) {
         console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
