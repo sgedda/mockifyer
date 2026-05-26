@@ -4,6 +4,8 @@ import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import { getDashboardContext } from '../utils/dashboard-context';
+import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
 
@@ -12,13 +14,80 @@ function getMockDataPath(): string {
   return detectMockDataPath();
 }
 
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const mockDataPath = getMockDataPath();
+    const { mockDataPath, config } = getDashboardContext(req);
     /** Must match /api/mocks: prefer explicit ?scenario= (dashboard) over env-only getCurrentScenario(). */
     const requestedScenario = req.query.scenario as string | undefined;
     const currentScenario = requestedScenario || getCurrentScenario(mockDataPath);
     const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, currentScenario));
+
+    if (config.provider === 'redis') {
+      const store = new RedisMockStore({
+        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+        keyPrefix: config.keyPrefix,
+        mockDataPath,
+      });
+
+      try {
+        const items = await store.list(currentScenario);
+        let totalSize = 0;
+        const endpoints: Record<string, number> = {};
+        const domains: Record<string, number> = {};
+        const methods: Record<string, number> = {};
+        const statusCodes: Record<string, number> = {};
+        const recentActivity: Array<{ filename: string; modified: Date }> = [];
+
+        for (const { hash, mockData } of items) {
+          const payload = JSON.stringify(mockData);
+          totalSize += Buffer.byteLength(payload);
+          const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
+          recentActivity.push({ filename: `redis/${hash}.json`, modified: ts });
+
+          if (mockData.request) {
+            const endpoint = mockData.request.url || 'unknown';
+            endpoints[endpoint] = (endpoints[endpoint] || 0) + 1;
+            const method = (mockData.request.method || 'unknown').toUpperCase();
+            methods[method] = (methods[method] || 0) + 1;
+            try {
+              const url = new URL(endpoint);
+              domains[url.hostname] = (domains[url.hostname] || 0) + 1;
+            } catch {
+              // ignore
+            }
+          }
+          if ((mockData as any).response) {
+            const status = String((mockData as any).response?.status || 200);
+            statusCodes[status] = (statusCodes[status] || 0) + 1;
+          }
+        }
+
+        recentActivity.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+        const topEndpoints = Object.entries(endpoints)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 10)
+          .map(([endpoint, count]) => ({ endpoint, count }));
+
+        return res.json({
+          totalFiles: items.length,
+          totalSize,
+          endpoints: topEndpoints,
+          domains,
+          methods,
+          statusCodes,
+          recentActivity: recentActivity.slice(0, 10).map((item) => ({
+            filename: item.filename,
+            modified: item.modified.toISOString(),
+          })),
+          folderBreakdown: [],
+          scenario: currentScenario,
+          mockDataPath,
+          scenarioPath: `redis://${config.keyPrefix || 'mockifyer:v1'}:index:${currentScenario}`,
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
     
     if (!fs.existsSync(mockDataPath)) {
       return res.json({

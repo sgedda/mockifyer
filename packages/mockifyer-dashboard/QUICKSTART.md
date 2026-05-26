@@ -52,6 +52,13 @@ The frontend automatically proxies API requests to the backend.
 
 ## Production Build
 
+### Vite base (optional)
+
+By default, `npm run build` uses a **portable** base (`./`): the same `public/` works at **`/`** or under a mount like **`/dashboard`** without setting `VITE_MOCKIFYER_DASHBOARD_BASE`.
+
+- **Root-absolute** assets (legacy): `VITE_MOCKIFYER_DASHBOARD_BASE=/ npm run build`
+- **Fixed subpath** in the bundle: `VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build`
+
 ### Build Everything
 
 ```bash

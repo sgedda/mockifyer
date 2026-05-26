@@ -1,3 +1,10 @@
 [build]
 builder = "nixpacks"
 
+[deploy]
+# Lightweight endpoint; avoids serving the full SPA for platform probes
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+# Railway defaults to `npm start`, which runs `sh -c node dist/index.js` and logs npm ERR! on SIGTERM.
+# This runs node as PID 1’s executable path so deploy shutdown is quiet. PATH matches nixpacks Node tarball.
+startCommand = "PATH=/usr/local/bin:$PATH node dist/index.js"

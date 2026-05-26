@@ -75,7 +75,7 @@ export class FootballService {
       pathExists: fs.existsSync(mockDataPath)
     });
     
-    if (process.env.MOCKIFYER_ENABLED === 'true') {
+    if (process.env.MOCKIFYER_MODE === 'on') {
       this.httpClient = setupMockifyer({
         mockDataPath: mockDataPath,
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
@@ -105,7 +105,7 @@ export class FootballService {
     console.log('[FootballService] Initialized with:', {
       baseUrl: this.baseUrl,
       hasApiKey: !!this.apiKey,
-      mockEnabled: process.env.MOCKIFYER_ENABLED,
+      mockEnabled: process.env.MOCKIFYER_MODE,
       mockRecord: process.env.MOCKIFYER_RECORD,
       mockPath: process.env.MOCKIFYER_PATH
     });
@@ -118,7 +118,7 @@ export class FootballService {
         season,
         teamId,
         date,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 
@@ -186,7 +186,7 @@ export class FootballService {
         url: `${this.baseUrl}/standings`,
         leagueId,
         season,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 
@@ -249,7 +249,7 @@ export class FootballService {
       console.log('[FootballService] Making team info request:', {
         url: `${this.baseUrl}/teams`,
         teamId,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 

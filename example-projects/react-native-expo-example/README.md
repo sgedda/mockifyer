@@ -73,11 +73,13 @@ The project uses the simplified setup (`mockifyer-setup-simple.ts`) which automa
 
 ### Development Mode (Recording Mocks)
 
-1. **Start the app with recording enabled**:
+1. **Start the app with recording enabled** (hybrid — no Redis):
 
 ```bash
 npm run dev:record
 ```
+
+For **Redis / dashboard proxy** recording, start the dashboard (`npm run dashboard:redis`) in another terminal, then run `npm run dev:redis:record`.
 
 2. **Make API calls** in the app by tapping "Fetch Posts" or "Fetch User"
 3. **Mocks are automatically saved** to both device filesystem AND project folder (via Hybrid Provider)
@@ -125,18 +127,46 @@ npm run build:android
 
 The bundled TypeScript file will be included in your production build.
 
-### Running the App
+### Running the App (`package.json` scripts)
+
+Expo inlines **`EXPO_PUBLIC_*`** variables when Metro bundles the app. The example reads them in `mockifyer-setup-simple.ts` (see that file for the full matrix). **`MOCKIFYER_*`** vars are still supported where noted (e.g. Metro / Node tooling).
+
+| Script | Backend | Notes |
+|--------|---------|--------|
+| `npm run dev` | Hybrid | Mockifyer on; local/mock-data via Metro (no Redis). |
+| `npm run dev:hybrid` | Hybrid | Same as `dev`, explicit backend. |
+| `npm run dev:hybrid:record` | Hybrid | Recording on. |
+| `npm run dev:hybrid:record:tests` | Hybrid | Recording + generated Jest tests. |
+| `npm run dev:redis` | Redis proxy | Start **`npm run dashboard:redis`** first (or set `EXPO_PUBLIC_MOCKIFYER_PROXY_URL` if not on default host/port). |
+| `npm run dev:redis:record` | Redis proxy | Recording on. |
+| `npm run dev:redis:record:tests` | Redis proxy | Recording + test generation. |
+| `npm run dev:redis:record:no-proxy-miss` | Redis proxy | Recording on, but **`EXPO_PUBLIC_MOCKIFYER_PROXY_RECORD_ON_MISS=false`** (see setup file). |
+| `npm run dev:off` | Hybrid | `MOCKIFYER_MODE=off` — disable intercept. |
+| `npm run dev:launch-client` | Hybrid | `MOCKIFYER_MODE=launch_client` — useful for E2E / Maestro-style flows. |
+| `npm run dev:record` | Hybrid | Shortcut alias for `dev:hybrid:record`. |
+| `npm run dev:record:tests` | Hybrid | Shortcut alias for `dev:hybrid:record:tests`. |
+| `npm start` | — | Plain Expo; use `dev:*` when you want env-driven Mockifyer. |
+
+**Optional env (bundle-time):**
+
+- `EXPO_PUBLIC_MOCKIFYER_PROXY_URL` — Dashboard origin (default: `http://localhost:3002` on iOS simulator, `http://10.0.2.2:3002` on Android emulator).
+- `EXPO_PUBLIC_MOCKIFYER_BACKEND` — `hybrid` (default) or `redis` / `proxy` / `dashboard` for Redis-backed proxy mode.
+
+**Windows:** inline `VAR=value` in npm scripts is Unix-oriented. Use a tool like `cross-env` or set the same variables in your shell before `expo start`.
+
+### Dashboard with Redis Provider
+
+Use the dashboard in Redis mode when your mock data is stored in Redis:
 
 ```bash
-# Development mode (uses FileSystem provider)
-npm run dev
+# Uses redis://localhost:6379
+npm run dashboard:redis
 
-# Development mode with recording enabled
-npm run dev:record
-
-# Standard Expo start
-npm start
+# Uses MOCKIFYER_REDIS_URL from env
+MOCKIFYER_REDIS_URL=redis://localhost:6380 npm run dashboard:redis:custom
 ```
+
+See `DASHBOARD.md` for the full Redis dashboard flow and options.
 
 ## Project Structure
 
@@ -162,40 +192,22 @@ react-native-expo-example/
 
 ## Setup Approach
 
-This project uses the **Simplified Setup** (✅ Active):
+This project uses the **Simplified Setup** (✅ Active) in `mockifyer-setup-simple.ts` (imported from `App.tsx`):
 
-```typescript
-// mockifyer-setup-simple.ts (used by App.tsx)
-import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+- **Hybrid (default):** `setupMockifyerForReactNative` — Metro + device mock-data, no Redis.
+- **Redis / dashboard proxy:** `initMockifyerForReactNativeDashboard` when `EXPO_PUBLIC_MOCKIFYER_BACKEND` is `redis` (or `proxy` / `dashboard`). Run `npm run dashboard:redis` on the host first.
 
-export async function initializeMockifyer() {
-  return await setupMockifyerForReactNative({
-    isDev: __DEV__, // Pass React Native's __DEV__ variable
-    mockDataPath: 'mock-data',
-    bundledDataPath: './assets/mock-data',
-    recordMode: process.env.MOCKIFYER_RECORD === 'true',
-  });
-}
-```
+Recording, runtime mode, test generation, and proxy URL are driven by **`EXPO_PUBLIC_*`** and **`MOCKIFYER_*`** env vars (see table above and the top-of-file comment in `mockifyer-setup-simple.ts`).
 
-**Note:** The `isDev` parameter is required and should be passed from your application code. This keeps the package framework-agnostic and gives you full control over dev/prod detection.
-
-**Benefits:**
-- ✅ Minimal code (~10 lines)
-- ✅ Automatic dev/prod detection
-- ✅ Handles all provider switching logic
-- ✅ Still flexible via config options
-
-**Alternative:** See `mockifyer-setup.ts` for a full-control setup with complete manual provider selection (useful for advanced customization).
+**Alternative:** See `mockifyer-setup.ts` for a full-control setup with manual provider selection.
 
 ## How It Works
 
 ### Development Mode (`__DEV__ === true`)
 
-- Uses **Expo FileSystem Provider**
-- Can record new API responses
-- Files stored on device filesystem
-- Accessible via Metro bundler
+- **Hybrid:** Hybrid / filesystem flow via `setupMockifyerForReactNative` (mock-data on device + project; see [Hybrid Provider](./HYBRID_PROVIDER.md)).
+- **Redis mode:** Requests go through the dashboard proxy; run `dashboard:redis` and use `npm run dev:redis`.
+- Can record new API responses when recording env flags are set.
 
 ### Production Mode (`__DEV__ === false`)
 
@@ -224,8 +236,12 @@ The app demonstrates fetching:
 
 ## Environment Variables
 
-- `MOCKIFYER_ENABLED=true` - Enable Mockifyer (default: enabled in `__DEV__`)
-- `MOCKIFYER_RECORD=true` - Enable recording mode (development only)
+- `MOCKIFYER_MODE` / `EXPO_PUBLIC_MOCKIFYER_MODE` — `on` | `off` | `launch_client` (aliases: `e2e`, `maestro`, etc. — see `mockifyer-setup-simple.ts`).
+- `MOCKIFYER_RECORD` / `EXPO_PUBLIC_MOCKIFYER_RECORD` — `true` enables recording in development.
+- `MOCKIFYER_GENERATE_TESTS` / `EXPO_PUBLIC_MOCKIFYER_GENERATE_TESTS` — `true` enables test generation in dev config.
+- `EXPO_PUBLIC_MOCKIFYER_BACKEND` — `hybrid` or `redis` (or `proxy` / `dashboard` as aliases for Redis mode).
+- `EXPO_PUBLIC_MOCKIFYER_PROXY_URL` — Dashboard base URL for Redis/proxy mode.
+- `EXPO_PUBLIC_MOCKIFYER_PROXY_RECORD_ON_MISS` — `true` | `false` to override proxy “record on miss” independently of `recordMode`.
 
 ## Troubleshooting
 

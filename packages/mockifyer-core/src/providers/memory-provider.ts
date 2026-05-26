@@ -1,4 +1,6 @@
 import { MockData, StoredRequest } from '../types';
+import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
@@ -27,10 +29,19 @@ export class MemoryProvider implements DatabaseProvider {
     console.log(`[Mockifyer] Saved mock to memory: ${requestKey.substring(0, 100)}... (Total: ${this.mockCounter})`);
   }
 
-  findExactMatch(request: StoredRequest, requestKey: string): CachedMockData | undefined {
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     const mockData = this.mocks.get(requestKey);
     
     if (!mockData) {
+      return undefined;
+    }
+
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
       return undefined;
     }
 
@@ -56,11 +67,13 @@ export class MemoryProvider implements DatabaseProvider {
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           
           if (mockPath === requestPath && mockMethod === requestMethod) {
-            results.push({
-              mockData,
-              filename: `memory_${key.substring(0, 50)}.json`,
-              filePath: 'memory://'
-            });
+            if (!mockPassesThroughToRealApi(mockData)) {
+              results.push({
+                mockData,
+                filename: `memory_${key.substring(0, 50)}.json`,
+                filePath: 'memory://'
+              });
+            }
           }
         } catch (e) {
           // Invalid URL, skip

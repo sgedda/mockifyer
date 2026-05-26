@@ -420,7 +420,7 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       deployedDate,
       githubRepo: 'https://github.com/sgedda/mockifyer',
       runtimeConfig: {
-        mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+        mockifyerEnabled: process.env.MOCKIFYER_MODE === 'on',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
         mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
         maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,
@@ -434,7 +434,7 @@ app.get('/api/status', (req: express.Request, res: express.Response) => {
       deployedDate: new Date().toISOString(),
       githubRepo: 'https://github.com/sgedda/mockifyer',
       runtimeConfig: {
-        mockifyerEnabled: process.env.MOCKIFYER_ENABLED === 'true',
+        mockifyerEnabled: process.env.MOCKIFYER_MODE === 'on',
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
         mockDataPath: process.env.MOCKIFYER_PATH || 'Not set (using default)',
         maxScenarios: process.env.MOCKIFYER_MAX_SCENARIOS ? parseInt(process.env.MOCKIFYER_MAX_SCENARIOS, 10) : null,
@@ -455,6 +455,18 @@ app.use('/assets', (req, res, next) => {
   } else {
     next();
   }
+});
+
+// Markdown / llms.txt: explicit content types for crawlers
+app.use((req, res, next) => {
+  if ((req.method === 'GET' || req.method === 'HEAD') && !req.path.startsWith('/api/')) {
+    if (req.path.endsWith('.md')) {
+      res.type('text/markdown; charset=utf-8');
+    } else if (req.path.endsWith('.txt')) {
+      res.type('text/plain; charset=utf-8');
+    }
+  }
+  next();
 });
 
 // Serve static files from public directory (but not for API routes)
@@ -490,10 +502,11 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Start server
+// Start server (bind 0.0.0.0 so PaaS health checks can reach the process)
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+  const host = process.env.HOST || '0.0.0.0';
+  app.listen(Number(port), host, () => {
+    console.log(`Server is running on ${host}:${port}`);
   });
 }
 

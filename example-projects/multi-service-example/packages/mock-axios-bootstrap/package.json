@@ -1,0 +1,19 @@
+{
+  "name": "@multi-service/mock-axios-bootstrap",
+  "version": "0.0.0",
+  "private": true,
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "axios": "^1.6.0 || ^1.7.0"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-axios": "file:../../../../packages/mockifyer-axios"
+  },
+  "devDependencies": {
+    "axios": "^1.7.9",
+    "typescript": "^5.6.0"
+  }
+}

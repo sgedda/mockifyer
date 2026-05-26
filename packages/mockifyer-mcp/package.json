@@ -1,0 +1,56 @@
+{
+  "name": "@sgedda/mockifyer-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Mockifyer — query mocks and lightweight AI context from the dashboard API",
+  "type": "module",
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
+  "bin": {
+    "mockifyer-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "mcp-config.example.json"
+  ],
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "start": "node dist/cli.js",
+    "dev": "node --import tsx src/cli.ts"
+  },
+  "keywords": [
+    "mcp",
+    "mockifyer",
+    "mock",
+    "model-context-protocol"
+  ],
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sgedda/mockifyer.git",
+    "directory": "packages/mockifyer-mcp"
+  }
+}

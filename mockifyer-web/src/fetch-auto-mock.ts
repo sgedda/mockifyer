@@ -2,7 +2,7 @@ import { HTTPClient } from '@sgedda/mockifyer-core';
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
 const mockDataPath = process.env.MOCKIFYER_PATH || './tests/fetch/mock-data';
-const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
+const isEnabled = process.env.MOCKIFYER_MODE === 'on';
 const isRecordMode = process.env.MOCKIFYER_RECORD === 'true';
 
 let httpClient: HTTPClient | null = null;
@@ -102,7 +102,7 @@ export async function main() {
 
 // Show current environment settings
 console.log('Environment settings:');
-console.log('MOCKIFYER_ENABLED:', process.env.MOCKIFYER_ENABLED);
+console.log('MOCKIFYER_MODE:', process.env.MOCKIFYER_MODE);
 console.log('MOCKIFYER_RECORD:', process.env.MOCKIFYER_RECORD);
 console.log('MOCKIFYER_PATH:', process.env.MOCKIFYER_PATH);
 console.log('MOCKIFYER_SCENARIO:', process.env.MOCKIFYER_SCENARIO);

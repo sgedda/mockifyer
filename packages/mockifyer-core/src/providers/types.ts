@@ -5,6 +5,11 @@ import { CachedMockData } from '../utils/mock-matcher';
 export interface SaveMockOptions {
   /** Path relative to scenario root (e.g. host/rest/.../POST_foo_2026-01-01_12-00-00.json). */
   relativePath?: string;
+  /**
+   * Persist under this scenario directory instead of the active scenario from `scenario-config.json`
+   * (e.g. dashboard lane scenario when mirroring proxy recordings).
+   */
+  scenario?: string;
 }
 
 /**
@@ -36,7 +41,11 @@ export interface DatabaseProvider {
   /**
    * Find exact match for a request
    */
-  findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> | CachedMockData | undefined;
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> | CachedMockData | undefined;
 
   /**
    * Find all mocks for similar matching (path + method)

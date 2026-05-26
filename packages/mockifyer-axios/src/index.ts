@@ -7,12 +7,53 @@ import { AxiosHeaders } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
-import { MockifyerConfig, MockData, StoredRequest, StoredResponse, initializeDateManipulation, getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, initializeScenario, TestGenerator, TestGenerationOptions, checkRequestLimit } from '@sgedda/mockifyer-core';
+import {
+  MockifyerConfig,
+  MockData,
+  StoredRequest,
+  StoredResponse,
+  initializeDateManipulation,
+  getCurrentScenario,
+  getScenarioFolderPath,
+  ensureScenarioFolder,
+  initializeScenario,
+  TestGenerator,
+  TestGenerationOptions,
+  checkRequestLimit,
+  prepareMockResponseBody,
+  getCurrentDate,
+  resolveActivationMode,
+  shouldApplyMockifyer,
+  type MockifyerActivationMode,
+  getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_DEVICE_ID_HEADER,
+  applyOutboundRequestCorrelation,
+  type RequestCorrelationContext,
+  installNodeInboundRequestCorrelationCapture,
+} from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
-  CachedMockData 
+  CachedMockData,
+  mockPassesThroughToRealApi,
+  mockShouldServeStoredBody,
+  mockShouldBeIncludedInRequestMatch,
+  buildClientResponseFromLiveCapture,
+  buildMockDataAfterLiveCapture,
+  resolveShouldPersistLiveCapture,
+  resolveMockRecordingSaveDecision,
+  applyRecordingPassthroughFlag,
+  emitMockifyerNetworkEvent,
+  networkEventHashFromRequestKey,
+} from '@sgedda/mockifyer-core';
+import {
+  resolveClientId,
+  registerMockifyerInstance,
+  tryGetClientIdFromLaunchArguments,
+  MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
 } from '@sgedda/mockifyer-core';
 
 class MockifyerClass {
@@ -25,15 +66,47 @@ class MockifyerClass {
   private sessionStartTime: number = 0;
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
+  private readonly activationMode: MockifyerActivationMode;
+
+  private logNetworkEvent(
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' },
+    correlation?: RequestCorrelationContext
+  ): void {
+    if (this.config.proxy?.baseUrl) return;
+    emitMockifyerNetworkEvent({
+      config: this.config,
+      scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
+      clientId: this.config.clientId,
+      event: {
+        ...partial,
+        transport: partial.transport ?? 'axios',
+        requestId: correlation?.requestId ?? partial.requestId,
+        parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId,
+      },
+    });
+  }
+
+  private stashRequestCorrelation(config: unknown, correlation: RequestCorrelationContext): void {
+    (config as { __mockifyer_requestId?: string; __mockifyer_parentRequestId?: string }).__mockifyer_requestId =
+      correlation.requestId;
+    (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
+      correlation.parentRequestId;
+  }
+
+  private readRequestCorrelation(config: unknown): RequestCorrelationContext | undefined {
+    const requestId = (config as { __mockifyer_requestId?: string }).__mockifyer_requestId;
+    if (!requestId) return undefined;
+    const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
+    return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  }
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
     if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'filesystem') {
       throw new Error(
-        `Database provider type '${config.databaseProvider.type}' is not yet available for use. ` +
-        `Only 'filesystem' provider is currently supported. ` +
-        `Database providers (SQLite, Memory, Expo) are planned for future releases. ` +
-        `Please remove the databaseProvider configuration or set type to 'filesystem' (or undefined).`
+        `Database provider type '${config.databaseProvider.type}' is not supported with mockifyer-axios. ` +
+        `Use type 'filesystem' (or omit databaseProvider). ` +
+        `For Redis or other providers, use @sgedda/mockifyer-fetch in Node.`
       );
     }
     
@@ -76,8 +149,28 @@ class MockifyerClass {
       }
     }
     
-    this.config = config;
-    
+    let launchClientId: string | undefined;
+    if (config.useLaunchArgumentsClientId) {
+      const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
+      launchClientId = tryGetClientIdFromLaunchArguments(key);
+      if (launchClientId) {
+        console.log(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
+      }
+    }
+
+    this.config = { ...config };
+    if (launchClientId) {
+      this.config.clientId = launchClientId;
+    } else {
+      this.config.clientId = resolveClientId(config);
+    }
+    console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
+
+    this.activationMode = resolveActivationMode(this.config);
+    if (this.activationMode !== 'always') {
+      console.log(`[Mockifyer] activationMode: ${this.activationMode}`);
+    }
+
     // Initialize test generator if test generation is enabled
     if (config.generateTests?.enabled) {
       this.testGenerator = new TestGenerator();
@@ -100,12 +193,39 @@ class MockifyerClass {
     }
   }
 
+  private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
+    const lane = this.config.clientId?.trim();
+    if (lane && !getOutboundMockifyerClientIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_CLIENT_ID_HEADER] = lane;
+      }
+    }
+    const device = this.config.deviceId?.trim();
+    if (device && !getOutboundMockifyerDeviceIdHeader(config.headers)) {
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      const h = config.headers as AxiosHeaders;
+      if (typeof (h as any).set === 'function') {
+        h.set(MOCKIFYER_DEVICE_ID_HEADER, device);
+      } else {
+        (config.headers as Record<string, string>)[MOCKIFYER_DEVICE_ID_HEADER] = device;
+      }
+    }
+  }
+
   private ensureMockDataDirectory(): void {
     if (!fs.existsSync(this.config.mockDataPath)) {
       fs.mkdirSync(this.config.mockDataPath, { recursive: true });
     }
     // Ensure scenario folder exists
-    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     ensureScenarioFolder(this.config.mockDataPath, currentScenario);
   }
 
@@ -113,7 +233,10 @@ class MockifyerClass {
     return generateRequestKeyUtil(request);
   }
 
-  private async findBestMatchingMock(request: StoredRequest): Promise<CachedMockData | undefined> {
+  private async findBestMatchingMock(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> {
     // CRITICAL: Log the full request object to see what we have
     console.log(`[Mockifyer] 🔍 findBestMatchingMock - FULL REQUEST OBJECT:`, JSON.stringify({
       method: request.method,
@@ -138,19 +261,23 @@ class MockifyerClass {
     
     // Always read directly from files (no cache)
     console.log('[Mockifyer] Reading directly from files (cache disabled)');
-    return this.findBestMatchingMockFromFiles(request);
+    return this.findBestMatchingMockFromFiles(request, options);
   }
 
   /**
    * Find best matching mock by reading directly from files (no cache, reads on each request)
    */
-  private findBestMatchingMockFromFiles(request: StoredRequest): CachedMockData | undefined {
+  private findBestMatchingMockFromFiles(
+    request: StoredRequest,
+    options?: { includePassthroughMocks?: boolean }
+  ): CachedMockData | undefined {
+    const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
       return undefined;
     }
 
-    const currentScenario = getCurrentScenario(this.config.mockDataPath);
+    const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
     
     if (!fs.existsSync(scenarioPath)) {
@@ -246,14 +373,17 @@ class MockifyerClass {
           continue;
         }
         
-        // Check for exact match
+        // Check for exact match (skip passthrough files unless checking for duplicate save)
         if (mockKey === requestKey) {
-          exactMatch = {
-            mockData,
-            filename: file,
-            filePath: filePath
-          };
-          break; // Exact match found, no need to continue
+          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+            exactMatch = {
+              mockData,
+              filename: file,
+              filePath: filePath
+            };
+            break; // Exact match found, no need to continue
+          }
+          continue;
         }
         
         // If no exact match yet and similar matching is enabled, check for similar match
@@ -323,11 +453,13 @@ class MockifyerClass {
                   console.log('[Mockifyer] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
                 }
                 
-                similarMatch = {
-                  mockData,
-                  filename: file,
-                  filePath: filePath
-                };
+                if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+                  similarMatch = {
+                    mockData,
+                    filename: file,
+                    filePath: filePath
+                  };
+                }
               }
             } catch (e) {
               // Invalid URL, skip
@@ -362,7 +494,7 @@ class MockifyerClass {
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     } else {
-      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       if (fs.existsSync(scenarioPath)) {
         const files = fs.readdirSync(scenarioPath)
@@ -377,6 +509,15 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
+      const correlation = applyOutboundRequestCorrelation(config);
+      this.stashRequestCorrelation(config, correlation);
+
       // Debug: Log what we receive in the interceptor
       console.log('[Mockifyer] 📥 Interceptor received config:', {
         method: config.method,
@@ -472,6 +613,21 @@ class MockifyerClass {
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        if (!mockShouldServeStoredBody(mockData)) {
+          (config as any).__mockifyer_matchedMock = cachedMock;
+          (config as any).__mockifyer_requestKey = requestKey;
+          (config as any).__mockifyer_startTime = Date.now();
+        } else {
+        this.logNetworkEvent(
+          {
+            method: (request.method || 'GET').toUpperCase(),
+            url: request.url,
+            source: 'mock-hit',
+            status: mockData.response.status,
+            requestHash: networkEventHashFromRequestKey(requestKey),
+          },
+          correlation
+        );
         // Add mockifyer headers to indicate this is a mocked response
         const responseHeaders = {
           ...mockData.response.headers,
@@ -491,7 +647,7 @@ class MockifyerClass {
         });
         
         const mockResponse: AxiosResponse = {
-          data: mockData.response.data,
+          data: prepareMockResponseBody(mockData, getCurrentDate),
           status: mockData.response.status,
           statusText: 'OK',
           headers: axiosHeaders,
@@ -521,6 +677,7 @@ class MockifyerClass {
             return Promise.resolve(mockResponse);
           }
         } as any;
+        }
       }
 
       if (this.config.failOnMissingMock) {
@@ -537,6 +694,15 @@ class MockifyerClass {
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+        this.applyOutboundLaneHeadersToAxiosRequest(config);
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+      this.applyOutboundLaneHeadersToAxiosRequest(config);
+      const correlation = applyOutboundRequestCorrelation(config);
+      this.stashRequestCorrelation(config, correlation);
+
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {
         // CRITICAL: This log proves new code is running
@@ -648,8 +814,14 @@ class MockifyerClass {
         
         // If mock found, use it regardless of processingRequests status
         if (cachedMock) {
-          console.log(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           const { mockData, filename, filePath } = cachedMock;
+          if (!mockShouldServeStoredBody(mockData)) {
+            console.log(`[Mockifyer] 🔄 Live refresh for ${requestKey}, deferring to upstream`);
+            (config as any).__mockifyer_matchedMock = cachedMock;
+            (config as any).__mockifyer_requestKey = requestKey;
+            (config as any).__mockifyer_startTime = Date.now();
+          } else {
+          console.log(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
           const responseHeaders = {
@@ -667,13 +839,9 @@ class MockifyerClass {
 
           console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
           
-          // For mocks, we can delete immediately since performRequest() won't be called
-          // But keep it in the set briefly to prevent loops if the mock response triggers another request
-          // We'll delete it when the mock response is actually returned (in BaseHTTPClient)
-          
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: mockData.response.data,
+            data: prepareMockResponseBody(mockData, getCurrentDate),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -685,13 +853,6 @@ class MockifyerClass {
             ...config,
             adapter: () => {
               console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
-              console.log(`[Mockifyer] 📦 Mock response headers:`, mockResponse.headers);
-              console.log(`[Mockifyer] 📦 Mock response headers type:`, typeof mockResponse.headers);
-              if (typeof (mockResponse.headers as any).get === 'function') {
-                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any).get('x-mockifyer'));
-              } else {
-                console.log(`[Mockifyer] 📦 x-mockifyer header value:`, (mockResponse.headers as any)['x-mockifyer']);
-              }
               
               // CRITICAL: Mark this as a mock response so response interceptor can detect it
               (mockResponse.config as any).__mockifyer_isMock = true;
@@ -724,6 +885,7 @@ class MockifyerClass {
           
           console.log(`[Mockifyer] ✅ Returning config with adapter for mock response. Has adapter: ${!!adapterConfig.adapter}`);
           return adapterConfig;
+          }
         }
         
         // No mock found - check if already processing to prevent infinite loops
@@ -910,6 +1072,10 @@ class MockifyerClass {
     if (!this.config.useGlobalAxios) {
       this.httpClient.interceptors.response.use(
       (response) => {
+        if ((response.config as any).__mockifyer_bypass) {
+          return response;
+        }
+
         console.log('[Mockifyer] 🎯 Response interceptor called!', {
           url: response.config?.url,
           status: response.status,
@@ -993,6 +1159,11 @@ class MockifyerClass {
         } else {
           console.log('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
         }
+
+        const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+        if (matchedMock) {
+          return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock);
+        }
         
         // Use the request key from the request interceptor if available
         // This ensures we use the same key that was used for matching
@@ -1023,11 +1194,39 @@ class MockifyerClass {
         
         // Store the request key on the response config so saveResponse can use it
         (response.config as any).__mockifyer_requestKey = requestKeyForRecording;
+
+        this.logNetworkEvent(
+          {
+            method: (response.config.method || 'GET').toUpperCase(),
+            url: response.config.url || '',
+            source: 'upstream',
+            status: response.status,
+          },
+          this.readRequestCorrelation(response.config)
+        );
         
         this.saveResponse(response as HTTPResponse);
         return response;
       },
       (error) => {
+        if ((error.config as any)?.__mockifyer_bypass) {
+          return Promise.reject(error);
+        }
+
+        const errUrl = error.config?.url || '';
+        if (errUrl) {
+          this.logNetworkEvent(
+            {
+              method: (error.config?.method || 'GET').toUpperCase(),
+              url: errUrl,
+              source: 'error',
+              status: error.response?.status,
+              errorMessage: error?.message ?? String(error),
+            },
+            this.readRequestCorrelation(error.config)
+          );
+        }
+
         // CRITICAL: Clean up processingRequests after request fails
         // This prevents infinite loops when useGlobalFetch: true
         if (error.config) {
@@ -1167,7 +1366,62 @@ class MockifyerClass {
     return anonymized;
   }
 
+  private async applyLiveRefreshToAxiosResponse(
+    response: HTTPResponse,
+    matchedMock: CachedMockData
+  ): Promise<HTTPResponse> {
+    const capturedResponse: StoredResponse = {
+      status: response.status,
+      data: response.data,
+      headers: (response.headers as Record<string, string>) || {},
+    };
+    const startTime = (response.config as any).__mockifyer_startTime;
+    const durationMs = startTime ? Date.now() - startTime : undefined;
+
+    if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
+      await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
+    }
+
+    const clientResponse = buildClientResponseFromLiveCapture(
+      matchedMock.mockData,
+      capturedResponse,
+      getCurrentDate
+    );
+    response.data = clientResponse.data;
+    response.status = clientResponse.status;
+    delete (response.config as any).__mockifyer_matchedMock;
+
+    this.logNetworkEvent(
+      {
+        method: (response.config?.method || 'GET').toUpperCase(),
+        url: response.config?.url || '',
+        source: 'upstream',
+        status: response.status,
+        durationMs,
+      },
+      this.readRequestCorrelation(response.config)
+    );
+
+    return response;
+  }
+
+  private async persistMatchedMockAfterLiveCapture(
+    cachedMock: CachedMockData,
+    capturedResponse: StoredResponse,
+    durationMs?: number
+  ): Promise<void> {
+    const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
+    if (cachedMock.filePath) {
+      fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
+      console.log(`[Mockifyer] Refreshed mock from live API: ${cachedMock.filename}`);
+    }
+  }
+
   private async saveResponse(response: HTTPResponse): Promise<void> {
+    if ((response.config as any)?.__mockifyer_bypass) {
+      return;
+    }
+
     // CRITICAL: Skip saving responses from Resend API
     const url = response.config?.url || '';
     if (url && url.includes('api.resend.com')) {
@@ -1236,27 +1490,42 @@ class MockifyerClass {
       return;
     }
     
-    // CRITICAL: Also check if a file with this request key already exists
-    // This prevents creating duplicate files even if the Set check fails (e.g., after restart)
-    // BUT: In record mode, if a mock exists, we should NOT have made a real API call in the first place!
-    // This check is a safety net, but the real fix is ensuring the request interceptor finds mocks
-    const existingMock = await this.findBestMatchingMock({
+    const saveLookupRequest: StoredRequest = {
       method: response.config.method?.toUpperCase() || 'GET',
       url: response.config.url || '',
       headers: {},
       data: response.config.data,
-      queryParams: response.config.params && Object.keys(response.config.params).length > 0 
-        ? response.config.params 
-        : undefined
+      queryParams:
+        response.config.params && Object.keys(response.config.params).length > 0
+          ? response.config.params
+          : undefined,
+    };
+
+    const existingMock = await this.findBestMatchingMock(saveLookupRequest, {
+      includePassthroughMocks: true,
     });
-    
-    if (existingMock) {
-      console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
-      console.log(`[Mockifyer] ⚠️ WARNING: This should not happen in record mode - request interceptor should have found the mock!`);
-      console.log(`[Mockifyer] ⚠️ This suggests the request interceptor didn't find the mock, causing an unnecessary API call.`);
+
+    const saveDecision = resolveMockRecordingSaveDecision(
+      this.config,
+      existingMock?.mockData
+    );
+
+    if (saveDecision.action === 'skip') {
+      if (existingMock) {
+        if (mockPassesThroughToRealApi(existingMock.mockData)) {
+          console.log(
+            `[Mockifyer] Passthrough mock exists for ${requestKey}, skipping save (enable refreshPassthroughRecordings to update).`
+          );
+        } else {
+          console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
+          console.log(
+            `[Mockifyer] ⚠️ WARNING: Active mock exists but a real API call was made — request interceptor should have served the mock.`
+          );
+        }
+      }
       return;
     }
-    
+
     this.savingResponses.add(requestKey);
     
     try {
@@ -1333,32 +1602,28 @@ class MockifyerClass {
       const startTime = (response.config as any).__mockifyer_startTime;
       const duration = startTime ? Date.now() - startTime : undefined;
 
+      const correlation = this.readRequestCorrelation(response.config);
+
       const mockData: MockData = {
         request,
         response: storedResponse,
         timestamp: new Date().toISOString(),
         duration,
         scenario: this.config.scenarios?.default,
-        sessionId: this.currentSessionId
+        sessionId:
+          saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
+            ? existingMock.mockData.sessionId
+            : this.currentSessionId,
+        requestId: correlation?.requestId,
+        parentRequestId: correlation?.parentRequestId,
       };
 
-      // Format the datetime to be readable
-      const now = new Date();
-      const dateStr = now.toISOString()
-        .replace(/T/, '_')
-        .replace(/\..+/, '')
-        .replace(/:/g, '-');
+      applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
-      // Create a safe filename from the URL
-      const urlSafe = request.url
-        .replace(/^https?:\/\//, '')
-        .replace(/[^a-zA-Z0-9]/g, '_');
-
-      const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-      const currentScenario = getCurrentScenario(this.config.mockDataPath);
+      const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       ensureScenarioFolder(this.config.mockDataPath, currentScenario);
-      
+
       // Check request limit before saving (only if limit is set via env var)
       const limitCheck = checkRequestLimit(this.config.mockDataPath);
       if (limitCheck.limitReached && limitCheck.error) {
@@ -1366,12 +1631,27 @@ class MockifyerClass {
         // Don't throw - just log and return to prevent app crash
         return;
       }
-      
-      const filePath = path.join(scenarioPath, filename);
-      
-      // Write to file (no cache)
-      fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-      console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+
+      if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
+        fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
+        console.log(
+          `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
+        );
+      } else {
+        const now = new Date();
+        const dateStr = now
+          .toISOString()
+          .replace(/T/, '_')
+          .replace(/\..+/, '')
+          .replace(/:/g, '-');
+        const urlSafe = request.url
+          .replace(/^https?:\/\//, '')
+          .replace(/[^a-zA-Z0-9]/g, '_');
+        const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
+        const filePath = path.join(scenarioPath, filename);
+        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+        console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+      }
       
       // Generate test if enabled
       if (this.config.generateTests?.enabled && this.testGenerator) {
@@ -1469,6 +1749,24 @@ class MockifyerClass {
   }
 
   /**
+   * Updates the logical client lane for subsequent requests (headers, scenario paths).
+   * Does not re-read native launch arguments or environment variables.
+   */
+  public setClientId(lane: string): void {
+    const t = String(lane).trim();
+    if (!t) {
+      throw new Error('[Mockifyer] setClientId requires a non-empty string');
+    }
+    this.config.clientId = t;
+    console.log(`[Mockifyer] clientId set to: ${t}`);
+  }
+
+  /** Current logical lane id (same value used for isolation). */
+  public getClientId(): string | undefined {
+    return this.config.clientId;
+  }
+
+  /**
    * Reload mock data from the filesystem
    * No-op since we don't use cache (files are read on each request)
    */
@@ -1489,9 +1787,12 @@ class MockifyerClass {
 export interface MockifyerInstance extends HTTPClient {
   reloadMockData: () => void;
   clearStaleCacheEntries: () => number;
+  setClientId: (lane: string) => void;
+  getClientId: () => string | undefined;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
+  installNodeInboundRequestCorrelationCapture();
   console.log('[Mockifyer] ⚡⚡⚡ setupMockifyer called:', config);
   // Initialize date manipulation
   initializeDateManipulation(config);
@@ -1585,6 +1886,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             });
             
             try {
+              if ((axiosResponse.config as any)?.__mockifyer_bypass) {
+                return axiosResponse;
+              }
+
               // CRITICAL: Clean up processingRequests after request completes
               const requestKey = (axiosResponse.config as any).__mockifyer_requestKey;
               if (requestKey) {
@@ -1704,6 +2009,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             }
           },
           async function(error: any) {
+            if ((error.config as any)?.__mockifyer_bypass) {
+              return Promise.reject(error);
+            }
+
             // CRITICAL: Clean up processingRequests after request fails
             if (error.config) {
               const requestKey = (error.config as any).__mockifyer_requestKey;
@@ -1808,7 +2117,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   const extendedClient = httpClient as MockifyerInstance;
   extendedClient.reloadMockData = () => mockifyer.reloadMockData();
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
-  
+  extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
+  extendedClient.getClientId = () => mockifyer.getClientId();
+
+  registerMockifyerInstance(extendedClient);
+
   console.log('[Mockifyer] setupMockifyer returning HTTP client:', {
     hasGet: typeof extendedClient.get === 'function',
     hasRequest: typeof extendedClient.request === 'function',

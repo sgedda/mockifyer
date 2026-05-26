@@ -510,6 +510,40 @@ describe('mock-matcher', () => {
       expect(result).toBe(mock);
     });
 
+    it('should skip exact match when alwaysUseRealApi is true', () => {
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/users',
+        headers: {},
+        queryParams: { id: '123' }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const mock = createMockData('GET', 'https://api.example.com/users', { id: '123' });
+      mock.mockData.alwaysUseRealApi = true;
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, {});
+      expect(result).toBeUndefined();
+    });
+
+    it('should return passthrough mock when includePassthroughMocks is true', () => {
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/users',
+        headers: {},
+        queryParams: { id: '123' }
+      };
+
+      const mockCache = new Map<string, CachedMockData>();
+      const mock = createMockData('GET', 'https://api.example.com/users', { id: '123' });
+      mock.mockData.alwaysUseRealApi = true;
+      mockCache.set(generateRequestKey(mock.mockData.request), mock);
+
+      const result = findBestMatchingMock(request, mockCache, { includePassthroughMocks: true });
+      expect(result).toBe(mock);
+    });
+
     it('should return undefined when no exact match found and similar match disabled', () => {
       const request: StoredRequest = {
         method: 'GET',

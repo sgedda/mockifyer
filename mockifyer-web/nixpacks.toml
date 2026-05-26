@@ -70,5 +70,6 @@ cmds = [
 ]
 
 [start]
-cmd = "export PATH=/usr/local/bin:$PATH && npm start"
+# Run node directly so SIGTERM from the platform isn’t reported as an npm failure during shutdown
+cmd = "export PATH=/usr/local/bin:$PATH && node dist/index.js"
 

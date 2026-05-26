@@ -313,6 +313,51 @@ function saveMockToProjectFolder(
 }
 
 /**
+ * Save a proxy-mirrored mock to an explicit scenario subpath (e.g. `redis/<hash>.json`).
+ * Used when the dashboard records to Redis and the RN app POSTs an envelope to `/mockifyer-save`.
+ */
+function saveProxyMirrorMockToProject(
+  mockData: MockData,
+  projectRoot: string,
+  mockDataPath: string,
+  scenarioName: string,
+  relativePath: string,
+  testConfig: TestGenerationOptions | null
+): { success: boolean; filename?: string; scenario?: string; error?: string } {
+  try {
+    const url = mockData?.request?.url || '';
+    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+      console.warn(`[MockSync] ⚠️ Rejecting save - Mockifyer sync endpoint detected: ${url}`);
+      return { success: false, error: 'Cannot save Mockifyer sync endpoint requests' };
+    }
+    const mockDataStr = JSON.stringify(mockData);
+    if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear')) {
+      return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
+    }
+    const id = scenarioName.trim();
+    if (!id) {
+      return { success: false, error: 'scenarioName is required' };
+    }
+    const normalized = relativePath.replace(/\\/g, '/').replace(/^\//, '');
+    if (!normalized) {
+      return { success: false, error: 'relativePath is required' };
+    }
+    const scenarioPath = getScenarioPath(id, mockDataPath);
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    const filePath = path.join(scenarioPath, normalized);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+    if (testConfig) {
+      generateTestForMock(mockData, testConfig, projectRoot);
+    }
+    return { success: true, filename: normalized, scenario: id };
+  } catch (error) {
+    console.error(`[MockSync] ❌ Error saving proxy mirror mock:`, error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
  * Clear all mock files from project folder (current scenario)
  */
 function clearMockFiles(mockDataPath: string): { success: boolean; filesDeleted?: number; error?: string } {
@@ -646,7 +691,28 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       
       req.on('end', () => {
         try {
-          const mockData = JSON.parse(body);
+          const parsed = JSON.parse(body);
+          if (
+            parsed &&
+            typeof parsed === 'object' &&
+            parsed.__mockifyerProxyMirror === true &&
+            parsed.mockData
+          ) {
+            const scenarioName = typeof parsed.scenarioName === 'string' ? parsed.scenarioName : '';
+            const relativePath = typeof parsed.relativePath === 'string' ? parsed.relativePath : '';
+            const result = saveProxyMirrorMockToProject(
+              parsed.mockData,
+              projectRoot,
+              mockDataPath,
+              scenarioName,
+              relativePath,
+              testConfig
+            );
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(result));
+            return;
+          }
+          const mockData = parsed;
           const result = saveMockToProjectFolder(mockData, projectRoot, mockDataPath, testConfig);
           
           res.setHeader('Content-Type', 'application/json');

@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-dashboard",
-  "version": "1.4.2",
+  "version": "1.4.50",
   "description": "Standalone CLI dashboard for viewing and managing Mockifyer mock data",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -30,13 +30,17 @@
     "testing",
     "mockifyer"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../mockifyer-core",
     "chalk": "^4.1.2",
     "commander": "^11.1.0",
     "express": "^4.18.2",
+    "ioredis": "^5.6.1",
     "open": "^8.4.2"
   },
   "devDependencies": {
@@ -49,6 +53,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
   },
   "repository": {
     "type": "git",

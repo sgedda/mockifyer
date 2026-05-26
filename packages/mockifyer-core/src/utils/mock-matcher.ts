@@ -1,4 +1,6 @@
 import { StoredRequest, MockData } from '../types';
+import { mockPassesThroughToRealApi } from './mock-passthrough';
+import { mockShouldBeIncludedInRequestMatch } from './mock-replay-mode';
 
 export interface CachedMockData {
   mockData: MockData;
@@ -10,12 +12,17 @@ export interface MockMatchingConfig {
   useSimilarMatch?: boolean;
   similarMatchRequiredParams?: string[];
   similarMatchIgnoreAllQueryParams?: boolean;
+  /**
+   * When true, mocks with `alwaysUseRealApi` are still returned (e.g. duplicate-save checks).
+   * Default false: passthrough mocks are skipped so the real API is used.
+   */
+  includePassthroughMocks?: boolean;
 }
 
 /**
  * Normalizes GraphQL query by removing extra whitespace and formatting
  */
-function normalizeGraphQLQuery(query: string): string {
+export function normalizeGraphQLQuery(query: string): string {
   if (!query) return '';
   // Remove extra whitespace, newlines, and normalize spacing
   return query.replace(/\s+/g, ' ').trim();
@@ -218,11 +225,14 @@ export function findBestMatchingMock(
   config: MockMatchingConfig = {}
 ): CachedMockData | undefined {
   const requestKey = generateRequestKey(request);
+  const includePassthroughMocks = config.includePassthroughMocks === true;
   
   // Try exact match first
   const exactMatch = mockCache.get(requestKey);
   if (exactMatch) {
-    return exactMatch;
+    if (mockShouldBeIncludedInRequestMatch(exactMatch.mockData, { includePassthroughMocks })) {
+      return exactMatch;
+    }
   }
 
   // For GraphQL requests, only allow exact matches (query + variables must match exactly)
@@ -243,8 +253,12 @@ export function findBestMatchingMock(
     }
     
     // Find first matching path and method
-    for (const [key, cachedMock] of mockCache.entries()) {
+    for (const [, cachedMock] of mockCache.entries()) {
       const mockData = cachedMock.mockData;
+
+      if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+        continue;
+      }
       
       // Skip GraphQL mocks when doing similar matching
       if (isGraphQLRequest(mockData.request)) {

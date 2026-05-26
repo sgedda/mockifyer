@@ -122,8 +122,10 @@ describe('ExpoFileSystemProvider', () => {
       await provider.save(mockData);
 
       expect(file.write).toHaveBeenCalled();
-      const writtenContent = JSON.parse(file.write.mock.calls[0][0]);
-      expect(writtenContent).toMatchObject({
+      const allWrites = file.write.mock.calls.map((c) => JSON.parse(c[0]));
+      const mockWrite = allWrites.find((w) => w && typeof w === 'object' && 'request' in w && 'response' in w);
+      expect(mockWrite).toBeDefined();
+      expect(mockWrite).toMatchObject({
         request: mockData.request,
         response: mockData.response,
       });
@@ -176,7 +178,10 @@ describe('ExpoFileSystemProvider', () => {
 
       await provider.save(mockData);
 
-      expect(file.write).not.toHaveBeenCalled();
+      // Provider may write scenario config updates; ensure it doesn't write a mock file payload for sync endpoints.
+      const allWrites = file.write.mock.calls.map((c) => JSON.parse(c[0]));
+      const wroteMockPayload = allWrites.some((w) => w && typeof w === 'object' && 'request' in w && 'response' in w);
+      expect(wroteMockPayload).toBe(false);
     });
   });
 
@@ -242,7 +247,15 @@ describe('ExpoFileSystemProvider', () => {
 
       const dir = makeMockDir({ exists: true, listResult: [makeListItem(olderFile), makeListItem(newerFile)] });
       mockFileSystem.Directory = jest.fn().mockReturnValue(dir);
-      mockFileSystem.Paths.info = jest.fn().mockReturnValue({ exists: true, isDirectory: true });
+      mockFileSystem.Paths.info = jest.fn().mockImplementation((uri: string) => {
+        if (typeof uri === 'string' && uri.includes('older_file')) {
+          return { exists: true, modificationTime: olderMtime };
+        }
+        if (typeof uri === 'string' && uri.includes('newer_file')) {
+          return { exists: true, modificationTime: newerMtime };
+        }
+        return { exists: true, isDirectory: true };
+      });
 
       mockFileSystem.File = jest.fn().mockImplementation((uri: string) => {
         if (typeof uri === 'string' && uri.includes('older_file')) {

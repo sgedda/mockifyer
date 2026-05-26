@@ -23,6 +23,12 @@ export function detectMockDataPath(cliPath?: string): string {
       ? process.env.MOCKIFYER_PATH
       : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
   }
+
+  // 2b. Prefer mock-data in the current working directory (example apps use scenario subfolders)
+  const cwdMockData = path.join(process.cwd(), 'mock-data');
+  if (fs.existsSync(cwdMockData)) {
+    return cwdMockData;
+  }
   
   // 3. Auto-detect: walk up directory tree
   let currentDir = process.cwd();
@@ -165,7 +171,7 @@ function findRepoRoot(): string | null {
 /**
  * Detect provider type based on path
  */
-export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' {
+export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' | 'redis' {
   if (dataPath.endsWith('.db')) {
     return 'sqlite';
   }
@@ -173,6 +179,10 @@ export function detectProvider(dataPath: string): 'filesystem' | 'sqlite' {
   // Check environment variable
   if (process.env.MOCKIFYER_DB_PROVIDER === 'sqlite') {
     return 'sqlite';
+  }
+
+  if (process.env.MOCKIFYER_DB_PROVIDER === 'redis') {
+    return 'redis';
   }
   
   return 'filesystem';

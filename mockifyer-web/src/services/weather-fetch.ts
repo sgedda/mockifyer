@@ -12,7 +12,7 @@ export async function getCurrentWeather(city: string = 'London', fullResponse: b
       : path.join(process.cwd(), process.env.MOCKIFYER_PATH))
   : path.join(process.cwd(), 'tests', 'fetch', 'mock-data');
 
-  const isEnabled = process.env.MOCKIFYER_ENABLED === 'true';
+  const isEnabled = process.env.MOCKIFYER_MODE === 'on';
   const isRecordMode = process.env.MOCKIFYER_RECORD === 'true';
 
   let httpClient: HTTPClient | null = null;
@@ -38,7 +38,7 @@ export async function getCurrentWeather(city: string = 'London', fullResponse: b
   const apiKey = process.env.WEATHER_API_KEY || '605873f11d7649c98b195527251603';
 
     if (!httpClient) {
-      throw new Error('HTTPClient not initialized. Set MOCKIFYER_ENABLED=true to enable Mockifyer.');
+      throw new Error('HTTPClient not initialized. Set MOCKIFYER_MODE=on to enable Mockifyer.');
     }
     const params = new URLSearchParams({
       key: apiKey,

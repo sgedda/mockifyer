@@ -12,17 +12,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { HERO_TAGLINE } from '@/lib/use-page-seo'
+import HomeFaq from '@/components/HomeFaq'
+import PackagesOverview from '@/components/PackagesOverview'
+import { KEY_FEATURES, MCP_TOOLS } from '@/lib/product-docs'
+import CodeBlock from '@/components/CodeBlock'
 
 export default function Introduction() {
   return (
     <div className="space-y-8">
       <header className="text-center py-12">
-        <div className="flex justify-center mb-6">
+        <h1 className="flex justify-center mb-6">
           <Logo size="lg" />
-        </div>
+        </h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          A powerful Node.js library for mocking and recording API calls, with advanced date manipulation for
-          deterministic testing
+          {HERO_TAGLINE}
         </p>
       </header>
 
@@ -30,78 +34,36 @@ export default function Introduction() {
         <CardHeader>
           <CardTitle>What is Mockifyer?</CardTitle>
           <CardDescription>
-            Mockifyer is a comprehensive API mocking and testing library designed to make your development and
-            testing workflows more efficient and reliable.
+            Open-source record-and-replay for axios and fetch — JSON mocks in your repo, optional dashboard and MCP tooling.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p>
-            It intercepts HTTP requests made by your application and can either replay previously recorded responses
-            or record new ones for future use.
+            Mockifyer intercepts outbound HTTP calls, matches them to saved JSON recordings, and can capture new
+            responses from live APIs. Use it for deterministic integration tests, local dev without API keys, and
+            multi-scenario datasets — with GraphQL-aware matching and optional React Native support.
           </p>
           <div>
-            <strong className="text-foreground text-lg mb-4 block">Key Benefits:</strong>
+            <strong className="text-foreground text-lg mb-4 block">What you get today</strong>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🔒</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Deterministic testing</strong>
-                  <p className="text-sm text-muted-foreground">Predictable, reproducible tests with structured JSON mock data</p>
+              {KEY_FEATURES.map((feature) => (
+                <div
+                  key={feature.title}
+                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors"
+                >
+                  <span className="text-2xl flex-shrink-0">{feature.icon}</span>
+                  <div>
+                    <strong className="text-foreground block mb-1">{feature.title}</strong>
+                    <p className="text-sm text-muted-foreground">{feature.description}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">📅</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Date manipulation</strong>
-                  <p className="text-sm text-muted-foreground">Test time-dependent features with fixed or offset dates</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🔄</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Easy recording</strong>
-                  <p className="text-sm text-muted-foreground">Automatically capture real API responses for later use</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">📁</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Easy data discovery</strong>
-                  <p className="text-sm text-muted-foreground">All captured responses stored as searchable JSON files in your project</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🎭</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Scenario switching</strong>
-                  <p className="text-sm text-muted-foreground">Switch between different mock data sets (happy path, errors, edge cases) with just a click</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🧪</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Automatic test generation</strong>
-                  <p className="text-sm text-muted-foreground">Generate unit tests automatically when recording mocks</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🌐</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Works with any HTTP client</strong>
-                  <p className="text-sm text-muted-foreground">Supports Axios, Fetch, and more</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-                <span className="text-2xl flex-shrink-0">🚀</span>
-                <div>
-                  <strong className="text-foreground block mb-1">Offline development</strong>
-                  <p className="text-sm text-muted-foreground">Work without internet connection or external API dependencies</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      <PackagesOverview />
 
       <Card>
         <CardHeader>
@@ -125,24 +87,35 @@ export default function Introduction() {
         </CardContent>
       </Card>
 
+      <HomeFaq />
+
       <Card>
         <CardHeader>
-          <CardTitle>Current Focus</CardTitle>
+          <CardTitle>Dashboard & MCP</CardTitle>
           <CardDescription>
-            Platform support and future plans
+            Optional tooling on top of the core libraries
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            Our current focus is on building something useful that works seamlessly in both <strong>Node.js</strong> and 
-            <strong> React Native</strong> environments. These platforms have unique challenges—Node.js services need 
-            reliable API mocking for backend testing, while React Native requires special handling for Metro bundler and 
-            file system access.
+            <strong>@sgedda/mockifyer-dashboard</strong> runs locally to browse mock JSON, switch scenarios, activate
+            passthrough recordings, and (with Redis) proxy traffic per client lane.{' '}
+            <strong>@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop.
           </p>
-          <p className="text-muted-foreground">
-            We plan to expand support to other environments in the future, making Mockifyer a universal solution for API 
-            mocking across different platforms and frameworks.
-          </p>
+          <CodeBlock
+            language="bash"
+            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
+          />
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+            {MCP_TOOLS.map((tool) => (
+              <li key={tool}>{tool}</li>
+            ))}
+          </ul>
+          <Link to="/config-reference">
+            <Button variant="outline" size="sm">
+              Configuration reference
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 

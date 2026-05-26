@@ -29,7 +29,7 @@ export class GraphQLService {
       pathExists: require('fs').existsSync(mockDataPath)
     });
     
-    if (process.env.MOCKIFYER_ENABLED === 'true') {
+    if (process.env.MOCKIFYER_MODE === 'on') {
       this.httpClient = setupMockifyer({
         mockDataPath: mockDataPath,
         recordMode: process.env.MOCKIFYER_RECORD === 'true',
@@ -50,7 +50,7 @@ export class GraphQLService {
 
     console.log('[GraphQLService] Initialized with:', {
       baseUrl: this.baseUrl,
-      mockEnabled: process.env.MOCKIFYER_ENABLED,
+      mockEnabled: process.env.MOCKIFYER_MODE,
       mockRecord: process.env.MOCKIFYER_RECORD,
       mockPath: process.env.MOCKIFYER_PATH
     });
@@ -65,7 +65,7 @@ export class GraphQLService {
         url: this.baseUrl,
         queryLength: query.length,
         hasVariables: !!variables,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
 
@@ -105,7 +105,7 @@ export class GraphQLService {
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
-        mockEnabled: process.env.MOCKIFYER_ENABLED,
+        mockEnabled: process.env.MOCKIFYER_MODE,
         mockRecord: process.env.MOCKIFYER_RECORD
       });
       throw new Error(`Failed to execute GraphQL query: ${error.message}`);

@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-fetch",
-  "version": "1.8.4",
+  "version": "1.8.32",
   "description": "Mockifyer for Fetch - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -43,7 +43,10 @@
     "intercept",
     "fetch"
   ],
-  "author": "sgedda",
+  "author": {
+    "name": "Sebastian Gedda",
+    "url": "https://github.com/sgedda"
+  },
   "license": "MIT",
   "dependencies": {
     "@sgedda/mockifyer-core": "file:../mockifyer-core"
@@ -62,6 +65,10 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
   },
   "repository": {
     "type": "git",

@@ -53,10 +53,10 @@ export default function App() {
 
   useEffect(() => {
     // Initialize Mockifyer
-    initializeMockifyer().then((instance) => {
-      setMockifyerInstance(instance);
+    initializeMockifyer().then((result) => {
+      setMockifyerInstance(result.status === 'active' ? result.instance : null);
       setInitialized(true);
-      console.log('[App] Mockifyer initialized');
+      console.log('[App] Mockifyer:', result.status);
     });
   }, []);
 

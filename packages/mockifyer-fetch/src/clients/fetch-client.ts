@@ -1,14 +1,73 @@
-import { BaseHTTPClient } from '@sgedda/mockifyer-core';
-import { HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
+import {
+  BaseHTTPClient,
+  HTTPRequestConfig,
+  HTTPResponse,
+  logger,
+  getOutboundMockifyerClientIdHeader,
+  getOutboundMockifyerDeviceIdHeader,
+  MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_DEVICE_ID_HEADER,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_HEADER,
+} from '@sgedda/mockifyer-core';
+import { joinProxyDashboardApiUrl } from '../utils/join-proxy-dashboard-api-url';
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
   private defaultHeaders: Record<string, string>;
+  private proxyBaseUrl?: string;
+  private proxyScenario?: string;
+  private proxyRecordOnMiss: boolean;
+  private proxyRecordResponses: boolean;
+  private getClientId?: () => string | undefined;
+  private getStrictLaneScenario?: () => boolean;
+  private getExplicitProxyScenarioContext?: () => boolean;
+  private clientIdSnapshot?: string;
+  private deviceId?: string;
 
-  constructor(config?: { baseUrl?: string; defaultHeaders?: Record<string, string> }) {
+  constructor(config?: {
+    baseUrl?: string;
+    defaultHeaders?: Record<string, string>;
+    proxy?: {
+      baseUrl: string;
+      scenario?: string;
+      recordOnMiss?: boolean;
+      recordResponses?: boolean;
+      strictLaneScenario?: boolean;
+      mirrorRecordedMocksToClient?: boolean;
+    };
+    clientId?: string;
+    getClientId?: () => string | undefined;
+    getStrictLaneScenario?: () => boolean;
+    /** When false, skip `/api/proxy` and call the real URL (devtools-friendly passthrough). */
+    getExplicitProxyScenarioContext?: () => boolean;
+    deviceId?: string;
+  }) {
     super();
     this.baseUrl = config?.baseUrl;
     this.defaultHeaders = config?.defaultHeaders || {};
+    this.proxyBaseUrl = config?.proxy?.baseUrl;
+    this.proxyScenario = config?.proxy?.scenario;
+    this.proxyRecordOnMiss = config?.proxy?.recordOnMiss ?? false;
+    this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
+    this.getClientId = config?.getClientId;
+    this.getStrictLaneScenario = config?.getStrictLaneScenario;
+    this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
+    this.clientIdSnapshot = config?.clientId;
+    this.deviceId = config?.deviceId;
+  }
+
+  private resolvedClientLane(): string | undefined {
+    if (this.getClientId) {
+      const v = this.getClientId();
+      if (v != null && String(v).trim() !== '') {
+        return String(v).trim();
+      }
+    }
+    if (this.clientIdSnapshot != null && String(this.clientIdSnapshot).trim() !== '') {
+      return String(this.clientIdSnapshot).trim();
+    }
+    return undefined;
   }
 
   protected async performRequest<D = any>(config: HTTPRequestConfig<D>): Promise<HTTPResponse<any>> {
@@ -56,8 +115,123 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       console.warn('[FetchHTTPClient] _originalFetch not set! This may cause infinite loops if global fetch is patched.');
     }
     
+    const lane = this.resolvedClientLane();
+    const bypassMockifyer =
+      (config as any).__mockifyer_bypass === true || (config as any).__mockifyer_skip_save === true;
+    const hopRequestId = (config as any).__mockifyer_requestId as string | undefined;
+    const hopParentRequestId = (config as any).__mockifyer_parentRequestId as string | undefined;
+
+    const explicitProxyContext = this.getExplicitProxyScenarioContext?.() ?? true;
+
+    // Proxy mode (e.g. React Native → dashboard → Redis)
+    if (this.proxyBaseUrl && !bypassMockifyer && explicitProxyContext) {
+      const proxyUrl = joinProxyDashboardApiUrl(this.proxyBaseUrl, 'api/proxy');
+      const proxyResponse = await fetchFn(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(lane ? { [MOCKIFYER_CLIENT_ID_HEADER]: lane } : {}),
+          ...(this.deviceId ? { [MOCKIFYER_DEVICE_ID_HEADER]: this.deviceId } : {}),
+          ...(hopRequestId ? { [MOCKIFYER_REQUEST_ID_HEADER]: hopRequestId } : {}),
+          ...(hopParentRequestId ? { [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: hopParentRequestId } : {}),
+        },
+        body: JSON.stringify({
+          url,
+          method: requestConfig.method,
+          clientId: lane,
+          deviceId: this.deviceId,
+          requestId: hopRequestId,
+          parentRequestId: hopParentRequestId,
+          headers: (() => {
+            const out: Record<string, string> = {};
+            headers.forEach((value, key) => {
+              out[key] = value;
+            });
+            return out;
+          })(),
+          body: config.data ?? null,
+          scenario: this.proxyScenario,
+          record: this.proxyRecordOnMiss,
+          recordResponses: this.proxyRecordResponses,
+          strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
+        }),
+      });
+      if (!proxyResponse.ok) {
+        const txt = await proxyResponse.text();
+        throw new Error(`[FetchHTTPClient] Proxy error: ${proxyResponse.status} ${txt}`);
+      }
+      const payload = await proxyResponse.json();
+      try {
+        const source = String(payload?.source || '');
+        const hash = typeof payload?.hash === 'string' ? payload.hash : '';
+        if (source) {
+          const hashShort = hash ? `${hash.slice(0, 8)}…` : '';
+          const laneLabel = lane ? lane : '—';
+          const kind = source === 'redis' ? 'mock hit' : 'upstream';
+          logger.debug(
+            `[Mockifyer-Fetch] Proxy ${kind}: ${requestConfig.method} ${url} ${
+              hashShort ? `(hash=${hashShort}) ` : ''
+            }(lane=${laneLabel})`
+          );
+        }
+      } catch {
+        // ignore logging failures
+      }
+      const data = payload?.response?.data;
+      const status = payload?.response?.status ?? 200;
+      const responseHeaders: Record<string, string> = payload?.response?.headers ?? {};
+
+      const scenarioResolution = payload?.scenarioResolution as
+        | { scenario?: string | null }
+        | undefined;
+      const scenarioName =
+        typeof scenarioResolution?.scenario === 'string' && scenarioResolution.scenario.trim()
+          ? scenarioResolution.scenario.trim()
+          : undefined;
+
+      const mockifyerProxyRecording =
+        payload?.recordedToStore === true && payload?.storedMock
+          ? {
+              recordedToStore: true as const,
+              storedMock: payload.storedMock,
+              hash: typeof payload.hash === 'string' ? payload.hash : undefined,
+              scenarioName,
+            }
+          : undefined;
+
+      return {
+        data,
+        status,
+        statusText: String(status),
+        headers: responseHeaders,
+        config,
+        mockifyerProxyRecording,
+      };
+    }
+
+    if (!bypassMockifyer && lane && !getOutboundMockifyerClientIdHeader(headers)) {
+      headers.set(MOCKIFYER_CLIENT_ID_HEADER, lane);
+    }
+    if (
+      !bypassMockifyer &&
+      this.deviceId &&
+      String(this.deviceId).trim() &&
+      !getOutboundMockifyerDeviceIdHeader(headers)
+    ) {
+      headers.set(MOCKIFYER_DEVICE_ID_HEADER, String(this.deviceId).trim());
+    }
+
     const response = await fetchFn(url, requestConfig);
-    const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const rawText = await response.text();
+    let data: any = rawText;
+    if (contentType.includes('application/json')) {
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = rawText;
+      }
+    }
 
     // Convert response Headers to Record<string, string>
     const responseHeaders: Record<string, string> = {};
@@ -70,7 +244,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
-      config
+      config,
     };
   }
 

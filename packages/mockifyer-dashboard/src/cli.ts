@@ -3,10 +3,16 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import open from 'open';
+import express from 'express';
 import { createServer } from './server';
 import { detectMockDataPath, detectProvider } from './utils/path-detector';
+import { normalizeExpressMountPath } from './utils/dashboard-base-path';
 import path from 'path';
 import fs from 'fs';
+import {
+  resolveRedisDiskMirrorOptions,
+  type DashboardContextConfig,
+} from './utils/dashboard-context';
 
 const program = new Command();
 
@@ -18,7 +24,28 @@ program
   .option('--port <port>', 'Port to run the dashboard on', '3002')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--no-open', 'Do not open browser automatically')
-  .option('--provider <provider>', 'Database provider type (filesystem or sqlite)', 'filesystem')
+  .option('--provider <provider>', 'Database provider type (filesystem, sqlite, redis)', 'filesystem')
+  .option('--redis-url <url>', 'Redis URL (or use MOCKIFYER_REDIS_URL env var)')
+  .option(
+    '--key-prefix <prefix>',
+    'Redis key prefix (or use MOCKIFYER_REDIS_KEY_PREFIX env var; default: mockifyer:v1)'
+  )
+  .option(
+    '--base <path>',
+    'URL path to mount the dashboard (must match VITE_MOCKIFYER_DASHBOARD_BASE used at frontend build). Env: MOCKIFYER_DASHBOARD_BASE'
+  )
+  .option(
+    '--redis-mirror-disk',
+    'With --provider redis: mirror proxy-recorded mocks to <mock-data>/<scenario>/redis/<hash>.json (env: MOCKIFYER_REDIS_MIRROR_DISK)'
+  )
+  .option(
+    '--redis-disk-fallback',
+    'With --provider redis: if Redis has no mock, load from disk before upstream (env: MOCKIFYER_REDIS_DISK_READ_FALLBACK)'
+  )
+  .option(
+    '--redis-disk-dual',
+    'With --provider redis: enable both --redis-mirror-disk and --redis-disk-fallback'
+  )
   .parse(process.argv);
 
 const options = program.opts();
@@ -28,6 +55,8 @@ async function main() {
     // Detect mock data path
     const mockDataPath = detectMockDataPath(options.path);
     const provider = options.provider || detectProvider(mockDataPath);
+    const redisUrl = options.redisUrl || process.env.MOCKIFYER_REDIS_URL;
+    const keyPrefix = options.keyPrefix || process.env.MOCKIFYER_REDIS_KEY_PREFIX;
     
     // Debug: Log detected path
     if (process.env.DEBUG) {
@@ -36,15 +65,15 @@ async function main() {
       console.log(chalk.gray(`🔍 Debug: Path exists: ${fs.existsSync(mockDataPath)}\n`));
     }
 
-    // Validate provider (only filesystem is currently supported)
-    if (provider !== 'filesystem') {
-      console.error(chalk.red(`\n❌ Error: Database provider '${provider}' is not yet available.`));
-      console.error(chalk.yellow('Only filesystem provider is currently supported.\n'));
+    const validProviders = new Set(['filesystem', 'sqlite', 'redis']);
+    if (!validProviders.has(provider)) {
+      console.error(chalk.red(`\n❌ Error: Unsupported database provider '${provider}'.`));
+      console.error(chalk.yellow("Supported providers: filesystem, sqlite, redis.\n"));
       process.exit(1);
     }
 
     // Check if path exists (or create default directory)
-    if (!fs.existsSync(mockDataPath)) {
+    if (provider !== 'redis' && !fs.existsSync(mockDataPath)) {
       console.log(chalk.yellow(`\n⚠️  Mock data path does not exist: ${mockDataPath}`));
       console.log(chalk.cyan('Creating directory...'));
       fs.mkdirSync(mockDataPath, { recursive: true });
@@ -61,18 +90,77 @@ async function main() {
       process.exit(1);
     }
 
-    // Create and start server
-    const app = createServer(publicDir, mockDataPath);
+    const mountPath = normalizeExpressMountPath(options.base ?? process.env.MOCKIFYER_DASHBOARD_BASE);
+
+    let redisDiskMirror: DashboardContextConfig['redisDiskMirror'] = undefined;
+    if (provider === 'redis') {
+      const dual = Boolean(options.redisDiskDual);
+      const mirror = Boolean(options.redisMirrorDisk);
+      const fallback = Boolean(options.redisDiskFallback);
+      if (dual || mirror || fallback) {
+        redisDiskMirror = {
+          mirrorWrites: dual || mirror,
+          readFallback: dual || fallback,
+        };
+      }
+    }
+
+    const innerApp = createServer(publicDir, mockDataPath, {
+      provider,
+      redisUrl,
+      keyPrefix,
+      ...(redisDiskMirror !== undefined ? { redisDiskMirror } : {}),
+    });
+
+    const app =
+      mountPath === '/'
+        ? innerApp
+        : (() => {
+            const root = express();
+            root.get('/', (_req, res) => res.redirect(302, `${mountPath}/`));
+            root.use(mountPath, innerApp);
+            return root;
+          })();
+
     const port = parseInt(options.port, 10);
     const host = options.host;
+    const pathSuffix = mountPath === '/' ? '' : mountPath;
 
     const server = app.listen(port, host, () => {
-      const url = `http://${host}:${port}`;
+      const url = `http://${host}:${port}${pathSuffix}/`;
       
       console.log(chalk.green('\n✨ Mockifyer Dashboard is running!\n'));
       console.log(chalk.cyan(`   📊 Dashboard: ${chalk.bold(url)}`));
+      if (mountPath !== '/') {
+        console.log(
+          chalk.gray(
+            `   ℹ️  Mounted at ${chalk.bold(mountPath)} — default portable UI works here; only rebuild with VITE_MOCKIFYER_DASHBOARD_BASE if you use a fixed absolute base.`
+          )
+        );
+      }
       console.log(chalk.cyan(`   📁 Mock Data: ${chalk.bold(mockDataPath)}`));
       console.log(chalk.cyan(`   🔧 Provider: ${chalk.bold(provider)}\n`));
+      if (provider === 'redis') {
+        console.log(
+          chalk.cyan(`   🧠 Redis URL: ${chalk.bold(redisUrl || 'redis://127.0.0.1:6379 (default)')}`)
+        );
+        console.log(
+          chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}`)
+        );
+        const dm = resolveRedisDiskMirrorOptions({
+          provider,
+          redisUrl,
+          keyPrefix,
+          redisDiskMirror,
+        });
+        if (dm.mirrorWrites || dm.readFallback) {
+          const parts: string[] = [];
+          if (dm.mirrorWrites) parts.push('mirror recorded mocks → disk');
+          if (dm.readFallback) parts.push('read disk if Redis misses');
+          console.log(chalk.cyan(`   💾 Redis + disk: ${chalk.bold(parts.join(' · '))}`));
+        }
+        console.log('');
+      }
       
       if (!options.noOpen) {
         open(url).catch(() => {

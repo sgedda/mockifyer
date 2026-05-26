@@ -54,7 +54,10 @@ function joinPath(...parts: string[]): string {
 /**
  * Try to load scenario config from scenario-config.json file in mock data directory
  */
-function loadScenarioConfigFromFile(mockDataPath?: string): { currentScenario?: string } | null {
+function loadScenarioConfigFromFile(
+  mockDataPath?: string,
+  clientId?: string
+): { currentScenario?: string } | null {
   // Not available in React Native (fs is stubbed)
   if (!fs || !fs.existsSync || !fs.readFileSync) {
     return null;
@@ -64,7 +67,10 @@ function loadScenarioConfigFromFile(mockDataPath?: string): { currentScenario?: 
     // Try to detect mock data path if not provided
     let configPath: string;
     if (mockDataPath) {
-      configPath = joinPath(mockDataPath, 'scenario-config.json');
+      const trimmedClientId = typeof clientId === 'string' ? clientId.trim() : '';
+      const preferred = trimmedClientId ? joinPath(mockDataPath, `scenario-config.${trimmedClientId}.json`) : '';
+      const fallback = joinPath(mockDataPath, 'scenario-config.json');
+      configPath = preferred && fs!.existsSync(preferred) ? preferred : fallback;
     } else {
       // Try common locations (only works in Node.js)
       const cwd = typeof process !== 'undefined' && process.cwd ? process.cwd() : '';
@@ -96,34 +102,49 @@ function loadScenarioConfigFromFile(mockDataPath?: string): { currentScenario?: 
   }
 }
 
+function configDefaultScenarioName(): string | undefined {
+  if (!currentConfig) return undefined;
+  const preferred = currentConfig.defaultScenario ?? currentConfig.scenarios?.default;
+  return preferred && preferred.trim() ? preferred.trim() : undefined;
+}
+
 /**
- * Get the current scenario name
- * Priority: launch override (setScenarioLaunchOverride) > MOCKIFYER_SCENARIO env > config.scenarios?.default > scenario-config.json > 'default'
+ * Current scenario used for filesystem/redis fallback paths outside the dashboard lane keys.
+ *
+ * **Precedence (first match wins)**:
+ *
+ * | Order | Source |
+ * | :--- | :--- |
+ * | 1 | **`setScenarioLaunchOverride`** (E2E / Detox via launch arguments) |
+ * | 2 | **`MOCKIFYER_SCENARIO`** env |
+ * | 3 | **`config.defaultScenario`** or **`config.scenarios.default`** (**`defaultScenario`** wins when both set) |
+ * | 4 | **`scenario-config.json`** (**`scenario-config.{clientId}.json`** preferred when **`clientId`** is set and that file exists) |
+ * | 5 | **`'default'`** literal seed name |
+ *
+ * **Dashboard Redis proxy**: per-request **`scenario`** body / proxy envelope overrides **`client_scenario:{clientId}`**,
+ * then global **`active_scenario`**, then this filesystem-derived fallback (unless strict lane-only mode disables global for mapped lanes —
+ * see dashboard **`MOCKIFYER_STRICT_LANE_SCENARIO`**). Documented fully in README (Scenario precedence).
  */
-export function getCurrentScenario(mockDataPath?: string): string {
+export function getCurrentScenario(mockDataPath?: string, clientId?: string): string {
   if (scenarioLaunchOverride) {
     return scenarioLaunchOverride;
   }
 
   // Check environment variable
-  const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
-  if (envScenario) {
-    return envScenario;
+  if (envScenario != null && String(envScenario).trim() !== '') {
+    return String(envScenario).trim();
   }
 
-  // Try to get from current config
-  const configScenario = currentConfig?.scenarios?.default;
+  const configScenario = configDefaultScenarioName();
   if (configScenario) {
     return configScenario;
   }
 
-  // Try to load from scenario-config.json file
-  const fileConfig = loadScenarioConfigFromFile(mockDataPath || currentConfig?.mockDataPath);
+  const fileConfig = loadScenarioConfigFromFile(mockDataPath || currentConfig?.mockDataPath, clientId);
   if (fileConfig?.currentScenario) {
     return fileConfig.currentScenario;
   }
 
-  // Default to 'default' scenario
   return DEFAULT_SCENARIO;
 }
 

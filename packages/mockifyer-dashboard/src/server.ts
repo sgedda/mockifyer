@@ -1,17 +1,59 @@
 import express from 'express';
 import path from 'path';
+import { initializeDateManipulation } from '@sgedda/mockifyer-core';
 import { mocksRouter } from './routes/mocks';
 import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
 import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
+import { proxyRouter } from './routes/proxy';
+import { clientLanesRouter } from './routes/client-lanes';
+import { proxyConfigRouter } from './routes/proxy-config';
+import { networkEventsRouter } from './routes/network-events';
+import type {
+  DashboardContextConfig,
+  RedisDiskMirrorConfigInput,
+  RedisDiskMirrorResolved,
+} from './utils/dashboard-context';
 
-export function createServer(publicDir: string, mockDataPath: string): express.Application {
+export type { DashboardContextConfig, RedisDiskMirrorConfigInput, RedisDiskMirrorResolved };
+
+/**
+ * Same limit string the dashboard uses for `express.json` / `urlencoded` (env
+ * `MOCKIFYER_DASHBOARD_JSON_BODY_LIMIT`, default `50mb`).
+ *
+ * When you mount {@link createServer} under another Express app, if that app
+ * already registered `express.json()` **before** this mount, that parser runs
+ * first and often still uses Express’s default (~100kb) — large scenario imports
+ * then return **413** before the dashboard’s body parser runs. Fix by either:
+ * mounting the dashboard **before** the host’s `express.json()`, or passing
+ * `{ limit: getDashboardJsonBodyLimit() }` on the host’s `express.json()`.
+ */
+export function getDashboardJsonBodyLimit(): string {
+  return process.env.MOCKIFYER_DASHBOARD_JSON_BODY_LIMIT?.trim() || '50mb';
+}
+
+/**
+ * Creates the dashboard Express app (static UI + `/api/*`). Uses a large JSON
+ * body limit for scenario import; see {@link getDashboardJsonBodyLimit} when
+ * embedding under another app that already uses `express.json()`.
+ */
+export function createServer(
+  publicDir: string,
+  mockDataPath: string,
+  config: DashboardContextConfig = { provider: 'filesystem' }
+): express.Application {
   const app = express();
+  app.locals.mockDataPath = mockDataPath;
+  app.locals.dashboardConfig = config;
+
+  /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
+  initializeDateManipulation({ mockDataPath });
 
   // Middleware
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  const jsonBodyLimit = getDashboardJsonBodyLimit();
+  app.use(express.json({ limit: jsonBodyLimit }));
+  app.use(express.urlencoded({ extended: true, limit: jsonBodyLimit }));
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
   app.use('/api', (_req, res, next) => {
@@ -38,9 +80,15 @@ export function createServer(publicDir: string, mockDataPath: string): express.A
   app.use('/api/health', healthRouter);
   app.use('/api/date-config', dateConfigRouter);
   app.use('/api/scenario-config', scenarioConfigRouter);
+  app.use('/api/proxy', proxyRouter);
+  app.use('/api/proxy-config', proxyConfigRouter);
+  app.use('/api/client-lanes', clientLanesRouter);
+  app.use('/api/network-events', networkEventsRouter);
   
   // Log route registration (for debugging)
-  console.log('[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config');
+  console.log(
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events'
+  );
 
   // Serve static files from public directory (React build output)
   // Only serve static files for GET requests to non-API paths
