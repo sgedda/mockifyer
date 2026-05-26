@@ -1,4 +1,4 @@
-import { getCurrentScenario } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
 import { createNetworkLogStore, newRequestId, type NetworkLogStore } from './network-log-store';
 
@@ -126,6 +126,28 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
     requestId,
     parentRequestId: parentRequestId ?? null,
   };
+}
+
+/** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network. */
+export function applyProxyCorrelationToMockData(
+  mock: MockData,
+  ctx: ProxyNetworkLogContext | null,
+  inbound?: ProxyNetworkLogCorrelation
+): void {
+  const requestId =
+    ctx?.requestId ??
+    (typeof inbound?.requestId === 'string' && inbound.requestId.trim() ? inbound.requestId.trim() : undefined);
+  const parentRequestId =
+    ctx?.parentRequestId ??
+    (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
+      ? inbound.parentRequestId.trim()
+      : undefined);
+  if (requestId) {
+    mock.requestId = requestId;
+  }
+  if (parentRequestId) {
+    mock.parentRequestId = parentRequestId;
+  }
 }
 
 export function applyUpstreamRequestCorrelationHeaders(

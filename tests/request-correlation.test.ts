@@ -1,20 +1,40 @@
 import http from 'http';
 import {
   applyOutboundRequestCorrelation,
+  captureInboundMockifyerContext,
   captureInboundRequestCorrelation,
   createMockifyerCorrelationMiddleware,
+  getActiveInboundClientId,
   getActiveRequestCorrelation,
+  getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerParentRequestIdHeader,
   getOutboundMockifyerRequestIdHeader,
   installNodeInboundRequestCorrelationCapture,
+  MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   resolveOutboundParentRequestId,
+  runWithMockifyerHopContext,
   runWithRequestCorrelation,
   type RequestCorrelationContext,
 } from '@sgedda/mockifyer-core';
 
 describe('request-correlation', () => {
+  it('reads inbound lane and correlation headers', () => {
+    const ctx = captureInboundMockifyerContext({
+      get: (name: string) => {
+        if (name.toLowerCase() === MOCKIFYER_CLIENT_ID_HEADER) return 'lane-a';
+        if (name.toLowerCase() === MOCKIFYER_REQUEST_ID_HEADER) return 'req-a';
+        if (name.toLowerCase() === MOCKIFYER_PARENT_REQUEST_ID_HEADER) return 'req-root';
+        return undefined;
+      },
+    });
+    expect(ctx).toEqual({
+      inboundClientId: 'lane-a',
+      correlation: { requestId: 'req-a', parentRequestId: 'req-root' },
+    });
+  });
+
   it('reads inbound correlation headers', () => {
     const ctx = captureInboundRequestCorrelation({
       get: (name: string) => {
@@ -50,6 +70,15 @@ describe('request-correlation', () => {
     expect(hop.parentRequestId).toBe('req-parent');
   });
 
+  it('propagates inbound client id on outbound fetch without manual headers', () => {
+    runWithMockifyerHopContext({ inboundClientId: 'lane-gateway' }, () => {
+      const config = { headers: {} as Record<string, string> };
+      applyOutboundRequestCorrelation(config);
+      expect(getOutboundMockifyerClientIdHeader(config.headers)).toBe('lane-gateway');
+      expect(getActiveInboundClientId()).toBe('lane-gateway');
+    });
+  });
+
   it('middleware captures inbound request id for downstream hops', () => {
     const middleware = createMockifyerCorrelationMiddleware();
     const req = {
@@ -61,6 +90,19 @@ describe('request-correlation', () => {
       activeDuringNext = getActiveRequestCorrelation()?.requestId;
     });
     expect(activeDuringNext).toBe('req-gateway');
+  });
+
+  it('middleware captures inbound client id for downstream hops', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req = {
+      header: (name: string) =>
+        name.toLowerCase() === MOCKIFYER_CLIENT_ID_HEADER ? 'lane-web' : undefined,
+    };
+    let laneDuringNext: string | undefined;
+    middleware(req, {}, () => {
+      laneDuringNext = getActiveInboundClientId();
+    });
+    expect(laneDuringNext).toBe('lane-web');
   });
 
   it('auto-installs inbound capture on Node http.Server without middleware', async () => {

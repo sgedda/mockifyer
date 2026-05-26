@@ -8,6 +8,7 @@
     "dev:record": "cross-env MOCKIFYER_RECORD=true MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo tsx watch src/server.ts"
   },
   "dependencies": {
+    "@multi-service/mock-bootstrap": "file:../../packages/mock-bootstrap",
     "@multi-service/mock-axios-bootstrap": "file:../../packages/mock-axios-bootstrap",
     "@sgedda/mockifyer-core": "file:../../../../packages/mockifyer-core",
     "axios": "^1.7.9",

@@ -1,5 +1,8 @@
 import express from 'express';
-import { initializeMockifyerFromEnv } from '@multi-service/mock-bootstrap';
+import {
+  createMockifyerCorrelationMiddleware,
+  initializeMockifyerFromEnv,
+} from '@multi-service/mock-bootstrap';
 
 const PORT = Number(process.env.PORT ?? '4102');
 
@@ -20,6 +23,7 @@ async function main(): Promise<void> {
   await initializeMockifyerFromEnv({ label: 'catalog-api' });
 
   const app = express();
+  app.use(createMockifyerCorrelationMiddleware());
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, service: 'catalog-api' });

@@ -10,7 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { updateMock, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
-import type { MockData, MockReplayMode, MockResponseDateOverride } from '@/types'
+import type { MockData, MockFile, MockReplayMode, MockResponseDateOverride } from '@/types'
+import {
+  buildMockChainMaps,
+  buildMockServiceChainsForDisplay,
+  getMockChain,
+} from '@/lib/mock-correlation-chains'
+import { MockCallChainPanel } from '@/components/MockCallChainPanel'
 import { Input } from '@/components/ui/input'
 import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft, RefreshCw } from 'lucide-react'
 import {
@@ -25,6 +31,10 @@ interface MockEditorProps {
   scenario?: string
   /** When true, response edits and passthrough toggle cannot be saved (scenario locked). */
   scenarioLocked?: boolean
+  /** All mocks in the scenario — used to show multi-service call chain. */
+  allMocks?: MockFile[]
+  /** Navigate to another hop in the chain from the editor. */
+  onSelectRelatedMock?: (file: MockFile) => void
   onClose: () => void
   onSave: () => void
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
@@ -172,6 +182,8 @@ export default function MockEditor({
   onSave,
   variant = 'default',
   scenarioLocked = false,
+  allMocks = [],
+  onSelectRelatedMock,
 }: MockEditorProps) {
   const readOnly = scenarioLocked === true
   const [responseData, setResponseData] = useState('')
@@ -204,6 +216,30 @@ export default function MockEditor({
     () => detectDateLikeFields(responseBodyForDetection),
     [responseBodyForDetection]
   )
+
+  const serviceChain = useMemo(() => {
+    if (!allMocks.length) return []
+    const displayChains = buildMockServiceChainsForDisplay(allMocks)
+    const containing = displayChains.find((c) => c.hops.some((h) => h.filename === mock.filename))
+    if (containing) return containing.hops
+    const maps = buildMockChainMaps(allMocks)
+    const listFile = allMocks.find((m) => m.filename === mock.filename)
+    const hop: MockFile = listFile ?? {
+      filename: mock.filename,
+      filePath: '',
+      size: 0,
+      created: mock.metadata.created,
+      modified: mock.metadata.modified,
+      endpoint: mock.data.request?.url ?? null,
+      method: mock.data.request?.method ?? null,
+      graphqlInfo: null,
+      sessionId: mock.data.sessionId ?? null,
+      requestId: mock.data.requestId ?? null,
+      parentRequestId: mock.data.parentRequestId ?? null,
+    }
+    const chain = getMockChain(hop, maps.byRequestId)
+    return chain.length >= 2 ? chain : []
+  }, [allMocks, mock])
 
   useEffect(() => {
     const data = mock.data.response?.data
@@ -497,12 +533,28 @@ export default function MockEditor({
   const isModal = variant === 'modal'
 
   const header = (
-    <div className="flex items-center justify-between gap-2 pr-8 sm:pr-10">
-      <CardTitle className="text-xl">Edit Mock: <span className="text-primary font-mono">{mock.filename}</span></CardTitle>
-      {!isModal && (
-        <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-destructive/20 hover:text-destructive shrink-0">
-          <X className="h-4 w-4" />
-        </Button>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 pr-8 sm:pr-10">
+        <CardTitle className="text-xl">
+          Edit Mock: <span className="text-primary font-mono">{mock.filename}</span>
+        </CardTitle>
+        {!isModal && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="hover:bg-destructive/20 hover:text-destructive shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      {serviceChain.length >= 2 && onSelectRelatedMock && (
+        <MockCallChainPanel
+          chain={serviceChain}
+          selectedFilename={mock.filename}
+          onSelectHop={onSelectRelatedMock}
+        />
       )}
     </div>
   )

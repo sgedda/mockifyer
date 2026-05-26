@@ -305,6 +305,12 @@ class MockifyerClass {
     return generateRequestKeyUtil(request);
   }
 
+  /** When set, mock resolution happens on the dashboard `/api/proxy` (Redis/disk), not local `mock-data`. */
+  private usesDashboardProxy(): boolean {
+    const baseUrl = this.config.proxy?.baseUrl;
+    return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  }
+
   private async findBestMatchingMock(
     request: StoredRequest,
     options?: { includePassthroughMocks?: boolean }
@@ -547,6 +553,7 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
+        applyOutboundRequestCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -583,6 +590,12 @@ class MockifyerClass {
       (config as any).__mockifyer_requestKey = requestKey;
       // Store request start time for duration calculation
       (config as any).__mockifyer_startTime = Date.now();
+
+      // Dashboard proxy owns mock hits (Redis + server-side disk fallback). Do not short-circuit
+      // from local mock-data while proxy.baseUrl is configured — that bypasses /api/proxy entirely.
+      if (this.usesDashboardProxy()) {
+        return config;
+      }
       
       const cachedMock = await this.findBestMatchingMock(request);
       
@@ -1428,7 +1441,10 @@ export interface MockifyerInstance extends HTTPClient {
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
-  installNodeInboundRequestCorrelationCapture();
+  // Node-only inbound capture; safe on RN (no-op when not on Node).
+  if (typeof installNodeInboundRequestCorrelationCapture === 'function') {
+    installNodeInboundRequestCorrelationCapture();
+  }
   const resolvedConfig = applyProxyRecordOnMissEnv(config);
   // Initialize logger with config level (default to 'info' if not specified)
   setLogLevel(resolvedConfig.logging || 'info');
@@ -1807,6 +1823,6 @@ export { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 // Re-export types from core
 export * from '@sgedda/mockifyer-core';
 
-// Export React Native helpers
-export * from './react-native';
+// React Native helpers: import `@sgedda/mockifyer-fetch/react-native` (not this entry — avoids
+// pulling optional `react-native-launch-arguments` into Node/Next webpack bundles).
 

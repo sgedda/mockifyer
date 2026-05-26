@@ -11,6 +11,8 @@
   "scripts": {
     "dev": "concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
     "dev:record": "cross-env MOCKIFYER_RECORD=true concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
+    "dev:proxy": "cross-env MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL=http://localhost:3002 concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
+    "dev:proxy:record": "cross-env MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL=http://localhost:3002 MOCKIFYER_RECORD=true concurrently -n web,gateway,relay,catalog -c blue,magenta,yellow,green \"npm run dev -w @multi-service/web\" \"npm run dev -w @multi-service/gateway-api\" \"npm run dev -w @multi-service/relay-axios-api\" \"npm run dev -w @multi-service/catalog-api\"",
     "dev:web": "npm run dev -w @multi-service/web",
     "dev:gateway": "npm run dev -w @multi-service/gateway-api",
     "dev:relay": "npm run dev -w @multi-service/relay-axios-api",
@@ -19,7 +21,8 @@
     "dashboard:redis": "MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --port 3002",
     "redis:up": "docker compose up -d redis",
     "redis:down": "docker compose down",
-    "redis:logs": "docker compose logs -f redis"
+    "redis:logs": "docker compose logs -f redis",
+    "chain:clear-gateway-mock": "node -e \"const fs=require('fs');const p='mock-data/default';if(!fs.existsSync(p))process.exit(0);for(const f of fs.readdirSync(p))if(/4101/.test(f)&&/aggregate/i.test(f))fs.unlinkSync(p+'/'+f);\""
   },
   "devDependencies": {
     "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",

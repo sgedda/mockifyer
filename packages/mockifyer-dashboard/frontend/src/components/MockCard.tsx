@@ -2,7 +2,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { MockFile, MockData } from '@/types'
-import { Copy, ExternalLink, Trash2 } from 'lucide-react'
+import {
+  getMockChain,
+  mockChainDepth,
+  mockHasChainChildren,
+  mockIsInServiceChain,
+  isMockChainRoot,
+  type MockChainMaps,
+} from '@/lib/mock-correlation-chains'
+import { Copy, ExternalLink, Trash2, GitBranch } from 'lucide-react'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -57,6 +65,7 @@ export function MockCard({
   onDuplicate,
   deleting,
   showActions = true,
+  chainMaps,
 }: {
   mock: MockFile
   selectedMock: MockData | null
@@ -65,6 +74,7 @@ export function MockCard({
   onDuplicate?: (filename: string, e: React.MouseEvent) => void
   deleting?: string | null
   showActions?: boolean
+  chainMaps?: MockChainMaps
 }) {
   const isSelected = selectedMock?.filename === mock.filename
   const displayName = deriveDisplayName(mock)
@@ -75,12 +85,20 @@ export function MockCard({
 
   const canShowActions = showActions && onDelete && onDuplicate
 
+  const inServiceChain = chainMaps ? mockIsInServiceChain(mock, chainMaps) : false
+  const hopDepth = chainMaps && inServiceChain ? mockChainDepth(mock, chainMaps.byRequestId) : 0
+  const chainLength =
+    chainMaps && inServiceChain ? getMockChain(mock, chainMaps.byRequestId).length : 0
+  const isRoot = chainMaps ? isMockChainRoot(mock, chainMaps.byRequestId) : false
+  const hasChildren = chainMaps ? mockHasChainChildren(mock, chainMaps.childrenByParent) : false
+
   return (
     <Card
       key={mock.filename}
       className={`cursor-pointer transition-all hover:border-primary/50 hover:shadow-md ${
         isSelected ? 'border-primary bg-primary/5' : ''
       }`}
+      style={hopDepth > 0 ? { marginLeft: `${Math.min(hopDepth, 4) * 12}px` } : undefined}
       onClick={() => onSelectMock(mock)}
     >
       <CardHeader className="pb-3">
@@ -124,6 +142,20 @@ export function MockCard({
               {mock.refreshOnNextRequest === true && mock.responsePending !== true && (
                 <Badge variant="outline" className="border-violet-500/40 bg-violet-500/10 text-violet-100">
                   Refresh next
+                </Badge>
+              )}
+              {inServiceChain && chainLength >= 2 && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
+                  title={
+                    isRoot && hasChildren
+                      ? `Chain root — ${chainLength} hops in this request`
+                      : `Hop ${hopDepth + 1} of ${chainLength} — triggered by upstream service`
+                  }
+                >
+                  <GitBranch className="h-3 w-3 mr-1 inline" />
+                  {isRoot && hasChildren ? `Chain · ${chainLength} hops` : `Hop ${hopDepth + 1}/${chainLength}`}
                 </Badge>
               )}
               {mock.similarBodyGroup && mock.similarBodyGroup.size >= 2 && (

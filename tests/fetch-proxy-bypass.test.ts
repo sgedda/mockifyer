@@ -148,6 +148,56 @@ describe('fetch proxy bypass', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.com/explore');
   });
 
+  it('does not serve local filesystem mocks when dashboard proxy is active', async () => {
+    const scenarioPath = path.join(testMockDataPath, 'default');
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    const targetUrl = 'http://127.0.0.1:4101/aggregate';
+    const requestKey = `GET:${targetUrl}`;
+    fs.writeFileSync(
+      path.join(scenarioPath, 'local_only_aggregate.json'),
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        request: { method: 'GET', url: targetUrl, headers: {} },
+        response: {
+          status: 200,
+          data: { fromLocalFilesystem: true },
+          headers: { 'content-type': 'application/json' },
+        },
+      }),
+      'utf-8'
+    );
+
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'upstream',
+        hash: 'proxy-hash',
+        response: {
+          status: 200,
+          data: { fromProxy: true },
+          headers: {},
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get(targetUrl);
+
+    expect(response.data).toEqual({ fromProxy: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('http://dashboard.local/api/proxy');
+    const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(proxyBody.url).toBe(targetUrl);
+    expect(requestKey).toContain('4101');
+  });
+
   it('does not send bypassed requests to dashboard proxy', async () => {
     const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
       jsonResponse({ direct: true })

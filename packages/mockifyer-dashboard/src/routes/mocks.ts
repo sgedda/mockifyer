@@ -40,6 +40,24 @@ const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be ed
 
 type OverridePreview = { path: string; summary: string };
 
+function extractMockCorrelationIds(mockData: unknown): {
+  requestId: string | null;
+  parentRequestId: string | null;
+} {
+  const m = mockData as {
+    requestId?: unknown;
+    parentRequestId?: unknown;
+    data?: { requestId?: unknown; parentRequestId?: unknown };
+  };
+  const requestIdRaw = m.requestId ?? m.data?.requestId;
+  const parentRaw = m.parentRequestId ?? m.data?.parentRequestId;
+  const requestId =
+    typeof requestIdRaw === 'string' && requestIdRaw.trim() ? requestIdRaw.trim() : null;
+  const parentRequestId =
+    typeof parentRaw === 'string' && parentRaw.trim() ? parentRaw.trim() : null;
+  return { requestId, parentRequestId };
+}
+
 function extractMockActivationFlags(mockData: unknown): {
   alwaysUseRealApi: boolean;
   responsePending: boolean;
@@ -325,6 +343,7 @@ router.get('/', async (req: Request, res: Response) => {
             } catch {
               // ignore
             }
+            const correlation = extractMockCorrelationIds(mockData);
 
             // Use a stable pseudo-filename for UI routing. Must end with .json.
             const filename = `redis/${hash}.json`;
@@ -338,6 +357,8 @@ router.get('/', async (req: Request, res: Response) => {
               method,
               graphqlInfo,
               sessionId,
+              requestId: correlation.requestId,
+              parentRequestId: correlation.parentRequestId,
               ...activation,
               hasResponseDateOverrides: hasOverrides,
               responseDateOverridesPreview: preview,
@@ -373,8 +394,13 @@ router.get('/', async (req: Request, res: Response) => {
         let activation = extractMockActivationFlags({});
         let hasResponseDateOverrides = false;
         let responseDateOverridesPreview: OverridePreview[] = [];
+        let requestId: string | null = null;
+        let parentRequestId: string | null = null;
         try {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const correlation = extractMockCorrelationIds(mockData);
+          requestId = correlation.requestId;
+          parentRequestId = correlation.parentRequestId;
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
           }
@@ -428,6 +454,8 @@ router.get('/', async (req: Request, res: Response) => {
           method,
           graphqlInfo,
           sessionId,
+          requestId,
+          parentRequestId,
           ...activation,
           hasResponseDateOverrides,
           responseDateOverridesPreview,
@@ -520,6 +548,7 @@ router.get('/search', async (req: Request, res: Response) => {
           } catch {
             // ignore best-effort extraction errors
           }
+          const correlation = extractMockCorrelationIds(mockData);
 
           files.push({
             filename: `redis/${hash}.json`,
@@ -531,6 +560,8 @@ router.get('/search', async (req: Request, res: Response) => {
             method,
             graphqlInfo,
             sessionId,
+            requestId: correlation.requestId,
+            parentRequestId: correlation.parentRequestId,
             alwaysUseRealApi,
             hasResponseDateOverrides: hasOverrides,
             responseDateOverridesPreview: preview,
@@ -580,9 +611,14 @@ router.get('/search', async (req: Request, res: Response) => {
       let alwaysUseRealApi = false;
       let hasResponseDateOverrides = false;
       let responseDateOverridesPreview: OverridePreview[] = [];
+      let requestId: string | null = null;
+      let parentRequestId: string | null = null;
 
       try {
         const mockData = JSON.parse(content);
+        const correlation = extractMockCorrelationIds(mockData);
+        requestId = correlation.requestId;
+        parentRequestId = correlation.parentRequestId;
         if (mockData.request?.url) endpoint = mockData.request.url;
         if (mockData.request?.method) method = String(mockData.request.method);
         if (mockData.alwaysUseRealApi === true) alwaysUseRealApi = true;
@@ -629,6 +665,8 @@ router.get('/search', async (req: Request, res: Response) => {
         method,
         graphqlInfo,
         sessionId,
+        requestId,
+        parentRequestId,
         alwaysUseRealApi,
         hasResponseDateOverrides,
         responseDateOverridesPreview,
