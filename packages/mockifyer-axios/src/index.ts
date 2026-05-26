@@ -22,6 +22,8 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
+  resolveRecordingExclusions,
+  shouldExcludeRecording,
   resolveActivationMode,
   shouldApplyMockifyer,
   type MockifyerActivationMode,
@@ -1438,10 +1440,18 @@ class MockifyerClass {
       return;
     }
 
-    // CRITICAL: Skip saving responses from Resend API
-    const url = response.config?.url || '';
-    if (url && url.includes('api.resend.com')) {
-      console.log('[Mockifyer] ⚠️ Skipping save - Resend API request:', url);
+    const rawUrl = response.config?.url || '';
+    const baseURL = response.config.baseURL || this.config.baseUrl;
+    const recordingExclusions = resolveRecordingExclusions(this.config);
+    if (recordingExclusions.length > 0 && shouldExcludeRecording(rawUrl, recordingExclusions, baseURL)) {
+      console.log('[Mockifyer] ⚠️ Skipping save — URL matches recordingExclusions (host/path rule)');
+      return;
+    }
+
+    // CRITICAL: Skip saving responses from Resend API (legacy default when not using recordingExclusions).
+    const urlForLegacy = rawUrl;
+    if (urlForLegacy && urlForLegacy.includes('api.resend.com')) {
+      console.log('[Mockifyer] ⚠️ Skipping save - Resend API request:', urlForLegacy);
       return;
     }
     

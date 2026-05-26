@@ -18,6 +18,21 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  */
 export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
 
+/**
+ * Exclude **recording** only (mock replay unchanged) when an outbound URL matches the host hierarchy and optional pathname prefix.
+ *
+ * - **`host`**: **`example.com`** matches that host plus any subdomain (**`*.example.com`**). **`staging.example.com`** matches only **`staging.example.com`** and its subdomains, not **`api.example.com`**.
+ * - **`pathPrefix`**: when set (e.g. **`/billing`**), exclusion applies only when the URL pathname equals that segment or begins with **`/billing/`**. Omit to exclude the entire host subtree from recording.
+ *
+ * Prefer {@link MockifyerConfig.recordingExclusions}; env **`MOCKIFYER_RECORDING_EXCLUSIONS`** / **`MOCKIFYER_RECORDING_EXCLUSION_HOSTS`** also apply when set ({@link parseRecordingExclusionsEnv}).
+ */
+export interface RecordingExclusion {
+  /** Host name only (optionally pasted with `https://` — sanitized). No port segment. */
+  host: string;
+  /** Restrict exclusion to URLs under this pathname (leading `/` normalized). Omit = whole host subtree. */
+  pathPrefix?: string;
+}
+
 export interface MockifyerConfig {
   mockDataPath: string;
   /**
@@ -148,6 +163,16 @@ export interface MockifyerConfig {
    * Defaults include Mockifyer Metro internals (save/clear/sync/scenario-config) and Resend.
    * Set to empty array to disable all exclusions. */
   excludedUrls?: string[];
+  /**
+   * Host-based (optional path-prefix) rules that turn off **recording** only.
+   *
+   * Requests still replay from existing mocks where applicable and still hit the real API on miss; responses are simply not persisted when they match any rule ({@link shouldExcludeRecording}).
+   *
+   * Combined with **`MOCKIFYER_RECORDING_EXCLUSIONS`** (JSON) and **`MOCKIFYER_RECORDING_EXCLUSION_HOSTS`** when those env vars are set.
+   *
+   * @see {@link RecordingExclusion}
+   */
+  recordingExclusions?: RecordingExclusion[];
   /**
    * Optional HTTP proxy mode for environments that can't access the database provider directly (e.g. React Native + Redis).
    * When set, network requests can be routed through a proxy service (e.g. mockifyer-dashboard) which serves mocks and/or forwards upstream.
@@ -359,5 +384,8 @@ export const ENV_VARS = {
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
+  /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
+  MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
+  /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */
+  MOCK_RECORDING_EXCLUSION_HOSTS: 'MOCKIFYER_RECORDING_EXCLUSION_HOSTS',
 } as const;
-

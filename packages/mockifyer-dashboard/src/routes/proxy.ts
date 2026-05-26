@@ -7,6 +7,8 @@ import {
   getCurrentDate,
   MOCKIFYER_CLIENT_ID_HEADER,
   prepareMockResponseBody,
+  parseRecordingExclusionsEnv,
+  shouldExcludeRecording,
   mockShouldServeStoredBody,
   buildClientResponseFromLiveCapture,
   buildMockDataAfterLiveCapture,
@@ -247,6 +249,15 @@ router.post('/', async (req: Request, res: Response) => {
 
     const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
+    const proxyRecordingExclusions = parseRecordingExclusionsEnv();
+    if (
+      effectiveRecord &&
+      typeof url === 'string' &&
+      proxyRecordingExclusions.length > 0 &&
+      shouldExcludeRecording(url, proxyRecordingExclusions)
+    ) {
+      effectiveRecord = false;
+    }
     const effectiveAllowUpstream =
       typeof allowUpstream === 'boolean' ? allowUpstream : proxyConfig?.allowUpstream ?? true;
 
