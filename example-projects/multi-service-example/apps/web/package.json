@@ -1,0 +1,29 @@
+{
+  "name": "@multi-service/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cross-env NEXT_TELEMETRY_DISABLED=1 MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo next dev --turbopack -p 3040",
+    "dev:record": "cross-env NEXT_TELEMETRY_DISABLED=1 MOCKIFYER_RECORD=true MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo next dev --turbopack -p 3040",
+    "dev:webpack": "cross-env NEXT_TELEMETRY_DISABLED=1 MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo next dev -p 3040",
+    "build": "next build",
+    "start": "next start -p 3040",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-core": "file:../../../../packages/mockifyer-core",
+    "@sgedda/mockifyer-fetch": "file:../../../../packages/mockifyer-fetch",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "cross-env": "^7.0.3",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.3.0",
+    "typescript": "^5.6.0"
+  }
+}

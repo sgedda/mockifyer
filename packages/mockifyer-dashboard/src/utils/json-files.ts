@@ -38,6 +38,7 @@ export function getAllJsonFiles(dir: string): string[] {
       if (st.isDirectory()) {
         walk(full);
       } else if (name.endsWith('.json')) {
+        if (name === 'scenario-meta.json') continue;
         results.push(full);
       }
     }

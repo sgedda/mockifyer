@@ -1,11 +1,17 @@
 import type {
   MockFile,
   MockData,
+  MockAiContext,
+  AiContextMode,
   MockResponseDateOverride,
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
   SimilarBodyGroupSummary,
+  NetworkEventsResponse,
+  NetworkLogConfig,
+  NetworkEvent,
+  MockReplayMode,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -13,6 +19,32 @@ const API_BASE = getApiBase()
 
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
+
+function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig {
+  return {
+    currentScenario: String(data.currentScenario ?? ''),
+    availableScenarios: (Array.isArray(data.scenarios)
+      ? data.scenarios
+      : Array.isArray(data.availableScenarios)
+        ? data.availableScenarios
+        : []) as string[],
+    scenarioLocks:
+      data.scenarioLocks && typeof data.scenarioLocks === 'object' && data.scenarioLocks !== null
+        ? (data.scenarioLocks as Record<string, boolean>)
+        : {},
+  }
+}
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const err = (await response.json()) as { error?: string; message?: string }
+    if (typeof err.error === 'string' && err.error) return err.error
+    if (typeof err.message === 'string' && err.message) return err.message
+  } catch {
+    // ignore
+  }
+  return fallback
+}
 
 export async function getMocks(
   scenario?: string,
@@ -62,19 +94,49 @@ export async function getMock(filename: string, scenario?: string): Promise<Mock
   return response.json()
 }
 
+export async function getMockAiContext(
+  filename: string,
+  opts?: {
+    scenario?: string
+    mode?: AiContextMode
+    includePaths?: string[]
+    excludePaths?: string[]
+    maxPaths?: number
+    includeRelated?: boolean
+  }
+): Promise<MockAiContext> {
+  const qs = new URLSearchParams()
+  if (opts?.scenario) qs.set('scenario', opts.scenario)
+  if (opts?.mode) qs.set('mode', opts.mode)
+  if (opts?.includePaths?.length) qs.set('includePaths', opts.includePaths.join(','))
+  if (opts?.excludePaths?.length) qs.set('excludePaths', opts.excludePaths.join(','))
+  if (typeof opts?.maxPaths === 'number' && Number.isFinite(opts.maxPaths)) {
+    qs.set('maxPaths', String(opts.maxPaths))
+  }
+  if (opts?.includeRelated === false) qs.set('includeRelated', '0')
+
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/ai-context${suffix}`, noStore)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error || error.details || 'Failed to fetch AI context')
+  }
+  return response.json()
+}
+
 export async function updateMock(
   filename: string,
   responseData: any,
   responseDateOverrides?: MockResponseDateOverride[] | null,
-  alwaysUseRealApi?: boolean,
+  replayMode?: MockReplayMode | null,
   scenario?: string
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
   }
-  if (alwaysUseRealApi !== undefined) {
-    body.alwaysUseRealApi = alwaysUseRealApi
+  if (replayMode !== undefined) {
+    body.replayMode = replayMode
   }
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
@@ -83,9 +145,28 @@ export async function updateMock(
     body: JSON.stringify(body),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || error.message || 'Failed to update mock')
+    const message = await readErrorMessage(response, 'Failed to update mock')
+    throw new Error(message)
   }
+}
+
+export async function refreshMockFromLive(
+  filename: string,
+  scenario?: string,
+  clientId?: string
+): Promise<MockData> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}/refresh-from-live${q}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(clientId ? { clientId } : {}),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to refresh mock from live API')
+  }
+  const payload = await response.json()
+  return payload.data as MockData
 }
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {
@@ -93,7 +174,10 @@ export async function deleteMock(filename: string, scenario?: string): Promise<v
   const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
     method: 'DELETE',
   })
-  if (!response.ok) throw new Error('Failed to delete mock')
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete mock')
+    throw new Error(message)
+  }
 }
 
 export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
@@ -101,7 +185,10 @@ export async function duplicateMock(filename: string, scenario?: string): Promis
   const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
     method: 'POST',
   })
-  if (!response.ok) throw new Error('Failed to duplicate mock')
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to duplicate mock')
+    throw new Error(message)
+  }
   return response.json()
 }
 
@@ -118,12 +205,21 @@ export async function getScenarioConfig(): Promise<ScenarioConfig> {
   const response = await fetch(`${API_BASE}/scenario-config`, noStore)
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
-  // Map the API response to match ScenarioConfig interface
-  // API returns 'scenarios' but frontend expects 'availableScenarios'
-  return {
-    currentScenario: data.currentScenario,
-    availableScenarios: data.scenarios || data.availableScenarios || []
+  return mapScenarioConfigPayload(data)
+}
+
+export async function setScenarioLock(scenario: string, locked: boolean): Promise<ScenarioConfig> {
+  const response = await fetch(`${API_BASE}/scenario-config/lock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, locked }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to update scenario lock')
+    throw new Error(message)
   }
+  const data = await response.json()
+  return mapScenarioConfigPayload(data)
 }
 
 export async function setScenario(scenario: string): Promise<void> {
@@ -160,11 +256,25 @@ export interface ClientLane {
   }
 }
 
+export type ClientConnectionStatus = 'connected' | 'mapped_idle' | 'unmapped'
+
+export interface ClientConnectionRow {
+  clientId: string
+  configuredScenario: string | null
+  lastResolvedScenario: string | null
+  lastSeenAt: string | null
+  lastResolvedAt: string | null
+  deviceCount: number
+  note: string | null
+  status: ClientConnectionStatus
+}
+
 export async function getClientLanes(): Promise<{
   enabled: boolean
   reason?: string | null
   lanes: ClientLane[]
   discoveredLanes?: string[]
+  connections?: ClientConnectionRow[]
   globalScenario: string | null
 }> {
   const response = await fetch(`${API_BASE}/client-lanes`, noStore)
@@ -207,11 +317,7 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
     throw new Error(error.error || 'Failed to create scenario')
   }
   const data = await response.json()
-  // Map the API response to match ScenarioConfig interface
-  return {
-    currentScenario: data.currentScenario,
-    availableScenarios: data.scenarios || []
-  }
+  return mapScenarioConfigPayload(data)
 }
 
 export async function exportScenarioBundle(scenario?: string): Promise<ScenarioExportBundle> {
@@ -324,6 +430,147 @@ export async function getDateConfig(scenario?: string): Promise<DateConfig> {
   return response.json()
 }
 
+export async function getNetworkEvents(params: {
+  scenario: string
+  clientId?: string
+  limit?: number
+  since?: string
+}): Promise<NetworkEventsResponse> {
+  const qs = new URLSearchParams()
+  qs.set('scenario', params.scenario)
+  if (params.clientId) qs.set('clientId', params.clientId)
+  if (params.limit != null) qs.set('limit', String(params.limit))
+  if (params.since) qs.set('since', params.since)
+  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch network events')
+  return response.json()
+}
+
+export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<void> {
+  const qs = new URLSearchParams({ scenario })
+  if (clientId) qs.set('clientId', clientId)
+  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error('Failed to clear network events')
+}
+
+export async function getNetworkLogConfig(scenario: string): Promise<NetworkLogConfig & { scenario: string }> {
+  const q = `?scenario=${encodeURIComponent(scenario)}`
+  const response = await fetch(`${API_BASE}/network-events/config${q}`, noStore)
+  if (!response.ok) throw new Error('Failed to fetch network log config')
+  return response.json()
+}
+
+export async function updateNetworkLogConfig(
+  scenario: string,
+  patch: Partial<Pick<NetworkLogConfig, 'enabled' | 'captureBodies'>>
+): Promise<NetworkLogConfig & { scenario: string }> {
+  const response = await fetch(`${API_BASE}/network-events/config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, ...patch }),
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { error?: string }).error || 'Failed to update network log config')
+  }
+  return response.json()
+}
+
+export async function bulkSetLiveApiForDomain(payload: {
+  scenario: string
+  domainPath: string
+  useLiveApi: boolean
+}): Promise<{
+  ok: boolean
+  updated: number
+  skippedPending: number
+  domainPath: string
+}> {
+  const response = await fetch(`${API_BASE}/mocks/bulk-live-api`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update domain live API setting')
+  }
+  return response.json()
+}
+
+export async function bulkCaptureResponsesForDomain(payload: {
+  scenario: string
+  domainPath: string
+  clientId?: string
+}): Promise<{
+  ok: boolean
+  captured: number
+  skippedAlready: number
+  failed: number
+  errors: Array<{ endpoint: string | null; message: string }>
+  domainPath: string
+}> {
+  const response = await fetch(`${API_BASE}/mocks/bulk-capture-responses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to bulk capture responses')
+  }
+  return response.json()
+}
+
+export interface DomainPathRule {
+  recordResponses: boolean
+  autoMock?: boolean
+  updatedAt?: string
+}
+
+export type DomainPathRulesMap = Record<string, DomainPathRule>
+
+export async function fetchDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
+  const params = new URLSearchParams({ scenario })
+  const response = await fetch(`${API_BASE}/mocks/domain-path-rules?${params}`)
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to load domain path rules')
+  }
+  const data = (await response.json()) as { rules?: DomainPathRulesMap }
+  return data.rules ?? {}
+}
+
+export async function setDomainPathRule(payload: {
+  scenario: string
+  domainPath: string
+  rule: { recordResponses: boolean; autoMock?: boolean } | null
+}): Promise<DomainPathRulesMap> {
+  const response = await fetch(`${API_BASE}/mocks/domain-path-rules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update domain path rule')
+  }
+  const data = (await response.json()) as { rules?: DomainPathRulesMap }
+  return data.rules ?? {}
+}
+
+export async function appendNetworkEvent(
+  scenario: string,
+  event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'>
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/network-events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, event }),
+  })
+  if (!response.ok) throw new Error('Failed to append network event')
+}
+
 export async function updateDateConfig(config: {
   fixedDate?: string | null
   offset?: number | null
@@ -336,8 +583,8 @@ export async function updateDateConfig(config: {
     body: JSON.stringify(config),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Failed to update date config')
+    const message = await readErrorMessage(response, 'Failed to update date config')
+    throw new Error(message)
   }
   return response.json()
 }

@@ -17,5 +17,8 @@ module.exports = {
     '^@sgedda/mockifyer-axios/(.*)$': '<rootDir>/packages/mockifyer-axios/src/$1',
     '^@sgedda/mockifyer-fetch$': '<rootDir>/packages/mockifyer-fetch/src/index.ts',
     '^@sgedda/mockifyer-fetch/(.*)$': '<rootDir>/packages/mockifyer-fetch/src/$1',
+    '^@sgedda/mockifyer-dashboard/(.*)$': '<rootDir>/packages/mockifyer-dashboard/src/$1',
+    '^@sgedda/mockifyer-mcp$': '<rootDir>/packages/mockifyer-mcp/src/dashboard-client.ts',
+    '^@sgedda/mockifyer-mcp/(.*)$': '<rootDir>/packages/mockifyer-mcp/src/$1',
   },
 }; 

@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { deleteMock, duplicateMock } from '@/lib/api'
+import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
@@ -19,6 +19,8 @@ interface MockListProps {
   similarBodyGroups?: SimilarBodyGroupSummary[]
   /** Active scenario (same as mock list fetch); required for correct Redis/mock path on delete/duplicate. */
   scenario?: string
+  /** When true, delete/duplicate actions are hidden (scenario locked server-side). */
+  scenarioLocked?: boolean
   loading: boolean
   loadingMock?: boolean
   searchQuery: string
@@ -41,6 +43,7 @@ function MockListContent({
   allMocks,
   similarBodyGroups = [],
   scenario,
+  scenarioLocked = false,
   loading,
   loadingMock = false,
   searchQuery,
@@ -53,6 +56,7 @@ function MockListContent({
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
+  const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
   const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
@@ -77,6 +81,31 @@ function MockListContent({
       didAutoSwitchGroupBy.current = true
     }
   }, [loading, mocks])
+
+  useEffect(() => {
+    if (groupBy !== 'domains' || !scenario) {
+      setDomainPathRules({})
+      return
+    }
+    let cancelled = false
+    void fetchDomainPathRules(scenario)
+      .then((rules) => {
+        if (!cancelled) setDomainPathRules(rules)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDomainPathRules({})
+          toast({
+            title: 'Could not load record response rules',
+            description: error instanceof Error ? error.message : 'Request failed',
+            variant: 'destructive',
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [groupBy, scenario, mocks, toast])
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -158,7 +187,7 @@ function MockListContent({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="🔍 Search by filename, endpoint, or method..."
+          placeholder="🔍 Search mocks (URL, GraphQL query, variables, response body, …)"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="min-w-[12rem] flex-1"
@@ -370,9 +399,20 @@ function MockListContent({
             level={0}
             selectedMock={selectedMock}
             onSelectMock={onSelectMock}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
+            onDelete={scenarioLocked ? undefined : handleDelete}
+            onDuplicate={scenarioLocked ? undefined : handleDuplicate}
             deleting={deleting}
+            domainTreeMode={
+              groupBy === 'domains' && scenario
+                ? {
+                    scenario,
+                    catalogMocks: mocks,
+                    pathRules: domainPathRules,
+                    onPathRulesChange: setDomainPathRules,
+                    onRefresh,
+                  }
+                : undefined
+            }
           />
         </div>
       )}

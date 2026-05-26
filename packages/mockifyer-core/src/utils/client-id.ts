@@ -18,6 +18,17 @@ function firstNonEmpty(...values: Array<string | undefined | null>): string | un
 }
 
 /**
+ * Lane id only when set via `MOCKIFYER_CLIENT_ID` or `config.clientId` (no build-metadata fallback).
+ * Used with strict dashboard proxy so traffic stays direct until the app selects a lane.
+ */
+export function resolveExplicitClientIdOnly(
+  config: Pick<MockifyerConfig, 'clientId'>
+): string | undefined {
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  return firstNonEmpty(env?.[ENV_VARS.MOCK_CLIENT_ID], config.clientId);
+}
+
+/**
  * Resolve the logical client lane id.
  *
  * Precedence:

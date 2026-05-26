@@ -4,16 +4,16 @@ overview: Add a sustainable “Network” view in the dashboard by capturing Moc
 todos:
   - id: phase-1-schema-store-routes-proxy
     content: "Phase 1 — NetworkEvent schema + redaction policy; Redis + in-memory network log store; /api/network-events GET/POST/DELETE; proxy.ts emits hit/miss/blocked/error."
-    status: pending
+    status: completed
   - id: phase-2-network-tab
     content: "Phase 2 — Network view component, Dashboard route/tab, list + filters + detail pane, polling with since cursor."
-    status: pending
+    status: completed
   - id: phase-3-sdk-emitters
     content: "Phase 3 — Best-effort POST emitters in mockifyer-axios + mockifyer-fetch when dashboard URL configured."
-    status: pending
+    status: completed
   - id: phase-4-polish
     content: "Phase 4 — Settings toggles (enable/bodies), sampling, optional start/end correlation or HAR-ish export."
-    status: pending
+    status: completed
 ---
 
 ## Goal

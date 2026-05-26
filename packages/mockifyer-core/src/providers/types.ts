@@ -41,7 +41,11 @@ export interface DatabaseProvider {
   /**
    * Find exact match for a request
    */
-  findExactMatch(request: StoredRequest, requestKey: string): Promise<CachedMockData | undefined> | CachedMockData | undefined;
+  findExactMatch(
+    request: StoredRequest,
+    requestKey: string,
+    options?: { includePassthroughMocks?: boolean }
+  ): Promise<CachedMockData | undefined> | CachedMockData | undefined;
 
   /**
    * Find all mocks for similar matching (path + method)

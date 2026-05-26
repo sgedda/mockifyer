@@ -1,0 +1,91 @@
+# Mockifyer MCP Server
+
+MCP server that exposes Mockifyer dashboard APIs to AI clients (Cursor, Claude Desktop, etc.).
+
+## Prerequisites
+
+The [Mockifyer dashboard](../mockifyer-dashboard) must be running:
+
+```bash
+npx mockifyer-dashboard --path ./mock-data
+# default: http://localhost:3002
+```
+
+## Install & build
+
+```bash
+cd packages/mockifyer-mcp
+npm install
+npm run build
+```
+
+## Cursor configuration
+
+Add to `.cursor/mcp.json` (project) or global MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "node",
+      "args": ["/Users/you/git/mockifyer/packages/mockifyer-mcp/dist/cli.js"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002"
+      }
+    }
+  }
+}
+```
+
+If the dashboard is mounted under a prefix (e.g. `/dashboard`):
+
+```json
+"env": {
+  "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002",
+  "MOCKIFYER_DASHBOARD_BASE": "/dashboard"
+}
+```
+
+Optional HTTP Basic Auth (when enabled on the dashboard host):
+
+```json
+"env": {
+  "MOCKIFYER_DASHBOARD_AUTH_USER": "admin",
+  "MOCKIFYER_DASHBOARD_AUTH_PASSWORD": "secret"
+}
+```
+
+See [mcp-config.example.json](./mcp-config.example.json).
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| `mockifyer_get_mock_ai_context` | **Lightweight** mock projection for AI (fields, schema, state hints) |
+| `mockifyer_set_field_overrides` | Replay-time path/value overlays (no full body) |
+| `mockifyer_copy_array_item` | Clone array item + optional overrides (persisted) |
+| `mockifyer_list_mocks` | List recordings in a scenario |
+| `mockifyer_search_mocks` | Search by filename / endpoint / method |
+| `mockifyer_get_mock` | Full mock JSON (large — prefer ai_context when possible) |
+| `mockifyer_list_scenarios` | Available and active scenarios |
+| `mockifyer_get_endpoint_stats` | Endpoint / status / method aggregates |
+
+## Example (IDE chat)
+
+> "What fields drive order status in scenario `default`?"
+
+The assistant can call:
+
+1. `mockifyer_search_mocks({ q: "orders", scenario: "default" })`
+2. `mockifyer_get_mock_ai_context({ filename: "...", mode: "profile" })`
+3. `mockifyer_set_field_overrides({ filename, overrides: [{ path: "bookings.0.status", value: "CONFIRMED" }] })`
+   or `mockifyer_copy_array_item({ filename, arrayPath: "bookings", fromIndex: 0, itemOverrides: { status: "CONFIRMED" } })`
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MOCKIFYER_DASHBOARD_URL` | `http://localhost:3002` | Dashboard origin |
+| `MOCKIFYER_DASHBOARD_BASE` | `` | URL mount prefix (e.g. `/dashboard`) |
+| `MOCKIFYER_DASHBOARD_AUTH_USER` | — | Basic auth user |
+| `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` | — | Basic auth password |

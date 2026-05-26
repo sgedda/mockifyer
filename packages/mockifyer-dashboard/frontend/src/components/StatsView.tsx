@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ExternalLink,
   Folder,
-  Smartphone,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -210,94 +209,6 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
           </CardContent>
         </Card>
       </div>
-
-      {stats.redisRecentDevices?.enabled ? (
-        <Card>
-          <CardHeader className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="h-4 w-4 text-primary shrink-0" />
-                Recent devices (proxy lanes)
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Derived from Redis lane discovery + last proxy resolutions. Configure lanes in{' '}
-                <button
-                  type="button"
-                  className="inline text-primary underline underline-offset-2 hover:text-primary/80"
-                  onClick={() => navigate('/settings')}
-                >
-                  Settings → Client lanes
-                </button>
-                . Global Redis scenario:{' '}
-                <span className="font-mono">{stats.redisRecentDevices.globalScenario ?? stats.scenario}</span>
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {stats.redisRecentDevices.rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No devices with recent lane traffic (or no client lanes configured). Traffic must include{' '}
-                <span className="font-mono">clientId</span> so the dashboard can correlate devices with lanes.
-              </p>
-            ) : (
-              <div className="overflow-x-auto -mx-1">
-                <div className="min-w-[44rem] space-y-1 text-xs">
-                  <div className="grid grid-cols-[minmax(6rem,1fr)_minmax(7rem,1.1fr)_minmax(10rem,1.2fr)_minmax(10rem,1.2fr)_minmax(6rem,1fr)_minmax(10rem,1.15fr)_minmax(5rem,0.85fr)] gap-2 pb-2 font-medium text-muted-foreground border-b border-border">
-                    <span>Lane</span>
-                    <span>Configured</span>
-                    <span>Last seen (device)</span>
-                    <span>Last seen resolved (device)</span>
-                    <span>Lane resolved</span>
-                    <span>Resolution</span>
-                    <span>Note</span>
-                  </div>
-                  {stats.redisRecentDevices.rows.map((row, i) => (
-                    <div
-                      key={`${row.clientId}:${row.deviceId}:${i}`}
-                      className="grid grid-cols-[minmax(6rem,1fr)_minmax(7rem,1.1fr)_minmax(10rem,1.2fr)_minmax(10rem,1.2fr)_minmax(6rem,1fr)_minmax(10rem,1.15fr)_minmax(5rem,0.85fr)] gap-2 py-2 border-b border-border/60 rounded-sm px-1 hover:bg-muted/40 items-start"
-                    >
-                      <span className="font-mono break-all text-foreground" title={row.clientId}>
-                        {row.clientId}
-                      </span>
-                      <span className="font-mono text-muted-foreground break-all">{row.configuredScenario}</span>
-                      <span className="text-muted-foreground whitespace-nowrap">
-                        {new Date(row.deviceLastSeenAt).toLocaleString()}
-                      </span>
-                      <span>
-                        <span className="font-mono break-all">{row.lastSeenResolvedScenario ?? '—'}</span>
-                        {row.lastSeenResolvedAt ? (
-                          <div className="text-muted-foreground mt-0.5 whitespace-nowrap">
-                            {new Date(row.lastSeenResolvedAt).toLocaleString()}
-                          </div>
-                        ) : (
-                          <div className="text-muted-foreground mt-0.5">No proxy telemetry</div>
-                        )}
-                        {row.clientBodyScenarioOverride ? (
-                          <div className="text-amber-600 dark:text-amber-400 font-medium mt-0.5">Client override</div>
-                        ) : null}
-                      </span>
-                      <span>
-                        <span className="font-mono break-all">{row.laneLastSeenResolvedScenario ?? '—'}</span>
-                        {row.laneLastSeenResolvedAt ? (
-                          <div className="text-muted-foreground mt-0.5 whitespace-nowrap">
-                            {new Date(row.laneLastSeenResolvedAt).toLocaleString()}
-                          </div>
-                        ) : null}
-                      </span>
-                      <span className="text-muted-foreground break-words capitalize">
-                        {row.resolutionSource?.replace(/_/g, ' ') ?? '—'}
-                      </span>
-                      <span className="text-muted-foreground break-words line-clamp-2" title={row.note ?? ''}>
-                        {row.note ?? '—'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

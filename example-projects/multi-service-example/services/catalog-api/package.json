@@ -1,0 +1,21 @@
+{
+  "name": "@multi-service/catalog-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cross-env MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo tsx watch src/server.ts",
+    "dev:record": "cross-env MOCKIFYER_RECORD=true MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=multi-service-demo tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@multi-service/mock-bootstrap": "file:../../packages/mock-bootstrap",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.0"
+  }
+}

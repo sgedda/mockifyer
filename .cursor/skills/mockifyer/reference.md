@@ -6,6 +6,8 @@
 setupMockifyer({
   mockDataPath: './mock-data',
   recordMode: true, // or env MOCKIFYER_RECORD
+  recordNewMocksAsPassthrough: true, // MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH — new files get alwaysUseRealApi
+  refreshPassthroughRecordings: true, // MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS — update passthrough files in place
   useSimilarMatch: true,
   similarMatchRequiredParams: ['season', 'league'],
   similarMatchIgnoreAllQueryParams: true,

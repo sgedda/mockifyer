@@ -62,6 +62,28 @@ describe('fetch proxy bypass', () => {
     expect(proxyBody.clientId).toBe('lane-alpha');
   });
 
+  it('uses direct upstream when strict proxy has no lane (devtools shows real URL)', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ live: true })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      strictScenarioResolution: true,
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/explore');
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ live: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.com/explore');
+  });
+
   it('does not send bypassed requests to dashboard proxy', async () => {
     const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
       jsonResponse({ direct: true })

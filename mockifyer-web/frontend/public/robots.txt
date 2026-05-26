@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mockifyer.dev/sitemap.xml
+
+# LLM-readable site summary (llmstxt.org)
+# https://mockifyer.dev/llms.txt
+# https://mockifyer.dev/llms-full.txt

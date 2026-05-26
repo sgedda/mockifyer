@@ -3,6 +3,7 @@ import {
   isExplicitProxyScenarioContext,
   resolveStrictScenarioResolution,
   resolveStrictScenarioResolutionFromEnv,
+  shouldBlockLocalMockRecording,
 } from '@sgedda/mockifyer-core';
 
 describe('strict proxy scenario', () => {
@@ -74,6 +75,34 @@ describe('strict proxy scenario', () => {
         process.env[STRICT_KEY] = prev;
       }
     }
+  });
+
+  describe('shouldBlockLocalMockRecording', () => {
+    it('blocks when strict and intended proxy base is set', () => {
+      expect(
+        shouldBlockLocalMockRecording({
+          strictScenarioResolution: true,
+          intendedProxyBaseUrl: 'http://localhost:3002',
+        })
+      ).toBe(true);
+    });
+
+    it('does not block without strictScenarioResolution', () => {
+      expect(
+        shouldBlockLocalMockRecording({
+          strictScenarioResolution: false,
+          intendedProxyBaseUrl: 'http://localhost:3002',
+        })
+      ).toBe(false);
+    });
+
+    it('does not block strict without intended proxy', () => {
+      expect(
+        shouldBlockLocalMockRecording({
+          strictScenarioResolution: true,
+        })
+      ).toBe(false);
+    });
   });
 
 });

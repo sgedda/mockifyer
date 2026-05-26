@@ -5,6 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Code, Zap, BookOpen, Settings, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import PackagesOverview from '@/components/PackagesOverview'
+import { MCP_TOOLS } from '@/lib/product-docs'
 
 export default function GettingStarted() {
   return (
@@ -15,9 +17,11 @@ export default function GettingStarted() {
           Getting Started with Mockifyer
         </h1>
         <p className="text-muted-foreground mt-2">
-          Learn how to set up and use Mockifyer in your Node.js project
+          Node.js, React Native, dashboard, and MCP — install the @sgedda packages that match your stack
         </p>
       </div>
+
+      <PackagesOverview />
 
       <Card>
         <CardHeader>
@@ -141,7 +145,7 @@ console.log(data);`} language="typescript" />
             Production Safety & Environment Separation
           </CardTitle>
           <CardDescription>
-            Ensure Mockifyer never runs in production and only activates in specific environments
+            Keep mocks out of production — patterns differ for Node.js vs React Native
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -149,52 +153,46 @@ console.log(data);`} language="typescript" />
             <div>
               <h4 className="font-semibold mb-2 flex items-center gap-2">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">1</span>
-                Environment Variable Gating
+                Node.js / Express
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Always gate Mockifyer initialization with <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code>. 
-                This ensures Mockifyer code never executes unless explicitly enabled:
+                Only call <code className="bg-muted px-1 rounded">setupMockifyer()</code> in non-production, or use{' '}
+                <code className="bg-muted px-1 rounded">activationMode: &apos;off&apos;</code> in production builds.
+                <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> is for React Native startup — not required on Node.
               </p>
               <CodeBlock code={`// src/lib/mockifyer.ts
+import { setupMockifyer } from '@sgedda/mockifyer-axios';
+
 export function initializeMockifyer(): void {
-  // Only initialize if explicitly enabled
-  if (process.env.MOCKIFYER_MODE !== 'on') {
-    return; // No initialization, no side effects
+  if (process.env.NODE_ENV === 'production') {
+    return;
   }
-  
+
   setupMockifyer({
     mockDataPath: './mock-data',
     recordMode: process.env.MOCKIFYER_RECORD === 'true',
-    useGlobalAxios: true
+    useGlobalAxios: true,
   });
 }`} language="typescript" />
-              <p className="text-sm text-muted-foreground mt-2">
-                <strong>Key Point:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> is not set, 
-                Mockifyer code never runs. No HTTP client patching, no file system access, zero side effects.
-              </p>
             </div>
 
             <div>
               <h4 className="font-semibold mb-2 flex items-center gap-2">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">2</span>
-                Conditional Initialization
+                React Native / Expo
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
-                Initialize Mockifyer conditionally in your entry point, before other imports:
+                Use <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> to gate whether fetch is patched at startup:
               </p>
-              <CodeBlock code={`// src/index.ts
-import dotenv from 'dotenv';
-dotenv.config();
+              <CodeBlock code={`# Production store build — Mockifyer code present but inactive
+MOCKIFYER_MODE=off
 
-// Only initialize if enabled
-if (process.env.MOCKIFYER_MODE === 'on') {
-  const { initializeMockifyer } = require('./lib/mockifyer');
-  initializeMockifyer();
-}
+# Dev / CI with mocks
+MOCKIFYER_MODE=on
+MOCKIFYER_RECORD=false
 
-// Rest of your app imports
-import express from 'express';
-// ... other imports`} language="typescript" />
+# Maestro / E2E — only when launch arg mockifyerClientId is set
+MOCKIFYER_MODE=launch_client`} language="bash" />
             </div>
 
             <div>
@@ -206,25 +204,42 @@ import express from 'express';
                 Use different configurations per environment with <code className="bg-muted px-1 rounded">.env</code> files:
               </p>
               <CodeBlock code={`# .env.development
-MOCKIFYER_MODE=on
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_CLIENT_ID=web-dev
 
 # .env.test
-MOCKIFYER_MODE=on
 MOCKIFYER_RECORD=false
 MOCKIFYER_PATH=./mock-data
 MOCKIFYER_CLIENT_ID=web-test
 
 # .env.production
-# Mockifyer not enabled - no variables set
-# Your app runs normally without any Mockifyer code executing`} language="bash" />
+# Do not call setupMockifyer — or NODE_ENV=production guard`} language="bash" />
             </div>
 
             <div>
               <h4 className="font-semibold mb-2 flex items-center gap-2">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">4</span>
+                Multi-service: activationMode
+              </h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                In shared dev environments, only intercept requests that opt in via header:
+              </p>
+              <CodeBlock code={`setupMockifyer({
+  mockDataPath: './mock-data',
+  activationMode: 'client_id_header',
+});
+
+await axios.get('/health'); // real API
+
+await axios.get('/orders', {
+  headers: { 'X-Mockifyer-Client-Id': 'team-checkout' },
+});`} language="typescript" />
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">5</span>
                 Package.json Scripts
               </h4>
               <p className="text-sm text-muted-foreground mb-2">
@@ -233,10 +248,10 @@ MOCKIFYER_CLIENT_ID=web-test
               <CodeBlock code={`{
   "scripts": {
     "dev": "NODE_ENV=development node src/index.ts",
-    "dev:mock": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=false npm run dev",
-    "dev:record": "MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm run dev",
+    "dev:mock": "MOCKIFYER_RECORD=false npm run dev",
+    "dev:record": "MOCKIFYER_RECORD=true npm run dev",
     "start": "NODE_ENV=production node src/index.ts",
-    "test": "MOCKIFYER_MODE=on jest"
+    "test": "MOCKIFYER_RECORD=false jest"
   }
 }`} language="json" />
             </div>
@@ -245,16 +260,48 @@ MOCKIFYER_CLIENT_ID=web-test
           <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-md">
             <h4 className="font-semibold mb-2 text-green-600 dark:text-green-400 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Production Safety Guarantees
+              Production safety
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• <strong>No Code Execution:</strong> When <code className="bg-muted px-1 rounded">MOCKIFYER_MODE</code> is not set, Mockifyer code never runs</li>
-              <li>• <strong>Runtime Safety:</strong> Conditional initialization prevents code execution and side effects when disabled</li>
-              <li>• <strong>Explicit Opt-In:</strong> Must explicitly set environment variable to enable</li>
-              <li>• <strong>Zero Side Effects:</strong> Early return means no HTTP client patching, no file system access</li>
-              <li>• <strong>Environment Isolation:</strong> Different configs per environment ensure production safety</li>
+              <li>• <strong>Node:</strong> Skip setupMockifyer when NODE_ENV is production</li>
+              <li>• <strong>React Native:</strong> Ship with MOCKIFYER_MODE=off in store builds</li>
+              <li>• <strong>Header gating:</strong> activationMode client_id_header limits which hops are mocked</li>
+              <li>• <strong>No patching until init:</strong> axios/fetch are untouched until setupMockifyer runs</li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            Dashboard & MCP
+          </CardTitle>
+          <CardDescription>
+            Browse mocks locally and wire IDE assistants to the dashboard API
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <CodeBlock
+            language="bash"
+            code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
+          />
+          <p className="text-sm text-muted-foreground">
+            With Redis (<code className="bg-muted px-1 rounded">--provider redis</code>), the dashboard can proxy
+            outbound traffic per <code className="bg-muted px-1 rounded">MOCKIFYER_CLIENT_ID</code> lane. Install{' '}
+            <code className="bg-muted px-1 rounded">@sgedda/mockifyer-mcp</code> and point Cursor at the running dashboard.
+          </p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+            {MCP_TOOLS.map((tool) => (
+              <li key={tool}>{tool}</li>
+            ))}
+          </ul>
+          <Link to="/config-reference">
+            <Button variant="outline" size="sm">
+              Full configuration reference
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 
@@ -283,45 +330,33 @@ MOCKIFYER_CLIENT_ID=web-test
 
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-semibold mb-2">Complete Example with Environment Gating</h4>
+                  <h4 className="font-semibold mb-2">Complete Node.js example</h4>
                   <CodeBlock code={`// src/lib/mockifyer.ts
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import path from 'path';
 
 export function initializeMockifyer() {
-  // Only initialize if explicitly enabled
-  if (process.env.MOCKIFYER_MODE !== 'on') {
-    return null; // Return null when disabled
+  if (process.env.NODE_ENV === 'production') {
+    return null;
   }
 
   return setupMockifyer({
     recordMode: process.env.MOCKIFYER_RECORD === 'true',
     mockDataPath: process.env.MOCKIFYER_PATH || path.join(__dirname, 'mock-data'),
-    useGlobalAxios: true
+    useGlobalAxios: true,
   });
 }
 
-// src/index.ts
+// src/index.ts — call before importing axios
 import dotenv from 'dotenv';
 dotenv.config();
-
-// Only initialize if enabled
-if (process.env.MOCKIFYER_MODE === 'on') {
-  const { initializeMockifyer } = require('./lib/mockifyer');
-  initializeMockifyer();
-}
+require('./lib/mockifyer').initializeMockifyer();
 
 import axios from 'axios';
 
 async function main() {
-  // Step 1: Record API responses (when MOCKIFYER_MODE=on and MOCKIFYER_RECORD=true)
   const response1 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
-  console.log('Response:', response1.data);
-  // If recording enabled, file saved: mock-data/2025-11-23_10-53-52_GET_jsonplaceholder_typicode_com_posts_1.json
-
-  // Step 2: Use recorded mocks (when MOCKIFYER_MODE=on and MOCKIFYER_RECORD=false)
   const response2 = await axios.get('https://jsonplaceholder.typicode.com/posts/1');
-  console.log('Response:', response2.data); // Same data, instant response!
 }
 
 main();`} language="typescript" />
@@ -330,12 +365,12 @@ main();`} language="typescript" />
                 <div>
                   <h4 className="font-semibold mb-2">Usage</h4>
                   <CodeBlock code={`# Record mode (saves API responses)
-MOCKIFYER_MODE=on MOCKIFYER_RECORD=true npm start
+MOCKIFYER_RECORD=true npm start
 
-# Mock mode (uses saved mocks)
-MOCKIFYER_MODE=on MOCKIFYER_RECORD=false npm start
+# Replay mode (uses saved mocks)
+MOCKIFYER_RECORD=false npm start
 
-# Production (Mockifyer disabled - normal API calls)
+# Production — setupMockifyer not called (NODE_ENV=production)
 npm start`} language="bash" />
                 </div>
               </div>

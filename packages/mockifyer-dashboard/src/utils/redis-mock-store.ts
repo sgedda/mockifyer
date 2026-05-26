@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import type { MockData } from '@sgedda/mockifyer-core';
+import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
 import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
 
 export interface RedisMockStoreConfig {
@@ -332,6 +332,7 @@ export class RedisMockStore {
   async getProxyConfig(scenario: string): Promise<{
     recordOnMiss: boolean;
     allowUpstream: boolean;
+    recordResponses: boolean;
     updatedAt?: string;
   } | null> {
     const raw: string | null = await this.redis.get(this.proxyConfigRedisKey(scenario));
@@ -341,9 +342,11 @@ export class RedisMockStore {
       // Default to recording on cache miss unless explicitly disabled.
       const recordOnMiss = o.recordOnMiss !== false;
       const allowUpstream = o.allowUpstream !== false; // default true
+      const recordResponses = o.recordResponses === true;
       return {
         recordOnMiss,
         allowUpstream,
+        recordResponses,
         updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : undefined,
       };
     } catch {
@@ -353,7 +356,12 @@ export class RedisMockStore {
 
   async setProxyConfig(
     scenario: string,
-    payload: { recordOnMiss: boolean; allowUpstream: boolean; updatedAt: string }
+    payload: {
+      recordOnMiss: boolean;
+      allowUpstream: boolean;
+      recordResponses: boolean;
+      updatedAt: string;
+    }
   ): Promise<void> {
     await this.redis.set(this.proxyConfigRedisKey(scenario), JSON.stringify(payload));
     await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
@@ -361,6 +369,59 @@ export class RedisMockStore {
 
   async deleteProxyConfig(scenario: string): Promise<void> {
     await this.redis.del(this.proxyConfigRedisKey(scenario));
+  }
+
+  domainPathRulesRedisKey(scenario: string): string {
+    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    return `${this.keyPrefix}:path_rules:${id}`;
+  }
+
+  async getDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
+    const raw: string | null = await this.redis.get(this.domainPathRulesRedisKey(scenario));
+    if (raw === null || raw === '') return {};
+    try {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      const out: DomainPathRulesMap = {};
+      for (const [path, val] of Object.entries(o)) {
+        if (!val || typeof val !== 'object') continue;
+        const r = val as Record<string, unknown>;
+        if (typeof r.recordResponses !== 'boolean') continue;
+        out[path] = {
+          recordResponses: r.recordResponses,
+          autoMock: r.autoMock === true,
+          updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
+        };
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  async setDomainPathRule(
+    scenario: string,
+    domainPath: string,
+    rule: { recordResponses: boolean; autoMock?: boolean } | null
+  ): Promise<DomainPathRulesMap> {
+    const key = this.domainPathRulesRedisKey(scenario);
+    const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
+    const rules = await this.getDomainPathRules(scenario);
+    if (rule === null) {
+      delete rules[normalized];
+    } else {
+      rules[normalized] = {
+        recordResponses: rule.recordResponses,
+        autoMock: rule.autoMock === true,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (Object.keys(rules).length === 0) {
+      await this.redis.del(key);
+    } else {
+      await this.redis.set(key, JSON.stringify(rules));
+    }
+    await this.redis.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    return rules;
   }
 
   /**
@@ -397,6 +458,7 @@ export class RedisMockStore {
       await this.setProxyConfig(to, {
         recordOnMiss: proxyDoc.recordOnMiss,
         allowUpstream: proxyDoc.allowUpstream,
+        recordResponses: proxyDoc.recordResponses,
         updatedAt: new Date().toISOString(),
       }).catch(() => undefined);
     }
@@ -432,10 +494,6 @@ export class RedisMockStore {
 
     await multi.exec();
     return { mocksCopied: copied, dateConfigCopied };
-  }
-
-  async close(): Promise<void> {
-    await this.redis.quit();
   }
 
   /**
@@ -698,11 +756,68 @@ export class RedisMockStore {
    * This list includes lanes that might not have an explicit scenario override yet.
    */
   async listDiscoveredLanes(limit: number = 50, ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<string[]> {
+    const detailed = await this.listDiscoveredLanesDetailed(limit, ttlMs);
+    return detailed.map((d) => d.clientId);
+  }
+
+  /** Discovered lanes with last-seen timestamps (newest first). */
+  async listDiscoveredLanesDetailed(
+    limit: number = 50,
+    ttlMs: number = 1000 * 60 * 60 * 24 * 14
+  ): Promise<Array<{ clientId: string; lastSeenMs: number }>> {
     const nowMs = Date.now();
     const minScore = nowMs - ttlMs;
-    // Newest first, within TTL window.
-    const ids: string[] = await this.redis.zrevrangebyscore(this.laneLastSeenZSetKey, nowMs, minScore, 'LIMIT', 0, limit);
-    return ids.map((s) => s.trim()).filter(Boolean);
+    const raw: string[] = await this.redis.zrevrangebyscore(
+      this.laneLastSeenZSetKey,
+      nowMs,
+      minScore,
+      'WITHSCORES',
+      'LIMIT',
+      0,
+      limit
+    );
+    const out: Array<{ clientId: string; lastSeenMs: number }> = [];
+    for (let i = 0; i < raw.length; i += 2) {
+      const clientId = raw[i]?.trim();
+      const score = raw[i + 1];
+      const lastSeenMs = typeof score === 'string' ? Number(score) : NaN;
+      if (!clientId || !Number.isFinite(lastSeenMs)) continue;
+      out.push({ clientId, lastSeenMs });
+    }
+    return out;
+  }
+
+  private scenarioMetaRedisKey(scenario: string): string {
+    return `${this.keyPrefix}:scenario_meta:${scenario.trim()}`;
+  }
+
+  async getScenarioMetaJson(scenario: string): Promise<{ locked?: boolean; updatedAt?: string } | null> {
+    const raw = await this.redis.get(this.scenarioMetaRedisKey(scenario));
+    if (raw === null || raw === '') return null;
+    try {
+      return JSON.parse(raw) as { locked?: boolean; updatedAt?: string };
+    } catch {
+      return null;
+    }
+  }
+
+  async isScenarioLocked(scenario: string): Promise<boolean> {
+    const m = await this.getScenarioMetaJson(scenario);
+    return m?.locked === true;
+  }
+
+  async setScenarioLocked(scenario: string, locked: boolean): Promise<void> {
+    const prev = (await this.getScenarioMetaJson(scenario)) || {};
+    const payload = {
+      ...prev,
+      locked: locked === true,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.redis.set(this.scenarioMetaRedisKey(scenario), JSON.stringify(payload));
+  }
+
+  async close(): Promise<void> {
+    await this.redis.quit();
   }
 }
 

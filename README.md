@@ -1,6 +1,6 @@
 # Mockifyer
 
-**Hosted site:** [mockifyer.up.railway.app](https://mockifyer.up.railway.app/) — public **playground / live demo** of the Mockifyer **dashboard**: explore the UI, how mocks and scenarios are presented, and the overall workflow **without cloning this repo**. It runs on Railway; the URL may change when a stable domain is set up. To **use Mockifyer in your own app**, install the npm packages below (the hosted app is for trying the product, not a hosted backend for your code).
+**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code).
 
 **Contact:** **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)) — [open an issue](https://github.com/sgedda/mockifyer/issues) for bugs and ideas, or a [pull request](https://github.com/sgedda/mockifyer/pulls) if you already have a change. General GitHub profile: [@sgedda](https://github.com/sgedda).
 
@@ -28,6 +28,8 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
+
+**Team workflow (recorded vs curated mocks, re-recording):** **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)**.
 
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
 
@@ -113,6 +115,8 @@ Priority: env vars → `setupMockifyer` config → system time.
 |----------|-------------|
 | `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages) |
+| `MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH` | New recordings get `alwaysUseRealApi` (visible in dashboard, live API until activated) |
+| `MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS` | Update passthrough mock files in place on each live API response |
 | `MOCKIFYER_PATH` | Mock data root (legacy name; often `mockDataPath` in config) |
 | `MOCKIFYER_SCENARIO` | Active scenario name |
 | `MOCKIFYER_STRICT_SCENARIO` | **`true`/…** — fetch/RN dashboard-proxy mode: bypass Mockifyer until **`clientId`** or **`proxy.scenario`** is set (requires **`proxy.baseUrl`**) |

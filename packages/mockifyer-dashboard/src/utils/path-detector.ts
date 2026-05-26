@@ -23,6 +23,12 @@ export function detectMockDataPath(cliPath?: string): string {
       ? process.env.MOCKIFYER_PATH
       : path.join(process.cwd(), process.env.MOCKIFYER_PATH);
   }
+
+  // 2b. Prefer mock-data in the current working directory (example apps use scenario subfolders)
+  const cwdMockData = path.join(process.cwd(), 'mock-data');
+  if (fs.existsSync(cwdMockData)) {
+    return cwdMockData;
+  }
   
   // 3. Auto-detect: walk up directory tree
   let currentDir = process.cwd();

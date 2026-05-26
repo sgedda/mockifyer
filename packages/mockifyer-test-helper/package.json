@@ -34,6 +34,10 @@
   "publishConfig": {
     "access": "public"
   },
+  "homepage": "https://mockifyer.dev",
+  "bugs": {
+    "url": "https://github.com/sgedda/mockifyer/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sgedda/mockifyer.git"
