@@ -31,6 +31,18 @@ describe('mock replay mode', () => {
     expect(resolveMockReplayMode(baseMock({ alwaysRefreshFromLive: true }))).toBe('always-refresh');
   });
 
+  it('honors explicit refresh modes for request-only pending mocks', () => {
+    expect(
+      resolveMockReplayMode(baseMock({ responsePending: true, alwaysRefreshFromLive: true }))
+    ).toBe('always-refresh');
+    expect(resolveMockReplayMode(baseMock({ responsePending: true, refreshOnNextRequest: true }))).toBe(
+      'refresh-next'
+    );
+    expect(resolveShouldPersistLiveCapture(baseMock({ responsePending: true, alwaysRefreshFromLive: true }), {})).toBe(
+      true
+    );
+  });
+
   it('resolves passthrough mode', () => {
     expect(resolveMockReplayMode(baseMock({ alwaysUseRealApi: true }))).toBe('passthrough');
     expect(mockRequiresUpstreamFetch(baseMock({ alwaysUseRealApi: true }))).toBe(true);

@@ -25,6 +25,12 @@ export interface DomainFolderCounts {
   recorded: number
 }
 
+function hasLiveReplayMode(m: MockFile): boolean {
+  if (m.responsePending === true || m.alwaysUseRealApi === true) return true
+  if (m.replayMode && m.replayMode !== 'stored') return true
+  return m.refreshOnNextRequest === true || m.alwaysRefreshFromLive === true
+}
+
 export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string): DomainFolderCounts {
   const counts: DomainFolderCounts = { total: 0, live: 0, pending: 0, mocked: 0, recorded: 0 }
   for (const m of mocks) {
@@ -36,7 +42,7 @@ export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string):
       continue
     }
     counts.recorded += 1
-    if (m.alwaysUseRealApi === true) {
+    if (hasLiveReplayMode(m)) {
       counts.live += 1
     } else {
       counts.mocked += 1

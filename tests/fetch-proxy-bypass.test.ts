@@ -84,6 +84,31 @@ describe('fetch proxy bypass', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.com/explore');
   });
 
+  it('does not synthesize a lane when strict fallback only has an intended proxy', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ live: true })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      strictScenarioResolution: true,
+      intendedProxyBaseUrl: 'http://dashboard.local',
+    });
+
+    const response = await client.get('https://api.example.com/explore-fallback');
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ live: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.example.com/explore-fallback');
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Headers).get('x-mockifyer-client-id')).toBeNull();
+  });
+
   it('does not send bypassed requests to dashboard proxy', async () => {
     const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
       jsonResponse({ direct: true })

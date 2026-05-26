@@ -20,7 +20,7 @@ export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'pas
  * - `passthrough` — legacy live API (`alwaysUseRealApi` / `responsePending`); optional store refresh via global config.
  */
 export function resolveMockReplayMode(mockData: MockData): MockReplayMode {
-  if (mockData.alwaysUseRealApi === true || mockData.responsePending === true) {
+  if (mockData.alwaysUseRealApi === true) {
     return 'passthrough';
   }
   if (mockData.alwaysRefreshFromLive === true) {
@@ -28,6 +28,9 @@ export function resolveMockReplayMode(mockData: MockData): MockReplayMode {
   }
   if (mockData.refreshOnNextRequest === true) {
     return 'refresh-next';
+  }
+  if (mockData.responsePending === true) {
+    return 'passthrough';
   }
   return 'stored';
 }

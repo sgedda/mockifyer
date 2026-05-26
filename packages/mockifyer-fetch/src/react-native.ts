@@ -7,7 +7,7 @@
 
 import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
 import { setupMockifyer } from './index';
-import { MemoryProvider, ExpoFileSystemProvider, MockData, HTTPClient } from '@sgedda/mockifyer-core';
+import { MockData, HTTPClient } from '@sgedda/mockifyer-core';
 import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
@@ -272,6 +272,7 @@ export async function setupMockifyerForReactNative(
       : baseDatabaseProvider;
 
     const instance = setupMockifyer({
+      ...mergedConfig,
       mockDataPath,
       databaseProvider:
         strictProxyEnabled || strictProxyOnlyFallback
@@ -282,23 +283,24 @@ export async function setupMockifyerForReactNative(
           : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
-      proxy:
-        strictProxyEnabled && proxyBaseUrl
-          ? {
+      ...(strictProxyEnabled && proxyBaseUrl
+        ? {
+            proxy: {
               baseUrl: proxyBaseUrl,
               scenario: proxyScenario,
               recordOnMiss: proxyShouldRecordOnMiss,
               recordResponses: proxyShouldRecordResponses,
-            }
-          : undefined,
+            },
+          }
+        : {}),
       ...(strictProxyEnabled
         ? {
             strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
           }
         : {}),
-      ...mergedConfig,
       ...(strictProxyOnlyFallback
         ? {
+            proxy: undefined,
             databaseProvider: { type: 'memory' as const },
             intendedProxyBaseUrl: proxyBaseUrl!.trim(),
           }
@@ -326,10 +328,6 @@ export async function setupMockifyerForReactNative(
     return { status: 'active', instance } as const;
   } else {
     // PRODUCTION BUILD MODE
-    // Use Memory provider with bundled TypeScript file
-    const provider = new MemoryProvider({});
-    provider.initialize();
-
     // Load bundled mock data
     const mockDataArray = await loadBundledMockData(bundledDataPath);
 
@@ -340,32 +338,33 @@ export async function setupMockifyerForReactNative(
       return { status: 'failed_no_bundled_mocks', instance: null } as const;
     }
 
-    // Pre-load all mocks into memory
-    for (const mockData of mockDataArray) {
-      provider.save(mockData);
-    }
-
     const instance = setupMockifyer({
+      ...mergedConfig,
       mockDataPath: './mock-data', // Not used with memory provider
       databaseProvider: {
         type: 'memory',
+        options: {
+          ...mergedConfig.databaseProvider?.options,
+          initialMocks: mockDataArray,
+        },
       },
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
-      proxy: proxyBaseUrl
+      ...(proxyBaseUrl
         ? {
+            proxy: {
             baseUrl: proxyBaseUrl,
             scenario: proxyScenario,
             recordOnMiss: proxyShouldRecordOnMiss,
             recordResponses: proxyShouldRecordResponses,
+            },
           }
-        : undefined,
+        : {}),
       ...(proxyBaseUrl
         ? {
             strictScenarioResolution: mergedConfig.strictScenarioResolution ?? true,
           }
         : {}),
-      ...mergedConfig,
       initLog: {
         headline:
           mergedConfig.initLog?.headline ??
