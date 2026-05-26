@@ -206,7 +206,7 @@ export default function MockEditor({
   )
 
   useEffect(() => {
-    const data = mock.data.response.data
+    const data = mock.data.response?.data
     // Handle string responses - try to parse as JSON, otherwise keep as string
     let parsedData = data
     if (typeof data === 'string') {
@@ -224,11 +224,13 @@ export default function MockEditor({
     const usePretty =
       size <= MAX_JSON_PRETTY_INITIAL_CHARS && typeof parsedData !== 'string'
     setResponseData(
-      usePretty
-        ? JSON.stringify(parsedData, null, 2)
-        : typeof parsedData === 'string'
-          ? parsedData
-          : JSON.stringify(parsedData)
+      parsedData === undefined
+        ? ''
+        : usePretty
+          ? JSON.stringify(parsedData, null, 2)
+          : typeof parsedData === 'string'
+            ? parsedData
+            : JSON.stringify(parsedData)
     )
     setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
     setReplayMode(resolveReplayModeFromMock(mock))
@@ -342,7 +344,9 @@ export default function MockEditor({
     setReplayMode(next)
     try {
       setSaving(true)
-      await updateMock(mock.filename, mock.data.response.data, undefined, next, scenario)
+      // Intentionally preserve the current on-disk/Redis mock body and overrides.
+      // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
+      await updateMock(mock.filename, mock.data.response?.data, undefined, next, scenario)
       toast({
         title: 'Saved',
         description:

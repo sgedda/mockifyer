@@ -31,6 +31,7 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  newRecordingUsesAlwaysUseRealApi,
   applyOutboundRequestCorrelation,
   type RequestCorrelationContext,
   installNodeInboundRequestCorrelationCapture,
@@ -1642,6 +1643,7 @@ class MockifyerClass {
             : this.currentSessionId,
         requestId: correlation?.requestId,
         parentRequestId: correlation?.parentRequestId,
+        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);

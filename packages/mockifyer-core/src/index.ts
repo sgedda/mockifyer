@@ -30,6 +30,8 @@ export * from './utils/request-correlation';
 export * from './utils/runtime-mode';
 export * from './utils/strict-proxy-scenario';
 export * from './utils/proxy-strict-lane-scenario';
+export * from './utils/proxy-record-on-miss-env';
+export * from './utils/recording-default-always-live';
 export * from './utils/mockifyer-init-log';
 export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';

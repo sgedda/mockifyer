@@ -182,7 +182,12 @@ export interface MockifyerConfig {
     baseUrl: string;
     /** Optional scenario override for the proxy lookup */
     scenario?: string;
-    /** If true, proxy will record responses on cache miss (if the proxy supports it) */
+    /**
+     * Dashboard proxy: when **`true`**, JSON body to **`/api/proxy`** includes **`"record": true`** (persist on miss when the server allows).
+     * When **`false`**, sends **`"record": false`** (never persist on that client).
+     * When **omitted** (fetch SDK), the **`record`** field is **omitted** so the dashboard uses **per-scenario** `proxyConfig.recordOnMiss` (Redis default: record on miss).
+     * Optional env **`MOCKIFYER_PROXY_RECORD_ON_MISS`** applies when this field is omitted and **`proxy.baseUrl`** is set (see **`parseProxyRecordOnMissEnv`**).
+     */
     recordOnMiss?: boolean;
     /**
      * When false, proxy stores request-only stubs (`responsePending`) on cache miss instead of full responses.
@@ -336,6 +341,7 @@ export interface MockData {
   /**
    * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
    * The file is still kept (e.g. for documentation or for updating while recording).
+   * New recordings default this to **true** (store the body, keep calling live) until disabled in the dashboard; see **`MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API`**.
    */
   alwaysUseRealApi?: boolean;
   /**
@@ -376,6 +382,15 @@ export const ENV_VARS = {
   MOCK_STRICT_SCENARIO: 'MOCKIFYER_STRICT_SCENARIO',
   /** Dashboard proxy: lane-only scenario (no global fallback) when `clientId` is set. */
   MOCK_STRICT_LANE_SCENARIO: 'MOCKIFYER_STRICT_LANE_SCENARIO',
+  /**
+   * **`true`** | **`false`** — sets `MockifyerConfig.proxy.recordOnMiss` when **`proxy.baseUrl`** is set and **`recordOnMiss`** is not already set in config.
+   * Does not apply to React Native presets that always pass an explicit boolean for proxy recording.
+   */
+  MOCK_PROXY_RECORD_ON_MISS: 'MOCKIFYER_PROXY_RECORD_ON_MISS',
+  /**
+   * When not `false`, new recordings get **`alwaysUseRealApi: true`** (store body, keep using live API until disabled in the UI).
+   */
+  MOCK_RECORD_DEFAULT_ALWAYS_USE_REAL_API: 'MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API',
   /** New recordings default to passthrough until activated in the dashboard. */
   MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
   /** When `false`, proxy may persist request-only stubs (`responsePending`) instead of full responses. */

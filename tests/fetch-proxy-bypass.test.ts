@@ -60,6 +60,70 @@ describe('fetch proxy bypass', () => {
     const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
     expect(proxyBody.url).toBe('https://api.example.com/users');
     expect(proxyBody.clientId).toBe('lane-alpha');
+    expect(Object.prototype.hasOwnProperty.call(proxyBody, 'record')).toBe(false);
+  });
+
+  it('sends record false when proxy.recordOnMiss is false', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'upstream',
+        hash: 'abc123',
+        response: {
+          status: 200,
+          data: {},
+          headers: {},
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: false },
+    });
+    await client.get('https://api.example.com/x');
+
+    const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(proxyBody.record).toBe(false);
+  });
+
+  it('applies MOCKIFYER_PROXY_RECORD_ON_MISS when proxy.recordOnMiss is omitted', async () => {
+    const prev = process.env.MOCKIFYER_PROXY_RECORD_ON_MISS;
+    process.env.MOCKIFYER_PROXY_RECORD_ON_MISS = 'true';
+
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'upstream',
+        hash: 'abc123',
+        response: {
+          status: 200,
+          data: {},
+          headers: {},
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const client = setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: false,
+        useGlobalFetch: false,
+        proxy: { baseUrl: 'http://dashboard.local' },
+      });
+      await client.get('https://api.example.com/env');
+      const proxyBody = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+      expect(proxyBody.record).toBe(true);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.MOCKIFYER_PROXY_RECORD_ON_MISS;
+      } else {
+        process.env.MOCKIFYER_PROXY_RECORD_ON_MISS = prev;
+      }
+    }
   });
 
   it('uses direct upstream when strict proxy has no lane (devtools shows real URL)', async () => {

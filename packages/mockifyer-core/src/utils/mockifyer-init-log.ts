@@ -1,4 +1,5 @@
 import type { MockifyerConfig, MockifyerRuntimeMode } from '../types';
+import { newRecordingUsesAlwaysUseRealApi } from './recording-default-always-live';
 import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
 import { resolveRecordingExclusions } from './recording-exclusion';
@@ -155,6 +156,11 @@ export function logMockifyerInitSummary(
   }
   if (config.recordMode) {
     logger.info('[Mockifyer] recordMode: true — cache misses can be recorded (proxy or provider permitting).');
+    if (newRecordingUsesAlwaysUseRealApi()) {
+      logger.info(
+        '[Mockifyer] New local recordings default to alwaysUseRealApi (live API until you uncheck in the dashboard). Set MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API=false to replay mocks immediately after capture.'
+      );
+    }
     if (resolveRecordNewMocksAsPassthrough(config)) {
       logger.info(
         '[Mockifyer] recordNewMocksAsPassthrough: true — new recordings use alwaysUseRealApi until activated in the dashboard.'
@@ -163,6 +169,19 @@ export function logMockifyerInitSummary(
     if (resolveRefreshPassthroughRecordings(config)) {
       logger.info(
         '[Mockifyer] refreshPassthroughRecordings: true — passthrough recordings are updated on each live API response.'
+      );
+    }
+  }
+  const proxyBase = config.proxy?.baseUrl?.trim();
+  if (proxyBase) {
+    const rom = config.proxy?.recordOnMiss;
+    if (typeof rom === 'boolean') {
+      logger.info(
+        `[Mockifyer] proxy.recordOnMiss: ${rom} — sends "record" on each /api/proxy request (dashboard cannot override per request).`
+      );
+    } else {
+      logger.info(
+        '[Mockifyer] proxy.recordOnMiss: (unset) — omits "record" on /api/proxy; dashboard uses per-scenario recordOnMiss (see Settings). Env MOCKIFYER_PROXY_RECORD_ON_MISS can set the client flag when unset.'
       );
     }
   }

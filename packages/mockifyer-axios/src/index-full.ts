@@ -8,7 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate } from '@sgedda/mockifyer-core';
+import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -929,7 +929,8 @@ class MockifyerClass {
         response: storedResponse,
         timestamp: new Date().toISOString(),
         duration,
-        scenario: this.config.scenarios?.default
+        scenario: this.config.scenarios?.default,
+        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 
       // Format the datetime to be readable
