@@ -430,6 +430,49 @@ export async function getDateConfig(scenario?: string): Promise<DateConfig> {
   return response.json()
 }
 
+export interface NetworkTraceHop {
+  index: number
+  eventId: string
+  requestId: string | null
+  parentRequestId: string | null
+  method: string
+  url: string
+  status?: number
+  source: string
+  request?: { headers?: Record<string, string>; body?: string }
+  response?: { status?: number; headers?: Record<string, string>; body?: string }
+}
+
+export interface NetworkTraceResponse {
+  provider: string
+  trace: {
+    lookup: { by: string; value: string }
+    rootRequestId: string | null
+    hopCount: number
+    hops: NetworkTraceHop[]
+    incomplete: boolean
+  }
+}
+
+export async function getNetworkEventTrace(params: {
+  scenario: string
+  requestId?: string
+  eventId?: string
+  clientId?: string
+}): Promise<NetworkTraceResponse> {
+  const qs = new URLSearchParams()
+  qs.set('scenario', params.scenario)
+  if (params.requestId) qs.set('requestId', params.requestId)
+  if (params.eventId) qs.set('eventId', params.eventId)
+  if (params.clientId) qs.set('clientId', params.clientId)
+  const response = await fetch(`${API_BASE}/network-events/trace?${qs.toString()}`, noStore)
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error((error as { error?: string }).error || 'Failed to fetch network trace')
+  }
+  return response.json()
+}
+
 export async function getNetworkEvents(params: {
   scenario: string
   clientId?: string

@@ -37,5 +37,6 @@ npm --prefix packages/mockifyer-dashboard run build:backend
 - **Run build checks (this rule)**
 - Stage + commit
 - Push
-- Create PR
+- Create PR — follow **`.cursor/rules/git-workflow.mdc`**: include **How it works** with 1–3 code snippets (usage + key implementation), not bullets only
+
 

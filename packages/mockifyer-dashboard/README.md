@@ -130,6 +130,36 @@ npx mockifyer-dashboard --host 0.0.0.0
 
 ⚠️ **Note**: The dashboard reads files directly from the filesystem, so it must run on the same machine where your mock data files are located. For remote access, you would need to run the dashboard on the server and access it via network.
 
+## Network request trace API
+
+Resolve a **multi-service call chain** from the network log (gateway → downstream services → external APIs). Each hop includes response data when **Bodies** capture is enabled in the Network tab.
+
+**Lookup key** (use one):
+
+| Parameter | Source |
+|-----------|--------|
+| `requestId` | `X-Mockifyer-Request-Id` on the hop (preferred) |
+| `eventId` | Dashboard network log row `id` |
+
+```bash
+# 1) Call your entry service — read trace id from response header or JSON
+curl -si 'http://localhost:4101/aggregate' | grep -i x-mockifyer-request-id
+
+# 2) Fetch all Mockifyer hops (gateway → downstream services → external APIs)
+curl -s 'http://localhost:3002/api/network-events/trace?requestId=THE_ID&scenario=default' | jq .
+
+# Or trace from a network log row id
+curl -s 'http://localhost:3002/api/network-events/trace?eventId=ev-...&scenario=default' | jq .
+```
+
+Entry services should mount **`createMockifyerCorrelationMiddleware()`** from `@sgedda/mockifyer-core` (default: assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response). Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
+
+`requestId` on `/trace` matches a logged hop **or** a virtual root id (only referenced as `parentRequestId` on downstream hops).
+
+Response shape: `trace.hops[]` ordered **root-first** (caller → callee). Each hop has `method`, `url`, `status`, `source`, and optional `request` / `response` with `body` previews. `trace.incomplete` is `true` when a parent or child is outside the loaded log window.
+
+Requires network logging (in-memory for filesystem provider; persistent for `redis` / `sqlite`). Multi-service linking requires Mockifyer correlation headers on outbound calls (automatic when using `setupMockifyer` in each service).
+
 ## MCP (Cursor / Claude Desktop)
 
 Use [`@sgedda/mockifyer-mcp`](../mockifyer-mcp) to expose dashboard APIs as MCP tools — including **`mockifyer_get_mock_ai_context`** for lightweight mock projections (avoids sending full response bodies to the AI).

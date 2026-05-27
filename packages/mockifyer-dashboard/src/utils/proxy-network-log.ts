@@ -154,6 +154,27 @@ export function applyProxyCorrelationToMockData(
   }
 }
 
+/** Trace ids for proxy JSON responses and `X-Mockifyer-Request-Id` response header. */
+export function resolveProxyTraceIds(
+  networkLogCtx: ProxyNetworkLogContext | null,
+  inbound?: ProxyNetworkLogCorrelation
+): { requestId?: string; parentRequestId?: string | null } {
+  const requestId =
+    networkLogCtx?.requestId ??
+    (typeof inbound?.requestId === 'string' && inbound.requestId.trim()
+      ? inbound.requestId.trim()
+      : undefined);
+  const parentRequestId =
+    networkLogCtx?.parentRequestId ??
+    (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
+      ? inbound.parentRequestId.trim()
+      : null);
+  return {
+    ...(requestId ? { requestId } : {}),
+    ...(parentRequestId ? { parentRequestId } : {}),
+  };
+}
+
 export function applyUpstreamRequestCorrelationHeaders(
   upstreamHeaders: Headers,
   correlation: ProxyNetworkLogCorrelation | ProxyNetworkLogContext

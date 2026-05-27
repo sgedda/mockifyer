@@ -8,6 +8,7 @@ import {
   generateRequestKey,
   getCurrentDate,
   MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_HEADER,
   prepareMockResponseBody,
   parseRecordingExclusionsEnv,
   shouldExcludeRecording,
@@ -35,6 +36,7 @@ import {
   openProxyNetworkLog,
   resolveNetworkLogScenario,
   resolveProxyInboundCorrelation,
+  resolveProxyTraceIds,
 } from '../utils/proxy-network-log';
 
 const router = express.Router();
@@ -71,6 +73,18 @@ function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): 
     ...(requestBodyPreview ? { requestBodyPreview } : {}),
     ...(responseBodyPreview ? { responseBodyPreview } : {}),
   };
+}
+
+function proxyTraceResponseFields(
+  res: Response,
+  networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>>,
+  inbound: ReturnType<typeof resolveProxyInboundCorrelation>
+): Record<string, string | null> {
+  const trace = resolveProxyTraceIds(networkLogCtx, inbound);
+  if (trace.requestId) {
+    res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, trace.requestId);
+  }
+  return trace;
 }
 
 router.post('/', async (req: Request, res: Response) => {
@@ -255,6 +269,7 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         scenarioResolution: resolution,
         response,
+        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
       });
     }
 
@@ -343,6 +358,7 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         response: responseWithOverrides,
         scenarioResolution: resolution,
+        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
       });
     }
     const shouldPersistLiveCapture = mock
@@ -553,6 +569,7 @@ router.post('/', async (req: Request, res: Response) => {
       scenarioResolution: resolution,
       response: clientResponse,
       recordedToStore: effectiveRecord === true,
+      ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
       ...(effectiveRecord === true && storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),

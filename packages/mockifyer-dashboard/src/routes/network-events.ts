@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, resolveNetworkRequestTrace } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
@@ -55,6 +55,57 @@ router.put('/config', async (req: Request, res: Response) => {
     return res.json({ scenario, provider: config.provider, ...networkLogConfig });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to update network log config' });
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+});
+
+/**
+ * Multi-service trace for a prior request.
+ * Query: `requestId` (`X-Mockifyer-Request-Id`) or `eventId` (dashboard log row id).
+ */
+router.get('/trace', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const scenario = resolveScenario(req, mockDataPath);
+  const requestId = typeof req.query.requestId === 'string' ? req.query.requestId.trim() : '';
+  const eventId = typeof req.query.eventId === 'string' ? req.query.eventId.trim() : '';
+  const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
+  const scanLimit = parseLimit(req.query.limit, 5000);
+
+  if (!requestId && !eventId) {
+    return res.status(400).json({
+      error: 'Provide requestId (X-Mockifyer-Request-Id) or eventId (network log row id)',
+    });
+  }
+  if (requestId && eventId) {
+    return res.status(400).json({ error: 'Provide only one of requestId or eventId' });
+  }
+
+  const store = createNetworkLogStore(config);
+  try {
+    const { events } = await store.list({ scenario, clientId, limit: scanLimit });
+    const trace = resolveNetworkRequestTrace(events, {
+      by: requestId ? 'requestId' : 'eventId',
+      value: requestId || eventId,
+      scenario,
+    });
+    if (!trace) {
+      return res.status(404).json({
+        error: 'No network event found for the given key',
+        lookup: requestId ? { by: 'requestId', value: requestId } : { by: 'eventId', value: eventId },
+        scenario,
+        hint:
+          'Enable network logging and captureBodies, then run traffic through the proxy or SDK. Use the X-Mockifyer-Request-Id from the entry service response (or proxy JSON requestId).',
+      });
+    }
+    const networkLogConfig = await store.getConfig(scenario);
+    return res.json({
+      provider: config.provider,
+      networkLogConfig,
+      trace,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to resolve network trace' });
   } finally {
     await store.close().catch(() => undefined);
   }
