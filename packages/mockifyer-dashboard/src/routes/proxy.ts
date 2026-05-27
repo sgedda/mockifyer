@@ -21,6 +21,7 @@ import {
   buildRequestOnlyMockData,
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
+  toNetworkLogBodyPreview,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -56,6 +57,18 @@ function toRecordStringHeaders(headers: unknown): Record<string, string> {
     out[k] = String(v);
   }
   return out;
+}
+
+function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
+  requestBodyPreview?: string;
+  responseBodyPreview?: string;
+} {
+  const requestBodyPreview = toNetworkLogBodyPreview(requestBody);
+  const responseBodyPreview = toNetworkLogBodyPreview(responseBody);
+  return {
+    ...(requestBodyPreview ? { requestBodyPreview } : {}),
+    ...(responseBodyPreview ? { responseBodyPreview } : {}),
+  };
 }
 
 router.post('/', async (req: Request, res: Response) => {
@@ -163,6 +176,7 @@ router.post('/', async (req: Request, res: Response) => {
           status: 412,
           requestHash: hash,
           requestHeaders: toRecordStringHeaders(headers),
+          ...proxyNetworkBodyFields(body),
           errorMessage: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
         });
         return res.status(412).json({
@@ -233,6 +247,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders,
+        ...proxyNetworkBodyFields(body, data),
       });
       return res.json({
         proxied: true,
@@ -320,6 +335,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders: mock.response?.headers as Record<string, string> | undefined,
+        ...proxyNetworkBodyFields(body, responseWithOverrides.data),
       });
       return res.json({
         proxied: false,
@@ -370,6 +386,7 @@ router.post('/', async (req: Request, res: Response) => {
         status: 412,
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
+        ...proxyNetworkBodyFields(body),
         errorMessage: 'Upstream calls are disabled for this scenario (offline mode).',
       });
       return res.status(412).json({
@@ -527,6 +544,7 @@ router.post('/', async (req: Request, res: Response) => {
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
       responseHeaders,
+      ...proxyNetworkBodyFields(body, clientResponse.data),
     });
     return res.json({
       proxied: true,
@@ -561,6 +579,7 @@ router.post('/', async (req: Request, res: Response) => {
       status: 500,
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
+      ...proxyNetworkBodyFields(body),
       errorMessage: error?.message ?? String(error),
     });
     return res.status(500).json({ error: 'Proxy failed', details: error.message });

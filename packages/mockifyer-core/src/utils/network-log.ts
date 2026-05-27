@@ -111,6 +111,14 @@ export function sanitizeQueryString(query: string | undefined): string | undefin
   }
 }
 
+/** Serialize a request/response payload for network log previews (truncated by {@link sanitizeNetworkEvent}). */
+export function toNetworkLogBodyPreview(
+  value: unknown,
+  maxBytes: number = NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES
+): string | undefined {
+  return truncatePreview(value, maxBytes);
+}
+
 function truncatePreview(value: unknown, maxBytes: number): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
