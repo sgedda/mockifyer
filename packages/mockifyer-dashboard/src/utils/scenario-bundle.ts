@@ -3,6 +3,8 @@ import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
+import { createDashboardMockStore } from './create-dashboard-mock-store';
+import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
@@ -150,13 +152,13 @@ export async function buildRedisScenarioBundle(
   mockDataPath: string,
   scenario: string,
   redisUrl: string,
-  keyPrefix?: string
+  keyPrefix?: string,
+  provider: CentralizedDashboardProvider = 'redis'
 ): Promise<ScenarioExportBundle> {
-  const store = new RedisMockStore({
-    redisUrl,
-    keyPrefix,
-    mockDataPath,
-  });
+  const store = createDashboardMockStore(
+    { provider, redisUrl, keyPrefix },
+    mockDataPath
+  );
   try {
     const items = await store.list(scenario);
     const mocks: ScenarioBundleMockEntry[] = items.map(({ hash, mockData }) => ({
@@ -184,7 +186,7 @@ export async function buildRedisScenarioBundle(
       formatVersion: SCENARIO_BUNDLE_FORMAT_VERSION,
       exportedAt: new Date().toISOString(),
       sourceScenario: scenario,
-      dashboardProvider: 'redis',
+      dashboardProvider: provider,
       mocks,
       dateManipulation,
       proxyConfig,
@@ -399,13 +401,11 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
   let dateConfigApplied = false;
   let proxyConfigApplied = false;
 
-  if (provider === 'redis') {
-    if (!redisUrl) throw new Error('Redis URL is required for redis provider');
-    const store = new RedisMockStore({
-      redisUrl,
-      keyPrefix,
-      mockDataPath,
-    });
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore({ provider, redisUrl, keyPrefix }, mockDataPath);
     try {
       if (replaceExistingMocks) {
         await clearRedisScenarioMocks(store, targetScenario);

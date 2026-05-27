@@ -5,7 +5,8 @@ import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
 import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 
 const router = express.Router();
 
@@ -22,12 +23,8 @@ router.get('/', async (req: Request, res: Response) => {
     const currentScenario = requestedScenario || getCurrentScenario(mockDataPath);
     const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, currentScenario));
 
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
 
       try {
         const items = await store.list(currentScenario);

@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { supportsDashboardProxy } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
 import {
@@ -75,8 +77,8 @@ router.post('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
   const debugProxy = process.env.MOCKIFYER_PROXY_DEBUG === 'true';
 
-  if (config.provider !== 'redis') {
-    return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
+  if (!supportsDashboardProxy(config.provider)) {
+    return res.status(400).json({ error: "Proxy requires dashboard provider 'redis' or 'sqlite'." });
   }
 
   const {
@@ -125,11 +127,7 @@ router.post('/', async (req: Request, res: Response) => {
   const requestKey = generateRequestKey(storedRequest as any);
   const hash = sha256Hex(requestKey);
 
-  const store = new RedisMockStore({
-    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-    keyPrefix: config.keyPrefix,
-    mockDataPath,
-  });
+  const store = createDashboardMockStore(config, mockDataPath);
 
   const redisDisk = resolveRedisDiskMirrorOptions(config);
   let networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>> = null;

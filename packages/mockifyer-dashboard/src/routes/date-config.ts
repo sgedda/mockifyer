@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { getCurrentScenario, getScenarioFolderPath, listScenarios, isScenarioLockedFs } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 
 const router = express.Router();
@@ -29,18 +31,18 @@ async function resolveScenarioForRoute(
   if (raw && typeof raw === 'string' && raw.trim()) {
     const s = sanitizeScenarioCandidate(raw);
     if (!s) {
-      return provider === 'redis' && redisStore
+      return isCentralizedDashboardProvider(provider) && redisStore
         ? redisStore.getActiveScenario()
         : getCurrentScenario(mockDataPath);
     }
-    if (provider === 'redis') {
+    if (isCentralizedDashboardProvider(provider)) {
       return s;
     }
     const scenarios = listScenarios(mockDataPath);
     if (scenarios.includes(s)) return s;
     return getCurrentScenario(mockDataPath);
   }
-  if (provider === 'redis' && redisStore) {
+  if (isCentralizedDashboardProvider(provider) && redisStore) {
     return redisStore.getActiveScenario();
   }
   return getCurrentScenario(mockDataPath);
@@ -107,12 +109,11 @@ function loadMergedDateConfig(mockDataPath: string, scenario: string): {
   return { dateManipulation: null, source: 'none' };
 }
 
-function openRedisStore(mockDataPath: string, config: { redisUrl?: string; keyPrefix?: string }): RedisMockStore {
-  return new RedisMockStore({
-    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-    keyPrefix: config.keyPrefix,
-    mockDataPath,
-  });
+function openCentralStore(
+  mockDataPath: string,
+  config: import('../utils/dashboard-context').DashboardContextConfig
+): RedisMockStore {
+  return createDashboardMockStore(config, mockDataPath);
 }
 
 // Get current date config (per scenario; optional ?scenario=)
@@ -121,8 +122,8 @@ router.get('/', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const scenarioParam = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
 
-    if (config.provider === 'redis') {
-      const store = openRedisStore(mockDataPath, config);
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = openCentralStore(mockDataPath, config);
       try {
         const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, store);
         const redisDoc = await store.getDateConfig(scenario);
@@ -229,8 +230,8 @@ router.post('/', async (req: Request, res: Response) => {
       dateManipulation.offset === undefined &&
       !dateManipulation.timezone;
 
-    if (config.provider === 'redis') {
-      const store = openRedisStore(mockDataPath, config);
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = openCentralStore(mockDataPath, config);
       try {
         const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, bodyScenario ?? undefined, store);
 

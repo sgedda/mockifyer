@@ -7,6 +7,7 @@ import {
   type NetworkEvent,
 } from '@sgedda/mockifyer-core';
 import type { DashboardContextConfig } from './dashboard-context';
+import { resolveDashboardSqlitePath } from './create-dashboard-mock-store';
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -284,6 +285,179 @@ class RedisNetworkLogStore implements NetworkLogStore {
 /** Process-wide ephemeral store for filesystem dashboard provider. */
 const memorySingleton = new MemoryNetworkLogStore();
 
+class SqliteNetworkLogStore implements NetworkLogStore {
+  private readonly db: any;
+  private readonly keyPrefix: string;
+  private readonly max = maxEvents();
+  private readonly ttl = ttlSec();
+
+  constructor(dbPath: string, keyPrefix?: string) {
+    let Database: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      Database = require(/* webpackIgnore: true */ 'better-sqlite3');
+    } catch {
+      throw new Error(
+        "Network log SQLite store requires optional dependency 'better-sqlite3'. Install it in the dashboard package."
+      );
+    }
+    this.keyPrefix = keyPrefix || 'mockifyer:v1';
+    this.db = new Database(dbPath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS network_log_config (
+        scenario TEXT PRIMARY KEY NOT NULL,
+        json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS network_log_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scenario TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_network_log_scenario ON network_log_events(scenario, id DESC);
+    `);
+  }
+
+  private eventsKey(scenario: string): string {
+    return scenario.trim() || 'default';
+  }
+
+  async getConfig(scenario: string): Promise<NetworkLogScenarioConfig> {
+    const row = this.db
+      .prepare(`SELECT json FROM network_log_config WHERE scenario = ?`)
+      .get(this.eventsKey(scenario)) as { json: string } | undefined;
+    if (!row?.json) return defaultConfig();
+    try {
+      const o = JSON.parse(row.json);
+      return {
+        enabled: o.enabled !== false,
+        captureBodies: o.captureBodies === true,
+        updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : new Date().toISOString(),
+      };
+    } catch {
+      return defaultConfig();
+    }
+  }
+
+  async setConfig(
+    scenario: string,
+    patch: Partial<Pick<NetworkLogScenarioConfig, 'enabled' | 'captureBodies'>>
+  ): Promise<NetworkLogScenarioConfig> {
+    const prev = await this.getConfig(scenario);
+    const next: NetworkLogScenarioConfig = {
+      enabled: patch.enabled ?? prev.enabled,
+      captureBodies: patch.captureBodies ?? prev.captureBodies,
+      updatedAt: new Date().toISOString(),
+    };
+    this.db
+      .prepare(
+        `INSERT INTO network_log_config (scenario, json) VALUES (?, ?)
+         ON CONFLICT(scenario) DO UPDATE SET json = excluded.json`
+      )
+      .run(this.eventsKey(scenario), JSON.stringify(next));
+    return next;
+  }
+
+  async append(
+    scenario: string,
+    partial: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'> & { id?: string; timestamp?: string }
+  ): Promise<NetworkEvent | null> {
+    const cfg = await this.getConfig(scenario);
+    if (!cfg.enabled) return null;
+
+    const event = buildNetworkEvent(
+      { ...partial, scenario: this.eventsKey(scenario) },
+      { captureBodies: cfg.captureBodies }
+    );
+
+    const now = Date.now();
+    const minTs = now - this.ttl * 1000;
+    const sc = this.eventsKey(scenario);
+    const insert = this.db.prepare(
+      `INSERT INTO network_log_events (scenario, payload, created_at) VALUES (?, ?, ?)`
+    );
+    const purge = this.db.prepare(
+      `DELETE FROM network_log_events WHERE scenario = ? AND created_at < ?`
+    );
+    const trim = this.db.prepare(
+      `DELETE FROM network_log_events WHERE scenario = ? AND id NOT IN (
+         SELECT id FROM network_log_events WHERE scenario = ? ORDER BY id DESC LIMIT ?
+       )`
+    );
+    const run = this.db.transaction(() => {
+      purge.run(sc, minTs);
+      insert.run(sc, JSON.stringify(event), now);
+      trim.run(sc, sc, this.max);
+    });
+    run();
+    return event;
+  }
+
+  async list(options: NetworkLogListOptions): Promise<{ events: NetworkEvent[]; ephemeral: boolean }> {
+    const limit = Math.min(Math.max(options.limit ?? 200, 1), this.max);
+    const sc = this.eventsKey(options.scenario);
+    const minTs = Date.now() - this.ttl * 1000;
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM network_log_events
+         WHERE scenario = ? AND created_at >= ?
+         ORDER BY id DESC
+         LIMIT ?`
+      )
+      .all(sc, minTs, this.max) as Array<{ payload: string }>;
+
+    let events: NetworkEvent[] = [];
+    for (const row of rows) {
+      try {
+        events.push(JSON.parse(row.payload) as NetworkEvent);
+      } catch {
+        // skip
+      }
+    }
+    events = filterClient(events, options.clientId);
+    events = filterSince(events, options.since);
+    return { events: events.slice(0, limit), ephemeral: false };
+  }
+
+  async clear(options: { scenario: string; clientId?: string }): Promise<number> {
+    const sc = this.eventsKey(options.scenario);
+    if (!options.clientId?.trim()) {
+      const count = this.db
+        .prepare(`SELECT COUNT(*) AS c FROM network_log_events WHERE scenario = ?`)
+        .get(sc) as { c: number };
+      this.db.prepare(`DELETE FROM network_log_events WHERE scenario = ?`).run(sc);
+      return count?.c ?? 0;
+    }
+
+    const lane = options.clientId.trim();
+    const rows = this.db
+      .prepare(`SELECT id, payload FROM network_log_events WHERE scenario = ?`)
+      .all(sc) as Array<{ id: number; payload: string }>;
+    const del = this.db.prepare(`DELETE FROM network_log_events WHERE id = ?`);
+    let removed = 0;
+    const run = this.db.transaction(() => {
+      for (const row of rows) {
+        try {
+          const ev = JSON.parse(row.payload) as NetworkEvent;
+          if ((ev.clientId ?? '') === lane) {
+            del.run(row.id);
+            removed += 1;
+          }
+        } catch {
+          // keep
+        }
+      }
+    });
+    run();
+    return removed;
+  }
+
+  async close(): Promise<void> {
+    this.db.close();
+  }
+}
+
 export function createNetworkLogStore(config: DashboardContextConfig): NetworkLogStore {
   if (config.provider === 'redis') {
     const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
@@ -291,6 +465,11 @@ export function createNetworkLogStore(config: DashboardContextConfig): NetworkLo
       throw new Error('Redis provider requires redisUrl or MOCKIFYER_REDIS_URL');
     }
     return new RedisNetworkLogStore(redisUrl, config.keyPrefix);
+  }
+  if (config.provider === 'sqlite') {
+    const dataPath = config.mockDataPath || process.env.MOCKIFYER_PATH || './mock-data';
+    const dbPath = resolveDashboardSqlitePath(dataPath, config);
+    return new SqliteNetworkLogStore(dbPath, config.keyPrefix);
   }
   return memorySingleton;
 }

@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { buildClientConnectionRows } from '../utils/client-connections';
 
 const router = express.Router();
@@ -8,10 +9,10 @@ const router = express.Router();
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       return res.json({
         enabled: false,
-        reason: "Client lanes are only available when the dashboard provider is 'redis'.",
+        reason: "Client lanes are only available when the dashboard provider is 'redis' or 'sqlite'.",
         lanes: [],
         discoveredLanes: [],
         connections: [],
@@ -19,11 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
       });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       const lanes = await store.listClientLanes();
       const lanesWithDevices = await Promise.all(
@@ -89,7 +86,7 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
     const { clientId } = req.params;
     const { scenario } = req.body || {};
     const { mockDataPath, config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
     const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
@@ -105,11 +102,7 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'scenario must be a non-empty string or null' });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       await store.setLaneScenario(canonicalClientId, scenarioValue);
       const lanes = await store.listClientLanes();
@@ -129,7 +122,7 @@ router.put('/:clientId', async (req: Request, res: Response) => {
     const { clientId } = req.params;
     const { note } = req.body || {};
     const { mockDataPath, config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis'." });
     }
     const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
@@ -145,11 +138,7 @@ router.put('/:clientId', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'note must be a string or null' });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       await store.setLaneNote(canonicalClientId, noteValue);
       const lanes = await store.listClientLanes();

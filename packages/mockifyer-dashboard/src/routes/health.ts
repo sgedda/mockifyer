@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 
 const router = express.Router();
 
@@ -9,9 +10,9 @@ router.get('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
   const provider = config.provider ?? 'filesystem';
 
-  const exists = provider === 'redis' ? true : fs.existsSync(mockDataPath);
+  const exists = isCentralizedDashboardProvider(provider) ? true : fs.existsSync(mockDataPath);
   let fileCount = 0;
-  if (exists && provider !== 'redis') {
+  if (exists && !isCentralizedDashboardProvider(provider)) {
     try {
       const files = fs
         .readdirSync(mockDataPath)
@@ -24,24 +25,38 @@ router.get('/', async (req: Request, res: Response) => {
 
   let redisOk: boolean | null = null;
   let redisError: string | null = null;
-  if (provider === 'redis') {
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+  let sqliteOk: boolean | null = null;
+  let sqliteError: string | null = null;
+  /** True when redis or sqlite central store responds (proxy / lanes / persistent network log). */
+  let centralStoreOk: boolean | null = null;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       await store.ping();
-      redisOk = true;
-    } catch (e: any) {
-      redisOk = false;
-      redisError = e?.message ?? String(e);
+      centralStoreOk = true;
+      if (provider === 'redis') {
+        redisOk = true;
+      } else {
+        sqliteOk = true;
+      }
+    } catch (e: unknown) {
+      centralStoreOk = false;
+      const message = e instanceof Error ? e.message : String(e);
+      if (provider === 'redis') {
+        redisOk = false;
+        redisError = message;
+      } else {
+        sqliteOk = false;
+        sqliteError = message;
+      }
     } finally {
       await store.close().catch(() => undefined);
     }
   }
 
-  const redisDiskMirror = provider === 'redis' ? resolveRedisDiskMirrorOptions(config) : null;
+  const redisDiskMirror =
+    isCentralizedDashboardProvider(provider) ? resolveRedisDiskMirrorOptions(config) : null;
 
   return res.json({
     status: 'ok',
@@ -51,10 +66,12 @@ router.get('/', async (req: Request, res: Response) => {
     fileCount,
     redisOk,
     redisError,
+    sqliteOk,
+    sqliteError,
+    centralStoreOk,
     ...(redisDiskMirror ? { redisDiskMirror } : {}),
     timestamp: new Date().toISOString(),
   });
 });
 
 export const healthRouter = router;
-

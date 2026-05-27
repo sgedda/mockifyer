@@ -13,6 +13,7 @@ import {
   resolveRedisDiskMirrorOptions,
   type DashboardContextConfig,
 } from './utils/dashboard-context';
+import { resolveDashboardSqlitePath } from './utils/create-dashboard-mock-store';
 
 const program = new Command();
 
@@ -73,7 +74,7 @@ async function main() {
     }
 
     // Check if path exists (or create default directory)
-    if (provider !== 'redis' && !fs.existsSync(mockDataPath)) {
+    if (provider === 'filesystem' && !fs.existsSync(mockDataPath)) {
       console.log(chalk.yellow(`\n⚠️  Mock data path does not exist: ${mockDataPath}`));
       console.log(chalk.cyan('Creating directory...'));
       fs.mkdirSync(mockDataPath, { recursive: true });
@@ -93,7 +94,7 @@ async function main() {
     const mountPath = normalizeExpressMountPath(options.base ?? process.env.MOCKIFYER_DASHBOARD_BASE);
 
     let redisDiskMirror: DashboardContextConfig['redisDiskMirror'] = undefined;
-    if (provider === 'redis') {
+    if (provider === 'redis' || provider === 'sqlite') {
       const dual = Boolean(options.redisDiskDual);
       const mirror = Boolean(options.redisMirrorDisk);
       const fallback = Boolean(options.redisDiskFallback);
@@ -140,10 +141,15 @@ async function main() {
       }
       console.log(chalk.cyan(`   📁 Mock Data: ${chalk.bold(mockDataPath)}`));
       console.log(chalk.cyan(`   🔧 Provider: ${chalk.bold(provider)}\n`));
-      if (provider === 'redis') {
-        console.log(
-          chalk.cyan(`   🧠 Redis URL: ${chalk.bold(redisUrl || 'redis://127.0.0.1:6379 (default)')}`)
-        );
+      if (provider === 'redis' || provider === 'sqlite') {
+        if (provider === 'redis') {
+          console.log(
+            chalk.cyan(`   🧠 Redis URL: ${chalk.bold(redisUrl || 'redis://127.0.0.1:6379 (default)')}`)
+          );
+        } else {
+          const dbPath = resolveDashboardSqlitePath(mockDataPath, { provider, redisUrl, keyPrefix });
+          console.log(chalk.cyan(`   🗄️  SQLite DB: ${chalk.bold(dbPath)}`));
+        }
         console.log(
           chalk.cyan(`   🏷️  Key Prefix: ${chalk.bold(keyPrefix || 'mockifyer:v1 (default)')}`)
         );
@@ -156,8 +162,8 @@ async function main() {
         if (dm.mirrorWrites || dm.readFallback) {
           const parts: string[] = [];
           if (dm.mirrorWrites) parts.push('mirror recorded mocks → disk');
-          if (dm.readFallback) parts.push('read disk if Redis misses');
-          console.log(chalk.cyan(`   💾 Redis + disk: ${chalk.bold(parts.join(' · '))}`));
+          if (dm.readFallback) parts.push('read disk if store misses');
+          console.log(chalk.cyan(`   💾 Store + disk: ${chalk.bold(parts.join(' · '))}`));
         }
         console.log('');
       }

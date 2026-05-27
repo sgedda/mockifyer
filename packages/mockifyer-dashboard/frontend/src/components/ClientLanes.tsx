@@ -128,7 +128,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
             <div className="font-medium text-foreground">Unavailable</div>
             <div>
               {disabledReason ??
-                "Client lanes require running the dashboard with provider 'redis' (shared store)."}
+                "Client lanes require running the dashboard with provider 'redis' or 'sqlite' (shared store)."}
             </div>
           </div>
         ) : lanes.length === 0 ? (

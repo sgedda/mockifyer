@@ -1,10 +1,16 @@
 # Database Provider Architecture
 
-⚠️ **NOT YET AVAILABLE FOR USE** ⚠️
+**Status (SDK vs dashboard):**
 
-Database providers (SQLite, Memory, Expo) are **not yet available for use**. Only the filesystem provider is currently supported.
+| Backend | `@sgedda/mockifyer-fetch` `setupMockifyer` | `mockifyer-dashboard` CLI |
+|--------|---------------------------------------------|---------------------------|
+| **filesystem** (default) | Yes | Yes (default) |
+| **memory**, **hybrid**, **expo-filesystem** | Yes (RN / advanced) | No |
+| **redis** | Yes (`ioredis`) | Yes — `/api/proxy`, lanes, network log |
+| **sqlite** | Yes (`better-sqlite3`) | Yes — same features as Redis via local `.db` (no Redis process) |
+| **@sgedda/mockifyer-axios** | **filesystem only** | N/A |
 
-This documentation exists for **future reference** when database providers become available. The code exists in the codebase but is disabled and will throw an error if you try to use non-filesystem providers.
+Dashboard: `mockifyer-dashboard --provider sqlite --path ./mock-data` uses `./mock-data/mockifyer-dashboard.db` (or pass a `.db` path). Supports **`/api/proxy`**, **client lanes**, and **persistent network log** like Redis.
 
 ---
 
@@ -167,15 +173,11 @@ The architecture supports adding more providers:
 
 ## Implementation Status
 
-✅ Provider interface and abstraction (code exists, not yet integrated)
-✅ Filesystem provider (currently the only supported provider)
-⚠️ SQLite provider (code exists, but disabled - not yet available for use)
-⚠️ Memory provider (code exists, but disabled - not yet available for use)
-⚠️ Expo filesystem provider (code exists, but disabled - not yet available for use)
-
-**Current Status:** Only the filesystem provider is available. All other providers will throw an error if attempted to use. The code exists for future use but is not yet integrated into the main setupMockifyer flow.
-✅ Configuration support
-⏳ Integration into MockifyerClass (in progress)
-⏳ Update all packages (mockifyer-axios, mockifyer-fetch)
+✅ Provider interface and abstraction  
+✅ Filesystem provider (default)  
+✅ SQLite / Redis / memory / hybrid / expo in **mockifyer-fetch**  
+✅ Dashboard **redis** and **sqlite** central stores (proxy, lanes, network log)  
+⚠️ **mockifyer-axios**: filesystem only  
+✅ Dashboard filesystem provider for JSON under `mock-data/`
 
 
