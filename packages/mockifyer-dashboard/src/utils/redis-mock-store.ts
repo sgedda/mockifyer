@@ -1,9 +1,16 @@
 import * as crypto from 'crypto';
 import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
 import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
+import type { MockKvBackend } from './mock-kv-backend';
+import { RedisMockKvBackend } from './redis-mock-kv-backend';
+import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
 
 export interface RedisMockStoreConfig {
-  redisUrl: string;
+  /** When set, used directly (Redis or SQLite KV backend). */
+  kv?: MockKvBackend;
+  redisUrl?: string;
+  /** SQLite database file path (dashboard `--provider sqlite`). */
+  sqlitePath?: string;
   keyPrefix?: string;
   mockDataPath: string;
   /** ioredis options passthrough */
@@ -39,19 +46,8 @@ function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
-function requireIoRedis(): any {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('ioredis');
-  } catch {
-    throw new Error(
-      "Redis mock store requires optional dependency 'ioredis'. Install it in the dashboard package: npm install ioredis"
-    );
-  }
-}
-
 export class RedisMockStore {
-  private readonly redis: any;
+  private readonly kv: MockKvBackend;
   private readonly mockDataPath: string;
   private readonly keyPrefix: string;
   private readonly activeScenarioKey: string;
@@ -65,6 +61,18 @@ export class RedisMockStore {
   private static readonly EFFECTIVE_TTL_SEC = 60 * 60 * 24 * 14;
 
   constructor(config: RedisMockStoreConfig) {
+    if (config.kv) {
+      this.kv = config.kv;
+    } else if (config.sqlitePath) {
+      this.kv = new SqliteMockKvBackend(config.sqlitePath);
+    } else {
+      const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
+      if (!redisUrl) {
+        throw new Error('Redis mock store requires redisUrl or MOCKIFYER_REDIS_URL');
+      }
+      this.kv = new RedisMockKvBackend(redisUrl, config.redisOptions);
+    }
+
     this.mockDataPath = config.mockDataPath;
     this.keyPrefix = config.keyPrefix || 'mockifyer:v1';
     this.activeScenarioKey = `${this.keyPrefix}:active_scenario`;
@@ -90,11 +98,6 @@ export class RedisMockStore {
     }
 
 
-    const RedisCtor = requireIoRedis();
-    this.redis = new RedisCtor(config.redisUrl, {
-      maxRetriesPerRequest: 3,
-      ...(config.redisOptions || {}),
-    });
   }
 
   /**
@@ -138,7 +141,7 @@ export class RedisMockStore {
     if (this.useCentralizedScenario) {
       if (laneId) {
         const perClientKey = `${this.keyPrefix}:client_scenario:${laneId}`;
-        const perClientScenario = await this.redis.get(perClientKey);
+        const perClientScenario = await this.kv.get(perClientKey);
         if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
           return {
             scenario: perClientScenario.trim(),
@@ -150,7 +153,7 @@ export class RedisMockStore {
           return { scenario: null, resolutionSource: 'lane_redis', hadBodyScenarioOverride: false };
         }
       }
-      const centralizedScenario = await this.redis.get(this.activeScenarioKey);
+      const centralizedScenario = await this.kv.get(this.activeScenarioKey);
       if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
         return {
           scenario: centralizedScenario.trim(),
@@ -173,12 +176,12 @@ export class RedisMockStore {
     if (this.useCentralizedScenario) {
       if (clientId && clientId.trim()) {
         const perClientKey = `${this.keyPrefix}:client_scenario:${clientId.trim()}`;
-        const perClientScenario = await this.redis.get(perClientKey);
+        const perClientScenario = await this.kv.get(perClientKey);
         if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
           return perClientScenario.trim();
         }
       }
-      const centralizedScenario = await this.redis.get(this.activeScenarioKey);
+      const centralizedScenario = await this.kv.get(this.activeScenarioKey);
       if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
         return centralizedScenario.trim();
       }
@@ -199,22 +202,22 @@ export class RedisMockStore {
   }
 
   async setActiveScenario(scenario: string): Promise<void> {
-    await this.redis.set(this.activeScenarioKey, scenario);
+    await this.kv.set(this.activeScenarioKey, scenario);
     // Best-effort registry so scenarios appear even with no mocks yet.
-    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
   async ping(): Promise<void> {
-    await this.redis.ping();
+    await this.kv.ping();
   }
 
   async list(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
     const indexKey = await this.indexKey(scenario, clientId);
-    const hashes: string[] = await this.redis.smembers(indexKey);
+    const hashes: string[] = await this.kv.smembers(indexKey);
     if (hashes.length === 0) return [];
 
     const keys = await Promise.all(hashes.map((h) => this.dataKey(h, scenario, clientId)));
-    const values: Array<string | null> = await this.redis.mget(...keys);
+    const values: Array<string | null> = await this.kv.mget(...keys);
 
     const out: RedisMockListItem[] = [];
     for (let i = 0; i < hashes.length; i++) {
@@ -232,7 +235,7 @@ export class RedisMockStore {
 
   async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {
     const dataKey = await this.dataKey(hash, scenario, clientId);
-    const raw: string | null = await this.redis.get(dataKey);
+    const raw: string | null = await this.kv.get(dataKey);
     if (!raw) return null;
     return JSON.parse(raw) as MockData;
   }
@@ -244,7 +247,7 @@ export class RedisMockStore {
     const id = scenarioName.trim();
     if (!id) return null;
     const key = `${this.keyPrefix}:mock:${id}:${hash}`;
-    const raw: string | null = await this.redis.get(key);
+    const raw: string | null = await this.kv.get(key);
     if (!raw) return null;
     return JSON.parse(raw) as MockData;
   }
@@ -258,11 +261,11 @@ export class RedisMockStore {
   async setByHash(hash: string, mockData: MockData, scenario?: string, clientId?: string): Promise<void> {
     const key = await this.dataKey(hash, scenario, clientId);
     const indexKey = await this.indexKey(scenario, clientId);
-    await this.redis.set(key, JSON.stringify(mockData));
-    await this.redis.sadd(indexKey, hash);
+    await this.kv.set(key, JSON.stringify(mockData));
+    await this.kv.sadd(indexKey, hash);
     // Best-effort registry so scenarios appear even if index scanning misses them.
     if (scenario) {
-      await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+      await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
     }
   }
 
@@ -272,16 +275,16 @@ export class RedisMockStore {
     if (!id) throw new Error('scenarioName is required');
     const key = `${this.keyPrefix}:mock:${id}:${hash}`;
     const indexKey = `${this.keyPrefix}:index:${id}`;
-    await this.redis.set(key, JSON.stringify(mockData));
-    await this.redis.sadd(indexKey, hash);
-    await this.redis.sadd(this.scenarioRegistrySetKey, id).catch(() => undefined);
+    await this.kv.set(key, JSON.stringify(mockData));
+    await this.kv.sadd(indexKey, hash);
+    await this.kv.sadd(this.scenarioRegistrySetKey, id).catch(() => undefined);
   }
 
   async deleteByHash(hash: string, scenario?: string, clientId?: string): Promise<void> {
     const dataKey = await this.dataKey(hash, scenario, clientId);
     const indexKey = await this.indexKey(scenario, clientId);
-    await this.redis.del(dataKey);
-    await this.redis.srem(indexKey, hash);
+    await this.kv.del(dataKey);
+    await this.kv.srem(indexKey, hash);
   }
 
   /** Redis key for JSON `{ dateManipulation, updatedAt }` per scenario (dashboard Date Config + proxy). */
@@ -294,7 +297,7 @@ export class RedisMockStore {
     dateManipulation: Record<string, unknown> | null;
     updatedAt?: string;
   } | null> {
-    const raw: string | null = await this.redis.get(this.dateConfigRedisKey(scenario));
+    const raw: string | null = await this.kv.get(this.dateConfigRedisKey(scenario));
     if (raw === null || raw === '') return null;
     try {
       const o = JSON.parse(raw) as Record<string, unknown>;
@@ -315,12 +318,12 @@ export class RedisMockStore {
     scenario: string,
     payload: { dateManipulation: Record<string, unknown>; updatedAt: string }
   ): Promise<void> {
-    await this.redis.set(this.dateConfigRedisKey(scenario), JSON.stringify(payload));
-    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.kv.set(this.dateConfigRedisKey(scenario), JSON.stringify(payload));
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
   async deleteDateConfig(scenario: string): Promise<void> {
-    await this.redis.del(this.dateConfigRedisKey(scenario));
+    await this.kv.del(this.dateConfigRedisKey(scenario));
   }
 
   /** Redis key for JSON `{ recordOnMiss, allowUpstream, updatedAt }` per scenario (proxy behavior). */
@@ -335,7 +338,7 @@ export class RedisMockStore {
     recordResponses: boolean;
     updatedAt?: string;
   } | null> {
-    const raw: string | null = await this.redis.get(this.proxyConfigRedisKey(scenario));
+    const raw: string | null = await this.kv.get(this.proxyConfigRedisKey(scenario));
     if (raw === null || raw === '') return null;
     try {
       const o = JSON.parse(raw) as Record<string, unknown>;
@@ -363,12 +366,12 @@ export class RedisMockStore {
       updatedAt: string;
     }
   ): Promise<void> {
-    await this.redis.set(this.proxyConfigRedisKey(scenario), JSON.stringify(payload));
-    await this.redis.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.kv.set(this.proxyConfigRedisKey(scenario), JSON.stringify(payload));
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
   async deleteProxyConfig(scenario: string): Promise<void> {
-    await this.redis.del(this.proxyConfigRedisKey(scenario));
+    await this.kv.del(this.proxyConfigRedisKey(scenario));
   }
 
   domainPathRulesRedisKey(scenario: string): string {
@@ -377,7 +380,7 @@ export class RedisMockStore {
   }
 
   async getDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
-    const raw: string | null = await this.redis.get(this.domainPathRulesRedisKey(scenario));
+    const raw: string | null = await this.kv.get(this.domainPathRulesRedisKey(scenario));
     if (raw === null || raw === '') return {};
     try {
       const o = JSON.parse(raw) as Record<string, unknown>;
@@ -416,11 +419,11 @@ export class RedisMockStore {
       };
     }
     if (Object.keys(rules).length === 0) {
-      await this.redis.del(key);
+      await this.kv.del(key);
     } else {
-      await this.redis.set(key, JSON.stringify(rules));
+      await this.kv.set(key, JSON.stringify(rules));
     }
-    await this.redis.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
     return rules;
   }
 
@@ -465,17 +468,17 @@ export class RedisMockStore {
 
     // Copy mocks by walking the index set.
     const fromIndexKey = await this.indexKey(from);
-    const hashes: string[] = await this.redis.smembers(fromIndexKey);
+    const hashes: string[] = await this.kv.smembers(fromIndexKey);
     if (hashes.length === 0) {
       // Still ensure the destination scenario is discoverable.
-      await this.redis.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
+      await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
       return { mocksCopied: 0, dateConfigCopied };
     }
 
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
-    const values: Array<string | null> = await this.redis.mget(...fromKeys);
+    const values: Array<string | null> = await this.kv.mget(...fromKeys);
 
-    const multi = this.redis.multi();
+    const multi = this.kv.multi();
     let copied = 0;
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
@@ -505,7 +508,7 @@ export class RedisMockStore {
 
     // 1) Registry set (best-effort fast path).
     try {
-      const members: string[] = await this.redis.smembers(this.scenarioRegistrySetKey);
+      const members: string[] = await this.kv.smembers(this.scenarioRegistrySetKey);
       for (const s of members) {
         if (typeof s === 'string' && s.trim()) out.add(s.trim());
       }
@@ -516,33 +519,25 @@ export class RedisMockStore {
     // 2) Legacy discovery: scan index keys.
     {
       const pattern = `${this.keyPrefix}:index:*`;
-      let cursor = '0';
-      do {
-        const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
-        cursor = next;
-        for (const k of keys) {
-          const parts = k.split(':index:');
-          if (parts.length === 2 && parts[1]) {
-            out.add(parts[1]);
-          }
+      const keys = await this.kv.scanKeys(pattern);
+      for (const k of keys) {
+        const parts = k.split(':index:');
+        if (parts.length === 2 && parts[1]) {
+          out.add(parts[1]);
         }
-      } while (cursor !== '0');
+      }
     }
 
     // 3) Date config keys can exist without any mocks/index.
     {
       const pattern = `${this.keyPrefix}:date_config:*`;
-      let cursor = '0';
-      do {
-        const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
-        cursor = next;
-        for (const k of keys) {
-          const parts = k.split(':date_config:');
-          if (parts.length === 2 && parts[1]) {
-            out.add(parts[1]);
-          }
+      const keys = await this.kv.scanKeys(pattern);
+      for (const k of keys) {
+        const parts = k.split(':date_config:');
+        if (parts.length === 2 && parts[1]) {
+          out.add(parts[1]);
         }
-      } while (cursor !== '0');
+      }
     }
 
     return Array.from(out).sort();
@@ -552,7 +547,7 @@ export class RedisMockStore {
     const id = clientId.trim();
     if (!id) return null;
     const key = `${this.keyPrefix}:client_scenario:${id}`;
-    const v = await this.redis.get(key);
+    const v = await this.kv.get(key);
     return typeof v === 'string' && v.trim() ? v.trim() : null;
   }
 
@@ -561,32 +556,28 @@ export class RedisMockStore {
     if (!id) throw new Error('clientId is required');
     const key = `${this.keyPrefix}:client_scenario:${id}`;
     if (scenario === null) {
-      await this.redis.del(key);
+      await this.kv.del(key);
       return;
     }
-    await this.redis.set(key, scenario);
-    await this.redis.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.kv.set(key, scenario);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
   }
 
   async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
     const pattern = `${this.keyPrefix}:client_scenario:*`;
     const out: Array<{ clientId: string; scenario: string; note: string | null }> = [];
-    let cursor = '0';
-    do {
-      const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
-      cursor = next;
-      if (keys.length === 0) continue;
-      const values: Array<string | null> = await this.redis.mget(...keys);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        const val = values[i];
-        if (!val || !val.trim()) continue;
-        const clientId = key.slice(`${this.keyPrefix}:client_scenario:`.length);
-        if (!clientId) continue;
-        const note: string | null = await this.redis.hget(this.laneNoteHashKey, clientId);
-        out.push({ clientId, scenario: val.trim(), note: note && note.trim() ? note.trim() : null });
-      }
-    } while (cursor !== '0');
+    const keys = await this.kv.scanKeys(pattern);
+    if (keys.length === 0) return out;
+    const values: Array<string | null> = await this.kv.mget(...keys);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const val = values[i];
+      if (!val || !val.trim()) continue;
+      const clientId = key.slice(`${this.keyPrefix}:client_scenario:`.length);
+      if (!clientId) continue;
+      const note: string | null = await this.kv.hget(this.laneNoteHashKey, clientId);
+      out.push({ clientId, scenario: val.trim(), note: note && note.trim() ? note.trim() : null });
+    }
     return out.sort((a, b) => a.clientId.localeCompare(b.clientId));
   }
 
@@ -594,10 +585,10 @@ export class RedisMockStore {
     const id = clientId.trim();
     if (!id) throw new Error('clientId is required');
     if (note === null || note.trim() === '') {
-      await this.redis.hdel(this.laneNoteHashKey, id);
+      await this.kv.hdel(this.laneNoteHashKey, id);
       return;
     }
-    await this.redis.hset(this.laneNoteHashKey, id, note.trim());
+    await this.kv.hset(this.laneNoteHashKey, id, note.trim());
   }
 
   private sanitizeObservationSegment(segment: string, maxLen: number): string {
@@ -628,14 +619,14 @@ export class RedisMockStore {
       if (lane) {
         const laneSeg = this.sanitizeObservationSegment(lane, 120);
         const laneRedisKey = `${this.keyPrefix}:lane_last_resolved:${laneSeg}`;
-        await this.redis.set(laneRedisKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
+        await this.kv.set(laneRedisKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
       }
       const dev = input.deviceId && input.deviceId.trim() ? input.deviceId.trim() : '';
       if (lane && dev) {
         const laneSeg = this.sanitizeObservationSegment(lane, 120);
         const devSeg = this.sanitizeObservationSegment(dev, 120);
         const devKey = `${this.keyPrefix}:device_last_resolved:${laneSeg}:${devSeg}`;
-        await this.redis.set(devKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
+        await this.kv.set(devKey, JSON.stringify(payload), 'EX', ttl).catch(() => undefined);
       }
     } catch {
       // best-effort
@@ -646,7 +637,7 @@ export class RedisMockStore {
   async readLaneLastResolved(clientId: string): Promise<LaneEffectiveObservation | null> {
     const laneSeg = this.sanitizeObservationSegment(clientId, 120);
     const laneRedisKey = `${this.keyPrefix}:lane_last_resolved:${laneSeg}`;
-    const raw = await this.redis.get(laneRedisKey);
+    const raw = await this.kv.get(laneRedisKey);
     if (!raw || typeof raw !== 'string') return null;
     try {
       const o = JSON.parse(raw) as LaneEffectiveObservation;
@@ -662,7 +653,7 @@ export class RedisMockStore {
     const laneSeg = this.sanitizeObservationSegment(clientId, 120);
     const devSeg = this.sanitizeObservationSegment(deviceId, 120);
     const devKey = `${this.keyPrefix}:device_last_resolved:${laneSeg}:${devSeg}`;
-    const raw = await this.redis.get(devKey);
+    const raw = await this.kv.get(devKey);
     if (!raw || typeof raw !== 'string') return null;
     try {
       const o = JSON.parse(raw) as LaneEffectiveObservation;
@@ -682,9 +673,9 @@ export class RedisMockStore {
   async recordLaneSeen(clientId: string, nowMs: number = Date.now(), ttlMs: number = 1000 * 60 * 60 * 24 * 14): Promise<void> {
     const id = clientId.trim();
     if (!id) return;
-    await this.redis.zadd(this.laneLastSeenZSetKey, nowMs, id);
+    await this.kv.zadd(this.laneLastSeenZSetKey, nowMs, id);
     const minScore = nowMs - ttlMs;
-    await this.redis.zremrangebyscore(this.laneLastSeenZSetKey, 0, minScore);
+    await this.kv.zremrangebyscore(this.laneLastSeenZSetKey, 0, minScore);
   }
 
   private laneDevicesZSetKey(clientId: string): string {
@@ -707,9 +698,9 @@ export class RedisMockStore {
     const device = deviceId.trim();
     if (!lane || !device) return;
     const key = this.laneDevicesZSetKey(lane);
-    await this.redis.zadd(key, nowMs, device);
+    await this.kv.zadd(key, nowMs, device);
     const minScore = nowMs - ttlMs;
-    await this.redis.zremrangebyscore(key, 0, minScore);
+    await this.kv.zremrangebyscore(key, 0, minScore);
   }
 
   /**
@@ -726,7 +717,7 @@ export class RedisMockStore {
     const nowMs = Date.now();
     const minScore = nowMs - ttlMs;
     // members newest first with their lastSeen score
-    const raw: string[] = await this.redis.zrevrangebyscore(key, nowMs, minScore, 'WITHSCORES', 'LIMIT', 0, limit);
+    const raw: string[] = await this.kv.zrevrangebyscore(key, nowMs, minScore, 'WITHSCORES', 'LIMIT', 0, limit);
     const out: Array<{ deviceId: string; lastSeenMs: number }> = [];
     for (let i = 0; i < raw.length; i += 2) {
       const deviceId = raw[i];
@@ -747,7 +738,7 @@ export class RedisMockStore {
     const key = this.laneDevicesZSetKey(lane);
     const nowMs = Date.now();
     const minScore = nowMs - ttlMs;
-    const n: number = await this.redis.zcount(key, minScore, nowMs);
+    const n: number = await this.kv.zcount(key, minScore, nowMs);
     return typeof n === 'number' && Number.isFinite(n) ? n : 0;
   }
 
@@ -767,7 +758,7 @@ export class RedisMockStore {
   ): Promise<Array<{ clientId: string; lastSeenMs: number }>> {
     const nowMs = Date.now();
     const minScore = nowMs - ttlMs;
-    const raw: string[] = await this.redis.zrevrangebyscore(
+    const raw: string[] = await this.kv.zrevrangebyscore(
       this.laneLastSeenZSetKey,
       nowMs,
       minScore,
@@ -792,7 +783,7 @@ export class RedisMockStore {
   }
 
   async getScenarioMetaJson(scenario: string): Promise<{ locked?: boolean; updatedAt?: string } | null> {
-    const raw = await this.redis.get(this.scenarioMetaRedisKey(scenario));
+    const raw = await this.kv.get(this.scenarioMetaRedisKey(scenario));
     if (raw === null || raw === '') return null;
     try {
       return JSON.parse(raw) as { locked?: boolean; updatedAt?: string };
@@ -813,11 +804,11 @@ export class RedisMockStore {
       locked: locked === true,
       updatedAt: new Date().toISOString(),
     };
-    await this.redis.set(this.scenarioMetaRedisKey(scenario), JSON.stringify(payload));
+    await this.kv.set(this.scenarioMetaRedisKey(scenario), JSON.stringify(payload));
   }
 
   async close(): Promise<void> {
-    await this.redis.quit();
+    await this.kv.close();
   }
 }
 

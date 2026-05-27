@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext } from '../utils/dashboard-context';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 
 const router = express.Router();
 
@@ -13,16 +14,12 @@ function readScenarioParam(req: Request): string {
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       return res.status(400).json({ error: "Proxy config requires dashboard provider 'redis'." });
     }
 
     const scenario = readScenarioParam(req);
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       const doc = await store.getProxyConfig(scenario);
       return res.json({
@@ -44,7 +41,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       return res.status(400).json({ error: "Proxy config requires dashboard provider 'redis'." });
     }
 
@@ -62,11 +59,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'recordResponses must be a boolean' });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath,
-    });
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
       const existing = await store.getProxyConfig(scenario.trim());
       await store.setProxyConfig(scenario.trim(), {

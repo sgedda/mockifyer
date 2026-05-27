@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { supportsDashboardProxy } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
 import {
@@ -21,6 +23,7 @@ import {
   buildRequestOnlyMockData,
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
+  toNetworkLogBodyPreview,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -58,12 +61,24 @@ function toRecordStringHeaders(headers: unknown): Record<string, string> {
   return out;
 }
 
+function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
+  requestBodyPreview?: string;
+  responseBodyPreview?: string;
+} {
+  const requestBodyPreview = toNetworkLogBodyPreview(requestBody);
+  const responseBodyPreview = toNetworkLogBodyPreview(responseBody);
+  return {
+    ...(requestBodyPreview ? { requestBodyPreview } : {}),
+    ...(responseBodyPreview ? { responseBodyPreview } : {}),
+  };
+}
+
 router.post('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
   const debugProxy = process.env.MOCKIFYER_PROXY_DEBUG === 'true';
 
-  if (config.provider !== 'redis') {
-    return res.status(400).json({ error: "Proxy requires dashboard provider 'redis'." });
+  if (!supportsDashboardProxy(config.provider)) {
+    return res.status(400).json({ error: "Proxy requires dashboard provider 'redis' or 'sqlite'." });
   }
 
   const {
@@ -112,11 +127,7 @@ router.post('/', async (req: Request, res: Response) => {
   const requestKey = generateRequestKey(storedRequest as any);
   const hash = sha256Hex(requestKey);
 
-  const store = new RedisMockStore({
-    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-    keyPrefix: config.keyPrefix,
-    mockDataPath,
-  });
+  const store = createDashboardMockStore(config, mockDataPath);
 
   const redisDisk = resolveRedisDiskMirrorOptions(config);
   let networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>> = null;
@@ -163,6 +174,7 @@ router.post('/', async (req: Request, res: Response) => {
           status: 412,
           requestHash: hash,
           requestHeaders: toRecordStringHeaders(headers),
+          ...proxyNetworkBodyFields(body),
           errorMessage: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
         });
         return res.status(412).json({
@@ -233,6 +245,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders,
+        ...proxyNetworkBodyFields(body, data),
       });
       return res.json({
         proxied: true,
@@ -320,6 +333,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders: mock.response?.headers as Record<string, string> | undefined,
+        ...proxyNetworkBodyFields(body, responseWithOverrides.data),
       });
       return res.json({
         proxied: false,
@@ -370,6 +384,7 @@ router.post('/', async (req: Request, res: Response) => {
         status: 412,
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
+        ...proxyNetworkBodyFields(body),
         errorMessage: 'Upstream calls are disabled for this scenario (offline mode).',
       });
       return res.status(412).json({
@@ -527,6 +542,7 @@ router.post('/', async (req: Request, res: Response) => {
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
       responseHeaders,
+      ...proxyNetworkBodyFields(body, clientResponse.data),
     });
     return res.json({
       proxied: true,
@@ -561,6 +577,7 @@ router.post('/', async (req: Request, res: Response) => {
       status: 500,
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
+      ...proxyNetworkBodyFields(body),
       errorMessage: error?.message ?? String(error),
     });
     return res.status(500).json({ error: 'Proxy failed', details: error.message });

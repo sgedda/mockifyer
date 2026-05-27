@@ -442,6 +442,14 @@ export default function Network({ scenario }: NetworkProps) {
                 {selected.responseBodyPreview && (
                   <PreviewBlock title="Response body" text={selected.responseBodyPreview} />
                 )}
+                {captureBodies &&
+                  !selected.requestBodyPreview &&
+                  !selected.responseBodyPreview && (
+                    <p className="text-[11px] text-muted-foreground">
+                      No body on this event. Run new traffic through the proxy after enabling Bodies (older log rows
+                      were recorded without previews).
+                    </p>
+                  )}
               </>
             )}
           </CardContent>

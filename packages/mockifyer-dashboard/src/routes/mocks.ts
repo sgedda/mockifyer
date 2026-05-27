@@ -21,6 +21,8 @@ import {
   isScenarioLockedFs,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   bulkCaptureResponsesForDomain,
@@ -190,7 +192,7 @@ async function loadRelatedMocksForEndpoint(params: {
   primary: MockData;
   scenario: string;
   mockDataPath: string;
-  provider: 'filesystem' | 'redis';
+  provider: 'filesystem' | 'sqlite' | 'redis';
   redisUrl?: string;
   keyPrefix?: string;
   excludeFilename: string;
@@ -198,12 +200,15 @@ async function loadRelatedMocksForEndpoint(params: {
   const endpointKey = getMockEndpointKey(params.primary);
   const related: MockData[] = [];
 
-  if (params.provider === 'redis') {
-    const store = new RedisMockStore({
-      redisUrl: params.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: params.keyPrefix,
-      mockDataPath: params.mockDataPath,
-    });
+  if (isCentralizedDashboardProvider(params.provider)) {
+    const store = createDashboardMockStore(
+      {
+        provider: params.provider,
+        redisUrl: params.redisUrl,
+        keyPrefix: params.keyPrefix,
+      },
+      params.mockDataPath
+    );
     try {
       const items = await store.list(params.scenario);
       for (const { hash, mockData } of items) {
@@ -279,12 +284,8 @@ router.get('/', async (req: Request, res: Response) => {
     const requestedScenario = req.query.scenario as string | undefined;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const items = await store.list(scenario);
         const files = items
@@ -484,12 +485,8 @@ router.get('/search', async (req: Request, res: Response) => {
       return res.json({ files: [], mockDataPath, scenario, query: '', truncated: false });
     }
 
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
 
       try {
         const items = await store.list(scenario);
@@ -694,17 +691,13 @@ router.get('/domain-path-rules', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const dataPath = mockDataPath || detectMockDataPath();
 
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       const scenario = resolveFilesystemScenario(req, dataPath);
       const rules = readDomainPathRulesFile(dataPath, scenario);
       return res.json({ scenario, rules });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath: dataPath,
-    });
+    const store = createDashboardMockStore(config, dataPath);
     try {
       const scenario = await resolveRedisScenario(req, store);
       const fromRedis = await store.getDomainPathRules(scenario);
@@ -743,7 +736,7 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
 
     let rules: DomainPathRulesMap;
 
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       rules = readDomainPathRulesFile(dataPath, scenarioName);
       const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '');
       if (normalizedRule === null) {
@@ -758,11 +751,7 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
       return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
     }
 
-    const store = new RedisMockStore({
-      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: config.keyPrefix,
-      mockDataPath: dataPath,
-    });
+    const store = createDashboardMockStore(config, dataPath);
     try {
       rules = await store.setDomainPathRule(scenarioName, domainPath.trim(), normalizedRule);
       writeDomainPathRulesFile(dataPath, scenarioName, rules);
@@ -790,15 +779,11 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
     let primaryMock: MockData | null = null;
     let scenario = '';
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
 
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         scenario = await resolveRedisScenario(req, store);
         primaryMock = (await store.getByHash(hash, scenario)) as MockData | null;
@@ -824,7 +809,7 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
           primary: primaryMock,
           scenario,
           mockDataPath,
-          provider: config.provider === 'redis' ? 'redis' : 'filesystem',
+          provider: isCentralizedDashboardProvider(config.provider) ? config.provider : 'filesystem',
           redisUrl: config.redisUrl,
           keyPrefix: config.keyPrefix,
           excludeFilename: relativeName,
@@ -868,15 +853,11 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
     const merge = req.body.merge === true;
     const incoming = req.body.responseFieldOverrides as MockResponseFieldOverride[] | null;
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
 
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
@@ -960,15 +941,11 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
       insertAt: body.insertAt as 'append' | 'prepend' | number | undefined,
     };
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
 
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
@@ -1029,14 +1006,10 @@ router.get('/*', async (req: Request, res: Response) => {
     const relativeName = req.params[0];
     const { mockDataPath, config } = getDashboardContext(req);
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         const data = await store.getByHash(hash, scenario);
@@ -1082,18 +1055,14 @@ router.put('/*', async (req: Request, res: Response) => {
     const relativeName = req.params[0];
     const { mockDataPath, config } = getDashboardContext(req);
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
       if (!req.body || req.body.responseData === undefined) {
         return res.status(400).json({ error: 'Request body must contain responseData field' });
       }
 
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         if (await store.isScenarioLocked(scenario)) {
@@ -1318,14 +1287,10 @@ router.delete('/*', async (req: Request, res: Response) => {
     const relativeName = req.params[0];
     const { mockDataPath, config } = getDashboardContext(req);
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         if (await store.isScenarioLocked(scenario)) {
@@ -1366,15 +1331,11 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
         ? req.body.clientId.trim()
         : undefined;
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
 
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
@@ -1431,7 +1392,7 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
     const relativeName = req.params[0];
     const { mockDataPath, config } = getDashboardContext(req);
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       // Redis provider keys are derived from request key hashes, so "duplicate" would overwrite the same key.
       return res.status(400).json({
         error: 'Duplicate is not supported for Redis-backed mocks (keys are deterministic per request).',

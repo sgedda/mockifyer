@@ -42,7 +42,7 @@ npx mockifyer-dashboard --base /dashboard
 - `--host <host>` - Host to bind to (default: localhost)
 - `--no-open` - Don't open browser automatically
 - `--base <path>` - Mount the app under this URL path (default: `/`). With the default **portable** UI build (`./`), the UI infers the mount for routing and `/api` from script URLs. If you built with a **fixed** `VITE_MOCKIFYER_DASHBOARD_BASE` (absolute path), that mount must match.
-- `--provider <provider>` - Storage backend: `filesystem` (default), `sqlite`, or `redis`. The HTTP proxy at `/api/proxy` requires `redis`.
+- `--provider <provider>` - Storage backend: `filesystem` (default), `sqlite`, or `redis`. The HTTP proxy at `/api/proxy` requires `redis` or `sqlite` (central store).
 - `--redis-url <url>` - Redis URL when using `--provider redis` (or `MOCKIFYER_REDIS_URL`).
 - `--key-prefix <prefix>` - Redis key prefix (or `MOCKIFYER_REDIS_KEY_PREFIX`; default `mockifyer:v1`).
 - `--redis-mirror-disk` - With `redis`: after recording from upstream, also write `mock-data/<scenario>/redis/<hash>.json` for version control (see env below).

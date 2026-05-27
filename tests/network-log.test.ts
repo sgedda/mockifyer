@@ -3,6 +3,7 @@ import {
   redactHeaders,
   sanitizeQueryString,
   sanitizeNetworkEvent,
+  toNetworkLogBodyPreview,
 } from '@sgedda/mockifyer-core';
 
 describe('network-log', () => {
@@ -36,6 +37,10 @@ describe('network-log', () => {
     expect(event.requestBodyPreview).toBeUndefined();
     expect(event.responseBodyPreview).toBeUndefined();
     expect(decodeURIComponent(event.query ?? '')).toContain('[REDACTED]');
+  });
+
+  it('toNetworkLogBodyPreview stringifies objects', () => {
+    expect(toNetworkLogBodyPreview({ ok: true })).toContain('ok');
   });
 
   it('sanitizeNetworkEvent keeps truncated bodies when captureBodies is on', () => {

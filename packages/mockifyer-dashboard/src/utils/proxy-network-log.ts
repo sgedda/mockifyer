@@ -62,6 +62,8 @@ export async function appendProxyNetworkEvent(
     requestHash?: string;
     requestHeaders?: Record<string, string>;
     responseHeaders?: Record<string, string>;
+    requestBodyPreview?: string;
+    responseBodyPreview?: string;
     errorMessage?: string;
     transport?: NetworkEventTransport;
   }
@@ -84,6 +86,8 @@ export async function appendProxyNetworkEvent(
       requestHash: partial.requestHash,
       requestHeaders: partial.requestHeaders,
       responseHeaders: partial.responseHeaders,
+      requestBodyPreview: partial.requestBodyPreview,
+      responseBodyPreview: partial.responseBodyPreview,
       errorMessage: partial.errorMessage,
     })
     .catch(() => undefined);

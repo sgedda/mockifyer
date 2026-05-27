@@ -45,7 +45,7 @@ export function createServer(
 ): express.Application {
   const app = express();
   app.locals.mockDataPath = mockDataPath;
-  app.locals.dashboardConfig = config;
+  app.locals.dashboardConfig = { ...config, mockDataPath };
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });

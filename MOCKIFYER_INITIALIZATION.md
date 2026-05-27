@@ -242,8 +242,11 @@ const result = await initMockifyerForReactNativeDashboard({
 
 ```bash
 MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis --path ./mock-data --port 3002
-# Optional: mirror recorded mocks to disk + read disk when Redis misses (git-friendly fixtures):
+# Local SQLite (no Redis): proxy, lanes, and network log use mockifyer-dashboard.db
+# mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002
+# Optional: mirror recorded mocks to disk + read disk when store misses (git-friendly fixtures):
 # mockifyer-dashboard --provider redis --path ./mock-data --redis-disk-dual --port 3002
+# mockifyer-dashboard --provider sqlite --path ./mock-data --redis-disk-dual --port 3002
 ```
 
 **Redis + disk (version control):** `--redis-disk-dual`, or `--redis-mirror-disk` / `--redis-disk-fallback`, or env `MOCKIFYER_REDIS_MIRROR_DISK` / `MOCKIFYER_REDIS_DISK_READ_FALLBACK`. Recorded mocks are written to `mock-data/<scenario>/redis/<hash>.json`; with fallback, the proxy checks Redis first, then JSON under that scenario folder. Details: **[mockifyer-dashboard README](./packages/mockifyer-dashboard/README.md)**.
