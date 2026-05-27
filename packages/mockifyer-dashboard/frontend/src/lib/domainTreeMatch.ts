@@ -1,6 +1,18 @@
 import type { MockFile } from '@/types'
 import type { DomainPathRulesMap } from '@/lib/api'
 
+/** Domain tree path for a mock endpoint (`host` + pathname segments), e.g. `127.0.0.1:4102/product`. */
+export function endpointToDomainPath(endpoint: string | null | undefined): string | null {
+  if (!endpoint?.trim()) return null
+  try {
+    const u = new URL(endpoint)
+    const segments = u.pathname.replace(/\/+/g, '/').replace(/^\/|\/$/g, '').split('/').filter(Boolean)
+    return [u.host, ...segments].join('/')
+  } catch {
+    return null
+  }
+}
+
 export function endpointMatchesDomainPath(endpoint: string | null | undefined, domainPath: string): boolean {
   if (!endpoint || !domainPath.trim()) return false
   const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '')

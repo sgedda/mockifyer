@@ -1,5 +1,6 @@
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
+import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
 
 /** Outbound hop id — propagated to downstream services and the dashboard. */
 export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
@@ -10,6 +11,17 @@ export const MOCKIFYER_PARENT_REQUEST_ID_HEADER = 'x-mockifyer-parent-request-id
 export interface RequestCorrelationContext {
   requestId: string;
   parentRequestId?: string;
+}
+
+/**
+ * Inbound HTTP context for service chains (Express middleware / Node http.Server).
+ * Outbound `fetch`/`axios` patched by Mockifyer reads this from AsyncLocalStorage — no manual headers in app code.
+ */
+export interface MockifyerHopContext {
+  /** `X-Mockifyer-Client-Id` on the inbound request (lane for downstream proxy hops). */
+  inboundClientId?: string;
+  /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
+  correlation?: RequestCorrelationContext;
 }
 
 export function newRequestCorrelationId(): string {
@@ -25,15 +37,29 @@ export function getOutboundMockifyerParentRequestIdHeader(headers: unknown): str
 }
 
 /**
- * Reads correlation from inbound HTTP headers (Express, fetch, axios).
+ * Reads inbound Mockifyer headers (lane + optional request correlation).
  */
-export function captureInboundRequestCorrelation(headers: unknown): RequestCorrelationContext | undefined {
+export function captureInboundMockifyerContext(headers: unknown): MockifyerHopContext | undefined {
+  const inboundClientId = getOutboundMockifyerClientIdHeader(headers);
   const requestId = getOutboundMockifyerRequestIdHeader(headers);
-  if (!requestId) {
+  const parentRequestId = getOutboundMockifyerParentRequestIdHeader(headers);
+  if (!inboundClientId && !requestId) {
     return undefined;
   }
-  const parentRequestId = getOutboundMockifyerParentRequestIdHeader(headers);
-  return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  const correlation = requestId
+    ? parentRequestId
+      ? { requestId, parentRequestId }
+      : { requestId }
+    : undefined;
+  return { inboundClientId, correlation };
+}
+
+/**
+ * Reads correlation from inbound HTTP headers (Express, fetch, axios).
+ * @deprecated Prefer {@link captureInboundMockifyerContext} for lane + correlation.
+ */
+export function captureInboundRequestCorrelation(headers: unknown): RequestCorrelationContext | undefined {
+  return captureInboundMockifyerContext(headers)?.correlation;
 }
 
 function setHeaderOnObject(headers: Record<string, unknown>, canonicalLower: string, value: string): void {
@@ -92,32 +118,48 @@ function removeOutboundHeader(headers: unknown, canonicalLower: string): unknown
 }
 
 /** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
-let correlationStorage: import('async_hooks').AsyncLocalStorage<RequestCorrelationContext> | undefined;
+let hopContextStorage: import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined;
 
-function getCorrelationStorage(): import('async_hooks').AsyncLocalStorage<RequestCorrelationContext> | undefined {
-  if (correlationStorage) {
-    return correlationStorage;
+function getHopContextStorage(): import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined {
+  if (hopContextStorage) {
+    return hopContextStorage;
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { AsyncLocalStorage } = require('async_hooks') as typeof import('async_hooks');
-    correlationStorage = new AsyncLocalStorage<RequestCorrelationContext>();
-    return correlationStorage;
+    hopContextStorage = new AsyncLocalStorage<MockifyerHopContext>();
+    return hopContextStorage;
   } catch {
     return undefined;
   }
 }
 
-export function getActiveRequestCorrelation(): RequestCorrelationContext | undefined {
-  return getCorrelationStorage()?.getStore();
+export function getActiveMockifyerHopContext(): MockifyerHopContext | undefined {
+  return getHopContextStorage()?.getStore();
 }
 
-export function runWithRequestCorrelation<T>(ctx: RequestCorrelationContext | undefined, fn: () => T): T {
-  const storage = getCorrelationStorage();
+/** Inbound lane id for the current async scope (from upstream `X-Mockifyer-Client-Id`). */
+export function getActiveInboundClientId(): string | undefined {
+  return getActiveMockifyerHopContext()?.inboundClientId;
+}
+
+export function getActiveRequestCorrelation(): RequestCorrelationContext | undefined {
+  return getActiveMockifyerHopContext()?.correlation;
+}
+
+export function runWithMockifyerHopContext<T>(ctx: MockifyerHopContext | undefined, fn: () => T): T {
+  const storage = getHopContextStorage();
   if (!ctx || !storage) {
     return fn();
   }
   return storage.run(ctx, fn);
+}
+
+export function runWithRequestCorrelation<T>(ctx: RequestCorrelationContext | undefined, fn: () => T): T {
+  if (!ctx) {
+    return fn();
+  }
+  return runWithMockifyerHopContext({ correlation: ctx }, fn);
 }
 
 /**
@@ -133,11 +175,20 @@ export function resolveOutboundParentRequestId(headers: unknown): string | undef
   return getOutboundMockifyerParentRequestIdHeader(headers);
 }
 
+function applyInboundClientIdToOutboundHeaders(config: { headers?: unknown }): void {
+  const lane =
+    getOutboundMockifyerClientIdHeader(config.headers) ?? getActiveInboundClientId();
+  if (lane) {
+    config.headers = setOutboundHeader(config.headers, MOCKIFYER_CLIENT_ID_HEADER, lane);
+  }
+}
+
 /**
  * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
  * Strips any stale `X-Mockifyer-Request-Id` on the config so each hop gets a fresh id.
  */
 export function applyOutboundRequestCorrelation(config: { headers?: unknown }): RequestCorrelationContext {
+  applyInboundClientIdToOutboundHeaders(config);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
   const requestId = newRequestCorrelationId();
 
@@ -171,9 +222,9 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
   ): boolean {
     if (event === 'request') {
       const req = args[0] as { headers?: unknown } | undefined;
-      const ctx = req?.headers ? captureInboundRequestCorrelation(req.headers) : undefined;
+      const ctx = req?.headers ? captureInboundMockifyerContext(req.headers) : undefined;
       if (ctx) {
-        return runWithRequestCorrelation(ctx, () => originalEmit.apply(this, [event, ...args]));
+        return runWithMockifyerHopContext(ctx, () => originalEmit.apply(this, [event, ...args]));
       }
     }
     return originalEmit.apply(this, [event, ...args]);
@@ -228,13 +279,13 @@ export function createMockifyerCorrelationMiddleware(): (
   next: () => void
 ) => void {
   return (req, _res, next) => {
-    const ctx = captureInboundRequestCorrelation({
+    const ctx = captureInboundMockifyerContext({
       get: (name: string) => req.header(name),
     });
     if (!ctx) {
       next();
       return;
     }
-    runWithRequestCorrelation(ctx, next);
+    runWithMockifyerHopContext(ctx, next);
   };
 }

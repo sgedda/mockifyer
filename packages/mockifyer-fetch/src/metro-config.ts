@@ -69,10 +69,33 @@ export interface MetroConfig {
  * Node.js built-in modules that need to be stubbed for React Native
  * Includes modules used by Mockifyer packages and their dependencies:
  * - fs, path: Used by FilesystemProvider
- * - assert: Used by @sinonjs/fake-timers
- * - util: Used by @sinonjs/fake-timers
+ * - assert, util: Used by @sinonjs/fake-timers
+ * - http, https, async_hooks: request-correlation (Node inbound capture; stubbed on RN)
+ * - crypto: crypto-digest optional Node fast path (pure JS fallback on RN)
  */
-const NODE_BUILTINS = ['fs', 'path', 'assert', 'util'] as const;
+const NODE_BUILTINS = [
+  'fs',
+  'path',
+  'assert',
+  'util',
+  'http',
+  'https',
+  'async_hooks',
+  'crypto',
+] as const;
+
+/**
+ * Optional React Native peer dependencies — stubbed when not installed so
+ * `tryGetClientIdFromLaunchArguments` and similar helpers no-op instead of crashing Metro.
+ */
+const OPTIONAL_RN_PEER_MODULES = ['react-native-launch-arguments'] as const;
+
+function isMockifyerStubbedModule(moduleName: string): boolean {
+  return (
+    (NODE_BUILTINS as readonly string[]).includes(moduleName) ||
+    (OPTIONAL_RN_PEER_MODULES as readonly string[]).includes(moduleName)
+  );
+}
 
 /**
  * Options for configuring Metro for Mockifyer
@@ -170,8 +193,8 @@ export function configureMetroForMockifyer(
     moduleName: string,
     platform: string | null
   ): { filePath: string; type: string } | null | undefined => {
-    // Handle Node.js built-in modules - return empty module stub
-    if (NODE_BUILTINS.includes(moduleName as any)) {
+    // Handle Node built-ins and optional RN peers - return empty module stub
+    if (isMockifyerStubbedModule(moduleName)) {
       return {
         filePath: emptyModulePath,
         type: 'sourceFile',

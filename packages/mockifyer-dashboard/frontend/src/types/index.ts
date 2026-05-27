@@ -47,6 +47,10 @@ export interface MockFile {
   alwaysRefreshFromLive?: boolean
   /** Request registered without a captured response yet. */
   responsePending?: boolean
+  /** Hop id from `X-Mockifyer-Request-Id` when recorded with correlation. */
+  requestId?: string | null
+  /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (upstream caller). */
+  parentRequestId?: string | null
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).

@@ -6,10 +6,12 @@ import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
+import { buildMockChainMaps, buildMockServiceChainsForDisplay } from '@/lib/mock-correlation-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
+import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2 } from 'lucide-react'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch } from 'lucide-react'
 
 interface MockListProps {
   mocks: MockFile[]
@@ -55,36 +57,71 @@ function MockListContent({
   const { toast } = useToast()
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
+  const [groupBy, setGroupBy] = useState<'folders' | 'domains' | 'chains'>('folders')
   const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
   const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
   const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
+  const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(false)
+  const didSuggestChainsView = useRef(false)
+  const [chainsOnly, setChainsOnly] = useState(false)
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
     return 'Unexpected error'
   }
 
-  useEffect(() => {
-    if (didAutoSwitchGroupBy.current) return
-    if (loading) return
-    if (!mocks || mocks.length === 0) return
+  const chainSource = searchQuery.trim() ? mocks : allMocks
 
-    // Heuristic: Redis-backed mocks are displayed as `redis/<hash>.json` filenames.
-    // In that case, the folder view is not very helpful; prefer grouping by request source (domain).
+  /** Redis-backed mocks with real URLs — use Domains (not redis/ filename folders) for Live/Replay. */
+  const preferDomainsGrouping = useMemo(() => {
+    if (!chainSource.length) return false
+    const redisLike = chainSource.every(
+      (m) => m.filename.startsWith('redis/') || !m.filename.includes('/')
+    )
+    const hasEndpoints = chainSource.some(
+      (m) => typeof m.endpoint === 'string' && /^https?:\/\//i.test(m.endpoint)
+    )
+    return redisLike && hasEndpoints
+  }, [chainSource])
+
+  const groupByModes = preferDomainsGrouping
+    ? (['domains', 'chains'] as const)
+    : (['folders', 'domains', 'chains'] as const)
+
+  useEffect(() => {
+    if (didAutoSwitchGroupBy.current || loading || !mocks?.length) return
+
+    const source = searchQuery.trim() ? mocks : allMocks
+    const chains = buildMockServiceChainsForDisplay(source)
+    if (chains.length > 0) {
+      setGroupBy('chains')
+      setServiceChainsCollapsed(false)
+      didAutoSwitchGroupBy.current = true
+      didSuggestChainsView.current = true
+      return
+    }
+
     const looksLikeRedisFilenames = mocks.every((m) => m.filename.startsWith('redis/'))
-    const hasAbsoluteEndpoints = mocks.some((m) => typeof m.endpoint === 'string' && /^https?:\/\//i.test(m.endpoint))
+    const hasAbsoluteEndpoints = mocks.some(
+      (m) => typeof m.endpoint === 'string' && /^https?:\/\//i.test(m.endpoint)
+    )
     if (looksLikeRedisFilenames && hasAbsoluteEndpoints) {
       setGroupBy('domains')
       didAutoSwitchGroupBy.current = true
     }
-  }, [loading, mocks])
+  }, [loading, mocks, allMocks, searchQuery])
 
   useEffect(() => {
-    if (groupBy !== 'domains' || !scenario) {
-      setDomainPathRules({})
+    if (preferDomainsGrouping && groupBy === 'folders') {
+      setGroupBy('domains')
+    }
+  }, [preferDomainsGrouping, groupBy])
+
+  useEffect(() => {
+    if (!scenario || (groupBy !== 'domains' && !preferDomainsGrouping)) {
+      if (groupBy !== 'domains') setDomainPathRules({})
       return
     }
     let cancelled = false
@@ -105,7 +142,7 @@ function MockListContent({
     return () => {
       cancelled = true
     }
-  }, [groupBy, scenario, mocks, toast])
+  }, [groupBy, scenario, mocks, toast, preferDomainsGrouping])
 
   async function handleDelete(filename: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -161,13 +198,37 @@ function MockListContent({
     })
   }
 
+  const chainMaps = useMemo(() => buildMockChainMaps(chainSource), [chainSource])
+
+  const serviceChains = useMemo(() => buildMockServiceChainsForDisplay(chainSource), [chainSource])
+
+  const displayedMocks = useMemo(() => {
+    if (!chainsOnly) return mocks
+    const inChain = new Set<string>()
+    for (const chain of serviceChains) {
+      for (const hop of chain.hops) inChain.add(hop.filename)
+    }
+    return mocks.filter((m) => inChain.has(m.filename))
+  }, [chainsOnly, mocks, serviceChains])
+
   const { folderTree, hasFolders } = useMemo(() => {
-    const tree = groupBy === 'domains' ? buildMockRequestTree(mocks) : buildMockFolderTree(mocks)
+    if (groupBy === 'chains') {
+      return { folderTree: buildMockFolderTree([]), hasFolders: false }
+    }
+    const tree =
+      groupBy === 'domains' ? buildMockRequestTree(displayedMocks) : buildMockFolderTree(displayedMocks)
     return {
       folderTree: tree,
       hasFolders: sortFolderEntries(tree).length > 0,
     }
-  }, [groupBy, mocks])
+  }, [groupBy, displayedMocks])
+
+  const chainsInView = useMemo(() => {
+    if (groupBy === 'chains') {
+      return buildMockServiceChainsForDisplay(displayedMocks)
+    }
+    return serviceChains
+  }, [groupBy, displayedMocks, serviceChains])
 
   const recentMocks = useMemo(() => {
     const source = searchQuery.trim() ? mocks : allMocks
@@ -194,15 +255,39 @@ function MockListContent({
           disabled={loading}
         />
         {!loading && mocks.length > 0 && (
+          <div
+            className="inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-border"
+            title={
+              preferDomainsGrouping
+                ? 'Group by service host (Live/Replay) or by call chain'
+                : 'Group by filename folder, service host, or call chain'
+            }
+          >
+            {groupByModes.map((mode) => (
+              <Button
+                key={mode}
+                type="button"
+                variant={groupBy === mode ? 'default' : 'ghost'}
+                size="sm"
+                className="h-9 rounded-none border-0 px-3 text-xs shadow-none gap-1"
+                onClick={() => setGroupBy(mode)}
+              >
+                {mode === 'folders' ? 'Folders' : mode === 'domains' ? 'Domains' : 'Chains'}
+              </Button>
+            ))}
+          </div>
+        )}
+        {!loading && serviceChains.length > 0 && (
           <Button
             type="button"
-            variant="outline"
+            variant={chainsOnly ? 'default' : 'outline'}
             size="sm"
-            className="shrink-0"
-            onClick={() => setGroupBy((g) => (g === 'folders' ? 'domains' : 'folders'))}
-            title={groupBy === 'folders' ? 'Group by domain + path' : 'Group by filename folders'}
+            className="shrink-0 gap-1.5"
+            onClick={() => setChainsOnly((v) => !v)}
+            title="Show only mocks that are part of a multi-service chain"
           >
-            Group: {groupBy === 'folders' ? 'Folders' : 'Domains'}
+            <GitBranch className="h-4 w-4" />
+            <span className="hidden sm:inline">Chains only</span>
           </Button>
         )}
         {!loading && hasFolders && mocks.length > 0 && (
@@ -274,6 +359,75 @@ function MockListContent({
           </CardContent>
         </Card>
       )}
+
+      {!loading && groupBy !== 'chains' && serviceChains.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setServiceChainsCollapsed((c) => !c)}
+              title={serviceChainsCollapsed ? 'Expand service chains' : 'Collapse service chains'}
+            >
+              <div className="flex items-center gap-2">
+                {serviceChainsCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
+                <div className="text-sm font-medium">
+                  Service chains{' '}
+                  <span className="text-xs text-muted-foreground">
+                    ({serviceChains.length} multi-hop{serviceChains.length === 1 ? '' : 's'})
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0 text-xs shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setGroupBy('chains')
+                }}
+              >
+                View all as chains →
+              </Button>
+            </button>
+            {!serviceChainsCollapsed && (
+              <div className="space-y-3">
+                {serviceChains.slice(0, 6).map((chain) => (
+                  <MockServiceChainCard
+                    key={chain.id}
+                    chain={chain}
+                    selectedFilename={selectedMock?.filename ?? null}
+                    onSelectHop={onSelectMock}
+                  />
+                ))}
+                {serviceChains.length > 6 && (
+                  <p className="text-xs text-muted-foreground">
+                    Showing 6 newest chains. Switch Group to <strong>Chains</strong> for the full list.
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading &&
+        groupBy !== 'chains' &&
+        serviceChains.length === 0 &&
+        chainSource.some((m) => m.parentRequestId) && (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              Some mocks have a parent request id but are not linked into a full chain yet. Re-run{' '}
+              <span className="font-mono text-foreground">dev:proxy:record</span> so each hop saves correlation ids
+              (same as the Network tab).
+            </CardContent>
+          </Card>
+        )}
 
       {!loading && similarBodyGroups.length > 0 && (
         <Card>
@@ -379,14 +533,48 @@ function MockListContent({
             <div className="text-center text-muted-foreground">Loading mocks...</div>
           </CardContent>
         </Card>
-      ) : mocks.length === 0 ? (
+      ) : groupBy === 'chains' && chainsInView.length === 0 ? (
+        <Card>
+          <CardContent className="p-6 space-y-2 text-center text-muted-foreground text-sm">
+            <p>No linked service chains in this scenario yet.</p>
+            <p>
+              Record via dashboard proxy (<span className="font-mono">dev:proxy:record</span>) and trigger a
+              multi-service flow — each hop should appear here in order, like the Network tab.
+            </p>
+          </CardContent>
+        </Card>
+      ) : displayedMocks.length === 0 ? (
         <Card>
           <CardContent className="p-6">
             <div className="text-center text-muted-foreground">
-              {searchQuery ? 'No mocks found matching your search' : 'No mocks found'}
+              {chainsOnly
+                ? 'No multi-service chains in the current list'
+                : searchQuery
+                  ? 'No mocks found matching your search'
+                  : 'No mocks found'}
             </div>
           </CardContent>
         </Card>
+      ) : groupBy === 'chains' ? (
+        <div className="relative space-y-4">
+          {(loading || loadingMock) && (
+            <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
+              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
+            </div>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Each card is one user request across services. Hop 1 is the entry service; later hops were triggered by
+            the previous service (parent request id).
+          </p>
+          {chainsInView.map((chain) => (
+            <MockServiceChainCard
+              key={chain.id}
+              chain={chain}
+              selectedFilename={selectedMock?.filename ?? null}
+              onSelectHop={onSelectMock}
+            />
+          ))}
+        </div>
       ) : (
         <div className="relative space-y-4">
           {(loading || loadingMock) && (
@@ -402,11 +590,12 @@ function MockListContent({
             onDelete={scenarioLocked ? undefined : handleDelete}
             onDuplicate={scenarioLocked ? undefined : handleDuplicate}
             deleting={deleting}
+            chainMaps={chainMaps}
             domainTreeMode={
               groupBy === 'domains' && scenario
                 ? {
                     scenario,
-                    catalogMocks: mocks,
+                    catalogMocks: displayedMocks,
                     pathRules: domainPathRules,
                     onPathRulesChange: setDomainPathRules,
                     onRefresh,

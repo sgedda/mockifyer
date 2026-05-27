@@ -27,6 +27,7 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   type MockifyerActivationMode,
+  getActiveInboundClientId,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
@@ -198,7 +199,10 @@ class MockifyerClass {
   }
 
   private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
-    const lane = this.config.clientId?.trim();
+    const lane =
+      getOutboundMockifyerClientIdHeader(config.headers)?.trim() ||
+      getActiveInboundClientId()?.trim() ||
+      this.config.clientId?.trim();
     if (lane && !getOutboundMockifyerClientIdHeader(config.headers)) {
       if (!config.headers) {
         config.headers = new AxiosHeaders();
@@ -515,6 +519,7 @@ class MockifyerClass {
     this.httpClient.interceptors.request.use(async (config) => {
       if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
+        applyOutboundRequestCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -715,6 +720,7 @@ class MockifyerClass {
     this.httpClient.interceptors.request.use(async (config) => {
       if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
+        applyOutboundRequestCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }

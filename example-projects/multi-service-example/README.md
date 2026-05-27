@@ -101,7 +101,26 @@ Redis-backed dashboard + proxy preset:
 npm run dashboard:redis
 ```
 
-Then set `MOCKIFYER_RUNTIME=proxy` and `MOCKIFYER_PROXY_URL=http://127.0.0.1:3002` on **web**, **gateway**, and **catalog** (`@sgedda/mockifyer-fetch`). **relay-axios-api** uses `@sgedda/mockifyer-axios`; this example falls back to **filesystem** for that service if you set `MOCKIFYER_RUNTIME=proxy` there (dashboard Redis proxy is not wired for axios in the bootstrap package).
+Then run **`npm run dev:proxy`** or **`npm run dev:proxy:record`** from this folder (sets `MOCKIFYER_RUNTIME=proxy` and `MOCKIFYER_PROXY_URL=http://127.0.0.1:3002` on **web**, **gateway**, **catalog**, and **relay** for the catalog hop). Inbound correlation is installed by **`setupMockifyer`** (`installNodeInboundRequestCorrelationCapture`); Express services also mount **`createMockifyerCorrelationMiddleware`** for clarity. Patched **`fetch`** propagates lane + parent request ids (no manual headers in routes). **relay-axios-api** uses **axios + filesystem** in `dev` / `dev:record`; in **`dev:proxy`** it uses **fetch + dashboard proxy** for `GET /product` only (`mockifyer-axios` has no `/api/proxy` client yet).
+
+### Dashboard network tab shows only one URL?
+
+The **Network** view lists **dashboard `/api/proxy` upstream URLs**, not every Express route.
+
+With **`MOCKIFYER_RUNTIME=proxy`**, the SDK routes through **`/api/proxy`** and does **not** replay from local `mock-data` first (that only applies to **`filesystem`** mode). If you still see **`[Mockifyer-Fetch] Mock hit: …mock-data/default/…`** on web, init likely **fell back to filesystem** (dashboard Redis health check failed — start `npm run redis:up` and `npm run dashboard:redis` before `dev:proxy`).
+
+A single Network row like **`http://127.0.0.1:4101/aggregate`** often means the chain **stopped at a mock hit inside the dashboard** (Redis/disk) for that URL, so relay/catalog never ran live.
+
+1. **Clear the aggregate mock** so the proxy calls the real gateway:
+   ```bash
+   npm run chain:clear-gateway-mock
+   ```
+   Or delete files under `mock-data/default/` whose names contain `4101` and `aggregate`. If you recorded into **Redis**, remove the same hash in the dashboard or use a fresh scenario/lane.
+2. **Select lane** `multi-service-demo` in the dashboard (matches `MOCKIFYER_CLIENT_ID` in workspace `dev` scripts).
+3. Run the chain again with **`npm run dev:proxy:record`** (Redis up, `npm run dashboard:redis`).
+4. After a **live** run you should see multiple proxy URLs, e.g. `…4101/aggregate`, `…4103/via-axios`, `…4102/product`, and `jsonplaceholder.typicode.com/…` (exact set depends on mocks still on disk/Redis).
+
+`setupMockifyer` also enables Node inbound capture; **`createMockifyerCorrelationMiddleware`** is optional on Express when auto-install is on.
 
 ## Layout
 
@@ -110,7 +129,7 @@ Then set `MOCKIFYER_RUNTIME=proxy` and `MOCKIFYER_PROXY_URL=http://127.0.0.1:300
 | `apps/web` | Next.js App Router + instrumentation |
 | `apps/web/lib/mockifyer-server-init.ts` | Same bootstrap as mock-bootstrap; imports Mockifyer via **relative** paths into `packages/*` so Turbopack can resolve them (hoisted `node_modules` alone is not enough from this app). |
 | `services/gateway-api` | Fetch-based hop → relay |
-| `services/relay-axios-api` | **Axios** + `@multi-service/mock-axios-bootstrap` → catalog |
+| `services/relay-axios-api` | **Axios** (filesystem) or **fetch proxy** (when `MOCKIFYER_RUNTIME=proxy`) → catalog |
 | `services/catalog-api` | Fetch-based hop → JSONPlaceholder |
 | `packages/mock-bootstrap` | Shared bootstrap for fetch (`tsx`) |
 | `packages/mock-axios-bootstrap` | Shared bootstrap for axios (`tsx`; filesystem / off only in this example) |

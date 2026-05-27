@@ -458,6 +458,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                           <MockEditor
                             variant="modal"
                             mock={selectedMock}
+                            allMocks={allMocks}
+                            onSelectRelatedMock={handleSelectMock}
                             scenario={scenario}
                             scenarioLocked={scenarioLocked}
                             onClose={() => setSelectedMock(null)}

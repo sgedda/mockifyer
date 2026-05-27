@@ -11,10 +11,15 @@ import {
 import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
+import {
+  collectUpstreamDomainPathsForReplay,
+  type MockChainMaps,
+} from '@/lib/mock-correlation-chains'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
 import {
   aggregateLiveApiState,
   countMocksInDomainFolder,
+  endpointMatchesDomainPath,
   findEffectiveDomainPathRule,
   type LiveApiAggregate,
 } from '@/lib/domainTreeMatch'
@@ -110,6 +115,8 @@ interface MockFolderTreeProps {
   deleting: string | null
   /** When set, folder headers show domain bulk actions for this path prefix. */
   domainTreeMode?: DomainTreeModeProps
+  /** For multi-service hop badges and indentation. */
+  chainMaps?: MockChainMaps
 }
 
 export function MockFolderTree({
@@ -121,6 +128,7 @@ export function MockFolderTree({
   onDuplicate,
   deleting,
   domainTreeMode,
+  chainMaps,
 }: MockFolderTreeProps) {
   const folders = sortFolderEntries(node)
   const sortedFiles = [...node.files].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -136,6 +144,7 @@ export function MockFolderTree({
           onDelete={onDelete}
           onDuplicate={onDuplicate}
           deleting={deleting}
+          chainMaps={chainMaps}
         />
       ))}
       {folders.map(({ name, child }) => (
@@ -156,6 +165,7 @@ export function MockFolderTree({
             onDuplicate={onDuplicate}
             deleting={deleting}
             domainTreeMode={domainTreeMode}
+            chainMaps={chainMaps}
           />
         </FolderSection>
       ))}
@@ -273,7 +283,52 @@ function FolderSection({
     if (pendingCount > 0) {
       await handleBulkCapture()
     }
-    await handleLiveToggle(false)
+
+    const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
+    const domainMocks = domainTreeMode.catalogMocks.filter((m) =>
+      endpointMatchesDomainPath(m.endpoint ?? null, normalizedPath)
+    )
+    const upstreamDomains = collectUpstreamDomainPathsForReplay(
+      domainMocks,
+      domainTreeMode.catalogMocks
+    ).filter((path) => path !== normalizedPath)
+
+    try {
+      setBusy('mock')
+      for (const upstream of upstreamDomains) {
+        await bulkSetLiveApiForDomain({
+          scenario: domainTreeMode.scenario,
+          domainPath: upstream,
+          useLiveApi: true,
+        })
+      }
+      const result = await bulkSetLiveApiForDomain({
+        scenario: domainTreeMode.scenario,
+        domainPath,
+        useLiveApi: false,
+      })
+      const upstreamHint =
+        upstreamDomains.length > 0
+          ? `Set ${upstreamDomains.length} upstream hop${upstreamDomains.length === 1 ? '' : 's'} to Live so traffic reaches this service. `
+          : ''
+      const pendingHint =
+        result.skippedPending > 0
+          ? `Updated ${result.updated}; ${result.skippedPending} pending (capture responses first).`
+          : `Updated ${result.updated} mock(s) under ${domainPath}.`
+      toast({
+        title: 'Replay enabled',
+        description: `${upstreamHint}${pendingHint}`,
+      })
+      domainTreeMode.onRefresh()
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Bulk update failed',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(null)
+    }
   }
 
   async function handleTrafficModeChange(mode: 'live' | 'replay') {

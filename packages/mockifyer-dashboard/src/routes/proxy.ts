@@ -26,6 +26,7 @@ import {
 import * as crypto from 'crypto';
 import {
   appendProxyNetworkEvent,
+  applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
   closeProxyNetworkLog,
   openProxyNetworkLog,
@@ -429,6 +430,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
+      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
@@ -493,6 +495,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
+        applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, inboundCorrelation);
         await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (redisDisk.mirrorWrites) {
           try {

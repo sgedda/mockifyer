@@ -120,7 +120,7 @@ function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): v
     try {
       // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
+      const mod = require(/* webpackIgnore: true */ 'react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
       const LaunchArguments = mod.LaunchArguments;
       const raw =
         LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;

@@ -3,6 +3,7 @@ import {
   HTTPRequestConfig,
   HTTPResponse,
   logger,
+  getActiveInboundClientId,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
@@ -105,7 +106,15 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.deviceId = config?.deviceId;
   }
 
-  private resolvedClientLane(): string | undefined {
+  private resolvedClientLane(hopHeaders?: unknown): string | undefined {
+    const fromHop = getOutboundMockifyerClientIdHeader(hopHeaders);
+    if (fromHop) {
+      return fromHop;
+    }
+    const fromInbound = getActiveInboundClientId();
+    if (fromInbound) {
+      return fromInbound;
+    }
     if (this.getClientId) {
       const v = this.getClientId();
       if (v != null && String(v).trim() !== '') {
@@ -163,7 +172,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       console.warn('[FetchHTTPClient] _originalFetch not set! This may cause infinite loops if global fetch is patched.');
     }
     
-    const lane = this.resolvedClientLane();
+    const lane = this.resolvedClientLane(config.headers);
     const bypassMockifyer =
       (config as any).__mockifyer_bypass === true || (config as any).__mockifyer_skip_save === true;
     const hopRequestId = (config as any).__mockifyer_requestId as string | undefined;

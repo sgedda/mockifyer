@@ -14,7 +14,7 @@ import {
   initMockifyerForReactNativeDashboard,
   setupMockifyerForReactNative,
   type SetupMockifyerForReactNativeResult,
-} from '@sgedda/mockifyer-fetch';
+} from '@sgedda/mockifyer-fetch/react-native';
 import type { MockifyerRuntimeMode } from '@sgedda/mockifyer-core';
 import { Platform } from 'react-native';
 
@@ -143,7 +143,7 @@ export async function initializeMockifyer(): Promise<SetupMockifyerForReactNativ
       proxyRecordOnMiss,
       proxyRecordResponses,
       runtimeMode,
-      config: __DEV__ ? { ...devSharedConfig(), databaseProvider: { type: 'memory' } } : {},
+      config: __DEV__ ? { ...devSharedConfig(), databaseProvider: { type: 'memory' }, clientId: 'react-native-expo-clerk-example', } : {},
     });
   }
 

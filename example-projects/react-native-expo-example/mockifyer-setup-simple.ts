@@ -14,7 +14,7 @@ import {
   initMockifyerForReactNativeDashboard,
   setupMockifyerForReactNative,
   type SetupMockifyerForReactNativeResult,
-} from '@sgedda/mockifyer-fetch';
+} from '@sgedda/mockifyer-fetch/react-native';
 import type { MockifyerRuntimeMode } from '@sgedda/mockifyer-core';
 import { Platform } from 'react-native';
 

@@ -76,17 +76,22 @@ export default function Network({ scenario }: NetworkProps) {
         setEphemeral(data.ephemeral)
         setLogEnabled(data.networkLogConfig.enabled)
         setCaptureBodies(data.networkLogConfig.captureBodies)
-        if (since && data.events.length > 0) {
-          setEvents((prev) => {
-            const ids = new Set(prev.map((e) => e.id))
-            const merged = [...data.events.filter((e) => !ids.has(e.id)), ...prev]
-            return merged.slice(0, 500)
-          })
+        if (since) {
+          // Incremental poll: only merge new rows — empty response must not wipe the list.
+          if (data.events.length > 0) {
+            setEvents((prev) => {
+              const ids = new Set(prev.map((e) => e.id))
+              const merged = [...data.events.filter((e) => !ids.has(e.id)), ...prev]
+              return merged.slice(0, 500)
+            })
+            const newest = data.events[0]?.timestamp
+            if (newest) sinceRef.current = newest
+          }
         } else {
           setEvents(data.events)
+          const newest = data.events[0]?.timestamp
+          if (newest) sinceRef.current = newest
         }
-        const newest = data.events[0]?.timestamp
-        if (newest) sinceRef.current = newest
       } catch (error: unknown) {
         toast({
           title: 'Error',
@@ -318,7 +323,9 @@ export default function Network({ scenario }: NetworkProps) {
               <p className="p-4 text-sm text-muted-foreground">Loading…</p>
             ) : filtered.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">
-                No events yet. Send traffic through the dashboard proxy or an SDK with network logging.
+                {events.length > 0 && chainOnly
+                  ? 'No chained requests match “Chains only”. Turn off the filter or run a multi-service flow so hops carry correlation ids.'
+                  : 'No events yet. Send traffic through the dashboard proxy or an SDK with network logging.'}
               </p>
             ) : (
               <div className="max-h-[32rem] overflow-auto divide-y divide-border">
