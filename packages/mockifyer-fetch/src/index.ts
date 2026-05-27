@@ -1818,7 +1818,10 @@ export function initMockifyerForLocalFilesystem(
 }
 
 /** Shared with {@link setupMockifyerForReactNative} strict-proxy branching. */
-export { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
+export {
+  canUseDashboardRedisProxy,
+  canUseDashboardCentralProxy,
+} from './utils/dashboard-redis-health';
 
 // Re-export types from core
 export * from '@sgedda/mockifyer-core';

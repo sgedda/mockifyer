@@ -7,6 +7,8 @@ import {
   SCENARIO_META_FILENAME,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   applyScenarioImport,
@@ -68,12 +70,8 @@ router.get('/', async (req: Request, res: Response) => {
     let currentScenario = getCurrentScenario(mockDataPath);
     let scenarios = listScenarios(mockDataPath);
 
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         currentScenario = await store.getActiveScenario();
         const redisScenarios = await store.listScenarios();
@@ -124,12 +122,8 @@ router.post('/set', async (req: Request, res: Response) => {
 
     // Discover scenarios (filesystem + optionally Redis)
     let scenarios = listScenarios(mockDataPath);
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
@@ -139,7 +133,7 @@ router.post('/set', async (req: Request, res: Response) => {
     }
 
     // Filesystem/sqlite: create missing scenario folders on switch (mirror Redis switch-first UX).
-    if (config.provider !== 'redis' && !scenarios.includes(sanitized)) {
+    if (!isCentralizedDashboardProvider(config.provider) && !scenarios.includes(sanitized)) {
       createScenario(mockDataPath, sanitized);
       scenarios = listScenarios(mockDataPath);
     }
@@ -147,12 +141,8 @@ router.post('/set', async (req: Request, res: Response) => {
     // Save scenario config:
     // - filesystem/sqlite: local file
     // - redis: centralized key in Redis
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         await store.setActiveScenario(sanitized);
       } finally {
@@ -199,12 +189,8 @@ router.post('/create', async (req: Request, res: Response) => {
 
     // Check if scenario already exists (filesystem + optionally Redis)
     let scenarios = listScenarios(mockDataPath);
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
@@ -226,18 +212,14 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Filesystem / sqlite: create on-disk scenario folder. Redis: scenarios materialize on first write — do not mkdir mockDataPath.
-    if (config.provider !== 'redis') {
+    if (!isCentralizedDashboardProvider(config.provider)) {
       createScenario(mockDataPath, sanitized);
     }
 
     // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
     if (deriveFromScenario) {
-      if (config.provider === 'redis') {
-        const store = new RedisMockStore({
-          redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-          keyPrefix: config.keyPrefix,
-          mockDataPath,
-        });
+      if (isCentralizedDashboardProvider(config.provider)) {
+        const store = createDashboardMockStore(config, mockDataPath);
         try {
           const available = await store.listScenarios();
           if (!available.includes(deriveFromScenario)) {
@@ -265,12 +247,8 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Also set the scenario immediately, provider-aware.
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         await store.setActiveScenario(sanitized);
       } finally {
@@ -304,12 +282,8 @@ router.post('/lock', async (req: Request, res: Response) => {
     const isLocked = locked === true || locked === 'true';
 
     let scenarios = listScenarios(mockDataPath);
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
@@ -377,21 +351,18 @@ router.get('/export', async (req: Request, res: Response) => {
     }
     const effectiveScenario = scenario ?? getCurrentScenario(mockDataPath);
 
-    if (config.provider === 'redis') {
+    if (isCentralizedDashboardProvider(config.provider)) {
       const bundle = await buildRedisScenarioBundle(
         mockDataPath,
         effectiveScenario,
         config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        config.keyPrefix
+        config.keyPrefix,
+        config.provider
       );
       return res.json(bundle);
     }
 
-    const bundle = buildFilesystemScenarioBundle(
-      mockDataPath,
-      effectiveScenario,
-      config.provider === 'sqlite' ? 'sqlite' : 'filesystem'
-    );
+    const bundle = buildFilesystemScenarioBundle(mockDataPath, effectiveScenario, 'filesystem');
     return res.json(bundle);
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Export - Error:', error);
@@ -412,12 +383,8 @@ router.post('/import', async (req: Request, res: Response) => {
     const targetScenario = targetParsed.value;
 
     let scenarios = listScenarios(mockDataPath);
-    if (config.provider === 'redis') {
-      const store = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
@@ -427,7 +394,7 @@ router.post('/import', async (req: Request, res: Response) => {
     }
 
     if (!scenarios.includes(targetScenario)) {
-      if (config.provider !== 'redis') {
+      if (!isCentralizedDashboardProvider(config.provider)) {
         createScenario(mockDataPath, targetScenario);
       }
       scenarios = Array.from(new Set([...scenarios, targetScenario])).sort();
@@ -448,12 +415,8 @@ router.post('/import', async (req: Request, res: Response) => {
     });
 
     let scenariosOut = listScenarios(mockDataPath);
-    if (config.provider === 'redis') {
-      const storeAfter = new RedisMockStore({
-        redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-        keyPrefix: config.keyPrefix,
-        mockDataPath,
-      });
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const storeAfter = createDashboardMockStore(config, mockDataPath);
       try {
         const redisScenarios = await storeAfter.listScenarios();
         scenariosOut = Array.from(new Set([...scenariosOut, ...redisScenarios])).sort();

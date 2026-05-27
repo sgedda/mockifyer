@@ -9,7 +9,8 @@ import {
 import { getAllJsonFiles } from './json-files';
 import { endpointMatchesDomainPath } from './domain-tree-match';
 import { fetchUpstreamResponse } from './capture-upstream-response';
-import { RedisMockStore } from './redis-mock-store';
+import { createDashboardMockStore } from './create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from './dashboard-provider';
 
 export interface BulkLiveApiResult {
   ok: true;
@@ -64,12 +65,11 @@ export async function bulkSetLiveApiForDomain(opts: {
   let updated = 0;
   let skippedPending = 0;
 
-  if (opts.provider === 'redis') {
-    const store = new RedisMockStore({
-      redisUrl: opts.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: opts.keyPrefix,
-      mockDataPath: opts.mockDataPath,
-    });
+  if (isCentralizedDashboardProvider(opts.provider)) {
+    const store = createDashboardMockStore(
+      { provider: opts.provider, redisUrl: opts.redisUrl, keyPrefix: opts.keyPrefix },
+      opts.mockDataPath
+    );
     try {
       const items = await store.list(scenarioName);
       for (const { hash, mockData } of items) {
@@ -166,12 +166,11 @@ export async function bulkCaptureResponsesForDomain(opts: {
     }
   }
 
-  if (opts.provider === 'redis') {
-    const store = new RedisMockStore({
-      redisUrl: opts.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
-      keyPrefix: opts.keyPrefix,
-      mockDataPath: opts.mockDataPath,
-    });
+  if (isCentralizedDashboardProvider(opts.provider)) {
+    const store = createDashboardMockStore(
+      { provider: opts.provider, redisUrl: opts.redisUrl, keyPrefix: opts.keyPrefix },
+      opts.mockDataPath
+    );
     try {
       const items = await store.list(scenarioName);
       for (const { hash, mockData } of items) {
