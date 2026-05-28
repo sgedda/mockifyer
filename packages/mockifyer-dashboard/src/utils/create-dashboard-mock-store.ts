@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import type { DashboardContextConfig } from './dashboard-context';
 import { RedisMockStore, type RedisMockStoreConfig } from './redis-mock-store';
 import { isCentralizedDashboardProvider } from './dashboard-provider';
@@ -18,6 +19,13 @@ export function resolveDashboardSqlitePath(mockDataPath: string, config: Dashboa
   return path.resolve(mockDataPath, 'mockifyer-dashboard.db');
 }
 
+function ensureDashboardSqliteDirectory(sqlitePath: string): void {
+  const sqliteDir = path.dirname(sqlitePath);
+  if (!fs.existsSync(sqliteDir)) {
+    fs.mkdirSync(sqliteDir, { recursive: true });
+  }
+}
+
 export function createDashboardMockStore(
   config: DashboardContextConfig,
   mockDataPath: string
@@ -32,9 +40,11 @@ export function createDashboardMockStore(
   };
 
   if (config.provider === 'sqlite') {
+    const sqlitePath = resolveDashboardSqlitePath(mockDataPath, config);
+    ensureDashboardSqliteDirectory(sqlitePath);
     return new RedisMockStore({
       ...base,
-      sqlitePath: resolveDashboardSqlitePath(mockDataPath, config),
+      sqlitePath,
     });
   }
 
