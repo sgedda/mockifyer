@@ -443,21 +443,36 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    const shouldAttemptStoreWrite = (mock && shouldPersistLiveCapture) || effectiveRecord === true;
+    const scenarioLocked = shouldAttemptStoreWrite ? await store.isScenarioLocked(resolvedScenarioName) : false;
+    let storedMockForClient: MockData | null = null;
+    let persistedLiveCapture = false;
+
     if (mock && shouldPersistLiveCapture) {
-      const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
-      await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
-      mock = updatedMock;
-      if (redisDisk.mirrorWrites) {
-        try {
-          mirrorRecordedMockToDisk({
-            mockDataPath,
-            scenarioName: resolvedScenarioName,
-            hash,
-            mockData: updatedMock as any,
-          });
-        } catch (mirrorErr: any) {
-          console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+      if (scenarioLocked) {
+        if (debugProxy) {
+          console.log(
+            `[ProxyRoute] skip live refresh persist (scenario locked): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+          );
+        }
+      } else {
+        const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
+        applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
+        await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
+        mock = updatedMock;
+        storedMockForClient = updatedMock;
+        persistedLiveCapture = true;
+        if (redisDisk.mirrorWrites) {
+          try {
+            mirrorRecordedMockToDisk({
+              mockDataPath,
+              scenarioName: resolvedScenarioName,
+              hash,
+              mockData: updatedMock as any,
+            });
+          } catch (mirrorErr: any) {
+            console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
+          }
         }
       }
     }
@@ -466,9 +481,7 @@ router.post('/', async (req: Request, res: Response) => {
       ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
       : response;
 
-    let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
-      const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
+    if (effectiveRecord === true && !persistedLiveCapture) {
       if (scenarioLocked) {
         if (debugProxy) {
           console.log(
@@ -529,7 +542,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (debugProxy) {
       console.log(
-        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
+        `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${persistedLiveCapture || storedMockForClient !== null}`
       );
     }
     await appendProxyNetworkEvent(networkLogCtx, {
@@ -552,11 +565,11 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response: clientResponse,
-      recordedToStore: effectiveRecord === true,
-      ...(effectiveRecord === true && storedMockForClient
+      recordedToStore: persistedLiveCapture || storedMockForClient !== null,
+      ...(storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),
-      ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),
+      ...(persistedLiveCapture ? { refreshedStoredMock: true } : {}),
     });
   } catch (error: any) {
     console.error('[ProxyRoute] Error:', error);
