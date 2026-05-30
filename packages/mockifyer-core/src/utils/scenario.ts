@@ -199,6 +199,14 @@ export function listScenarios(mockDataPath: string): string[] {
     return [DEFAULT_SCENARIO];
   }
 
+  try {
+    if (!fs.statSync(mockDataPath).isDirectory()) {
+      return [DEFAULT_SCENARIO];
+    }
+  } catch {
+    return [DEFAULT_SCENARIO];
+  }
+
   const items = fs.readdirSync(mockDataPath, { withFileTypes: true });
   const scenarios: string[] = [];
   
