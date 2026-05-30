@@ -8,6 +8,7 @@ import {
 } from '@sgedda/mockifyer-core';
 import type { DashboardContextConfig } from './dashboard-context';
 import { resolveDashboardSqlitePath } from './create-dashboard-mock-store';
+import { openDashboardSqliteDatabase } from './sqlite-database';
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -292,18 +293,11 @@ class SqliteNetworkLogStore implements NetworkLogStore {
   private readonly ttl = ttlSec();
 
   constructor(dbPath: string, keyPrefix?: string) {
-    let Database: any;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      Database = require(/* webpackIgnore: true */ 'better-sqlite3');
-    } catch {
-      throw new Error(
-        "Network log SQLite store requires optional dependency 'better-sqlite3'. Install it in the dashboard package."
-      );
-    }
     this.keyPrefix = keyPrefix || 'mockifyer:v1';
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    this.db = openDashboardSqliteDatabase(
+      dbPath,
+      "Network log SQLite store requires optional dependency 'better-sqlite3'. Install it in the dashboard package."
+    );
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS network_log_config (
         scenario TEXT PRIMARY KEY NOT NULL,

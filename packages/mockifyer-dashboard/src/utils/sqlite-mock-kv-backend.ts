@@ -1,15 +1,5 @@
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
-
-function requireBetterSqlite3(): any {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require(/* webpackIgnore: true */ 'better-sqlite3');
-  } catch {
-    throw new Error(
-      "SQLite mock store requires optional dependency 'better-sqlite3'. Install: npm install better-sqlite3"
-    );
-  }
-}
+import { openDashboardSqliteDatabase } from './sqlite-database';
 
 function globToLike(pattern: string): string {
   return pattern.replace(/[\\_%]/g, (c) => `\\${c}`).replace(/\*/g, '%');
@@ -70,9 +60,10 @@ export class SqliteMockKvBackend implements MockKvBackend {
   private readonly db: any;
 
   constructor(dbPath: string) {
-    const Database = requireBetterSqlite3();
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    this.db = openDashboardSqliteDatabase(
+      dbPath,
+      "SQLite mock store requires optional dependency 'better-sqlite3'. Install: npm install better-sqlite3"
+    );
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS kv (
         key TEXT PRIMARY KEY NOT NULL,
