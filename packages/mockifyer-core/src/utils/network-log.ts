@@ -59,6 +59,26 @@ const DEFAULT_REDACT_HEADER_NAMES = [
 ];
 
 const SENSITIVE_QUERY_PARAMS = ['api_key', 'apikey', 'token', 'access_token', 'password', 'secret'];
+const SENSITIVE_BODY_FIELD_NAMES = new Set([
+  ...DEFAULT_REDACT_HEADER_NAMES,
+  ...SENSITIVE_QUERY_PARAMS,
+  'access-token',
+  'auth',
+  'auth_token',
+  'client_secret',
+  'credential',
+  'credentials',
+  'id_token',
+  'jwt',
+  'passcode',
+  'refresh_token',
+  'session',
+  'session_id',
+]);
+const SENSITIVE_BODY_FIELD_COMPACT_NAMES = new Set(
+  [...SENSITIVE_BODY_FIELD_NAMES].map((name) => name.replace(/[-_\s]/g, ''))
+);
+const REDACTED_VALUE = '[REDACTED]';
 
 export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
@@ -88,6 +108,72 @@ export function redactHeaders(
     out[k] = redact.has(k.toLowerCase()) ? '[REDACTED]' : String(v);
   }
   return out;
+}
+
+function isSensitiveBodyFieldName(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  if (SENSITIVE_BODY_FIELD_NAMES.has(normalized)) return true;
+  const compact = normalized.replace(/[-_\s]/g, '');
+  return SENSITIVE_BODY_FIELD_COMPACT_NAMES.has(compact);
+}
+
+function redactJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactJsonValue);
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    out[key] = isSensitiveBodyFieldName(key) ? REDACTED_VALUE : redactJsonValue(child);
+  }
+  return out;
+}
+
+function redactUrlEncodedBodyPreview(preview: string): string | undefined {
+  if (!preview.includes('=')) return undefined;
+  try {
+    const params = new URLSearchParams(preview);
+    let changed = false;
+    let sawPair = false;
+    for (const key of [...params.keys()]) {
+      sawPair = true;
+      if (isSensitiveBodyFieldName(key)) {
+        params.set(key, REDACTED_VALUE);
+        changed = true;
+      }
+    }
+    return sawPair && changed ? params.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function redactRawBodyPreview(preview: string): string {
+  const sensitiveKeys = [...new Set([...SENSITIVE_BODY_FIELD_NAMES, ...SENSITIVE_BODY_FIELD_COMPACT_NAMES])]
+    .map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const jsonLike = new RegExp(`("?(?:${sensitiveKeys})"?\\s*:\\s*)("([^"\\\\]|\\\\.)*"|[^,}\\]\\s]+)`, 'gi');
+  const formLike = new RegExp(`\\b(${sensitiveKeys})=([^&\\s]+)`, 'gi');
+  return preview
+    .replace(jsonLike, (_match, prefix) => `${prefix}"${REDACTED_VALUE}"`)
+    .replace(formLike, (_match, key) => `${key}=${REDACTED_VALUE}`);
+}
+
+function redactBodyPreview(preview: string | undefined): string | undefined {
+  if (preview === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(preview) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return JSON.stringify(redactJsonValue(parsed));
+    }
+  } catch {
+    // Fall through to urlencoded/raw best-effort redaction.
+  }
+
+  return redactUrlEncodedBodyPreview(preview) ?? redactRawBodyPreview(preview);
 }
 
 /** Mask common secret query params in the query string. */
@@ -170,8 +256,8 @@ export function sanitizeNetworkEvent(
     query: input.query ?? query,
     requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
     responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
-    requestBodyPreview: captureBodies ? truncatePreview(input.requestBodyPreview, maxBytes) : undefined,
-    responseBodyPreview: captureBodies ? truncatePreview(input.responseBodyPreview, maxBytes) : undefined,
+    requestBodyPreview: captureBodies ? truncatePreview(redactBodyPreview(input.requestBodyPreview), maxBytes) : undefined,
+    responseBodyPreview: captureBodies ? truncatePreview(redactBodyPreview(input.responseBodyPreview), maxBytes) : undefined,
   };
 
   const serialized = JSON.stringify(event);

@@ -1,4 +1,5 @@
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
+import { configureDashboardSqliteDatabase, ensureSqliteDatabaseDirectory } from './dashboard-sqlite';
 
 function requireBetterSqlite3(): any {
   try {
@@ -71,8 +72,9 @@ export class SqliteMockKvBackend implements MockKvBackend {
 
   constructor(dbPath: string) {
     const Database = requireBetterSqlite3();
+    ensureSqliteDatabaseDirectory(dbPath);
     this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    configureDashboardSqliteDatabase(this.db);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS kv (
         key TEXT PRIMARY KEY NOT NULL,
