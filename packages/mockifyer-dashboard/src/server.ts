@@ -15,6 +15,10 @@ import type {
   RedisDiskMirrorConfigInput,
   RedisDiskMirrorResolved,
 } from './utils/dashboard-context';
+import {
+  resolveDashboardDataRoot,
+  resolveDashboardSqlitePath,
+} from './utils/sqlite-path';
 
 export type { DashboardContextConfig, RedisDiskMirrorConfigInput, RedisDiskMirrorResolved };
 
@@ -44,11 +48,22 @@ export function createServer(
   config: DashboardContextConfig = { provider: 'filesystem' }
 ): express.Application {
   const app = express();
-  app.locals.mockDataPath = mockDataPath;
-  app.locals.dashboardConfig = { ...config, mockDataPath };
+  const effectiveMockDataPath =
+    config.provider === 'sqlite' ? resolveDashboardDataRoot(mockDataPath) : mockDataPath;
+  const effectiveConfig: DashboardContextConfig =
+    config.provider === 'sqlite'
+      ? {
+          ...config,
+          sqlitePath: resolveDashboardSqlitePath(mockDataPath, config),
+          mockDataPath: effectiveMockDataPath,
+        }
+      : { ...config, mockDataPath: effectiveMockDataPath };
+
+  app.locals.mockDataPath = effectiveMockDataPath;
+  app.locals.dashboardConfig = effectiveConfig;
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
-  initializeDateManipulation({ mockDataPath });
+  initializeDateManipulation({ mockDataPath: effectiveMockDataPath });
 
   // Middleware
   const jsonBodyLimit = getDashboardJsonBodyLimit();

@@ -17,8 +17,10 @@ export interface RedisDiskMirrorResolved {
 
 export interface DashboardContextConfig {
   provider: 'filesystem' | 'sqlite' | 'redis';
-  /** Set by {@link createServer} — used for SQLite paths and filesystem fallbacks. */
+  /** Set by {@link createServer} — used for filesystem fallbacks and disk mirrors. */
   mockDataPath?: string;
+  /** Set by {@link createServer} when SQLite uses an explicit DB file. */
+  sqlitePath?: string;
   redisUrl?: string;
   keyPrefix?: string;
   /**

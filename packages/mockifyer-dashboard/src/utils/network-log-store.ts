@@ -7,7 +7,10 @@ import {
   type NetworkEvent,
 } from '@sgedda/mockifyer-core';
 import type { DashboardContextConfig } from './dashboard-context';
-import { resolveDashboardSqlitePath } from './create-dashboard-mock-store';
+import {
+  ensureSqliteDatabaseDirectory,
+  resolveDashboardSqlitePath,
+} from './sqlite-path';
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -302,6 +305,7 @@ class SqliteNetworkLogStore implements NetworkLogStore {
       );
     }
     this.keyPrefix = keyPrefix || 'mockifyer:v1';
+    ensureSqliteDatabaseDirectory(dbPath);
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(`
