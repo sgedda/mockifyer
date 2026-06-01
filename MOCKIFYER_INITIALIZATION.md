@@ -127,10 +127,24 @@ setupMockifyer({
 
 ## Axios (`@sgedda/mockifyer-axios`)
 
+### `initMockifyerForDashboardProxy(options)` (**async**)
+
+> **Use when:** Same as the fetch preset — outbound HTTP via **mockifyer-dashboard** (`POST /api/proxy`) when the central store is healthy.  
+> **Why:** Axios apps get the same health-check fallback and proxy envelope as **`@sgedda/mockifyer-fetch`**.
+
+```typescript
+import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-axios';
+
+await initMockifyerForDashboardProxy({
+  dashboardBaseUrl: 'http://localhost:3002',
+  useGlobalAxios: true,
+});
+```
+
 ### `setupMockifyer(config)`
 
-> **Use when:** The app uses **Axios** instead of `global.fetch`. Mockifyer wires **interceptors**; configuration is the same **`MockifyerConfig`** shape as much of the ecosystem (paths, scenarios, `recordMode`, etc.).  
-> **Why:** There is no separate “axios dashboard preset” in the package today—use **`setupMockifyer`** and set **`useGlobalAxios`** / instance as needed. Dashboard-style HTTP proxy is primarily documented around **`@sgedda/mockifyer-fetch`**; if you need dashboard proxy with Axios, keep using shared env/scenario conventions or open a feature request.
+> **Use when:** The app uses **Axios** instead of `global.fetch`. Mockifyer wires **interceptors**; configuration is the same **`MockifyerConfig`** shape (paths, scenarios, `recordMode`, `proxy`, etc.).  
+> **Why:** Full control over **`proxy.baseUrl`**, **`useGlobalAxios`**, and **`axiosInstance`**.
 
 ```typescript
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
@@ -260,7 +274,7 @@ MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis 
 | Goal | Initializer |
 |------|--------------|
 | Full control (`fetch`) | `setupMockifyer` |
-| Dashboard + Redis (`fetch`, Node) | `initMockifyerForDashboardProxy` |
+| Dashboard + central store (`fetch` or `axios`, Node) | `initMockifyerForDashboardProxy` |
 | Files only, no dashboard | `initMockifyerForLocalFilesystem` |
 | Redis in Node process | `setupMockifyer` + `databaseProvider: { type: 'redis' }` |
 | Axios | `setupMockifyer` (axios package) |

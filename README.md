@@ -10,7 +10,7 @@ Monorepo for **Mockifyer**: libraries for mocking and recording API calls, with 
 Published packages (install these, not the repo root):
 
 - `@sgedda/mockifyer-core` — types, providers, `getCurrentDate`, etc.
-- `@sgedda/mockifyer-axios` — Axios integration (`setupMockifyer`)
+- `@sgedda/mockifyer-axios` — Axios integration (`setupMockifyer`, **`initMockifyerForDashboardProxy`**)
 - `@sgedda/mockifyer-fetch` — `fetch` integration (`setupMockifyer`)
 - `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-test-helper` — optional tooling
 
@@ -24,7 +24,7 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 |---------|----------|
 | [`@sgedda/mockifyer-core`](./packages/mockifyer-core) | Types, providers (filesystem, Expo, hybrid, memory), scenarios, date helpers, mock matching |
 | [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
-| [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** interceptors (Node and browser) |
+| [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node dashboard + Redis/SQLite proxy) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
