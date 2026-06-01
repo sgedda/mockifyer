@@ -64,6 +64,8 @@ Example: `fix: improve frontend build cache clearing for Contact page deployment
 
 ## PR Description Template
 
+Every PR body must include **short code snippets** so reviewers understand what was done and how to use it — not only bullet lists.
+
 ```markdown
 ## Problem
 
@@ -77,9 +79,75 @@ How the problem is being solved.
 
 - Change 1
 - Change 2
-- Change 3
+
+## How it works
+
+Brief prose, then **1–3 focused snippets** (not whole files). Prefer real paths and line ranges:
+
+\`\`\`12:24:packages/example/src/feature.ts
+export function doThing() {
+  // the important part
+}
+\`\`\`
+
+For usage examples (curl, middleware setup, API calls), use copy-pasteable fenced blocks with language tags.
 
 ## Testing
 
 Steps to verify the changes work correctly.
 ```
+
+### Code snippets in PRs (required)
+
+When running `gh pr create` (or the GitHub API), the `--body` must include:
+
+1. **What changed** — one snippet per major change (new endpoint, middleware, type, CLI flag).
+2. **How to use it** — snippet or shell example showing the happy path (e.g. read response header → call trace API).
+3. **Keep snippets small** — typically 5–25 lines; use `...` in prose only when the fenced block is clearly truncated for readability.
+
+Use repository citation format when referencing existing code:
+
+\`\`\`startLine:endLine:relative/path/from/repo/root
+// code
+\`\`\`
+
+Do **not** submit PRs that are only bullet points with no snippets when the change is behavioral or API-facing.
+
+### Example `gh pr create` body fragment
+
+\`\`\`bash
+gh pr create --title "feat: network trace API and correlation echo" --body "$(cat <<'EOF'
+## Summary
+- Add GET /api/network-events/trace for multi-hop response chains
+- Echo X-Mockifyer-Request-Id on entry services by default
+
+## How it works
+
+Client calls the entry service; middleware assigns/echoes a trace id:
+
+\`\`\`http
+X-Mockifyer-Request-Id: abc-123
+\`\`\`
+
+Then fetch the full chain from the dashboard:
+
+\`\`\`bash
+curl -s 'http://localhost:3002/api/network-events/trace?requestId=abc-123&scenario=default'
+\`\`\`
+
+Trace resolution (virtual root when id is only on parent hops):
+
+\`\`\`184:210:packages/mockifyer-core/src/utils/network-trace.ts
+export function resolveNetworkRequestTrace(
+  events: NetworkEvent[],
+  options: ResolveNetworkRequestTraceOptions
+): NetworkRequestTrace | null {
+  // ...
+}
+\`\`\`
+
+## Test plan
+- [ ] Enable network log + Bodies, call aggregate, trace returns hops
+EOF
+)"
+\`\`\`

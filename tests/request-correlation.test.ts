@@ -105,6 +105,39 @@ describe('request-correlation', () => {
     expect(laneDuringNext).toBe('lane-web');
   });
 
+  it('middleware assigns trace id and echoes on response when inbound id is missing', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req = { header: () => undefined };
+    const headers: Record<string, string> = {};
+    const res = {
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+    };
+    let activeDuringNext: string | undefined;
+    middleware(req, res, () => {
+      activeDuringNext = getActiveRequestCorrelation()?.requestId;
+    });
+    expect(activeDuringNext).toBeTruthy();
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe(activeDuringNext);
+  });
+
+  it('middleware echoes client-supplied trace id on response', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req = {
+      header: (name: string) =>
+        name.toLowerCase() === MOCKIFYER_REQUEST_ID_HEADER ? 'client-root-99' : undefined,
+    };
+    const headers: Record<string, string> = {};
+    const res = {
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+    };
+    middleware(req, res, () => undefined);
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('client-root-99');
+  });
+
   it('auto-installs inbound capture on Node http.Server without middleware', async () => {
     expect(installNodeInboundRequestCorrelationCapture()).toBe(true);
 

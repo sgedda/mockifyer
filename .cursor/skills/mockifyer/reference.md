@@ -52,6 +52,14 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, { provider: 'filesys
 
 **Redis provider**: mocks keyed by request hash; duplicate API in UI disabled; use client lanes + `/api/proxy`.
 
+**Network trace** (multi-service response chain):
+
+- After calling an entry service, read **`X-Mockifyer-Request-Id`** from the response (`createMockifyerCorrelationMiddleware()` echoes it by default).
+- `GET /api/network-events/trace?requestId=<that id>&scenario=default` — also matches virtual roots (id only appears as `parentRequestId` on child hops).
+- Or `?eventId=<dashboard log row id>` when you only have the network tab id.
+- `/api/proxy` JSON includes `requestId` / `parentRequestId` and sets the same response header.
+- Returns `trace.hops[]` root-first with `request` / `response` body previews when **Bodies** capture is enabled.
+
 ## Scenario precedence (filesystem SDK)
 
 1. `MOCKIFYER_SCENARIO`
