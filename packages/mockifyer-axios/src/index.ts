@@ -36,6 +36,22 @@ import {
   applyOutboundRequestCorrelation,
   type RequestCorrelationContext,
   installNodeInboundRequestCorrelationCapture,
+  DatabaseProvider,
+  createProvider,
+  applyProxyRecordOnMissEnv,
+  mirrorProxyRecordingToClient,
+  initMockifyerForDashboardProxy as coreInitMockifyerForDashboardProxy,
+  initMockifyerForLocalFilesystem as coreInitMockifyerForLocalFilesystem,
+  type InitMockifyerForDashboardProxyOptions,
+  type InitMockifyerForLocalFilesystemOptions,
+  isExplicitProxyScenarioContext,
+  resolveExplicitClientIdOnly,
+  resolveStrictScenarioResolution,
+  resolveProxyStrictLaneScenario,
+  logMockifyerInitSummary,
+  shouldBlockLocalMockRecording,
+  logger,
+  setLogLevel,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
@@ -71,6 +87,13 @@ class MockifyerClass {
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
   private readonly activationMode: MockifyerActivationMode;
+  private databaseProvider?: DatabaseProvider;
+  private databaseProviderInitPromise?: Promise<void>;
+
+  private usesDashboardProxy(): boolean {
+    const baseUrl = this.config.proxy?.baseUrl;
+    return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  }
 
   private logNetworkEvent(
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' },
@@ -105,12 +128,17 @@ class MockifyerClass {
   }
 
   constructor(config: MockifyerConfig) {
-    // Validate database provider - only filesystem is currently supported
-    if (config.databaseProvider && config.databaseProvider.type && config.databaseProvider.type !== 'filesystem') {
+    const proxyActive = Boolean(config.proxy?.baseUrl?.trim());
+    const dbType = config.databaseProvider?.type;
+    if (
+      dbType &&
+      dbType !== 'filesystem' &&
+      dbType !== 'memory' &&
+      !proxyActive
+    ) {
       throw new Error(
-        `Database provider type '${config.databaseProvider.type}' is not supported with mockifyer-axios. ` +
-        `Use type 'filesystem' (or omit databaseProvider). ` +
-        `For Redis or other providers, use @sgedda/mockifyer-fetch in Node.`
+        `Database provider type '${dbType}' is not supported with mockifyer-axios without proxy.baseUrl. ` +
+          `Use type 'filesystem', 'memory' (dashboard proxy preset), or set proxy.baseUrl.`
       );
     }
     
@@ -165,10 +193,21 @@ class MockifyerClass {
     this.config = { ...config };
     if (launchClientId) {
       this.config.clientId = launchClientId;
+    } else if (resolveStrictScenarioResolution(this.config) && proxyActive) {
+      this.config.clientId = resolveExplicitClientIdOnly(this.config);
     } else {
-      this.config.clientId = resolveClientId(config);
+      this.config.clientId = resolveClientId(this.config);
     }
-    console.log(`[Mockifyer] clientId: ${this.config.clientId}`);
+
+    if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
+      const raw =
+        typeof process !== 'undefined'
+          ? String(process.env?.MOCKIFYER_PROXY_MIRROR_TO_CLIENT || '').trim().toLowerCase()
+          : '';
+      if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
+        this.config.proxy = { ...this.config.proxy, mirrorRecordedMocksToClient: true };
+      }
+    }
 
     this.activationMode = resolveActivationMode(this.config);
     if (this.activationMode !== 'always') {
@@ -180,14 +219,38 @@ class MockifyerClass {
       this.testGenerator = new TestGenerator();
     }
     
-    this.ensureMockDataDirectory();
-    
-    // Create HTTP client based on configuration
-    this.httpClient = new AxiosHTTPClient(config.axiosInstance);
-    console.log('this.httpClient', this.httpClient);
-    
-    console.log('[Mockifyer] record mode:', config.recordMode);
-    if(!config.recordSameEndpoints) {
+    if (config.databaseProvider && config.databaseProvider.type) {
+      const providerConfig = {
+        ...config.databaseProvider,
+        options: {
+          ...config.databaseProvider.options,
+          mockDataPath: config.databaseProvider.options?.mockDataPath ?? config.mockDataPath,
+          clientId: this.config.clientId,
+          getClientId: () => this.config.clientId,
+        },
+      };
+      this.databaseProvider = createProvider(config.databaseProvider.type, providerConfig);
+      const initResult = this.databaseProvider.initialize();
+      if (initResult instanceof Promise) {
+        this.databaseProviderInitPromise = initResult.catch((error) => {
+          logger.error('[Mockifyer-Axios] Error initializing database provider:', error);
+        });
+      }
+    } else {
+      this.ensureMockDataDirectory();
+    }
+
+    this.httpClient = new AxiosHTTPClient(config.axiosInstance, {
+      baseUrl: config.baseUrl,
+      proxy: config.proxy,
+      clientId: this.config.clientId,
+      getClientId: () => this.config.clientId,
+      getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
+      getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
+      deviceId: (this.config as MockifyerConfig & { deviceId?: string }).deviceId,
+    });
+
+    if (!config.recordSameEndpoints) {
       this.loadMockData();
     }
     if (!config.recordMode) {
@@ -196,6 +259,14 @@ class MockifyerClass {
     } else {
       this.setupInterceptors();
     }
+    if (this.usesDashboardProxy()) {
+      this.setupDashboardProxyResponseInterceptor();
+    }
+
+    logMockifyerInitSummary(this.config, {
+      runtimeMode: this.config.runtimeMode,
+      headline: this.config.initLog?.headline,
+    });
   }
 
   private applyOutboundLaneHeadersToAxiosRequest(config: any): void {
@@ -517,15 +588,32 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
-      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+      if (
+        !shouldApplyMockifyer(this.activationMode, config.headers, {
+          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
+        })
+      ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
         applyOutboundRequestCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
+
+      if (!isExplicitProxyScenarioContext(this.config)) {
+        logger.warn(
+          '[Mockifyer-Axios] Strict proxy scenario: set clientId (lane) or proxy.scenario; passthrough HTTP for this request'
+        );
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.applyOutboundLaneHeadersToAxiosRequest(config);
       const correlation = applyOutboundRequestCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
+
+      if (this.usesDashboardProxy()) {
+        return config;
+      }
 
       // Debug: Log what we receive in the interceptor
       console.log('[Mockifyer] 📥 Interceptor received config:', {
@@ -712,21 +800,57 @@ class MockifyerClass {
     });
   }
 
+  private setupDashboardProxyResponseInterceptor(): void {
+    this.httpClient.interceptors.response.use(async (response: HTTPResponse) => {
+      if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
+        return response;
+      }
+      if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
+        const rec = response.mockifyerProxyRecording;
+        if (rec) {
+          await mirrorProxyRecordingToClient({
+            config: this.config,
+            mockDataPath: this.config.mockDataPath,
+            recording: rec,
+            databaseProvider: this.databaseProvider,
+            databaseProviderInitPromise: this.databaseProviderInitPromise,
+            logPrefix: 'Mockifyer-Axios',
+          });
+        }
+      }
+      return response;
+    });
+  }
+
   private setupInterceptors(): void {
     // Always set up request interceptor to check limits
     // In record mode, only check for mocks if recordSameEndpoints is false
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
-      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
+      if (
+        !shouldApplyMockifyer(this.activationMode, config.headers, {
+          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
+        })
+      ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
         applyOutboundRequestCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
+
+      if (!isExplicitProxyScenarioContext(this.config)) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.applyOutboundLaneHeadersToAxiosRequest(config);
       const correlation = applyOutboundRequestCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
+
+      if (this.usesDashboardProxy()) {
+        return config;
+      }
 
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {
@@ -1443,7 +1567,18 @@ class MockifyerClass {
   }
 
   private async saveResponse(response: HTTPResponse): Promise<void> {
-    if ((response.config as any)?.__mockifyer_bypass) {
+    if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
+      return;
+    }
+
+    if (this.config.proxy?.baseUrl) {
+      return;
+    }
+
+    if (shouldBlockLocalMockRecording(this.config)) {
+      logger.info(
+        '[Mockifyer-Axios] Strict proxy-only mode: skipping local mock save (dashboard proxy unavailable).'
+      );
       return;
     }
 
@@ -1827,16 +1962,16 @@ export interface MockifyerInstance extends HTTPClient {
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   installNodeInboundRequestCorrelationCapture();
-  console.log('[Mockifyer] ⚡⚡⚡ setupMockifyer called:', config);
-  // Initialize date manipulation
-  initializeDateManipulation(config);
-  initializeScenario(config);
+  const resolvedConfig = applyProxyRecordOnMissEnv(config);
+  setLogLevel(resolvedConfig.logging || 'info');
+  initializeDateManipulation(resolvedConfig);
+  initializeScenario(resolvedConfig);
 
-  const mockifyer = new MockifyerClass(config);
+  const mockifyer = new MockifyerClass(resolvedConfig);
   const httpClient = mockifyer.getHTTPClient();
   
   // If useGlobalAxios is true, patch the global axios instance
-  if (config.useGlobalAxios) {
+  if (resolvedConfig.useGlobalAxios) {
     const axiosInstance = (httpClient as any).instance;
     const baseClient = httpClient as any;
     
@@ -1846,9 +1981,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // If not provided, fall back to require('axios') which should resolve to the user's axios
       let globalAxios: any;
       
-      if (config.axiosInstance) {
+      if (resolvedConfig.axiosInstance) {
         // User explicitly passed axios instance - use it!
-        globalAxios = config.axiosInstance;
+        globalAxios = resolvedConfig.axiosInstance;
         console.log('[Mockifyer] ✅ Using axios instance passed in config.axiosInstance');
       } else {
         // Try to get axios from require (should resolve to user's axios via peerDependency)
@@ -1878,8 +2013,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       console.log('[Mockifyer] Checking request interceptors:', {
         hasRequestInterceptors: !!baseClient.requestInterceptors,
         interceptorCount: baseClient.requestInterceptors?.length || 0,
-        recordMode: config.recordMode,
-        useGlobalAxios: config.useGlobalAxios
+        recordMode: resolvedConfig.recordMode,
+        useGlobalAxios: resolvedConfig.useGlobalAxios
       });
       
       if (baseClient.requestInterceptors && baseClient.requestInterceptors.length > 0) {
@@ -1910,7 +2045,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)
-      if (config.recordMode) {
+      if (resolvedConfig.recordMode) {
         console.log('[Mockifyer] Adding response interceptor directly to global axios for recording');
         const interceptorId = globalAxios.interceptors.response.use(
           async function(axiosResponse: any) {
@@ -2169,6 +2304,37 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
 
 // Re-export types and utilities from core
 export * from '@sgedda/mockifyer-core';
+
+export type { InitMockifyerForDashboardProxyOptions, InitMockifyerForLocalFilesystemOptions };
+
+/**
+ * Preset: dashboard central store proxy when health check passes; otherwise filesystem mocks.
+ */
+export async function initMockifyerForDashboardProxy(
+  options: InitMockifyerForDashboardProxyOptions
+): Promise<MockifyerInstance> {
+  return coreInitMockifyerForDashboardProxy(
+    { ...options, useGlobalAxios: options.useGlobalAxios ?? options.config?.useGlobalAxios ?? true },
+    setupMockifyer
+  );
+}
+
+/**
+ * Preset: local filesystem mocks. No dashboard proxy.
+ */
+export function initMockifyerForLocalFilesystem(
+  options: InitMockifyerForLocalFilesystemOptions = {}
+): MockifyerInstance {
+  return coreInitMockifyerForLocalFilesystem(
+    { ...options, useGlobalAxios: options.useGlobalAxios ?? options.config?.useGlobalAxios ?? true },
+    setupMockifyer
+  );
+}
+
+export {
+  canUseDashboardRedisProxy,
+  canUseDashboardCentralProxy,
+} from '@sgedda/mockifyer-core';
 
 // Re-export axios types for convenience (but users should import axios directly)
 export type { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosHeaders } from 'axios'; 

@@ -56,7 +56,12 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
-  parseProxyRecordOnMissEnv,
+  applyProxyRecordOnMissEnv,
+  mirrorProxyRecordingToClient,
+  initMockifyerForDashboardProxy as coreInitMockifyerForDashboardProxy,
+  initMockifyerForLocalFilesystem as coreInitMockifyerForLocalFilesystem,
+  type InitMockifyerForDashboardProxyOptions,
+  type InitMockifyerForLocalFilesystemOptions,
   newRecordingUsesAlwaysUseRealApi,
   shouldBlockLocalMockRecording,
   resolveStrictScenarioResolution,
@@ -71,32 +76,6 @@ import {
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 
 import { FetchHTTPClient } from './clients/fetch-client';
-import { canUseDashboardRedisProxy } from './utils/dashboard-redis-health';
-
-/**
- * When `proxy.baseUrl` is set and `proxy.recordOnMiss` is omitted, apply `MOCKIFYER_PROXY_RECORD_ON_MISS` if set.
- */
-function applyProxyRecordOnMissEnv(config: MockifyerConfig): MockifyerConfig {
-  const proxy = config.proxy;
-  const baseUrl = proxy?.baseUrl?.trim();
-  if (!proxy || !baseUrl || proxy.recordOnMiss !== undefined) {
-    return config;
-  }
-  const parsed = parseProxyRecordOnMissEnv();
-  if (parsed === undefined) {
-    return config;
-  }
-  return {
-    ...config,
-    proxy: {
-      baseUrl: proxy.baseUrl,
-      scenario: proxy.scenario,
-      recordOnMiss: parsed,
-      strictLaneScenario: proxy.strictLaneScenario,
-      mirrorRecordedMocksToClient: proxy.mirrorRecordedMocksToClient,
-    },
-  };
-}
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -877,57 +856,23 @@ class MockifyerClass {
     }
     const hash = rec.hash?.trim();
     const scenarioName = rec.scenarioName?.trim();
-    if (!hash || !scenarioName) {
-      logger.warn('[Mockifyer-Fetch] Proxy client mirror skipped: missing hash or scenario from proxy');
-      return;
-    }
     const mockData = rec.storedMock as MockData;
-    const url = mockData?.request?.url || '';
-    if (shouldExcludeUrl(url, this.config.excludedUrls)) {
-      return;
-    }
-    const recExclusions = resolveRecordingExclusions(this.config);
-    if (shouldExcludeRecording(url, recExclusions, this.config.baseUrl)) {
-      return;
-    }
-
-    await this.databaseProviderInitPromise;
-
     const providerType = this.config.databaseProvider?.type;
-    if (this.databaseProvider && providerType !== 'memory') {
-      try {
-        const out = this.databaseProvider.save(mockData, {
-          relativePath: `redis/${hash}.json`,
-          scenario: scenarioName,
-        });
-        if (out instanceof Promise) {
-          await out;
-        }
-        logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (${providerType}): ${scenarioName}/redis/${hash}.json`);
-        if (providerType === 'hybrid') {
-          await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
-        }
-      } catch (e) {
-        logger.error('[Mockifyer-Fetch] Proxy client mirror (provider) failed:', e);
-      }
-      return;
-    }
 
-    if (fs && path) {
-      try {
-        ensureScenarioFolder(this.config.mockDataPath, scenarioName);
-        const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, scenarioName);
-        const filePath = path.join(scenarioPath, 'redis', `${hash}.json`);
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        logger.info(`[Mockifyer-Fetch] Mirrored proxy recording (filesystem): ${scenarioName}/redis/${hash}.json`);
-      } catch (e) {
-        logger.error('[Mockifyer-Fetch] Proxy client mirror (Node fs) failed:', e);
-      }
-      return;
-    }
+    await mirrorProxyRecordingToClient({
+      config: this.config,
+      mockDataPath: this.config.mockDataPath,
+      recording: rec,
+      databaseProvider: this.databaseProvider,
+      databaseProviderInitPromise: this.databaseProviderInitPromise,
+      logPrefix: 'Mockifyer-Fetch',
+    });
 
-    await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+    if (providerType === 'hybrid' && hash && scenarioName && mockData) {
+      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+    } else if (!fs && hash && scenarioName && mockData) {
+      await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
+    }
   }
 
   private async tryMirrorProxyRecordingViaMetro(
@@ -1609,212 +1554,31 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   return extendedClient;
 }
 
-/** Drops `proxy` when merging partial config so filesystem fallback cannot accidentally keep proxy. */
-function omitProxyFromPartialConfig(config: Partial<MockifyerConfig>): Partial<MockifyerConfig> {
-  const { proxy: _drop, ...rest } = config;
-  void _drop;
-  return rest;
-}
-
-/** Options for {@link initMockifyerForDashboardProxy} — dashboard + `/api/proxy` (run `mockifyer-dashboard --provider redis`). */
-export interface InitMockifyerForDashboardProxyOptions {
-  /** mockifyer-dashboard origin (e.g. `http://localhost:3002`). Not the Redis URL. */
-  dashboardBaseUrl: string;
-  /** Mock root for scenario file fallbacks etc. Defaults `MOCKIFYER_PATH` env or `./mock-data`. */
-  mockDataPath?: string;
-  /** Client lane id (`X-Mockifyer-Client-Id` / proxy envelope). Defaults `MOCKIFYER_CLIENT_ID` env. */
-  clientId?: string;
-  deviceId?: string;
-  scenario?: string;
-  /**
-   * When **`true`**, each `/api/proxy` request sends **`"record": true`**. When **`false`**, sends **`"record": false`**.
-   * When **omitted**, the **`record`** field is omitted so the **dashboard per-scenario** toggle applies; **`MOCKIFYER_PROXY_RECORD_ON_MISS`**
-   * and **`MOCKIFYER_RECORD=true`** (last) still set an explicit client flag when you want env-driven recording without code.
-   */
-  recordOnMiss?: boolean;
-  /**
-   * When false, dashboard proxy stores request-only stubs on cache miss.
-   * Defaults via {@link resolveRecordResponses} (`MOCKIFYER_RECORD_RESPONSES` env, else `false`).
-   */
-  recordResponses?: boolean;
-  strictLaneScenario?: boolean;
-  useGlobalFetch?: boolean;
-  /** Use a local provider for mock hits before the proxy (default in-memory only) when **`/api/proxy`** is active. */
-  databaseProvider?: MockifyerConfig['databaseProvider'];
-  /** Additional `MockifyerConfig` fields — applied first, then preset fields win on `mockDataPath`, `proxy`, etc. */
-  config?: Partial<MockifyerConfig>;
-  /**
-   * When **`true`**, skips **`GET …/api/health`** and always sets **`proxy`**.
-   * Default **`false`**: if Redis is not healthy (or unreachable), omit **`proxy`** and use filesystem mocks + **`recordMode`** disk saves — aligns with **`setupMockifyerForReactNative`** dev fallback.
-   */
-  skipDashboardRedisHealthCheck?: boolean;
-  /**
-   * When the proxy records a response to Redis, also write the same mock under `mockDataPath` on this machine
-   * (or via Metro when using strict RN + in-memory). Env: `MOCKIFYER_PROXY_MIRROR_TO_CLIENT`.
-   */
-  mirrorRecordedMocksToClient?: boolean;
-}
+export type { InitMockifyerForDashboardProxyOptions, InitMockifyerForLocalFilesystemOptions };
 
 /**
- * Preset: **`GET /api/health`** must report Redis ready before **`proxy`** is set; otherwise filesystem mocks without proxy (like RN Hybrid fallback vs strict proxy).
- * Run **`mockifyer-dashboard --provider redis`** for the dashboard hop; use **`skipDashboardRedisHealthCheck`** to bypass the probe.
- *
+ * Preset: dashboard central store proxy when health check passes; otherwise filesystem mocks.
  * For full control, use {@link setupMockifyer} directly.
  */
 export async function initMockifyerForDashboardProxy(
   options: InitMockifyerForDashboardProxyOptions
 ): Promise<MockifyerInstance> {
-  const extra = options.config ?? {};
-  const dashboardBaseUrl = String(options.dashboardBaseUrl).trim();
-  if (!dashboardBaseUrl) {
-    throw new Error('initMockifyerForDashboardProxy: dashboardBaseUrl is required');
-  }
-
-  const mockDataPath =
-    options.mockDataPath ??
-    extra.mockDataPath ??
-    (typeof process !== 'undefined' && process.env?.MOCKIFYER_PATH
-      ? process.env.MOCKIFYER_PATH
-      : './mock-data');
-
-  const envRecord =
-    typeof process !== 'undefined' && process.env?.MOCKIFYER_RECORD === 'true';
-
-  const recordOnMiss =
-    options.recordOnMiss ??
-    extra.proxy?.recordOnMiss ??
-    parseProxyRecordOnMissEnv() ??
-    (envRecord ? true : undefined);
-
-  const recordResponses = resolveRecordResponses(
-    options.recordResponses ?? extra.proxy?.recordResponses
+  return coreInitMockifyerForDashboardProxy(
+    { ...options, useGlobalFetch: options.useGlobalFetch ?? options.config?.useGlobalFetch ?? true },
+    setupMockifyer
   );
-
-  const useRedisProxy =
-    options.skipDashboardRedisHealthCheck === true ||
-    (await canUseDashboardRedisProxy(dashboardBaseUrl));
-
-  if (!useRedisProxy) {
-    const strictProxyOnly = resolveStrictScenarioResolution({
-      strictScenarioResolution:
-        options.config?.strictScenarioResolution ?? extra.strictScenarioResolution,
-    });
-    logger.warn(
-      `[Mockifyer] initMockifyerForDashboardProxy: "${dashboardBaseUrl}" did not report healthy Redis ` +
-        (strictProxyOnly
-          ? '(strict proxy-only — local recording disabled). '
-          : '(unreachable or non-Redis provider). Falling back to filesystem mocks without proxy. ') +
-        'Set skipDashboardRedisHealthCheck: true to force proxy anyway.'
-    );
-    const stripped = omitProxyFromPartialConfig(extra);
-    const fallbackDb = options.databaseProvider ?? extra.databaseProvider;
-    const mergedInitLogFs: MockifyerConfig['initLog'] = {
-      ...stripped.initLog,
-      headline:
-        stripped.initLog?.headline ??
-        (strictProxyOnly
-          ? '[Mockifyer preset] Node · strict proxy-only (dashboard Redis health check failed)'
-          : '[Mockifyer preset] Node · filesystem (dashboard Redis health check failed)'),
-    };
-    return setupMockifyer({
-      ...stripped,
-      mockDataPath,
-      ...(fallbackDb !== undefined ? { databaseProvider: fallbackDb } : {}),
-      ...(strictProxyOnly ? { intendedProxyBaseUrl: dashboardBaseUrl.trim() } : {}),
-      useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
-      clientId: options.clientId ?? extra.clientId,
-      deviceId: options.deviceId ?? extra.deviceId,
-      initLog: mergedInitLogFs,
-    });
-  }
-
-  const upstreamProxy = extra.proxy as MockifyerConfig['proxy'] | undefined;
-  const mergedProxy = {
-    ...upstreamProxy,
-    baseUrl: upstreamProxy?.baseUrl ?? dashboardBaseUrl,
-    scenario:
-      options.scenario ??
-      upstreamProxy?.scenario ??
-      (typeof process !== 'undefined' && process.env?.MOCKIFYER_SCENARIO?.trim()
-        ? process.env.MOCKIFYER_SCENARIO.trim()
-        : undefined),
-    ...(typeof recordOnMiss === 'boolean' ? { recordOnMiss } : {}),
-    recordResponses,
-  } as NonNullable<MockifyerConfig['proxy']>;
-  if (
-    options.strictLaneScenario !== undefined ||
-    upstreamProxy?.strictLaneScenario !== undefined
-  ) {
-    mergedProxy.strictLaneScenario =
-      options.strictLaneScenario ?? upstreamProxy?.strictLaneScenario;
-  }
-
-  const envMirrorRaw =
-    typeof process !== 'undefined'
-      ? String(process.env?.MOCKIFYER_PROXY_MIRROR_TO_CLIENT || '').trim().toLowerCase()
-      : '';
-  const envMirror =
-    envMirrorRaw === '1' || envMirrorRaw === 'true' || envMirrorRaw === 'yes' || envMirrorRaw === 'on';
-  const mirrorRecordedMocksToClient =
-    options.mirrorRecordedMocksToClient ??
-    extra.proxy?.mirrorRecordedMocksToClient ??
-    (envMirror ? true : undefined);
-  if (mirrorRecordedMocksToClient !== undefined) {
-    mergedProxy.mirrorRecordedMocksToClient = mirrorRecordedMocksToClient;
-  }
-
-  const mergedInitLogProxy: MockifyerConfig['initLog'] = {
-    ...extra.initLog,
-    headline: extra.initLog?.headline ?? '[Mockifyer preset] Node · dashboard Redis proxy',
-  };
-
-  const strictScenarioResolution =
-    extra.strictScenarioResolution ??
-    options.config?.strictScenarioResolution ??
-    true;
-
-  return setupMockifyer({
-    ...extra,
-    mockDataPath,
-    strictScenarioResolution,
-    databaseProvider: options.databaseProvider ?? extra.databaseProvider ?? { type: 'memory' },
-    useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
-    clientId: options.clientId ?? extra.clientId,
-    deviceId: options.deviceId ?? extra.deviceId,
-    proxy: mergedProxy,
-    initLog: mergedInitLogProxy,
-  });
-}
-
-export interface InitMockifyerForLocalFilesystemOptions {
-  mockDataPath?: string;
-  useGlobalFetch?: boolean;
-  recordMode?: boolean;
-  /** Applied first; preset fills `mockDataPath` / `useGlobalFetch` when omitted. */
-  config?: Partial<MockifyerConfig>;
 }
 
 /**
- * Preset: local **filesystem** mocks under {@link InitMockifyerForLocalFilesystemOptions.mockDataPath}
- * (default `./mock-data` or `MOCKIFYER_PATH`). No dashboard proxy.
+ * Preset: local filesystem mocks. No dashboard proxy.
  */
 export function initMockifyerForLocalFilesystem(
   options: InitMockifyerForLocalFilesystemOptions = {}
 ): MockifyerInstance {
-  const extra = options.config ?? {};
-  const mockDataPath =
-    options.mockDataPath ??
-    extra.mockDataPath ??
-    (typeof process !== 'undefined' && process.env?.MOCKIFYER_PATH
-      ? process.env.MOCKIFYER_PATH
-      : './mock-data');
-
-  return setupMockifyer({
-    ...extra,
-    mockDataPath,
-    useGlobalFetch: options.useGlobalFetch ?? extra.useGlobalFetch ?? true,
-    recordMode: options.recordMode ?? extra.recordMode ?? false,
-  });
+  return coreInitMockifyerForLocalFilesystem(
+    { ...options, useGlobalFetch: options.useGlobalFetch ?? options.config?.useGlobalFetch ?? true },
+    setupMockifyer
+  );
 }
 
 /** Shared with {@link setupMockifyerForReactNative} strict-proxy branching. */
