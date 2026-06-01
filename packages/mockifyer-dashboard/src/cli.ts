@@ -13,7 +13,7 @@ import {
   resolveRedisDiskMirrorOptions,
   type DashboardContextConfig,
 } from './utils/dashboard-context';
-import { resolveDashboardSqlitePath } from './utils/create-dashboard-mock-store';
+import { resolveDashboardSqlitePath } from './utils/sqlite-path';
 
 const program = new Command();
 
@@ -25,7 +25,7 @@ program
   .option('--port <port>', 'Port to run the dashboard on', '3002')
   .option('--host <host>', 'Host to bind to', 'localhost')
   .option('--no-open', 'Do not open browser automatically')
-  .option('--provider <provider>', 'Database provider type (filesystem, sqlite, redis)', 'filesystem')
+  .option('--provider <provider>', 'Database provider type (filesystem, sqlite, redis)')
   .option('--redis-url <url>', 'Redis URL (or use MOCKIFYER_REDIS_URL env var)')
   .option(
     '--key-prefix <prefix>',

@@ -425,25 +425,9 @@ export function collectUpstreamDomainPathsForReplay(
 
   for (const mock of targetMocks) {
     const linked = getMockChain(mock, chainMaps.byRequestId)
-    let idx = linked.findIndex((h) => h.filename === mock.filename)
+    const idx = linked.findIndex((h) => h.filename === mock.filename)
     if (idx > 0) {
       for (let i = 0; i < idx; i++) addHop(linked[i])
-    }
-
-    for (const chain of buildMockServiceChainsForDisplay(catalogMocks)) {
-      idx = chain.hops.findIndex((h) => h.filename === mock.filename)
-      if (idx > 0) {
-        for (let i = 0; i < idx; i++) addHop(chain.hops[i])
-      }
-    }
-
-    const targetKey = inferHopSortKey(mock)
-    const targetTime = new Date(mock.modified).getTime()
-    for (const candidate of catalogMocks) {
-      if (candidate.filename === mock.filename) continue
-      if (inferHopSortKey(candidate) >= targetKey) continue
-      if (Math.abs(new Date(candidate.modified).getTime() - targetTime) > INFER_CLUSTER_MS) continue
-      addHop(candidate)
     }
   }
 
