@@ -53,7 +53,7 @@ import {
   logger,
   setLogLevel,
 } from '@sgedda/mockifyer-core';
-import { AxiosHTTPClient } from './clients/axios-client';
+import { AxiosHTTPClient, normalizeAxiosHeaders } from './clients/axios-client';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
@@ -1960,6 +1960,37 @@ export interface MockifyerInstance extends HTTPClient {
   getClientId: () => string | undefined;
 }
 
+function toAxiosResponse(response: HTTPResponse, config: AxiosRequestConfig): AxiosResponse {
+  const headers = new AxiosHeaders();
+  Object.entries(response.headers || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      headers.set(key, String(value));
+    }
+  });
+
+  return {
+    data: response.data,
+    status: response.status,
+    statusText: response.statusText || String(response.status),
+    headers,
+    config: config as any,
+    request: {},
+  };
+}
+
+async function applyHTTPClientResponseInterceptors(
+  baseClient: any,
+  response: HTTPResponse
+): Promise<HTTPResponse> {
+  let processedResponse = response;
+  for (const interceptor of baseClient.responseInterceptors || []) {
+    if (interceptor.onFulfilled) {
+      processedResponse = await interceptor.onFulfilled(processedResponse);
+    }
+  }
+  return processedResponse;
+}
+
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   installNodeInboundRequestCorrelationCapture();
   const resolvedConfig = applyProxyRecordOnMissEnv(config);
@@ -2031,6 +2062,36 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                   hasAdapter: !!(result as any).adapter,
                   hasMockResponse: !!(result as any).__mockResponse
                 });
+                if (
+                  resolvedConfig.proxy?.baseUrl &&
+                  !(result as any).__mockifyer_bypass &&
+                  !(result as any).__mockifyer_skip_save
+                ) {
+                  (result as any).__mockifyer_proxy_body = result.data;
+                  return {
+                    ...result,
+                    adapter: async (adapterConfig: AxiosRequestConfig) => {
+                      const adapterConfigAny = adapterConfig as AxiosRequestConfig & {
+                        __mockifyer_proxy_body?: unknown;
+                      };
+                      const hasProxyBody = Object.prototype.hasOwnProperty.call(
+                        adapterConfigAny,
+                        '__mockifyer_proxy_body'
+                      );
+                      const requestConfig = {
+                        ...adapterConfig,
+                        data: hasProxyBody ? adapterConfigAny.__mockifyer_proxy_body : adapterConfig.data,
+                        headers: normalizeAxiosHeaders(adapterConfig.headers),
+                      };
+                      const proxyResponse = await baseClient.performRequest(requestConfig);
+                      const processedResponse = await applyHTTPClientResponseInterceptors(
+                        baseClient,
+                        proxyResponse
+                      );
+                      return toAxiosResponse(processedResponse, adapterConfig);
+                    },
+                  };
+                }
                 return result;
               },
               interceptor.onRejected

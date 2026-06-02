@@ -11,6 +11,49 @@ import {
   performDashboardProxyRequest,
 } from '@sgedda/mockifyer-core';
 
+export function normalizeAxiosHeaders(headers: unknown): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  if (!headers || typeof headers !== 'object') {
+    return normalized;
+  }
+
+  const maybeAxiosHeaders = headers as { forEach?: (cb: (value: unknown, key: string) => void) => void };
+  if (typeof maybeAxiosHeaders.forEach === 'function') {
+    maybeAxiosHeaders.forEach((value: unknown, key: string) => {
+      if (value !== undefined && value !== null) {
+        normalized[key] = String(value);
+      }
+    });
+    return normalized;
+  }
+
+  Object.entries(headers as Record<string, unknown>).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      normalized[key] = String(value);
+    }
+  });
+  return normalized;
+}
+
+function appendParamsToUrl(url: string, params?: Record<string, unknown>): string {
+  if (!params || Object.keys(params).length === 0) {
+    return url;
+  }
+
+  try {
+    const urlObj = new URL(url);
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        urlObj.searchParams.append(key, String(value));
+      }
+    });
+    return urlObj.toString();
+  } catch (error) {
+    console.error('[AxiosHTTPClient] Error adding params to URL:', error);
+    throw error;
+  }
+}
+
 export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private instance: AxiosInstance;
   private baseUrl?: string;
@@ -87,21 +130,6 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       throw new Error('URL is required');
     }
 
-    if (config.params && Object.keys(config.params).length > 0) {
-      try {
-        const urlObj = new URL(url);
-        Object.entries(config.params).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            urlObj.searchParams.append(key, String(value));
-          }
-        });
-        url = urlObj.toString();
-      } catch (error) {
-        console.error('[AxiosHTTPClient] Error adding params to URL:', error);
-        throw error;
-      }
-    }
-
     const lane = this.resolvedClientLane(config.headers);
     const bypassMockifyer =
       (config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass === true ||
@@ -112,7 +140,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     const explicitProxyContext = this.getExplicitProxyScenarioContext?.() ?? true;
 
     if (this.proxyBaseUrl && !bypassMockifyer && explicitProxyContext) {
-      const headers: Record<string, string> = { ...(config.headers as Record<string, string>) };
+      const headers = normalizeAxiosHeaders(config.headers);
       if (!bypassMockifyer && lane && !getOutboundMockifyerClientIdHeader(headers)) {
         headers[MOCKIFYER_CLIENT_ID_HEADER] = lane;
       }
@@ -126,7 +154,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       }
       return performDashboardProxyRequest({
         proxyBaseUrl: this.proxyBaseUrl,
-        url,
+        url: appendParamsToUrl(url, config.params),
         method: (config.method || 'GET').toUpperCase(),
         headers,
         body: config.data ?? null,
