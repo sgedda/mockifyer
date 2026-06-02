@@ -261,8 +261,7 @@ export class RedisMockStore {
   async setByHash(hash: string, mockData: MockData, scenario?: string, clientId?: string): Promise<void> {
     const key = await this.dataKey(hash, scenario, clientId);
     const indexKey = await this.indexKey(scenario, clientId);
-    await this.kv.set(key, JSON.stringify(mockData));
-    await this.kv.sadd(indexKey, hash);
+    await this.kv.multi().set(key, JSON.stringify(mockData)).sadd(indexKey, hash).exec();
     // Best-effort registry so scenarios appear even if index scanning misses them.
     if (scenario) {
       await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
@@ -275,8 +274,7 @@ export class RedisMockStore {
     if (!id) throw new Error('scenarioName is required');
     const key = `${this.keyPrefix}:mock:${id}:${hash}`;
     const indexKey = `${this.keyPrefix}:index:${id}`;
-    await this.kv.set(key, JSON.stringify(mockData));
-    await this.kv.sadd(indexKey, hash);
+    await this.kv.multi().set(key, JSON.stringify(mockData)).sadd(indexKey, hash).exec();
     await this.kv.sadd(this.scenarioRegistrySetKey, id).catch(() => undefined);
   }
 

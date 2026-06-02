@@ -59,4 +59,52 @@ describe('network-log', () => {
     );
     expect(event.requestBodyPreview).toContain('ok');
   });
+
+  it('sanitizeNetworkEvent redacts sensitive JSON body fields when captureBodies is on', () => {
+    const event = sanitizeNetworkEvent(
+      {
+        id: '1',
+        timestamp: new Date().toISOString(),
+        scenario: 'default',
+        transport: 'proxy',
+        method: 'POST',
+        url: 'https://api.example.com/login',
+        source: 'upstream',
+        requestBodyPreview: JSON.stringify({
+          username: 'alice',
+          password: 'super-secret',
+          nested: { access_token: 'token-123' },
+        }),
+        responseBodyPreview: JSON.stringify({ refreshToken: 'refresh-123', ok: true }),
+      },
+      { captureBodies: true, maxEventBytes: 4096 }
+    );
+
+    expect(event.requestBodyPreview).toContain('"username":"alice"');
+    expect(event.requestBodyPreview).not.toContain('super-secret');
+    expect(event.requestBodyPreview).not.toContain('token-123');
+    expect(event.requestBodyPreview).toContain('[REDACTED]');
+    expect(event.responseBodyPreview).not.toContain('refresh-123');
+  });
+
+  it('sanitizeNetworkEvent redacts sensitive raw body previews when JSON is truncated', () => {
+    const event = sanitizeNetworkEvent(
+      {
+        id: '1',
+        timestamp: new Date().toISOString(),
+        scenario: 'default',
+        transport: 'proxy',
+        method: 'POST',
+        url: 'https://api.example.com/token',
+        source: 'upstream',
+        requestBodyPreview: '{"refreshToken":"super-secret","next":',
+        responseBodyPreview: 'access_token=token-123&expires_in=3600',
+      },
+      { captureBodies: true, maxEventBytes: 4096 }
+    );
+
+    expect(event.requestBodyPreview).not.toContain('super-secret');
+    expect(event.responseBodyPreview).not.toContain('token-123');
+    expect(decodeURIComponent(event.responseBodyPreview ?? '')).toContain('[REDACTED]');
+  });
 });

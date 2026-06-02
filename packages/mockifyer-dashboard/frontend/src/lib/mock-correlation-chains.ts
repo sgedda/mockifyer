@@ -192,14 +192,21 @@ export function mockIsInServiceChain(
 function orderHopsFromRoot(root: MockFile, chainMocks: MockFile[], maps: MockChainMaps): MockFile[] {
   const inChain = new Set(chainMocks.map((m) => m.filename))
   const ordered: MockFile[] = [root]
+  const orderedFilenames = new Set<string>([root.filename])
+  const visitedRequestIds = new Set<string>()
 
   const visit = (parentRequestId: string) => {
+    if (visitedRequestIds.has(parentRequestId)) return
+    visitedRequestIds.add(parentRequestId)
+
     const children = (maps.childrenByParent.get(parentRequestId) ?? []).filter((c) => inChain.has(c.filename))
     children.sort(
       (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
     )
     for (const child of children) {
+      if (orderedFilenames.has(child.filename)) continue
       ordered.push(child)
+      orderedFilenames.add(child.filename)
       if (child.requestId) visit(child.requestId)
     }
   }
