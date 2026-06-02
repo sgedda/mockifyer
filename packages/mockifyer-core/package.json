@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -14,6 +14,26 @@
     "./utils/build-utils": {
       "types": "./dist/utils/build-utils.d.ts",
       "default": "./dist/utils/build-utils.js"
+    },
+    "./utils/apply-proxy-record-on-miss-env": {
+      "types": "./dist/utils/apply-proxy-record-on-miss-env.d.ts",
+      "default": "./dist/utils/apply-proxy-record-on-miss-env.js"
+    },
+    "./utils/dashboard-central-proxy-health": {
+      "types": "./dist/utils/dashboard-central-proxy-health.d.ts",
+      "default": "./dist/utils/dashboard-central-proxy-health.js"
+    },
+    "./utils/mirror-proxy-recording-to-client": {
+      "types": "./dist/utils/mirror-proxy-recording-to-client.d.ts",
+      "default": "./dist/utils/mirror-proxy-recording-to-client.js"
+    },
+    "./utils/init-mockifyer-presets": {
+      "types": "./dist/utils/init-mockifyer-presets.d.ts",
+      "default": "./dist/utils/init-mockifyer-presets.js"
+    },
+    "./utils/perform-dashboard-proxy-request": {
+      "types": "./dist/utils/perform-dashboard-proxy-request.d.ts",
+      "default": "./dist/utils/perform-dashboard-proxy-request.js"
     }
   },
   "bin": {

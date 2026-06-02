@@ -56,12 +56,6 @@ import {
   resolveActivationMode,
   shouldApplyMockifyer,
   isExplicitProxyScenarioContext,
-  applyProxyRecordOnMissEnv,
-  mirrorProxyRecordingToClient,
-  initMockifyerForDashboardProxy as coreInitMockifyerForDashboardProxy,
-  initMockifyerForLocalFilesystem as coreInitMockifyerForLocalFilesystem,
-  type InitMockifyerForDashboardProxyOptions,
-  type InitMockifyerForLocalFilesystemOptions,
   newRecordingUsesAlwaysUseRealApi,
   shouldBlockLocalMockRecording,
   resolveStrictScenarioResolution,
@@ -74,6 +68,14 @@ import {
   installNodeInboundRequestCorrelationCapture,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
+import {
+  applyProxyRecordOnMissEnv,
+  mirrorProxyRecordingToClient,
+  initMockifyerForDashboardProxy as coreInitMockifyerForDashboardProxy,
+  initMockifyerForLocalFilesystem as coreInitMockifyerForLocalFilesystem,
+  type InitMockifyerForDashboardProxyOptions,
+  type InitMockifyerForLocalFilesystemOptions,
+} from './core-proxy';
 
 import { FetchHTTPClient } from './clients/fetch-client';
 

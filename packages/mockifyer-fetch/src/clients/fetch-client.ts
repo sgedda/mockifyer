@@ -8,8 +8,8 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
-  performDashboardProxyRequest,
 } from '@sgedda/mockifyer-core';
+import { performDashboardProxyRequest } from '../core-proxy';
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;

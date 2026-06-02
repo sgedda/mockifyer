@@ -97,6 +97,25 @@ function isMockifyerStubbedModule(moduleName: string): boolean {
   );
 }
 
+/** Metro often resolves `@sgedda/mockifyer-core` to `main` instead of the RN entry. */
+function resolveMockifyerCoreReactNativeEntry(
+  moduleName: string,
+  platform: string | null
+): { filePath: string; type: 'sourceFile' } | null {
+  if (moduleName !== '@sgedda/mockifyer-core') {
+    return null;
+  }
+  if (platform === 'web') {
+    return null;
+  }
+  try {
+    const filePath = require.resolve('@sgedda/mockifyer-core/dist/index.react-native.js');
+    return { filePath, type: 'sourceFile' };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Options for configuring Metro for Mockifyer
  */
@@ -199,6 +218,11 @@ export function configureMetroForMockifyer(
         filePath: emptyModulePath,
         type: 'sourceFile',
       };
+    }
+
+    const mockifyerCoreRn = resolveMockifyerCoreReactNativeEntry(moduleName, platform);
+    if (mockifyerCoreRn) {
+      return mockifyerCoreRn;
     }
 
     // Call existing resolver if present

@@ -2,4 +2,4 @@ export {
   canUseDashboardCentralProxy,
   canUseDashboardRedisProxy,
   type DashboardHealthPayload,
-} from '@sgedda/mockifyer-core';
+} from '@sgedda/mockifyer-core/utils/dashboard-central-proxy-health';
