@@ -23,6 +23,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private getExplicitProxyScenarioContext?: () => boolean;
   private clientIdSnapshot?: string;
   private deviceId?: string;
+  private proxyFetch?: typeof fetch;
 
   constructor(
     instance?: AxiosInstance,
@@ -54,6 +55,9 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
+    const globalScope = globalThis as typeof globalThis & { __mockifyer_original_fetch?: typeof fetch };
+    const fetchFn = globalScope.__mockifyer_original_fetch ?? globalScope.fetch;
+    this.proxyFetch = typeof fetchFn === 'function' ? fetchFn.bind(globalScope) : undefined;
   }
 
   private resolvedClientLane(hopHeaders?: unknown): string | undefined {
@@ -139,6 +143,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         recordResponses: this.proxyRecordResponses,
         strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
         config,
+        fetchFn: this.proxyFetch,
         logTag: 'Mockifyer-Axios',
       });
     }
