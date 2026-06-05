@@ -28,6 +28,7 @@ import {
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import { toPersistedRequestHeaders, toRecordStringHeaders } from '../utils/proxy-recording-privacy';
 import {
   appendProxyNetworkEvent,
   applyProxyCorrelationToMockData,
@@ -43,24 +44,6 @@ const router = express.Router();
 
 function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-function deriveFallbackDeviceId(req: Request): string | undefined {
-  const ip = req.ip || '';
-  const ua = typeof req.header('user-agent') === 'string' ? String(req.header('user-agent')) : '';
-  const raw = `${ip}|${ua}`.trim();
-  if (!raw || raw === '|') return undefined;
-  return `derived:${sha256Hex(raw).slice(0, 16)}`;
-}
-
-function toRecordStringHeaders(headers: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headers || typeof headers !== 'object') return out;
-  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
-    if (v === undefined || v === null) continue;
-    out[k] = String(v);
-  }
-  return out;
 }
 
 function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
@@ -85,6 +68,14 @@ function proxyTraceResponseFields(
     res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, trace.requestId);
   }
   return trace;
+}
+
+function deriveFallbackDeviceId(req: Request): string | undefined {
+  const ip = req.ip || '';
+  const ua = typeof req.header('user-agent') === 'string' ? String(req.header('user-agent')) : '';
+  const raw = `${ip}|${ua}`.trim();
+  if (!raw || raw === '|') return undefined;
+  return `derived:${sha256Hex(raw).slice(0, 16)}`;
 }
 
 router.post('/', async (req: Request, res: Response) => {
@@ -498,7 +489,7 @@ router.post('/', async (req: Request, res: Response) => {
         const requestPayload = {
           method: upperMethod,
           url,
-          headers: toRecordStringHeaders(headers),
+          headers: toPersistedRequestHeaders(headers),
           data: body,
           queryParams: {},
         };
