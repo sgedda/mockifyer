@@ -306,15 +306,18 @@ mocking while leaving unrelated traffic real.
 ## Date manipulation
 
 Use Mockifyer's date helper instead of `new Date()` when code must match mock
-time:
+time. Relative offsets are often stronger than fixed dates because the demo stays
+fresh whenever it runs:
 
 ```typescript
 import { getCurrentDate, setupMockifyer } from '@sgedda/mockifyer-axios';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 setupMockifyer({
   mockDataPath: './mock-data',
   dateManipulation: {
-    fixedDate: '2024-01-01T00:00:00.000Z',
+    offset: 7 * DAY_MS, // behave as if it is one week from now
   },
 });
 
@@ -323,6 +326,33 @@ const now = getCurrentDate();
 
 Date config can also come from environment variables such as
 `MOCKIFYER_DATE`, `MOCKIFYER_DATE_OFFSET`, and `MOCKIFYER_TIMEZONE`.
+
+---
+
+## Demo rolling product states
+
+Fixed dates prove determinism. Offsets sell the demo.
+
+| Demo state | Relative date behavior |
+|------------|------------------------|
+| Trial expires tomorrow | `expiresAt = now + 1 day` |
+| Flash sale countdown | `endsAt = now + 2 hours` |
+| Subscription renews soon | `renewalDate = now + 7 days` |
+| Recently delivered order | `deliveredAt = now - 15 minutes` |
+
+Per-mock response date overrides keep recorded data realistic without making it
+stale:
+
+```json
+{
+  "responseDateOverrides": [
+    { "path": "checkout.deliveryPromise", "offsetDays": 2, "format": "iso" },
+    { "path": "promotion.endsAt", "offsetHours": 2, "format": "iso" }
+  ]
+}
+```
+
+Pitch line: **"This scenario always looks like the event is about to happen."**
 
 ---
 
