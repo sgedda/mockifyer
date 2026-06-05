@@ -24,7 +24,7 @@ describe('axios proxy bypass', () => {
     upstream = new MockAdapter(axiosInstance);
 
     upstream.onGet(url).reply((config) => {
-      const headers = axios.AxiosHeaders.from(config.headers);
+      const headers = axios.AxiosHeaders.from(config.headers as any);
       return [
         200,
         {
