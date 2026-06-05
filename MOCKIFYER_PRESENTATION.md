@@ -59,6 +59,7 @@ recording is enabled, misses can call the real API and save the response.
 | `@sgedda/mockifyer-axios` | Axios interceptors and dashboard proxy preset |
 | `@sgedda/mockifyer-fetch` | Fetch / React Native interceptors and presets |
 | `@sgedda/mockifyer-dashboard` | Local UI, mock editor, proxy, Redis / SQLite support |
+| `@sgedda/mockifyer-mcp` | MCP server exposing dashboard APIs to AI clients |
 | `@sgedda/mockifyer-test-helper` | Test utilities |
 | `mockifyer-web` | Demo web app in this repository |
 
@@ -306,6 +307,113 @@ await setupMockifyerForReactNative({
 
 ---
 
+## MCP: AI access to mock context
+
+Mockifyer MCP exposes dashboard APIs to AI clients such as Cursor and Claude
+Desktop.
+
+```mermaid
+flowchart LR
+    AI["AI client"] --> MCP["mockifyer-mcp"]
+    MCP --> Dashboard["Mockifyer dashboard"]
+    Dashboard --> Mocks[("mock-data / Redis / SQLite")]
+```
+
+Instead of pasting large JSON files into chat, the assistant can ask Mockifyer
+for focused mock context, endpoint stats, scenarios, and targeted edit tools.
+
+---
+
+## Why MCP is useful
+
+MCP makes AI assistance practical for mock-heavy apps:
+
+- **Less context bloat:** send field summaries and state hints instead of full
+  response bodies.
+- **Better discovery:** list scenarios, search endpoints, and inspect endpoint
+  stats without manually opening files.
+- **Safer edits:** change specific JSON paths or clone array items instead of
+  rewriting an entire mock body.
+- **Faster debugging:** ask which mocks drive a UI state, status, or edge case.
+- **Scenario-aware changes:** work against the same active mock data the
+  dashboard is serving.
+
+---
+
+## MCP tools
+
+| Tool | Use |
+|------|-----|
+| `mockifyer_get_mock_ai_context` | Lightweight mock projection for AI |
+| `mockifyer_set_field_overrides` | Replay-time path/value overlays |
+| `mockifyer_copy_array_item` | Clone array item with optional overrides |
+| `mockifyer_list_mocks` | List recordings in a scenario |
+| `mockifyer_search_mocks` | Search by filename, endpoint, or method |
+| `mockifyer_get_mock` | Fetch full mock JSON when needed |
+| `mockifyer_list_scenarios` | Show available and active scenarios |
+| `mockifyer_get_endpoint_stats` | Aggregate endpoint, status, and method stats |
+
+The most important default is to prefer `mockifyer_get_mock_ai_context` over
+full mock JSON unless the exact body is required.
+
+---
+
+## MCP setup
+
+Run the dashboard first:
+
+```bash
+npx mockifyer-dashboard --path ./mock-data
+```
+
+Build the MCP server:
+
+```bash
+npm --prefix packages/mockifyer-mcp install
+npm --prefix packages/mockifyer-mcp run build
+```
+
+Add it to Cursor MCP config:
+
+```json
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "node",
+      "args": ["/path/to/mockifyer/packages/mockifyer-mcp/dist/cli.js"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002"
+      }
+    }
+  }
+}
+```
+
+---
+
+## MCP-assisted workflow
+
+Ask the AI:
+
+> "What fields drive order status in scenario `default`, and make one booking
+> confirmed."
+
+The assistant can:
+
+1. Search order mocks in `default`.
+2. Read a lightweight AI context projection.
+3. Identify likely fields such as `bookings.0.status`.
+4. Apply a focused override or clone an array item.
+5. Tell you exactly which mock changed.
+
+```text
+search -> ai_context -> set_field_overrides -> rerun app/test
+```
+
+This keeps mock edits intentional, reviewable, and small.
+
+---
+
 ## Recording workflow
 
 Recommended team flow:
@@ -357,6 +465,7 @@ Use Mockifyer when you need:
 - Safe contract-drift refreshes from real APIs.
 - Mobile mock data that can sync between simulator and repo.
 - Shared mock control through dashboard, Redis, or SQLite.
+- AI-assisted mock discovery and targeted edits through MCP.
 
 ---
 
@@ -368,6 +477,7 @@ Use Mockifyer when you need:
 - The dashboard adds discovery, editing, proxying, and shared stores.
 - React Native support covers device storage, Metro sync, and bundled mocks.
 - Client lanes let multiple consumers share infrastructure without sharing state.
+- MCP lets AI clients inspect and modify mocks through focused dashboard APIs.
 
 ---
 
@@ -378,4 +488,5 @@ Use Mockifyer when you need:
 - Team workflow: `MOCK_WORKFLOW.md`
 - React Native guide: `REACT_NATIVE.md`
 - Dashboard package: `packages/mockifyer-dashboard/README.md`
+- MCP package: `packages/mockifyer-mcp/README.md`
 - Public site: <https://mockifyer.dev/>
