@@ -414,6 +414,101 @@ This keeps mock edits intentional, reviewable, and small.
 
 ---
 
+## Tracing underlying service responses
+
+For multi-service flows, Mockifyer can show the response chain behind one user
+action:
+
+```mermaid
+flowchart LR
+    Browser["Browser / test"] --> Gateway["gateway-api"]
+    Gateway --> Catalog["catalog-api"]
+    Gateway --> Orders["orders-api"]
+    Catalog --> External["external product API"]
+```
+
+Enable **Network** logging and **Bodies** capture in the dashboard. Each logged
+hop can then include request and response body previews, not only status codes.
+
+---
+
+## Trace setup
+
+Entry services should install the correlation middleware:
+
+```typescript
+import express from 'express';
+import { createMockifyerCorrelationMiddleware } from '@sgedda/mockifyer-core';
+
+const app = express();
+
+app.use(createMockifyerCorrelationMiddleware());
+```
+
+The middleware assigns or forwards `X-Mockifyer-Request-Id` and echoes it on the
+HTTP response. Mockifyer interceptors propagate the correlation to downstream
+services.
+
+---
+
+## Trace API example
+
+Call the entry service and capture the trace id:
+
+```bash
+curl -si 'http://localhost:4101/aggregate' \
+  | grep -i x-mockifyer-request-id
+```
+
+Fetch the full response chain from the dashboard:
+
+```bash
+curl -s \
+  'http://localhost:3002/api/network-events/trace?requestId=THE_ID&scenario=default' \
+  | jq '.trace.hops[] | { method, url, status, source, response: .response.body }'
+```
+
+You can also start from a dashboard Network row:
+
+```bash
+curl -s \
+  'http://localhost:3002/api/network-events/trace?eventId=ev-123&scenario=default' \
+  | jq .
+```
+
+---
+
+## Trace output example
+
+```json
+{
+  "trace": {
+    "hops": [
+      {
+        "method": "GET",
+        "url": "http://localhost:4101/aggregate",
+        "status": 200,
+        "source": "gateway-api",
+        "response": { "body": { "products": 3, "orders": 2 } }
+      },
+      {
+        "method": "GET",
+        "url": "http://localhost:4102/products",
+        "status": 200,
+        "source": "catalog-api",
+        "response": { "body": { "items": ["sku-1", "sku-2"] } }
+      }
+    ],
+    "incomplete": false
+  }
+}
+```
+
+Use this to answer: "Which underlying service response made the aggregate API
+return this value?"
+
+---
+
 ## Recording workflow
 
 Recommended team flow:
@@ -466,6 +561,7 @@ Use Mockifyer when you need:
 - Mobile mock data that can sync between simulator and repo.
 - Shared mock control through dashboard, Redis, or SQLite.
 - AI-assisted mock discovery and targeted edits through MCP.
+- Multi-hop trace inspection for downstream service responses.
 
 ---
 
@@ -478,6 +574,7 @@ Use Mockifyer when you need:
 - React Native support covers device storage, Metro sync, and bundled mocks.
 - Client lanes let multiple consumers share infrastructure without sharing state.
 - MCP lets AI clients inspect and modify mocks through focused dashboard APIs.
+- Network traces connect aggregate responses back to underlying service hops.
 
 ---
 
