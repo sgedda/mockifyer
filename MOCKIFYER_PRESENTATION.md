@@ -50,6 +50,30 @@ shareable, and AI-assistable.**
 
 ---
 
+## Aha moment: pinpoint the real cause
+
+The checkout page shows the wrong delivery promise.
+
+Without Mockifyer, the team asks:
+
+- Is the frontend formatting wrong?
+- Did the gateway merge the wrong field?
+- Did `catalog-api` return stale availability?
+- Did `orders-api` return a fallback date?
+
+With Mockifyer:
+
+```text
+trace checkout request -> inspect gateway + downstream responses
+-> ask MCP which mock field drives deliveryPromise
+-> edit that field in a scenario -> replay instantly
+```
+
+The recognizable moment: **"I can see the exact service response and field that
+made the UI do this."**
+
+---
+
 ## Core idea
 
 ```mermaid
