@@ -33,6 +33,23 @@ Mockifyer turns real API traffic into reviewable, versionable fixtures.
 
 ---
 
+## Pain points and solutions
+
+| Developer pain point | Mockifyer solution |
+|----------------------|--------------------|
+| Staging APIs are slow, flaky, or unavailable | Replay local JSON mocks with no network dependency |
+| Demo data changes right before a review | Pin a curated scenario for the exact product state |
+| Edge cases are hard to reproduce | Edit response JSON or switch to a dedicated scenario |
+| Tests fail because backend state changed | Commit deterministic fixtures with the test suite |
+| Mobile and web teams need the same mock state | Share scenarios through repo files, dashboard, Redis, or SQLite |
+| Aggregate responses hide the failing downstream service | Use dashboard network traces to inspect each service hop |
+| Large mock files are hard to reason about | Use MCP to let AI inspect focused mock context and targeted fields |
+
+The pitch: **record real traffic once, then make it deterministic, reviewable,
+shareable, and AI-assistable.**
+
+---
+
 ## Core idea
 
 ```mermaid
