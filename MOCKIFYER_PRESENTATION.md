@@ -434,31 +434,35 @@ hop can then include request and response body previews, not only status codes.
 
 ## Trace setup
 
-Entry services should install the correlation middleware:
+Node services get inbound correlation automatically when Mockifyer is installed:
 
 ```typescript
-import express from 'express';
-import { createMockifyerCorrelationMiddleware } from '@sgedda/mockifyer-core';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
-const app = express();
-
-app.use(createMockifyerCorrelationMiddleware());
+setupMockifyer({
+  mockDataPath: './mock-data',
+  useGlobalFetch: true,
+});
 ```
 
-The middleware assigns or forwards `X-Mockifyer-Request-Id` and echoes it on the
-HTTP response. Mockifyer interceptors propagate the correlation to downstream
-services.
+`setupMockifyer` installs Node inbound correlation capture, so patched fetch /
+axios calls propagate request ids to downstream services. Express middleware is
+optional now; use `createMockifyerCorrelationMiddleware()` only when you want to
+explicitly echo `X-Mockifyer-Request-Id` on the entry service response.
 
 ---
 
 ## Trace API example
 
-Call the entry service and capture the trace id:
+If the entry response exposes a trace header, capture it:
 
 ```bash
 curl -si 'http://localhost:4101/aggregate' \
   | grep -i x-mockifyer-request-id
 ```
+
+The dashboard proxy sets this header, and the optional Express middleware can
+echo it from a custom entry service.
 
 Fetch the full response chain from the dashboard:
 
@@ -468,7 +472,7 @@ curl -s \
   | jq '.trace.hops[] | { method, url, status, source, response: .response.body }'
 ```
 
-You can also start from a dashboard Network row:
+If you do not have the response header, start from a dashboard Network row:
 
 ```bash
 curl -s \
