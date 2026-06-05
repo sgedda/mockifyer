@@ -299,6 +299,11 @@ class MockifyerClass {
     }
   }
 
+  private markAxiosRequestAsBypassed(config: any): void {
+    applyOutboundRequestCorrelation(config);
+    (config as any).__mockifyer_bypass = true;
+  }
+
   private ensureMockDataDirectory(): void {
     if (!fs.existsSync(this.config.mockDataPath)) {
       fs.mkdirSync(this.config.mockDataPath, { recursive: true });
@@ -593,9 +598,7 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
-        this.applyOutboundLaneHeadersToAxiosRequest(config);
-        applyOutboundRequestCorrelation(config);
-        (config as any).__mockifyer_bypass = true;
+        this.markAxiosRequestAsBypassed(config);
         return config;
       }
 
@@ -833,9 +836,7 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
-        this.applyOutboundLaneHeadersToAxiosRequest(config);
-        applyOutboundRequestCorrelation(config);
-        (config as any).__mockifyer_bypass = true;
+        this.markAxiosRequestAsBypassed(config);
         return config;
       }
 
