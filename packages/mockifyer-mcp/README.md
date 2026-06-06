@@ -69,6 +69,9 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_get_mock` | Full mock JSON (large — prefer ai_context when possible) |
 | `mockifyer_list_scenarios` | Available and active scenarios |
 | `mockifyer_get_endpoint_stats` | Endpoint / status / method aggregates |
+| `mockifyer_list_network_events` | Recent network log hops (find `requestId` / `eventId`) |
+| `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
+| `mockifyer_get_network_log_config` | Whether network logging and body capture are enabled |
 
 ## Example (IDE chat)
 
@@ -80,6 +83,13 @@ The assistant can call:
 2. `mockifyer_get_mock_ai_context({ filename: "...", mode: "profile" })`
 3. `mockifyer_set_field_overrides({ filename, overrides: [{ path: "bookings.0.status", value: "CONFIRMED" }] })`
    or `mockifyer_copy_array_item({ filename, arrayPath: "bookings", fromIndex: 0, itemOverrides: { status: "CONFIRMED" } })`
+
+> "Trace the gateway call that returned 502 — what did each hop use?"
+
+1. `mockifyer_list_network_events({ scenario: "default", limit: 50 })` — pick `requestId` or `eventId`
+2. `mockifyer_get_network_trace({ requestId: "...", scenario: "default" })` — ordered `trace.hops[]` root-first
+
+Requires network logging enabled in the dashboard Network tab (persistent with `redis` / `sqlite` providers).
 
 ## Environment variables
 

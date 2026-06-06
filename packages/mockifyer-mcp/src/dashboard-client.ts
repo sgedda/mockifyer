@@ -96,6 +96,99 @@ export interface CopyArrayItemResponse {
   arrayLength: number;
 }
 
+export type NetworkEventSource =
+  | 'mock-hit'
+  | 'mock-miss'
+  | 'upstream'
+  | 'blocked'
+  | 'error';
+
+export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy';
+
+export interface NetworkEvent {
+  id: string;
+  timestamp: string;
+  scenario: string;
+  clientId?: string | null;
+  deviceId?: string | null;
+  sessionId?: string | null;
+  requestId?: string | null;
+  parentRequestId?: string | null;
+  sequence?: number;
+  phase?: 'request_start' | 'request_end' | 'complete';
+  transport: NetworkEventTransport;
+  method: string;
+  url: string;
+  host?: string;
+  path?: string;
+  query?: string;
+  status?: number;
+  durationMs?: number;
+  source: NetworkEventSource;
+  requestHash?: string;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
+  requestBodyPreview?: string;
+  responseBodyPreview?: string;
+  errorMessage?: string;
+}
+
+export interface NetworkLogConfig {
+  enabled: boolean;
+  captureBodies: boolean;
+  updatedAt: string;
+}
+
+export interface NetworkEventsResponse {
+  scenario: string;
+  provider: string;
+  ephemeral: boolean;
+  networkLogConfig: NetworkLogConfig;
+  events: NetworkEvent[];
+}
+
+export interface NetworkTraceHop {
+  index: number;
+  eventId: string;
+  requestId: string | null;
+  parentRequestId: string | null;
+  timestamp: string;
+  method: string;
+  url: string;
+  host?: string;
+  path?: string;
+  status?: number;
+  source: NetworkEventSource;
+  durationMs?: number;
+  transport: NetworkEventTransport;
+  clientId?: string | null;
+  request?: { headers?: Record<string, string>; body?: string };
+  response?: { status?: number; headers?: Record<string, string>; body?: string };
+}
+
+export interface NetworkTraceResponse {
+  provider: string;
+  networkLogConfig: NetworkLogConfig;
+  trace: {
+    lookup: { by: 'requestId' | 'eventId'; value: string };
+    scenario: string;
+    rootRequestId: string | null;
+    anchorRequestId: string | null;
+    anchorEventId: string;
+    hopCount: number;
+    hops: NetworkTraceHop[];
+    incomplete: boolean;
+  };
+}
+
+export interface NetworkLogConfigResponse {
+  scenario: string;
+  provider: string;
+  enabled: boolean;
+  captureBodies: boolean;
+  updatedAt: string;
+}
+
 /** Resolve dashboard `/api` base from env (used by CLI and tests). */
 export function resolveDashboardApiBaseFromEnv(): string {
   const url = (process.env.MOCKIFYER_DASHBOARD_URL ?? 'http://localhost:3002').replace(/\/$/, '');
@@ -269,5 +362,54 @@ export class DashboardApiClient {
         insertAt: params.insertAt,
       }),
     });
+  }
+
+  async listNetworkEvents(params?: {
+    scenario?: string;
+    clientId?: string;
+    limit?: number;
+    since?: string;
+  }): Promise<NetworkEventsResponse> {
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.clientId) qs.set('clientId', params.clientId);
+    if (typeof params?.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    if (params?.since) qs.set('since', params.since);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request<NetworkEventsResponse>(`/network-events${suffix}`);
+  }
+
+  async getNetworkTrace(params: {
+    requestId?: string;
+    eventId?: string;
+    scenario?: string;
+    clientId?: string;
+    limit?: number;
+  }): Promise<NetworkTraceResponse> {
+    const requestId = params.requestId?.trim() ?? '';
+    const eventId = params.eventId?.trim() ?? '';
+    if (!requestId && !eventId) {
+      throw new Error('Provide requestId (X-Mockifyer-Request-Id) or eventId (network log row id)');
+    }
+    if (requestId && eventId) {
+      throw new Error('Provide only one of requestId or eventId');
+    }
+
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (requestId) qs.set('requestId', requestId);
+    if (eventId) qs.set('eventId', eventId);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    return this.request<NetworkTraceResponse>(`/network-events/trace?${qs.toString()}`);
+  }
+
+  async getNetworkLogConfig(scenario?: string): Promise<NetworkLogConfigResponse> {
+    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
+    return this.request<NetworkLogConfigResponse>(`/network-events/config${qs}`);
   }
 }
