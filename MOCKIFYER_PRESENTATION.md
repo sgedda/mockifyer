@@ -824,6 +824,87 @@ return this value?"
 
 ---
 
+## Realistic: trace first, MCP second
+
+Scenario: checkout says **"delivery in 9 days"**, but the product team expects
+**"delivery in 2 days"**.
+
+1. Use the Network trace to find the downstream hop:
+
+```bash
+curl -s \
+  'http://localhost:3002/api/network-events/trace?requestId=THE_ID&scenario=checkout-fast-delivery' \
+  | jq '.trace.hops[] | { source, url, response: .response.body }'
+```
+
+2. The trace shows the field came from `catalog-api`:
+
+```json
+{
+  "source": "catalog-api",
+  "url": "http://localhost:4102/products/sku-1",
+  "response": {
+    "body": {
+      "sku": "sku-1",
+      "availability": "IN_STOCK",
+      "deliveryPromise": "2026-06-15T10:00:00.000Z"
+    }
+  }
+}
+```
+
+3. Ask the AI to use MCP against the same scenario:
+
+```text
+Use Mockifyer MCP. In scenario checkout-fast-delivery,
+find the catalog mock for sku-1 and identify the field that controls
+the delivery promise. I want it to be two days from now.
+```
+
+---
+
+## Realistic: what MCP does next
+
+The assistant can translate that request into tool calls:
+
+```text
+mockifyer_search_mocks({
+  scenario: "checkout-fast-delivery",
+  q: "products/sku-1"
+})
+
+mockifyer_get_mock_ai_context({
+  scenario: "checkout-fast-delivery",
+  filename: "...catalog...",
+  mode: "suggest",
+  includePaths: ["deliveryPromise"]
+})
+```
+
+Then choose the smallest change:
+
+- If a static value is enough, MCP can apply a `responseFieldOverrides` patch.
+- If it must stay rolling relative to "now", apply a dashboard date override on
+  the identified path.
+
+```json
+{
+  "responseDateOverrides": [
+    {
+      "path": "deliveryPromise",
+      "offsetDays": 2,
+      "format": "iso"
+    }
+  ]
+}
+```
+
+The key point: **trace tells you which service response caused the state; MCP
+finds the exact mock field in the right scenario; the dashboard applies the
+rolling date behavior.**
+
+---
+
 ## Recording workflow
 
 Recommended team flow:
