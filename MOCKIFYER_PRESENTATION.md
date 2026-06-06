@@ -533,6 +533,54 @@ Add it to Cursor MCP config:
 
 ---
 
+## What triggers MCP?
+
+MCP is not triggered by app code. It is triggered by **AI intent** when the MCP
+server is configured and relevant tools are available.
+
+The assistant is most likely to use Mockifyer MCP when the prompt includes:
+
+- A Mockifyer-related task: "inspect mocks", "create a scenario", "override a
+  response field".
+- A scenario or target state: `checkout-card-expiring`, `empty-cart`,
+  `trial-ending`.
+- Endpoint hints: checkout, orders, subscriptions, GraphQL operation names.
+- An explicit instruction: "Use Mockifyer MCP".
+
+```text
+Use Mockifyer MCP. In scenario checkout-card-expiring,
+inspect checkout mocks and make the card expire soon.
+```
+
+That prompt gives the assistant both the tool family and the mock world to work
+inside.
+
+---
+
+## MCP works best scenario-scoped
+
+Most MCP tools accept an optional `scenario`.
+
+If omitted, the dashboard active scenario is used. For reliable demos and tests,
+name the scenario explicitly:
+
+```text
+Use scenario checkout-card-expiring.
+Search checkout and payment mocks.
+Find fields that trigger expired-card UI.
+Apply the smallest field/date overrides.
+```
+
+Why this matters:
+
+- Avoids editing the wrong scenario.
+- Makes the target product state concrete.
+- Keeps changes reviewable.
+- Lets multiple demo/test states coexist.
+- Aligns with dashboard, lanes, and CI workflows.
+
+---
+
 ## MCP internals: how a tool call moves
 
 ```mermaid
