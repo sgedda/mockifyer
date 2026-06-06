@@ -356,6 +356,77 @@ Pitch line: **"This scenario always looks like the event is about to happen."**
 
 ---
 
+## Practical: make one endpoint mocked
+
+Goal: keep most traffic real, but freeze one endpoint for a demo or test.
+
+1. Start the dashboard with the app pointing at `/api/proxy`.
+2. In scenario settings, enable **Record on miss**.
+3. Trigger the app flow that calls `GET /checkout/summary`.
+4. Open the recorded mock in the dashboard.
+5. Change replay mode from **Always use live API** to **Use saved mock**.
+6. Edit the JSON or add field/date overrides.
+7. Re-run the app flow; only that endpoint is now deterministic.
+
+This is the everyday developer loop: **capture the real thing, then pin exactly
+the part you care about.**
+
+---
+
+## Practical: live API with date overrides
+
+Goal: keep real backend data, but simulate a time-sensitive state.
+
+In the dashboard mock editor:
+
+1. Select the endpoint, for example `GET /subscriptions/current`.
+2. Set replay mode to **Always refresh from live**.
+3. Add response date overrides:
+   - `trialEndsAt` -> `offsetDays: 1`
+   - `renewalDate` -> `offsetDays: 7`
+4. Run the app again.
+
+The endpoint still calls the real API and updates the stored snapshot, but the
+client receives dates shifted relative to now.
+
+```json
+{
+  "alwaysRefreshFromLive": true,
+  "responseDateOverrides": [
+    { "path": "trialEndsAt", "offsetDays": 1, "format": "iso" },
+    { "path": "renewalDate", "offsetDays": 7, "format": "iso" }
+  ]
+}
+```
+
+Use this when the backend state is valid, but the product state depends on time.
+
+---
+
+## Practical: MCP builds the scenario with you
+
+Goal: create a scenario that triggers a specific UI state based on code context.
+
+Ask in Cursor:
+
+> "Create a `checkout-card-expiring` scenario. Look at the checkout UI code and
+> set the mocks so the card expires soon and the delivery promise is two days
+> from now."
+
+The assistant can combine IDE code context with MCP tools:
+
+1. Read the component to find state-driving fields.
+2. `mockifyer_search_mocks` for checkout/payment endpoints.
+3. `mockifyer_get_mock_ai_context` to inspect fields without huge JSON.
+4. `mockifyer_set_field_overrides` for values like `card.status = "EXPIRING"`.
+5. Add `responseDateOverrides` for rolling dates.
+6. Tell you which scenario and mocks changed.
+
+The result is a named scenario that matches the code path you actually need to
+trigger.
+
+---
+
 ## React Native and Expo
 
 React Native uses `@sgedda/mockifyer-fetch` to patch `global.fetch`.
