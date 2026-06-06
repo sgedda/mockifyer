@@ -41,6 +41,14 @@ npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios
 # npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch
 ```
 
+**Cursor / AI assistants** in your app repo:
+
+```bash
+npx mockifyer-init-cursor
+```
+
+Installs `.cursor/skills/mockifyer/` (setup, env vars, GraphQL matching). Skill files ship with `@sgedda/mockifyer-core`.
+
 ## Usage (fetch)
 
 ```typescript
