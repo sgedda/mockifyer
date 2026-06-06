@@ -273,6 +273,118 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     }
   );
 
+  server.registerTool(
+    'mockifyer_list_network_events',
+    {
+      description:
+        'List recent network log hops (mock hits, upstream calls, proxy traffic). Use to find requestId/eventId before calling mockifyer_get_network_trace.',
+      inputSchema: {
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        clientId: z.string().optional().describe('Filter by client lane id'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5000)
+          .optional()
+          .describe('Max events to return (default 200)'),
+        since: z.string().optional().describe('ISO timestamp — only events after this time'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.listNetworkEvents({
+          scenario: args.scenario,
+          clientId: args.clientId,
+          limit: args.limit,
+          since: args.since,
+        });
+        return jsonResult({
+          scenario: result.scenario,
+          provider: result.provider,
+          ephemeral: result.ephemeral,
+          networkLogConfig: result.networkLogConfig,
+          count: result.events.length,
+          events: result.events.map((event) => ({
+            id: event.id,
+            timestamp: event.timestamp,
+            method: event.method,
+            url: event.url,
+            status: event.status,
+            source: event.source,
+            transport: event.transport,
+            requestId: event.requestId,
+            parentRequestId: event.parentRequestId,
+            durationMs: event.durationMs,
+            clientId: event.clientId,
+            requestBodyPreview: event.requestBodyPreview,
+            responseBodyPreview: event.responseBodyPreview,
+            errorMessage: event.errorMessage,
+          })),
+        });
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_network_trace',
+    {
+      description:
+        'Resolve a multi-service call chain from the network log (gateway → downstream → external). Each hop may include request/response body previews when captureBodies is enabled.',
+      inputSchema: {
+        requestId: z
+          .string()
+          .optional()
+          .describe('X-Mockifyer-Request-Id from entry service (preferred lookup key)'),
+        eventId: z.string().optional().describe('Dashboard network log row id'),
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        clientId: z.string().optional().describe('Client lane filter when scanning events'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5000)
+          .optional()
+          .describe('Max network events to scan when resolving the trace (default 5000)'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.getNetworkTrace({
+          requestId: args.requestId,
+          eventId: args.eventId,
+          scenario: args.scenario,
+          clientId: args.clientId,
+          limit: args.limit,
+        });
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_network_log_config',
+    {
+      description:
+        'Return network logging settings for a scenario (enabled, captureBodies). Traces include body previews only when captureBodies is true.',
+      inputSchema: {
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.getNetworkLogConfig(args.scenario);
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
   return server;
 }
 
