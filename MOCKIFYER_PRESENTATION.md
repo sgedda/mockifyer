@@ -354,46 +354,31 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ## Dashboard screenshot: statistics
 
-![Dashboard statistics view](assets/mockifyer-presentation/dashboard-stats.png)
-
-PNG URL:
-<https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png>
+![Dashboard statistics view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png)
 
 ---
 
 ## Dashboard screenshot: mocks and chains
 
-![Dashboard mocks view with service chain grouping](assets/mockifyer-presentation/dashboard-mocks.png)
-
-PNG URL:
-<https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-mocks.png>
+![Dashboard mocks view with service chain grouping](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-mocks.png)
 
 ---
 
 ## Dashboard screenshot: date config
 
-![Dashboard date configuration view](assets/mockifyer-presentation/dashboard-date-config.png)
-
-PNG URL:
-<https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-date-config.png>
+![Dashboard date configuration view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-date-config.png)
 
 ---
 
 ## Dashboard screenshot: network trace
 
-![Dashboard network trace view](assets/mockifyer-presentation/dashboard-network.png)
-
-PNG URL:
-<https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-network.png>
+![Dashboard network trace view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-network.png)
 
 ---
 
 ## Dashboard screenshot: scenario settings
 
-![Dashboard scenario settings view](assets/mockifyer-presentation/dashboard-settings.png)
-
-PNG URL:
-<https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-settings.png>
+![Dashboard scenario settings view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-settings.png)
 
 ---
 
