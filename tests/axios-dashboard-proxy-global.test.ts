@@ -88,7 +88,7 @@ describe('axios dashboard proxy global preset', () => {
       expect(proxiedRequests[0]).toMatchObject({
         method: 'GET',
         url: 'http://upstream.example.test/widgets?page=1',
-        lane: 'lane-a',
+        clientId: 'lane-a',
       });
     } finally {
       axiosInstance.defaults.adapter = originalAdapter;
