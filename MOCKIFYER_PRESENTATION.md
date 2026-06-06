@@ -233,6 +233,125 @@ mock data.
 
 ---
 
+## Dashboard GUI: mental model
+
+The dashboard is the control room for a scenario.
+
+| Area | What developers do there |
+|------|--------------------------|
+| **Statistics** | See counts, endpoints, status codes, and recent activity |
+| **Mocks** | Browse/search mocks, open endpoints, edit responses |
+| **Timeline** | Inspect recorded request sequences |
+| **Network** | Watch live proxy/mock events and trace call chains |
+| **Date Config** | Shift scenario time with fixed dates or offsets |
+| **Settings** | Switch/create/lock/import/export scenarios and manage lanes |
+
+The GUI is where "this API call happened" becomes "this named scenario now
+replays the exact product state I need."
+
+---
+
+## Dashboard GUI: scenarios first
+
+Start by choosing the mock world you want to work in.
+
+In **Settings**:
+
+1. Pick an existing scenario, for example `checkout-fast-delivery`.
+2. Or create a new scenario like `checkout-card-expiring`.
+3. Optionally derive it from an existing scenario so you start with known-good
+   data.
+4. Lock curated scenarios when they should be read-only during demos or CI.
+5. Export/import scenario JSON to move a state between machines or branches.
+
+Good habit: never experiment in `default` if the state matters. Create a named
+scenario that describes the product behavior.
+
+---
+
+## Dashboard GUI: find the right mock
+
+In **Mocks**:
+
+1. Search by endpoint, method, filename, or domain.
+2. Use recent mocks after recording a fresh app flow.
+3. Open the mock and inspect:
+   - **Request**: method, URL, query, body, generated cURL.
+   - **Response**: status and editable body.
+   - **Metadata**: scenario, timestamps, trace ids, replay flags.
+4. Use service-chain grouping when a flow spans gateway/downstream calls.
+
+This answers: **"Which saved response is my app actually seeing?"**
+
+---
+
+## Dashboard GUI: choose replay behavior
+
+Inside the mock editor, the replay mode controls how that endpoint behaves.
+
+| Replay mode | Use when |
+|-------------|----------|
+| **Use saved mock** | Freeze the response for a test, demo, or bug repro |
+| **Refresh on next request** | Re-record once, then go back to saved mock mode |
+| **Always refresh from live** | Keep upstream data fresh while still applying overrides |
+| **Always use live API** | Keep the file for reference but never serve it |
+
+This lets you mix real and mocked traffic per endpoint instead of turning the
+whole app into "all real" or "all fake".
+
+---
+
+## Dashboard GUI: edit response state
+
+In the mock editor **Response** tab:
+
+- Use the **Form Editor** for small/medium JSON payloads.
+- Use the **JSON Editor** for precise edits or very large payloads.
+- Add **response date overrides** for rolling states:
+  - `trialEndsAt -> now + 1 day`
+  - `promotion.endsAt -> now + 2 hours`
+  - `checkout.deliveryPromise -> now + 2 days`
+- Save and rerun the app flow immediately.
+
+The useful pattern: change only the fields that drive the UI state, then keep
+the rest of the recorded payload intact.
+
+---
+
+## Dashboard GUI: Network tab workflow
+
+Use **Network** when you need to understand live behavior.
+
+1. Enable network logging for the scenario.
+2. Turn on **Bodies** capture when response previews matter.
+3. Reproduce the app flow.
+4. Filter by method, source, or client lane.
+5. Select a row to inspect request/response details.
+6. Open the trace from a request id or event id to see the call chain.
+
+This is the GUI version of:
+
+```bash
+GET /api/network-events/trace?requestId=...&scenario=...
+```
+
+---
+
+## Dashboard GUI: team-safe controls
+
+The dashboard also supports workflow guardrails:
+
+- **Scenario locks**: make curated scenarios read-only.
+- **Import/export**: package mocks plus optional date/proxy settings as JSON.
+- **Record on miss**: choose whether proxy misses save new mocks.
+- **Allow upstream**: control whether misses may call the real API.
+- **Client lanes**: map stable `clientId` values to scenarios for shared Redis /
+  SQLite setups.
+
+These controls turn Mockifyer from a local debugging tool into a team workflow.
+
+---
+
 ## Dashboard proxy
 
 The dashboard can become a central proxy:
