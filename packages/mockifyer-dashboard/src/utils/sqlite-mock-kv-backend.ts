@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
 
 function requireBetterSqlite3(): any {
@@ -71,6 +73,7 @@ export class SqliteMockKvBackend implements MockKvBackend {
 
   constructor(dbPath: string) {
     const Database = requireBetterSqlite3();
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.exec(`
