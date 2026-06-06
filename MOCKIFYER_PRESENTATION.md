@@ -533,6 +533,127 @@ Add it to Cursor MCP config:
 
 ---
 
+## MCP internals: how a tool call moves
+
+```mermaid
+sequenceDiagram
+    participant AI as Cursor / Claude
+    participant MCP as mockifyer-mcp stdio server
+    participant API as Dashboard /api
+    participant Store as mock-data / Redis / SQLite
+
+    AI->>MCP: call tool + JSON args
+    MCP->>API: HTTP request to dashboard route
+    API->>Store: read or update scenario mock data
+    Store-->>API: mock metadata / projection / mutation result
+    API-->>MCP: JSON response
+    MCP-->>AI: text content with formatted JSON
+```
+
+The MCP server does not parse files directly. It is a small bridge from AI tool
+calls to the running dashboard API.
+
+---
+
+## MCP tool to dashboard endpoint map
+
+| MCP tool | Dashboard HTTP route |
+|----------|----------------------|
+| `mockifyer_list_mocks` | `GET /api/mocks?scenario=...` |
+| `mockifyer_search_mocks` | `GET /api/mocks/search?q=...&scenario=...` |
+| `mockifyer_get_mock_ai_context` | `GET /api/mocks/:filename/ai-context?...` |
+| `mockifyer_get_mock` | `GET /api/mocks/:filename?scenario=...` |
+| `mockifyer_list_scenarios` | `GET /api/scenario-config` |
+| `mockifyer_get_endpoint_stats` | `GET /api/stats?scenario=...` |
+| `mockifyer_set_field_overrides` | `PATCH /api/mocks/:filename/field-overrides` |
+| `mockifyer_copy_array_item` | `POST /api/mocks/:filename/copy-array-item` |
+
+The `:filename` value is URL-encoded segment-by-segment, so nested mock paths
+can be addressed safely.
+
+---
+
+## MCP read endpoint: AI context
+
+`mockifyer_get_mock_ai_context` is the default read tool because it avoids
+dumping full response bodies into chat.
+
+```text
+GET /api/mocks/:filename/ai-context
+  ?scenario=checkout-card-expiring
+  &mode=profile
+  &maxPaths=25
+```
+
+It returns:
+
+- `endpoint`: method, URL, pathname.
+- `status`: stored response status.
+- `profile.fields`: selected state-driving response paths.
+- `profile.schema`: compact type summary.
+- `profile.stateHints`: observed values that look useful for state changes.
+- `suggestions`: ranked paths when `mode=suggest`.
+- `discovery`: how much was included or omitted.
+
+Use `mode=full` only when the AI truly needs the complete mock body.
+
+---
+
+## MCP write endpoint: field overlays
+
+`mockifyer_set_field_overrides` changes replay behavior without sending the full
+response body through the AI:
+
+```json
+{
+  "responseFieldOverrides": [
+    { "path": "card.status", "value": "EXPIRING" },
+    { "path": "checkout.requiresCvv", "value": true }
+  ],
+  "merge": true
+}
+```
+
+Dashboard route:
+
+```text
+PATCH /api/mocks/:filename/field-overrides?scenario=checkout-card-expiring
+```
+
+The stored response remains reviewable, and the overlay is applied at replay
+time.
+
+---
+
+## MCP write endpoint: clone a useful shape
+
+`mockifyer_copy_array_item` creates a new response item from an existing one.
+That is useful when a UI needs "one more booking", "one failed payment", or "one
+expired entitlement" without hand-writing a large object.
+
+```json
+{
+  "arrayPath": "bookings",
+  "fromIndex": 0,
+  "insertAt": "append",
+  "itemOverrides": {
+    "status": "CANCELLED",
+    "reason": "PAYMENT_FAILED"
+  }
+}
+```
+
+Dashboard route:
+
+```text
+POST /api/mocks/:filename/copy-array-item?scenario=checkout-card-expiring
+```
+
+The result returns the new item index and array length, so the assistant can
+report exactly what changed.
+
+---
+
 ## MCP-assisted workflow
 
 Ask the AI:
