@@ -1,12 +1,6 @@
----
-name: mockifyer
-description: >-
-  HTTP mock record/replay for axios and fetch — setupMockifyer, scenarios,
-  GraphQL matching, dashboard proxy, React Native. Use when integrating or
-  debugging Mockifyer, mock-data JSON, MOCKIFYER_* env vars, or API test fixtures.
----
+# Mockifyer — AI assistant guide
 
-# Mockifyer (consumer)
+Use this document when integrating or debugging Mockifyer in this project: `setupMockifyer`, `mock-data`, scenarios, GraphQL matching, env vars, and API test fixtures.
 
 Mockifyer intercepts HTTP (axios or fetch), looks up a JSON mock under `mock-data/<scenario>/`, and returns the stored response. In **record** mode it calls the real API and saves the response.
 
@@ -101,4 +95,4 @@ Axios: same preset names from `@sgedda/mockifyer-axios`.
 
 ## More detail
 
-See [reference.md](reference.md) in this skill folder, or [mockifyer.dev/llms.txt](https://mockifyer.dev/llms.txt).
+See [reference.md](./reference.md) in this folder, or [mockifyer.dev/llms.txt](https://mockifyer.dev/llms.txt).

@@ -1,21 +1,22 @@
 #!/usr/bin/env ts-node
 
 /**
- * Install the Mockifyer Cursor skill into the current project.
+ * Install Mockifyer AI assistant docs into the current project.
  *
  * Usage:
- *   npx mockifyer-init-cursor
- *   npx mockifyer-init-cursor --force
+ *   npx mockifyer-init-ai
+ *   npx mockifyer-init-ai --force
  */
 
 import fs from 'fs';
 import path from 'path';
 
-const SKILL_DIR_NAME = 'mockifyer';
-const SKILL_FILES = ['SKILL.md', 'reference.md'] as const;
+const DOCS_SUBDIR = path.join('docs', 'mockifyer-ai');
+const DOC_FILES = ['INSTRUCTIONS.md', 'reference.md'] as const;
 
 interface CliOptions {
   target?: string;
+  dest?: string;
   force?: boolean;
   dryRun?: boolean;
   help?: boolean;
@@ -29,6 +30,8 @@ function parseArgs(): CliOptions {
     const arg = args[i];
     if (arg === '--target' || arg === '-t') {
       options.target = args[++i];
+    } else if (arg === '--dest' || arg === '-d') {
+      options.dest = args[++i];
     } else if (arg === '--force' || arg === '-f') {
       options.force = true;
     } else if (arg === '--dry-run') {
@@ -43,41 +46,45 @@ function parseArgs(): CliOptions {
 
 function showHelp(): void {
   console.log(`
-Mockifyer Cursor skill installer
+Mockifyer AI docs installer
 
-Copies the Mockifyer agent skill into .cursor/skills/mockifyer/ so Cursor
-can help with setupMockifyer, mock-data, scenarios, and GraphQL matching.
+Copies editor-agnostic Mockifyer guidance into docs/mockifyer-ai/ so any AI
+assistant (Copilot, Cursor, Claude, etc.) can be pointed at setupMockifyer,
+mock-data, scenarios, and GraphQL matching.
 
 Usage:
-  npx mockifyer-init-cursor [options]
+  npx mockifyer-init-ai [options]
 
 Options:
   -t, --target <dir>   Project root (default: current working directory)
-  -f, --force          Overwrite existing skill files
+  -d, --dest <path>    Output directory relative to project root
+                       (default: docs/mockifyer-ai)
+  -f, --force          Overwrite existing files
       --dry-run        Print actions without writing files
   -h, --help           Show this help message
 
 Examples:
-  npx mockifyer-init-cursor
-  npx mockifyer-init-cursor --force
+  npx mockifyer-init-ai
+  npx mockifyer-init-ai --force
+  npx mockifyer-init-ai --dest .github/instructions/mockifyer
 `);
 }
 
-function getSkillsSourceDir(): string {
-  return path.join(__dirname, '../../skills', SKILL_DIR_NAME);
+function getDocsSourceDir(): string {
+  return path.join(__dirname, '../../ai/mockifyer');
 }
 
-function copySkillFiles(sourceDir: string, destDir: string, options: CliOptions): void {
+function copyDocFiles(sourceDir: string, destDir: string, options: CliOptions): void {
   if (!fs.existsSync(sourceDir)) {
-    throw new Error(`Skill source not found: ${sourceDir}`);
+    throw new Error(`Docs source not found: ${sourceDir}`);
   }
 
-  for (const file of SKILL_FILES) {
+  for (const file of DOC_FILES) {
     const sourcePath = path.join(sourceDir, file);
     const destPath = path.join(destDir, file);
 
     if (!fs.existsSync(sourcePath)) {
-      throw new Error(`Missing skill file: ${sourcePath}`);
+      throw new Error(`Missing doc file: ${sourcePath}`);
     }
 
     if (fs.existsSync(destPath) && !options.force) {
@@ -105,22 +112,22 @@ function main(): void {
   }
 
   const projectRoot = path.resolve(options.target ?? process.cwd());
-  const destDir = path.join(projectRoot, '.cursor', 'skills', SKILL_DIR_NAME);
-  const sourceDir = getSkillsSourceDir();
+  const destDir = path.resolve(projectRoot, options.dest ?? DOCS_SUBDIR);
+  const sourceDir = getDocsSourceDir();
 
-  console.log(`Installing Mockifyer Cursor skill into ${destDir}`);
+  console.log(`Installing Mockifyer AI docs into ${destDir}`);
 
-  copySkillFiles(sourceDir, destDir, options);
+  copyDocFiles(sourceDir, destDir, options);
 
   if (!options.dryRun) {
-    console.log('\nDone. Cursor will use this skill when working in this project.');
-    console.log('Docs: https://mockifyer.dev/llms.txt');
+    console.log('\nDone. Point your AI assistant at INSTRUCTIONS.md in that folder.');
+    console.log('Online reference: https://mockifyer.dev/llms.txt');
   }
 }
 
 try {
   main();
 } catch (error) {
-  console.error(`[mockifyer-init-cursor] ${(error as Error).message}`);
+  console.error(`[mockifyer-init-ai] ${(error as Error).message}`);
   process.exit(1);
 }
