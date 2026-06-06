@@ -352,6 +352,36 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Dashboard screenshot: statistics
+
+![Dashboard statistics view](assets/mockifyer-presentation/dashboard-stats.png)
+
+---
+
+## Dashboard screenshot: mocks and chains
+
+![Dashboard mocks view with service chain grouping](assets/mockifyer-presentation/dashboard-mocks.png)
+
+---
+
+## Dashboard screenshot: date config
+
+![Dashboard date configuration view](assets/mockifyer-presentation/dashboard-date-config.png)
+
+---
+
+## Dashboard screenshot: network trace
+
+![Dashboard network trace view](assets/mockifyer-presentation/dashboard-network.png)
+
+---
+
+## Dashboard screenshot: scenario settings
+
+![Dashboard scenario settings view](assets/mockifyer-presentation/dashboard-settings.png)
+
+---
+
 ## Dashboard proxy
 
 The dashboard can become a central proxy:
