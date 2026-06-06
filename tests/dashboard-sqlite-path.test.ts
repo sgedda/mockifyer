@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { SqliteMockKvBackend } from '@sgedda/mockifyer-dashboard/utils/sqlite-mock-kv-backend';
+import { SqliteMockKvBackend } from '../packages/mockifyer-dashboard/src/utils/sqlite-mock-kv-backend';
 
 const mockDb = {
   pragma: jest.fn(),

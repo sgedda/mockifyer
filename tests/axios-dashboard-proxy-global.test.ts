@@ -83,7 +83,7 @@ describe('axios dashboard proxy global preset', () => {
 
       expect(response.status).toBe(202);
       expect(response.data).toEqual({ proxied: true });
-      expect(response.headers.get('x-from-dashboard-proxy')).toBe('true');
+      expect((response.headers as any).get('x-from-dashboard-proxy')).toBe('true');
       expect(proxiedRequests).toHaveLength(1);
       expect(proxiedRequests[0]).toMatchObject({
         method: 'GET',
