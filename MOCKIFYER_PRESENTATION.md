@@ -370,6 +370,85 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Multi-service GIF: how services are wired
+
+Each service in the trace initializes Mockifyer before it makes outbound calls.
+
+```mermaid
+flowchart LR
+    Web["web / browser"] --> Gateway["gateway-api<br/>init Mockifyer"]
+    Gateway --> Catalog["catalog-api<br/>init Mockifyer"]
+    Gateway --> Orders["orders-api<br/>init Mockifyer"]
+    Gateway --> Payments["payments-api<br/>init Mockifyer"]
+    Catalog --> Dashboard["mockifyer-dashboard<br/>/api/proxy + Network log"]
+    Orders --> Dashboard
+    Payments --> Dashboard
+```
+
+`setupMockifyer` / presets patch outbound `fetch` or axios. In Node, inbound
+correlation is captured automatically, so downstream calls inherit the request
+chain and appear as linked trace hops.
+
+---
+
+## Multi-service init: shared helper
+
+Use one bootstrap helper so gateway, catalog, orders, and payments stay aligned:
+
+```typescript
+// mockifyer-bootstrap.ts
+import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-fetch';
+
+export async function initServiceMockifyer(serviceName: string) {
+  await initMockifyerForDashboardProxy({
+    dashboardBaseUrl: process.env.MOCKIFYER_PROXY_URL ?? 'http://localhost:3002',
+    mockDataPath: './mock-data',
+    clientId: process.env.MOCKIFYER_CLIENT_ID ?? 'checkout-demo',
+    scenario: process.env.MOCKIFYER_SCENARIO ?? 'checkout-aggregate',
+    recordOnMiss: process.env.MOCKIFYER_RECORD === 'true',
+    config: {
+      logging: 'info',
+      initLog: { headline: `Mockifyer: ${serviceName}` },
+    },
+  });
+}
+```
+
+The preset uses dashboard proxy when the dashboard central store is healthy, and
+falls back to filesystem mocks when it is not.
+
+---
+
+## Multi-service init: each service
+
+Call the helper before the service registers routes or performs network-heavy
+startup work:
+
+```typescript
+// gateway-api/src/server.ts
+import express from 'express';
+import { initServiceMockifyer } from './mockifyer-bootstrap';
+
+await initServiceMockifyer('gateway-api');
+
+const app = express();
+
+app.get('/checkout/summary', async (_req, res) => {
+  const [product, orders, payment] = await Promise.all([
+    fetch('http://catalog-api/products/sku-1').then((r) => r.json()),
+    fetch('http://orders-api/orders/recent').then((r) => r.json()),
+    fetch('http://payments-api/payment-methods').then((r) => r.json()),
+  ]);
+
+  res.json({ product, orders, payment });
+});
+```
+
+Do the same in `catalog-api`, `orders-api`, and `payments-api`. Each service can
+serve mocks, record misses, and propagate the same trace chain.
+
+---
+
 ## Dashboard GIF: rolling date demo
 
 ![Animated rolling date demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/rolling-date-demo.gif)
