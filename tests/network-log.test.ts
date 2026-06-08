@@ -51,7 +51,7 @@ describe('network-log', () => {
 
     expect(event.url).toBe('https://api.example.com/search?api_key=%5BREDACTED%5D&page=1');
     expect(event.url).not.toContain('super-secret');
-    expect(event.query).toBe('api_key=%5BREDACTED%5D&page=1');
+    expect(event.query).toBe('?api_key=%5BREDACTED%5D&page=1');
   });
 
   it('sanitizeNetworkEvent redacts a caller-provided query field', () => {
