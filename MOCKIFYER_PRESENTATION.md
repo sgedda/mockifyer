@@ -352,6 +352,24 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Dashboard GIF: GUI tour
+
+![Animated dashboard GUI tour](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-gui-tour.gif)
+
+---
+
+## Dashboard GIF: trace to MCP workflow
+
+![Animated trace to MCP workflow](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/trace-to-mcp-workflow.gif)
+
+---
+
+## Dashboard GIF: rolling date demo
+
+![Animated rolling date demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/rolling-date-demo.gif)
+
+---
+
 ## Dashboard screenshot: statistics
 
 ![Dashboard statistics view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png)
