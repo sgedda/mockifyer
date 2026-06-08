@@ -370,6 +370,12 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Terminal GIF: full trace curl response
+
+![Animated terminal curl trace response](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/terminal-trace-curl-response.gif)
+
+---
+
 ## Multi-service GIF: how services are wired
 
 Each service in the trace initializes Mockifyer before it makes outbound calls.
