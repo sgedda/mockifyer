@@ -473,6 +473,12 @@ serve mocks, record misses, and propagate the same trace chain.
 
 ---
 
+## Split-screen GIF: per-mock date override affects app
+
+![Animated per-mock date override app demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/per-mock-date-override-app.gif)
+
+---
+
 ## Dashboard screenshot: statistics
 
 ![Dashboard statistics view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png)
