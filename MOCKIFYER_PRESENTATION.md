@@ -467,6 +467,12 @@ serve mocks, record misses, and propagate the same trace chain.
 
 ---
 
+## Split-screen GIF: dashboard offset affects app
+
+![Animated dashboard and app date offset demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-app-date-offset.gif)
+
+---
+
 ## Dashboard screenshot: statistics
 
 ![Dashboard statistics view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png)
