@@ -364,6 +364,12 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Dashboard GIF: multi-service trace data
+
+![Animated multi-service trace data demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/multi-service-trace-data.gif)
+
+---
+
 ## Dashboard GIF: rolling date demo
 
 ![Animated rolling date demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/rolling-date-demo.gif)
