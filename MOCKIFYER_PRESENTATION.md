@@ -370,6 +370,12 @@ These controls turn Mockifyer from a local debugging tool into a team workflow.
 
 ---
 
+## Example app GIF: date override changes UI
+
+![Animated example app date override demo](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/live-app-date-override.gif)
+
+---
+
 ## Dashboard screenshot: statistics
 
 ![Dashboard statistics view](https://raw.githubusercontent.com/sgedda/mockifyer/refs/heads/cursor/mockifyer-presentation-5280/assets/mockifyer-presentation/dashboard-stats.png)
