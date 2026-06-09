@@ -46,6 +46,7 @@ export * from './utils/network-log';
 export * from './utils/network-trace';
 export * from './utils/ai-context';
 export * from './utils/redis-cluster-ops';
+export * from './utils/create-io-redis-client';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)

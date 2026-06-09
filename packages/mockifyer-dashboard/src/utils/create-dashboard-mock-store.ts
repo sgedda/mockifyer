@@ -38,8 +38,16 @@ export function createDashboardMockStore(
     });
   }
 
+  const redisOptions =
+    config.redisCluster === true
+      ? { cluster: true }
+      : config.redisCluster === false
+        ? { cluster: false }
+        : undefined;
+
   return new RedisMockStore({
     ...base,
     redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
+    ...(redisOptions ? { redisOptions } : {}),
   });
 }
