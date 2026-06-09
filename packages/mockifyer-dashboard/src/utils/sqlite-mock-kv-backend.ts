@@ -214,6 +214,17 @@ export class SqliteMockKvBackend implements MockKvBackend {
       .run(key, member, score);
   }
 
+  async zrem(key: string, ...members: string[]): Promise<void> {
+    if (members.length === 0) return;
+    const stmt = this.db.prepare(`DELETE FROM zset_members WHERE zset_key = ? AND member = ?`);
+    const run = this.db.transaction(() => {
+      for (const m of members) {
+        stmt.run(key, m);
+      }
+    });
+    run();
+  }
+
   async zrevrangebyscore(
     key: string,
     max: number,
