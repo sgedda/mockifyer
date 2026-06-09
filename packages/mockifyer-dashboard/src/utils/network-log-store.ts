@@ -8,7 +8,10 @@ import {
   type NetworkEvent,
 } from '@sgedda/mockifyer-core';
 import type { DashboardContextConfig } from './dashboard-context';
-import { resolveDashboardSqlitePath } from './create-dashboard-mock-store';
+import {
+  buildDashboardRedisClientOptions,
+  resolveDashboardSqlitePath,
+} from './create-dashboard-mock-store';
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -147,9 +150,12 @@ class RedisNetworkLogStore implements NetworkLogStore {
   private readonly max = maxEvents();
   private readonly ttl = ttlSec();
 
-  constructor(redisUrl: string, keyPrefix?: string) {
+  constructor(redisUrl: string, keyPrefix?: string, redisOptions?: Record<string, unknown>) {
     this.keyPrefix = keyPrefix || 'mockifyer:v1';
-    this.clientPromise = resolveIoRedisClient(redisUrl, { maxRetriesPerRequest: 3 });
+    this.clientPromise = resolveIoRedisClient(redisUrl, {
+      maxRetriesPerRequest: 3,
+      ...(redisOptions || {}),
+    });
   }
 
   private redis(): Promise<any> {
@@ -459,7 +465,8 @@ export function createNetworkLogStore(config: DashboardContextConfig): NetworkLo
     if (!redisUrl) {
       throw new Error('Redis provider requires redisUrl or MOCKIFYER_REDIS_URL');
     }
-    return new RedisNetworkLogStore(redisUrl, config.keyPrefix);
+    const redisOptions = buildDashboardRedisClientOptions(config);
+    return new RedisNetworkLogStore(redisUrl, config.keyPrefix, redisOptions);
   }
   if (config.provider === 'sqlite') {
     const dataPath = config.mockDataPath || process.env.MOCKIFYER_PATH || './mock-data';

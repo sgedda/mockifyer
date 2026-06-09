@@ -3,7 +3,7 @@ import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
-import { createDashboardMockStore } from './create-dashboard-mock-store';
+import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
 import { RedisMockStore } from './redis-mock-store';
 
@@ -153,10 +153,11 @@ export async function buildRedisScenarioBundle(
   scenario: string,
   redisUrl: string,
   keyPrefix?: string,
-  provider: CentralizedDashboardProvider = 'redis'
+  provider: CentralizedDashboardProvider = 'redis',
+  redisCluster?: boolean
 ): Promise<ScenarioExportBundle> {
   const store = createDashboardMockStore(
-    { provider, redisUrl, keyPrefix },
+    toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
     mockDataPath
   );
   try {
@@ -325,6 +326,7 @@ export interface ApplyScenarioImportOptions {
   provider: 'filesystem' | 'sqlite' | 'redis';
   redisUrl?: string;
   keyPrefix?: string;
+  redisCluster?: boolean;
 }
 
 export interface ApplyScenarioImportResult {
@@ -395,6 +397,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     provider,
     redisUrl,
     keyPrefix,
+    redisCluster,
   } = opts;
 
   let mocksWritten = 0;
@@ -405,7 +408,10 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     if (provider === 'redis' && !redisUrl) {
       throw new Error('Redis URL is required for redis provider');
     }
-    const store = createDashboardMockStore({ provider, redisUrl, keyPrefix }, mockDataPath);
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
     try {
       if (replaceExistingMocks) {
         await clearRedisScenarioMocks(store, targetScenario);

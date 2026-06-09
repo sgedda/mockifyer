@@ -3,6 +3,30 @@ import type { DashboardContextConfig } from './dashboard-context';
 import { RedisMockStore, type RedisMockStoreConfig } from './redis-mock-store';
 import { isCentralizedDashboardProvider } from './dashboard-provider';
 
+export type DashboardRedisConfig = Pick<
+  DashboardContextConfig,
+  'provider' | 'redisUrl' | 'keyPrefix' | 'redisCluster'
+>;
+
+/** Redis client options for ioredis / cluster auto-detect from dashboard config. */
+export function buildDashboardRedisClientOptions(
+  config: Pick<DashboardContextConfig, 'redisCluster'>
+): Record<string, unknown> | undefined {
+  if (config.redisCluster === true) return { cluster: true };
+  if (config.redisCluster === false) return { cluster: false };
+  return undefined;
+}
+
+/** Minimal config slice for centralized mock store / Redis KV access. */
+export function toDashboardRedisStoreConfig(config: DashboardRedisConfig): DashboardRedisConfig {
+  return {
+    provider: config.provider,
+    redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+    keyPrefix: config.keyPrefix,
+    redisCluster: config.redisCluster,
+  };
+}
+
 /**
  * Resolve SQLite DB path for dashboard `--provider sqlite`.
  * Uses explicit `.db` path, `MOCKIFYER_DB_PATH`, or `<mockDataPath>/mockifyer-dashboard.db`.
@@ -38,12 +62,7 @@ export function createDashboardMockStore(
     });
   }
 
-  const redisOptions =
-    config.redisCluster === true
-      ? { cluster: true }
-      : config.redisCluster === false
-        ? { cluster: false }
-        : undefined;
+  const redisOptions = buildDashboardRedisClientOptions(config);
 
   return new RedisMockStore({
     ...base,

@@ -357,7 +357,8 @@ router.get('/export', async (req: Request, res: Response) => {
         effectiveScenario,
         config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
         config.keyPrefix,
-        config.provider
+        config.provider,
+        config.redisCluster
       );
       return res.json(bundle);
     }
@@ -412,6 +413,7 @@ router.post('/import', async (req: Request, res: Response) => {
       provider: config.provider,
       redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
       keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
     });
 
     let scenariosOut = listScenarios(mockDataPath);
