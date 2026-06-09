@@ -21,7 +21,11 @@ import {
   isScenarioLockedFs,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
-import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import {
+  createDashboardMockStore,
+  toDashboardRedisStoreConfig,
+  type DashboardRedisConfig,
+} from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
@@ -195,6 +199,7 @@ async function loadRelatedMocksForEndpoint(params: {
   provider: 'filesystem' | 'sqlite' | 'redis';
   redisUrl?: string;
   keyPrefix?: string;
+  redisCluster?: boolean;
   excludeFilename: string;
 }): Promise<MockData[]> {
   const endpointKey = getMockEndpointKey(params.primary);
@@ -202,11 +207,7 @@ async function loadRelatedMocksForEndpoint(params: {
 
   if (isCentralizedDashboardProvider(params.provider)) {
     const store = createDashboardMockStore(
-      {
-        provider: params.provider,
-        redisUrl: params.redisUrl,
-        keyPrefix: params.keyPrefix,
-      },
+      toDashboardRedisStoreConfig(params as DashboardRedisConfig),
       params.mockDataPath
     );
     try {
@@ -812,6 +813,7 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
           provider: isCentralizedDashboardProvider(config.provider) ? config.provider : 'filesystem',
           redisUrl: config.redisUrl,
           keyPrefix: config.keyPrefix,
+          redisCluster: config.redisCluster,
           excludeFilename: relativeName,
         })
       : [];
@@ -1242,6 +1244,7 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
       useLiveApi,
       redisUrl: config.redisUrl,
       keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
     });
     return res.json(result);
   } catch (error: unknown) {
@@ -1273,6 +1276,7 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
       clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
       redisUrl: config.redisUrl,
       keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
     });
     return res.json(result);
   } catch (error: unknown) {

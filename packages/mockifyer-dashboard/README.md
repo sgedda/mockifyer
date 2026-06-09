@@ -56,6 +56,8 @@ npx mockifyer-dashboard --base /dashboard
 - `MOCKIFYER_DASHBOARD_BASE` - Same as `--base` (e.g. `/dashboard`) for the standalone server
 - `MOCKIFYER_REDIS_URL` - Redis connection URL when using `redis` provider
 - `MOCKIFYER_REDIS_CLUSTER` - If `true`/`1`: use Redis Cluster client. If unset, cluster mode is auto-detected once per process via `CLUSTER SLOTS` (fixes `MOVED` errors on managed cluster Redis).
+- `MOCKIFYER_REDIS_CLUSTER_NAT_MAP` - If `true`/`1`: remap all cluster node addresses to your `MOCKIFYER_REDIS_URL` host (fixes `ClusterAllFailedError` on Azure/AWS when internal node IPs are unreachable). Auto-enabled when cluster announces private IPs to a non-loopback endpoint.
+- `MOCKIFYER_REDIS_TLS_SERVERNAME` - TLS SNI hostname when connecting by IP or when the cert CN differs from the URL host.
 - `MOCKIFYER_REDIS_KEY_PREFIX` - Redis key prefix (default `mockifyer:v1`)
 - `MOCKIFYER_REDIS_MIRROR_DISK` - If `true`/`1`: same as `--redis-mirror-disk` (can combine with CLI / `createServer` config)
 - `MOCKIFYER_REDIS_DISK_READ_FALLBACK` - If `true`/`1`: same as `--redis-disk-fallback`
