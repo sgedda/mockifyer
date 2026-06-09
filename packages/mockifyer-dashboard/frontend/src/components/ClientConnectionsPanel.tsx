@@ -78,7 +78,7 @@ export default function ClientConnectionsPanel() {
   const [disabledReason, setDisabledReason] = useState<string | null>(null)
   const [globalScenario, setGlobalScenario] = useState<string | null>(null)
   const [connections, setConnections] = useState<ClientConnectionRow[]>([])
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   const load = useCallback(async () => {
     try {
