@@ -4,6 +4,12 @@ export function isRedisCrossslotError(err: unknown): boolean {
   return msg.includes('CROSSSLOT');
 }
 
+/** True when a standalone client hit a key on another cluster node (`MOVED slot host:port`). */
+export function isRedisMovedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\bMOVED\b/.test(msg);
+}
+
 type RedisGetClient = {
   get(key: string): Promise<string | null>;
   mget(...keys: string[]): Promise<Array<string | null>>;

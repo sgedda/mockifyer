@@ -1,6 +1,7 @@
 import {
   buildClusterNatMapToEndpoint,
   extractNodesFromClusterSlots,
+  isRedisMovedError,
   parseRedisUrl,
   resetRedisClusterModeCacheForTests,
   resolveRedisClusterMode,
@@ -74,6 +75,13 @@ describe('shouldBuildClusterNatMap', () => {
         [{ host: '10.0.0.4', port: 8502 }]
       )
     ).toBe(true);
+  });
+});
+
+describe('isRedisMovedError', () => {
+  it('detects MOVED cluster redirect errors', () => {
+    expect(isRedisMovedError(new Error('MOVED 9909 108.141.197.203:8502'))).toBe(true);
+    expect(isRedisMovedError(new Error('CROSSSLOT Keys in request'))).toBe(false);
   });
 });
 

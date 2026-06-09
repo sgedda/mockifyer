@@ -1,3 +1,5 @@
+import { isRedisMovedError } from './redis-cluster-ops';
+
 export interface CreateIoRedisClientOptions {
   maxRetriesPerRequest?: number;
   /** Force cluster or standalone mode. When unset, uses env then auto-detect. */
@@ -209,14 +211,29 @@ function createClusterClient(
   return client;
 }
 
-function forcedClusterDiscovery(redisUrl: string): ClusterDiscovery {
-  const endpoint = { host: parseRedisUrl(redisUrl).host, port: parseRedisUrl(redisUrl).port };
-  return {
-    isCluster: true,
-    ...(envTruthy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP')
-      ? { natMap: buildClusterNatMapToEndpoint([], endpoint) }
-      : {}),
-  };
+/**
+ * NAT map for managed cluster endpoints. Non-loopback URLs always remap to the configured
+ * host:port (Azure/AWS single-endpoint cluster). Set MOCKIFYER_REDIS_CLUSTER_NAT_MAP=false to disable.
+ */
+function clusterNatMapForEndpoint(
+  endpoint: RedisEndpoint,
+  nodes: RedisEndpoint[] = []
+): Record<string, { host: string; port: number }> | undefined {
+  if (envFalsy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP')) return undefined;
+  if (envTruthy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP') || !isLoopbackHost(endpoint.host)) {
+    return buildClusterNatMapToEndpoint(nodes, endpoint);
+  }
+  if (shouldBuildClusterNatMap(endpoint, nodes)) {
+    return buildClusterNatMapToEndpoint(nodes, endpoint);
+  }
+  return undefined;
+}
+
+function forcedClusterDiscovery(redisUrl: string, nodes: RedisEndpoint[] = []): ClusterDiscovery {
+  const parsed = parseRedisUrl(redisUrl);
+  const endpoint = { host: parsed.host, port: parsed.port };
+  const natMap = clusterNatMapForEndpoint(endpoint, nodes);
+  return { isCluster: true, ...(natMap ? { natMap } : {}) };
 }
 
 async function probeRedisClusterDiscovery(redisUrl: string): Promise<ClusterDiscovery> {
@@ -235,16 +252,22 @@ async function probeRedisClusterDiscovery(redisUrl: string): Promise<ClusterDisc
   });
   try {
     await probe.connect();
-    const slots = await probe.cluster('slots');
-    const nodes = extractNodesFromClusterSlots(slots);
-    if (nodes.length === 0) {
-      return { isCluster: false };
+    try {
+      const slots = await probe.cluster('slots');
+      const nodes = extractNodesFromClusterSlots(slots);
+      if (nodes.length > 0) {
+        const natMap = clusterNatMapForEndpoint(endpoint, nodes);
+        return { isCluster: true, ...(natMap ? { natMap } : {}) };
+      }
+    } catch {
+      // CLUSTER SLOTS may fail on some proxies; try INFO cluster next.
     }
-    const discovery: ClusterDiscovery = { isCluster: true };
-    if (shouldBuildClusterNatMap(endpoint, nodes)) {
-      discovery.natMap = buildClusterNatMapToEndpoint(nodes, endpoint);
+    const info = await probe.info('cluster');
+    if (info.includes('cluster_enabled:1') || info.includes('cluster_state:ok')) {
+      const natMap = clusterNatMapForEndpoint(endpoint, []);
+      return { isCluster: true, ...(natMap ? { natMap } : {}) };
     }
-    return discovery;
+    return { isCluster: false };
   } catch {
     return { isCluster: false };
   } finally {
@@ -313,8 +336,61 @@ export async function resolveIoRedisClient(
     : createStandaloneClient(redisUrl, options);
 }
 
-/** Reset cached cluster detection (tests only). */
-export function resetRedisClusterModeCacheForTests(): void {
+/**
+ * Lazy ioredis client with MOVED fallback: retries once as Redis.Cluster when a standalone
+ * connection hits cluster redirects (common when auto-detect fails on managed Redis).
+ */
+export class ResilientIoRedisClient {
+  private clientPromise: Promise<any>;
+  private movedRetryDone = false;
+
+  constructor(
+    private readonly redisUrl: string,
+    private readonly options: CreateIoRedisClientOptions = {}
+  ) {
+    this.clientPromise = resolveIoRedisClient(redisUrl, options);
+  }
+
+  /** Run a Redis command; on MOVED, invalidate discovery cache and retry with forced cluster. */
+  async run<T>(fn: (client: any) => Promise<T>): Promise<T> {
+    try {
+      return await fn(await this.clientPromise);
+    } catch (err) {
+      if (this.movedRetryDone || !isRedisMovedError(err)) {
+        throw err;
+      }
+      this.movedRetryDone = true;
+      invalidateRedisClusterDiscoveryCache(this.redisUrl);
+      this.clientPromise = resolveIoRedisClient(this.redisUrl, {
+        ...this.options,
+        cluster: true,
+      });
+      return fn(await this.clientPromise);
+    }
+  }
+
+  async close(): Promise<void> {
+    try {
+      const client = await this.clientPromise;
+      await client.quit().catch(() => undefined);
+    } catch {
+      // ignore close errors
+    }
+  }
+}
+
+/** Reset cached cluster detection for one URL (or all when omitted). */
+export function invalidateRedisClusterDiscoveryCache(redisUrl?: string): void {
+  if (redisUrl) {
+    clusterDiscoveryByUrl.delete(redisUrl);
+    pendingClusterDiscovery.delete(redisUrl);
+    return;
+  }
   clusterDiscoveryByUrl.clear();
   pendingClusterDiscovery.clear();
+}
+
+/** Reset cached cluster detection (tests only). */
+export function resetRedisClusterModeCacheForTests(): void {
+  invalidateRedisClusterDiscoveryCache();
 }
