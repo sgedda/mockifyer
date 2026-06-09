@@ -74,22 +74,23 @@ function ConnectionRow({ row }: { row: ClientConnectionRow }) {
 export default function ClientConnectionsPanel() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [enabled, setEnabled] = useState(false)
+  const [enabled, setEnabled] = useState(true)
   const [disabledReason, setDisabledReason] = useState<string | null>(null)
   const [globalScenario, setGlobalScenario] = useState<string | null>(null)
   const [connections, setConnections] = useState<ClientConnectionRow[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(true)
 
   const load = useCallback(async () => {
     try {
       const data = await getClientLanes()
+      setLoadError(null)
       setEnabled(data.enabled !== false)
       setDisabledReason(data.reason ?? null)
       setGlobalScenario(data.globalScenario)
       setConnections(data.connections ?? [])
-    } catch {
-      setEnabled(false)
-      setConnections([])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load client connections')
     } finally {
       setLoading(false)
     }
@@ -167,6 +168,11 @@ export default function ClientConnectionsPanel() {
         </CardHeader>
         {!collapsed ? (
           <CardContent className="px-4 pb-4 pt-0">
+            {loadError ? (
+              <p className="text-sm text-amber-600 dark:text-amber-400 py-2">
+                {loadError}. Showing last known data — will retry automatically.
+              </p>
+            ) : null}
             {loading ? (
               <p className="text-sm text-muted-foreground py-2">Loading client connections…</p>
             ) : disabledReason ? (
