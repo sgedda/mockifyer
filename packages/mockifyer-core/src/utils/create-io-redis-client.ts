@@ -209,10 +209,25 @@ function createClusterClient(
   return client;
 }
 
+function forcedClusterDiscovery(redisUrl: string): ClusterDiscovery {
+  const endpoint = { host: parseRedisUrl(redisUrl).host, port: parseRedisUrl(redisUrl).port };
+  return {
+    isCluster: true,
+    ...(envTruthy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP')
+      ? { natMap: buildClusterNatMapToEndpoint([], endpoint) }
+      : {}),
+  };
+}
+
 async function probeRedisClusterDiscovery(redisUrl: string): Promise<ClusterDiscovery> {
   const parsed = parseRedisUrl(redisUrl);
   const endpoint = { host: parsed.host, port: parsed.port };
-  const Redis = requireIoRedis();
+  let Redis: any;
+  try {
+    Redis = requireIoRedis();
+  } catch {
+    return { isCluster: false };
+  }
   const probe = new Redis(redisUrl, {
     ...buildRedisOptions(parsed, {}),
     maxRetriesPerRequest: 1,
@@ -237,20 +252,12 @@ async function probeRedisClusterDiscovery(redisUrl: string): Promise<ClusterDisc
   }
 }
 
-function forceClusterClient(explicit?: boolean): boolean {
-  return explicit === true || envTruthy('MOCKIFYER_REDIS_CLUSTER');
-}
-
 async function loadClusterDiscovery(redisUrl: string, explicit?: boolean): Promise<ClusterDiscovery> {
+  if (explicit === true || envTruthy('MOCKIFYER_REDIS_CLUSTER')) {
+    return forcedClusterDiscovery(redisUrl);
+  }
   const probed = await probeRedisClusterDiscovery(redisUrl);
   if (probed.isCluster) return probed;
-  if (forceClusterClient(explicit)) {
-    const endpoint = { host: parseRedisUrl(redisUrl).host, port: parseRedisUrl(redisUrl).port };
-    if (envTruthy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP')) {
-      return { isCluster: true, natMap: buildClusterNatMapToEndpoint([], endpoint) };
-    }
-    return { isCluster: true };
-  }
   return { isCluster: false };
 }
 
@@ -265,8 +272,8 @@ async function resolveRedisClusterDiscovery(
   const cached = clusterDiscoveryByUrl.get(redisUrl);
   if (cached !== undefined) return cached;
 
-  if (explicit === true) {
-    const discovery: ClusterDiscovery = { isCluster: true };
+  if (explicit === true || envTruthy('MOCKIFYER_REDIS_CLUSTER')) {
+    const discovery = forcedClusterDiscovery(redisUrl);
     clusterDiscoveryByUrl.set(redisUrl, discovery);
     return discovery;
   }
