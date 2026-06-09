@@ -4,6 +4,7 @@ import {
   NETWORK_LOG_DEFAULT_MAX_EVENTS,
   NETWORK_LOG_DEFAULT_TTL_SEC,
   parseNetworkLogIntEnv,
+  resolveIoRedisClient,
   type NetworkEvent,
 } from '@sgedda/mockifyer-core';
 import type { DashboardContextConfig } from './dashboard-context';
@@ -38,17 +39,6 @@ function defaultConfig(): NetworkLogScenarioConfig {
     captureBodies: false,
     updatedAt: new Date().toISOString(),
   };
-}
-
-function requireIoRedis(): any {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return require('ioredis');
-  } catch {
-    throw new Error(
-      "Network log Redis store requires optional dependency 'ioredis'. Install it in the dashboard package."
-    );
-  }
 }
 
 function maxEvents(): number {
@@ -152,15 +142,18 @@ class MemoryNetworkLogStore implements NetworkLogStore {
 }
 
 class RedisNetworkLogStore implements NetworkLogStore {
-  private readonly redis: any;
+  private readonly clientPromise: Promise<any>;
   private readonly keyPrefix: string;
   private readonly max = maxEvents();
   private readonly ttl = ttlSec();
 
   constructor(redisUrl: string, keyPrefix?: string) {
-    const RedisCtor = requireIoRedis();
     this.keyPrefix = keyPrefix || 'mockifyer:v1';
-    this.redis = new RedisCtor(redisUrl, { maxRetriesPerRequest: 3 });
+    this.clientPromise = resolveIoRedisClient(redisUrl, { maxRetriesPerRequest: 3 });
+  }
+
+  private redis(): Promise<any> {
+    return this.clientPromise;
   }
 
   private eventsKey(scenario: string): string {
@@ -172,7 +165,7 @@ class RedisNetworkLogStore implements NetworkLogStore {
   }
 
   async getConfig(scenario: string): Promise<NetworkLogScenarioConfig> {
-    const raw = await this.redis.get(this.configKey(scenario));
+    const raw = await (await this.redis()).get(this.configKey(scenario));
     if (!raw) return defaultConfig();
     try {
       const o = JSON.parse(raw);
@@ -196,7 +189,7 @@ class RedisNetworkLogStore implements NetworkLogStore {
       captureBodies: patch.captureBodies ?? prev.captureBodies,
       updatedAt: new Date().toISOString(),
     };
-    await this.redis.set(this.configKey(scenario), JSON.stringify(next));
+    await (await this.redis()).set(this.configKey(scenario), JSON.stringify(next));
     return next;
   }
 
@@ -214,7 +207,8 @@ class RedisNetworkLogStore implements NetworkLogStore {
 
     const listKey = this.eventsKey(scenario);
     const payload = JSON.stringify(event);
-    await this.redis
+    const redis = await this.redis();
+    await redis
       .multi()
       .lpush(listKey, payload)
       .ltrim(listKey, 0, this.max - 1)
@@ -226,7 +220,7 @@ class RedisNetworkLogStore implements NetworkLogStore {
 
   async list(options: NetworkLogListOptions): Promise<{ events: NetworkEvent[]; ephemeral: boolean }> {
     const limit = Math.min(Math.max(options.limit ?? 200, 1), this.max);
-    const raw: string[] = await this.redis.lrange(this.eventsKey(options.scenario), 0, this.max - 1);
+    const raw: string[] = await (await this.redis()).lrange(this.eventsKey(options.scenario), 0, this.max - 1);
     let events: NetworkEvent[] = [];
     for (const line of raw) {
       try {
@@ -242,14 +236,15 @@ class RedisNetworkLogStore implements NetworkLogStore {
 
   async clear(options: { scenario: string; clientId?: string }): Promise<number> {
     const listKey = this.eventsKey(options.scenario);
+    const redis = await this.redis();
     if (!options.clientId?.trim()) {
-      const len = await this.redis.llen(listKey);
-      await this.redis.del(listKey);
+      const len = await redis.llen(listKey);
+      await redis.del(listKey);
       return typeof len === 'number' ? len : 0;
     }
 
     const lane = options.clientId.trim();
-    const raw: string[] = await this.redis.lrange(listKey, 0, -1);
+    const raw: string[] = await redis.lrange(listKey, 0, -1);
     const kept: string[] = [];
     let removed = 0;
     for (const line of raw) {
@@ -265,7 +260,7 @@ class RedisNetworkLogStore implements NetworkLogStore {
       }
     }
     if (removed === 0) return 0;
-    const pipe = this.redis.pipeline();
+    const pipe = redis.pipeline();
     pipe.del(listKey);
     if (kept.length > 0) {
       for (let i = kept.length - 1; i >= 0; i -= 1) {
@@ -278,7 +273,7 @@ class RedisNetworkLogStore implements NetworkLogStore {
   }
 
   async close(): Promise<void> {
-    await this.redis.quit().catch(() => undefined);
+    await (await this.redis()).quit().catch(() => undefined);
   }
 }
 

@@ -28,6 +28,10 @@ program
   .option('--provider <provider>', 'Database provider type (filesystem, sqlite, redis)', 'filesystem')
   .option('--redis-url <url>', 'Redis URL (or use MOCKIFYER_REDIS_URL env var)')
   .option(
+    '--redis-cluster',
+    'Use Redis Cluster client (or MOCKIFYER_REDIS_CLUSTER=1; otherwise auto-detected)'
+  )
+  .option(
     '--key-prefix <prefix>',
     'Redis key prefix (or use MOCKIFYER_REDIS_KEY_PREFIX env var; default: mockifyer:v1)'
   )
@@ -110,6 +114,7 @@ async function main() {
       provider,
       redisUrl,
       keyPrefix,
+      ...(options.redisCluster ? { redisCluster: true } : {}),
       ...(redisDiskMirror !== undefined ? { redisDiskMirror } : {}),
     });
 

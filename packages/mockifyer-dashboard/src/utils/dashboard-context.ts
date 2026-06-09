@@ -20,6 +20,8 @@ export interface DashboardContextConfig {
   /** Set by {@link createServer} — used for SQLite paths and filesystem fallbacks. */
   mockDataPath?: string;
   redisUrl?: string;
+  /** Force Redis Cluster client (also `MOCKIFYER_REDIS_CLUSTER` or auto-detect via CLUSTER SLOTS). */
+  redisCluster?: boolean;
   keyPrefix?: string;
   /**
    * Redis + disk: mirror recorded mocks to the scenario folder and/or read from disk when Redis misses.
