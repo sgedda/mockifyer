@@ -306,6 +306,16 @@ export async function setClientLaneNote(clientId: string, note: string | null): 
   }
 }
 
+export async function deleteClientLane(clientId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to remove client lane')
+  }
+}
+
 export async function createScenario(scenario: string, deriveFrom?: string | null): Promise<ScenarioConfig> {
   const response = await fetch(`${API_BASE}/scenario-config/create`, {
     method: 'POST',

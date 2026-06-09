@@ -20,6 +20,7 @@ export interface MockKvBackend {
   hset(key: string, field: string, value: string): Promise<void>;
   hdel(key: string, ...fields: string[]): Promise<void>;
   zadd(key: string, score: number, member: string): Promise<void>;
+  zrem(key: string, ...members: string[]): Promise<void>;
   zrevrangebyscore(
     key: string,
     max: number,

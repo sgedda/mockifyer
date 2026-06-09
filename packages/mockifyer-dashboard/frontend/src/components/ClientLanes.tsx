@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { getClientLanes, setClientLaneNote, setClientLaneScenario, type ClientLane } from '@/lib/api'
+import { deleteClientLane, getClientLanes, setClientLaneNote, setClientLaneScenario, type ClientLane } from '@/lib/api'
+import { Trash2 } from 'lucide-react'
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
   const { toast } = useToast()
@@ -108,6 +109,27 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
     }
   }
 
+  async function handleRemoveLane(clientId: string) {
+    if (
+      !confirm(
+        `Remove lane "${clientId}"?\n\nThis clears the scenario assignment and lane metadata. Mock data is not deleted. The lane may reappear if the app sends traffic again.`
+      )
+    ) {
+      return
+    }
+    try {
+      await deleteClientLane(clientId)
+      await load()
+      toast({ title: 'Removed', description: `Lane "${clientId}" was removed.` })
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message ?? 'Failed to remove lane',
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -121,6 +143,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           <span className="font-mono">MockifyerConfig.clientId</span>
           ).
           Last seen resolved is derived from proxied requests (approximate telemetry, not heartbeat-based).
+          Removing a lane clears its assignment and metadata only — mocks are kept.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -152,17 +175,30 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                       </div>
                     ) : null}
                   </div>
-                  <select
-                    className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={availableScenarios.includes(lane.scenario) ? lane.scenario : globalScenario}
-                    onChange={(e) => handleScenarioChange(lane.clientId, e.target.value)}
-                  >
-                    {scenarioOptions.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={availableScenarios.includes(lane.scenario) ? lane.scenario : globalScenario}
+                      onChange={(e) => handleScenarioChange(lane.clientId, e.target.value)}
+                    >
+                      {scenarioOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                      title="Remove lane"
+                      aria-label={`Remove lane ${lane.clientId}`}
+                      onClick={() => void handleRemoveLane(lane.clientId)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-1 text-xs">
                   <div className="text-muted-foreground font-medium text-[11px] uppercase tracking-wide">

@@ -99,6 +99,11 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.redis.zadd(key, score, member);
   }
 
+  async zrem(key: string, ...members: string[]): Promise<void> {
+    if (members.length === 0) return;
+    await this.redis.zrem(key, ...members);
+  }
+
   async zrevrangebyscore(
     key: string,
     max: number,

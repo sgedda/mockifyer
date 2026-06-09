@@ -609,6 +609,20 @@ export class RedisMockStore {
     await this.kv.hset(this.laneNoteHashKey, id, note.trim());
   }
 
+  /**
+   * Remove lane metadata (scenario override, note, discovery telemetry). Does not delete mock data.
+   */
+  async removeClientLane(clientId: string): Promise<void> {
+    const id = clientId.trim();
+    if (!id) throw new Error('clientId is required');
+    await this.setLaneScenario(id, null);
+    await this.setLaneNote(id, null);
+    await this.kv.zrem(this.laneLastSeenZSetKey, id).catch(() => undefined);
+    await this.kv.del(this.laneDevicesZSetKey(id)).catch(() => undefined);
+    const laneSeg = this.sanitizeObservationSegment(id, 120);
+    await this.kv.del(`${this.keyPrefix}:lane_last_resolved:${laneSeg}`).catch(() => undefined);
+  }
+
   private sanitizeObservationSegment(segment: string, maxLen: number): string {
     const raw = segment.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
     const s = raw || '_';

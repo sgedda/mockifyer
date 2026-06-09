@@ -117,6 +117,31 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
   }
 });
 
+router.delete('/:clientId', async (req: Request, res: Response) => {
+  try {
+    const { clientId } = req.params;
+    const { mockDataPath, config } = getDashboardContext(req);
+    if (!isCentralizedDashboardProvider(config.provider)) {
+      return res.status(400).json({ error: "client lanes require dashboard provider 'redis' or 'sqlite'." });
+    }
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.removeClientLane(canonicalClientId);
+      const lanes = await store.listClientLanes();
+      const globalScenario = await store.getActiveScenario();
+      return res.json({ success: true, lanes, globalScenario });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: any) {
+    console.error('[ClientLanesRoute] Delete - Error:', error);
+    return res.status(500).json({ error: 'Failed to remove client lane', details: error.message });
+  }
+});
+
 router.put('/:clientId', async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
