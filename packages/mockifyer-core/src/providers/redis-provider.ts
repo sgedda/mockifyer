@@ -6,6 +6,7 @@ import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
 import { logger } from '../utils/logger';
+import { redisDel, redisMget } from '../utils/redis-cluster-ops';
 
 function hashRequestKey(requestKey: string): string {
   return crypto.createHash('sha256').update(requestKey).digest('hex');
@@ -165,7 +166,7 @@ export class RedisProvider implements DatabaseProvider {
       }
 
       const keys = await Promise.all(members.map((h: string) => this.dataKey(h)));
-      const values = await this.redis.mget(...keys);
+      const values = await redisMget(this.redis, keys);
 
       for (let i = 0; i < members.length; i++) {
         const raw = values[i];
@@ -215,7 +216,7 @@ export class RedisProvider implements DatabaseProvider {
       return [];
     }
     const keys = await Promise.all(members.map((h: string) => this.dataKey(h)));
-    const values = await this.redis.mget(...keys);
+    const values = await redisMget(this.redis, keys);
     const out: MockData[] = [];
     for (const raw of values) {
       if (!raw) continue;
@@ -242,7 +243,7 @@ export class RedisProvider implements DatabaseProvider {
     const members = await this.redis.smembers(scenarioIndex);
     if (members.length > 0) {
       const keys = await Promise.all(members.map((h: string) => this.dataKey(h, scenario)));
-      await this.redis.del(...keys);
+      await redisDel(this.redis, keys);
     }
     await this.redis.del(scenarioIndex);
     logger.info(`[RedisProvider] Cleared scenario ${scenario}`);

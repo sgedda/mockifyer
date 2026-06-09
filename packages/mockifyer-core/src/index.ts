@@ -45,6 +45,7 @@ export * from './utils/mock-response-prepare';
 export * from './utils/network-log';
 export * from './utils/network-trace';
 export * from './utils/ai-context';
+export * from './utils/redis-cluster-ops';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
