@@ -1,3 +1,4 @@
+import { redisDel, redisMget } from '@sgedda/mockifyer-core';
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
 
 function requireIoRedis(): any {
@@ -60,13 +61,11 @@ export class RedisMockKvBackend implements MockKvBackend {
   }
 
   async del(...keys: string[]): Promise<void> {
-    if (keys.length === 0) return;
-    await this.redis.del(...keys);
+    await redisDel(this.redis, keys);
   }
 
   async mget(...keys: string[]): Promise<Array<string | null>> {
-    if (keys.length === 0) return [];
-    return this.redis.mget(...keys);
+    return redisMget(this.redis, keys);
   }
 
   async sadd(key: string, ...members: string[]): Promise<void> {
