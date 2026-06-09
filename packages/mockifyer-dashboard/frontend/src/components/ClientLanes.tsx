@@ -31,6 +31,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   }, [availableScenarios])
 
   async function load() {
+    const hadLanes = lanes.length > 0
     try {
       setLoading(true)
       const data = await getClientLanes()
@@ -42,7 +43,9 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
     } catch (e: any) {
       toast({
         title: 'Error',
-        description: e?.message ?? 'Failed to load client lanes',
+        description: hadLanes
+          ? `${e?.message ?? 'Failed to load client lanes'} — showing last known lanes.`
+          : e?.message ?? 'Failed to load client lanes',
         variant: 'destructive',
       })
     } finally {

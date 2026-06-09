@@ -56,6 +56,8 @@ export class RedisMockStore {
   private readonly laneLastSeenZSetKey: string;
   private readonly laneDeviceLastSeenZSetPrefix: string;
   private readonly scenarioRegistrySetKey: string;
+  /** Stable index of configured lane ids (avoids relying on SCAN alone). */
+  private readonly clientLaneIdsSetKey: string;
   private readonly proxyConfigPrefix: string;
   private readonly strictLaneScenarioResolution: boolean;
   private static readonly EFFECTIVE_TTL_SEC = 60 * 60 * 24 * 14;
@@ -80,6 +82,7 @@ export class RedisMockStore {
     this.laneLastSeenZSetKey = `${this.keyPrefix}:client_lane_last_seen`;
     this.laneDeviceLastSeenZSetPrefix = `${this.keyPrefix}:client_lane_devices:`;
     this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
+    this.clientLaneIdsSetKey = `${this.keyPrefix}:client_lane_ids`;
     this.proxyConfigPrefix = `${this.keyPrefix}:proxy_config:`;
     this.useCentralizedScenario = true;
 
@@ -557,28 +560,43 @@ export class RedisMockStore {
     const key = `${this.keyPrefix}:client_scenario:${id}`;
     if (scenario === null) {
       await this.kv.del(key);
+      await this.kv.srem(this.clientLaneIdsSetKey, id);
       return;
     }
     await this.kv.set(key, scenario);
+    await this.kv.sadd(this.clientLaneIdsSetKey, id);
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
   }
 
   async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
-    const pattern = `${this.keyPrefix}:client_scenario:*`;
-    const out: Array<{ clientId: string; scenario: string; note: string | null }> = [];
-    const keys = await this.kv.scanKeys(pattern);
-    if (keys.length === 0) return out;
+    const scenarioKeyPrefix = `${this.keyPrefix}:client_scenario:`;
+    const registryIds = await this.kv.smembers(this.clientLaneIdsSetKey).catch(() => [] as string[]);
+
+    // SCAN backfill for stores created before the lane-id index existed.
+    const scannedKeys = await this.kv.scanKeys(`${scenarioKeyPrefix}*`);
+    const scannedIds = scannedKeys
+      .map((key) => key.slice(scenarioKeyPrefix.length))
+      .filter((clientId) => Boolean(clientId));
+
+    const missingFromRegistry = scannedIds.filter((id) => !registryIds.includes(id));
+    if (missingFromRegistry.length > 0) {
+      await this.kv.sadd(this.clientLaneIdsSetKey, ...missingFromRegistry).catch(() => undefined);
+    }
+
+    const allIds = [...new Set([...registryIds, ...scannedIds])].sort((a, b) => a.localeCompare(b));
+    if (allIds.length === 0) return [];
+
+    const keys = allIds.map((clientId) => `${scenarioKeyPrefix}${clientId}`);
     const values: Array<string | null> = await this.kv.mget(...keys);
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
+    const out: Array<{ clientId: string; scenario: string; note: string | null }> = [];
+    for (let i = 0; i < allIds.length; i++) {
       const val = values[i];
       if (!val || !val.trim()) continue;
-      const clientId = key.slice(`${this.keyPrefix}:client_scenario:`.length);
-      if (!clientId) continue;
+      const clientId = allIds[i];
       const note: string | null = await this.kv.hget(this.laneNoteHashKey, clientId);
       out.push({ clientId, scenario: val.trim(), note: note && note.trim() ? note.trim() : null });
     }
-    return out.sort((a, b) => a.clientId.localeCompare(b.clientId));
+    return out;
   }
 
   async setLaneNote(clientId: string, note: string | null): Promise<void> {

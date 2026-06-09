@@ -117,14 +117,25 @@ export class RedisMockKvBackend implements MockKvBackend {
   }
 
   async scanKeys(pattern: string): Promise<string[]> {
-    const out: string[] = [];
-    let cursor = '0';
-    do {
-      const [next, keys]: [string, string[]] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
-      cursor = next;
-      out.push(...keys);
-    } while (cursor !== '0');
-    return out;
+    const scanNode = async (node: { scan: (...args: unknown[]) => Promise<[string, string[]]> }): Promise<string[]> => {
+      const keys: string[] = [];
+      let cursor = '0';
+      do {
+        const [next, batch] = await node.scan(cursor, 'MATCH', pattern, 'COUNT', '200');
+        cursor = next;
+        keys.push(...batch);
+      } while (cursor !== '0');
+      return keys;
+    };
+
+    if (typeof this.redis.nodes === 'function') {
+      const masters: Array<{ scan: (...args: unknown[]) => Promise<[string, string[]]> }> =
+        this.redis.nodes('master') ?? [];
+      const batches = await Promise.all(masters.map((node) => scanNode(node)));
+      return [...new Set(batches.flat())];
+    }
+
+    return scanNode(this.redis);
   }
 
   multi(): MockKvMulti {
