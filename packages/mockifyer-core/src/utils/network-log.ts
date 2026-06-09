@@ -111,6 +111,30 @@ export function sanitizeQueryString(query: string | undefined): string | undefin
   }
 }
 
+/** Mask common secret query params in the full URL stored on network events. */
+export function sanitizeUrlString(url: string): string {
+  if (!url.trim()) return url;
+
+  try {
+    const parsed = new URL(url);
+    const query = sanitizeQueryString(parsed.search || undefined);
+    if (query !== undefined) {
+      parsed.search = query;
+    }
+    return parsed.toString();
+  } catch {
+    const hashIndex = url.indexOf('#');
+    const beforeHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
+    const hash = hashIndex === -1 ? '' : url.slice(hashIndex);
+    const queryIndex = beforeHash.indexOf('?');
+    if (queryIndex === -1) return url;
+
+    const prefix = beforeHash.slice(0, queryIndex);
+    const query = beforeHash.slice(queryIndex + 1);
+    return `${prefix}?${sanitizeQueryString(query) ?? query}${hash}`;
+  }
+}
+
 /** Serialize a request/response payload for network log previews (truncated by {@link sanitizeNetworkEvent}). */
 export function toNetworkLogBodyPreview(
   value: unknown,
@@ -165,9 +189,10 @@ export function sanitizeNetworkEvent(
     ...input,
     id: input.id || newEventId(),
     timestamp: input.timestamp || new Date().toISOString(),
+    url: sanitizeUrlString(input.url),
     host: input.host ?? host,
     path: input.path ?? path,
-    query: input.query ?? query,
+    query: input.query !== undefined ? sanitizeQueryString(input.query) : query,
     requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
     responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
     requestBodyPreview: captureBodies ? truncatePreview(input.requestBodyPreview, maxBytes) : undefined,
