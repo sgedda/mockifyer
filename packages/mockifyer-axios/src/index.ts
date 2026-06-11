@@ -1960,6 +1960,31 @@ export interface MockifyerInstance extends HTTPClient {
   getClientId: () => string | undefined;
 }
 
+function installGlobalAxiosProxyAdapter(globalAxios: any, httpClient: HTTPClient): void {
+  globalAxios.defaults.adapter = async (axiosConfig: AxiosRequestConfig): Promise<AxiosResponse> => {
+    const rawUrl = axiosConfig.url || '';
+    const url = axiosConfig.baseURL ? new URL(rawUrl, axiosConfig.baseURL).toString() : rawUrl;
+    const response = await httpClient.request({
+      ...axiosConfig,
+      method: String(axiosConfig.method || 'GET').toUpperCase(),
+      url,
+      headers: axiosConfig.headers as Record<string, string> | undefined,
+      params: axiosConfig.params as Record<string, string> | undefined,
+      data: axiosConfig.data,
+      timeout: axiosConfig.timeout,
+    });
+
+    return {
+      data: response.data,
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      config: axiosConfig as any,
+      request: {},
+    };
+  };
+}
+
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   installNodeInboundRequestCorrelationCapture();
   const resolvedConfig = applyProxyRecordOnMissEnv(config);
@@ -2004,6 +2029,12 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         axiosType: typeof globalAxios,
         currentInterceptorCount: (globalAxios.interceptors.response as any).handlers?.length || 0
       });
+
+      if (resolvedConfig.proxy?.baseUrl) {
+        installGlobalAxiosProxyAdapter(globalAxios, httpClient);
+        console.log('[Mockifyer] Global axios proxy adapter configured');
+        console.log('[Mockifyer] Global axios configured with dashboard proxy adapter');
+      } else {
       
       // CRITICAL: When useGlobalAxios is true, requests go through global axios,
       // so we need to add interceptors DIRECTLY to global axios, not to axiosInstance
@@ -2263,6 +2294,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       }
       
       console.log('[Mockifyer] Global axios configured with interceptors');
+      }
     } else {
       // Fallback: replace global axios methods with our client methods
       axios.get = function(url: string, config?: any) {
