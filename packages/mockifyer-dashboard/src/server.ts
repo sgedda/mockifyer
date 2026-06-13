@@ -33,6 +33,14 @@ export function getDashboardJsonBodyLimit(): string {
   return process.env.MOCKIFYER_DASHBOARD_JSON_BODY_LIMIT?.trim() || '50mb';
 }
 
+const DASHBOARD_CORS_ALLOWED_HEADERS = [
+  'Content-Type',
+  'X-Mockifyer-Client-Id',
+  'X-Mockifyer-Device-Id',
+  'X-Mockifyer-Request-Id',
+  'X-Mockifyer-Parent-Request-Id',
+].join(', ');
+
 /**
  * Creates the dashboard Express app (static UI + `/api/*`). Uses a large JSON
  * body limit for scenario import; see {@link getDashboardJsonBodyLimit} when
@@ -67,7 +75,7 @@ export function createServer(
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Headers', DASHBOARD_CORS_ALLOWED_HEADERS);
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }

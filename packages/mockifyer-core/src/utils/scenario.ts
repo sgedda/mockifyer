@@ -15,6 +15,7 @@ try {
 
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
+const SAFE_SCENARIO_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
 let scenarioLaunchOverride: string | null = null;
@@ -108,6 +109,28 @@ function configDefaultScenarioName(): string | undefined {
   return preferred && preferred.trim() ? preferred.trim() : undefined;
 }
 
+export function validateScenarioName(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return { ok: false, error: 'Scenario name is required' };
+  }
+  const trimmed = raw.trim();
+  if (!SAFE_SCENARIO_NAME_PATTERN.test(trimmed)) {
+    return {
+      ok: false,
+      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
+    };
+  }
+  return { ok: true, value: trimmed };
+}
+
+export function assertValidScenarioName(raw: string): string {
+  const parsed = validateScenarioName(raw);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+  return parsed.value;
+}
+
 /**
  * Current scenario used for filesystem/redis fallback paths outside the dashboard lane keys.
  *
@@ -153,7 +176,7 @@ export function getCurrentScenario(mockDataPath?: string, clientId?: string): st
  * Get the scenario folder path for a given scenario name
  */
 export function getScenarioFolderPath(mockDataPath: string, scenario?: string): string {
-  const scenarioName = scenario || getCurrentScenario(mockDataPath);
+  const scenarioName = assertValidScenarioName(scenario || getCurrentScenario(mockDataPath));
   return joinPath(mockDataPath, scenarioName);
 }
 
@@ -205,11 +228,13 @@ export function listScenarios(mockDataPath: string): string[] {
   for (const item of items) {
     // Only include directories, and exclude special config files and system directories
     const nameLower = item.name.toLowerCase();
+    const parsedScenario = validateScenarioName(item.name);
     if (item.isDirectory() && 
+        parsedScenario.ok &&
         !item.name.startsWith('.') && 
         item.name !== 'node_modules' &&
         nameLower !== 'lost+found') {
-      scenarios.push(item.name);
+      scenarios.push(parsedScenario.value);
     }
   }
 
@@ -225,15 +250,7 @@ export function listScenarios(mockDataPath: string): string[] {
  * Create a new scenario (creates folder)
  */
 export function createScenario(mockDataPath: string, scenarioName: string): void {
-  if (!scenarioName || scenarioName.trim() === '') {
-    throw new Error('Scenario name cannot be empty');
-  }
-
-  // Validate scenario name (must be safe for filesystem)
-  const sanitized = scenarioName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== scenarioName.trim()) {
-    throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
-  }
+  const sanitized = assertValidScenarioName(scenarioName);
 
   // Check max scenarios limit (only if limit is set via env var)
   const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -286,9 +303,10 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
     return;
   }
 
+  const scenarioName = assertValidScenarioName(scenario);
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {
-    currentScenario: scenario,
+    currentScenario: scenarioName,
     updatedAt: new Date().toISOString()
   };
   

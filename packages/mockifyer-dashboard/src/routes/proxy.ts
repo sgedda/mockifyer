@@ -25,6 +25,7 @@ import {
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
   toNetworkLogBodyPreview,
+  validateScenarioName,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -129,6 +130,12 @@ router.post('/', async (req: Request, res: Response) => {
 
   const upperMethod = String(method || 'GET').toUpperCase();
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
+  if (bodyScenario) {
+    const parsedScenario = validateScenarioName(bodyScenario);
+    if (!parsedScenario.ok) {
+      return res.status(400).json({ error: parsedScenario.error });
+    }
+  }
 
   const storedRequest = {
     method: upperMethod,
