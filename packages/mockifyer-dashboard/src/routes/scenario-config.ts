@@ -1,5 +1,11 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  listScenarios,
+  createScenario,
+  saveScenarioConfig,
+  validateScenarioName,
+} from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
   isScenarioLockedFs,
@@ -20,21 +26,6 @@ import fs from 'fs';
 import path from 'path';
 
 const router = express.Router();
-
-function sanitizeScenarioName(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    return { ok: false, error: 'Scenario name is required' };
-  }
-  const trimmed = raw.trim();
-  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== trimmed) {
-    return {
-      ok: false,
-      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
-    };
-  }
-  return { ok: true, value: sanitized };
-}
 
 function copyDirectoryRecursive(
   srcDir: string,
@@ -116,7 +107,7 @@ router.post('/set', async (req: Request, res: Response) => {
     const { scenario } = req.body;
     const { mockDataPath, config } = getDashboardContext(req);
     
-    const parsed = sanitizeScenarioName(scenario);
+    const parsed = validateScenarioName(scenario);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     const sanitized = parsed.value;
 
@@ -171,14 +162,14 @@ router.post('/create', async (req: Request, res: Response) => {
     const { scenario, deriveFrom } = req.body as { scenario?: unknown; deriveFrom?: unknown };
     const { mockDataPath, config } = getDashboardContext(req);
     
-    const parsedScenario = sanitizeScenarioName(scenario);
+    const parsedScenario = validateScenarioName(scenario);
     if (!parsedScenario.ok) return res.status(400).json({ error: parsedScenario.error });
     const sanitized = parsedScenario.value;
 
     const parsedDerive =
       deriveFrom === undefined || deriveFrom === null || deriveFrom === ''
         ? null
-        : sanitizeScenarioName(deriveFrom);
+        : validateScenarioName(deriveFrom);
     if (parsedDerive !== null && !parsedDerive.ok) {
       return res.status(400).json({ error: parsedDerive.error });
     }
@@ -276,7 +267,7 @@ router.post('/lock', async (req: Request, res: Response) => {
   try {
     const { scenario, locked } = req.body as { scenario?: unknown; locked?: unknown };
     const { mockDataPath, config } = getDashboardContext(req);
-    const parsed = sanitizeScenarioName(scenario);
+    const parsed = validateScenarioName(scenario);
     if (!parsed.ok) return res.status(400).json({ error: parsed.error });
     const sanitized = parsed.value;
     const isLocked = locked === true || locked === 'true';
@@ -344,7 +335,7 @@ router.get('/export', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
     const raw = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
-    const parsed = raw !== undefined && raw.trim() !== '' ? sanitizeScenarioName(raw) : null;
+    const parsed = raw !== undefined && raw.trim() !== '' ? validateScenarioName(raw) : null;
     const scenario = parsed !== null ? (parsed.ok ? parsed.value : null) : null;
     if (parsed !== null && !parsed.ok) {
       return res.status(400).json({ error: parsed.error });
@@ -377,7 +368,7 @@ router.post('/import', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const { meta, bundle, bundleHadDateKey, bundleHadProxyKey } = parseScenarioImportRequest(req.body);
 
-    const targetParsed = sanitizeScenarioName(meta.targetScenario ?? bundle.sourceScenario);
+    const targetParsed = validateScenarioName(meta.targetScenario ?? bundle.sourceScenario);
     if (!targetParsed.ok) {
       return res.status(400).json({ error: targetParsed.error });
     }

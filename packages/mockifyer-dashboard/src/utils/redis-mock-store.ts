@@ -1,6 +1,11 @@
 import * as crypto from 'crypto';
 import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
-import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
+import {
+  assertValidScenarioName,
+  generateRequestKey,
+  getCurrentScenario,
+  validateScenarioName,
+} from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
@@ -132,8 +137,9 @@ export class RedisMockStore {
       typeof scenarioOverride === 'string' && scenarioOverride.trim() !== '';
 
     if (hadBodyScenarioOverride) {
+      const scenarioName = assertValidScenarioName(scenarioOverride!.trim());
       return {
-        scenario: scenarioOverride!.trim(),
+        scenario: scenarioName,
         resolutionSource: 'body_override',
         hadBodyScenarioOverride,
       };
@@ -147,7 +153,7 @@ export class RedisMockStore {
         const perClientScenario = await this.kv.get(perClientKey);
         if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
           return {
-            scenario: perClientScenario.trim(),
+            scenario: assertValidScenarioName(perClientScenario.trim()),
             resolutionSource: 'lane_redis',
             hadBodyScenarioOverride: false,
           };
@@ -159,14 +165,14 @@ export class RedisMockStore {
       const centralizedScenario = await this.kv.get(this.activeScenarioKey);
       if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
         return {
-          scenario: centralizedScenario.trim(),
+          scenario: assertValidScenarioName(centralizedScenario.trim()),
           resolutionSource: 'global_redis',
           hadBodyScenarioOverride: false,
         };
       }
     }
 
-    const fsScenario = getCurrentScenario(this.mockDataPath);
+    const fsScenario = assertValidScenarioName(getCurrentScenario(this.mockDataPath));
     return {
       scenario: fsScenario,
       resolutionSource: 'filesystem_fallback',
@@ -175,21 +181,21 @@ export class RedisMockStore {
   }
 
   private async scenarioKey(scenarioOverride?: string, clientId?: string): Promise<string> {
-    if (scenarioOverride) return scenarioOverride;
+    if (scenarioOverride) return assertValidScenarioName(scenarioOverride);
     if (this.useCentralizedScenario) {
       if (clientId && clientId.trim()) {
         const perClientKey = `${this.keyPrefix}:client_scenario:${clientId.trim()}`;
         const perClientScenario = await this.kv.get(perClientKey);
         if (typeof perClientScenario === 'string' && perClientScenario.trim()) {
-          return perClientScenario.trim();
+          return assertValidScenarioName(perClientScenario.trim());
         }
       }
       const centralizedScenario = await this.kv.get(this.activeScenarioKey);
       if (typeof centralizedScenario === 'string' && centralizedScenario.trim()) {
-        return centralizedScenario.trim();
+        return assertValidScenarioName(centralizedScenario.trim());
       }
     }
-    return getCurrentScenario(this.mockDataPath);
+    return assertValidScenarioName(getCurrentScenario(this.mockDataPath));
   }
 
   private async indexKey(scenarioOverride?: string, clientId?: string): Promise<string> {
@@ -205,9 +211,10 @@ export class RedisMockStore {
   }
 
   async setActiveScenario(scenario: string): Promise<void> {
-    await this.kv.set(this.activeScenarioKey, scenario);
+    const scenarioName = assertValidScenarioName(scenario);
+    await this.kv.set(this.activeScenarioKey, scenarioName);
     // Best-effort registry so scenarios appear even with no mocks yet.
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
   }
 
   async ping(): Promise<void> {
@@ -247,8 +254,7 @@ export class RedisMockStore {
    * Read a mock when the effective scenario name is already resolved (proxy path after {@link resolveProxyScenario}).
    */
   async getByHashInScenario(hash: string, scenarioName: string): Promise<MockData | null> {
-    const id = scenarioName.trim();
-    if (!id) return null;
+    const id = assertValidScenarioName(scenarioName);
     const key = `${this.keyPrefix}:mock:${id}:${hash}`;
     const raw: string | null = await this.kv.get(key);
     if (!raw) return null;
@@ -274,8 +280,7 @@ export class RedisMockStore {
 
   /** Write mock into a known resolved scenario segment (dashboard proxy — avoids recomputing {@link scenarioKey}). */
   async setByHashInScenario(hash: string, mockData: MockData, scenarioName: string): Promise<void> {
-    const id = scenarioName.trim();
-    if (!id) throw new Error('scenarioName is required');
+    const id = assertValidScenarioName(scenarioName);
     const key = `${this.keyPrefix}:mock:${id}:${hash}`;
     const indexKey = `${this.keyPrefix}:index:${id}`;
     await this.kv.set(key, JSON.stringify(mockData));
@@ -292,7 +297,7 @@ export class RedisMockStore {
 
   /** Redis key for JSON `{ dateManipulation, updatedAt }` per scenario (dashboard Date Config + proxy). */
   dateConfigRedisKey(scenario: string): string {
-    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    const id = assertValidScenarioName(scenario);
     return `${this.keyPrefix}:date_config:${id}`;
   }
 
@@ -331,7 +336,7 @@ export class RedisMockStore {
 
   /** Redis key for JSON `{ recordOnMiss, allowUpstream, updatedAt }` per scenario (proxy behavior). */
   proxyConfigRedisKey(scenario: string): string {
-    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    const id = assertValidScenarioName(scenario);
     return `${this.proxyConfigPrefix}${id}`;
   }
 
@@ -378,7 +383,7 @@ export class RedisMockStore {
   }
 
   domainPathRulesRedisKey(scenario: string): string {
-    const id = scenario.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    const id = assertValidScenarioName(scenario);
     return `${this.keyPrefix}:path_rules:${id}`;
   }
 
@@ -409,9 +414,10 @@ export class RedisMockStore {
     domainPath: string,
     rule: { recordResponses: boolean; autoMock?: boolean } | null
   ): Promise<DomainPathRulesMap> {
-    const key = this.domainPathRulesRedisKey(scenario);
+    const scenarioName = assertValidScenarioName(scenario);
+    const key = this.domainPathRulesRedisKey(scenarioName);
     const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
-    const rules = await this.getDomainPathRules(scenario);
+    const rules = await this.getDomainPathRules(scenarioName);
     if (rule === null) {
       delete rules[normalized];
     } else {
@@ -426,7 +432,7 @@ export class RedisMockStore {
     } else {
       await this.kv.set(key, JSON.stringify(rules));
     }
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
     return rules;
   }
 
@@ -441,10 +447,8 @@ export class RedisMockStore {
     mocksCopied: number;
     dateConfigCopied: boolean;
   }> {
-    const from = fromScenario.trim();
-    const to = toScenario.trim();
-    if (!from) throw new Error('fromScenario is required');
-    if (!to) throw new Error('toScenario is required');
+    const from = assertValidScenarioName(fromScenario);
+    const to = assertValidScenarioName(toScenario);
     if (from === to) throw new Error('fromScenario and toScenario must differ');
 
     // Copy date config if present.
@@ -481,24 +485,22 @@ export class RedisMockStore {
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
     const values: Array<string | null> = await this.kv.mget(...fromKeys);
 
-    const multi = this.kv.multi();
     let copied = 0;
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) continue;
       const hash = hashes[i];
       const toKey = await this.dataKey(hash, to);
-      multi.set(toKey, raw);
+      await this.kv.set(toKey, raw);
       copied++;
     }
     if (copied > 0) {
       const toIndexKey = await this.indexKey(to);
-      multi.sadd(toIndexKey, ...hashes);
+      await this.kv.sadd(toIndexKey, ...hashes);
     }
     // Registry + best-effort: ensures scenarios appear even if empty.
-    multi.sadd(this.scenarioRegistrySetKey, to);
+    await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
 
-    await multi.exec();
     return { mocksCopied: copied, dateConfigCopied };
   }
 
@@ -513,7 +515,8 @@ export class RedisMockStore {
     try {
       const members: string[] = await this.kv.smembers(this.scenarioRegistrySetKey);
       for (const s of members) {
-        if (typeof s === 'string' && s.trim()) out.add(s.trim());
+        const parsed = validateScenarioName(s);
+        if (parsed.ok) out.add(parsed.value);
       }
     } catch {
       // ignore
@@ -526,7 +529,8 @@ export class RedisMockStore {
       for (const k of keys) {
         const parts = k.split(':index:');
         if (parts.length === 2 && parts[1]) {
-          out.add(parts[1]);
+          const parsed = validateScenarioName(parts[1]);
+          if (parsed.ok) out.add(parsed.value);
         }
       }
     }
@@ -538,7 +542,8 @@ export class RedisMockStore {
       for (const k of keys) {
         const parts = k.split(':date_config:');
         if (parts.length === 2 && parts[1]) {
-          out.add(parts[1]);
+          const parsed = validateScenarioName(parts[1]);
+          if (parsed.ok) out.add(parsed.value);
         }
       }
     }
@@ -563,9 +568,10 @@ export class RedisMockStore {
       await this.kv.srem(this.clientLaneIdsSetKey, id);
       return;
     }
-    await this.kv.set(key, scenario);
+    const scenarioName = assertValidScenarioName(scenario);
+    await this.kv.set(key, scenarioName);
     await this.kv.sadd(this.clientLaneIdsSetKey, id);
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
   }
 
   async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
