@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig, validateScenarioName } from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
   isScenarioLockedFs,
@@ -22,18 +22,7 @@ import path from 'path';
 const router = express.Router();
 
 function sanitizeScenarioName(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    return { ok: false, error: 'Scenario name is required' };
-  }
-  const trimmed = raw.trim();
-  const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== trimmed) {
-    return {
-      ok: false,
-      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
-    };
-  }
-  return { ok: true, value: sanitized };
+  return validateScenarioName(raw);
 }
 
 function copyDirectoryRecursive(

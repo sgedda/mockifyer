@@ -152,9 +152,18 @@ router.post('/', async (req: Request, res: Response) => {
     }
     if (clientId && deviceId) await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
 
-    const resolution = await store.resolveProxyScenario(bodyScenario, clientId, {
-      strictLaneScenario: requestStrictLane,
-    });
+    let resolution: Awaited<ReturnType<RedisMockStore['resolveProxyScenario']>>;
+    try {
+      resolution = await store.resolveProxyScenario(bodyScenario, clientId, {
+        strictLaneScenario: requestStrictLane,
+      });
+    } catch (scenarioError: any) {
+      const message = scenarioError?.message ?? String(scenarioError);
+      if (/scenario name/i.test(message)) {
+        return res.status(400).json({ error: message });
+      }
+      throw scenarioError;
+    }
 
     if (resolution.scenario !== null) {
       await store
