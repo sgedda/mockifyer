@@ -1,0 +1,155 @@
+import { AxiosHeaders, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import {
+  performDashboardProxyRequest,
+  getActiveInboundClientId,
+  getOutboundMockifyerClientIdHeader,
+  type HTTPRequestConfig,
+  type HTTPResponse,
+} from '@sgedda/mockifyer-core';
+
+export interface DashboardProxyAxiosAdapterOptions {
+  proxyBaseUrl: string;
+  proxyScenario?: string;
+  proxyRecordOnMiss?: boolean;
+  proxyRecordResponses: boolean;
+  strictLaneScenario: boolean;
+  clientId?: string;
+  deviceId?: string;
+  baseUrl?: string;
+  getClientId?: () => string | undefined;
+}
+
+/**
+ * Resolves the final request URL (including `params`) for dashboard proxy routing.
+ */
+export function resolveAxiosRequestUrl(config: AxiosRequestConfig, baseUrl?: string): string {
+  let url = baseUrl ? new URL(config.url || '', baseUrl).toString() : config.url || '';
+  if (!url) {
+    throw new Error('URL is required');
+  }
+
+  if (config.params && Object.keys(config.params).length > 0) {
+    const urlObj = new URL(url);
+    Object.entries(config.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        urlObj.searchParams.append(key, String(value));
+      }
+    });
+    url = urlObj.toString();
+  }
+
+  return url;
+}
+
+function headersToRecord(headers: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!headers || typeof headers !== 'object') {
+    return out;
+  }
+
+  const maybeForEach = headers as { forEach?: (cb: (value: string, key: string) => void) => void };
+  if (typeof maybeForEach.forEach === 'function') {
+    maybeForEach.forEach((value: string, key: string) => {
+      if (value !== undefined && value !== null) {
+        out[key.toLowerCase()] = String(value);
+      }
+    });
+    return out;
+  }
+
+  Object.entries(headers as Record<string, unknown>).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      out[key.toLowerCase()] = String(value);
+    }
+  });
+  return out;
+}
+
+function resolvedClientLane(
+  hopHeaders: unknown,
+  options: DashboardProxyAxiosAdapterOptions
+): string | undefined {
+  const fromHop = getOutboundMockifyerClientIdHeader(hopHeaders);
+  if (fromHop) {
+    return fromHop;
+  }
+  const fromInbound = getActiveInboundClientId();
+  if (fromInbound) {
+    return fromInbound;
+  }
+  if (options.getClientId) {
+    const v = options.getClientId();
+    if (v != null && String(v).trim() !== '') {
+      return String(v).trim();
+    }
+  }
+  if (options.clientId != null && String(options.clientId).trim() !== '') {
+    return String(options.clientId).trim();
+  }
+  return undefined;
+}
+
+function httpResponseToAxiosResponse(
+  config: AxiosRequestConfig,
+  response: HTTPResponse
+): AxiosResponse {
+  const axiosHeaders = new AxiosHeaders();
+  Object.entries(response.headers).forEach(([key, value]) => {
+    axiosHeaders.set(key, value);
+  });
+
+  const axiosResponse = {
+    data: response.data,
+    status: response.status,
+    statusText: response.statusText,
+    headers: axiosHeaders,
+    config: config as AxiosResponse['config'],
+    request: {},
+  } as AxiosResponse;
+
+  if (response.mockifyerProxyRecording) {
+    (axiosResponse.config as HTTPRequestConfig & { mockifyerProxyRecording?: unknown }).mockifyerProxyRecording =
+      response.mockifyerProxyRecording;
+  }
+
+  return axiosResponse;
+}
+
+/**
+ * Attach an axios `adapter` that routes the request through mockifyer-dashboard `/api/proxy`.
+ * Required when `useGlobalAxios: true` — interceptors alone do not replace axios's HTTP adapter.
+ */
+export function attachDashboardProxyAxiosAdapter(
+  config: AxiosRequestConfig,
+  options: DashboardProxyAxiosAdapterOptions
+): AxiosRequestConfig {
+  return {
+    ...config,
+    adapter: async (adapterConfig: AxiosRequestConfig) => {
+      const url = resolveAxiosRequestUrl(adapterConfig, options.baseUrl);
+      const lane = resolvedClientLane(adapterConfig.headers, options);
+      const headers = headersToRecord(adapterConfig.headers);
+
+      const httpResponse = await performDashboardProxyRequest({
+        proxyBaseUrl: options.proxyBaseUrl,
+        url,
+        method: (adapterConfig.method || 'GET').toUpperCase(),
+        headers,
+        body: adapterConfig.data ?? null,
+        lane,
+        deviceId: options.deviceId,
+        requestId: (adapterConfig as { __mockifyer_requestId?: string }).__mockifyer_requestId,
+        parentRequestId: (adapterConfig as { __mockifyer_parentRequestId?: string })
+          .__mockifyer_parentRequestId,
+        scenario: options.proxyScenario,
+        recordOnMiss: options.proxyRecordOnMiss,
+        recordResponses: options.proxyRecordResponses,
+        strictLaneScenario: options.strictLaneScenario,
+        config: adapterConfig as HTTPRequestConfig,
+        logTag: 'Mockifyer-Axios',
+      });
+
+      return httpResponseToAxiosResponse(adapterConfig, httpResponse);
+    },
+  };
+}

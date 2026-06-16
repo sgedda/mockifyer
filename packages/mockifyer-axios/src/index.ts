@@ -54,6 +54,7 @@ import {
   setLogLevel,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
+import { attachDashboardProxyAxiosAdapter } from './dashboard-proxy-axios-adapter';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
@@ -93,6 +94,30 @@ class MockifyerClass {
   private usesDashboardProxy(): boolean {
     const baseUrl = this.config.proxy?.baseUrl;
     return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  }
+
+  /**
+   * Route global axios through dashboard `/api/proxy` via a custom adapter (useGlobalAxios path).
+   * {@link AxiosHTTPClient.performRequest} already proxies when callers use the Mockifyer HTTP client.
+   */
+  private attachDashboardProxyAdapter(config: AxiosRequestConfig): AxiosRequestConfig {
+    const proxy = this.config.proxy;
+    const proxyBaseUrl = proxy?.baseUrl?.trim();
+    if (!proxyBaseUrl) {
+      return config;
+    }
+
+    return attachDashboardProxyAxiosAdapter(config, {
+      proxyBaseUrl,
+      proxyScenario: proxy?.scenario,
+      proxyRecordOnMiss: proxy?.recordOnMiss,
+      proxyRecordResponses: proxy?.recordResponses ?? false,
+      strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
+      clientId: this.config.clientId,
+      deviceId: (this.config as MockifyerConfig & { deviceId?: string }).deviceId,
+      baseUrl: this.config.baseUrl,
+      getClientId: () => this.config.clientId,
+    });
   }
 
   private logNetworkEvent(
@@ -612,6 +637,9 @@ class MockifyerClass {
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
+        if (this.config.useGlobalAxios) {
+          return this.attachDashboardProxyAdapter(config as AxiosRequestConfig);
+        }
         return config;
       }
 
@@ -849,6 +877,9 @@ class MockifyerClass {
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
+        if (this.config.useGlobalAxios) {
+          return this.attachDashboardProxyAdapter(config as AxiosRequestConfig);
+        }
         return config;
       }
 
