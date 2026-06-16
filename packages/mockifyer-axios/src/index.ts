@@ -168,7 +168,7 @@ class MockifyerClass {
     // Auto-enable useSimilarMatch if similarMatchRequiredParams is set (and not ignored)
     if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
       if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
-        console.log('[Mockifyer] Auto-enabling useSimilarMatch because similarMatchRequiredParams is set');
+        logger.info('[Mockifyer] Auto-enabling useSimilarMatch because similarMatchRequiredParams is set');
         config.useSimilarMatch = true;
       }
     }
@@ -176,7 +176,7 @@ class MockifyerClass {
     // Auto-enable useSimilarMatch if similarMatchIgnoreAllQueryParams is set
     if (config.similarMatchIgnoreAllQueryParams) {
       if (config.useSimilarMatch === undefined || config.useSimilarMatch === false) {
-        console.log('[Mockifyer] Auto-enabling useSimilarMatch because similarMatchIgnoreAllQueryParams is set');
+        logger.info('[Mockifyer] Auto-enabling useSimilarMatch because similarMatchIgnoreAllQueryParams is set');
         config.useSimilarMatch = true;
       }
     }
@@ -186,7 +186,7 @@ class MockifyerClass {
       const key = config.launchArgumentClientIdKey ?? MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY;
       launchClientId = tryGetClientIdFromLaunchArguments(key);
       if (launchClientId) {
-        console.log(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
+        logger.info(`[Mockifyer] clientId from launch arguments (${key}): ${launchClientId}`);
       }
     }
 
@@ -211,7 +211,7 @@ class MockifyerClass {
 
     this.activationMode = resolveActivationMode(this.config);
     if (this.activationMode !== 'always') {
-      console.log(`[Mockifyer] activationMode: ${this.activationMode}`);
+      logger.info(`[Mockifyer] activationMode: ${this.activationMode}`);
     }
 
     // Initialize test generator if test generation is enabled
@@ -317,7 +317,7 @@ class MockifyerClass {
     options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
     // CRITICAL: Log the full request object to see what we have
-    console.log(`[Mockifyer] 🔍 findBestMatchingMock - FULL REQUEST OBJECT:`, JSON.stringify({
+    logger.debug(`[Mockifyer] 🔍 findBestMatchingMock - FULL REQUEST OBJECT:`, JSON.stringify({
       method: request.method,
       url: request.url,
       hasData: !!request.data,
@@ -328,7 +328,7 @@ class MockifyerClass {
     
     const requestKey = this.generateRequestKey(request);
     
-    console.log(`[Mockifyer] findBestMatchingMock called with:`, {
+    logger.debug(`[Mockifyer] findBestMatchingMock called with:`, {
       url: request.url,
       method: request.method,
       queryParams: request.queryParams,
@@ -339,7 +339,7 @@ class MockifyerClass {
     });
     
     // Always read directly from files (no cache)
-    console.log('[Mockifyer] Reading directly from files (cache disabled)');
+    logger.debug('[Mockifyer] Reading directly from files (cache disabled)');
     return this.findBestMatchingMockFromFiles(request, options);
   }
 
@@ -352,7 +352,7 @@ class MockifyerClass {
   ): CachedMockData | undefined {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
     if (!fs.existsSync(this.config.mockDataPath)) {
-      console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
+      logger.debug('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
       return undefined;
     }
 
@@ -360,7 +360,7 @@ class MockifyerClass {
     const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
     
     if (!fs.existsSync(scenarioPath)) {
-      console.log(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
+      logger.debug(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
       return undefined;
     }
 
@@ -495,13 +495,13 @@ class MockifyerClass {
                 
                 // If ignoreAllQueryParams is set, skip query param checking entirely
                 if (this.config.similarMatchIgnoreAllQueryParams) {
-                  console.log('[Mockifyer] ✅ Ignoring all query params, using similar match (path and method only)');
+                  logger.debug('[Mockifyer] ✅ Ignoring all query params, using similar match (path and method only)');
                 } else if (this.config.similarMatchRequiredParams && this.config.similarMatchRequiredParams.length > 0) {
                   // Check if required parameters match (if configured)
                   const requestParams = request.queryParams || {};
                   const mockParams = mockData.request.queryParams || {};
                   
-                  console.log('[Mockifyer] Checking similarMatchRequiredParams:', {
+                  logger.debug('[Mockifyer] Checking similarMatchRequiredParams:', {
                     requiredParams: this.config.similarMatchRequiredParams,
                     requestParams,
                     mockParams,
@@ -516,20 +516,20 @@ class MockifyerClass {
                       ? true 
                       : String(requestValue || '') === String(mockValue || '');
                     
-                    console.log(`[Mockifyer] Param "${paramName}": request="${requestValue}" vs mock="${mockValue}" => ${matches ? 'MATCH' : 'NO MATCH'}`);
+                    logger.debug(`[Mockifyer] Param "${paramName}": request="${requestValue}" vs mock="${mockValue}" => ${matches ? 'MATCH' : 'NO MATCH'}`);
                     
                     return matches;
                   });
                   
                   if (!allRequiredMatch) {
-                    console.log('[Mockifyer] ❌ Similar match rejected: required params do not match');
+                    logger.debug('[Mockifyer] ❌ Similar match rejected: required params do not match');
                     continue; // Required parameter differs, skip this mock
                   }
                   
-                  console.log('[Mockifyer] ✅ All required params match, using similar match');
+                  logger.debug('[Mockifyer] ✅ All required params match, using similar match');
                 } else {
                   // No query param restrictions - match on path and method only (default behavior)
-                  console.log('[Mockifyer] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
+                  logger.debug('[Mockifyer] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
                 }
                 
                 if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
@@ -555,32 +555,32 @@ class MockifyerClass {
     
     if (result) {
       if (exactMatch) {
-        console.log(`[Mockifyer] Using exact mock match (from file) for ${requestKey}`);
+        logger.info(`[Mockifyer] Using exact mock match (from file) for ${requestKey}`);
       } else {
-        console.log(`[Mockifyer] Using similar mock match (from file) for ${requestKey}`);
+        logger.info(`[Mockifyer] Using similar mock match (from file) for ${requestKey}`);
       }
     } else {
-      console.log(`[Mockifyer] No mock found in ${files.length} files for: ${requestKey}`);
+      logger.debug(`[Mockifyer] No mock found in ${files.length} files for: ${requestKey}`);
     }
 
     return result;
   }
 
   private loadMockData(): void {
-    console.log('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
-    console.log('[Mockifyer] Cache disabled - will read from files on each request');
+    logger.info('[Mockifyer] Loading mock data from:', this.config.mockDataPath);
+    logger.info('[Mockifyer] Cache disabled - will read from files on each request');
     
     if (!fs.existsSync(this.config.mockDataPath)) {
-      console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
+      logger.debug('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     } else {
       const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       if (fs.existsSync(scenarioPath)) {
         const files = fs.readdirSync(scenarioPath)
           .filter(file => file.endsWith('.json'));
-        console.log(`[Mockifyer] Found ${files.length} mock files in scenario "${currentScenario}" (will read on demand)`);
+        logger.debug(`[Mockifyer] Found ${files.length} mock files in scenario "${currentScenario}" (will read on demand)`);
       } else {
-        console.log(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
+        logger.debug(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
       }
     }
   }
@@ -616,7 +616,7 @@ class MockifyerClass {
       }
 
       // Debug: Log what we receive in the interceptor
-      console.log('[Mockifyer] 📥 Interceptor received config:', {
+      logger.debug('[Mockifyer] 📥 Interceptor received config:', {
         method: config.method,
         url: config.url,
         hasData: !!config.data,
@@ -633,7 +633,7 @@ class MockifyerClass {
 
       // CRITICAL: Log data before creating request to debug GraphQL
       if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
-        console.log('[Mockifyer] 🚨 GRAPHQL DEBUG - config.data:', {
+        logger.debug('[Mockifyer] 🚨 GRAPHQL DEBUG - config.data:', {
           exists: !!config.data,
           type: typeof config.data,
           isString: typeof config.data === 'string',
@@ -667,7 +667,7 @@ class MockifyerClass {
 
       // CRITICAL: Log request data after creation
       if (request.method === 'POST' && request.url && request.url.includes('graphql')) {
-        console.log('[Mockifyer] 🚨 GRAPHQL DEBUG - request.data:', {
+        logger.debug('[Mockifyer] 🚨 GRAPHQL DEBUG - request.data:', {
           exists: !!request.data,
           type: typeof request.data,
           value: request.data ? (typeof request.data === 'string' ? request.data.substring(0, 200) : JSON.stringify(request.data).substring(0, 200)) : 'UNDEFINED'
@@ -686,7 +686,7 @@ class MockifyerClass {
             }
           }
           if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
-            console.log('[Mockifyer] 🔷 GraphQL Request (mock mode):', {
+            logger.debug('[Mockifyer] 🔷 GraphQL Request (mock mode):', {
               url: request.url,
               query: bodyData.query.substring(0, 100) + '...',
               variables: bodyData.variables,
@@ -699,8 +699,8 @@ class MockifyerClass {
       }
 
       const requestKey = this.generateRequestKey(request);
-      console.log(`[Mockifyer] 🔑 Generated request key: ${requestKey.substring(0, 200)}${requestKey.length > 200 ? '...' : ''}`);
-      console.log(`[Mockifyer] 📊 Request details for key generation:`, {
+      logger.debug(`[Mockifyer] 🔑 Generated request key: ${requestKey.substring(0, 200)}${requestKey.length > 200 ? '...' : ''}`);
+      logger.debug(`[Mockifyer] 📊 Request details for key generation:`, {
         method: request.method,
         url: request.url,
         hasData: !!request.data,
@@ -734,8 +734,8 @@ class MockifyerClass {
           'x-mockifyer-filepath': filePath
         };
 
-        console.log('[Mockifyer] Returning mock response with headers:', Object.keys(responseHeaders));
-        console.log('[Mockifyer] Mock headers:', responseHeaders);
+        logger.debug('[Mockifyer] Returning mock response with headers:', Object.keys(responseHeaders));
+        logger.debug('[Mockifyer] Mock headers:', responseHeaders);
         
         // Axios client - use adapter
         const axiosHeaders = new AxiosHeaders();
@@ -755,22 +755,22 @@ class MockifyerClass {
         // Safely get keys from AxiosHeaders (it might not have .keys() method in all Axios versions)
         try {
           if (typeof (axiosHeaders as any).keys === 'function') {
-            console.log('[Mockifyer] AxiosHeaders keys:', Array.from((axiosHeaders as any).keys()));
+            logger.debug('[Mockifyer] AxiosHeaders keys:', Array.from((axiosHeaders as any).keys()));
           } else {
             // Fallback: use Object.keys on the plain headers object
-            console.log('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
+            logger.debug('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
           }
         } catch (e) {
-          console.log('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
+          logger.debug('[Mockifyer] AxiosHeaders keys:', Object.keys(responseHeaders));
         }
-        console.log('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
+        logger.debug('[Mockifyer] Checking x-mockifyer in AxiosHeaders:', axiosHeaders.get('x-mockifyer'));
         
         return {
           ...config,
           adapter: () => {
-            console.log('[Mockifyer] Adapter called, returning mock response');
-            console.log('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
-            console.log('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
+            logger.debug('[Mockifyer] Adapter called, returning mock response');
+            logger.debug('[Mockifyer] Mock response headers type:', typeof mockResponse.headers);
+            logger.debug('[Mockifyer] Mock response headers forEach:', typeof (mockResponse.headers as any).forEach);
             return Promise.resolve(mockResponse);
           }
         } as any;
@@ -855,7 +855,7 @@ class MockifyerClass {
       // In record mode, only check for mocks if recordSameEndpoints is false
       if (this.config.recordSameEndpoints !== true) {
         // CRITICAL: This log proves new code is running
-        console.log('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url, {
+        logger.debug('[Mockifyer] 🆕 NEW CODE RUNNING - Interceptor called for:', config.method, config.url, {
           hasParams: !!config.params,
           params: config.params,
           allKeys: Object.keys(config)
@@ -863,7 +863,7 @@ class MockifyerClass {
         
         // CRITICAL DEBUG: Log what we receive
         if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
-          console.log('[Mockifyer] 🚨 SETUPINTERCEPTORS - config received:', {
+          logger.debug('[Mockifyer] 🚨 SETUPINTERCEPTORS - config received:', {
             method: config.method,
             url: config.url,
             hasData: !!config.data,
@@ -875,7 +875,7 @@ class MockifyerClass {
 
         // CRITICAL: Log config.data BEFORE creating request
         if (config.method === 'POST' && config.url && config.url.includes('graphql')) {
-          console.log('[Mockifyer] 🚨 BEFORE creating request - config.data:', {
+          logger.debug('[Mockifyer] 🚨 BEFORE creating request - config.data:', {
             exists: !!config.data,
             type: typeof config.data,
             value: config.data ? (typeof config.data === 'string' ? config.data.substring(0, 300) : JSON.stringify(config.data).substring(0, 300)) : 'UNDEFINED',
@@ -907,7 +907,7 @@ class MockifyerClass {
 
         // CRITICAL DEBUG: Log what we create
         if (request.method === 'POST' && request.url && request.url.includes('graphql')) {
-          console.log('[Mockifyer] 🚨 AFTER creating request - request.data:', {
+          logger.debug('[Mockifyer] 🚨 AFTER creating request - request.data:', {
             method: request.method,
             url: request.url,
             hasData: !!request.data,
@@ -929,7 +929,7 @@ class MockifyerClass {
               }
             }
             if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
-              console.log('[Mockifyer] 🔷 GraphQL Request detected:', {
+              logger.debug('[Mockifyer] 🔷 GraphQL Request detected:', {
                 url: request.url,
                 query: bodyData.query.substring(0, 100) + '...',
                 variables: bodyData.variables,
@@ -950,7 +950,7 @@ class MockifyerClass {
         let cachedMock: CachedMockData | undefined;
         try {
           cachedMock = await this.findBestMatchingMock(request);
-          console.log(`[Mockifyer] 🔍 Mock lookup result for ${requestKey}:`, {
+          logger.debug(`[Mockifyer] 🔍 Mock lookup result for ${requestKey}:`, {
             found: !!cachedMock,
             filename: cachedMock?.filename,
             url: request.url,
@@ -965,12 +965,12 @@ class MockifyerClass {
         if (cachedMock) {
           const { mockData, filename, filePath } = cachedMock;
           if (!mockShouldServeStoredBody(mockData)) {
-            console.log(`[Mockifyer] 🔄 Live refresh for ${requestKey}, deferring to upstream`);
+            logger.debug(`[Mockifyer] 🔄 Live refresh for ${requestKey}, deferring to upstream`);
             (config as any).__mockifyer_matchedMock = cachedMock;
             (config as any).__mockifyer_requestKey = requestKey;
             (config as any).__mockifyer_startTime = Date.now();
           } else {
-          console.log(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
+          logger.debug(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
           const responseHeaders = {
@@ -986,7 +986,7 @@ class MockifyerClass {
             axiosHeaders.set(key, value);
           });
 
-          console.log(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
+          logger.debug(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
@@ -1001,7 +1001,7 @@ class MockifyerClass {
           const adapterConfig = {
             ...config,
             adapter: () => {
-              console.log(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
+              logger.debug(`[Mockifyer] 📦 Adapter called, returning mock response for ${requestKey}`);
               
               // CRITICAL: Mark this as a mock response so response interceptor can detect it
               (mockResponse.config as any).__mockifyer_isMock = true;
@@ -1032,20 +1032,20 @@ class MockifyerClass {
             }
           } as any;
           
-          console.log(`[Mockifyer] ✅ Returning config with adapter for mock response. Has adapter: ${!!adapterConfig.adapter}`);
+          logger.debug(`[Mockifyer] ✅ Returning config with adapter for mock response. Has adapter: ${!!adapterConfig.adapter}`);
           return adapterConfig;
           }
         }
         
         // No mock found - check if already processing to prevent infinite loops
         if (this.processingRequests.has(requestKey)) {
-          console.log(`[Mockifyer] ⚠️ Already processing ${requestKey} and no mock found, skipping to prevent infinite loop`);
+          logger.warn(`[Mockifyer] ⚠️ Already processing ${requestKey} and no mock found, skipping to prevent infinite loop`);
           // CRITICAL: Preserve all config properties including params when returning early
           const returnConfig = { ...config };
           // Explicitly preserve params - they might be lost in the spread
           if (config.params) {
             returnConfig.params = config.params;
-            console.log(`[Mockifyer] Preserved params in early return:`, returnConfig.params);
+            logger.debug(`[Mockifyer] Preserved params in early return:`, returnConfig.params);
           }
           return returnConfig;
         }
@@ -1086,7 +1086,7 @@ class MockifyerClass {
             const adapterConfig = {
               ...config,
               adapter: () => {
-                console.log(`[Mockifyer] 📦 Returning limit error response for ${requestKey}`);
+                logger.debug(`[Mockifyer] 📦 Returning limit error response for ${requestKey}`);
                 // Mark as mock response
                 (mockErrorResponse.config as any).__mockifyer_isMock = true;
                 return Promise.resolve(mockErrorResponse);
@@ -1097,16 +1097,16 @@ class MockifyerClass {
           }
         }
         
-        console.log(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
+        logger.debug(`[Mockifyer] 🔍 Processing request: ${requestKey}`);
         if (request.method === 'POST' && request.data) {
-          console.log(`[Mockifyer] 📦 Request data type: ${typeof request.data}, isString: ${typeof request.data === 'string'}`);
+          logger.debug(`[Mockifyer] 📦 Request data type: ${typeof request.data}, isString: ${typeof request.data === 'string'}`);
         }
         this.processingRequests.add(requestKey);
         
         try {
           // No mock found - will make real API call (this is correct)
-          console.log(`[Mockifyer] ❌ No mock found for ${requestKey}, will make real API call`);
-          console.log(`[Mockifyer] Returning config with params:`, {
+          logger.debug(`[Mockifyer] ❌ No mock found for ${requestKey}, will make real API call`);
+          logger.debug(`[Mockifyer] Returning config with params:`, {
             url: config.url,
             method: config.method,
             hasParams: !!config.params,
@@ -1121,7 +1121,7 @@ class MockifyerClass {
           const returnConfig = { ...config };
           // Always preserve params property, even if it's undefined
           returnConfig.params = config.params;
-          console.log(`[Mockifyer] Return config has params:`, !!returnConfig.params, returnConfig.params);
+          logger.debug(`[Mockifyer] Return config has params:`, !!returnConfig.params, returnConfig.params);
           if (!returnConfig.params) {
             console.warn(`[Mockifyer] ⚠️ WARNING: params are missing from config! Original config had:`, {
               hasParams: !!config.params,
@@ -1199,7 +1199,7 @@ class MockifyerClass {
             const adapterConfig = {
               ...config,
               adapter: () => {
-                console.log(`[Mockifyer] 📦 Returning limit error response (recordSameEndpoints=true) for ${requestKey}`);
+                logger.debug(`[Mockifyer] 📦 Returning limit error response (recordSameEndpoints=true) for ${requestKey}`);
                 // Mark as mock response
                 (mockErrorResponse.config as any).__mockifyer_isMock = true;
                 return Promise.resolve(mockErrorResponse);
@@ -1225,7 +1225,7 @@ class MockifyerClass {
           return response;
         }
 
-        console.log('[Mockifyer] 🎯 Response interceptor called!', {
+        logger.debug('[Mockifyer] 🎯 Response interceptor called!', {
           url: response.config?.url,
           status: response.status,
           hasConfig: !!response.config,
@@ -1238,13 +1238,13 @@ class MockifyerClass {
         const requestKey = (response.config as any).__mockifyer_requestKey;
         if (requestKey) {
           this.processingRequests.delete(requestKey);
-          console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
+          logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
         }
         
         // Check if this is a mocked response - if so, don't record it
         // First check the flag set by the adapter
         let isMocked = !!(response.config as any).__mockifyer_isMock;
-        console.log(`[Mockifyer] 🔍 Checking if response is mocked (local axios):`, {
+        logger.debug(`[Mockifyer] 🔍 Checking if response is mocked (local axios):`, {
           hasConfig: !!response.config,
           hasMockFlag: !!(response.config as any).__mockifyer_isMock,
           hasHeaders: !!response.headers,
@@ -1254,18 +1254,18 @@ class MockifyerClass {
         
         // If not already marked as mock, check headers
         if (!isMocked && response.headers) {
-          console.log(`[Mockifyer] 🔍 Checking headers for x-mockifyer. Headers type: ${typeof response.headers}, isFunction: ${typeof (response.headers as any).get === 'function'}`);
+          logger.debug(`[Mockifyer] 🔍 Checking headers for x-mockifyer. Headers type: ${typeof response.headers}, isFunction: ${typeof (response.headers as any).get === 'function'}`);
           
           if (typeof (response.headers as any).get === 'function') {
             // AxiosHeaders instance - use get method (case-insensitive)
             const headerValue = (response.headers as any).get('x-mockifyer');
             isMocked = headerValue === 'true';
-            console.log(`[Mockifyer] 🔍 AxiosHeaders.get('x-mockifyer'): ${headerValue}, isMocked: ${isMocked}`);
+            logger.debug(`[Mockifyer] 🔍 AxiosHeaders.get('x-mockifyer'): ${headerValue}, isMocked: ${isMocked}`);
           } else if (typeof (response.headers as any).forEach === 'function') {
             // AxiosHeaders instance but without get method - use forEach
             (response.headers as any).forEach((value: string, key: string) => {
               if (key.toLowerCase() === 'x-mockifyer') {
-                console.log(`[Mockifyer] 🔍 Found x-mockifyer via forEach: ${value}`);
+                logger.debug(`[Mockifyer] 🔍 Found x-mockifyer via forEach: ${value}`);
                 isMocked = value === 'true';
               }
             });
@@ -1273,20 +1273,20 @@ class MockifyerClass {
             // Plain object - check case-insensitively (axios normalizes headers to lowercase)
             const headers = response.headers as any;
             const headerKeys = Object.keys(headers);
-            console.log(`[Mockifyer] 🔍 Plain object headers. Keys:`, headerKeys.slice(0, 15));
+            logger.debug(`[Mockifyer] 🔍 Plain object headers. Keys:`, headerKeys.slice(0, 15));
             const mockifyerKey = headerKeys.find(key => key.toLowerCase() === 'x-mockifyer');
             if (mockifyerKey) {
               isMocked = headers[mockifyerKey] === 'true';
-              console.log(`[Mockifyer] 🔍 Found x-mockifyer header with key "${mockifyerKey}": ${headers[mockifyerKey]}, isMocked: ${isMocked}`);
+              logger.debug(`[Mockifyer] 🔍 Found x-mockifyer header with key "${mockifyerKey}": ${headers[mockifyerKey]}, isMocked: ${isMocked}`);
             } else {
-              console.log(`[Mockifyer] 🔍 No x-mockifyer header found in headers. Available keys:`, headerKeys.slice(0, 10));
+              logger.debug(`[Mockifyer] 🔍 No x-mockifyer header found in headers. Available keys:`, headerKeys.slice(0, 10));
             }
           }
         } else if (!isMocked) {
-          console.log(`[Mockifyer] 🔍 No headers object found in response`);
+          logger.debug(`[Mockifyer] 🔍 No headers object found in response`);
         }
         
-        console.log(`[Mockifyer] 🔍 Final isMocked check result (local axios): ${isMocked}`);
+        logger.debug(`[Mockifyer] 🔍 Final isMocked check result (local axios): ${isMocked}`);
         
         // Also check for limit reached header
         let isLimitReached = false;
@@ -1303,10 +1303,10 @@ class MockifyerClass {
         }
         
         if (isMocked || isLimitReached) {
-          console.log('[Mockifyer] ✅ Skipping recording - this is a mocked response' + (isLimitReached ? ' (limit reached)' : ''));
+          logger.debug('[Mockifyer] ✅ Skipping recording - this is a mocked response' + (isLimitReached ? ' (limit reached)' : ''));
           return response;
         } else {
-          console.log('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
+          logger.warn('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
         }
 
         const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
@@ -1339,7 +1339,7 @@ class MockifyerClass {
           });
         }
         
-        console.log(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
+        logger.info(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
         
         // Store the request key on the response config so saveResponse can use it
         (response.config as any).__mockifyer_requestKey = requestKeyForRecording;
@@ -1382,7 +1382,7 @@ class MockifyerClass {
           const requestKey = (error.config as any).__mockifyer_requestKey;
           if (requestKey) {
             this.processingRequests.delete(requestKey);
-            console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
+            logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
           }
         }
         
@@ -1404,7 +1404,7 @@ class MockifyerClass {
           }
           
           if (isMocked) {
-            console.log('[Mockifyer] Skipping recording - this is a mocked error response');
+            logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
             return Promise.reject(error);
           }
           
@@ -1414,7 +1414,7 @@ class MockifyerClass {
             (error.response.config as any).__mockifyer_requestKey = errorRequestKey;
           }
           
-          console.log('[Mockifyer] Recording error response for:', {
+          logger.info('[Mockifyer] Recording error response for:', {
             method: error.response.config.method?.toUpperCase() || 'GET',
             url: error.response.config.url,
             status: error.response.status,
@@ -1426,7 +1426,7 @@ class MockifyerClass {
       }
     );
     } else {
-      console.log('[Mockifyer] ⚠️ useGlobalAxios is true, response interceptor will be added to global axios instead');
+      logger.warn('[Mockifyer] ⚠️ useGlobalAxios is true, response interceptor will be added to global axios instead');
     }
   }
 
@@ -1562,7 +1562,7 @@ class MockifyerClass {
     const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
     if (cachedMock.filePath) {
       fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
-      console.log(`[Mockifyer] Refreshed mock from live API: ${cachedMock.filename}`);
+      logger.info(`[Mockifyer] Refreshed mock from live API: ${cachedMock.filename}`);
     }
   }
 
@@ -1586,14 +1586,14 @@ class MockifyerClass {
     const baseURL = response.config.baseURL || this.config.baseUrl;
     const recordingExclusions = resolveRecordingExclusions(this.config);
     if (recordingExclusions.length > 0 && shouldExcludeRecording(rawUrl, recordingExclusions, baseURL)) {
-      console.log('[Mockifyer] ⚠️ Skipping save — URL matches recordingExclusions (host/path rule)');
+      logger.warn('[Mockifyer] ⚠️ Skipping save — URL matches recordingExclusions (host/path rule)');
       return;
     }
 
     // CRITICAL: Skip saving responses from Resend API (legacy default when not using recordingExclusions).
     const urlForLegacy = rawUrl;
     if (urlForLegacy && urlForLegacy.includes('api.resend.com')) {
-      console.log('[Mockifyer] ⚠️ Skipping save - Resend API request:', urlForLegacy);
+      logger.warn('[Mockifyer] ⚠️ Skipping save - Resend API request:', urlForLegacy);
       return;
     }
     
@@ -1613,7 +1613,7 @@ class MockifyerClass {
     }
     
     if (isMocked) {
-      console.log('[Mockifyer] 🛡️ saveResponse: Blocked saving mocked response (safety check)');
+      logger.warn('[Mockifyer] 🛡️ saveResponse: Blocked saving mocked response (safety check)');
       return;
     }
     
@@ -1648,13 +1648,13 @@ class MockifyerClass {
         queryParams: normalizedParams
       };
       requestKey = this.generateRequestKey(tempRequest);
-      console.log(`[Mockifyer] Generated fallback requestKey: ${requestKey.substring(0, 200)}`);
+      logger.debug(`[Mockifyer] Generated fallback requestKey: ${requestKey.substring(0, 200)}`);
     }
     
     // Prevent duplicate saves
     // CRITICAL: Check if we're already saving this exact request key
     if (this.savingResponses.has(requestKey)) {
-      console.log(`[Mockifyer] ⚠️ Already saving response for ${requestKey}, skipping duplicate save`);
+      logger.warn(`[Mockifyer] ⚠️ Already saving response for ${requestKey}, skipping duplicate save`);
       return;
     }
     
@@ -1681,12 +1681,12 @@ class MockifyerClass {
     if (saveDecision.action === 'skip') {
       if (existingMock) {
         if (mockPassesThroughToRealApi(existingMock.mockData)) {
-          console.log(
+          logger.debug(
             `[Mockifyer] Passthrough mock exists for ${requestKey}, skipping save (enable refreshPassthroughRecordings to update).`
           );
         } else {
-          console.log(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
-          console.log(
+          logger.warn(`[Mockifyer] ⚠️ Mock file already exists for ${requestKey}, skipping save to prevent duplicates`);
+          logger.debug(
             `[Mockifyer] ⚠️ WARNING: Active mock exists but a real API call was made — request interceptor should have served the mock.`
           );
         }
@@ -1803,7 +1803,7 @@ class MockifyerClass {
 
       if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
         fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
-        console.log(
+        logger.debug(
           `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
         );
       } else {
@@ -1819,7 +1819,7 @@ class MockifyerClass {
         const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
         const filePath = path.join(scenarioPath, filename);
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        console.log(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+        logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
       }
       
       // Generate test if enabled
@@ -1868,7 +1868,7 @@ class MockifyerClass {
         // Check if test already exists
         const existingContent = fs.readFileSync(testFilePath, 'utf-8');
         if (existingContent.includes(`it('${testName}'`) || existingContent.includes(`it("${testName}"`)) {
-          console.log(`[Mockifyer] Test already exists in ${testFilePath}, skipping generation`);
+          logger.info(`[Mockifyer] Test already exists in ${testFilePath}, skipping generation`);
           return;
         }
         
@@ -1882,12 +1882,12 @@ class MockifyerClass {
             `$1${newTest}\n$1$2`
           );
           fs.writeFileSync(testFilePath, updatedContent);
-          console.log(`[Mockifyer] ✅ Appended test to existing file: ${testFilePath}`);
+          logger.info(`[Mockifyer] ✅ Appended test to existing file: ${testFilePath}`);
         }
       } else {
         // Create new test file
         fs.writeFileSync(testFilePath, testCode);
-        console.log(`[Mockifyer] ✅ Generated test: ${testFilePath}`);
+        logger.info(`[Mockifyer] ✅ Generated test: ${testFilePath}`);
       }
     } catch (error) {
       console.error('[Mockifyer] ❌ Error generating test:', error);
@@ -1927,7 +1927,7 @@ class MockifyerClass {
       throw new Error('[Mockifyer] setClientId requires a non-empty string');
     }
     this.config.clientId = t;
-    console.log(`[Mockifyer] clientId set to: ${t}`);
+    logger.info(`[Mockifyer] clientId set to: ${t}`);
   }
 
   /** Current logical lane id (same value used for isolation). */
@@ -1940,7 +1940,7 @@ class MockifyerClass {
    * No-op since we don't use cache (files are read on each request)
    */
   public reloadMockData(): void {
-    console.log('[Mockifyer] Reload called - no cache to reload (files read on demand)');
+    logger.info('[Mockifyer] Reload called - no cache to reload (files read on demand)');
   }
 
   /**
@@ -1948,7 +1948,7 @@ class MockifyerClass {
    * No-op since we don't use cache
    */
   public clearStaleCacheEntries(): number {
-    console.log('[Mockifyer] Clear stale cache called - no cache to clear');
+    logger.info('[Mockifyer] Clear stale cache called - no cache to clear');
     return 0;
   }
 }
@@ -1984,13 +1984,13 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       if (resolvedConfig.axiosInstance) {
         // User explicitly passed axios instance - use it!
         globalAxios = resolvedConfig.axiosInstance;
-        console.log('[Mockifyer] ✅ Using axios instance passed in config.axiosInstance');
+        logger.info('[Mockifyer] ✅ Using axios instance passed in config.axiosInstance');
       } else {
         // Try to get axios from require (should resolve to user's axios via peerDependency)
         try {
           const axiosModule = require('axios');
           globalAxios = axiosModule.default || axiosModule;
-          console.log('[Mockifyer] Using axios from require("axios") (peerDependency)');
+          logger.info('[Mockifyer] Using axios from require("axios") (peerDependency)');
         } catch (e) {
           // Fallback to imported axios (shouldn't happen if peerDependency is set up correctly)
           console.warn('[Mockifyer] Could not require axios, using imported instance:', e);
@@ -1998,7 +1998,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         }
       }
       
-      console.log('[Mockifyer] Global axios instance:', {
+      logger.info('[Mockifyer] Global axios instance:', {
         hasInterceptors: !!globalAxios?.interceptors,
         interceptorsType: typeof globalAxios?.interceptors,
         axiosType: typeof globalAxios,
@@ -2010,7 +2010,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // The interceptors from BaseHTTPClient need to be added to global axios
       
       // Apply request interceptors from BaseHTTPClient directly to global axios
-      console.log('[Mockifyer] Checking request interceptors:', {
+      logger.info('[Mockifyer] Checking request interceptors:', {
         hasRequestInterceptors: !!baseClient.requestInterceptors,
         interceptorCount: baseClient.requestInterceptors?.length || 0,
         recordMode: resolvedConfig.recordMode,
@@ -2018,15 +2018,15 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       });
       
       if (baseClient.requestInterceptors && baseClient.requestInterceptors.length > 0) {
-        console.log('[Mockifyer] ✅ Found', baseClient.requestInterceptors.length, 'request interceptors, adding to global axios');
+        logger.info('[Mockifyer] ✅ Found', baseClient.requestInterceptors.length, 'request interceptors, adding to global axios');
         baseClient.requestInterceptors.forEach((interceptor: any, index: number) => {
           if (interceptor.onFulfilled) {
-            console.log(`[Mockifyer] Adding request interceptor ${index + 1} to global axios`);
+            logger.debug(`[Mockifyer] Adding request interceptor ${index + 1} to global axios`);
             globalAxios.interceptors.request.use(
               async (config: any) => {
-                console.log(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} called for:`, config.url);
+                logger.debug(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} called for:`, config.url);
                 const result = await interceptor.onFulfilled(config);
-                console.log(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} result:`, {
+                logger.debug(`[Mockifyer] 🔍 Global axios request interceptor ${index + 1} result:`, {
                   url: result.url,
                   hasAdapter: !!(result as any).adapter,
                   hasMockResponse: !!(result as any).__mockResponse
@@ -2037,7 +2037,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             );
           }
         });
-        console.log('[Mockifyer] ✅ Request interceptors added to global axios');
+        logger.info('[Mockifyer] ✅ Request interceptors added to global axios');
       } else {
         console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
       }
@@ -2046,10 +2046,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)
       if (resolvedConfig.recordMode) {
-        console.log('[Mockifyer] Adding response interceptor directly to global axios for recording');
+        logger.debug('[Mockifyer] Adding response interceptor directly to global axios for recording');
         const interceptorId = globalAxios.interceptors.response.use(
           async function(axiosResponse: any) {
-            console.log('[Mockifyer] 🎯🎯🎯 Global axios response interceptor called!', {
+            logger.debug('[Mockifyer] 🎯🎯🎯 Global axios response interceptor called!', {
               url: axiosResponse.config?.url,
               status: axiosResponse.status
             });
@@ -2063,13 +2063,13 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               const requestKey = (axiosResponse.config as any).__mockifyer_requestKey;
               if (requestKey) {
                 mockifyer['processingRequests'].delete(requestKey);
-                console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
+                logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
               }
               
               // Check if this is a mocked response - if so, don't record it
               // First check the flag set by the adapter
               let isMocked = !!(axiosResponse.config as any).__mockifyer_isMock;
-              console.log('[Mockifyer] 🔍 Checking if response is mocked:', {
+              logger.debug('[Mockifyer] 🔍 Checking if response is mocked:', {
                 hasConfig: !!axiosResponse.config,
                 hasMockFlag: !!(axiosResponse.config as any).__mockifyer_isMock,
                 hasHeaders: !!axiosResponse.headers,
@@ -2083,13 +2083,13 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 if (typeof axiosResponse.headers.get === 'function') {
                   // AxiosHeaders instance - use get method (case-insensitive)
                   const headerValue = axiosResponse.headers.get('x-mockifyer');
-                  console.log('[Mockifyer] 🔍 AxiosHeaders.get("x-mockifyer"):', headerValue);
+                  logger.debug('[Mockifyer] 🔍 AxiosHeaders.get("x-mockifyer"):', headerValue);
                   isMocked = headerValue === 'true';
                 } else if (typeof axiosResponse.headers.forEach === 'function') {
                   // AxiosHeaders instance but without get method - use forEach
                   axiosResponse.headers.forEach((value: string, key: string) => {
                     if (key.toLowerCase() === 'x-mockifyer') {
-                      console.log('[Mockifyer] 🔍 Found x-mockifyer via forEach:', value);
+                      logger.debug('[Mockifyer] 🔍 Found x-mockifyer via forEach:', value);
                       isMocked = value === 'true';
                     }
                   });
@@ -2097,21 +2097,21 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                   // Plain object - check case-insensitively
                   const headers = axiosResponse.headers as any;
                   const mockifyerKey = Object.keys(headers).find(key => key.toLowerCase() === 'x-mockifyer');
-                  console.log('[Mockifyer] 🔍 Plain object headers, mockifyerKey:', mockifyerKey, 'value:', mockifyerKey ? headers[mockifyerKey] : 'not found');
+                  logger.debug('[Mockifyer] 🔍 Plain object headers, mockifyerKey:', mockifyerKey, 'value:', mockifyerKey ? headers[mockifyerKey] : 'not found');
                   if (mockifyerKey && headers[mockifyerKey] === 'true') {
                     isMocked = true;
                   }
                 }
               }
               
-              console.log('[Mockifyer] 🔍 Final isMocked check result:', isMocked);
+              logger.debug('[Mockifyer] 🔍 Final isMocked check result:', isMocked);
               
               if (isMocked) {
-                console.log('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
+                logger.debug('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
                 return axiosResponse;
               }
               
-              console.log('[Mockifyer] ⚠️ Global axios interceptor: Response is NOT mocked, will record it');
+              logger.warn('[Mockifyer] ⚠️ Global axios interceptor: Response is NOT mocked, will record it');
               
               // Convert Axios response to HTTPResponse format for saveResponse
               const httpResponse: HTTPResponse = {
@@ -2163,7 +2163,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 });
               }
               
-              console.log(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
+              logger.info(`[Mockifyer] 📹 Recording response for: ${requestKeyForRecording}`);
               
               // Store the request key on the response config so saveResponse can use it
               (httpResponse.config as any).__mockifyer_requestKey = requestKeyForRecording;
@@ -2187,7 +2187,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               const requestKey = (error.config as any).__mockifyer_requestKey;
               if (requestKey) {
                 mockifyer['processingRequests'].delete(requestKey);
-                console.log(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
+                logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
               }
             }
             
@@ -2206,7 +2206,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               }
               
               if (isMocked) {
-                console.log('[Mockifyer] Skipping recording - this is a mocked error response');
+                logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
                 return Promise.reject(error);
               }
               
@@ -2238,7 +2238,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 (httpResponse.config as any).__mockifyer_requestKey = errorRequestKey;
               }
               
-              console.log('[Mockifyer] Recording error response for:', {
+              logger.info('[Mockifyer] Recording error response for:', {
                 method: error.response.config.method?.toUpperCase() || 'GET',
                 url: error.response.config.url,
                 status: error.response.status,
@@ -2250,11 +2250,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             return Promise.reject(error);
           }
         );
-        console.log(`[Mockifyer] ✅ Response interceptor added to global axios with ID: ${interceptorId}`);
+        logger.debug(`[Mockifyer] ✅ Response interceptor added to global axios with ID: ${interceptorId}`);
         
         // Verify interceptors are registered
         const handlers = (globalAxios.interceptors.response as any).handlers || [];
-        console.log('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
+        logger.debug('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
       }
       
       // Copy adapter if it exists (for mock responses)
@@ -2262,7 +2262,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         axios.defaults.adapter = axiosInstance.defaults.adapter;
       }
       
-      console.log('[Mockifyer] Global axios configured with interceptors');
+      logger.debug('[Mockifyer] Global axios configured with interceptors');
     } else {
       // Fallback: replace global axios methods with our client methods
       axios.get = function(url: string, config?: any) {
@@ -2277,7 +2277,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         return httpClient.request(config);
       } as any;
       
-      console.log('[Mockifyer] Global axios methods patched');
+      logger.debug('[Mockifyer] Global axios methods patched');
     }
   }
   
@@ -2291,7 +2291,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
 
   registerMockifyerInstance(extendedClient);
 
-  console.log('[Mockifyer] setupMockifyer returning HTTP client:', {
+  logger.debug('[Mockifyer] setupMockifyer returning HTTP client:', {
     hasGet: typeof extendedClient.get === 'function',
     hasRequest: typeof extendedClient.request === 'function',
     hasInterceptors: typeof extendedClient.interceptors === 'object',
