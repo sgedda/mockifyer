@@ -48,6 +48,7 @@ import {
   resolveExplicitClientIdOnly,
   resolveStrictScenarioResolution,
   resolveProxyStrictLaneScenario,
+  resolveProxyUpstreamTlsInsecure,
   logMockifyerInitSummary,
   shouldBlockLocalMockRecording,
   shouldBypassMockifyerForUrl,
@@ -114,6 +115,7 @@ class MockifyerClass {
       proxyRecordOnMiss: proxy?.recordOnMiss,
       proxyRecordResponses: proxy?.recordResponses ?? false,
       strictLaneScenario: resolveProxyStrictLaneScenario(this.config),
+      upstreamTlsInsecure: resolveProxyUpstreamTlsInsecure(this.config),
       clientId: this.config.clientId,
       deviceId: (this.config as MockifyerConfig & { deviceId?: string }).deviceId,
       baseUrl: this.config.baseUrl,
@@ -287,6 +289,7 @@ class MockifyerClass {
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
+      getUpstreamTlsInsecure: () => resolveProxyUpstreamTlsInsecure(this.config),
       getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
       deviceId: (this.config as MockifyerConfig & { deviceId?: string }).deviceId,
     });

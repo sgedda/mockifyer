@@ -49,6 +49,7 @@ import {
   resolveClientId,
   resolveExplicitClientIdOnly,
   resolveProxyStrictLaneScenario,
+  resolveProxyUpstreamTlsInsecure,
   registerMockifyerInstance,
   logMockifyerInitSummary,
   tryGetClientIdFromLaunchArguments,
@@ -253,6 +254,7 @@ class MockifyerClass {
       clientId: this.config.clientId,
       getClientId: () => this.config.clientId,
       getStrictLaneScenario: () => resolveProxyStrictLaneScenario(this.config),
+      getUpstreamTlsInsecure: () => resolveProxyUpstreamTlsInsecure(this.config),
       getExplicitProxyScenarioContext: () => isExplicitProxyScenarioContext(this.config),
       deviceId: (this.config as any).deviceId,
     });

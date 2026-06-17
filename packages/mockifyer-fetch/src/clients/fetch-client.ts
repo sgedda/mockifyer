@@ -21,6 +21,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyRecordResponses: boolean;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
+  private getUpstreamTlsInsecure?: () => boolean;
   private getExplicitProxyScenarioContext?: () => boolean;
   private clientIdSnapshot?: string;
   private deviceId?: string;
@@ -39,6 +40,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     clientId?: string;
     getClientId?: () => string | undefined;
     getStrictLaneScenario?: () => boolean;
+    getUpstreamTlsInsecure?: () => boolean;
     /** When false, skip `/api/proxy` and call the real URL (devtools-friendly passthrough). */
     getExplicitProxyScenarioContext?: () => boolean;
     deviceId?: string;
@@ -52,6 +54,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
+    this.getUpstreamTlsInsecure = config?.getUpstreamTlsInsecure;
     this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
@@ -149,6 +152,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         recordOnMiss: this.proxyRecordOnMiss,
         recordResponses: this.proxyRecordResponses,
         strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
+        upstreamTlsInsecure: this.getUpstreamTlsInsecure?.() ?? false,
         config,
         fetchFn,
         logTag: 'Mockifyer-Fetch',

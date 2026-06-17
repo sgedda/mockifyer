@@ -24,6 +24,7 @@ export interface PerformDashboardProxyRequestParams {
   recordOnMiss: boolean | undefined;
   recordResponses: boolean;
   strictLaneScenario: boolean;
+  upstreamTlsInsecure: boolean;
   /** Original request config (attached to the returned response). */
   config: HTTPRequestConfig;
   /** Fetch implementation (defaults to global `fetch`). */
@@ -51,6 +52,7 @@ export async function performDashboardProxyRequest(
     recordOnMiss,
     recordResponses,
     strictLaneScenario,
+    upstreamTlsInsecure,
     config,
     logTag = 'Mockifyer',
   } = params;
@@ -80,6 +82,7 @@ export async function performDashboardProxyRequest(
         recordOnMiss,
         recordResponses,
         strictLaneScenario,
+        upstreamTlsInsecure,
       })
     ),
   });

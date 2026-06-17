@@ -79,6 +79,28 @@ describe('dashboard proxy axios adapter', () => {
       expect(body.url).toBe('https://api.example.com/items/1?q=x');
       expect(body.method).toBe('GET');
       expect(body.clientId).toBe('test-lane');
+      expect(body.upstreamTlsInsecure).toBe(false);
+    });
+
+    it('includes upstreamTlsInsecure in proxy envelope when configured', async () => {
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+          upstreamTlsInsecure: true,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      await axiosInstance.get('https://api.example.com/items/1');
+
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body.upstreamTlsInsecure).toBe(true);
     });
 
     it('serializes FormData in proxy envelope as urlencoded body', async () => {
