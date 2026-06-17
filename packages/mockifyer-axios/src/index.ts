@@ -50,11 +50,12 @@ import {
   resolveProxyStrictLaneScenario,
   logMockifyerInitSummary,
   shouldBlockLocalMockRecording,
+  shouldBypassMockifyerForUrl,
   logger,
   setLogLevel,
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
-import { attachDashboardProxyAxiosAdapter } from './dashboard-proxy-axios-adapter';
+import { attachDashboardProxyAxiosAdapter, resolveAxiosRequestUrl } from './dashboard-proxy-axios-adapter';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
@@ -96,11 +97,11 @@ class MockifyerClass {
     return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
   }
 
-  /**
-   * Route global axios through dashboard `/api/proxy` via a custom adapter (useGlobalAxios path).
-   * {@link AxiosHTTPClient.performRequest} already proxies when callers use the Mockifyer HTTP client.
-   */
   private attachDashboardProxyAdapter(config: AxiosRequestConfig): AxiosRequestConfig {
+    if ((config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass) {
+      return config;
+    }
+
     const proxy = this.config.proxy;
     const proxyBaseUrl = proxy?.baseUrl?.trim();
     if (!proxyBaseUrl) {
@@ -143,6 +144,21 @@ class MockifyerClass {
       correlation.requestId;
     (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
       correlation.parentRequestId;
+  }
+
+  /** Skip proxy, mock lookup, and recording when the URL matches {@link MockifyerConfig.excludedUrls}. */
+  private markBypassIfExcludedUrl(config: AxiosRequestConfig): void {
+    const url = resolveAxiosRequestUrl(config, this.config.baseUrl);
+    if (shouldBypassMockifyerForUrl(url, this.config.excludedUrls)) {
+      (config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass = true;
+    }
+  }
+
+  private returnConfigIfBypassed(config: AxiosRequestConfig): AxiosRequestConfig | null {
+    if ((config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass) {
+      return config;
+    }
+    return null;
   }
 
   private readRequestCorrelation(config: unknown): RequestCorrelationContext | undefined {
@@ -613,6 +629,12 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
+      const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
+      if (bypassedEarly) {
+        return bypassedEarly;
+      }
+
       if (
         !shouldApplyMockifyer(this.activationMode, config.headers, {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
@@ -856,6 +878,12 @@ class MockifyerClass {
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
+      this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
+      const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
+      if (bypassedEarly) {
+        return bypassedEarly;
+      }
+
       if (
         !shouldApplyMockifyer(this.activationMode, config.headers, {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
@@ -1615,6 +1643,9 @@ class MockifyerClass {
 
     const rawUrl = response.config?.url || '';
     const baseURL = response.config.baseURL || this.config.baseUrl;
+    if (shouldBypassMockifyerForUrl(rawUrl, this.config.excludedUrls, baseURL)) {
+      return;
+    }
     const recordingExclusions = resolveRecordingExclusions(this.config);
     if (recordingExclusions.length > 0 && shouldExcludeRecording(rawUrl, recordingExclusions, baseURL)) {
       logger.warn('[Mockifyer] ⚠️ Skipping save — URL matches recordingExclusions (host/path rule)');

@@ -1,3 +1,5 @@
+import { resolveOutboundUrl } from './recording-exclusion';
+
 /**
  * Default excluded URLs that should never be recorded or mocked
  */
@@ -21,10 +23,25 @@ export function shouldExcludeUrl(url: string | null | undefined, excludedUrls?: 
     return false;
   }
 
-  const exclusionList = excludedUrls && excludedUrls.length > 0 
-    ? excludedUrls 
+  const exclusionList = excludedUrls && excludedUrls.length > 0
+    ? excludedUrls
     : DEFAULT_EXCLUDED_URLS;
 
-  return exclusionList.some(pattern => url.includes(pattern));
+  return exclusionList.some((pattern) => url.includes(pattern));
 }
 
+/**
+ * When true, outbound HTTP should skip Mockifyer entirely (no proxy, mock lookup, or recording).
+ * Resolves relative URLs with `baseUrl` when provided.
+ */
+export function shouldBypassMockifyerForUrl(
+  rawUrl: string | null | undefined,
+  excludedUrls?: string[],
+  baseUrl?: string | null
+): boolean {
+  const resolved = resolveOutboundUrl(rawUrl, baseUrl);
+  if (resolved && shouldExcludeUrl(resolved, excludedUrls)) {
+    return true;
+  }
+  return shouldExcludeUrl(rawUrl, excludedUrls);
+}

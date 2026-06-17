@@ -35,7 +35,7 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
-  shouldExcludeUrl,
+  shouldBypassMockifyerForUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
   mockPassesThroughToRealApi,
@@ -529,6 +529,11 @@ class MockifyerClass {
         return config;
       }
 
+      if (shouldBypassMockifyerForUrl(url, this.config.excludedUrls, this.config.baseUrl)) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       if (
         !shouldApplyMockifyer(this.activationMode, config.headers, {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
@@ -940,10 +945,10 @@ class MockifyerClass {
     }
     
     const url = response.config?.url || (response as any).request?.responseURL || (response as any).url || '';
-    const recordingExclusions = resolveRecordingExclusions(this.config);
-    if (url && shouldExcludeUrl(url, this.config.excludedUrls)) {
+    if (url && shouldBypassMockifyerForUrl(url, this.config.excludedUrls, this.config.baseUrl)) {
       return;
     }
+    const recordingExclusions = resolveRecordingExclusions(this.config);
     if (
       url &&
       shouldExcludeRecording(url, recordingExclusions, this.config.baseUrl)

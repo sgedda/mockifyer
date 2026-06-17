@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { type AxiosInstance } from 'axios';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -19,10 +19,12 @@ describe('dashboard proxy axios adapter', () => {
   describe('useGlobalAxios + proxy.baseUrl', () => {
     let mockDataPath: string;
     let fetchMock: jest.Mock;
+    let axiosInstance: AxiosInstance;
     const originalFetch = global.fetch;
 
     beforeEach(() => {
       mockDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-axios-proxy-'));
+      axiosInstance = axios.create();
       fetchMock = jest.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -48,7 +50,7 @@ describe('dashboard proxy axios adapter', () => {
       setupMockifyer({
         mockDataPath,
         useGlobalAxios: true,
-        axiosInstance: axios,
+        axiosInstance,
         clientId: 'test-lane',
         proxy: {
           baseUrl: 'http://localhost:3002',
@@ -58,7 +60,7 @@ describe('dashboard proxy axios adapter', () => {
         databaseProvider: { type: 'memory' },
       });
 
-      const response = await axios.get('https://api.example.com/items/1', {
+      const response = await axiosInstance.get('https://api.example.com/items/1', {
         params: { q: 'x' },
       });
 
@@ -83,7 +85,7 @@ describe('dashboard proxy axios adapter', () => {
       setupMockifyer({
         mockDataPath,
         useGlobalAxios: true,
-        axiosInstance: axios,
+        axiosInstance,
         clientId: 'test-lane',
         proxy: {
           baseUrl: 'http://localhost:3002',
@@ -97,13 +99,48 @@ describe('dashboard proxy axios adapter', () => {
       formData.append('grant_type', 'client_credentials');
       formData.append('client_id', 'abc');
 
-      await axios.post('https://login.example.com/oauth2/token', formData);
+      await axiosInstance.post('https://login.example.com/oauth2/token', formData);
 
       const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
       expect(body.body.__mockifyerProxyBody).toBe(true);
       expect(body.body.kind).toBe('urlencoded');
       expect(body.body.data).toContain('grant_type=client_credentials');
       expect(body.body.data).toContain('client_id=abc');
+    });
+
+    it('bypasses dashboard proxy for excludedUrls matches', async () => {
+      const upstreamMock = jest.fn().mockResolvedValue({
+        data: { access_token: 'secret' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {},
+      });
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        excludedUrls: ['login.microsoftonline.com'],
+        databaseProvider: { type: 'memory' },
+      });
+
+      const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+      await axiosInstance.post(
+        tokenUrl,
+        { grant_type: 'client_credentials' },
+        { adapter: upstreamMock }
+      );
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(upstreamMock).toHaveBeenCalledTimes(1);
+      expect(upstreamMock.mock.calls[0][0].url).toBe(tokenUrl);
     });
   });
 });

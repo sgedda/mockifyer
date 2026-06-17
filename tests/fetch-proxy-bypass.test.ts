@@ -224,4 +224,29 @@ describe('fetch proxy bypass', () => {
     expect(init.method).toBe('GET');
     expect((init.headers as Headers).get('x-mockifyer-client-id')).toBeNull();
   });
+
+  it('bypasses dashboard proxy for excludedUrls matches', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    const response = await client.post(tokenUrl, { grant_type: 'client_credentials' });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ access_token: 'secret-token' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
+  });
 });

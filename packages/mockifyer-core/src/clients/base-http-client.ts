@@ -66,6 +66,9 @@ export abstract class BaseHTTPClient<T = any, R = HTTPResponse<T>> implements HT
         if ((interceptorResult as any).__mockResponse !== undefined) {
           (processedConfig as any).__mockResponse = (interceptorResult as any).__mockResponse;
         }
+        if ((interceptorResult as any).__mockifyer_bypass !== undefined) {
+          (processedConfig as any).__mockifyer_bypass = (interceptorResult as any).__mockifyer_bypass;
+        }
       }
     }
 

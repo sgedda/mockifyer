@@ -7,6 +7,29 @@ import {
   type HTTPResponse,
 } from '@sgedda/mockifyer-core';
 
+type AxiosAdapterFn = (config: AxiosRequestConfig) => Promise<AxiosResponse>;
+
+function invokeAxiosDefaultAdapter(adapterConfig: AxiosRequestConfig): Promise<AxiosResponse> {
+  const bypassConfig = { ...adapterConfig };
+  delete bypassConfig.adapter;
+  const axiosAdapters = require('axios/lib/adapters/adapters.js') as {
+    default: { getAdapter: (name: unknown) => AxiosAdapterFn };
+  };
+  const axiosDefaults = require('axios/lib/defaults/index.js') as { default: { adapter: unknown } };
+  const fallbackAdapter = axiosAdapters.default.getAdapter(axiosDefaults.default.adapter);
+  return fallbackAdapter(bypassConfig);
+}
+
+const DASHBOARD_PROXY_AXIOS_ADAPTER = Symbol.for('mockifyer.dashboardProxyAxiosAdapter');
+
+type DashboardProxyAxiosAdapterFn = AxiosAdapterFn & {
+  [DASHBOARD_PROXY_AXIOS_ADAPTER]?: true;
+};
+
+function isDashboardProxyAxiosAdapter(adapter: unknown): adapter is DashboardProxyAxiosAdapterFn {
+  return typeof adapter === 'function' && (adapter as DashboardProxyAxiosAdapterFn)[DASHBOARD_PROXY_AXIOS_ADAPTER] === true;
+}
+
 export interface DashboardProxyAxiosAdapterOptions {
   proxyBaseUrl: string;
   proxyScenario?: string;
@@ -123,33 +146,49 @@ export function attachDashboardProxyAxiosAdapter(
   config: AxiosRequestConfig,
   options: DashboardProxyAxiosAdapterOptions
 ): AxiosRequestConfig {
+  if ((config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass) {
+    return config;
+  }
+
+  const previousAdapter = config.adapter;
+
+  const dashboardProxyAdapter: DashboardProxyAxiosAdapterFn = async (adapterConfig: AxiosRequestConfig) => {
+    if ((adapterConfig as { __mockifyer_bypass?: boolean }).__mockifyer_bypass) {
+      if (typeof previousAdapter === 'function' && !isDashboardProxyAxiosAdapter(previousAdapter)) {
+        return (previousAdapter as AxiosAdapterFn)(adapterConfig);
+      }
+      return invokeAxiosDefaultAdapter(adapterConfig);
+    }
+
+    const url = resolveAxiosRequestUrl(adapterConfig, options.baseUrl);
+    const lane = resolvedClientLane(adapterConfig.headers, options);
+    const headers = headersToRecord(adapterConfig.headers);
+
+    const httpResponse = await performDashboardProxyRequest({
+      proxyBaseUrl: options.proxyBaseUrl,
+      url,
+      method: (adapterConfig.method || 'GET').toUpperCase(),
+      headers,
+      body: adapterConfig.data ?? null,
+      lane,
+      deviceId: options.deviceId,
+      requestId: (adapterConfig as { __mockifyer_requestId?: string }).__mockifyer_requestId,
+      parentRequestId: (adapterConfig as { __mockifyer_parentRequestId?: string })
+        .__mockifyer_parentRequestId,
+      scenario: options.proxyScenario,
+      recordOnMiss: options.proxyRecordOnMiss,
+      recordResponses: options.proxyRecordResponses,
+      strictLaneScenario: options.strictLaneScenario,
+      config: adapterConfig as HTTPRequestConfig,
+      logTag: 'Mockifyer-Axios',
+    });
+
+    return httpResponseToAxiosResponse(adapterConfig, httpResponse);
+  };
+  dashboardProxyAdapter[DASHBOARD_PROXY_AXIOS_ADAPTER] = true;
+
   return {
     ...config,
-    adapter: async (adapterConfig: AxiosRequestConfig) => {
-      const url = resolveAxiosRequestUrl(adapterConfig, options.baseUrl);
-      const lane = resolvedClientLane(adapterConfig.headers, options);
-      const headers = headersToRecord(adapterConfig.headers);
-
-      const httpResponse = await performDashboardProxyRequest({
-        proxyBaseUrl: options.proxyBaseUrl,
-        url,
-        method: (adapterConfig.method || 'GET').toUpperCase(),
-        headers,
-        body: adapterConfig.data ?? null,
-        lane,
-        deviceId: options.deviceId,
-        requestId: (adapterConfig as { __mockifyer_requestId?: string }).__mockifyer_requestId,
-        parentRequestId: (adapterConfig as { __mockifyer_parentRequestId?: string })
-          .__mockifyer_parentRequestId,
-        scenario: options.proxyScenario,
-        recordOnMiss: options.proxyRecordOnMiss,
-        recordResponses: options.proxyRecordResponses,
-        strictLaneScenario: options.strictLaneScenario,
-        config: adapterConfig as HTTPRequestConfig,
-        logTag: 'Mockifyer-Axios',
-      });
-
-      return httpResponseToAxiosResponse(adapterConfig, httpResponse);
-    },
+    adapter: dashboardProxyAdapter,
   };
 }
