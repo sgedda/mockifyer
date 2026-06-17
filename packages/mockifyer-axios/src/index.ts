@@ -55,7 +55,7 @@ import {
 } from '@sgedda/mockifyer-core';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { attachDashboardProxyAxiosAdapter } from './dashboard-proxy-axios-adapter';
-import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
+import { HTTPClient, HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
@@ -830,23 +830,34 @@ class MockifyerClass {
 
   private setupDashboardProxyResponseInterceptor(): void {
     this.httpClient.interceptors.response.use(async (response: HTTPResponse) => {
-      if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
-        return response;
-      }
-      if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
-        const rec = response.mockifyerProxyRecording;
-        if (rec) {
-          await mirrorProxyRecordingToClient({
-            config: this.config,
-            mockDataPath: this.config.mockDataPath,
-            recording: rec,
-            databaseProvider: this.databaseProvider,
-            databaseProviderInitPromise: this.databaseProviderInitPromise,
-            logPrefix: 'Mockifyer-Axios',
-          });
-        }
-      }
+      await this.maybeMirrorDashboardProxyRecording(response);
       return response;
+    });
+  }
+
+  private async maybeMirrorDashboardProxyRecording(response: HTTPResponse): Promise<void> {
+    if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
+      return;
+    }
+    if (!this.config.proxy?.baseUrl || !this.config.proxy?.mirrorRecordedMocksToClient) {
+      return;
+    }
+
+    const rec =
+      response.mockifyerProxyRecording ||
+      ((response.config as HTTPRequestConfig & { mockifyerProxyRecording?: HTTPResponse['mockifyerProxyRecording'] })
+        ?.mockifyerProxyRecording);
+    if (!rec) {
+      return;
+    }
+
+    await mirrorProxyRecordingToClient({
+      config: this.config,
+      mockDataPath: this.config.mockDataPath,
+      recording: rec,
+      databaseProvider: this.databaseProvider,
+      databaseProviderInitPromise: this.databaseProviderInitPromise,
+      logPrefix: 'Mockifyer-Axios',
     });
   }
 
@@ -2073,6 +2084,39 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
       }
       
+      if (resolvedConfig.proxy?.baseUrl && resolvedConfig.proxy?.mirrorRecordedMocksToClient) {
+        globalAxios.interceptors.response.use(
+          async function(axiosResponse: any) {
+            await (mockifyer as any).maybeMirrorDashboardProxyRecording({
+              data: axiosResponse.data,
+              status: axiosResponse.status,
+              statusText: axiosResponse.statusText || String(axiosResponse.status || ''),
+              headers: {},
+              config: axiosResponse.config || {},
+              mockifyerProxyRecording:
+                axiosResponse.mockifyerProxyRecording || axiosResponse.config?.mockifyerProxyRecording,
+            } as HTTPResponse);
+            return axiosResponse;
+          },
+          async function(error: any) {
+            if (error.response) {
+              await (mockifyer as any).maybeMirrorDashboardProxyRecording({
+                data: error.response.data,
+                status: error.response.status,
+                statusText: error.response.statusText || String(error.response.status || ''),
+                headers: {},
+                config: error.response.config || error.config || {},
+                mockifyerProxyRecording:
+                  error.response.mockifyerProxyRecording ||
+                  error.response.config?.mockifyerProxyRecording ||
+                  error.config?.mockifyerProxyRecording,
+              } as HTTPResponse);
+            }
+            return Promise.reject(error);
+          }
+        );
+      }
+
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)

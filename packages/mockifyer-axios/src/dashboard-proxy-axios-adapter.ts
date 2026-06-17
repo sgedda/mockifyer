@@ -23,22 +23,56 @@ export interface DashboardProxyAxiosAdapterOptions {
  * Resolves the final request URL (including `params`) for dashboard proxy routing.
  */
 export function resolveAxiosRequestUrl(config: AxiosRequestConfig, baseUrl?: string): string {
-  let url = baseUrl ? new URL(config.url || '', baseUrl).toString() : config.url || '';
+  const requestUrl = config.url || '';
+  const resolvedBaseUrl = baseUrl || (typeof config.baseURL === 'string' ? config.baseURL : undefined);
+  let url = resolvedBaseUrl ? combineAxiosBaseUrl(resolvedBaseUrl, requestUrl) : requestUrl;
   if (!url) {
     throw new Error('URL is required');
   }
 
   if (config.params && Object.keys(config.params).length > 0) {
-    const urlObj = new URL(url);
-    Object.entries(config.params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        urlObj.searchParams.append(key, String(value));
-      }
-    });
-    url = urlObj.toString();
+    url = appendAxiosParams(url, config.params as Record<string, unknown>);
   }
 
   return url;
+}
+
+function isAbsoluteUrl(url: string): boolean {
+  return /^([a-z][a-z\d+\-.]*:)?\/\//i.test(url);
+}
+
+function combineAxiosBaseUrl(baseUrl: string, requestUrl: string): string {
+  if (!requestUrl) {
+    return baseUrl;
+  }
+  if (isAbsoluteUrl(requestUrl)) {
+    return requestUrl;
+  }
+  return `${baseUrl.replace(/\/+$/, '')}/${requestUrl.replace(/^\/+/, '')}`;
+}
+
+function appendAxiosParams(url: string, params: Record<string, unknown>): string {
+  if (isAbsoluteUrl(url)) {
+    const urlObj = new URL(url);
+    appendSearchParams(urlObj.searchParams, params);
+    return urlObj.toString();
+  }
+
+  const searchParams = new URLSearchParams();
+  appendSearchParams(searchParams, params);
+  const query = searchParams.toString();
+  if (!query) {
+    return url;
+  }
+  return `${url}${url.includes('?') ? '&' : '?'}${query}`;
+}
+
+function appendSearchParams(searchParams: URLSearchParams, params: Record<string, unknown>): void {
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, String(value));
+    }
+  });
 }
 
 function headersToRecord(headers: unknown): Record<string, string> {
