@@ -158,8 +158,8 @@ export interface MockifyerConfig {
   anonymizeHeaders?: string[];
   /** Query parameters to anonymize when saving mock data (defaults to common API key params). Set to empty array to disable. */
   anonymizeQueryParams?: string[];
-  /** URLs or URL patterns to exclude from recording/mocking. 
-   * Supports partial matches (e.g., 'api.resend.com' will match any URL containing that string).
+  /** URLs or URL patterns to fully bypass Mockifyer (no proxy, mock lookup, or recording).
+   * Supports partial matches (e.g., 'login.microsoftonline.com' matches any URL containing that string).
    * Defaults include Mockifyer Metro internals (save/clear/sync/scenario-config) and Resend.
    * Set to empty array to disable all exclusions. */
   excludedUrls?: string[];
