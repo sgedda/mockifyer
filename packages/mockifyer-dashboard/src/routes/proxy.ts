@@ -27,9 +27,11 @@ import {
   toNetworkLogBodyPreview,
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
+  resolveProxyUpstreamTlsInsecureForRequest,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
 import {
   appendProxyNetworkEvent,
   applyProxyCorrelationToMockData,
@@ -109,9 +111,11 @@ router.post('/', async (req: Request, res: Response) => {
     clientId: clientIdFromBody,
     deviceId: deviceIdFromBody,
     strictLaneScenario: strictLaneScenarioFromBody,
+    upstreamTlsInsecure: upstreamTlsInsecureFromBody,
   } = req.body || {};
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
+  const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest(upstreamTlsInsecureFromBody);
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
@@ -234,7 +238,7 @@ router.post('/', async (req: Request, res: Response) => {
         init.body = upstreamBody.body as RequestInit['body'];
       }
 
-      const upstreamRes = await fetch(url, init);
+      const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
       const contentType = upstreamRes.headers.get('content-type') || '';
       const rawText = await upstreamRes.text();
 
@@ -449,7 +453,7 @@ router.post('/', async (req: Request, res: Response) => {
       init.body = upstreamBody.body as RequestInit['body'];
     }
 
-    const upstreamRes = await fetch(url, init);
+    const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
     const contentType = upstreamRes.headers.get('content-type') || '';
     const rawText = await upstreamRes.text();
 

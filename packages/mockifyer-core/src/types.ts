@@ -206,6 +206,12 @@ export interface MockifyerConfig {
      * Env **`MOCKIFYER_PROXY_MIRROR_TO_CLIENT`** (`true`/`1`) enables when this field is omitted.
      */
     mirrorRecordedMocksToClient?: boolean;
+    /**
+     * When true, dashboard `/api/proxy` upstream `fetch` skips TLS certificate verification
+     * (`rejectUnauthorized: false`), matching axios `httpsAgent` usage for internal CAs.
+     * Env **`MOCKIFYER_UPSTREAM_TLS_INSECURE`** (`true`/`1`) overrides when set.
+     */
+    upstreamTlsInsecure?: boolean;
   };
   /**
    * Best-effort traffic log to mockifyer-dashboard (`POST /api/network-events`).
@@ -403,4 +409,9 @@ export const ENV_VARS = {
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */
   MOCK_RECORDING_EXCLUSION_HOSTS: 'MOCKIFYER_RECORDING_EXCLUSION_HOSTS',
+  /**
+   * When `true`, dashboard `/api/proxy` upstream HTTPS calls skip certificate verification.
+   * Client SDKs send this in the proxy envelope; the dashboard process env is a fallback when omitted.
+   */
+  MOCK_UPSTREAM_TLS_INSECURE: 'MOCKIFYER_UPSTREAM_TLS_INSECURE',
 } as const;

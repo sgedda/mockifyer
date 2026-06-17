@@ -36,6 +36,7 @@ export interface DashboardProxyAxiosAdapterOptions {
   proxyRecordOnMiss?: boolean;
   proxyRecordResponses: boolean;
   strictLaneScenario: boolean;
+  upstreamTlsInsecure: boolean;
   clientId?: string;
   deviceId?: string;
   baseUrl?: string;
@@ -179,6 +180,7 @@ export function attachDashboardProxyAxiosAdapter(
       recordOnMiss: options.proxyRecordOnMiss,
       recordResponses: options.proxyRecordResponses,
       strictLaneScenario: options.strictLaneScenario,
+      upstreamTlsInsecure: options.upstreamTlsInsecure,
       config: adapterConfig as HTTPRequestConfig,
       logTag: 'Mockifyer-Axios',
     });

@@ -20,6 +20,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private proxyRecordResponses: boolean;
   private getClientId?: () => string | undefined;
   private getStrictLaneScenario?: () => boolean;
+  private getUpstreamTlsInsecure?: () => boolean;
   private getExplicitProxyScenarioContext?: () => boolean;
   private clientIdSnapshot?: string;
   private deviceId?: string;
@@ -38,6 +39,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       clientId?: string;
       getClientId?: () => string | undefined;
       getStrictLaneScenario?: () => boolean;
+      getUpstreamTlsInsecure?: () => boolean;
       getExplicitProxyScenarioContext?: () => boolean;
       deviceId?: string;
     }
@@ -51,6 +53,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.proxyRecordResponses = config?.proxy?.recordResponses ?? false;
     this.getClientId = config?.getClientId;
     this.getStrictLaneScenario = config?.getStrictLaneScenario;
+    this.getUpstreamTlsInsecure = config?.getUpstreamTlsInsecure;
     this.getExplicitProxyScenarioContext = config?.getExplicitProxyScenarioContext;
     this.clientIdSnapshot = config?.clientId;
     this.deviceId = config?.deviceId;
@@ -138,6 +141,7 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
         recordOnMiss: this.proxyRecordOnMiss,
         recordResponses: this.proxyRecordResponses,
         strictLaneScenario: this.getStrictLaneScenario?.() ?? true,
+        upstreamTlsInsecure: this.getUpstreamTlsInsecure?.() ?? false,
         config,
         logTag: 'Mockifyer-Axios',
       });

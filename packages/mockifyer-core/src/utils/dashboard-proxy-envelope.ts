@@ -11,6 +11,7 @@ export function buildDashboardProxyEnvelope(params: {
   recordOnMiss: boolean | undefined;
   recordResponses: boolean;
   strictLaneScenario: boolean;
+  upstreamTlsInsecure: boolean;
 }): Record<string, unknown> {
   const {
     url,
@@ -25,6 +26,7 @@ export function buildDashboardProxyEnvelope(params: {
     recordOnMiss,
     recordResponses,
     strictLaneScenario,
+    upstreamTlsInsecure,
   } = params;
   const envelope: Record<string, unknown> = {
     url,
@@ -38,6 +40,7 @@ export function buildDashboardProxyEnvelope(params: {
     scenario,
     recordResponses,
     strictLaneScenario,
+    upstreamTlsInsecure,
   };
   if (typeof recordOnMiss === 'boolean') {
     envelope.record = recordOnMiss;

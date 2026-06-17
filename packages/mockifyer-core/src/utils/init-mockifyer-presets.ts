@@ -23,6 +23,7 @@ export interface InitMockifyerForDashboardProxyOptions {
   recordOnMiss?: boolean;
   recordResponses?: boolean;
   strictLaneScenario?: boolean;
+  upstreamTlsInsecure?: boolean;
   useGlobalFetch?: boolean;
   useGlobalAxios?: boolean;
   databaseProvider?: MockifyerConfig['databaseProvider'];
@@ -140,6 +141,13 @@ export async function initMockifyerForDashboardProxy<T>(
   ) {
     mergedProxy.strictLaneScenario =
       options.strictLaneScenario ?? upstreamProxy?.strictLaneScenario;
+  }
+  if (
+    options.upstreamTlsInsecure !== undefined ||
+    upstreamProxy?.upstreamTlsInsecure !== undefined
+  ) {
+    mergedProxy.upstreamTlsInsecure =
+      options.upstreamTlsInsecure ?? upstreamProxy?.upstreamTlsInsecure;
   }
 
   const envMirrorRaw =
