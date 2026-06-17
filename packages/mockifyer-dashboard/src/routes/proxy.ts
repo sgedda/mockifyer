@@ -25,6 +25,8 @@ import {
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
   toNetworkLogBodyPreview,
+  buildProxyUpstreamBodyInit,
+  normalizeProxyBodyForRequestKey,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -130,11 +132,13 @@ router.post('/', async (req: Request, res: Response) => {
   const upperMethod = String(method || 'GET').toUpperCase();
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
+  const normalizedRequestBody = normalizeProxyBodyForRequestKey(body);
+
   const storedRequest = {
     method: upperMethod,
     url,
     headers: toRecordStringHeaders(headers),
-    data: body,
+    data: normalizedRequestBody,
     queryParams: undefined as any,
   };
 
@@ -213,16 +217,21 @@ router.post('/', async (req: Request, res: Response) => {
         networkLogCtx ?? inboundCorrelation
       );
 
+      const upstreamBody = buildProxyUpstreamBodyInit(
+        body,
+        toRecordStringHeaders(headers),
+        upperMethod
+      );
       const init: RequestInit = {
         method: upperMethod,
         headers: upstreamHeaders,
       };
-
-      if (body !== undefined && body !== null && upperMethod !== 'GET' && upperMethod !== 'HEAD') {
-        init.body = typeof body === 'string' ? body : JSON.stringify(body);
-        if (!upstreamHeaders.has('content-type')) {
-          upstreamHeaders.set('content-type', 'application/json');
-        }
+      for (const [k, v] of Object.entries(upstreamBody.headers)) {
+        if (k.toLowerCase() === 'host') continue;
+        upstreamHeaders.set(k, v);
+      }
+      if (upstreamBody.body !== undefined) {
+        init.body = upstreamBody.body as RequestInit['body'];
       }
 
       const upstreamRes = await fetch(url, init);
@@ -259,7 +268,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders,
-        ...proxyNetworkBodyFields(body, data),
+        ...proxyNetworkBodyFields(normalizedRequestBody, data),
       });
       return res.json({
         proxied: true,
@@ -423,16 +432,21 @@ router.post('/', async (req: Request, res: Response) => {
     }
     applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? inboundCorrelation);
 
+    const upstreamBody = buildProxyUpstreamBodyInit(
+      body,
+      toRecordStringHeaders(headers),
+      upperMethod
+    );
     const init: RequestInit = {
       method: upperMethod,
       headers: upstreamHeaders,
     };
-
-    if (body !== undefined && body !== null && upperMethod !== 'GET' && upperMethod !== 'HEAD') {
-      init.body = typeof body === 'string' ? body : JSON.stringify(body);
-      if (!upstreamHeaders.has('content-type')) {
-        upstreamHeaders.set('content-type', 'application/json');
-      }
+    for (const [k, v] of Object.entries(upstreamBody.headers)) {
+      if (k.toLowerCase() === 'host') continue;
+      upstreamHeaders.set(k, v);
+    }
+    if (upstreamBody.body !== undefined) {
+      init.body = upstreamBody.body as RequestInit['body'];
     }
 
     const upstreamRes = await fetch(url, init);
@@ -499,7 +513,7 @@ router.post('/', async (req: Request, res: Response) => {
           method: upperMethod,
           url,
           headers: toRecordStringHeaders(headers),
-          data: body,
+          data: normalizedRequestBody,
           queryParams: {},
         };
         const shouldMarkPassthrough =

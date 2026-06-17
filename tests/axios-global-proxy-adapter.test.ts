@@ -78,5 +78,32 @@ describe('dashboard proxy axios adapter', () => {
       expect(body.method).toBe('GET');
       expect(body.clientId).toBe('test-lane');
     });
+
+    it('serializes FormData in proxy envelope as urlencoded body', async () => {
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance: axios,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      const formData = new FormData();
+      formData.append('grant_type', 'client_credentials');
+      formData.append('client_id', 'abc');
+
+      await axios.post('https://login.example.com/oauth2/token', formData);
+
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body.body.__mockifyerProxyBody).toBe(true);
+      expect(body.body.kind).toBe('urlencoded');
+      expect(body.body.data).toContain('grant_type=client_credentials');
+      expect(body.body.data).toContain('client_id=abc');
+    });
   });
 });

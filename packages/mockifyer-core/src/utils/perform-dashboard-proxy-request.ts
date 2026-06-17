@@ -5,6 +5,7 @@ import {
 } from './request-correlation';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
+import { serializeProxyRequestBody } from './proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
 import { logger } from './logger';
@@ -54,6 +55,7 @@ export async function performDashboardProxyRequest(
     logTag = 'Mockifyer',
   } = params;
   const fetchFn = params.fetchFn ?? fetch;
+  const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
   const proxyResponse = await fetchFn(proxyUrl, {
     method: 'POST',
@@ -73,7 +75,7 @@ export async function performDashboardProxyRequest(
         requestId,
         parentRequestId,
         headers,
-        body,
+        body: serializedBody,
         scenario,
         recordOnMiss,
         recordResponses,
