@@ -171,6 +171,10 @@ Use [`@sgedda/mockifyer-mcp`](../mockifyer-mcp) to expose dashboard APIs as MCP 
 2. Build the MCP server: `npm --prefix ../mockifyer-mcp run build`.
 3. Add to Cursor MCP config — see [mockifyer-mcp README](../mockifyer-mcp/README.md).
 
+How it works: the MCP server runs as a stdio process launched by Cursor or Claude Desktop, then forwards tool calls to the running dashboard API. Because the dashboard is the source of truth, MCP sees the same local mock files, active scenarios, Redis client lanes, auth settings, and mount path as the UI.
+
+Why it helps: assistants can search recordings, inspect schema-focused AI context, summarize endpoint coverage, and apply small field overrides without pasting entire mock responses into chat. This makes mock maintenance more precise and keeps large or sensitive response payloads out of the model context unless you explicitly fetch the full mock.
+
 ## Development
 
 ```bash

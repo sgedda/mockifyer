@@ -11,6 +11,23 @@ npx mockifyer-dashboard --path ./mock-data
 # default: http://localhost:3002
 ```
 
+## How it works
+
+`@sgedda/mockifyer-mcp` is a stdio MCP server that sits between your AI client and a running Mockifyer dashboard:
+
+1. The dashboard reads your local `mock-data` directory and exposes the same APIs used by the dashboard UI.
+2. Cursor, Claude Desktop, or another MCP client starts this package with `MOCKIFYER_DASHBOARD_URL` pointing at the dashboard.
+3. The assistant calls typed MCP tools to list scenarios, search recordings, fetch lightweight AI context, and apply small mock edits.
+
+The MCP server does not replace the dashboard or intercept HTTP traffic directly. It delegates to the dashboard API, so it works with the same scenarios, filesystem mocks, Redis lanes, auth settings, and mounted base path that the dashboard already uses.
+
+## Why it is useful
+
+- **Less context noise:** `mockifyer_get_mock_ai_context` returns fields, schema summaries, and state hints without sending full response bodies to the AI.
+- **Safer edits:** field overrides and array-item copies are small, targeted operations instead of full-file rewrites.
+- **Faster discovery:** assistants can search by endpoint, method, filename, or scenario without guessing how recordings are named.
+- **Better debugging:** endpoint stats, related mocks, and scenario lists help explain test-data drift and missing coverage.
+
 ## Install & build
 
 ```bash
