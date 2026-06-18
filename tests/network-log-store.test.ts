@@ -10,7 +10,7 @@ describe('network-log-store (memory)', () => {
     await store.append(scenario, {
       transport: 'proxy',
       method: 'GET',
-      url: 'https://a.example/one',
+      url: 'https://a.example/one?api_key=secret&page=1',
       source: 'mock-hit',
       status: 200,
     });
@@ -25,6 +25,9 @@ describe('network-log-store (memory)', () => {
     expect(events).toHaveLength(2);
     expect(events[0].method).toBe('POST');
     expect(events[1].method).toBe('GET');
+    expect(decodeURIComponent(events[1].url)).toContain('api_key=[REDACTED]');
+    expect(events[1].url).not.toContain('secret');
+    expect(events[1].url).toContain('page=1');
     await store.clear({ scenario });
     await store.close();
   });
