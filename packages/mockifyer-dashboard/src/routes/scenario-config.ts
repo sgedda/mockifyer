@@ -11,6 +11,7 @@ import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
+  SCENARIO_IMPORT_LOCKED_MESSAGE,
   applyScenarioImport,
   buildFilesystemScenarioBundle,
   buildRedisScenarioBundle,
@@ -438,7 +439,12 @@ router.post('/import', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Import - Error:', error);
-    const status = /must|required|Unsupported|Invalid/i.test(error.message) ? 400 : 500;
+    let status = 500;
+    if (error.message === SCENARIO_IMPORT_LOCKED_MESSAGE) {
+      status = 423;
+    } else if (/must|required|Unsupported|Invalid/i.test(error.message)) {
+      status = 400;
+    }
     res.status(status).json({ error: 'Failed to import scenario', details: error.message });
   }
 });
