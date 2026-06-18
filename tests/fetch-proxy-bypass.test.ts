@@ -249,4 +249,65 @@ describe('fetch proxy bypass', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
   });
+
+  it('preserves URLSearchParams bodies for bypassed excludedUrls POSTs', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const tokenBody = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_secret: 'super-secret',
+    });
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    const response = await client.post(tokenUrl, tokenBody);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(tokenBody);
+  });
+
+  it('urlencodes plain object bodies for bypassed excludedUrls POSTs with form headers', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    const response = await client.post(
+      tokenUrl,
+      {
+        grant_type: 'client_credentials',
+        client_secret: 'super-secret',
+      },
+      { headers: { 'content-type': 'application/x-www-form-urlencoded' } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.body).toBe('grant_type=client_credentials&client_secret=super-secret');
+    expect((init.headers as Headers).get('content-type')).toBe('application/x-www-form-urlencoded');
+  });
 });
