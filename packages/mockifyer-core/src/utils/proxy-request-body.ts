@@ -46,7 +46,15 @@ function isUrlSearchParams(value: unknown): value is URLSearchParams {
   return typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 }
 
-function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
+export function isPlainObjectBody(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+export function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(body)) {
     if (value === undefined || value === null) continue;
@@ -141,14 +149,14 @@ export async function serializeProxyRequestBody(
     } satisfies ProxySerializedBody;
   }
 
-  if (typeof body === 'object' && !Array.isArray(body)) {
+  if (isPlainObjectBody(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
       return {
         __mockifyerProxyBody: true,
         kind: 'urlencoded',
         contentType: 'application/x-www-form-urlencoded',
-        data: plainObjectToUrlEncoded(body as Record<string, unknown>),
+        data: plainObjectToUrlEncoded(body),
       } satisfies ProxySerializedBody;
     }
   }

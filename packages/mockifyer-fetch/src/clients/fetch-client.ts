@@ -8,8 +8,55 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  isPlainObjectBody,
+  plainObjectToUrlEncoded,
 } from '@sgedda/mockifyer-core';
 import { performDashboardProxyRequest } from '../core-proxy';
+
+function buildFetchRequestBody(data: unknown, headers: Headers): BodyInit | undefined {
+  if (data === undefined || data === null) {
+    return undefined;
+  }
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (typeof URLSearchParams !== 'undefined' && data instanceof URLSearchParams) {
+    return data;
+  }
+
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    return data;
+  }
+
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    return data;
+  }
+
+  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) {
+    return data;
+  }
+
+  if (
+    typeof ArrayBuffer !== 'undefined' &&
+    ArrayBuffer.isView(data) &&
+    data.buffer instanceof ArrayBuffer
+  ) {
+    return data as BodyInit;
+  }
+
+  if (typeof ReadableStream !== 'undefined' && data instanceof ReadableStream) {
+    return data;
+  }
+
+  const contentType = headers.get('content-type')?.toLowerCase();
+  if (contentType?.includes('application/x-www-form-urlencoded') && isPlainObjectBody(data)) {
+    return plainObjectToUrlEncoded(data);
+  }
+
+  return JSON.stringify(data);
+}
 
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
@@ -113,10 +160,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       ...config.headers
     });
 
+    const body = buildFetchRequestBody(config.data, headers);
     const requestConfig: RequestInit = {
       method: config.method || 'GET',
       headers,
-      body: config.data ? JSON.stringify(config.data) : undefined
+      ...(body !== undefined ? { body } : {})
     };
     
     // Use original fetch if available (when global fetch is patched), otherwise use global fetch
