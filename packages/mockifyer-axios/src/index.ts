@@ -2025,6 +2025,53 @@ export interface MockifyerInstance extends HTTPClient {
   getClientId: () => string | undefined;
 }
 
+function resolveAxiosAdapter(axiosRef: any, adapter: any): ((config: any) => Promise<AxiosResponse>) | undefined {
+  if (typeof adapter === 'function') {
+    return adapter;
+  }
+
+  const getAdapter =
+    typeof axiosRef?.getAdapter === 'function'
+      ? axiosRef.getAdapter.bind(axiosRef)
+      : typeof (axios as any).getAdapter === 'function'
+        ? (axios as any).getAdapter.bind(axios)
+        : undefined;
+
+  if (!getAdapter || adapter === undefined) {
+    return undefined;
+  }
+
+  return getAdapter(adapter);
+}
+
+function toAxiosResponse(response: HTTPResponse, config: any): AxiosResponse {
+  const headers = new AxiosHeaders();
+  Object.entries(response.headers ?? {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      headers.set(key, String(value));
+    }
+  });
+
+  return {
+    data: response.data,
+    status: response.status,
+    statusText: response.statusText ?? String(response.status),
+    headers,
+    config,
+    request: {},
+  };
+}
+
+async function runResponseInterceptors(baseClient: any, response: HTTPResponse): Promise<HTTPResponse> {
+  let processedResponse = response;
+  for (const interceptor of baseClient.responseInterceptors ?? []) {
+    if (interceptor.onFulfilled) {
+      processedResponse = await interceptor.onFulfilled(processedResponse);
+    }
+  }
+  return processedResponse;
+}
+
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   installNodeInboundRequestCorrelationCapture();
   const resolvedConfig = applyProxyRecordOnMissEnv(config);
@@ -2069,6 +2116,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         axiosType: typeof globalAxios,
         currentInterceptorCount: (globalAxios.interceptors.response as any).handlers?.length || 0
       });
+      const originalGlobalAdapter = globalAxios.defaults?.adapter;
+      const originalAdapter = resolveAxiosAdapter(globalAxios, originalGlobalAdapter);
       
       // CRITICAL: When useGlobalAxios is true, requests go through global axios,
       // so we need to add interceptors DIRECTLY to global axios, not to axiosInstance
@@ -2322,9 +2371,25 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         logger.debug('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
       }
       
-      // Copy adapter if it exists (for mock responses)
-      if (axiosInstance.defaults && axiosInstance.defaults.adapter) {
-        axios.defaults.adapter = axiosInstance.defaults.adapter;
+      if (resolvedConfig.proxy?.baseUrl) {
+        if (!globalAxios.defaults) {
+          globalAxios.defaults = {};
+        }
+        globalAxios.defaults.adapter = async (config: any) => {
+          if ((config as any).__mockifyer_bypass || (config as any).__mockifyer_skip_save) {
+            if (!originalAdapter) {
+              throw new Error('[Mockifyer-Axios] Unable to resolve original axios adapter for bypassed request');
+            }
+            return originalAdapter(config);
+          }
+
+          const proxyResponse = await (baseClient as any).performRequest(config);
+          const processedResponse = await runResponseInterceptors(baseClient, proxyResponse);
+          return toAxiosResponse(processedResponse, config);
+        };
+        console.log('[Mockifyer] Global axios dashboard proxy adapter installed');
+      } else if (axiosInstance.defaults && axiosInstance.defaults.adapter) {
+        globalAxios.defaults.adapter = axiosInstance.defaults.adapter;
       }
       
       logger.debug('[Mockifyer] Global axios configured with interceptors');
