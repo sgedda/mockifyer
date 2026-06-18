@@ -42,6 +42,7 @@ import {
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
 } from '../utils/proxy-network-log';
+import { shouldRunProxyRecordWrite } from '../utils/proxy-recording';
 
 const router = express.Router();
 
@@ -477,6 +478,7 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    const liveCapturePersisted = Boolean(mock && shouldPersistLiveCapture);
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
@@ -501,7 +503,7 @@ router.post('/', async (req: Request, res: Response) => {
       : response;
 
     let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
+    if (shouldRunProxyRecordWrite(effectiveRecord === true, liveCapturePersisted)) {
       const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (scenarioLocked) {
         if (debugProxy) {
