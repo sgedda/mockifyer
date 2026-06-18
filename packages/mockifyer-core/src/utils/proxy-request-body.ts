@@ -46,6 +46,11 @@ function isUrlSearchParams(value: unknown): value is URLSearchParams {
   return typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 }
 
+function getNodeBufferCtor(): typeof Buffer | undefined {
+  const g = globalThis as { Buffer?: typeof Buffer };
+  return typeof g.Buffer !== 'undefined' ? g.Buffer : undefined;
+}
+
 function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(body)) {
@@ -132,15 +137,7 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  if (Buffer.isBuffer(body)) {
-    return {
-      __mockifyerProxyBody: true,
-      kind: 'raw',
-      contentType: headerContentType(headers) || 'application/octet-stream',
-      data: body.toString('base64'),
-    } satisfies ProxySerializedBody;
-  }
-
+  // Plain objects (GraphQL JSON, REST JSON) before Buffer — Hermes has no `Buffer` global.
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -151,6 +148,17 @@ export async function serializeProxyRequestBody(
         data: plainObjectToUrlEncoded(body as Record<string, unknown>),
       } satisfies ProxySerializedBody;
     }
+    return body;
+  }
+
+  const bufferCtor = getNodeBufferCtor();
+  if (bufferCtor?.isBuffer(body)) {
+    return {
+      __mockifyerProxyBody: true,
+      kind: 'raw',
+      contentType: headerContentType(headers) || 'application/octet-stream',
+      data: (body as Buffer).toString('base64'),
+    } satisfies ProxySerializedBody;
   }
 
   return body;
