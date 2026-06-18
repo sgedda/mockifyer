@@ -49,6 +49,25 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
+    const gqlBody = {
+      query: 'query Query { systemAlert { title body isActive } }',
+      variables: {},
+    };
+    const originalBuffer = (globalThis as { Buffer?: typeof Buffer }).Buffer;
+    try {
+      delete (globalThis as { Buffer?: typeof Buffer }).Buffer;
+      const serialized = await serializeProxyRequestBody(gqlBody, {
+        'content-type': 'application/json',
+      });
+      expect(serialized).toBe(gqlBody);
+    } finally {
+      if (originalBuffer !== undefined) {
+        (globalThis as { Buffer?: typeof Buffer }).Buffer = originalBuffer;
+      }
+    }
+  });
+
   it('rebuilds upstream fetch body from serialized urlencoded payload', () => {
     const serialized: ProxySerializedBody = {
       __mockifyerProxyBody: true,
