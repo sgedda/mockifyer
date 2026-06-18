@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.11",
+  "version": "1.10.12",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,6 +34,10 @@
     "./utils/perform-dashboard-proxy-request": {
       "types": "./dist/utils/perform-dashboard-proxy-request.d.ts",
       "default": "./dist/utils/perform-dashboard-proxy-request.js"
+    },
+    "./utils/proxy-upstream-tls-insecure": {
+      "types": "./dist/utils/proxy-upstream-tls-insecure.d.ts",
+      "default": "./dist/utils/proxy-upstream-tls-insecure.js"
     }
   },
   "bin": {

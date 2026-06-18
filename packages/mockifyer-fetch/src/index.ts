@@ -49,7 +49,6 @@ import {
   resolveClientId,
   resolveExplicitClientIdOnly,
   resolveProxyStrictLaneScenario,
-  resolveProxyUpstreamTlsInsecure,
   registerMockifyerInstance,
   logMockifyerInitSummary,
   tryGetClientIdFromLaunchArguments,
@@ -77,6 +76,7 @@ import {
   type InitMockifyerForDashboardProxyOptions,
   type InitMockifyerForLocalFilesystemOptions,
 } from './core-proxy';
+import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 
 import { FetchHTTPClient } from './clients/fetch-client';
 
