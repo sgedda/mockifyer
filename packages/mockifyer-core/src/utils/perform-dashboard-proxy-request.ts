@@ -5,7 +5,7 @@ import {
 } from './request-correlation';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
-import { serializeProxyRequestBody } from './proxy-request-body';
+import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
 import { logger } from './logger';
