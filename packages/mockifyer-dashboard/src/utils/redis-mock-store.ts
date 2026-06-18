@@ -481,24 +481,23 @@ export class RedisMockStore {
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
     const values: Array<string | null> = await this.kv.mget(...fromKeys);
 
-    const multi = this.kv.multi();
+    const copiedHashes: string[] = [];
     let copied = 0;
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) continue;
       const hash = hashes[i];
       const toKey = await this.dataKey(hash, to);
-      multi.set(toKey, raw);
+      await this.kv.set(toKey, raw);
+      copiedHashes.push(hash);
       copied++;
     }
     if (copied > 0) {
       const toIndexKey = await this.indexKey(to);
-      multi.sadd(toIndexKey, ...hashes);
+      await this.kv.sadd(toIndexKey, ...copiedHashes);
     }
     // Registry + best-effort: ensures scenarios appear even if empty.
-    multi.sadd(this.scenarioRegistrySetKey, to);
-
-    await multi.exec();
+    await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
     return { mocksCopied: copied, dateConfigCopied };
   }
 
