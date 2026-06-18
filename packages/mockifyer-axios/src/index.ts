@@ -48,13 +48,13 @@ import {
   resolveExplicitClientIdOnly,
   resolveStrictScenarioResolution,
   resolveProxyStrictLaneScenario,
-  resolveProxyUpstreamTlsInsecure,
   logMockifyerInitSummary,
   shouldBlockLocalMockRecording,
   shouldBypassMockifyerForUrl,
   logger,
   setLogLevel,
 } from '@sgedda/mockifyer-core';
+import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { attachDashboardProxyAxiosAdapter, resolveAxiosRequestUrl } from './dashboard-proxy-axios-adapter';
 import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
