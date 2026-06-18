@@ -68,6 +68,33 @@ describe('proxy request body serialization', () => {
     }
   });
 
+  it('passes through GraphQL when globalThis.Buffer getter throws (Hermes)', async () => {
+    const gqlBody = {
+      query: 'query Query { myAccountDeferredBookings { id } }',
+      variables: {},
+    };
+    const g = globalThis as { Buffer?: unknown };
+    const original = Object.getOwnPropertyDescriptor(g, 'Buffer');
+    try {
+      Object.defineProperty(g, 'Buffer', {
+        configurable: true,
+        get() {
+          throw new ReferenceError("Property 'Buffer' doesn't exist");
+        },
+      });
+      const serialized = await serializeProxyRequestBody(gqlBody, {
+        'content-type': 'application/json',
+      });
+      expect(serialized).toBe(gqlBody);
+    } finally {
+      if (original) {
+        Object.defineProperty(g, 'Buffer', original);
+      } else {
+        delete g.Buffer;
+      }
+    }
+  });
+
   it('rebuilds upstream fetch body from serialized urlencoded payload', () => {
     const serialized: ProxySerializedBody = {
       __mockifyerProxyBody: true,

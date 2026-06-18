@@ -37,7 +37,8 @@ export * from './utils/proxy-record-on-miss-env';
 export * from './utils/join-proxy-dashboard-api-url';
 export * from './utils/dashboard-central-proxy-health';
 export * from './utils/dashboard-proxy-envelope';
-export * from './utils/proxy-request-body';
+export * from './utils/proxy-request-body-types';
+export { serializeProxyRequestBody } from './utils/serialize-proxy-request-body';
 export * from './utils/perform-dashboard-proxy-request';
 export * from './utils/apply-proxy-record-on-miss-env';
 export * from './utils/init-mockifyer-presets';
@@ -49,4 +50,4 @@ export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';
 export * from './utils/network-log';
 export * from './utils/network-trace';
-export * from './utils/ai-context';
+// ai-context uses Node Buffer.byteLength — import from main entry on Node only.

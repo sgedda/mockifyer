@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.13",
+  "version": "1.10.14",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -38,6 +38,14 @@
     "./utils/proxy-upstream-tls-insecure": {
       "types": "./dist/utils/proxy-upstream-tls-insecure.d.ts",
       "default": "./dist/utils/proxy-upstream-tls-insecure.js"
+    },
+    "./utils/serialize-proxy-request-body": {
+      "types": "./dist/utils/serialize-proxy-request-body.d.ts",
+      "default": "./dist/utils/serialize-proxy-request-body.js"
+    },
+    "./utils/build-proxy-upstream-body-init": {
+      "types": "./dist/utils/build-proxy-upstream-body-init.d.ts",
+      "default": "./dist/utils/build-proxy-upstream-body-init.js"
     }
   },
   "bin": {
