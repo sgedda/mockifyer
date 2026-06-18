@@ -149,6 +149,7 @@ export function sanitizeNetworkEvent(
   const maxBytes = options.maxEventBytes ?? NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES;
   const captureBodies = options.captureBodies === true;
 
+  let url = input.url;
   let host: string | undefined;
   let path: string | undefined;
   let query: string | undefined;
@@ -157,17 +158,22 @@ export function sanitizeNetworkEvent(
     host = u.host;
     path = u.pathname;
     query = sanitizeQueryString(u.search || undefined);
+    if (query !== undefined && query !== u.search) {
+      u.search = query;
+      url = u.toString();
+    }
   } catch {
     // keep url as-is
   }
 
   const event: NetworkEvent = {
     ...input,
+    url,
     id: input.id || newEventId(),
     timestamp: input.timestamp || new Date().toISOString(),
     host: input.host ?? host,
     path: input.path ?? path,
-    query: input.query ?? query,
+    query: input.query ? sanitizeQueryString(input.query) : query,
     requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
     responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
     requestBodyPreview: captureBodies ? truncatePreview(input.requestBodyPreview, maxBytes) : undefined,

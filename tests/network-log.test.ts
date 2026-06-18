@@ -36,7 +36,36 @@ describe('network-log', () => {
     });
     expect(event.requestBodyPreview).toBeUndefined();
     expect(event.responseBodyPreview).toBeUndefined();
+    expect(event.url).not.toContain('secret');
     expect(decodeURIComponent(event.query ?? '')).toContain('[REDACTED]');
+  });
+
+  it('sanitizeNetworkEvent redacts sensitive query params in the stored URL', () => {
+    const event = buildNetworkEvent({
+      scenario: 'default',
+      transport: 'proxy',
+      method: 'GET',
+      url: 'https://api.example.com/search?api_key=super-secret&page=1',
+      source: 'upstream',
+    });
+
+    expect(event.url).toBe('https://api.example.com/search?api_key=%5BREDACTED%5D&page=1');
+    expect(event.url).not.toContain('super-secret');
+    expect(event.query).toBe('?api_key=%5BREDACTED%5D&page=1');
+  });
+
+  it('sanitizeNetworkEvent redacts a caller-provided query field', () => {
+    const event = buildNetworkEvent({
+      scenario: 'default',
+      transport: 'proxy',
+      method: 'GET',
+      url: 'https://api.example.com/search?page=1',
+      query: 'access_token=super-secret&page=1',
+      source: 'upstream',
+    });
+
+    expect(event.query).toBe('access_token=%5BREDACTED%5D&page=1');
+    expect(event.query).not.toContain('super-secret');
   });
 
   it('toNetworkLogBodyPreview stringifies objects', () => {
