@@ -21,15 +21,10 @@ function isUrlSearchParams(value: unknown): value is URLSearchParams {
   return typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 }
 
-function isNodeRuntime(): boolean {
-  return typeof process !== 'undefined' && Boolean(process.versions?.node);
-}
-
 function isNodeFormDataPackage(
   value: unknown
 ): value is { getBuffer: () => { toString: (enc: string) => string }; getHeaders?: () => Record<string, string> } {
   return (
-    isNodeRuntime() &&
     typeof value === 'object' &&
     value !== null &&
     typeof (value as { getBuffer?: unknown }).getBuffer === 'function' &&
@@ -45,6 +40,14 @@ function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
     params.append(key, String(value));
   }
   return params.toString();
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializedBody> {
@@ -95,15 +98,12 @@ function serializeNodeBufferBody(
   body: unknown,
   headers?: Record<string, string>
 ): ProxySerializedBody | undefined {
-  if (!isNodeRuntime()) {
+  if (typeof body !== 'object' || body === null) {
     return undefined;
   }
+  const bufferCtor = (body as { constructor?: { isBuffer?: (v: unknown) => boolean } }).constructor;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Buffer: BufferCtor } = require('buffer') as {
-      Buffer: { isBuffer: (v: unknown) => boolean };
-    };
-    if (!BufferCtor?.isBuffer?.(body)) {
+    if (typeof bufferCtor?.isBuffer !== 'function' || !bufferCtor.isBuffer(body)) {
       return undefined;
     }
     return {
@@ -152,8 +152,13 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
-  if (typeof body === 'object' && !Array.isArray(body)) {
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON).
+  if (isPlainObject(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
       return {
@@ -164,11 +169,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;
