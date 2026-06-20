@@ -47,13 +47,126 @@ function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   return params.toString();
 }
 
-async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializedBody> {
+function bytesToBase64(bytes: Uint8Array): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let output = '';
+  let index = 0;
+
+  for (; index + 2 < bytes.length; index += 3) {
+    output += chars[bytes[index] >> 2];
+    output += chars[((bytes[index] & 3) << 4) | (bytes[index + 1] >> 4)];
+    output += chars[((bytes[index + 1] & 15) << 2) | (bytes[index + 2] >> 6)];
+    output += chars[bytes[index + 2] & 63];
+  }
+
+  if (index < bytes.length) {
+    output += chars[bytes[index] >> 2];
+    if (index + 1 < bytes.length) {
+      output += chars[((bytes[index] & 3) << 4) | (bytes[index + 1] >> 4)];
+      output += chars[(bytes[index + 1] & 15) << 2];
+      output += '=';
+    } else {
+      output += chars[(bytes[index] & 3) << 4];
+      output += '==';
+    }
+  }
+
+  return output;
+}
+
+function rawBytesToSerialized(bytes: Uint8Array, contentType: string): ProxySerializedBody {
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType,
+    data: bytesToBase64(bytes),
+  };
+}
+
+function arrayBufferToSerialized(
+  body: ArrayBuffer,
+  headers?: Record<string, string>
+): ProxySerializedBody {
+  return rawBytesToSerialized(
+    new Uint8Array(body),
+    headerContentType(headers) || 'application/octet-stream'
+  );
+}
+
+function arrayBufferViewToSerialized(
+  body: ArrayBufferView,
+  headers?: Record<string, string>
+): ProxySerializedBody {
+  return rawBytesToSerialized(
+    new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+    headerContentType(headers) || 'application/octet-stream'
+  );
+}
+
+async function blobToSerialized(body: Blob, headers?: Record<string, string>): Promise<ProxySerializedBody> {
+  return rawBytesToSerialized(
+    new Uint8Array(await body.arrayBuffer()),
+    headerContentType(headers) || body.type || 'application/octet-stream'
+  );
+}
+
+function isArrayBufferBody(value: unknown): value is ArrayBuffer {
+  return typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer;
+}
+
+function isArrayBufferViewBody(value: unknown): value is ArrayBufferView {
+  return typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value);
+}
+
+function isBlobBody(value: unknown): value is Blob {
+  return (
+    typeof Blob !== 'undefined' &&
+    value instanceof Blob &&
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === 'function'
+  );
+}
+
+async function nativeFormDataToRawSerialized(
+  body: FormData,
+  headers?: Record<string, string>
+): Promise<ProxySerializedBody | undefined> {
+  if (typeof Request === 'undefined') {
+    return undefined;
+  }
+
+  try {
+    const request = new Request('https://mockifyer.local/', {
+      method: 'POST',
+      body,
+    });
+    if (typeof request.arrayBuffer !== 'function') {
+      return undefined;
+    }
+    return rawBytesToSerialized(
+      new Uint8Array(await request.arrayBuffer()),
+      request.headers.get('content-type') ||
+        headerContentType(headers) ||
+        'multipart/form-data'
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+async function nativeFormDataToSerialized(
+  body: FormData,
+  headers?: Record<string, string>
+): Promise<ProxySerializedBody> {
   const params = new URLSearchParams();
   const entries = (body as FormData & {
     entries?: () => IterableIterator<[string, string | Blob]>;
   }).entries?.();
 
   if (!entries) {
+    const rawSerialized = await nativeFormDataToRawSerialized(body, headers);
+    if (rawSerialized) {
+      return rawSerialized;
+    }
     throw new Error('FormData.entries() is not available in this runtime');
   }
 
@@ -62,11 +175,11 @@ async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializ
       params.append(key, value);
       continue;
     }
-    if (typeof Blob !== 'undefined' && value instanceof Blob) {
-      params.append(key, await value.text());
-      continue;
+    const rawSerialized = await nativeFormDataToRawSerialized(body, headers);
+    if (rawSerialized) {
+      return rawSerialized;
     }
-    params.append(key, String(value));
+    throw new Error('FormData contains non-string values that cannot be serialized safely');
   }
 
   return {
@@ -145,11 +258,23 @@ export async function serializeProxyRequestBody(
   }
 
   if (isNativeFormData(body)) {
-    return nativeFormDataToSerialized(body);
+    return nativeFormDataToSerialized(body, headers);
   }
 
   if (isNodeFormDataPackage(body)) {
     return nodeFormDataPackageToSerialized(body);
+  }
+
+  if (isArrayBufferBody(body)) {
+    return arrayBufferToSerialized(body, headers);
+  }
+
+  if (isArrayBufferViewBody(body)) {
+    return arrayBufferViewToSerialized(body, headers);
+  }
+
+  if (isBlobBody(body)) {
+    return blobToSerialized(body, headers);
   }
 
   // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.

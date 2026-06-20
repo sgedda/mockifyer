@@ -36,6 +36,67 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes ArrayBuffer bodies as raw proxy payloads', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 255]);
+
+    const serialized = (await serializeProxyRequestBody(bytes.buffer, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe(Buffer.from(bytes).toString('base64'));
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.from(upstream.body as Buffer)).toEqual(Buffer.from(bytes));
+    expect(upstream.headers['content-type']).toBe('application/octet-stream');
+  });
+
+  it('serializes typed array bodies as raw proxy payloads', async () => {
+    const bytes = new Uint8Array([4, 5, 6, 7]);
+
+    const serialized = (await serializeProxyRequestBody(bytes, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.data).toBe(Buffer.from(bytes).toString('base64'));
+  });
+
+  it('serializes Blob bodies as raw proxy payloads', async () => {
+    const bytes = new Uint8Array([8, 9, 10]);
+    const blob = new Blob([bytes], { type: 'application/x-test-binary' });
+
+    const serialized = (await serializeProxyRequestBody(blob)) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/x-test-binary');
+    expect(serialized.data).toBe(Buffer.from(bytes).toString('base64'));
+  });
+
+  it('serializes native FormData with files as raw multipart payloads', async () => {
+    const bytes = new Uint8Array([65, 0, 66]);
+    const formData = new FormData();
+    formData.append('description', 'avatar');
+    formData.append('file', new Blob([bytes], { type: 'application/octet-stream' }), 'avatar.bin');
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data');
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    const upstreamBody = upstream.body as Buffer;
+    expect(upstreamBody.toString('utf8')).toContain('name="description"');
+    expect(upstreamBody.toString('utf8')).toContain('avatar.bin');
+    expect(upstreamBody.includes(Buffer.from(bytes))).toBe(true);
+    expect(upstream.headers['content-type']).toBe(serialized.contentType);
+  });
+
   it('serializes plain objects when content-type is urlencoded', async () => {
     const serialized = (await serializeProxyRequestBody(
       {
