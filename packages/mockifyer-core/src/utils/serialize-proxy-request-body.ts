@@ -30,8 +30,14 @@ function getNodeBufferCtor(): { isBuffer: (v: unknown) => boolean } | undefined 
     return undefined;
   }
   try {
-    // Keep this invisible to Metro/RN static dependency scanning.
-    const requireFn = (0, eval)('require') as (id: string) => unknown;
+    // Keep this off `require('buffer')` so Metro/RN static dependency scanning ignores it.
+    const requireFn =
+      typeof module !== 'undefined' && typeof module.require === 'function'
+        ? module.require.bind(module)
+        : undefined;
+    if (!requireFn) {
+      return undefined;
+    }
     const bufferModule = requireFn('buffer') as {
       Buffer?: { isBuffer: (v: unknown) => boolean };
     };
