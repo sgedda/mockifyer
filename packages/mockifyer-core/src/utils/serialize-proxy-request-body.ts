@@ -25,6 +25,28 @@ function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && Boolean(process.versions?.node);
 }
 
+function getNodeBufferCtor(): { isBuffer: (v: unknown) => boolean } | undefined {
+  if (!isNodeRuntime()) {
+    return undefined;
+  }
+  try {
+    // Keep this off `require('buffer')` so Metro/RN static dependency scanning ignores it.
+    const requireFn =
+      typeof module !== 'undefined' && typeof module.require === 'function'
+        ? module.require.bind(module)
+        : undefined;
+    if (!requireFn) {
+      return undefined;
+    }
+    const bufferModule = requireFn('buffer') as {
+      Buffer?: { isBuffer: (v: unknown) => boolean };
+    };
+    return bufferModule.Buffer;
+  } catch {
+    return undefined;
+  }
+}
+
 function isNodeFormDataPackage(
   value: unknown
 ): value is { getBuffer: () => { toString: (enc: string) => string }; getHeaders?: () => Record<string, string> } {
@@ -95,26 +117,16 @@ function serializeNodeBufferBody(
   body: unknown,
   headers?: Record<string, string>
 ): ProxySerializedBody | undefined {
-  if (!isNodeRuntime()) {
+  const BufferCtor = getNodeBufferCtor();
+  if (!BufferCtor?.isBuffer(body)) {
     return undefined;
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Buffer: BufferCtor } = require('buffer') as {
-      Buffer: { isBuffer: (v: unknown) => boolean };
-    };
-    if (!BufferCtor?.isBuffer?.(body)) {
-      return undefined;
-    }
-    return {
-      __mockifyerProxyBody: true,
-      kind: 'raw',
-      contentType: headerContentType(headers) || 'application/octet-stream',
-      data: (body as { toString: (enc: string) => string }).toString('base64'),
-    };
-  } catch {
-    return undefined;
-  }
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: headerContentType(headers) || 'application/octet-stream',
+    data: (body as { toString: (enc: string) => string }).toString('base64'),
+  };
 }
 
 /**
@@ -152,7 +164,12 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON) pass through unchanged.
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +181,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;
