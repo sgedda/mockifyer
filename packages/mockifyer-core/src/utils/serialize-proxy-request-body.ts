@@ -3,6 +3,9 @@ import {
   type ProxySerializedBody,
 } from './proxy-request-body-types';
 
+const DEFAULT_RAW_CONTENT_TYPE = 'application/octet-stream';
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function headerContentType(headers?: Record<string, string>): string | undefined {
   if (!headers) return undefined;
   for (const [key, value] of Object.entries(headers)) {
@@ -21,8 +24,49 @@ function isUrlSearchParams(value: unknown): value is URLSearchParams {
   return typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
 }
 
+function isNativeBlob(value: unknown): value is Blob {
+  return typeof Blob !== 'undefined' && value instanceof Blob;
+}
+
 function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && Boolean(process.versions?.node);
+}
+
+function base64EncodeBytes(bytes: Uint8Array): string {
+  let output = '';
+  let index = 0;
+
+  for (; index + 2 < bytes.length; index += 3) {
+    const chunk = (bytes[index] << 16) | (bytes[index + 1] << 8) | bytes[index + 2];
+    output +=
+      BASE64_ALPHABET[(chunk >> 18) & 63] +
+      BASE64_ALPHABET[(chunk >> 12) & 63] +
+      BASE64_ALPHABET[(chunk >> 6) & 63] +
+      BASE64_ALPHABET[chunk & 63];
+  }
+
+  if (index < bytes.length) {
+    const remaining = bytes.length - index;
+    const chunk =
+      (bytes[index] << 16) |
+      (remaining === 2 ? bytes[index + 1] << 8 : 0);
+
+    output += BASE64_ALPHABET[(chunk >> 18) & 63];
+    output += BASE64_ALPHABET[(chunk >> 12) & 63];
+    output += remaining === 2 ? BASE64_ALPHABET[(chunk >> 6) & 63] : '=';
+    output += '=';
+  }
+
+  return output;
+}
+
+function rawBytesToSerialized(bytes: Uint8Array, contentType?: string): ProxySerializedBody {
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: contentType || DEFAULT_RAW_CONTENT_TYPE,
+    data: base64EncodeBytes(bytes),
+  };
 }
 
 function isNodeFormDataPackage(
@@ -117,6 +161,32 @@ function serializeNodeBufferBody(
   }
 }
 
+function serializeArrayBufferBody(
+  body: ArrayBuffer,
+  headers?: Record<string, string>
+): ProxySerializedBody {
+  return rawBytesToSerialized(new Uint8Array(body), headerContentType(headers));
+}
+
+function serializeArrayBufferViewBody(
+  body: ArrayBufferView,
+  headers?: Record<string, string>
+): ProxySerializedBody {
+  const bytes = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  return rawBytesToSerialized(bytes, headerContentType(headers));
+}
+
+async function serializeBlobBody(
+  body: Blob,
+  headers?: Record<string, string>
+): Promise<ProxySerializedBody> {
+  const arrayBuffer = await body.arrayBuffer();
+  return rawBytesToSerialized(
+    new Uint8Array(arrayBuffer),
+    body.type || headerContentType(headers)
+  );
+}
+
 /**
  * Convert non-JSON request bodies (FormData, URLSearchParams, urlencoded objects) into a
  * JSON-safe envelope field before POSTing to mockifyer-dashboard `/api/proxy`.
@@ -152,7 +222,24 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer) {
+    return serializeArrayBufferBody(body, headers);
+  }
+
+  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(body)) {
+    return serializeArrayBufferViewBody(body as ArrayBufferView, headers);
+  }
+
+  if (isNativeBlob(body)) {
+    return serializeBlobBody(body, headers);
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON).
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +251,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;

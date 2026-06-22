@@ -207,9 +207,10 @@ export interface MockifyerConfig {
      */
     mirrorRecordedMocksToClient?: boolean;
     /**
-     * When true, dashboard `/api/proxy` upstream `fetch` skips TLS certificate verification
+     * Requests dashboard `/api/proxy` to skip upstream TLS certificate verification
      * (`rejectUnauthorized: false`), matching axios `httpsAgent` usage for internal CAs.
-     * Env **`MOCKIFYER_UPSTREAM_TLS_INSECURE`** (`true`/`1`) overrides when set.
+     * The dashboard process must explicitly enable **`MOCKIFYER_UPSTREAM_TLS_INSECURE=true`**
+     * before request envelopes can use this unsafe mode.
      */
     upstreamTlsInsecure?: boolean;
   };
@@ -411,7 +412,8 @@ export const ENV_VARS = {
   MOCK_RECORDING_EXCLUSION_HOSTS: 'MOCKIFYER_RECORDING_EXCLUSION_HOSTS',
   /**
    * When `true`, dashboard `/api/proxy` upstream HTTPS calls skip certificate verification.
-   * Client SDKs send this in the proxy envelope; the dashboard process env is a fallback when omitted.
+   * Dashboard treats this server-side env as the authority; request bodies cannot enable
+   * insecure TLS by themselves.
    */
   MOCK_UPSTREAM_TLS_INSECURE: 'MOCKIFYER_UPSTREAM_TLS_INSECURE',
 } as const;
