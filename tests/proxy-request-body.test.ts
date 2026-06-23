@@ -36,6 +36,26 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes Node Buffer bodies as raw base64 before generic object handling', async () => {
+    const original = Buffer.from([0, 1, 2, 253, 254, 255]);
+    const serialized = (await serializeProxyRequestBody(original, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized).toEqual({
+      __mockifyerProxyBody: true,
+      kind: 'raw',
+      contentType: 'application/octet-stream',
+      data: original.toString('base64'),
+    });
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.compare(upstream.body as Buffer, original)).toBe(0);
+    expect(upstream.headers['content-type']).toBe('application/octet-stream');
+  });
+
   it('serializes plain objects when content-type is urlencoded', async () => {
     const serialized = (await serializeProxyRequestBody(
       {
