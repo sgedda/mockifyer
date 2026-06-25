@@ -152,8 +152,14 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  // Plain objects (GraphQL JSON, REST JSON) should pass through, but Node Buffer
+  // also reports as an object and must keep its raw bytes through the JSON envelope.
   if (typeof body === 'object' && !Array.isArray(body)) {
+    const nodeBufferBody = serializeNodeBufferBody(body, headers);
+    if (nodeBufferBody) {
+      return nodeBufferBody;
+    }
+
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
       return {
