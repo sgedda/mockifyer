@@ -152,7 +152,12 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON) stay JSON payloads.
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +169,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;

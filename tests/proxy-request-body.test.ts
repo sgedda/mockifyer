@@ -49,6 +49,21 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes Node Buffer bodies as raw bytes before dashboard proxying', async () => {
+    const body = Buffer.from([0, 1, 2, 3, 254, 255]);
+
+    const serialized = (await serializeProxyRequestBody(body, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.compare(upstream.body as Buffer, body)).toBe(0);
+    expect(upstream.headers['content-type']).toBe('application/octet-stream');
+  });
+
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
     const gqlBody = {
       query: 'query Query { systemAlert { title body isActive } }',
