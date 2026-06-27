@@ -111,11 +111,10 @@ router.post('/', async (req: Request, res: Response) => {
     clientId: clientIdFromBody,
     deviceId: deviceIdFromBody,
     strictLaneScenario: strictLaneScenarioFromBody,
-    upstreamTlsInsecure: upstreamTlsInsecureFromBody,
   } = req.body || {};
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
-  const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest(upstreamTlsInsecureFromBody);
+  const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest();
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
