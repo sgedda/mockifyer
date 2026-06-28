@@ -47,14 +47,62 @@ function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   return params.toString();
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const btoaFn = (globalThis as { btoa?: (value: string) => string }).btoa;
+  if (typeof btoaFn === 'function') {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoaFn(binary);
+  }
+
+  if (isNodeRuntime()) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Buffer: BufferCtor } = require('buffer') as {
+      Buffer: { from: (value: ArrayBuffer) => { toString: (enc: string) => string } };
+    };
+    return BufferCtor.from(buffer).toString('base64');
+  }
+
+  throw new Error('Base64 encoding is not available in this runtime');
+}
+
+async function nativeFormDataToMultipartSerialized(body: FormData): Promise<ProxySerializedBody> {
+  const RequestCtor = (globalThis as {
+    Request?: new (
+      input: string,
+      init: { method: string; body: FormData }
+    ) => { headers: { get: (name: string) => string | null }; arrayBuffer: () => Promise<ArrayBuffer> };
+  }).Request;
+
+  if (!RequestCtor) {
+    throw new Error('Request is required to serialize FormData with binary fields');
+  }
+
+  const request = new RequestCtor('http://mockifyer.local/', {
+    method: 'POST',
+    body,
+  });
+  const buffer = await request.arrayBuffer();
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: request.headers.get('content-type') || 'multipart/form-data',
+    data: arrayBufferToBase64(buffer),
+  };
+}
+
 async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializedBody> {
   const params = new URLSearchParams();
   const entries = (body as FormData & {
-    entries?: () => IterableIterator<[string, string | Blob]>;
+    entries?: () => IterableIterator<[string, unknown]>;
   }).entries?.();
 
   if (!entries) {
-    throw new Error('FormData.entries() is not available in this runtime');
+    return nativeFormDataToMultipartSerialized(body);
   }
 
   for (const [key, value] of entries) {
@@ -62,11 +110,7 @@ async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializ
       params.append(key, value);
       continue;
     }
-    if (typeof Blob !== 'undefined' && value instanceof Blob) {
-      params.append(key, await value.text());
-      continue;
-    }
-    params.append(key, String(value));
+    return nativeFormDataToMultipartSerialized(body);
   }
 
   return {

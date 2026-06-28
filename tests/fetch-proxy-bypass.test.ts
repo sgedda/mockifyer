@@ -249,4 +249,61 @@ describe('fetch proxy bypass', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
   });
+
+  it('preserves URLSearchParams bodies when excludedUrls bypasses dashboard proxy', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: 'test-client',
+    });
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    const response = await client.post(tokenUrl, body, {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(body);
+  });
+
+  it('preserves FormData bodies when excludedUrls bypasses dashboard proxy', async () => {
+    const uploadUrl = 'https://uploads.example.com/files';
+    const body = new FormData();
+    body.append('description', 'avatar');
+    body.append('file', new Blob(['hello file'], { type: 'text/plain' }), 'avatar.txt');
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ uploaded: true })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['uploads.example.com'],
+    });
+
+    const response = await client.post(uploadUrl, body);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(uploadUrl);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(body);
+  });
 });

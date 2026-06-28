@@ -24,6 +24,30 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toContain('resource=');
   });
 
+  it('serializes native FormData with binary fields to raw multipart proxy body', async () => {
+    const formData = new FormData();
+    formData.append('description', 'avatar');
+    formData.append('file', new Blob(['hello file'], { type: 'text/plain' }), 'avatar.txt');
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data');
+    expect(serialized.contentType).toContain('boundary=');
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(upstream.headers['content-type']).toBe(serialized.contentType);
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+
+    const multipartBody = (upstream.body as Buffer).toString('utf-8');
+    expect(multipartBody).toContain('name="description"');
+    expect(multipartBody).toContain('avatar');
+    expect(multipartBody).toContain('name="file"');
+    expect(multipartBody).toContain('filename="avatar.txt"');
+    expect(multipartBody).toContain('hello file');
+  });
+
   it('serializes URLSearchParams to urlencoded proxy body', async () => {
     const params = new URLSearchParams({
       grant_type: 'client_credentials',
