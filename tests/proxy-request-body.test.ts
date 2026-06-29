@@ -24,6 +24,24 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toContain('resource=');
   });
 
+  it('serializes native FormData with Blob entries as raw multipart bytes', async () => {
+    const formData = new FormData();
+    formData.append('description', 'avatar');
+    formData.append('file', new Blob(['hello-file'], { type: 'text/plain' }), 'avatar.txt');
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data');
+
+    const multipartBody = Buffer.from(serialized.data, 'base64').toString('utf8');
+    expect(multipartBody).toContain('name="description"');
+    expect(multipartBody).toContain('avatar');
+    expect(multipartBody).toContain('name="file"; filename="avatar.txt"');
+    expect(multipartBody).toContain('hello-file');
+  });
+
   it('serializes URLSearchParams to urlencoded proxy body', async () => {
     const params = new URLSearchParams({
       grant_type: 'client_credentials',
@@ -47,6 +65,37 @@ describe('proxy request body serialization', () => {
 
     expect(serialized.kind).toBe('urlencoded');
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
+  });
+
+  it('serializes Node Buffer bodies as raw bytes before generic object handling', async () => {
+    const body = Buffer.from([0, 1, 2, 250, 255]);
+
+    const serialized = (await serializeProxyRequestBody(body, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe(body.toString('base64'));
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect((upstream.body as Buffer).equals(body)).toBe(true);
+  });
+
+  it('serializes Blob bodies as raw bytes', async () => {
+    const bytes = Buffer.from([3, 4, 5, 251, 252]);
+    const serialized = (await serializeProxyRequestBody(
+      new Blob([bytes], { type: 'application/octet-stream' })
+    )) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect((upstream.body as Buffer).equals(bytes)).toBe(true);
   });
 
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
