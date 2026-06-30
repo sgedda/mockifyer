@@ -33,16 +33,18 @@ export function resolveProxyUpstreamTlsInsecure(
 
 /**
  * Resolves upstream TLS insecure mode for a single `/api/proxy` request on the dashboard.
- * Uses the JSON body when present; otherwise falls back to dashboard process env.
+ * Dashboard process env is authoritative; otherwise falls back to the JSON body.
  */
 export function resolveProxyUpstreamTlsInsecureForRequest(
   upstreamTlsInsecureFromBody: unknown
 ): boolean {
-  if (typeof upstreamTlsInsecureFromBody === 'boolean') {
-    return upstreamTlsInsecureFromBody;
-  }
   const fromEnv = parseProxyUpstreamTlsInsecureEnv(
     typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_UPSTREAM_TLS_INSECURE] : undefined
   );
-  return fromEnv === true;
+  if (fromEnv !== undefined) return fromEnv;
+
+  if (typeof upstreamTlsInsecureFromBody === 'boolean') {
+    return upstreamTlsInsecureFromBody;
+  }
+  return false;
 }
