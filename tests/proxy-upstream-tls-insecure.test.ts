@@ -57,4 +57,14 @@ describe('resolveProxyUpstreamTlsInsecureForRequest', () => {
     process.env[envKey] = 'true';
     expect(resolveProxyUpstreamTlsInsecureForRequest(undefined)).toBe(true);
   });
+
+  it('lets dashboard env false reject body-requested insecure TLS', () => {
+    process.env[envKey] = 'false';
+    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(false);
+  });
+
+  it('lets dashboard env true allow insecure TLS despite body false', () => {
+    process.env[envKey] = 'true';
+    expect(resolveProxyUpstreamTlsInsecureForRequest(false)).toBe(true);
+  });
 });
