@@ -98,23 +98,21 @@ function serializeNodeBufferBody(
   if (!isNodeRuntime()) {
     return undefined;
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Buffer: BufferCtor } = require('buffer') as {
-      Buffer: { isBuffer: (v: unknown) => boolean };
-    };
-    if (!BufferCtor?.isBuffer?.(body)) {
-      return undefined;
-    }
-    return {
-      __mockifyerProxyBody: true,
-      kind: 'raw',
-      contentType: headerContentType(headers) || 'application/octet-stream',
-      data: (body as { toString: (enc: string) => string }).toString('base64'),
-    };
-  } catch {
+  if (typeof body !== 'object' || body === null) {
     return undefined;
   }
+  const bufferConstructor = (body as {
+    constructor?: { isBuffer?: (value: unknown) => boolean };
+  }).constructor;
+  if (typeof bufferConstructor?.isBuffer !== 'function' || !bufferConstructor.isBuffer(body)) {
+    return undefined;
+  }
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: headerContentType(headers) || 'application/octet-stream',
+    data: (body as { toString: (enc: string) => string }).toString('base64'),
+  };
 }
 
 /**
@@ -152,7 +150,12 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON).
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +167,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;
