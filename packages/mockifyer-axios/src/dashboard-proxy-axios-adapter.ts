@@ -1,4 +1,4 @@
-import { AxiosHeaders, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import { AxiosError, AxiosHeaders, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import {
   performDashboardProxyRequest,
   getActiveInboundClientId,
@@ -140,6 +140,37 @@ function httpResponseToAxiosResponse(
 }
 
 /**
+ * Resolve or reject based on the response status, honoring `config.validateStatus`.
+ * 
+ * Axios's built-in adapters (http/xhr/fetch) run every response through its internal
+ * `settle()` before resolving, which is what rejects non-2xx responses with an
+ * `AxiosError`. A custom adapter must do the same, otherwise non-2xx responses resolve
+ * instead of rejecting and callers see different error semantics through the proxy than
+ * they do against the real HTTP adapter. This mirrors axios core `settle`, using only the
+ * public `AxiosError` export to avoid depending on axios internals.
+ */
+function settleAxiosResponse(
+  resolve: (value: AxiosResponse) => void,
+  reject: (reason: unknown) => void,
+  response: AxiosResponse
+): void {
+  const validateStatus = response.config?.validateStatus;
+  if (!response.status || !validateStatus || validateStatus(response.status)) {
+    resolve(response);
+  } else {
+    reject(
+      new AxiosError(
+        `Request failed with status code ${response.status}`,
+        [AxiosError.ERR_BAD_REQUEST, AxiosError.ERR_BAD_RESPONSE][Math.floor(response.status / 100) - 4],
+        response.config,
+        response.request,
+        response
+      )
+    )
+  }
+}
+
+/**
  * Attach an axios `adapter` that routes the request through mockifyer-dashboard `/api/proxy`.
  * Required when `useGlobalAxios: true` — interceptors alone do not replace axios's HTTP adapter.
  */
@@ -185,7 +216,10 @@ export function attachDashboardProxyAxiosAdapter(
       logTag: 'Mockifyer-Axios',
     });
 
-    return httpResponseToAxiosResponse(adapterConfig, httpResponse);
+    const axiosResponse = httpResponseToAxiosResponse(adapterConfig, httpResponse);
+    return new Promise<AxiosResponse>((resolve, reject) => {
+      settleAxiosResponse(resolve, reject, axiosResponse)
+    })
   };
   dashboardProxyAdapter[DASHBOARD_PROXY_AXIOS_ADAPTER] = true;
 

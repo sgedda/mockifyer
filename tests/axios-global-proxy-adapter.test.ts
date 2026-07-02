@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios';
+import axios, { isAxiosError, type AxiosInstance } from 'axios';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -164,5 +164,75 @@ describe('dashboard proxy axios adapter', () => {
       expect(upstreamMock).toHaveBeenCalledTimes(1);
       expect(upstreamMock.mock.calls[0][0].url).toBe(tokenUrl);
     });
+
+    it('rejects non-2xx proxied responses per the default validateStatus (parity with built-in adapters)', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          proxied: true,
+          source: 'upstream',
+          hash: 'notfound',
+          response: {
+            status: 404,
+            data: { ErrorMessage: 'Booking not found.' },
+            headers: { 'content-type': 'application/json' },
+          },
+        }),
+      });
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      await expect(axiosInstance.get('https://api.example.com/items/missing')).rejects.toMatchObject({
+        isAxiosError: true,
+        response: { status: 404, data: { ErrorMessage: 'Booking not found.' } },
+      });
+    });
+
+    it('resolves a non-2xx proxied response when validateStatus permits it', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          proxied: true,
+          source: 'upstream',
+          hash: 'notfound',
+          response: {
+            status: 404,
+            data: { ErrorMessage: 'Booking not found.' },
+            headers: { 'content-type': 'application/json' },
+          },
+        }),
+      });
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      const response = await axiosInstance.get('https://api.example.com/items/missing', {
+        validateStatus: (status) => status === 404 || (status >= 200 && status < 300),
+      });
+
+      expect(response.status).toBe(404);
+      expect(response.data).toEqual({ ErrorMessage: 'Booking not found.' });
+    })
   });
 });
