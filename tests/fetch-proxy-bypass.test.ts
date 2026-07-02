@@ -249,4 +249,63 @@ describe('fetch proxy bypass', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
   });
+
+  it('preserves URLSearchParams bodies for excludedUrls direct requests', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+    const params = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: 'abc',
+    });
+
+    await client.post(tokenUrl, params, {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect(init.body).toBe(params);
+  });
+
+  it('encodes urlencoded object bodies for excludedUrls direct requests', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    await client.post(
+      tokenUrl,
+      {
+        grant_type: 'client_credentials',
+        client_id: 'abc',
+      },
+      { headers: { 'content-type': 'application/x-www-form-urlencoded' } }
+    );
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect(init.body).toBe('grant_type=client_credentials&client_id=abc');
+  });
 });
