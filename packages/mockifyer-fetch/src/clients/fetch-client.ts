@@ -11,6 +11,67 @@ import {
 } from '@sgedda/mockifyer-core';
 import { performDashboardProxyRequest } from '../core-proxy';
 
+function isUrlSearchParamsBody(value: unknown): value is URLSearchParams {
+  return typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams;
+}
+
+function isFormDataBody(value: unknown): value is FormData {
+  return typeof FormData !== 'undefined' && value instanceof FormData;
+}
+
+function isBlobBody(value: unknown): value is Blob {
+  return typeof Blob !== 'undefined' && value instanceof Blob;
+}
+
+function isArrayBufferBody(value: unknown): value is ArrayBuffer {
+  return typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer;
+}
+
+function isArrayBufferViewBody(value: unknown): value is ArrayBufferView {
+  return typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value);
+}
+
+function headersContentType(headers: Headers): string {
+  return headers.get('content-type') || headers.get('Content-Type') || '';
+}
+
+function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    params.append(key, String(value));
+  }
+  return params.toString();
+}
+
+function buildDirectFetchBody(data: unknown, headers: Headers): BodyInit | undefined {
+  if (data === undefined || data === null) {
+    return undefined;
+  }
+
+  if (
+    typeof data === 'string' ||
+    isUrlSearchParamsBody(data) ||
+    isFormDataBody(data) ||
+    isBlobBody(data) ||
+    isArrayBufferBody(data) ||
+    isArrayBufferViewBody(data)
+  ) {
+    return data as BodyInit;
+  }
+
+  const contentType = headersContentType(headers).toLowerCase();
+  if (
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    contentType.includes('application/x-www-form-urlencoded')
+  ) {
+    return plainObjectToUrlEncoded(data as Record<string, unknown>);
+  }
+
+  return JSON.stringify(data);
+}
+
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
   private defaultHeaders: Record<string, string>;
@@ -116,7 +177,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     const requestConfig: RequestInit = {
       method: config.method || 'GET',
       headers,
-      body: config.data ? JSON.stringify(config.data) : undefined
+      body: buildDirectFetchBody(config.data, headers)
     };
     
     // Use original fetch if available (when global fetch is patched), otherwise use global fetch

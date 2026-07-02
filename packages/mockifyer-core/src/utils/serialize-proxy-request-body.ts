@@ -25,6 +25,49 @@ function isNodeRuntime(): boolean {
   return typeof process !== 'undefined' && Boolean(process.versions?.node);
 }
 
+function isBlobBody(value: unknown): value is Blob {
+  return typeof Blob !== 'undefined' && value instanceof Blob;
+}
+
+function isArrayBufferBody(value: unknown): value is ArrayBuffer {
+  return typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer;
+}
+
+function isArrayBufferViewBody(value: unknown): value is ArrayBufferView {
+  return typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let output = '';
+
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const second = index + 1 < bytes.length ? bytes[index + 1] : 0;
+    const third = index + 2 < bytes.length ? bytes[index + 2] : 0;
+    const triplet = (first << 16) | (second << 8) | third;
+
+    output += alphabet[(triplet >> 18) & 0x3f];
+    output += alphabet[(triplet >> 12) & 0x3f];
+    output += index + 1 < bytes.length ? alphabet[(triplet >> 6) & 0x3f] : '=';
+    output += index + 2 < bytes.length ? alphabet[triplet & 0x3f] : '=';
+  }
+
+  return output;
+}
+
+function rawBodyToSerialized(
+  bytes: Uint8Array,
+  contentType?: string
+): ProxySerializedBody {
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: contentType || 'application/octet-stream',
+    data: bytesToBase64(bytes),
+  };
+}
+
 function isNodeFormDataPackage(
   value: unknown
 ): value is { getBuffer: () => { toString: (enc: string) => string }; getHeaders?: () => Record<string, string> } {
@@ -91,30 +134,13 @@ function nodeFormDataPackageToSerialized(body: {
   };
 }
 
-function serializeNodeBufferBody(
+async function blobToSerializedBody(
   body: unknown,
   headers?: Record<string, string>
-): ProxySerializedBody | undefined {
-  if (!isNodeRuntime()) {
-    return undefined;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Buffer: BufferCtor } = require('buffer') as {
-      Buffer: { isBuffer: (v: unknown) => boolean };
-    };
-    if (!BufferCtor?.isBuffer?.(body)) {
-      return undefined;
-    }
-    return {
-      __mockifyerProxyBody: true,
-      kind: 'raw',
-      contentType: headerContentType(headers) || 'application/octet-stream',
-      data: (body as { toString: (enc: string) => string }).toString('base64'),
-    };
-  } catch {
-    return undefined;
-  }
+): Promise<ProxySerializedBody> {
+  const blob = body as Blob;
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return rawBodyToSerialized(bytes, headerContentType(headers) || blob.type);
 }
 
 /**
@@ -152,7 +178,22 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  if (isArrayBufferBody(body)) {
+    return rawBodyToSerialized(new Uint8Array(body), headerContentType(headers));
+  }
+
+  if (isArrayBufferViewBody(body)) {
+    return rawBodyToSerialized(
+      new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+      headerContentType(headers)
+    );
+  }
+
+  if (isBlobBody(body)) {
+    return blobToSerializedBody(body, headers);
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON).
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +205,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;

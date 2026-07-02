@@ -49,6 +49,32 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes Buffer bodies as raw proxy payloads before object fallback', async () => {
+    const serialized = (await serializeProxyRequestBody(Buffer.from([0, 1, 2, 255]), {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe('AAEC/w==');
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.from(upstream.body as Buffer).equals(Buffer.from([0, 1, 2, 255]))).toBe(true);
+  });
+
+  it('serializes typed arrays as raw proxy payloads', async () => {
+    const backing = new Uint8Array([9, 8, 7, 6]).buffer;
+    const view = new Uint8Array(backing, 1, 2);
+
+    const serialized = (await serializeProxyRequestBody(view)) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe('CAc=');
+  });
+
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
     const gqlBody = {
       query: 'query Query { systemAlert { title body isActive } }',
