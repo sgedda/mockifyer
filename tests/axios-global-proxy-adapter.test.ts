@@ -14,6 +14,16 @@ describe('dashboard proxy axios adapter', () => {
       });
       expect(url).toBe('https://api.example.com/items?page=2&q=test');
     });
+
+    it('resolves relative axios URLs against config.baseURL', () => {
+      const url = resolveAxiosRequestUrl({
+        baseURL: 'https://login.microsoftonline.com/tenant',
+        url: '/oauth2/token',
+        params: { apiVersion: 'v2' },
+      });
+
+      expect(url).toBe('https://login.microsoftonline.com/tenant/oauth2/token?apiVersion=v2');
+    });
   });
 
   describe('useGlobalAxios + proxy.baseUrl', () => {
@@ -163,6 +173,42 @@ describe('dashboard proxy axios adapter', () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(upstreamMock).toHaveBeenCalledTimes(1);
       expect(upstreamMock.mock.calls[0][0].url).toBe(tokenUrl);
+    });
+
+    it('bypasses dashboard proxy for relative excludedUrls matches resolved from axios baseURL', async () => {
+      const upstreamMock = jest.fn().mockResolvedValue({
+        data: { access_token: 'secret' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {},
+      });
+      axiosInstance.defaults.baseURL = 'https://login.microsoftonline.com/tenant';
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        excludedUrls: ['login.microsoftonline.com'],
+        databaseProvider: { type: 'memory' },
+      });
+
+      await axiosInstance.post(
+        '/oauth2/token',
+        { grant_type: 'client_credentials' },
+        { adapter: upstreamMock }
+      );
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(upstreamMock).toHaveBeenCalledTimes(1);
+      expect(upstreamMock.mock.calls[0][0].baseURL).toBe('https://login.microsoftonline.com/tenant');
+      expect(upstreamMock.mock.calls[0][0].url).toBe('/oauth2/token');
     });
 
     it('rejects non-2xx proxied responses per the default validateStatus (parity with built-in adapters)', async () => {

@@ -47,6 +47,44 @@ function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   return params.toString();
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  }
+
+  if (isNodeRuntime()) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Buffer: BufferCtor } = require('buffer') as { Buffer: typeof Buffer };
+    return BufferCtor.from(binary, 'binary').toString('base64');
+  }
+
+  throw new Error('Base64 encoding is not available in this runtime');
+}
+
+async function nativeFormDataToRawSerialized(body: FormData): Promise<ProxySerializedBody> {
+  if (typeof Request === 'undefined') {
+    throw new Error('Request is not available to serialize multipart FormData');
+  }
+
+  const request = new Request('http://mockifyer.local/__proxy_formdata__', {
+    method: 'POST',
+    body,
+  });
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType: request.headers.get('content-type') || 'multipart/form-data',
+    data: bytesToBase64(bytes),
+  };
+}
+
 async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializedBody> {
   const params = new URLSearchParams();
   const entries = (body as FormData & {
@@ -63,8 +101,7 @@ async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializ
       continue;
     }
     if (typeof Blob !== 'undefined' && value instanceof Blob) {
-      params.append(key, await value.text());
-      continue;
+      return nativeFormDataToRawSerialized(body);
     }
     params.append(key, String(value));
   }
@@ -152,7 +189,12 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON) pass through after Node Buffer detection.
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +206,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;
