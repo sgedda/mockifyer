@@ -14,6 +14,16 @@ describe('dashboard proxy axios adapter', () => {
       });
       expect(url).toBe('https://api.example.com/items?page=2&q=test');
     });
+
+    it('resolves relative URLs against the axios baseURL before appending params', () => {
+      const url = resolveAxiosRequestUrl({
+        baseURL: 'https://api.example.com/v1/',
+        url: 'items',
+        params: { page: '2' },
+      });
+
+      expect(url).toBe('https://api.example.com/v1/items?page=2');
+    });
   });
 
   describe('useGlobalAxios + proxy.baseUrl', () => {
@@ -80,6 +90,30 @@ describe('dashboard proxy axios adapter', () => {
       expect(body.method).toBe('GET');
       expect(body.clientId).toBe('test-lane');
       expect(body.upstreamTlsInsecure).toBe(false);
+    });
+
+    it('routes relative URLs using the axios instance baseURL through dashboard /api/proxy', async () => {
+      axiosInstance.defaults.baseURL = 'https://api.example.com/v1/';
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      const response = await axiosInstance.get('items', {
+        params: { q: 'x' },
+      });
+
+      expect(response.status).toBe(200);
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body.url).toBe('https://api.example.com/v1/items?q=x');
     });
 
     it('includes upstreamTlsInsecure in proxy envelope when configured', async () => {
@@ -163,6 +197,42 @@ describe('dashboard proxy axios adapter', () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(upstreamMock).toHaveBeenCalledTimes(1);
       expect(upstreamMock.mock.calls[0][0].url).toBe(tokenUrl);
+    });
+
+    it('bypasses dashboard proxy for relative excludedUrls resolved by axios baseURL', async () => {
+      const upstreamMock = jest.fn().mockResolvedValue({
+        data: { access_token: 'secret' },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config: {},
+      });
+      axiosInstance.defaults.baseURL = 'https://login.microsoftonline.com';
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        excludedUrls: ['login.microsoftonline.com'],
+        databaseProvider: { type: 'memory' },
+      });
+
+      await axiosInstance.post(
+        '/tenant/oauth2/token',
+        { grant_type: 'client_credentials', client_secret: 'top-secret' },
+        { adapter: upstreamMock }
+      );
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(upstreamMock).toHaveBeenCalledTimes(1);
+      expect(upstreamMock.mock.calls[0][0].baseURL).toBe('https://login.microsoftonline.com');
+      expect(upstreamMock.mock.calls[0][0].url).toBe('/tenant/oauth2/token');
     });
 
     it('rejects non-2xx proxied responses per the default validateStatus (parity with built-in adapters)', async () => {

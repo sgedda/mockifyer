@@ -47,7 +47,8 @@ export interface DashboardProxyAxiosAdapterOptions {
  * Resolves the final request URL (including `params`) for dashboard proxy routing.
  */
 export function resolveAxiosRequestUrl(config: AxiosRequestConfig, baseUrl?: string): string {
-  let url = baseUrl ? new URL(config.url || '', baseUrl).toString() : config.url || '';
+  const resolvedBaseUrl = config.baseURL || baseUrl;
+  let url = resolvedBaseUrl ? new URL(config.url || '', resolvedBaseUrl).toString() : config.url || '';
   if (!url) {
     throw new Error('URL is required');
   }
