@@ -49,6 +49,34 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes Node Buffer bodies to raw base64 before object passthrough', async () => {
+    const payload = Buffer.from([0, 1, 2, 250, 255]);
+
+    const serialized = (await serializeProxyRequestBody(payload, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe(payload.toString('base64'));
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.compare(upstream.body as Buffer, payload)).toBe(0);
+  });
+
+  it('serializes typed array bodies to raw base64', async () => {
+    const payload = new Uint8Array([3, 4, 5, 252]);
+
+    const serialized = (await serializeProxyRequestBody(payload, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.data).toBe(Buffer.from(payload).toString('base64'));
+    expect(Buffer.compare(upstream.body as Buffer, Buffer.from(payload))).toBe(0);
+  });
+
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
     const gqlBody = {
       query: 'query Query { systemAlert { title body isActive } }',
