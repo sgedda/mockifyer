@@ -95,6 +95,47 @@ describe('proxy request body serialization', () => {
     }
   });
 
+  it('serializes Node Buffer bodies as raw base64 before JSON object fallback', async () => {
+    const originalBody = Buffer.from([0, 1, 2, 253, 254, 255]);
+    const serialized = (await serializeProxyRequestBody(originalBody, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(Buffer.from(serialized.data, 'base64')).toEqual(originalBody);
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(upstream.body).toEqual(originalBody);
+  });
+
+  it('serializes ArrayBuffer views as raw base64 proxy bodies', async () => {
+    const bytes = new Uint8Array([10, 20, 30, 40]);
+    const serialized = (await serializeProxyRequestBody(bytes, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.data).toBe(Buffer.from(bytes).toString('base64'));
+  });
+
+  it('serializes native FormData with Blob parts as raw multipart', async () => {
+    const formData = new FormData();
+    formData.append('description', 'avatar');
+    formData.append('file', new Blob(['binary-file'], { type: 'text/plain' }), 'avatar.txt');
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data');
+    const rawMultipart = Buffer.from(serialized.data, 'base64').toString('utf8');
+    expect(rawMultipart).toContain('name="description"');
+    expect(rawMultipart).toContain('name="file"; filename="avatar.txt"');
+    expect(rawMultipart).toContain('binary-file');
+  });
+
   it('rebuilds upstream fetch body from serialized urlencoded payload', () => {
     const serialized: ProxySerializedBody = {
       __mockifyerProxyBody: true,

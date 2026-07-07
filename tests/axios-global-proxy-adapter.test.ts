@@ -14,6 +14,15 @@ describe('dashboard proxy axios adapter', () => {
       });
       expect(url).toBe('https://api.example.com/items?page=2&q=test');
     });
+
+    it('resolves relative URLs against axios baseURL', () => {
+      const url = resolveAxiosRequestUrl({
+        baseURL: 'https://api.example.com/v1/',
+        url: 'items',
+        params: { page: '2' },
+      });
+      expect(url).toBe('https://api.example.com/v1/items?page=2');
+    });
   });
 
   describe('useGlobalAxios + proxy.baseUrl', () => {
@@ -131,6 +140,7 @@ describe('dashboard proxy axios adapter', () => {
     });
 
     it('bypasses dashboard proxy for excludedUrls matches', async () => {
+      axiosInstance.defaults.baseURL = 'https://login.microsoftonline.com';
       const upstreamMock = jest.fn().mockResolvedValue({
         data: { access_token: 'secret' },
         status: 200,
@@ -153,16 +163,16 @@ describe('dashboard proxy axios adapter', () => {
         databaseProvider: { type: 'memory' },
       });
 
-      const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
       await axiosInstance.post(
-        tokenUrl,
+        '/tenant/oauth2/token',
         { grant_type: 'client_credentials' },
         { adapter: upstreamMock }
       );
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(upstreamMock).toHaveBeenCalledTimes(1);
-      expect(upstreamMock.mock.calls[0][0].url).toBe(tokenUrl);
+      expect(upstreamMock.mock.calls[0][0].url).toBe('/tenant/oauth2/token');
+      expect(upstreamMock.mock.calls[0][0].baseURL).toBe('https://login.microsoftonline.com');
     });
 
     it('rejects non-2xx proxied responses per the default validateStatus (parity with built-in adapters)', async () => {

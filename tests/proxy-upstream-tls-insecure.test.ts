@@ -48,8 +48,8 @@ describe('resolveProxyUpstreamTlsInsecureForRequest', () => {
     delete process.env[envKey];
   });
 
-  it('uses body when boolean', () => {
-    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(true);
+  it('ignores body booleans so proxy callers cannot downgrade TLS verification', () => {
+    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(false);
     expect(resolveProxyUpstreamTlsInsecureForRequest(false)).toBe(false);
   });
 
