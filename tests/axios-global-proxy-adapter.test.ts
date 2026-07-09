@@ -14,6 +14,15 @@ describe('dashboard proxy axios adapter', () => {
       });
       expect(url).toBe('https://api.example.com/items?page=2&q=test');
     });
+
+    it('resolves relative URLs against axios baseURL before appending params', () => {
+      const url = resolveAxiosRequestUrl({
+        baseURL: 'https://api.example.com/v1/',
+        url: '/items',
+        params: { page: '2' },
+      });
+      expect(url).toBe('https://api.example.com/v1/items?page=2');
+    });
   });
 
   describe('useGlobalAxios + proxy.baseUrl', () => {
@@ -101,6 +110,32 @@ describe('dashboard proxy axios adapter', () => {
 
       const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
       expect(body.upstreamTlsInsecure).toBe(true);
+    });
+
+    it('routes relative axios baseURL requests through dashboard /api/proxy', async () => {
+      axiosInstance = axios.create({ baseURL: 'https://api.example.com/v1/' });
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      const response = await axiosInstance.get('/items/1', {
+        params: { q: 'x' },
+      });
+
+      expect(response.status).toBe(200);
+
+      const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+      expect(body.url).toBe('https://api.example.com/v1/items/1?q=x');
+      expect(body.method).toBe('GET');
     });
 
     it('serializes FormData in proxy envelope as urlencoded body', async () => {
