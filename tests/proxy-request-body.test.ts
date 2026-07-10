@@ -49,6 +49,61 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('serializes Node Buffer bodies as raw bytes before object passthrough', async () => {
+    const payload = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+
+    const serialized = (await serializeProxyRequestBody(payload, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(serialized.data).toBe(payload.toString('base64'));
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(Buffer.compare(upstream.body as Buffer, payload)).toBe(0);
+  });
+
+  it('serializes ArrayBuffer views as raw bytes', async () => {
+    const payload = Uint8Array.from([0x10, 0x20, 0x30]);
+
+    const serialized = (await serializeProxyRequestBody(payload, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.data).toBe(Buffer.from(payload).toString('base64'));
+  });
+
+  it('serializes native FormData with file parts as multipart raw bytes', async () => {
+    const formData = new FormData();
+    formData.append('description', 'upload');
+    formData.append(
+      'file',
+      new Blob([Uint8Array.from([0xde, 0xad, 0xbe, 0xef])], {
+        type: 'application/octet-stream',
+      }),
+      'upload.bin'
+    );
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data; boundary=');
+
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    expect(upstream.headers['content-type']).toBe(serialized.contentType);
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+
+    const multipartBody = (upstream.body as Buffer).toString('latin1');
+    expect(multipartBody).toContain('name="description"');
+    expect(multipartBody).toContain('upload');
+    expect(multipartBody).toContain('name="file"; filename="upload.bin"');
+    expect(multipartBody).toContain('Content-Type: application/octet-stream');
+  });
+
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
     const gqlBody = {
       query: 'query Query { systemAlert { title body isActive } }',
