@@ -26,6 +26,20 @@ type DashboardProxyAxiosAdapterFn = AxiosAdapterFn & {
   [DASHBOARD_PROXY_AXIOS_ADAPTER]?: true;
 };
 
+function isAbsoluteUrl(url: string): boolean {
+  return /^([a-z][a-z\d+\-.]*:)?\/\//i.test(url);
+}
+
+function combineBaseUrl(baseUrl: string, url: string): string {
+  if (!url) {
+    return baseUrl;
+  }
+  if (isAbsoluteUrl(url)) {
+    return url;
+  }
+  return `${baseUrl.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`;
+}
+
 function isDashboardProxyAxiosAdapter(adapter: unknown): adapter is DashboardProxyAxiosAdapterFn {
   return typeof adapter === 'function' && (adapter as DashboardProxyAxiosAdapterFn)[DASHBOARD_PROXY_AXIOS_ADAPTER] === true;
 }
@@ -47,7 +61,8 @@ export interface DashboardProxyAxiosAdapterOptions {
  * Resolves the final request URL (including `params`) for dashboard proxy routing.
  */
 export function resolveAxiosRequestUrl(config: AxiosRequestConfig, baseUrl?: string): string {
-  let url = baseUrl ? new URL(config.url || '', baseUrl).toString() : config.url || '';
+  const requestBaseUrl = config.baseURL || baseUrl;
+  let url = requestBaseUrl ? combineBaseUrl(requestBaseUrl, config.url || '') : config.url || '';
   if (!url) {
     throw new Error('URL is required');
   }
