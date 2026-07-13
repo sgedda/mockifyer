@@ -48,13 +48,18 @@ describe('resolveProxyUpstreamTlsInsecureForRequest', () => {
     delete process.env[envKey];
   });
 
-  it('uses body when boolean', () => {
-    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(true);
+  it('ignores body when dashboard env does not enable insecure upstream TLS', () => {
+    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(false);
+
+    process.env[envKey] = 'false';
+    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(false);
     expect(resolveProxyUpstreamTlsInsecureForRequest(false)).toBe(false);
   });
 
-  it('falls back to dashboard env when body omitted', () => {
+  it('uses dashboard env when enabled', () => {
     process.env[envKey] = 'true';
+    expect(resolveProxyUpstreamTlsInsecureForRequest(true)).toBe(true);
+    expect(resolveProxyUpstreamTlsInsecureForRequest(false)).toBe(true);
     expect(resolveProxyUpstreamTlsInsecureForRequest(undefined)).toBe(true);
   });
 });

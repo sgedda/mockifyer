@@ -47,8 +47,39 @@ function plainObjectToUrlEncoded(body: Record<string, unknown>): string {
   return params.toString();
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof btoa === 'function') {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+  }
+
+  if (isNodeRuntime()) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Buffer: BufferCtor } = require('buffer') as { Buffer: typeof Buffer };
+    return BufferCtor.from(bytes).toString('base64');
+  }
+
+  throw new Error('Base64 encoding is not available in this runtime');
+}
+
+function rawSerializedBody(
+  bytes: Uint8Array,
+  contentType: string
+): ProxySerializedBody {
+  return {
+    __mockifyerProxyBody: true,
+    kind: 'raw',
+    contentType,
+    data: bytesToBase64(bytes),
+  };
+}
+
 async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializedBody> {
-  const params = new URLSearchParams();
   const entries = (body as FormData & {
     entries?: () => IterableIterator<[string, string | Blob]>;
   }).entries?.();
@@ -57,13 +88,29 @@ async function nativeFormDataToSerialized(body: FormData): Promise<ProxySerializ
     throw new Error('FormData.entries() is not available in this runtime');
   }
 
-  for (const [key, value] of entries) {
+  const entryList = Array.from(entries);
+  const hasBinaryEntry = entryList.some(([, value]) => typeof value !== 'string');
+
+  if (hasBinaryEntry) {
+    if (typeof Request !== 'function') {
+      throw new Error('FormData file/blob serialization requires Request support in this runtime');
+    }
+
+    const request = new Request('http://mockifyer.local/__formdata__', {
+      method: 'POST',
+      body,
+    });
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    return rawSerializedBody(
+      bytes,
+      request.headers.get('content-type') || 'multipart/form-data'
+    );
+  }
+
+  const params = new URLSearchParams();
+  for (const [key, value] of entryList) {
     if (typeof value === 'string') {
       params.append(key, value);
-      continue;
-    }
-    if (typeof Blob !== 'undefined' && value instanceof Blob) {
-      params.append(key, await value.text());
       continue;
     }
     params.append(key, String(value));
@@ -117,6 +164,42 @@ function serializeNodeBufferBody(
   }
 }
 
+async function serializeBlobBody(
+  body: Blob,
+  headers?: Record<string, string>
+): Promise<ProxySerializedBody> {
+  const bytes = new Uint8Array(await body.arrayBuffer());
+  return rawSerializedBody(
+    bytes,
+    headerContentType(headers) || body.type || 'application/octet-stream'
+  );
+}
+
+function serializeArrayBufferBody(
+  body: unknown,
+  headers?: Record<string, string>
+): ProxySerializedBody | undefined {
+  if (typeof ArrayBuffer === 'undefined') {
+    return undefined;
+  }
+
+  if (body instanceof ArrayBuffer) {
+    return rawSerializedBody(
+      new Uint8Array(body),
+      headerContentType(headers) || 'application/octet-stream'
+    );
+  }
+
+  if (ArrayBuffer.isView(body)) {
+    return rawSerializedBody(
+      new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+      headerContentType(headers) || 'application/octet-stream'
+    );
+  }
+
+  return undefined;
+}
+
 /**
  * Convert non-JSON request bodies (FormData, URLSearchParams, urlencoded objects) into a
  * JSON-safe envelope field before POSTing to mockifyer-dashboard `/api/proxy`.
@@ -152,7 +235,21 @@ export async function serializeProxyRequestBody(
     return nodeFormDataPackageToSerialized(body);
   }
 
-  // Plain objects (GraphQL JSON, REST JSON) — before any Node Buffer handling.
+  const nodeBufferBody = serializeNodeBufferBody(body, headers);
+  if (nodeBufferBody) {
+    return nodeBufferBody;
+  }
+
+  const arrayBufferBody = serializeArrayBufferBody(body, headers);
+  if (arrayBufferBody) {
+    return arrayBufferBody;
+  }
+
+  if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    return serializeBlobBody(body, headers);
+  }
+
+  // Plain objects (GraphQL JSON, REST JSON) stay JSON-safe after binary types are handled.
   if (typeof body === 'object' && !Array.isArray(body)) {
     const contentType = headerContentType(headers);
     if (contentType?.toLowerCase().includes('application/x-www-form-urlencoded')) {
@@ -164,11 +261,6 @@ export async function serializeProxyRequestBody(
       } satisfies ProxySerializedBody;
     }
     return body;
-  }
-
-  const nodeBufferBody = serializeNodeBufferBody(body, headers);
-  if (nodeBufferBody) {
-    return nodeBufferBody;
   }
 
   return body;

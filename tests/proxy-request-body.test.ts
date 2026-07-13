@@ -109,6 +109,46 @@ describe('proxy request body serialization', () => {
     expect(upstream.headers['content-type']).toBe('application/x-www-form-urlencoded');
   });
 
+  it('serializes Node Buffer bodies to raw base64 proxy bodies', async () => {
+    const original = Buffer.from('binary-payload');
+
+    const serialized = (await serializeProxyRequestBody(original, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toBe('application/octet-stream');
+    expect(Buffer.from(serialized.data, 'base64')).toEqual(original);
+    expect(Buffer.isBuffer(upstream.body)).toBe(true);
+    expect(upstream.body).toEqual(original);
+    expect(upstream.headers['content-type']).toBe('application/octet-stream');
+  });
+
+  it('serializes native FormData with Blob fields as multipart raw proxy bodies', async () => {
+    const formData = new FormData();
+    const fileBytes = Buffer.from([0, 1, 2, 255]);
+    formData.append('description', 'binary upload');
+    formData.append('file', new Blob([fileBytes], { type: 'application/octet-stream' }), 'payload.bin');
+
+    const serialized = (await serializeProxyRequestBody(formData)) as ProxySerializedBody;
+    const upstream = buildProxyUpstreamBodyInit(serialized, {}, 'POST');
+    const upstreamBody = upstream.body as Buffer;
+
+    expect(serialized.__mockifyerProxyBody).toBe(true);
+    expect(serialized.kind).toBe('raw');
+    expect(serialized.contentType).toContain('multipart/form-data');
+    expect(serialized.contentType).toContain('boundary=');
+    expect(Buffer.isBuffer(upstreamBody)).toBe(true);
+    expect(upstream.headers['content-type']).toBe(serialized.contentType);
+    expect(upstreamBody.toString('utf8')).toContain('name="description"');
+    expect(upstreamBody.toString('utf8')).toContain('binary upload');
+    expect(upstreamBody.toString('utf8')).toContain('name="file"');
+    expect(upstreamBody.toString('utf8')).toContain('filename="payload.bin"');
+    expect(upstreamBody.includes(fileBytes)).toBe(true);
+  });
+
   it('normalizes serialized body for request-key generation', () => {
     const serialized: ProxySerializedBody = {
       __mockifyerProxyBody: true,
