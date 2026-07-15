@@ -57,7 +57,7 @@ import {
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
 import { attachDashboardProxyAxiosAdapter, resolveAxiosRequestUrl } from './dashboard-proxy-axios-adapter';
-import { HTTPClient, HTTPResponse } from '@sgedda/mockifyer-core';
+import { HTTPClient, HTTPRequestConfig, HTTPResponse } from '@sgedda/mockifyer-core';
 import { 
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
