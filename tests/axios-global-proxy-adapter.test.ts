@@ -199,6 +199,60 @@ describe('dashboard proxy axios adapter', () => {
       });
     });
 
+    it('mirrors a recorded non-2xx response before rejecting it', async () => {
+      const storedMock = {
+        request: {
+          method: 'GET',
+          url: 'https://api.example.com/items/missing',
+          headers: {},
+          queryParams: {},
+        },
+        response: {
+          statusCode: 404,
+          headers: { 'content-type': 'application/json' },
+          body: { ErrorMessage: 'Booking not found.' },
+        },
+      };
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          proxied: true,
+          source: 'upstream',
+          hash: 'notfound',
+          recordedToStore: true,
+          storedMock,
+          scenarioResolution: { scenario: 'default' },
+          response: {
+            status: 404,
+            data: { ErrorMessage: 'Booking not found.' },
+            headers: { 'content-type': 'application/json' },
+          },
+        }),
+      });
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+          mirrorRecordedMocksToClient: true,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      await expect(axiosInstance.get('https://api.example.com/items/missing')).rejects.toMatchObject({
+        isAxiosError: true,
+        response: { status: 404 },
+      });
+
+      const mirrorPath = path.join(mockDataPath, 'default', 'redis', 'notfound.json');
+      expect(JSON.parse(fs.readFileSync(mirrorPath, 'utf8'))).toEqual(storedMock);
+    });
+
     it('resolves a non-2xx proxied response when validateStatus permits it', async () => {
       fetchMock.mockResolvedValue({
         ok: true,

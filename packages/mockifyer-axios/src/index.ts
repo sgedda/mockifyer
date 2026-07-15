@@ -853,24 +853,37 @@ class MockifyerClass {
     });
   }
 
+  private async mirrorDashboardProxyResponse(response: HTTPResponse): Promise<void> {
+    if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
+      return;
+    }
+    if (!this.config.proxy?.baseUrl || !this.config.proxy.mirrorRecordedMocksToClient) {
+      return;
+    }
+
+    const configRecording = (
+      response.config as HTTPRequestConfig & {
+        mockifyerProxyRecording?: HTTPResponse['mockifyerProxyRecording'];
+      }
+    )?.mockifyerProxyRecording;
+    const recording = response.mockifyerProxyRecording ?? configRecording;
+    if (!recording) {
+      return;
+    }
+
+    await mirrorProxyRecordingToClient({
+      config: this.config,
+      mockDataPath: this.config.mockDataPath,
+      recording,
+      databaseProvider: this.databaseProvider,
+      databaseProviderInitPromise: this.databaseProviderInitPromise,
+      logPrefix: 'Mockifyer-Axios',
+    });
+  }
+
   private setupDashboardProxyResponseInterceptor(): void {
     this.httpClient.interceptors.response.use(async (response: HTTPResponse) => {
-      if ((response.config as any)?.__mockifyer_bypass || (response.config as any)?.__mockifyer_skip_save) {
-        return response;
-      }
-      if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
-        const rec = response.mockifyerProxyRecording;
-        if (rec) {
-          await mirrorProxyRecordingToClient({
-            config: this.config,
-            mockDataPath: this.config.mockDataPath,
-            recording: rec,
-            databaseProvider: this.databaseProvider,
-            databaseProviderInitPromise: this.databaseProviderInitPromise,
-            logPrefix: 'Mockifyer-Axios',
-          });
-        }
-      }
+      await this.mirrorDashboardProxyResponse(response);
       return response;
     });
   }
@@ -2105,6 +2118,21 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         logger.info('[Mockifyer] ✅ Request interceptors added to global axios');
       } else {
         console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
+      }
+
+      if (resolvedConfig.proxy?.baseUrl && resolvedConfig.proxy.mirrorRecordedMocksToClient) {
+        globalAxios.interceptors.response.use(
+          async (axiosResponse: HTTPResponse) => {
+            await mockifyer['mirrorDashboardProxyResponse'](axiosResponse);
+            return axiosResponse;
+          },
+          async (error: { response?: HTTPResponse }) => {
+            if (error.response) {
+              await mockifyer['mirrorDashboardProxyResponse'](error.response);
+            }
+            return Promise.reject(error);
+          }
+        );
       }
       
       // CRITICAL: Add response interceptor directly to global axios for recording

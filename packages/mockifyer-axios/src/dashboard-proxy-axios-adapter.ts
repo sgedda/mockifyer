@@ -132,6 +132,8 @@ function httpResponseToAxiosResponse(
   } as AxiosResponse;
 
   if (response.mockifyerProxyRecording) {
+    (axiosResponse as AxiosResponse & Pick<HTTPResponse, 'mockifyerProxyRecording'>).mockifyerProxyRecording =
+      response.mockifyerProxyRecording;
     (axiosResponse.config as HTTPRequestConfig & { mockifyerProxyRecording?: unknown }).mockifyerProxyRecording =
       response.mockifyerProxyRecording;
   }
