@@ -49,6 +49,20 @@ describe('proxy request body serialization', () => {
     expect(serialized.data).toBe('grant_type=client_credentials&client_id=abc');
   });
 
+  it('preserves Node Buffer bytes through the proxy envelope', async () => {
+    const originalBody = Buffer.from([0, 1, 2, 127, 128, 254, 255]);
+    const serialized = (await serializeProxyRequestBody(originalBody, {
+      'content-type': 'application/octet-stream',
+    })) as ProxySerializedBody;
+    const wireBody = JSON.parse(JSON.stringify(serialized)) as ProxySerializedBody;
+
+    expect(serialized.kind).toBe('raw');
+
+    const upstream = buildProxyUpstreamBodyInit(wireBody, {}, 'POST');
+    expect(upstream.body).toEqual(originalBody);
+    expect(upstream.headers['content-type']).toBe('application/octet-stream');
+  });
+
   it('passes through GraphQL JSON bodies when Buffer is unavailable (React Native)', async () => {
     const gqlBody = {
       query: 'query Query { systemAlert { title body isActive } }',
