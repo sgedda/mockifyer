@@ -29,7 +29,9 @@ export function extractEntityDataFromResponse(
   const path = jsonPath.trim();
   if (!path) return { error: 'jsonPath is required' };
   const value = getValueAtJsonPath(responseData, path);
-  if (value === undefined) return { error: `No value at jsonPath "${path}"` };
+  if (value === undefined || value === null) {
+    return { error: `No value at jsonPath "${path}"` };
+  }
   return { data: deepCloneJson(value), jsonPath: path };
 }
 

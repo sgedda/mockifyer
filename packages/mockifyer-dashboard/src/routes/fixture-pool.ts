@@ -16,6 +16,7 @@ import {
   savePoolIndex,
   savePoolResponseItem,
   cloneJsonValue,
+  POOL_DIR_NAME,
   validatePoolEntity,
   validatePoolResponseItem,
   type FixturePoolFsAdapter,
@@ -24,8 +25,13 @@ import {
   type PoolResponseItem,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
+import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 
 const router = Router();
+
+/** Synthetic list/API name for Redis/SQLite-backed mocks: `redis/<64-hex>.json`. */
+const REDIS_MOCK_FILENAME_PATTERN = /^redis\/([a-f0-9]{64})\.json$/i;
 
 const fsAdapter: FixturePoolFsAdapter = {
   joinPath: (...parts) => path.join(...parts),
@@ -55,20 +61,33 @@ function requireValidPoolIdParam(id: string | undefined, res: Response): id is s
 
 /**
  * Ensure scenario + filename stay inside mockDataPath (no `..` / absolute escapes).
+ * Allows basename JSON files or Redis-style `redis/<hash>.json` under the scenario folder.
  */
 function resolveContainedMockFile(
   mockDataPath: string,
   scenario: string,
   filename: string
 ): string | { error: string } {
-  if (!scenario || scenario.includes('..') || scenario.includes('/') || scenario.includes('\\')) {
-    return { error: 'Invalid scenario name' };
+  if (
+    !scenario ||
+    scenario.includes('..') ||
+    scenario.includes('/') ||
+    scenario.includes('\\') ||
+    scenario === POOL_DIR_NAME
+  ) {
+    return {
+      error:
+        scenario === POOL_DIR_NAME
+          ? `Scenario name "${POOL_DIR_NAME}" is reserved for the fixture pool`
+          : 'Invalid scenario name',
+    };
   }
+
+  const redisHash = parseRedisMockFilename(filename);
   if (
     !filename ||
     filename.includes('..') ||
-    filename.includes('/') ||
-    filename.includes('\\') ||
+    (!redisHash && (filename.includes('/') || filename.includes('\\'))) ||
     !filename.endsWith('.json')
   ) {
     return { error: 'Invalid mock filename' };
@@ -80,11 +99,18 @@ function resolveContainedMockFile(
     return { error: 'Scenario path escapes mock data root' };
   }
 
-  const filePath = path.resolve(scenarioPath, filename);
+  const filePath = redisHash
+    ? path.resolve(scenarioPath, 'redis', `${redisHash}.json`)
+    : path.resolve(scenarioPath, filename);
   if (!filePath.startsWith(scenarioPath + path.sep)) {
     return { error: 'Mock filename escapes scenario folder' };
   }
   return filePath;
+}
+
+function parseRedisMockFilename(filename: string): string | null {
+  const match = REDIS_MOCK_FILENAME_PATTERN.exec(filename);
+  return match?.[1] ?? null;
 }
 
 function readMockFile(mockDataPath: string, scenario: string, filename: string): MockData | { error: string } | null {
@@ -103,6 +129,34 @@ function readMockFile(mockDataPath: string, scenario: string, filename: string):
       })`,
     };
   }
+}
+
+/**
+ * Load a recording for extract/promote from Redis/SQLite when applicable, else the filesystem.
+ */
+async function readMockForPool(
+  req: Request,
+  scenario: string,
+  filename: string
+): Promise<MockData | { error: string } | null> {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const redisHash = parseRedisMockFilename(filename);
+
+  if (redisHash && isCentralizedDashboardProvider(config.provider)) {
+    try {
+      const store = createDashboardMockStore(config, mockDataPath);
+      const fromStore = await store.getByHashInScenario(redisHash, scenario);
+      if (fromStore) return fromStore;
+    } catch (error) {
+      return {
+        error: `Failed to read mock from ${config.provider}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  }
+
+  return readMockFile(mockDataPath, scenario, filename);
 }
 
 /**
@@ -250,7 +304,7 @@ router.post('/entities', (req: Request, res: Response) => {
 });
 
 /** POST /api/fixture-pool/entities/extract */
-router.post('/entities/extract', (req: Request, res: Response) => {
+router.post('/entities/extract', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     ensurePoolLayout(mockDataPath, fsAdapter);
@@ -280,7 +334,7 @@ router.post('/entities/extract', (req: Request, res: Response) => {
       });
     }
 
-    const mockOrErr = readMockFile(mockDataPath, scenario, filename);
+    const mockOrErr = await readMockForPool(req, scenario, filename);
     if (mockOrErr && typeof mockOrErr === 'object' && 'error' in mockOrErr) {
       return res.status(400).json({ error: mockOrErr.error });
     }
@@ -532,7 +586,7 @@ router.get('/responses/:id', (req: Request, res: Response) => {
 });
 
 /** POST /api/fixture-pool/responses/promote */
-router.post('/responses/promote', (req: Request, res: Response) => {
+router.post('/responses/promote', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     ensurePoolLayout(mockDataPath, fsAdapter);
@@ -546,7 +600,7 @@ router.post('/responses/promote', (req: Request, res: Response) => {
     if (!scenario || !filename) {
       return res.status(400).json({ error: 'scenario and filename are required' });
     }
-    const mockOrErr = readMockFile(mockDataPath, scenario, filename);
+    const mockOrErr = await readMockForPool(req, scenario, filename);
     if (mockOrErr && typeof mockOrErr === 'object' && 'error' in mockOrErr) {
       return res.status(400).json({ error: mockOrErr.error });
     }

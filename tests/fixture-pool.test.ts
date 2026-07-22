@@ -41,6 +41,14 @@ describe('fixture-pool extract', () => {
     }
   });
 
+  it('rejects null at jsonPath', () => {
+    const result = extractEntityDataFromResponse({ trip: null }, 'trip');
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toMatch(/No value/);
+    }
+  });
+
   it('extracts all array items', () => {
     const result = extractAllArrayItemsFromResponse(data, 'trips');
     expect('error' in result).toBe(false);

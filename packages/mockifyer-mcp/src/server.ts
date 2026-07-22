@@ -408,7 +408,7 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   server.registerTool(
     'mockifyer_get_entity',
     {
-      description: 'Get one pool entity by id (includes usedInScenarios).',
+      description: 'Get one pool entity by id.',
       inputSchema: { id: z.string() },
     },
     async (args) => {
