@@ -53,6 +53,13 @@ export function getScenarioManifestPath(
   return fs.joinPath(mockDataPath, scenario, SCENARIO_MANIFEST_FILENAME);
 }
 
+export class PoolIndexLoadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PoolIndexLoadError';
+  }
+}
+
 export function loadPoolIndex(mockDataPath: string, fs: FixturePoolFsAdapter): PoolIndex {
   const path = getPoolIndexPath(mockDataPath, fs);
   if (!fs.existsSync(path)) return emptyPoolIndex();
@@ -60,13 +67,14 @@ export function loadPoolIndex(mockDataPath: string, fs: FixturePoolFsAdapter): P
     const raw = JSON.parse(fs.readFileSync(path, 'utf8')) as unknown;
     const err = validatePoolIndex(raw);
     if (err) {
-      console.warn(`[Mockifyer] Invalid pool index at ${path}: ${err}`);
-      return emptyPoolIndex();
+      throw new PoolIndexLoadError(`Invalid pool index at ${path}: ${err}`);
     }
     return raw as PoolIndex;
   } catch (error) {
-    console.warn(`[Mockifyer] Failed to read pool index:`, error);
-    return emptyPoolIndex();
+    if (error instanceof PoolIndexLoadError) throw error;
+    throw new PoolIndexLoadError(
+      `Failed to read pool index at ${path}: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 

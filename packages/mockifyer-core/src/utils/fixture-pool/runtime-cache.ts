@@ -117,8 +117,10 @@ export function tryResolveSlotMockFromFilesystem(
       mockDataPath: options.mockDataPath,
       manifest: cache.manifest,
       poolIndex: cache.poolIndex,
-      getEntity: (id) => cache.entities.get(id),
-      getResponseItem: (id) => cache.responses.get(id),
+      // Always read entity/response payloads from disk so hand-edits are not stale
+      // when only the index timestamp is unchanged.
+      getEntity: (id) => loadPoolEntity(options.mockDataPath, id, nodeFsAdapter),
+      getResponseItem: (id) => loadPoolResponseItem(options.mockDataPath, id, nodeFsAdapter),
       getNow: options.getNow,
       useEndpointSlots: true,
       strictEntityType: isSlotEntityTypeStrict(),

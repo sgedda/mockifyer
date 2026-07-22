@@ -52,9 +52,46 @@ function requireValidPoolIdParam(id: string | undefined, res: Response): id is s
   return true;
 }
 
-function readMockFile(mockDataPath: string, scenario: string, filename: string): MockData | null {
-  const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
-  const filePath = path.join(scenarioPath, filename);
+/**
+ * Ensure scenario + filename stay inside mockDataPath (no `..` / absolute escapes).
+ */
+function resolveContainedMockFile(
+  mockDataPath: string,
+  scenario: string,
+  filename: string
+): string | { error: string } {
+  if (!scenario || scenario.includes('..') || scenario.includes('/') || scenario.includes('\\')) {
+    return { error: 'Invalid scenario name' };
+  }
+  if (
+    !filename ||
+    filename.includes('..') ||
+    filename.includes('/') ||
+    filename.includes('\\') ||
+    !filename.endsWith('.json')
+  ) {
+    return { error: 'Invalid mock filename' };
+  }
+
+  const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, scenario));
+  const root = path.resolve(mockDataPath);
+  if (!scenarioPath.startsWith(root + path.sep) && scenarioPath !== root) {
+    return { error: 'Scenario path escapes mock data root' };
+  }
+
+  const filePath = path.resolve(scenarioPath, filename);
+  if (!filePath.startsWith(scenarioPath + path.sep)) {
+    return { error: 'Mock filename escapes scenario folder' };
+  }
+  return filePath;
+}
+
+function readMockFile(mockDataPath: string, scenario: string, filename: string): MockData | { error: string } | null {
+  const resolved = resolveContainedMockFile(mockDataPath, scenario, filename);
+  if (typeof resolved === 'object' && resolved !== null && 'error' in resolved) {
+    return resolved;
+  }
+  const filePath = resolved;
   if (!fs.existsSync(filePath)) return null;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as MockData;
@@ -184,8 +221,12 @@ router.post('/entities/extract', (req: Request, res: Response) => {
       });
     }
 
-    const mock = readMockFile(mockDataPath, scenario, filename);
-    if (!mock) return res.status(404).json({ error: `Mock not found: ${filename}` });
+    const mockOrErr = readMockFile(mockDataPath, scenario, filename);
+    if (mockOrErr && typeof mockOrErr === 'object' && 'error' in mockOrErr) {
+      return res.status(400).json({ error: mockOrErr.error });
+    }
+    if (!mockOrErr) return res.status(404).json({ error: `Mock not found: ${filename}` });
+    const mock = mockOrErr;
 
     const index = loadPoolIndex(mockDataPath, fsAdapter);
     const created: PoolEntity[] = [];
@@ -198,54 +239,71 @@ router.post('/entities/extract', (req: Request, res: Response) => {
         return res.status(400).json({ error: `Array at "${jsonPath}" is empty` });
       }
 
-      const plannedIds: string[] = [];
+      const planned: PoolEntity[] = [];
       for (let i = 0; i < extracted.length; i++) {
         const entityId =
           id && extracted.length === 1
             ? id
-            : `${id ?? entityType}-${i + 1}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+            : `${id ?? entityType}-${i + 1}`.replace(/[^a-zA-Z0-9_-]+/g, '-');
         if (!isValidPoolId(entityId)) {
           return res.status(400).json({
             error: `Generated entity id is invalid for index ${i}: "${entityId}"`,
           });
         }
-        if (index.entities.some((e) => e.id === entityId) || plannedIds.includes(entityId)) {
+        if (
+          index.entities.some((e) => e.id === entityId) ||
+          planned.some((e) => e.id === entityId)
+        ) {
           return res.status(409).json({
             error: `Entity already exists (or duplicate in extract batch): ${entityId}`,
           });
         }
-        plannedIds.push(entityId);
-      }
-
-      extracted.forEach((item, i) => {
-        const entityId = plannedIds[i]!;
-        const entity: PoolEntity = {
+        planned.push({
           id: entityId,
           entityType,
           label: label ? `${label} [${i}]` : `${entityType} ${entityId}`,
           tags,
-          data: item.data,
+          data: extracted[i]!.data,
           source: {
             kind: 'extracted',
             scenario,
             filename,
-            jsonPath: item.jsonPath,
+            jsonPath: extracted[i]!.jsonPath,
           },
           createdAt: now,
           updatedAt: now,
-        };
-        savePoolEntity(mockDataPath, entity, fsAdapter);
-        index.entities.push({
-          id: entity.id,
-          label: entity.label,
-          entityType: entity.entityType,
-          tags: entity.tags,
-          storageRef: `pool/entities/${entity.id}.json`,
-          createdAt: now,
-          updatedAt: now,
         });
-        created.push(entity);
-      });
+      }
+
+      const writtenIds: string[] = [];
+      try {
+        for (const entity of planned) {
+          savePoolEntity(mockDataPath, entity, fsAdapter);
+          writtenIds.push(entity.id);
+          index.entities.push({
+            id: entity.id,
+            label: entity.label,
+            entityType: entity.entityType,
+            tags: entity.tags,
+            storageRef: `pool/entities/${entity.id}.json`,
+            createdAt: now,
+            updatedAt: now,
+          });
+          created.push(entity);
+        }
+        index.updatedAt = now;
+        savePoolIndex(mockDataPath, index, fsAdapter);
+      } catch (writeError) {
+        for (const writtenId of writtenIds) {
+          const orphanPath = getEntityPath(mockDataPath, writtenId, fsAdapter);
+          try {
+            if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+          } catch {
+            // best-effort cleanup
+          }
+        }
+        throw writeError;
+      }
     } else {
       const extracted = extractEntityDataFromResponse(mock.response?.data, jsonPath);
       if ('error' in extracted) return res.status(400).json({ error: extracted.error });
@@ -282,10 +340,10 @@ router.post('/entities/extract', (req: Request, res: Response) => {
         updatedAt: now,
       });
       created.push(entity);
+      index.updatedAt = now;
+      savePoolIndex(mockDataPath, index, fsAdapter);
     }
 
-    index.updatedAt = now;
-    savePoolIndex(mockDataPath, index, fsAdapter);
     res.status(201).json({ entities: created });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -436,8 +494,12 @@ router.post('/responses/promote', (req: Request, res: Response) => {
     if (!scenario || !filename) {
       return res.status(400).json({ error: 'scenario and filename are required' });
     }
-    const mock = readMockFile(mockDataPath, scenario, filename);
-    if (!mock) return res.status(404).json({ error: `Mock not found: ${filename}` });
+    const mockOrErr = readMockFile(mockDataPath, scenario, filename);
+    if (mockOrErr && typeof mockOrErr === 'object' && 'error' in mockOrErr) {
+      return res.status(400).json({ error: mockOrErr.error });
+    }
+    if (!mockOrErr) return res.status(404).json({ error: `Mock not found: ${filename}` });
+    const mock = mockOrErr;
 
     const responseItemId =
       id ??
