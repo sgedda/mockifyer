@@ -19,6 +19,17 @@ export interface ExtractEntityResult {
   jsonPath: string;
 }
 
+function normalizeResponseDataRoot(data: unknown): unknown {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return data;
+    }
+  }
+  return data;
+}
+
 /**
  * Extract one value from mock response.data at jsonPath.
  */
@@ -28,7 +39,7 @@ export function extractEntityDataFromResponse(
 ): ExtractEntityResult | { error: string } {
   const path = jsonPath.trim();
   if (!path) return { error: 'jsonPath is required' };
-  const value = getValueAtJsonPath(responseData, path);
+  const value = getValueAtJsonPath(normalizeResponseDataRoot(responseData), path);
   if (value === undefined || value === null) {
     return { error: `No value at jsonPath "${path}"` };
   }
@@ -44,14 +55,22 @@ export function extractAllArrayItemsFromResponse(
 ): ExtractEntityResult[] | { error: string } {
   const path = arrayJsonPath.trim();
   if (!path) return { error: 'jsonPath is required' };
-  const value = getValueAtJsonPath(responseData, path);
+  const value = getValueAtJsonPath(normalizeResponseDataRoot(responseData), path);
   if (!Array.isArray(value)) {
     return { error: `Value at "${path}" is not an array` };
   }
-  return value.map((item, index) => ({
-    data: deepCloneJson(item),
-    jsonPath: `${path}.${index}`,
-  }));
+  const results: ExtractEntityResult[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const item = value[index];
+    if (item === undefined || item === null) {
+      return { error: `Array at "${path}" has null/undefined at index ${index}` };
+    }
+    results.push({
+      data: deepCloneJson(item),
+      jsonPath: `${path}.${index}`,
+    });
+  }
+  return results;
 }
 
 function deepCloneJson<T>(data: T): T {

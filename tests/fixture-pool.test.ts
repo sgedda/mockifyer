@@ -49,6 +49,22 @@ describe('fixture-pool extract', () => {
     }
   });
 
+  it('parses string JSON response bodies before extract', () => {
+    const result = extractEntityDataFromResponse(JSON.stringify(data), 'trips.0');
+    expect('error' in result).toBe(false);
+    if (!('error' in result)) {
+      expect(result.data).toEqual({ id: '1', origin: 'ARN' });
+    }
+  });
+
+  it('rejects null elements in batch extract', () => {
+    const result = extractAllArrayItemsFromResponse({ trips: [{ id: '1' }, null] }, 'trips');
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error).toMatch(/null\/undefined/);
+    }
+  });
+
   it('extracts all array items', () => {
     const result = extractAllArrayItemsFromResponse(data, 'trips');
     expect('error' in result).toBe(false);

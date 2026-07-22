@@ -232,18 +232,38 @@ function assignmentReferencesEntity(
   return false;
 }
 
-/**
- * Scenarios whose manifests currently reference this entity (slot activation path).
- */
-function findEntityReferencingScenarios(mockDataPath: string, entityId: string): string[] {
+function assignmentReferencesResponse(
+  assignment: ScenarioManifest['slots'][number]['assignment'],
+  responseItemId: string
+): boolean {
+  return assignment.kind === 'response' && assignment.responseItemId === responseItemId;
+}
+
+function findManifestReferencingScenarios(
+  mockDataPath: string,
+  matches: (assignment: ScenarioManifest['slots'][number]['assignment']) => boolean
+): string[] {
   const referencing: string[] = [];
   for (const scenario of listScenarios(mockDataPath)) {
     const manifest = loadScenarioManifest(mockDataPath, scenario, fsAdapter);
     if (!manifest?.slots?.length) continue;
-    const used = manifest.slots.some((slot) => assignmentReferencesEntity(slot.assignment, entityId));
-    if (used) referencing.push(scenario);
+    if (manifest.slots.some((slot) => matches(slot.assignment))) {
+      referencing.push(scenario);
+    }
   }
   return referencing;
+}
+
+function findEntityReferencingScenarios(mockDataPath: string, entityId: string): string[] {
+  return findManifestReferencingScenarios(mockDataPath, (assignment) =>
+    assignmentReferencesEntity(assignment, entityId)
+  );
+}
+
+function findResponseReferencingScenarios(mockDataPath: string, responseItemId: string): string[] {
+  return findManifestReferencingScenarios(mockDataPath, (assignment) =>
+    assignmentReferencesResponse(assignment, responseItemId)
+  );
 }
 
 /** GET /api/fixture-pool/entities */
@@ -551,6 +571,16 @@ router.put('/entities/:id', (req: Request, res: Response) => {
       entry.entityType = updated.entityType;
       entry.tags = updated.tags;
       entry.updatedAt = updated.updatedAt;
+    } else {
+      index.entities.push({
+        id: updated.id,
+        label: updated.label,
+        entityType: updated.entityType,
+        tags: updated.tags,
+        storageRef: `pool/entities/${updated.id}.json`,
+        createdAt: updated.createdAt ?? updated.updatedAt!,
+        updatedAt: updated.updatedAt!,
+      });
     }
     index.updatedAt = updated.updatedAt!;
     savePoolIndex(mockDataPath, index, fsAdapter);
@@ -685,13 +715,24 @@ router.delete('/responses/:id', (req: Request, res: Response) => {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
     if (!requireValidPoolIdParam(id, res)) return;
+
+    const force =
+      req.query.force === 'true' || req.query.force === '1' || req.query.force === 'yes';
+    const referencingScenarios = findResponseReferencingScenarios(mockDataPath, id);
+    if (referencingScenarios.length > 0 && !force) {
+      return res.status(409).json({
+        error: `Response fixture is referenced by scenario slot(s): ${referencingScenarios.join(', ')}`,
+        referencingScenarios,
+      });
+    }
+
     const index = loadPoolIndex(mockDataPath, fsAdapter);
     index.responses = index.responses.filter((r) => r.id !== id);
     index.updatedAt = nowIso();
     savePoolIndex(mockDataPath, index, fsAdapter);
     const filePath = getResponseFixturePath(mockDataPath, id, fsAdapter);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    res.json({ success: true, id });
+    res.json({ success: true, id, referencingScenarios });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

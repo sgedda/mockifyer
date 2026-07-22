@@ -268,10 +268,13 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
         for (const item of items) {
           // Count only directories, exclude special files and hidden directories
           const nameLower = item.name.toLowerCase();
-          if (item.isDirectory() && 
-              !item.name.startsWith('.') && 
-              item.name !== 'node_modules' &&
-              nameLower !== 'lost+found') {
+          if (
+            item.isDirectory() &&
+            !item.name.startsWith('.') &&
+            item.name !== 'node_modules' &&
+            item.name !== POOL_DIR_NAME &&
+            nameLower !== 'lost+found'
+          ) {
             // Don't count the scenario we're about to create if it already exists
             if (item.name !== sanitized) {
               existingCount++;
