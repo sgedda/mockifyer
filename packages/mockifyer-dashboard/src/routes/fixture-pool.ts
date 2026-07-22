@@ -27,7 +27,7 @@ import {
   type PoolResponseItem,
   type ScenarioManifest,
 } from '@sgedda/mockifyer-core';
-import { getDashboardContext } from '../utils/dashboard-context';
+import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 
@@ -151,6 +151,10 @@ async function readMockForPool(
     } finally {
       await store.close().catch(() => undefined);
     }
+
+    // Match proxy behavior: only read redis/<hash>.json from disk when disk fallback is enabled.
+    const { readFallback } = resolveRedisDiskMirrorOptions(config);
+    if (!readFallback) return null;
   }
 
   return readMockFile(mockDataPath, scenario, filename);
@@ -564,26 +568,36 @@ router.put('/entities/:id', (req: Request, res: Response) => {
     if (err) return res.status(400).json({ error: err });
 
     savePoolEntity(mockDataPath, updated, fsAdapter);
-    const index = loadPoolIndex(mockDataPath, fsAdapter);
-    const entry = index.entities.find((e) => e.id === updated.id);
-    if (entry) {
-      entry.label = updated.label;
-      entry.entityType = updated.entityType;
-      entry.tags = updated.tags;
-      entry.updatedAt = updated.updatedAt;
-    } else {
-      index.entities.push({
-        id: updated.id,
-        label: updated.label,
-        entityType: updated.entityType,
-        tags: updated.tags,
-        storageRef: `pool/entities/${updated.id}.json`,
-        createdAt: updated.createdAt ?? updated.updatedAt!,
-        updatedAt: updated.updatedAt!,
-      });
+    try {
+      const index = loadPoolIndex(mockDataPath, fsAdapter);
+      const entry = index.entities.find((e) => e.id === updated.id);
+      if (entry) {
+        entry.label = updated.label;
+        entry.entityType = updated.entityType;
+        entry.tags = updated.tags;
+        entry.updatedAt = updated.updatedAt;
+      } else {
+        index.entities.push({
+          id: updated.id,
+          label: updated.label,
+          entityType: updated.entityType,
+          tags: updated.tags,
+          storageRef: `pool/entities/${updated.id}.json`,
+          createdAt: updated.createdAt ?? updated.updatedAt!,
+          updatedAt: updated.updatedAt!,
+        });
+      }
+      index.updatedAt = updated.updatedAt!;
+      savePoolIndex(mockDataPath, index, fsAdapter);
+    } catch (indexError) {
+      // Restore previous entity payload so file and index stay aligned.
+      try {
+        savePoolEntity(mockDataPath, existing, fsAdapter);
+      } catch {
+        // best-effort rollback
+      }
+      throw indexError;
     }
-    index.updatedAt = updated.updatedAt!;
-    savePoolIndex(mockDataPath, index, fsAdapter);
     res.json({ entity: updated });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });

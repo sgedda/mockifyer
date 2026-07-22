@@ -18,6 +18,15 @@ let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
 
+/**
+ * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
+ */
+export function assertNotReservedScenarioName(scenarioName: string): void {
+  if (scenarioName.trim() === POOL_DIR_NAME) {
+    throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
+  }
+}
+
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
 let scenarioLaunchOverride: string | null = null;
 
@@ -32,7 +41,12 @@ export function setScenarioLaunchOverride(scenario: string | null | undefined): 
     return;
   }
   const trimmed = String(scenario).trim();
-  scenarioLaunchOverride = trimmed === '' ? null : trimmed;
+  if (trimmed === '') {
+    scenarioLaunchOverride = null;
+    return;
+  }
+  assertNotReservedScenarioName(trimmed);
+  scenarioLaunchOverride = trimmed;
 }
 
 /**
@@ -246,9 +260,7 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
   if (sanitized !== scenarioName.trim()) {
     throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
   }
-  if (sanitized === POOL_DIR_NAME) {
-    throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
-  }
+  assertNotReservedScenarioName(sanitized);
 
   // Check max scenarios limit (only if limit is set via env var)
   const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -303,6 +315,8 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
   if (!fs || !fs.writeFileSync) {
     return;
   }
+
+  assertNotReservedScenarioName(scenario);
 
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {

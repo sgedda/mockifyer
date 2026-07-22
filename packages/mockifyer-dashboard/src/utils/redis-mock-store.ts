@@ -1,6 +1,10 @@
 import * as crypto from 'crypto';
 import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
-import { generateRequestKey, getCurrentScenario } from '@sgedda/mockifyer-core';
+import {
+  assertNotReservedScenarioName,
+  generateRequestKey,
+  getCurrentScenario,
+} from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
@@ -205,6 +209,7 @@ export class RedisMockStore {
   }
 
   async setActiveScenario(scenario: string): Promise<void> {
+    assertNotReservedScenarioName(scenario);
     await this.kv.set(this.activeScenarioKey, scenario);
     // Best-effort registry so scenarios appear even with no mocks yet.
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
