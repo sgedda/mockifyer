@@ -1,3 +1,7 @@
+# Prefer Node 20 (matches package.json engines / .nvmrc). Avoid nodejs_24 from auto-detect.
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+
 [phases.setup]
 # Install exact Node.js version 20.19.5 directly BEFORE Nixpacks installs its version
 # Must happen early to override Nixpacks' auto-detected Node.js
@@ -12,10 +16,11 @@ cmds = [
 
 [phases.install]
 cmds = [
+  "export PATH=/usr/local/bin:$PATH",
   "node --version",
   "rm -f package-lock.json package-lock.prod.json 2>/dev/null || true",
   "cp package.prod.json package.json 2>/dev/null || true",
-  "npm install -g npm@latest",
+  # Do not use npm@latest — npm 12+ requires Node ^22.22.2 || ^24.15.0 || >=26 and breaks on older 24.x
   "npm --version",
   "echo '@sgedda:registry=https://registry.npmjs.org/' > .npmrc",
   "echo 'legacy-peer-deps=true' >> .npmrc",
