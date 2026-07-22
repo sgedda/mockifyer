@@ -46,6 +46,10 @@
     "./utils/build-proxy-upstream-body-init": {
       "types": "./dist/utils/build-proxy-upstream-body-init.d.ts",
       "default": "./dist/utils/build-proxy-upstream-body-init.js"
+    },
+    "./utils/fixture-pool/runtime-cache": {
+      "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
+      "default": "./dist/utils/fixture-pool/runtime-cache.js"
     }
   },
   "bin": {

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, BarChart3, Settings, Zap, GitBranch, Calendar, Radio } from 'lucide-react'
+import { FileText, BarChart3, Settings, Zap, GitBranch, Calendar, Radio, Layers } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
   const navItems = [
     { id: 'stats', label: 'Statistics', icon: BarChart3, path: '/' },
     { id: 'mocks', label: 'Mocks', icon: FileText, path: '/mocks' },
+    { id: 'fixture-pool', label: 'Fixture pool', icon: Layers, path: '/fixture-pool' },
     { id: 'timeline', label: 'Timeline', icon: GitBranch, path: '/timeline' },
     { id: 'network', label: 'Network', icon: Radio, path: '/network' },
     { id: 'date-config', label: 'Date Config', icon: Calendar, path: '/date-config' },

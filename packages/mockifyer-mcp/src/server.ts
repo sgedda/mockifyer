@@ -385,6 +385,160 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     }
   );
 
+  server.registerTool(
+    'mockifyer_list_entities',
+    {
+      description:
+        'List fixture-pool entities (shared catalog of domain objects). Extract from recordings with mockifyer_extract_entity. Entities are inert until a future activation path; matching still uses normal scenario mock files. Endpoint slots are deferred.',
+      inputSchema: {
+        entityType: z.string().optional(),
+        tag: z.string().optional(),
+        q: z.string().optional().describe('Search id/label/entityType'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.listEntities(args));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_entity',
+    {
+      description: 'Get one pool entity by id (includes usedInScenarios).',
+      inputSchema: { id: z.string() },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.getEntity(args.id));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_extract_entity',
+    {
+      description:
+        'Extract entity data from a mock recording into the pool (jsonPath e.g. trips.0). Use extractAllArrayItems to create one entity per array element. Catalog only for now — does not change request matching.',
+      inputSchema: {
+        scenario: z.string(),
+        filename: z.string(),
+        jsonPath: z.string().describe('Dot path under response.data, e.g. trips.0'),
+        entityType: z.string().describe('e.g. trip, user, booking'),
+        id: z.string().optional(),
+        extractAllArrayItems: z.boolean().optional(),
+        label: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.extractEntity(args));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_fork_entity',
+    {
+      description: 'Copy a pool entity to a new id (safe when you need scenario-specific edits without mutating the shared base).',
+      inputSchema: {
+        id: z.string().describe('Source entity id'),
+        newId: z.string().describe('New entity id'),
+        label: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.forkEntity(args.id, { id: args.newId, label: args.label }));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_create_entity',
+    {
+      description: 'Create a manual pool entity.',
+      inputSchema: {
+        id: z.string(),
+        entityType: z.string(),
+        label: z.string(),
+        data: z.unknown(),
+        tags: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.createEntity(args));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_delete_entity',
+    {
+      description: 'Delete a pool entity.',
+      inputSchema: {
+        id: z.string(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.deleteEntity(args.id));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_promote_response',
+    {
+      description: 'Promote a full mock recording into a response fixture (whole HTTP payload escape hatch).',
+      inputSchema: {
+        scenario: z.string(),
+        filename: z.string(),
+        id: z.string().optional(),
+        label: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.promoteResponse(args));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_response_fixtures',
+    {
+      description:
+        'List full-response fixtures in the pool (inert catalog until a future activation path wires them into mocks).',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await client.listResponseFixtures());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
   return server;
 }
 

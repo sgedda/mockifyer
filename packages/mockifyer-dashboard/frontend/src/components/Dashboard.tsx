@@ -9,6 +9,7 @@ import Settings from './Settings'
 import Timeline from './Timeline'
 import Network from './Network'
 import DateConfig from './DateConfig'
+import FixturePool from './FixturePool'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
@@ -46,6 +47,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     if (path === '/mocks') return 'mocks'
     if (path === '/timeline') return 'timeline'
     if (path === '/network') return 'network'
+    if (path === '/fixture-pool') return 'fixture-pool'
     if (path === '/date-config') return 'date-config'
     if (path === '/settings') return 'settings'
     return 'stats' // default to stats (root path)
@@ -166,6 +168,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       'mocks': '/mocks',
       'timeline': '/timeline',
       'network': '/network',
+      'fixture-pool': '/fixture-pool',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -474,6 +477,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
+            <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"

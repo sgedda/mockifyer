@@ -72,6 +72,13 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_list_network_events` | Recent network log hops (find `requestId` / `eventId`) |
 | `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
 | `mockifyer_get_network_log_config` | Whether network logging and body capture are enabled |
+| `mockifyer_list_entities` | List fixture-pool entities (filter by type/tag) |
+| `mockifyer_get_entity` / `mockifyer_create_entity` / `mockifyer_delete_entity` | Entity CRUD |
+| `mockifyer_extract_entity` | Extract from a mock (`jsonPath`, optional all array items) |
+| `mockifyer_fork_entity` | Copy entity to a new id |
+| `mockifyer_promote_response` / `mockifyer_list_response_fixtures` | Full-response fixtures |
+
+Endpoint **slots** are deferred — pool items are a shared catalog; scenarios still serve via normal mock files.
 
 ## Example (IDE chat)
 

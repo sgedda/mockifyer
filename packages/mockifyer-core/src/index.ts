@@ -49,6 +49,7 @@ export * from './utils/network-trace';
 export * from './utils/ai-context';
 export * from './utils/redis-cluster-ops';
 export * from './utils/create-io-redis-client';
+export * from './utils/fixture-pool';
 
 // CLI exports removed - use bin commands instead:
 // - mockifyer (for generate-bundle)
