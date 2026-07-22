@@ -1,4 +1,5 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
+import { POOL_DIR_NAME } from '../types/fixture-pool';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -213,10 +214,13 @@ export function listScenarios(mockDataPath: string): string[] {
   for (const item of items) {
     // Only include directories, and exclude special config files and system directories
     const nameLower = item.name.toLowerCase();
-    if (item.isDirectory() && 
-        !item.name.startsWith('.') && 
-        item.name !== 'node_modules' &&
-        nameLower !== 'lost+found') {
+    if (
+      item.isDirectory() &&
+      !item.name.startsWith('.') &&
+      item.name !== 'node_modules' &&
+      item.name !== POOL_DIR_NAME &&
+      nameLower !== 'lost+found'
+    ) {
       scenarios.push(item.name);
     }
   }
@@ -241,6 +245,9 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
   const sanitized = scenarioName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
   if (sanitized !== scenarioName.trim()) {
     throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
+  }
+  if (sanitized === POOL_DIR_NAME) {
+    throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
   }
 
   // Check max scenarios limit (only if limit is set via env var)

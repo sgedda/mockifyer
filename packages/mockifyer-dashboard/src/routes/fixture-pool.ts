@@ -96,8 +96,77 @@ function readMockFile(mockDataPath: string, scenario: string, filename: string):
   if (!fs.existsSync(filePath)) return null;
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8')) as MockData;
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      error: `Mock file is not valid JSON: ${filename} (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    };
+  }
+}
+
+/**
+ * Persist a pool entity file then update the index. Rolls back the entity file if index save fails.
+ */
+function saveEntityWithIndex(
+  mockDataPath: string,
+  entity: PoolEntity,
+  index: ReturnType<typeof loadPoolIndex>,
+  now: string
+): void {
+  savePoolEntity(mockDataPath, entity, fsAdapter);
+  try {
+    index.entities.push({
+      id: entity.id,
+      label: entity.label,
+      entityType: entity.entityType,
+      tags: entity.tags,
+      storageRef: `pool/entities/${entity.id}.json`,
+      createdAt: now,
+      updatedAt: now,
+    });
+    index.updatedAt = now;
+    savePoolIndex(mockDataPath, index, fsAdapter);
+  } catch (writeError) {
+    const orphanPath = getEntityPath(mockDataPath, entity.id, fsAdapter);
+    try {
+      if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+    } catch {
+      // best-effort cleanup
+    }
+    throw writeError;
+  }
+}
+
+/**
+ * Persist a response fixture then update the index. Rolls back the fixture file if index save fails.
+ */
+function saveResponseWithIndex(
+  mockDataPath: string,
+  item: PoolResponseItem,
+  index: ReturnType<typeof loadPoolIndex>,
+  now: string
+): void {
+  savePoolResponseItem(mockDataPath, item, fsAdapter);
+  try {
+    index.responses.push({
+      id: item.responseItemId,
+      label: item.label ?? item.responseItemId,
+      tags: item.tags,
+      storageRef: `pool/responses/${item.responseItemId}.json`,
+      createdAt: now,
+      updatedAt: now,
+    });
+    index.updatedAt = now;
+    savePoolIndex(mockDataPath, index, fsAdapter);
+  } catch (writeError) {
+    const orphanPath = getResponseFixturePath(mockDataPath, item.responseItemId, fsAdapter);
+    try {
+      if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+    } catch {
+      // best-effort cleanup
+    }
+    throw writeError;
   }
 }
 
@@ -173,18 +242,7 @@ router.post('/entities', (req: Request, res: Response) => {
       return res.status(409).json({ error: `Entity already exists: ${entity.id}` });
     }
 
-    savePoolEntity(mockDataPath, entity, fsAdapter);
-    index.entities.push({
-      id: entity.id,
-      label: entity.label,
-      entityType: entity.entityType,
-      tags: entity.tags,
-      storageRef: `pool/entities/${entity.id}.json`,
-      createdAt: now,
-      updatedAt: now,
-    });
-    index.updatedAt = now;
-    savePoolIndex(mockDataPath, index, fsAdapter);
+    saveEntityWithIndex(mockDataPath, entity, index, now);
     res.status(201).json({ entity });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -341,29 +399,8 @@ router.post('/entities/extract', (req: Request, res: Response) => {
       if (validationError) {
         return res.status(400).json({ error: validationError });
       }
-      try {
-        savePoolEntity(mockDataPath, entity, fsAdapter);
-        index.entities.push({
-          id: entity.id,
-          label: entity.label,
-          entityType: entity.entityType,
-          tags: entity.tags,
-          storageRef: `pool/entities/${entity.id}.json`,
-          createdAt: now,
-          updatedAt: now,
-        });
-        created.push(entity);
-        index.updatedAt = now;
-        savePoolIndex(mockDataPath, index, fsAdapter);
-      } catch (writeError) {
-        const orphanPath = getEntityPath(mockDataPath, entity.id, fsAdapter);
-        try {
-          if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
-        } catch {
-          // best-effort cleanup
-        }
-        throw writeError;
-      }
+      saveEntityWithIndex(mockDataPath, entity, index, now);
+      created.push(entity);
     }
 
     res.status(201).json({ entities: created });
@@ -401,18 +438,7 @@ router.post('/entities/:id/fork', (req: Request, res: Response) => {
       createdAt: now,
       updatedAt: now,
     };
-    savePoolEntity(mockDataPath, forked, fsAdapter);
-    index.entities.push({
-      id: forked.id,
-      label: forked.label,
-      entityType: forked.entityType,
-      tags: forked.tags,
-      storageRef: `pool/entities/${forked.id}.json`,
-      createdAt: now,
-      updatedAt: now,
-    });
-    index.updatedAt = now;
-    savePoolIndex(mockDataPath, index, fsAdapter);
+    saveEntityWithIndex(mockDataPath, forked, index, now);
     res.status(201).json({ entity: forked });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -464,13 +490,15 @@ router.delete('/entities/:id', (req: Request, res: Response) => {
     const id = req.params.id;
     if (!requireValidPoolIdParam(id, res)) return;
 
-    const filePath = getEntityPath(mockDataPath, id, fsAdapter);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
+    // Update index first so a failed unlink leaves an unlisted orphan file, not a dangling index entry.
     const index = loadPoolIndex(mockDataPath, fsAdapter);
     index.entities = index.entities.filter((e) => e.id !== id);
     index.updatedAt = nowIso();
     savePoolIndex(mockDataPath, index, fsAdapter);
+
+    const filePath = getEntityPath(mockDataPath, id, fsAdapter);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
     res.json({ success: true, id });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -557,17 +585,7 @@ router.post('/responses/promote', (req: Request, res: Response) => {
     const err = validatePoolResponseItem(item);
     if (err) return res.status(400).json({ error: err });
 
-    savePoolResponseItem(mockDataPath, item, fsAdapter);
-    index.responses.push({
-      id: responseItemId,
-      label: item.label ?? responseItemId,
-      tags,
-      storageRef: `pool/responses/${responseItemId}.json`,
-      createdAt: now,
-      updatedAt: now,
-    });
-    index.updatedAt = now;
-    savePoolIndex(mockDataPath, index, fsAdapter);
+    saveResponseWithIndex(mockDataPath, item, index, now);
     res.status(201).json({ response: item });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -580,12 +598,12 @@ router.delete('/responses/:id', (req: Request, res: Response) => {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
     if (!requireValidPoolIdParam(id, res)) return;
-    const filePath = getResponseFixturePath(mockDataPath, id, fsAdapter);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     const index = loadPoolIndex(mockDataPath, fsAdapter);
     index.responses = index.responses.filter((r) => r.id !== id);
     index.updatedAt = nowIso();
     savePoolIndex(mockDataPath, index, fsAdapter);
+    const filePath = getResponseFixturePath(mockDataPath, id, fsAdapter);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     res.json({ success: true, id });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
