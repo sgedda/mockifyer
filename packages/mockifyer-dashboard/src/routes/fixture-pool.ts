@@ -16,6 +16,8 @@ import {
   savePoolIndex,
   savePoolResponseItem,
   cloneJsonValue,
+  listScenarios,
+  loadScenarioManifest,
   POOL_DIR_NAME,
   validatePoolEntity,
   validatePoolResponseItem,
@@ -23,6 +25,7 @@ import {
   type MockData,
   type PoolEntity,
   type PoolResponseItem,
+  type ScenarioManifest,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
@@ -218,6 +221,31 @@ function saveResponseWithIndex(
   }
 }
 
+function assignmentReferencesEntity(
+  assignment: ScenarioManifest['slots'][number]['assignment'],
+  entityId: string
+): boolean {
+  if (assignment.kind === 'entity') return assignment.entityId === entityId;
+  if (assignment.kind === 'compose') {
+    return assignment.items.some((item) => item.entityId === entityId);
+  }
+  return false;
+}
+
+/**
+ * Scenarios whose manifests currently reference this entity (slot activation path).
+ */
+function findEntityReferencingScenarios(mockDataPath: string, entityId: string): string[] {
+  const referencing: string[] = [];
+  for (const scenario of listScenarios(mockDataPath)) {
+    const manifest = loadScenarioManifest(mockDataPath, scenario, fsAdapter);
+    if (!manifest?.slots?.length) continue;
+    const used = manifest.slots.some((slot) => assignmentReferencesEntity(slot.assignment, entityId));
+    if (used) referencing.push(scenario);
+  }
+  return referencing;
+}
+
 /** GET /api/fixture-pool/entities */
 router.get('/entities', (req: Request, res: Response) => {
   try {
@@ -259,6 +287,7 @@ router.get('/entities/:id', (req: Request, res: Response) => {
     if (!entity) return res.status(404).json({ error: `Entity not found: ${id}` });
     res.json({
       entity,
+      usedInScenarios: findEntityReferencingScenarios(mockDataPath, id),
     });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -538,6 +567,16 @@ router.delete('/entities/:id', (req: Request, res: Response) => {
     const id = req.params.id;
     if (!requireValidPoolIdParam(id, res)) return;
 
+    const force =
+      req.query.force === 'true' || req.query.force === '1' || req.query.force === 'yes';
+    const referencingScenarios = findEntityReferencingScenarios(mockDataPath, id);
+    if (referencingScenarios.length > 0 && !force) {
+      return res.status(409).json({
+        error: `Entity is referenced by scenario slot(s): ${referencingScenarios.join(', ')}`,
+        referencingScenarios,
+      });
+    }
+
     // Update index first so a failed unlink leaves an unlisted orphan file, not a dangling index entry.
     const index = loadPoolIndex(mockDataPath, fsAdapter);
     index.entities = index.entities.filter((e) => e.id !== id);
@@ -547,7 +586,7 @@ router.delete('/entities/:id', (req: Request, res: Response) => {
     const filePath = getEntityPath(mockDataPath, id, fsAdapter);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-    res.json({ success: true, id });
+    res.json({ success: true, id, referencingScenarios });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

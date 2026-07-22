@@ -408,7 +408,7 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   server.registerTool(
     'mockifyer_get_entity',
     {
-      description: 'Get one pool entity by id.',
+      description: 'Get one pool entity by id (includes usedInScenarios from scenario manifests).',
       inputSchema: { id: z.string() },
     },
     async (args) => {
@@ -488,14 +488,16 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   server.registerTool(
     'mockifyer_delete_entity',
     {
-      description: 'Delete a pool entity.',
+      description:
+        'Delete a pool entity. Fails with 409 if scenario manifests still reference it unless force=true.',
       inputSchema: {
         id: z.string(),
+        force: z.boolean().optional().describe('Delete even when referenced by scenario manifests'),
       },
     },
     async (args) => {
       try {
-        return jsonResult(await client.deleteEntity(args.id));
+        return jsonResult(await client.deleteEntity(args.id, args.force));
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }

@@ -426,7 +426,7 @@ export class DashboardApiClient {
     return this.request(`/fixture-pool/entities${suffix}`);
   }
 
-  async getEntity(id: string): Promise<{ entity: unknown }> {
+  async getEntity(id: string): Promise<{ entity: unknown; usedInScenarios?: string[] }> {
     return this.request(`/fixture-pool/entities/${encodeURIComponent(id)}`);
   }
 
