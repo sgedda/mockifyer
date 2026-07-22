@@ -102,6 +102,27 @@ describe('fixture-pool compose helper (deferred activation)', () => {
     }
   });
 
+  it('returns error when compose object wrap is missing arrayPath', () => {
+    const built = buildMockFromSlotAssignment(
+      'slot-user-trips',
+      {
+        kind: 'compose',
+        wrap: { mode: 'object' },
+        items: [{ entityId: 'trip-rome' }],
+        status: 200,
+      },
+      {
+        getEntity: (id) => entities.get(id),
+        getResponseItem: () => undefined,
+        request: { method: 'GET', url: 'https://api.example.com/users/me/trips', headers: {} },
+      }
+    );
+    expect('error' in built).toBe(true);
+    if ('error' in built) {
+      expect(built.error).toMatch(/arrayPath/i);
+    }
+  });
+
   it('does not re-attach overlays after applying them on entity assignment', () => {
     const built = buildMockFromSlotAssignment(
       'slot-trip',

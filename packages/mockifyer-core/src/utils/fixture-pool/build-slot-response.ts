@@ -64,17 +64,23 @@ function wrapEntityData(data: unknown, wrap: SlotWrap | undefined): unknown {
     : { value: data }) };
 }
 
-function wrapComposeItems(items: unknown[], wrap: SlotWrap): unknown {
-  if (wrap.mode === 'bare') return items;
+function wrapComposeItems(
+  items: unknown[],
+  wrap: SlotWrap
+): { body: unknown } | { error: string } {
+  if (wrap.mode === 'bare') return { body: items };
+  const arrayPath = wrap.arrayPath?.trim();
+  if (!arrayPath) {
+    return { error: 'compose with wrap.mode object requires arrayPath' };
+  }
   const template = wrap.template ? cloneJsonValue(wrap.template) : {};
-  const arrayPath = wrap.arrayPath!.trim();
   // Support single-segment arrayPath in v1 (e.g. "trips"). Nested paths can be added later.
   if (arrayPath.includes('.')) {
     const root: Record<string, unknown> = { ...template };
     setNestedArray(root, arrayPath.split('.'), items);
-    return root;
+    return { body: root };
   }
-  return { ...template, [arrayPath]: items };
+  return { body: { ...template, [arrayPath]: items } };
 }
 
 function setNestedArray(root: Record<string, unknown>, segments: string[], items: unknown[]): void {
@@ -105,7 +111,9 @@ function buildComposeBody(
     builtItems.push(data);
   }
 
-  return { body: wrapComposeItems(builtItems, wrap), entityIds };
+  const wrapped = wrapComposeItems(builtItems, wrap);
+  if ('error' in wrapped) return wrapped;
+  return { body: wrapped.body, entityIds };
 }
 
 /**

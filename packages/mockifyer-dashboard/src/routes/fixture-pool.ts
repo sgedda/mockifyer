@@ -15,6 +15,7 @@ import {
   savePoolEntity,
   savePoolIndex,
   savePoolResponseItem,
+  cloneJsonValue,
   validatePoolEntity,
   validatePoolResponseItem,
   type FixturePoolFsAdapter,
@@ -258,7 +259,7 @@ router.post('/entities/extract', (req: Request, res: Response) => {
             error: `Entity already exists (or duplicate in extract batch): ${entityId}`,
           });
         }
-        planned.push({
+        const entity: PoolEntity = {
           id: entityId,
           entityType,
           label: label ? `${label} [${i}]` : `${entityType} ${entityId}`,
@@ -272,7 +273,14 @@ router.post('/entities/extract', (req: Request, res: Response) => {
           },
           createdAt: now,
           updatedAt: now,
-        });
+        };
+        const validationError = validatePoolEntity(entity);
+        if (validationError) {
+          return res.status(400).json({
+            error: `Invalid extracted entity at index ${i}: ${validationError}`,
+          });
+        }
+        planned.push(entity);
       }
 
       const writtenIds: string[] = [];
@@ -329,19 +337,33 @@ router.post('/entities/extract', (req: Request, res: Response) => {
         createdAt: now,
         updatedAt: now,
       };
-      savePoolEntity(mockDataPath, entity, fsAdapter);
-      index.entities.push({
-        id: entity.id,
-        label: entity.label,
-        entityType: entity.entityType,
-        tags: entity.tags,
-        storageRef: `pool/entities/${entity.id}.json`,
-        createdAt: now,
-        updatedAt: now,
-      });
-      created.push(entity);
-      index.updatedAt = now;
-      savePoolIndex(mockDataPath, index, fsAdapter);
+      const validationError = validatePoolEntity(entity);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
+      try {
+        savePoolEntity(mockDataPath, entity, fsAdapter);
+        index.entities.push({
+          id: entity.id,
+          label: entity.label,
+          entityType: entity.entityType,
+          tags: entity.tags,
+          storageRef: `pool/entities/${entity.id}.json`,
+          createdAt: now,
+          updatedAt: now,
+        });
+        created.push(entity);
+        index.updatedAt = now;
+        savePoolIndex(mockDataPath, index, fsAdapter);
+      } catch (writeError) {
+        const orphanPath = getEntityPath(mockDataPath, entity.id, fsAdapter);
+        try {
+          if (fs.existsSync(orphanPath)) fs.unlinkSync(orphanPath);
+        } catch {
+          // best-effort cleanup
+        }
+        throw writeError;
+      }
     }
 
     res.status(201).json({ entities: created });
@@ -373,6 +395,8 @@ router.post('/entities/:id/fork', (req: Request, res: Response) => {
       ...source,
       id: newId,
       label: (req.body as { label?: string }).label ?? `${source.label} (fork)`,
+      tags: source.tags ? [...source.tags] : undefined,
+      data: cloneJsonValue(source.data),
       source: { kind: 'forked', fromEntityId: source.id },
       createdAt: now,
       updatedAt: now,
