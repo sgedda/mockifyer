@@ -5,8 +5,10 @@ import {
   pathnameFromUrl,
   validatePoolEntity,
   buildMockFromSlotAssignment,
+  resolveMockForRequest,
   type PoolEntity,
   type EndpointSlot,
+  type ScenarioManifest,
 } from '@sgedda/mockifyer-core';
 
 describe('fixture-pool path patterns', () => {
@@ -95,6 +97,56 @@ describe('fixture-pool compose helper (deferred activation)', () => {
       expect(built.mockData.response.data).toEqual({
         trips: [tripRome.data, tripLondon.data],
       });
+      expect(built.mockData.responseFieldOverrides).toBeUndefined();
+      expect(built.mockData.responseDateOverrides).toBeUndefined();
     }
+  });
+
+  it('does not re-attach overlays after applying them on entity assignment', () => {
+    const built = buildMockFromSlotAssignment(
+      'slot-trip',
+      { kind: 'entity', entityId: 'trip-rome', wrap: { mode: 'bare' }, status: 200 },
+      {
+        getEntity: (id) => entities.get(id),
+        getResponseItem: () => undefined,
+        request: { method: 'GET', url: 'https://api.example.com/trips/8821', headers: {} },
+        slotOverrides: {
+          responseFieldOverrides: [{ path: 'status', value: 'CANCELLED' }],
+        },
+      }
+    );
+    expect('error' in built).toBe(false);
+    if (!('error' in built)) {
+      expect((built.mockData.response.data as { status: string }).status).toBe('CANCELLED');
+      expect(built.mockData.responseFieldOverrides).toBeUndefined();
+    }
+  });
+
+  it('returns slot-error mock instead of falling through when build fails', () => {
+    const manifest: ScenarioManifest = {
+      formatVersion: 2,
+      scenario: 'demo',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+      slots: [
+        {
+          id: 'slot-trip',
+          match: { kind: 'rest', method: 'GET', pathPattern: '/trips/8821' },
+          assignment: { kind: 'entity', entityId: 'missing-trip', wrap: { mode: 'bare' } },
+          enabled: true,
+        },
+      ],
+    };
+    const resolved = resolveMockForRequest(
+      { method: 'GET', url: 'https://api.example.com/trips/8821', headers: {} },
+      {
+        scenario: 'demo',
+        mockDataPath: './mock-data',
+        manifest,
+        getEntity: () => undefined,
+        getResponseItem: () => undefined,
+      }
+    );
+    expect(resolved?.filename).toBe('slot-error:slot-trip');
+    expect(resolved?.mockData.response.status).toBe(500);
   });
 });

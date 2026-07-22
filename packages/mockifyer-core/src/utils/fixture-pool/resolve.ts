@@ -31,7 +31,9 @@ export interface ResolveMockForRequestContext {
 
 /**
  * Resolve a mock from scenario endpoint slots (entity / compose / response / inline).
- * Returns undefined to fall through to legacy findBestMatchingMock.
+ * Returns undefined only when no enabled slot matches (fall through to legacy matching).
+ * When a slot matches but build/type-check fails, returns a synthetic error mock so callers
+ * do not serve an unrelated legacy recording for the same URL.
  */
 export function resolveMockForRequest(
   request: StoredRequest,
@@ -54,20 +56,18 @@ export function resolveMockForRequest(
     if (assignment.kind === 'entity') {
       const entity = context.getEntity(assignment.entityId);
       if (entity && entity.entityType !== expected) {
-        console.warn(
-          `[Mockifyer] Slot ${slot.id}: entity ${assignment.entityId} type "${entity.entityType}" != expected "${expected}"`
-        );
-        return undefined;
+        const message = `Slot ${slot.id}: entity ${assignment.entityId} type "${entity.entityType}" != expected "${expected}"`;
+        console.warn(`[Mockifyer] ${message}`);
+        return slotBuildErrorMock(request, slot.id, message);
       }
     }
     if (assignment.kind === 'compose') {
       for (const item of assignment.items) {
         const entity = context.getEntity(item.entityId);
         if (entity && entity.entityType !== expected) {
-          console.warn(
-            `[Mockifyer] Slot ${slot.id}: entity ${item.entityId} type "${entity.entityType}" != expected "${expected}"`
-          );
-          return undefined;
+          const message = `Slot ${slot.id}: entity ${item.entityId} type "${entity.entityType}" != expected "${expected}"`;
+          console.warn(`[Mockifyer] ${message}`);
+          return slotBuildErrorMock(request, slot.id, message);
         }
       }
     }
@@ -83,13 +83,37 @@ export function resolveMockForRequest(
 
   if ('error' in built) {
     console.warn(`[Mockifyer] Slot ${slot.id} build failed: ${built.error}`);
-    return undefined;
+    return slotBuildErrorMock(request, slot.id, built.error);
   }
 
   return {
     mockData: built.mockData,
     filename: built.filename,
     filePath: built.filePath,
+  };
+}
+
+function slotBuildErrorMock(
+  request: StoredRequest,
+  slotId: string,
+  message: string
+): CachedMockData {
+  return {
+    mockData: {
+      request,
+      response: {
+        status: 500,
+        data: {
+          error: 'Mockifyer slot build failed',
+          message,
+          slotId,
+        },
+        headers: { 'content-type': 'application/json', 'x-mockifyer-slot-error': 'true' },
+      },
+      timestamp: new Date().toISOString(),
+    },
+    filename: `slot-error:${slotId}`,
+    filePath: `slot:${slotId}`,
   };
 }
 

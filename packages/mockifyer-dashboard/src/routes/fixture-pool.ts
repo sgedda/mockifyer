@@ -41,6 +41,17 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Reject path-traversal / unsafe pool ids before joining under pool/entities|responses.
+ */
+function requireValidPoolIdParam(id: string | undefined, res: Response): id is string {
+  if (!id || !isValidPoolId(id)) {
+    res.status(400).json({ error: 'Invalid pool id (must match [a-zA-Z0-9_-]+)' });
+    return false;
+  }
+  return true;
+}
+
 function readMockFile(mockDataPath: string, scenario: string, filename: string): MockData | null {
   const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
   const filePath = path.join(scenarioPath, filename);
@@ -88,6 +99,7 @@ router.get('/entities/:id', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
     const entity = loadPoolEntity(mockDataPath, id, fsAdapter);
     if (!entity) return res.status(404).json({ error: `Entity not found: ${id}` });
     res.json({
@@ -182,13 +194,31 @@ router.post('/entities/extract', (req: Request, res: Response) => {
     if (extractAllArrayItems) {
       const extracted = extractAllArrayItemsFromResponse(mock.response?.data, jsonPath);
       if ('error' in extracted) return res.status(400).json({ error: extracted.error });
-      extracted.forEach((item, i) => {
+      if (extracted.length === 0) {
+        return res.status(400).json({ error: `Array at "${jsonPath}" is empty` });
+      }
+
+      const plannedIds: string[] = [];
+      for (let i = 0; i < extracted.length; i++) {
         const entityId =
           id && extracted.length === 1
             ? id
             : `${id ?? entityType}-${i + 1}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-        if (!isValidPoolId(entityId)) return;
-        if (index.entities.some((e) => e.id === entityId)) return;
+        if (!isValidPoolId(entityId)) {
+          return res.status(400).json({
+            error: `Generated entity id is invalid for index ${i}: "${entityId}"`,
+          });
+        }
+        if (index.entities.some((e) => e.id === entityId) || plannedIds.includes(entityId)) {
+          return res.status(409).json({
+            error: `Entity already exists (or duplicate in extract batch): ${entityId}`,
+          });
+        }
+        plannedIds.push(entityId);
+      }
+
+      extracted.forEach((item, i) => {
+        const entityId = plannedIds[i]!;
         const entity: PoolEntity = {
           id: entityId,
           entityType,
@@ -266,7 +296,9 @@ router.post('/entities/extract', (req: Request, res: Response) => {
 router.post('/entities/:id/fork', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const source = loadPoolEntity(mockDataPath, req.params.id, fsAdapter);
+    const sourceId = req.params.id;
+    if (!requireValidPoolIdParam(sourceId, res)) return;
+    const source = loadPoolEntity(mockDataPath, sourceId, fsAdapter);
     if (!source) return res.status(404).json({ error: 'Entity not found' });
 
     const newId = (req.body as { id?: string }).id;
@@ -309,7 +341,9 @@ router.post('/entities/:id/fork', (req: Request, res: Response) => {
 router.put('/entities/:id', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const existing = loadPoolEntity(mockDataPath, req.params.id, fsAdapter);
+    const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
+    const existing = loadPoolEntity(mockDataPath, id, fsAdapter);
     if (!existing) return res.status(404).json({ error: 'Entity not found' });
 
     const body = req.body as Partial<PoolEntity>;
@@ -346,6 +380,7 @@ router.delete('/entities/:id', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
 
     const filePath = getEntityPath(mockDataPath, id, fsAdapter);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -376,7 +411,9 @@ router.get('/responses', (req: Request, res: Response) => {
 router.get('/responses/:id', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
-    const item = loadPoolResponseItem(mockDataPath, req.params.id, fsAdapter);
+    const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
+    const item = loadPoolResponseItem(mockDataPath, id, fsAdapter);
     if (!item) return res.status(404).json({ error: 'Response fixture not found' });
     res.json({ response: item });
   } catch (error) {
@@ -456,6 +493,7 @@ router.delete('/responses/:id', (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
     const filePath = getResponseFixturePath(mockDataPath, id, fsAdapter);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     const index = loadPoolIndex(mockDataPath, fsAdapter);
