@@ -15,6 +15,7 @@ try {
 
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
+const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
 
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
 let scenarioLaunchOverride: string | null = null;
@@ -51,6 +52,14 @@ function joinPath(...parts: string[]): string {
   return parts.filter(p => p).join('/').replace(/\/+/g, '/');
 }
 
+function getClientScenarioConfigPath(mockDataPath: string, clientId?: string): string {
+  const trimmedClientId = typeof clientId === 'string' ? clientId.trim() : '';
+  if (!trimmedClientId || UNSAFE_CLIENT_ID_PATH_CHARS.test(trimmedClientId)) {
+    return '';
+  }
+  return joinPath(mockDataPath, `scenario-config.${trimmedClientId}.json`);
+}
+
 /**
  * Try to load scenario config from scenario-config.json file in mock data directory
  */
@@ -67,8 +76,7 @@ function loadScenarioConfigFromFile(
     // Try to detect mock data path if not provided
     let configPath: string;
     if (mockDataPath) {
-      const trimmedClientId = typeof clientId === 'string' ? clientId.trim() : '';
-      const preferred = trimmedClientId ? joinPath(mockDataPath, `scenario-config.${trimmedClientId}.json`) : '';
+      const preferred = getClientScenarioConfigPath(mockDataPath, clientId);
       const fallback = joinPath(mockDataPath, 'scenario-config.json');
       configPath = preferred && fs!.existsSync(preferred) ? preferred : fallback;
     } else {
