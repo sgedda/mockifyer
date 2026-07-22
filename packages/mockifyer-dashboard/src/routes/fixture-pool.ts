@@ -83,13 +83,7 @@ function resolveContainedMockFile(
     };
   }
 
-  const redisHash = parseRedisMockFilename(filename);
-  if (
-    !filename ||
-    filename.includes('..') ||
-    (!redisHash && (filename.includes('/') || filename.includes('\\'))) ||
-    !filename.endsWith('.json')
-  ) {
+  if (!filename || filename.includes('..') || !filename.endsWith('.json')) {
     return { error: 'Invalid mock filename' };
   }
 
@@ -99,9 +93,7 @@ function resolveContainedMockFile(
     return { error: 'Scenario path escapes mock data root' };
   }
 
-  const filePath = redisHash
-    ? path.resolve(scenarioPath, 'redis', `${redisHash}.json`)
-    : path.resolve(scenarioPath, filename);
+  const filePath = path.resolve(scenarioPath, filename);
   if (!filePath.startsWith(scenarioPath + path.sep)) {
     return { error: 'Mock filename escapes scenario folder' };
   }
@@ -143,8 +135,8 @@ async function readMockForPool(
   const redisHash = parseRedisMockFilename(filename);
 
   if (redisHash && isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
     try {
-      const store = createDashboardMockStore(config, mockDataPath);
       const fromStore = await store.getByHashInScenario(redisHash, scenario);
       if (fromStore) return fromStore;
     } catch (error) {
@@ -153,6 +145,8 @@ async function readMockForPool(
           error instanceof Error ? error.message : String(error)
         }`,
       };
+    } finally {
+      await store.close().catch(() => undefined);
     }
   }
 
