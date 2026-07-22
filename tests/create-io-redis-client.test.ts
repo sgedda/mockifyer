@@ -49,6 +49,16 @@ describe('buildClusterNatMapToEndpoint', () => {
       '10.0.0.4:8502': { host: 'myredis.example.com', port: 6380 },
     });
   });
+
+  it('can remap late-discovered managed cluster nodes to the configured endpoint', () => {
+    const natMap = buildClusterNatMapToEndpoint(
+      [],
+      { host: 'myredis.example.com', port: 6380 },
+      true
+    );
+
+    expect(natMap['10.0.0.4:8502']).toEqual({ host: 'myredis.example.com', port: 6380 });
+  });
 });
 
 describe('shouldBuildClusterNatMap', () => {

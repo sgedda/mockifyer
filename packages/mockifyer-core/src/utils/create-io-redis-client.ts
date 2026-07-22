@@ -21,9 +21,11 @@ interface RedisEndpoint {
   port: number;
 }
 
+type ClusterNatMap = Record<string, { host: string; port: number }>;
+
 interface ClusterDiscovery {
   isCluster: boolean;
-  natMap?: Record<string, { host: string; port: number }>;
+  natMap?: ClusterNatMap;
 }
 
 const clusterDiscoveryByUrl = new Map<string, ClusterDiscovery>();
@@ -94,15 +96,27 @@ export function extractNodesFromClusterSlots(slots: unknown): RedisEndpoint[] {
 /** Map discovered cluster node addresses to a single reachable endpoint (managed Redis). */
 export function buildClusterNatMapToEndpoint(
   nodes: RedisEndpoint[],
-  endpoint: RedisEndpoint
-): Record<string, { host: string; port: number }> {
+  endpoint: RedisEndpoint,
+  mapUnknownToEndpoint = false
+): ClusterNatMap {
   const target = { host: endpoint.host, port: endpoint.port };
-  const natMap: Record<string, { host: string; port: number }> = {};
+  const natMap: ClusterNatMap = {};
   natMap[`${endpoint.host}:${endpoint.port}`] = target;
   for (const node of nodes) {
     natMap[`${node.host}:${node.port}`] = target;
   }
-  return natMap;
+  if (!mapUnknownToEndpoint) return natMap;
+
+  // ioredis looks up natMap by the host:port strings returned from CLUSTER SLOTS/MOVED.
+  // In forced cluster mode we may not know those private addresses until ioredis asks.
+  return new Proxy(natMap, {
+    get(record, prop, receiver) {
+      if (typeof prop === 'string' && /^[^\s]+:\d+$/.test(prop)) {
+        return Reflect.get(record, prop, receiver) ?? target;
+      }
+      return Reflect.get(record, prop, receiver);
+    },
+  });
 }
 
 function isLoopbackHost(host: string): boolean {
@@ -218,10 +232,11 @@ function createClusterClient(
 function clusterNatMapForEndpoint(
   endpoint: RedisEndpoint,
   nodes: RedisEndpoint[] = []
-): Record<string, { host: string; port: number }> | undefined {
+): ClusterNatMap | undefined {
   if (envFalsy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP')) return undefined;
+  const remapUnknownNodes = nodes.length === 0 && !isLoopbackHost(endpoint.host);
   if (envTruthy('MOCKIFYER_REDIS_CLUSTER_NAT_MAP') || !isLoopbackHost(endpoint.host)) {
-    return buildClusterNatMapToEndpoint(nodes, endpoint);
+    return buildClusterNatMapToEndpoint(nodes, endpoint, remapUnknownNodes);
   }
   if (shouldBuildClusterNatMap(endpoint, nodes)) {
     return buildClusterNatMapToEndpoint(nodes, endpoint);
