@@ -414,4 +414,13 @@ export const ENV_VARS = {
    * Client SDKs send this in the proxy envelope; the dashboard process env is a fallback when omitted.
    */
   MOCK_UPSTREAM_TLS_INSECURE: 'MOCKIFYER_UPSTREAM_TLS_INSECURE',
+  /**
+   * When `false`, skip endpoint-slot resolution while `recordMode` is on (always fall through to live/legacy).
+   * Default `true` — slots behave like mock hits during record.
+   */
+  MOCK_SLOTS_IN_RECORD: 'MOCKIFYER_SLOTS_IN_RECORD',
+  /** Master switch for endpoint slots when a scenario manifest exists. Default on when manifest present. */
+  MOCK_USE_ENDPOINT_SLOTS: 'MOCKIFYER_USE_ENDPOINT_SLOTS',
+  /** When not `false`, reject/skip slot serve on entityType mismatch. */
+  MOCK_SLOT_ENTITY_TYPE_STRICT: 'MOCKIFYER_SLOT_ENTITY_TYPE_STRICT',
 } as const;

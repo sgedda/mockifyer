@@ -1,4 +1,5 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
+import { POOL_DIR_NAME } from '../types/fixture-pool';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -17,6 +18,15 @@ let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
 
+/**
+ * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
+ */
+export function assertNotReservedScenarioName(scenarioName: string): void {
+  if (scenarioName.trim() === POOL_DIR_NAME) {
+    throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
+  }
+}
+
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
 let scenarioLaunchOverride: string | null = null;
 
@@ -31,7 +41,12 @@ export function setScenarioLaunchOverride(scenario: string | null | undefined): 
     return;
   }
   const trimmed = String(scenario).trim();
-  scenarioLaunchOverride = trimmed === '' ? null : trimmed;
+  if (trimmed === '') {
+    scenarioLaunchOverride = null;
+    return;
+  }
+  assertNotReservedScenarioName(trimmed);
+  scenarioLaunchOverride = trimmed;
 }
 
 /**
@@ -213,10 +228,13 @@ export function listScenarios(mockDataPath: string): string[] {
   for (const item of items) {
     // Only include directories, and exclude special config files and system directories
     const nameLower = item.name.toLowerCase();
-    if (item.isDirectory() && 
-        !item.name.startsWith('.') && 
-        item.name !== 'node_modules' &&
-        nameLower !== 'lost+found') {
+    if (
+      item.isDirectory() &&
+      !item.name.startsWith('.') &&
+      item.name !== 'node_modules' &&
+      item.name !== POOL_DIR_NAME &&
+      nameLower !== 'lost+found'
+    ) {
       scenarios.push(item.name);
     }
   }
@@ -242,6 +260,7 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
   if (sanitized !== scenarioName.trim()) {
     throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
   }
+  assertNotReservedScenarioName(sanitized);
 
   // Check max scenarios limit (only if limit is set via env var)
   const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -261,10 +280,13 @@ export function createScenario(mockDataPath: string, scenarioName: string): void
         for (const item of items) {
           // Count only directories, exclude special files and hidden directories
           const nameLower = item.name.toLowerCase();
-          if (item.isDirectory() && 
-              !item.name.startsWith('.') && 
-              item.name !== 'node_modules' &&
-              nameLower !== 'lost+found') {
+          if (
+            item.isDirectory() &&
+            !item.name.startsWith('.') &&
+            item.name !== 'node_modules' &&
+            item.name !== POOL_DIR_NAME &&
+            nameLower !== 'lost+found'
+          ) {
             // Don't count the scenario we're about to create if it already exists
             if (item.name !== sanitized) {
               existingCount++;
@@ -293,6 +315,8 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
   if (!fs || !fs.writeFileSync) {
     return;
   }
+
+  assertNotReservedScenarioName(scenario);
 
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {

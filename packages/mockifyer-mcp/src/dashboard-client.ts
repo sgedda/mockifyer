@@ -412,4 +412,95 @@ export class DashboardApiClient {
     const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
     return this.request<NetworkLogConfigResponse>(`/network-events/config${qs}`);
   }
+
+  async listEntities(params?: {
+    entityType?: string;
+    tag?: string;
+    q?: string;
+  }): Promise<{ entities: unknown[]; updatedAt?: string }> {
+    const qs = new URLSearchParams();
+    if (params?.entityType) qs.set('entityType', params.entityType);
+    if (params?.tag) qs.set('tag', params.tag);
+    if (params?.q) qs.set('q', params.q);
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return this.request(`/fixture-pool/entities${suffix}`);
+  }
+
+  async getEntity(id: string): Promise<{ entity: unknown; usedInScenarios?: string[] }> {
+    return this.request(`/fixture-pool/entities/${encodeURIComponent(id)}`);
+  }
+
+  async createEntity(body: {
+    id: string;
+    entityType: string;
+    label: string;
+    data: unknown;
+    tags?: string[];
+  }): Promise<{ entity: unknown }> {
+    return this.request(`/fixture-pool/entities`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async extractEntity(body: {
+    scenario: string;
+    filename: string;
+    jsonPath: string;
+    entityType: string;
+    id?: string;
+    extractAllArrayItems?: boolean;
+    label?: string;
+    tags?: string[];
+  }): Promise<{ entities: unknown[] }> {
+    return this.request(`/fixture-pool/entities/extract`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async forkEntity(id: string, body: { id: string; label?: string }): Promise<{ entity: unknown }> {
+    return this.request(`/fixture-pool/entities/${encodeURIComponent(id)}/fork`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async updateEntity(
+    id: string,
+    body: { label?: string; entityType?: string; data?: unknown; tags?: string[] }
+  ): Promise<{ entity: unknown }> {
+    return this.request(`/fixture-pool/entities/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async deleteEntity(id: string, force?: boolean): Promise<unknown> {
+    const qs = force ? '?force=true' : '';
+    return this.request(`/fixture-pool/entities/${encodeURIComponent(id)}${qs}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async listResponseFixtures(): Promise<{ responses: unknown[] }> {
+    return this.request(`/fixture-pool/responses`);
+  }
+
+  async promoteResponse(body: {
+    scenario: string;
+    filename: string;
+    id?: string;
+    label?: string;
+    tags?: string[];
+  }): Promise<{ response: unknown }> {
+    return this.request(`/fixture-pool/responses/promote`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getResponseFixture(id: string): Promise<{ response: unknown }> {
+    return this.request(`/fixture-pool/responses/${encodeURIComponent(id)}`);
+  }
 }
