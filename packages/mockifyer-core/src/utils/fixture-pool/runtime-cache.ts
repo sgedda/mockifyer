@@ -20,10 +20,11 @@ const nodeFsAdapter: FixturePoolFsAdapter = {
   joinPath: (...parts) => path.join(...parts),
   existsSync: (p) => fs.existsSync(p),
   readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
-  writeFileSync: (p, data, encoding) => fs.writeFileSync(p, data, encoding),
+  writeFileSync: (p, data, encodingOrOptions) => fs.writeFileSync(p, data, encodingOrOptions),
   mkdirSync: (p, options) => {
     fs.mkdirSync(p, options);
   },
+  unlinkSync: (p) => fs.unlinkSync(p),
   readdirSync: (p) => fs.readdirSync(p),
 };
 

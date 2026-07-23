@@ -178,6 +178,8 @@ export const MANIFEST_FORMAT_VERSION = 2;
 
 export const POOL_DIR_NAME = 'pool';
 export const POOL_INDEX_FILENAME = 'pool-index.json';
+/** Exclusive lock file for read-modify-write updates to {@link POOL_INDEX_FILENAME}. */
+export const POOL_INDEX_LOCK_FILENAME = 'pool-index.json.lock';
 export const POOL_ENTITIES_DIR = 'entities';
 export const POOL_RESPONSES_DIR = 'responses';
 export const SCENARIO_MANIFEST_FILENAME = 'scenario-manifest.json';
