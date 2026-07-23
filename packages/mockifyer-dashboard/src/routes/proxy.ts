@@ -28,9 +28,12 @@ import {
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
+  loadPoolResponseItem,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
 import {
   appendProxyNetworkEvent,
@@ -342,7 +345,18 @@ router.post('/', async (req: Request, res: Response) => {
           : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(sanitizedMock, getNow),
+        data: prepareMockResponseBody(sanitizedMock, getNow, {
+          loadPoolResponse: (id) =>
+            loadPoolResponseItem(mockDataPath, id, {
+              joinPath: (...parts) => path.join(...parts),
+              existsSync: (p) => fs.existsSync(p),
+              readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+              writeFileSync: () => {
+                throw new Error('pool loader is read-only');
+              },
+              mkdirSync: () => undefined,
+            }),
+        }),
       };
       if (debugProxy) {
         console.log(

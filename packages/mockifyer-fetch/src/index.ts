@@ -35,6 +35,7 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
+  loadPoolResponseItem,
   shouldBypassMockifyerForUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
@@ -128,6 +129,26 @@ class MockifyerClass {
     if (!requestId) return undefined;
     const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
     return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  }
+
+  /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
+  private prepareStoredResponseBody(mockData: MockData): unknown {
+    if (!fs || !path) {
+      return prepareMockResponseBody(mockData, getCurrentDate);
+    }
+    const joinPath = path.join.bind(path);
+    return prepareMockResponseBody(mockData, getCurrentDate, {
+      loadPoolResponse: (id) =>
+        loadPoolResponseItem(this.config.mockDataPath, id, {
+          joinPath,
+          existsSync: (p) => fs!.existsSync(p),
+          readFileSync: (p, encoding) => fs!.readFileSync(p, encoding),
+          writeFileSync: () => {
+            throw new Error('pool loader is read-only');
+          },
+          mkdirSync: () => undefined,
+        }),
+    });
   }
 
   constructor(config: MockifyerConfig) {
@@ -615,7 +636,7 @@ class MockifyerClass {
           };
 
           const mockResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: responseHeaders,

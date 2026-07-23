@@ -22,6 +22,7 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
+  loadPoolResponseItem,
   resolveRecordingExclusions,
   shouldExcludeRecording,
   resolveActivationMode,
@@ -96,6 +97,22 @@ class MockifyerClass {
   private usesDashboardProxy(): boolean {
     const baseUrl = this.config.proxy?.baseUrl;
     return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  }
+
+  /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
+  private prepareStoredResponseBody(mockData: MockData): unknown {
+    return prepareMockResponseBody(mockData, getCurrentDate, {
+      loadPoolResponse: (id) =>
+        loadPoolResponseItem(this.config.mockDataPath, id, {
+          joinPath: (...parts) => path.join(...parts),
+          existsSync: (p) => fs.existsSync(p),
+          readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+          writeFileSync: () => {
+            throw new Error('pool loader is read-only');
+          },
+          mkdirSync: () => undefined,
+        }),
+    });
   }
 
   private attachDashboardProxyAdapter(config: AxiosRequestConfig): AxiosRequestConfig {
@@ -797,7 +814,7 @@ class MockifyerClass {
         });
         
         const mockResponse: AxiosResponse = {
-          data: prepareMockResponseBody(mockData, getCurrentDate),
+          data: this.prepareStoredResponseBody(mockData),
           status: mockData.response.status,
           statusText: 'OK',
           headers: axiosHeaders,
@@ -1052,7 +1069,7 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,

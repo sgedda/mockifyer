@@ -5,6 +5,7 @@ export * from './extract';
 export * from './build-slot-response';
 export * from './match-slot';
 export * from './resolve';
+export * from './resolve-pool-refs';
 export * from './fs-store';
 // runtime-cache.ts uses Node fs — import from
 // '@sgedda/mockifyer-core/utils/fixture-pool/runtime-cache' in Node clients only.

@@ -77,8 +77,10 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_extract_entity` | Extract from a mock (`jsonPath`, optional all array items) |
 | `mockifyer_fork_entity` | Copy entity to a new id |
 | `mockifyer_promote_response` / `mockifyer_list_response_fixtures` | Full-response fixtures |
+| `mockifyer_preview_pool_ref` | Preview `$pool` resolve (path + field/index select) |
+| `mockifyer_set_pool_ref` | Embed `$pool` into a scenario mock response |
 
-Endpoint **slots** are deferred — pool items are a shared catalog; scenarios still serve via normal mock files.
+Endpoint **slots** are deferred. **`$pool` refs** activate promoted response fixtures at serve time (see `packages/mockifyer-core/docs/POOL_REFS.md`). Entities remain a shared catalog for extract/browse.
 
 ## Example (IDE chat)
 
@@ -90,6 +92,11 @@ The assistant can call:
 2. `mockifyer_get_mock_ai_context({ filename: "...", mode: "profile" })`
 3. `mockifyer_set_field_overrides({ filename, overrides: [{ path: "bookings.0.status", value: "CONFIRMED" }] })`
    or `mockifyer_copy_array_item({ filename, arrayPath: "bookings", fromIndex: 0, itemOverrides: { status: "CONFIRMED" } })`
+
+> "Use pool response `trips-list-alice` in scenario `check-in-open`, keep the envelope, only trips nyc + rome."
+
+1. `mockifyer_preview_pool_ref({ id: "trips-list-alice", mode: "document", path: "trips", select: { field: "id", values: ["trip-nyc", "trip-rome"] } })`
+2. `mockifyer_set_pool_ref({ scenario: "check-in-open", filename: "…", pool: { id: "trips-list-alice", mode: "document", path: "trips", select: { field: "id", values: ["trip-nyc", "trip-rome"] } } })`
 
 > "Trace the gateway call that returned 502 — what did each hop use?"
 

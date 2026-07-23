@@ -23,9 +23,13 @@ import {
   validatePoolEntity,
   validatePoolResponseItem,
   withPoolIndexLock,
+  validatePoolRef,
+  resolvePoolRefAgainstData,
+  PoolRefResolveError,
   type FixturePoolFsAdapter,
   type MockData,
   type PoolEntity,
+  type PoolRef,
   type PoolResponseItem,
   type ScenarioManifest,
 } from '@sgedda/mockifyer-core';
@@ -693,6 +697,45 @@ router.get('/responses/:id', (req: Request, res: Response) => {
     const item = loadPoolResponseItem(mockDataPath, id, fsAdapter);
     if (!item) return res.status(404).json({ error: 'Response fixture not found' });
     res.json({ response: item });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * POST /api/fixture-pool/responses/:id/resolve
+ * Preview `$pool` resolution against a promoted response (no scenario mock required).
+ */
+router.post('/responses/:id/resolve', (req: Request, res: Response) => {
+  try {
+    const { mockDataPath } = getDashboardContext(req);
+    const id = req.params.id;
+    if (!requireValidPoolIdParam(id, res)) return;
+    const item = loadPoolResponseItem(mockDataPath, id, fsAdapter);
+    if (!item) return res.status(404).json({ error: 'Response fixture not found' });
+
+    const body = (req.body ?? {}) as Partial<PoolRef>;
+    const ref: PoolRef = {
+      id,
+      mode: body.mode,
+      path: body.path,
+      select: body.select,
+      indices: body.indices,
+    };
+    const validationError = validatePoolRef(ref);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    try {
+      const data = resolvePoolRefAgainstData(ref, item.response?.data);
+      return res.json({ id, ref, data });
+    } catch (error) {
+      if (error instanceof PoolRefResolveError) {
+        return res.status(400).json({ error: error.message });
+      }
+      throw error;
+    }
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

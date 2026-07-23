@@ -503,4 +503,44 @@ export class DashboardApiClient {
   async getResponseFixture(id: string): Promise<{ response: unknown }> {
     return this.request(`/fixture-pool/responses/${encodeURIComponent(id)}`);
   }
+
+  async resolvePoolResponse(
+    id: string,
+    body: {
+      mode?: 'document' | 'value';
+      path?: string;
+      select?: { field: string; values: Array<string | number | boolean> };
+      indices?: number[];
+    }
+  ): Promise<{ id: string; ref: unknown; data: unknown }> {
+    return this.request(`/fixture-pool/responses/${encodeURIComponent(id)}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async setMockPoolRef(
+    filename: string,
+    body: {
+      pool: {
+        id: string;
+        mode?: 'document' | 'value';
+        path?: string;
+        select?: { field: string; values: Array<string | number | boolean> };
+        indices?: number[];
+      };
+      path?: string | null;
+      scenario?: string;
+    }
+  ): Promise<unknown> {
+    const encoded = filename
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const qs = body.scenario ? `?scenario=${encodeURIComponent(body.scenario)}` : '';
+    return this.request(`/mocks/${encoded}/pool-ref${qs}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pool: body.pool, path: body.path ?? null }),
+    });
+  }
 }
