@@ -31,18 +31,55 @@ export function normalizeGraphQLQuery(query: string): string {
 /**
  * Generates a hash-like string from an object for consistent key generation
  */
-function hashObject(obj: any): string {
+function hashObject(obj: unknown): string {
   if (!obj) return '';
   try {
     // Sort keys and stringify to ensure consistent ordering
-    const sorted = Object.keys(obj).sort().reduce((acc, key) => {
-      acc[key] = obj[key];
-      return acc;
-    }, {} as Record<string, any>);
+    const record = obj as Record<string, unknown>;
+    const sorted = Object.keys(record)
+      .sort()
+      .reduce(
+        (acc, key) => {
+          acc[key] = record[key];
+          return acc;
+        },
+        {} as Record<string, unknown>
+      );
     return JSON.stringify(sorted);
-  } catch (e) {
+  } catch {
     return String(obj);
   }
+}
+
+/**
+ * GraphQL body fragment used in request keys and slot `queryHash` matching.
+ * Format: `gql:{normalizedQuery}:vars:{sortedVariablesJson}`
+ */
+export function buildGraphQLBodyKey(query: string, variables?: unknown): string {
+  const normalizedQuery = normalizeGraphQLQuery(query);
+  const variablesHash = variables ? hashObject(variables) : '';
+  return `gql:${normalizedQuery}:vars:${variablesHash}`;
+}
+
+/**
+ * True when `queryHash` identifies this GraphQL query (and optionally variables).
+ * Accepts:
+ * - normalized query string (query document only)
+ * - `buildGraphQLBodyKey(...)` (same fragment as recording keys)
+ * - `|body:` + that fragment (suffix paste from a full request key)
+ */
+export function graphQLQueryHashMatches(
+  queryHash: string,
+  query: string,
+  variables?: unknown
+): boolean {
+  const normalized = normalizeGraphQLQuery(query);
+  const bodyKey = buildGraphQLBodyKey(query, variables);
+  return (
+    queryHash === normalized ||
+    queryHash === bodyKey ||
+    queryHash === `|body:${bodyKey}`
+  );
 }
 
 /**
@@ -98,10 +135,9 @@ export function generateRequestKey(request: StoredRequest): string {
       }
       
       // Handle GraphQL requests specifically
-      if (typeof bodyData === 'object' && bodyData !== null && bodyData.query) {
-        const normalizedQuery = normalizeGraphQLQuery(bodyData.query);
-        const variablesHash = bodyData.variables ? hashObject(bodyData.variables) : '';
-        key += `|body:gql:${normalizedQuery}:vars:${variablesHash}`;
+      if (typeof bodyData === 'object' && bodyData !== null && (bodyData as { query?: unknown }).query) {
+        const gqlBody = bodyData as { query: string; variables?: unknown };
+        key += `|body:${buildGraphQLBodyKey(gqlBody.query, gqlBody.variables)}`;
       } else {
         // For other POST requests, include a hash of the body
         const bodyHash = typeof bodyData === 'string' 

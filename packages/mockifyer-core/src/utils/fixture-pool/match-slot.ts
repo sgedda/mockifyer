@@ -1,6 +1,6 @@
 import type { StoredRequest } from '../../types';
 import type { EndpointSlot, SlotMatch, SlotMatchQuery } from '../../types/fixture-pool';
-import { isGraphQLRequest, normalizeGraphQLQuery } from '../mock-matcher';
+import { graphQLQueryHashMatches, isGraphQLRequest } from '../mock-matcher';
 import { hostFromUrl, matchPathPattern, pathnameFromUrl } from './path-pattern';
 
 /**
@@ -44,8 +44,8 @@ export function requestMatchesSlot(request: StoredRequest, match: SlotMatch): bo
   }
   if (match.queryHash) {
     if (!query) return false;
-    const normalized = normalizeGraphQLQuery(query);
-    if (simpleHash(normalized) !== match.queryHash && normalized !== match.queryHash) {
+    // Align with generateRequestKey GraphQL body fragments (not a private hash).
+    if (!graphQLQueryHashMatches(match.queryHash, query, variables)) {
       return false;
     }
   }
@@ -91,14 +91,6 @@ function parseBody(data: unknown): unknown {
     }
   }
   return data;
-}
-
-function simpleHash(input: string): string {
-  let h = 0;
-  for (let i = 0; i < input.length; i++) {
-    h = (Math.imul(31, h) + input.charCodeAt(i)) | 0;
-  }
-  return `q${(h >>> 0).toString(16)}`;
 }
 
 /**

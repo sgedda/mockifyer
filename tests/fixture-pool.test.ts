@@ -6,9 +6,14 @@ import {
   validatePoolEntity,
   buildMockFromSlotAssignment,
   resolveMockForRequest,
+  buildGraphQLBodyKey,
+  generateRequestKey,
+  normalizeGraphQLQuery,
+  requestMatchesSlot,
   type PoolEntity,
   type EndpointSlot,
   type ScenarioManifest,
+  type StoredRequest,
 } from '@sgedda/mockifyer-core';
 
 describe('fixture-pool path patterns', () => {
@@ -81,6 +86,66 @@ describe('fixture-pool entity validation', () => {
     expect(validatePoolEntity({ id: 'bad id', entityType: 'trip', label: 'x', data: {} })).toMatch(
       /id/
     );
+  });
+});
+
+describe('fixture-pool GraphQL queryHash alignment', () => {
+  const query = 'query GetUser($id: ID!) { user(id: $id) { name } }';
+  const variables = { id: '42' };
+
+  const graphqlRequest: StoredRequest = {
+    method: 'POST',
+    url: 'https://api.example.com/graphql',
+    headers: { 'content-type': 'application/json' },
+    queryParams: {},
+    data: {
+      operationName: 'GetUser',
+      query,
+      variables,
+    },
+  };
+
+  it('matches normalized query string', () => {
+    expect(
+      requestMatchesSlot(graphqlRequest, {
+        kind: 'graphql',
+        queryHash: normalizeGraphQLQuery(query),
+      })
+    ).toBe(true);
+  });
+
+  it('matches buildGraphQLBodyKey from recording tooling', () => {
+    const bodyKey = buildGraphQLBodyKey(query, variables);
+    expect(bodyKey).toMatch(/^gql:/);
+    expect(
+      requestMatchesSlot(graphqlRequest, {
+        kind: 'graphql',
+        queryHash: bodyKey,
+      })
+    ).toBe(true);
+  });
+
+  it('matches |body: suffix pasted from generateRequestKey', () => {
+    const requestKey = generateRequestKey(graphqlRequest);
+    const bodySuffix = requestKey.includes('|body:')
+      ? requestKey.slice(requestKey.indexOf('|body:'))
+      : '';
+    expect(bodySuffix.startsWith('|body:gql:')).toBe(true);
+    expect(
+      requestMatchesSlot(graphqlRequest, {
+        kind: 'graphql',
+        queryHash: bodySuffix,
+      })
+    ).toBe(true);
+  });
+
+  it('rejects a body key with different variables', () => {
+    expect(
+      requestMatchesSlot(graphqlRequest, {
+        kind: 'graphql',
+        queryHash: buildGraphQLBodyKey(query, { id: 'other' }),
+      })
+    ).toBe(false);
   });
 });
 

@@ -138,6 +138,12 @@ export type SlotMatch =
   | {
       kind: 'graphql';
       operationName?: string;
+      /**
+       * Stricter query identity. Prefer values from recording keys:
+       * - normalized query string
+       * - `gql:{normalizedQuery}:vars:{sortedVariablesJson}` (`buildGraphQLBodyKey`)
+       * - `|body:gql:…:vars:…` (suffix of `generateRequestKey`)
+       */
       queryHash?: string;
       variablesTemplate?: Record<string, unknown>;
     };

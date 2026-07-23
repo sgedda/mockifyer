@@ -325,7 +325,7 @@ Same shape as today’s `MockData` (at least `response.status` + `response.data`
 | Field | Meaning |
 |-------|---------|
 | `operationName` | Required when present on requests |
-| `queryHash` | Optional stricter match |
+| `queryHash` | Optional; normalized query, `buildGraphQLBodyKey`, or `|body:gql:…` from recording keys |
 | `variablesTemplate` | Keys must exist; `*` = any. `{}` = operation-only (use sparingly) |
 
 #### Slot `assignment` kinds
