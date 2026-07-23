@@ -62,7 +62,7 @@ Axios: same preset names from `@sgedda/mockifyer-axios`.
 
 ## Core rules
 
-- **Dates in tests**: use `getCurrentDate()` from the same package as `setupMockifyer`, not `new Date()`.
+- **Dates**: prefer **response date overrides** on mocks (offset fields from “now” in the dashboard) so you often need not change app code that uses `new Date()`. Use `getCurrentDate()` from the same package as `setupMockifyer` when app logic itself must see a fixed/offset/timezone clock.
 - **Mock data**: `mock-data/<scenario>/*.json` — one file per recorded request/response.
 - **Scenarios**: folder under `mock-data/`; active scenario from `MOCKIFYER_SCENARIO`, config, or dashboard.
 - **Matching key**: `METHOD:url?query` + for POST bodies:

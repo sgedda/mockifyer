@@ -284,6 +284,8 @@ export interface StoredResponse {
 /**
  * When serving a mock, rewrite these response paths to a date derived from the
  * manipulated current date (see `getCurrentDate` in mockifyer-core) plus optional offsets.
+ * Prefer this over changing app code to call `getCurrentDate()` when relative dates in the
+ * mock payload are enough (expiries, booking windows, etc.).
  */
 export interface MockResponseDateOverride {
   /** Dot-separated path from `response.data` root. Use numeric segments for array indices (e.g. `items.0.expiresAt`). */

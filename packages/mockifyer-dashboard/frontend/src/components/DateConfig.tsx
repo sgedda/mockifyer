@@ -411,7 +411,7 @@ export default function DateConfig() {
         <CardHeader>
           <CardTitle>Date Manipulation</CardTitle>
           <CardDescription>
-            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the <strong className="font-medium text-foreground">selected scenario</strong> only. With the Redis provider, the active scenario comes from Redis; otherwise from{' '}
+            Sets the manipulated &quot;current&quot; date used by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> and as the base for <strong className="font-medium text-foreground">response date overrides</strong> on mocks. Prefer response date overrides when you can — offset dates in the mock response (e.g. expiresAt = now + 7 days) without changing app code that uses <code className="text-xs bg-muted px-1 py-0.5 rounded">new Date()</code>. Use this page when app logic itself must see a fixed or shifted clock. Settings apply to the <strong className="font-medium text-foreground">selected scenario</strong> only. With the Redis provider, the active scenario comes from Redis; otherwise from{' '}
             <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario-config.json</code>.
           </CardDescription>
         </CardHeader>
@@ -481,7 +481,7 @@ export default function DateConfig() {
               {formatDate(currentDate)}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              This is the date that <code className="bg-background px-1 py-0.5 rounded">getCurrentDate()</code> will return
+              Base for <code className="bg-background px-1 py-0.5 rounded">getCurrentDate()</code> and response date overrides (offset from now). Prefer overrides on mocks when you can avoid changing app code.
             </div>
           </div>
 

@@ -822,10 +822,13 @@ export default function MockEditor({
               <div className="space-y-1">
                 <div className="text-sm font-medium">Response date overrides</div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
+                  Prefer this when you can: rewrite dates in the response as offsets from &quot;now&quot; (e.g.{' '}
+                  <code className="rounded bg-muted px-1 font-mono text-[11px]">expiresAt</code> = now + 7 days)
+                  without changing app code that uses <code className="rounded bg-muted px-1 font-mono text-[11px]">new Date()</code>.
                   Paths are relative to the response JSON body (e.g.{' '}
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">expiresAt</code> or{' '}
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">items.0.createdAt</code>
-                  ). Applied when serving the mock or when returning a live/refreshed response.
+                  ). Applied when serving the mock or when returning a live/refreshed response. Optionally combine with Date settings if you also need a fixed/shifted clock for <code className="rounded bg-muted px-1 font-mono text-[11px]">getCurrentDate()</code>.
                 </p>
               </div>
 

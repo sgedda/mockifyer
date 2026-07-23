@@ -84,14 +84,17 @@ setupMockifyer({
 const response = await axios.get('https://api.example.com/data');
 ```
 
-**Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply.
+**Date handling — two approaches:**
+
+1. **Response date overrides (no app code changes)** — on each mock, rewrite date fields in the response as offsets from “now” (e.g. `expiresAt` = now + 7 days). Configure in the dashboard mock editor. Often enough for expiries, booking windows, and “upcoming vs past” without touching `new Date()` in your app.
+2. **`getCurrentDate()`** — use it from the same package as `setupMockifyer` instead of `new Date()` when app logic itself must see a fixed/offset/timezone “current” date.
 
 ## Features
 
 - Record and replay HTTP requests (axios or fetch)
 - Automatic interception driven by env + config
 - **Scenarios** — `mock-data/<scenario>/...` plus `scenario-config.json`
-- Date manipulation (fixed date, offset, timezone) for tests
+- Date handling: response date overrides (no app code changes) and/or `getCurrentDate()` (fixed date, offset, timezone)
 - **Easy discovery** — JSON files in the repo (searchable in your IDE)
 - **React Native** — device storage + optional Metro sync to keep repo and simulator in sync ([REACT_NATIVE.md](./REACT_NATIVE.md))
 
@@ -107,7 +110,22 @@ File layout on disk often mirrors host and path (e.g. `api.example.com/rest/.../
 
 ## Date configuration
 
-Same ideas as before: `fixedDate`, `offset`, `timezone` in `setupMockifyer`, or env vars:
+### Prefer: response date overrides (no code changes)
+
+For many time-dependent UIs, keep using `new Date()` in the app and instead attach **`responseDateOverrides`** on the mock (dashboard → mock editor). Each path is rewritten relative to the manipulated “current” date (or real time when none is set), with optional day/hour/minute offsets:
+
+```json
+{
+  "responseDateOverrides": [
+    { "path": "expiresAt", "offsetDays": 7 },
+    { "path": "items.0.createdAt", "offsetDays": -1 }
+  ]
+}
+```
+
+### Optional: manipulate “current” date for `getCurrentDate()`
+
+When app code (or overrides with `base: 'now'`) should share a fixed/offset/timezone clock: `fixedDate`, `offset`, `timezone` in `setupMockifyer`, or env vars:
 
 ```bash
 export MOCKIFYER_DATE="2025-01-01T00:00:00Z"

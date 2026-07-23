@@ -94,9 +94,16 @@ await axios.get('https://api.example.com/v1/profile', {
 
             <TabsContent value="date" className="space-y-4 mt-4">
               <p className="text-sm text-muted-foreground mb-4">
-                Use <code className="bg-muted px-1 rounded">getCurrentDate()</code> from{' '}
-                @sgedda/mockifyer-core instead of <code className="bg-muted px-1 rounded">new Date()</code>.
-                Priority: env vars → setupMockifyer dateManipulation → system time.
+                Prefer <strong>response date overrides</strong> on mocks when you can: rewrite dates in the
+                response as offsets from &quot;now&quot; (e.g. <code className="bg-muted px-1 rounded">expiresAt</code> = now + 7 days)
+                in the dashboard mock editor — no need to change app code that uses{' '}
+                <code className="bg-muted px-1 rounded">new Date()</code>.
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                When app logic itself must see a fixed/offset/timezone clock, use{' '}
+                <code className="bg-muted px-1 rounded">getCurrentDate()</code> from @sgedda/mockifyer-core
+                instead of <code className="bg-muted px-1 rounded">new Date()</code>. Priority: env vars →
+                setupMockifyer dateManipulation → system time.
               </p>
               <CodeBlock
                 language="typescript"

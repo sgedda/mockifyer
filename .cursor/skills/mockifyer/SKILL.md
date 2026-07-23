@@ -25,7 +25,7 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 
 - **Record / replay**: intercept HTTP → match stored JSON mock → return saved response or call real API when recording.
 - **Mock data**: `mock-data/<scenario>/` (JSON per request). Active scenario from env, `scenario-config.json`, or dashboard (Redis lanes).
-- **Dates in tests**: use `getCurrentDate()` from the same package as `setupMockifyer`, not `new Date()`.
+- **Dates**: prefer **response date overrides** on mocks (offset fields from “now” in the dashboard) so you often need not change app code that uses `new Date()`. Use `getCurrentDate()` from the same package as `setupMockifyer` when app logic itself must see a fixed/offset/timezone clock.
 - **Matching key** (`generateRequestKey` in `mock-matcher.ts`): `METHOD:url?query` + for POST bodies:
   - **GraphQL**: normalized `query` string + sorted `variables` JSON (not headers, not `operationName` alone).
   - **Other JSON**: sorted-key body hash.

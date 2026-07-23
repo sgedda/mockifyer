@@ -779,16 +779,23 @@ export default function Settings() {
 
                 <TabsContent value="date" className="space-y-4 mt-4">
                   <div>
-                    <h4 className="font-semibold mb-2">Date Manipulation</h4>
+                    <h4 className="font-semibold mb-2">Date handling</h4>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Use <code className="bg-muted px-1 rounded">getCurrentDate()</code> from{' '}
+                      Prefer <strong>response date overrides</strong> on mocks when you can: rewrite dates in
+                      the response as offsets from &quot;now&quot; in the dashboard mock editor — often enough
+                      for expiries and booking windows without changing app code that uses{' '}
+                      <code className="bg-muted px-1 rounded">new Date()</code>.
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      When app logic itself must see a fixed/offset/timezone clock, use{' '}
+                      <code className="bg-muted px-1 rounded">getCurrentDate()</code> from{' '}
                       <code className="bg-muted px-1 rounded">@sgedda/mockifyer-core</code> instead of{' '}
-                      <code className="bg-muted px-1 rounded">new Date()</code> for date manipulation to work.
+                      <code className="bg-muted px-1 rounded">new Date()</code>.
                     </p>
                     <CodeBlock
                       code={`import { getCurrentDate } from '@sgedda/mockifyer-core';
 
-// Use this instead of new Date()
+// Use this instead of new Date() when app logic needs the manipulated clock
 const currentDate = getCurrentDate();`}
                       language="typescript"
                     />

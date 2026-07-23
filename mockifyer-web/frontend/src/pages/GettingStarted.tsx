@@ -759,8 +759,9 @@ const mockifyerDate = getCurrentDate(); // Returns 2024-12-25 (from Mockifyer)`}
           <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md">
             <h4 className="font-semibold mb-2 text-blue-400">Best Practices</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Use Mockifyer's <code className="bg-muted px-1 rounded">getCurrentDate()</code> when you can - it's simpler and works everywhere</li>
-              <li>• Use Sinon fake timers when your code uses <code className="bg-muted px-1 rounded">new Date()</code> or <code className="bg-muted px-1 rounded">Date.now()</code> directly in Node.js</li>
+              <li>• Prefer <strong>response date overrides</strong> on mocks (offset from now) when that covers your case — no app code changes</li>
+              <li>• Use Mockifyer's <code className="bg-muted px-1 rounded">getCurrentDate()</code> when app logic itself needs the manipulated clock — simpler than fake timers and works everywhere</li>
+              <li>• Use Sinon fake timers when your code uses <code className="bg-muted px-1 rounded">new Date()</code> or <code className="bg-muted px-1 rounded">Date.now()</code> directly in Node.js and you need a global fake clock</li>
               <li>• Keep dates in sync: Use the same date for Mockifyer config and fake timers</li>
               <li>• Clean up: Always restore fake timers when done (<code className="bg-muted px-1 rounded">clock.restore()</code>)</li>
             </ul>

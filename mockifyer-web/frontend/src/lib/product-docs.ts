@@ -185,8 +185,9 @@ export const KEY_FEATURES = [
   },
   {
     icon: '📅',
-    title: 'Date manipulation',
-    description: 'fixedDate, offset, timezone via getCurrentDate() — no flaky time-based tests',
+    title: 'Date handling',
+    description:
+      'Response date overrides (offset from now, no app code changes) and/or getCurrentDate() for a fixed/shifted clock',
   },
   {
     icon: '🎭',

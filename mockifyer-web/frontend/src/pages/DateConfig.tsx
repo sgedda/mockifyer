@@ -126,7 +126,7 @@ export default function DateConfigPage() {
         <CardHeader>
           <CardTitle>Date Configuration</CardTitle>
           <CardDescription>
-            Configure fixed dates, offsets, and timezones to test time-dependent functionality
+            Configure fixed dates, offsets, and timezones for <code className="bg-muted px-1 rounded">getCurrentDate()</code> and as the base for response date overrides. Prefer response date overrides on mocks when you can — offset dates in the response without changing app code that uses <code className="bg-muted px-1 rounded">new Date()</code>.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

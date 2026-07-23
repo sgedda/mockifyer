@@ -2,6 +2,8 @@
 
 Mockifyer provides `getCurrentDate()` for getting manipulated dates, but for **deterministic dates** where `new Date()` and `Date.now()` return fake time globally, you can use Sinon fake timers alongside Mockifyer in Node.js environments.
 
+**Prefer first:** response date overrides on mocks (offset fields from “now” in the dashboard mock editor) when that covers your case — no app code changes. Use `getCurrentDate()` or Sinon when application logic itself must see a controlled clock.
+
 ## Why Use Fake Timers?
 
 Mockifyer's `getCurrentDate()` returns manipulated dates, but it doesn't affect global `Date()` or `Date.now()`. If your code uses `new Date()` or `Date.now()` directly, you'll need fake timers to make those return deterministic dates.
