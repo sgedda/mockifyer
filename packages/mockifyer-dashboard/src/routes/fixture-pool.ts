@@ -15,6 +15,9 @@ import {
   savePoolEntity,
   savePoolIndex,
   savePoolResponseItem,
+  deletePoolEntityWithIndex,
+  deletePoolResponseWithIndex,
+  updatePoolEntityWithIndex,
   cloneJsonValue,
   listScenarios,
   loadScenarioManifest,
@@ -599,38 +602,11 @@ router.put('/entities/:id', (req: Request, res: Response) => {
     const err = validatePoolEntity(updated);
     if (err) return res.status(400).json({ error: err });
 
-    savePoolEntity(mockDataPath, updated, fsAdapter);
-    try {
-      withPoolIndexLock(mockDataPath, fsAdapter, () => {
-        const index = loadPoolIndex(mockDataPath, fsAdapter);
-        const entry = index.entities.find((e) => e.id === updated.id);
-        if (entry) {
-          entry.label = updated.label;
-          entry.entityType = updated.entityType;
-          entry.tags = updated.tags;
-          entry.updatedAt = updated.updatedAt;
-        } else {
-          index.entities.push({
-            id: updated.id,
-            label: updated.label,
-            entityType: updated.entityType,
-            tags: updated.tags,
-            storageRef: `pool/entities/${updated.id}.json`,
-            createdAt: updated.createdAt ?? updated.updatedAt!,
-            updatedAt: updated.updatedAt!,
-          });
-        }
-        index.updatedAt = updated.updatedAt!;
-        savePoolIndex(mockDataPath, index, fsAdapter);
-      });
-    } catch (indexError) {
-      // Restore previous entity payload so file and index stay aligned.
-      try {
-        savePoolEntity(mockDataPath, existing, fsAdapter);
-      } catch {
-        // best-effort rollback
-      }
-      throw indexError;
+    // File write + index update share one lock so a concurrent delete cannot leave a
+    // catalog entry pointing at a missing file (or resurrect a deleted id).
+    const updatedOk = updatePoolEntityWithIndex(mockDataPath, updated, fsAdapter);
+    if (!updatedOk) {
+      return res.status(404).json({ error: 'Entity not found' });
     }
     res.json({ entity: updated });
   } catch (error) {
@@ -655,16 +631,9 @@ router.delete('/entities/:id', (req: Request, res: Response) => {
       });
     }
 
-    // Update index first so a failed unlink leaves an unlisted orphan file, not a dangling index entry.
-    withPoolIndexLock(mockDataPath, fsAdapter, () => {
-      const index = loadPoolIndex(mockDataPath, fsAdapter);
-      index.entities = index.entities.filter((e) => e.id !== id);
-      index.updatedAt = nowIso();
-      savePoolIndex(mockDataPath, index, fsAdapter);
-    });
-
-    const filePath = getEntityPath(mockDataPath, id, fsAdapter);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    // Index removal + file unlink share one lock so a concurrent recreate of the same id
+    // cannot be deleted after create returns success.
+    deletePoolEntityWithIndex(mockDataPath, id, fsAdapter, nowIso());
 
     res.json({ success: true, id, referencingScenarios });
   } catch (error) {
@@ -776,14 +745,7 @@ router.delete('/responses/:id', (req: Request, res: Response) => {
       });
     }
 
-    withPoolIndexLock(mockDataPath, fsAdapter, () => {
-      const index = loadPoolIndex(mockDataPath, fsAdapter);
-      index.responses = index.responses.filter((r) => r.id !== id);
-      index.updatedAt = nowIso();
-      savePoolIndex(mockDataPath, index, fsAdapter);
-    });
-    const filePath = getResponseFixturePath(mockDataPath, id, fsAdapter);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    deletePoolResponseWithIndex(mockDataPath, id, fsAdapter, nowIso());
     res.json({ success: true, id, referencingScenarios });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
