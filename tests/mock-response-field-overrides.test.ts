@@ -1,7 +1,9 @@
 import {
   applyResponseFieldOverridesToData,
   copyArrayItemInResponseData,
+  isResponseDataJsonContainer,
   prepareMockResponseBody,
+  setResponseDataValueAtPath,
   validateResponseFieldOverrides,
 } from '@sgedda/mockifyer-core';
 import type { MockData } from '@sgedda/mockifyer-core';
@@ -25,6 +27,34 @@ describe('mock response field overrides', () => {
 
     expect(out.bookings[0].status).toBe('CONFIRMED');
     expect(data.bookings[0].status).toBe('PENDING');
+  });
+
+  it('applyResponseFieldOverridesToData soft no-ops for non-JSON-container roots', () => {
+    const plain = 'not-json';
+    expect(applyResponseFieldOverridesToData(plain, [{ path: 'x', value: 1 }])).toBe(plain);
+    expect(applyResponseFieldOverridesToData(42, [{ path: 'x', value: 1 }])).toBe(42);
+    expect(applyResponseFieldOverridesToData(null, [{ path: 'x', value: 1 }])).toBe(null);
+  });
+
+  it('setResponseDataValueAtPath writes into objects and rejects non-containers', () => {
+    const data = { user: { name: 'a' } };
+    const out = setResponseDataValueAtPath(data, 'user.pool', { $pool: { id: 'p1' } }) as typeof data & {
+      user: { name: string; pool: { $pool: { id: string } } };
+    };
+    expect(out.user.pool).toEqual({ $pool: { id: 'p1' } });
+    expect(data.user).toEqual({ name: 'a' });
+
+    expect(() => setResponseDataValueAtPath('plain text', 'x', 1)).toThrow(
+      /must be a JSON object or array/
+    );
+    expect(() => setResponseDataValueAtPath({ a: 1 }, '  ', 1)).toThrow(/path is required/);
+  });
+
+  it('isResponseDataJsonContainer recognizes objects and JSON strings', () => {
+    expect(isResponseDataJsonContainer({ a: 1 })).toBe(true);
+    expect(isResponseDataJsonContainer('{"a":1}')).toBe(true);
+    expect(isResponseDataJsonContainer('plain')).toBe(false);
+    expect(isResponseDataJsonContainer(null)).toBe(false);
   });
 
   it('copyArrayItemInResponseData clones item with overrides', () => {

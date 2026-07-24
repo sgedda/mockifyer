@@ -50,6 +50,25 @@ function normalizeResponseDataRoot(data: unknown): unknown {
   return data;
 }
 
+const RESPONSE_DATA_JSON_CONTAINER_ERROR = 'Response data must be a JSON object or array';
+
+/**
+ * True when response data is (or is a JSON string of) an object or array.
+ * Plain strings, numbers, booleans, and null are not containers.
+ */
+export function isResponseDataJsonContainer(data: unknown): boolean {
+  const normalized = normalizeResponseDataRoot(data);
+  return normalized !== null && typeof normalized === 'object';
+}
+
+function requireResponseDataJsonContainer(data: unknown): unknown {
+  const normalized = normalizeResponseDataRoot(data);
+  if (normalized === null || typeof normalized !== 'object') {
+    throw new Error(RESPONSE_DATA_JSON_CONTAINER_ERROR);
+  }
+  return normalized;
+}
+
 /** True when the mock has replay-time field overrides configured. */
 export function mockHasResponseFieldOverrides(mockData: MockData): boolean {
   return Array.isArray(mockData.responseFieldOverrides) && mockData.responseFieldOverrides.length > 0;
@@ -57,6 +76,7 @@ export function mockHasResponseFieldOverrides(mockData: MockData): boolean {
 
 /**
  * Applies field overrides to a cloned copy of response data (stored body unchanged).
+ * Soft no-op when the root is not a JSON object/array (replay-time safety).
  */
 export function applyResponseFieldOverridesToData<T>(
   data: T,
@@ -80,6 +100,23 @@ export function applyResponseFieldOverridesToData<T>(
     return JSON.stringify(clone) as T;
   }
   return clone as T;
+}
+
+/**
+ * Sets a value at a JSON path in response data for dashboard write paths.
+ * Throws when the root is not a JSON object/array so callers cannot silently no-op.
+ */
+export function setResponseDataValueAtPath(
+  data: unknown,
+  path: string,
+  value: unknown
+): unknown {
+  const trimmed = typeof path === 'string' ? path.trim() : '';
+  if (!trimmed) {
+    throw new Error('path is required');
+  }
+  requireResponseDataJsonContainer(data);
+  return applyResponseFieldOverridesToData(data, [{ path: trimmed, value }]);
 }
 
 function applyItemOverrides(item: unknown, itemOverrides: Record<string, unknown>): unknown {
@@ -106,11 +143,7 @@ export function copyArrayItemInResponseData(
   data: unknown,
   params: CopyArrayItemParams
 ): CopyArrayItemResult {
-  const normalized = normalizeResponseDataRoot(data);
-  if (normalized === null || typeof normalized !== 'object') {
-    throw new Error('Response data must be a JSON object or array');
-  }
-
+  const normalized = requireResponseDataJsonContainer(data);
   const clone = deepCloneJson(normalized);
   const arraySegments = parseResponseDataPath(params.arrayPath.trim());
   if (arraySegments.length === 0) {

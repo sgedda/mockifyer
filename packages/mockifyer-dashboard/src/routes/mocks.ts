@@ -20,7 +20,7 @@ import {
   type MockResponseFieldOverride,
   isScenarioLockedFs,
   validatePoolRef,
-  applyResponseFieldOverridesToData,
+  setResponseDataValueAtPath,
   type PoolRef,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
@@ -953,11 +953,12 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
           data: poolNode,
         };
       } else {
+        // Path embeds must fail when response.data is not a JSON object/array.
+        // applyResponseFieldOverridesToData soft no-ops in that case (replay-time);
+        // setResponseDataValueAtPath throws so we never report success without writing $pool.
         existingData.response = {
           ...existingData.response,
-          data: applyResponseFieldOverridesToData(existingData.response.data, [
-            { path: targetPath, value: poolNode },
-          ]),
+          data: setResponseDataValueAtPath(existingData.response.data, targetPath, poolNode),
         };
       }
       existingData.timestamp = new Date().toISOString();
@@ -1010,6 +1011,12 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     console.error('[MocksRoute] pool-ref PATCH - Error:', error);
     const message = error instanceof Error ? error.message : String(error);
+    if (
+      message === 'Response data must be a JSON object or array' ||
+      message === 'path is required'
+    ) {
+      return res.status(400).json({ error: message });
+    }
     return res.status(500).json({ error: 'Failed to set pool ref', details: message });
   }
 });
