@@ -8,9 +8,13 @@ Plan of record for the full-vision example app. Builds on serve-time `$pool` ref
 |---|---|
 | Fixture pool extract/promote ([PR #279](https://github.com/sgedda/mockifyer/pull/279)) | Shipped |
 | Serve-time `$pool` refs ([PR #281](https://github.com/sgedda/mockifyer/pull/281)) | **In place** — showcase builds on this |
+| MCP set/create scenario + client lanes ([PR #284](https://github.com/sgedda/mockifyer/pull/284)) | **Shipped** — tutorial can be MCP-only for scenarios/lanes |
 | Endpoint slots / `$entity` | Still deferred — **not required** |
 
-Do **not** re-implement pool activation in the example. Consume `$pool` + MCP `mockifyer_promote_response` / `mockifyer_preview_pool_ref` / `mockifyer_set_pool_ref`.
+Do **not** re-implement pool activation or scenario MCP tools in the example. Consume:
+
+- `$pool` + `mockifyer_promote_response` / `mockifyer_preview_pool_ref` / `mockifyer_set_pool_ref`
+- `mockifyer_create_scenario` / `mockifyer_set_scenario` / `mockifyer_set_client_lane_scenario` / `mockifyer_list_client_lanes`
 
 ## Locked decisions
 
@@ -143,7 +147,7 @@ This is the **primary** Mockifyer story for the showcase:
 1. Seed/record `default` multi-hop mocks.
 2. `mockifyer_promote_response` → `trips-list-alice`.
 3. Optional: `mockifyer_extract_entity` for trip catalog browse (not required to serve).
-4. Create `check-in-open` (`deriveFrom: default`) — needs MCP create/set scenario tools below, or dashboard HTTP in v1 scripts.
+4. `mockifyer_create_scenario` with `deriveFrom: "default"` → `check-in-open` ([PR #284](https://github.com/sgedda/mockifyer/pull/284)).
 5. `mockifyer_preview_pool_ref` then `mockifyer_set_pool_ref`:
 
 ```json
@@ -156,19 +160,19 @@ This is the **primary** Mockifyer story for the showcase:
 ```
 
 6. Field/date overrides on resolved paths (`departureAt` ≈ now+10h).
-7. Map lane `trips-e2e-checkin` → `check-in-open`; run app / Playwright.
+7. `mockifyer_set_client_lane_scenario` → map `trips-e2e-checkin` to `check-in-open`; run app / Playwright.
 
 Same promoted response; different scenarios only change **refs + overlays**.
 
-### Still needed for MCP (showcase product gap)
+### MCP coverage (product — done)
 
-Already available from PR #281: promote, preview `$pool`, set `$pool`.
+| Need | Tool | Status |
+|---|---|---|
+| Promote / `$pool` | `mockifyer_promote_response`, `preview_pool_ref`, `set_pool_ref` | PR #281 |
+| Create / switch scenario | `mockifyer_create_scenario`, `mockifyer_set_scenario` | **PR #284** |
+| Client lanes | `mockifyer_set_client_lane_scenario`, `mockifyer_list_client_lanes` | **PR #284** |
 
-Add:
-
-- `mockifyer_set_scenario`
-- `mockifyer_create_scenario` (`deriveFrom`)
-- `mockifyer_set_client_lane_scenario`
+No further MCP product work is required for the showcase tutorial arc.
 
 ## Tracing + insights
 
@@ -193,12 +197,13 @@ Network + Bodies on Redis; isolated `tests/trace-home.integration.ts` / script: 
 **PROMPTS.md** (must work with this seed):
 
 - Promote default trips list to `trips-list-alice`
+- Create scenario `check-in-open` derived from `default`
 - Preview `$pool` document selecting `trip-nyc-checkin` only
 - Set that ref on `check-in-open` trips mock
 - Apply ~10h departure override
 - Trace home; provenance of destination title
 - Duplicates / slowest hop
-- Lane `trips-e2e-checkin` → `check-in-open`
+- Set client lane `trips-e2e-checkin` → `check-in-open`
 
 Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenarios with `$pool` nodes).
 
@@ -207,23 +212,22 @@ Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenar
 1. Scaffold monorepo + Redis + bootstrap + services + Vite auth shell.
 2. Seed APIs/data; **promote** list to pool; write scenario mocks as **`$pool` refs** + overlays (not duplicated trip blobs).
 3. Redis proxy + clientIds + dates + demo panel.
-4. MCP set/create scenario + client lane tools.
-5. Trace suite.
-6. Jest + Playwright lane matrix.
-7. Tutorial / PROMPTS / restore; dry-run full path including `$pool` MCP prompts.
-8. README pointer under `example-projects/`.
+4. Trace suite.
+5. Jest + Playwright lane matrix (lanes set via MCP tools from PR #284).
+6. Tutorial / PROMPTS / restore; dry-run full MCP path (create scenario → `$pool` → lane → overrides).
+7. README pointer under `example-projects/`.
 
 ## Out of scope
 
 - Endpoint slots / `$entity` (use `$pool` instead).
-- Re-implementing pool resolve (use PR #281).
+- Re-implementing pool resolve (use PR #281) or scenario/lane MCP tools (use PR #284).
 - Real OAuth/Clerk; Detox/Maestro/Expo; publishing the example as npm.
 
 ## Key code to leverage
 
 - [`example-projects/multi-service-example`](../../example-projects/multi-service-example/)
 - [`POOL_REFS.md`](../../packages/mockifyer-core/docs/POOL_REFS.md) + [PR #281](https://github.com/sgedda/mockifyer/pull/281)
-- Fixture pool + MCP packages
+- Scenario/lane MCP ([PR #284](https://github.com/sgedda/mockifyer/pull/284)) + fixture pool / MCP packages
 - Trace API, [`MULTI_CLIENT_ISOLATION.md`](../../MULTI_CLIENT_ISOLATION.md), mockifyer-web Playwright
 
 ## Implementation todos
@@ -231,7 +235,7 @@ Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenar
 - [ ] Scaffold trips-showcase (Vite React web, Express services, mock-bootstrap, Redis compose, package scripts)
 - [ ] Auth + trip APIs/BFF merge; seed mocks; promote trips-list to pool/responses; wire scenarios via `$pool` document refs + overlays
 - [ ] Wire filesystem + Redis proxy, clientIds, correlation, date helpers, in-app scenario/lane panel
-- [ ] Add MCP tools: set_scenario, create_scenario, set_client_lane_scenario (pool preview/set already in PR #281)
+- [x] MCP set/create scenario + client lane tools — **done in [PR #284](https://github.com/sgedda/mockifyer/pull/284)**
 - [ ] Add isolated trace integration script/test asserting multi-hop field provenance
 - [ ] Add Jest scenario unit tests + Playwright projects keyed by client-id lanes
-- [ ] TUTORIAL.md + PROMPTS.md centered on promote → `$pool` ref → overrides; restore-demo.sh + seed bundle; dry-run
+- [ ] TUTORIAL.md + PROMPTS.md centered on promote → create scenario → `$pool` → lane → overrides; restore-demo.sh + seed bundle; dry-run
