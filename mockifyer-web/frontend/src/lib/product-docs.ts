@@ -245,5 +245,7 @@ export const MCP_TOOLS = [
   'mockifyer_get_mock_ai_context — lightweight fields/schema for AI',
   'mockifyer_search_mocks / mockifyer_list_mocks',
   'mockifyer_set_field_overrides / mockifyer_copy_array_item',
-  'mockifyer_list_scenarios / mockifyer_get_endpoint_stats',
+  'mockifyer_list_scenarios / mockifyer_set_scenario / mockifyer_create_scenario',
+  'mockifyer_list_client_lanes / mockifyer_set_client_lane_scenario',
+  'mockifyer_get_endpoint_stats',
 ] as const

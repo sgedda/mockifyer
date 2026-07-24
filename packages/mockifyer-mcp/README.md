@@ -68,6 +68,10 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_search_mocks` | Search by filename / endpoint / method |
 | `mockifyer_get_mock` | Full mock JSON (large — prefer ai_context when possible) |
 | `mockifyer_list_scenarios` | Available and active scenarios |
+| `mockifyer_set_scenario` | Switch the dashboard active/global scenario |
+| `mockifyer_create_scenario` | Create a scenario (`deriveFrom` copies mocks from another) |
+| `mockifyer_list_client_lanes` | Redis/sqlite client lanes + configured scenarios |
+| `mockifyer_set_client_lane_scenario` | Bind a `MOCKIFYER_CLIENT_ID` lane to a scenario |
 | `mockifyer_get_endpoint_stats` | Endpoint / status / method aggregates |
 | `mockifyer_list_network_events` | Recent network log hops (find `requestId` / `eventId`) |
 | `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
@@ -104,6 +108,14 @@ The assistant can call:
 2. `mockifyer_get_network_trace({ requestId: "...", scenario: "default" })` — ordered `trace.hops[]` root-first
 
 Requires network logging enabled in the dashboard Network tab (persistent with `redis` / `sqlite` providers).
+
+> "Create `check-in-open` from `default`, then point Playwright lane `trips-e2e-checkin` at it"
+
+1. `mockifyer_create_scenario({ scenario: "check-in-open", deriveFrom: "default" })`
+2. Apply `$pool` / field overrides on the new scenario mocks
+3. `mockifyer_set_client_lane_scenario({ clientId: "trips-e2e-checkin", scenario: "check-in-open" })`
+
+Use `mockifyer_set_scenario` only for the global/active scenario; prefer lane mapping for isolated E2E runs.
 
 ## Environment variables
 
