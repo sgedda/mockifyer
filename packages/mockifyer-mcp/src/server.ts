@@ -167,6 +167,87 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_set_scenario',
+    {
+      description:
+        'Switch the dashboard active/global scenario. For Redis/sqlite multi-client isolation prefer mockifyer_set_client_lane_scenario so Playwright/app lanes stay independent.',
+      inputSchema: {
+        scenario: z
+          .string()
+          .describe('Scenario name (letters, numbers, hyphens, underscores)'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.setScenario(args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_create_scenario',
+    {
+      description:
+        'Create a scenario and make it active. Pass deriveFrom to copy mocks (and date config) from an existing scenario — e.g. check-in-open derived from default before applying $pool refs/overrides.',
+      inputSchema: {
+        scenario: z.string().describe('New scenario name'),
+        deriveFrom: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Existing scenario to copy from; omit/null for empty'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.createScenario(args.scenario, args.deriveFrom ?? null));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_client_lane_scenario',
+    {
+      description:
+        'Map a Redis/sqlite client lane (MOCKIFYER_CLIENT_ID) to a scenario for isolated E2E/demo runs. Requires dashboard --provider redis|sqlite. Pass scenario=null to clear the lane mapping.',
+      inputSchema: {
+        clientId: z.string().describe('Client lane id (e.g. trips-e2e-checkin)'),
+        scenario: z
+          .string()
+          .nullable()
+          .describe('Scenario to bind, or null to clear the lane override'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.setClientLaneScenario(args.clientId, args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_client_lanes',
+    {
+      description:
+        'List Redis/sqlite client lanes and their configured scenarios (disabled on filesystem provider). Use before mockifyer_set_client_lane_scenario.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await client.listClientLanes());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_get_endpoint_stats',
     {
       description: 'Summarize mock counts per endpoint, HTTP method, and status code for a scenario.',

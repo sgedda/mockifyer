@@ -160,4 +160,139 @@ describe('mockifyer-mcp dashboard-client', () => {
       global.fetch = originalFetch;
     }
   });
+
+  it('setScenario POSTs to scenario-config/set', async () => {
+    const calls: Array<{ url: string; method?: string; body?: string }> = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method,
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Scenario switched to "check-in-open"',
+          currentScenario: 'check-in-open',
+          scenarios: ['check-in-open', 'default'],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      const result = await client.setScenario('check-in-open');
+      expect(calls[0]).toEqual({
+        url: 'http://test/api/scenario-config/set',
+        method: 'POST',
+        body: JSON.stringify({ scenario: 'check-in-open' }),
+      });
+      expect(result.currentScenario).toBe('check-in-open');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('createScenario POSTs deriveFrom to scenario-config/create', async () => {
+    const calls: Array<{ url: string; method?: string; body?: string }> = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method,
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Scenario "check-in-open" created successfully',
+          currentScenario: 'check-in-open',
+          scenarios: ['check-in-open', 'default'],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      await client.createScenario('check-in-open', 'default');
+      expect(calls[0]).toEqual({
+        url: 'http://test/api/scenario-config/create',
+        method: 'POST',
+        body: JSON.stringify({ scenario: 'check-in-open', deriveFrom: 'default' }),
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('setClientLaneScenario PUTs lane scenario mapping', async () => {
+    const calls: Array<{ url: string; method?: string; body?: string }> = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method,
+        body: typeof init?.body === 'string' ? init.body : undefined,
+      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          lanes: [{ clientId: 'trips-e2e-checkin', scenario: 'check-in-open', note: null }],
+          globalScenario: 'default',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      await client.setClientLaneScenario('trips-e2e-checkin', 'check-in-open');
+      expect(calls[0]).toEqual({
+        url: 'http://test/api/client-lanes/trips-e2e-checkin/scenario',
+        method: 'PUT',
+        body: JSON.stringify({ scenario: 'check-in-open' }),
+      });
+
+      await client.setClientLaneScenario('trips-e2e-checkin', null);
+      expect(calls[1]).toEqual({
+        url: 'http://test/api/client-lanes/trips-e2e-checkin/scenario',
+        method: 'PUT',
+        body: JSON.stringify({ scenario: null }),
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('listClientLanes GETs client-lanes', async () => {
+    const calls: string[] = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          enabled: true,
+          lanes: [],
+          discoveredLanes: [],
+          globalScenario: 'default',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      await client.listClientLanes();
+      expect(calls[0]).toBe('http://test/api/client-lanes');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

@@ -44,6 +44,51 @@ export interface ScenarioConfigResponse {
   currentScenario: string;
   availableScenarios?: string[];
   scenarios?: string[];
+  scenarioLocks?: Record<string, boolean>;
+  success?: boolean;
+  message?: string;
+}
+
+export interface SetScenarioResponse {
+  success: boolean;
+  message: string;
+  currentScenario: string;
+  scenarios: string[];
+}
+
+export interface CreateScenarioResponse {
+  success: boolean;
+  message: string;
+  currentScenario: string;
+  scenarios: string[];
+}
+
+export interface ClientLaneLastSeenResolved {
+  scenario: string;
+  lastSeenAt: string;
+  resolutionSource: string;
+  clientBodyScenarioOverride: boolean;
+}
+
+export interface ClientLane {
+  clientId: string;
+  scenario: string;
+  note: string | null;
+  lastSeenResolved?: ClientLaneLastSeenResolved | null;
+}
+
+export interface ClientLanesResponse {
+  enabled: boolean;
+  reason?: string | null;
+  lanes: ClientLane[];
+  discoveredLanes?: string[];
+  globalScenario: string | null;
+}
+
+export interface SetClientLaneScenarioResponse {
+  success: boolean;
+  lanes: ClientLane[];
+  globalScenario: string | null;
 }
 
 export interface StatsResponse {
@@ -319,6 +364,34 @@ export class DashboardApiClient {
 
   async getScenarioConfig(): Promise<ScenarioConfigResponse> {
     return this.request('/scenario-config');
+  }
+
+  async setScenario(scenario: string): Promise<SetScenarioResponse> {
+    return this.request('/scenario-config/set', {
+      method: 'POST',
+      body: JSON.stringify({ scenario }),
+    });
+  }
+
+  async createScenario(scenario: string, deriveFrom?: string | null): Promise<CreateScenarioResponse> {
+    return this.request('/scenario-config/create', {
+      method: 'POST',
+      body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
+    });
+  }
+
+  async listClientLanes(): Promise<ClientLanesResponse> {
+    return this.request('/client-lanes');
+  }
+
+  async setClientLaneScenario(
+    clientId: string,
+    scenario: string | null
+  ): Promise<SetClientLaneScenarioResponse> {
+    return this.request(`/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+      method: 'PUT',
+      body: JSON.stringify({ scenario }),
+    });
   }
 
   async getStats(scenario?: string): Promise<StatsResponse> {
