@@ -9,6 +9,7 @@ Slide-style walkthrough from the standpoint of **an existing app** (the Ultimate
 | Doc | Role |
 |---|---|
 | [`trips-showcase-adoption-presentation.md`](./trips-showcase-adoption-presentation.md) | **This file** — adopt & use Mockifyer in *your* project |
+| [`trips-showcase-prompt-demo.md`](./trips-showcase-prompt-demo.md) | Prompt-as-you-go live demo (copy prompt → show → next) |
 | [`trips-showcase-presentation.md`](./trips-showcase-presentation.md) | Technical deep dive (`$pool`, curls, architecture) |
 | [`trips-showcase-demo.md`](./trips-showcase-demo.md) | Live prospect staging (Acts 1–4) |
 | [`trips-showcase.md`](./trips-showcase.md) | Build plan for the example app |
