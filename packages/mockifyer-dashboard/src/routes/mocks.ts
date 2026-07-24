@@ -19,6 +19,9 @@ import {
   copyArrayItemInResponseData,
   type MockResponseFieldOverride,
   isScenarioLockedFs,
+  validatePoolRef,
+  setResponseDataValueAtPath,
+  type PoolRef,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import {
@@ -916,6 +919,105 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
     console.error('[MocksRoute] field-overrides PATCH - Error:', error);
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: 'Failed to update field overrides', details: message });
+  }
+});
+
+/**
+ * PATCH /api/mocks/.../pool-ref
+ * Embed a `$pool` ref node into the mock response body (entire body or at a JSON path).
+ */
+router.patch('/*/pool-ref', async (req: Request, res: Response) => {
+  try {
+    const relativeName = req.params[0];
+    const { mockDataPath, config } = getDashboardContext(req);
+    const body = req.body ?? {};
+
+    if (!Object.prototype.hasOwnProperty.call(body, 'pool')) {
+      return res.status(400).json({ error: 'Request body must contain pool' });
+    }
+
+    const pool = body.pool as PoolRef;
+    const validationError = validatePoolRef(pool);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    const targetPath =
+      typeof body.path === 'string' ? body.path.trim() : body.path === null ? '' : '';
+    const poolNode = { $pool: pool };
+
+    const applyPoolRefToMock = (existingData: MockData): void => {
+      if (!targetPath) {
+        existingData.response = {
+          ...existingData.response,
+          data: poolNode,
+        };
+      } else {
+        // Path embeds must fail when response.data is not a JSON object/array.
+        // applyResponseFieldOverridesToData soft no-ops in that case (replay-time);
+        // setResponseDataValueAtPath throws so we never report success without writing $pool.
+        existingData.response = {
+          ...existingData.response,
+          data: setResponseDataValueAtPath(existingData.response.data, targetPath, poolNode),
+        };
+      }
+      existingData.timestamp = new Date().toISOString();
+    };
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const scenario = await resolveRedisScenario(req, store);
+        const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
+        if (!existingData) return res.status(404).json({ error: 'Mock not found' });
+
+        applyPoolRefToMock(existingData);
+        await store.setByHash(hash, existingData, scenario);
+
+        return res.json({
+          success: true,
+          filename: relativeName,
+          scenario,
+          path: targetPath || null,
+          pool,
+          responseData: existingData.response.data,
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const filePath = resolveFilePath(scenarioPath, relativeName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Mock file not found' });
+    }
+
+    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    applyPoolRefToMock(existingData);
+    fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
+
+    return res.json({
+      success: true,
+      filename: relativeName,
+      scenario: resolveFilesystemScenario(req, mockDataPath),
+      path: targetPath || null,
+      pool,
+      responseData: existingData.response.data,
+    });
+  } catch (error: unknown) {
+    console.error('[MocksRoute] pool-ref PATCH - Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message === 'Response data must be a JSON object or array' ||
+      message === 'path is required'
+    ) {
+      return res.status(400).json({ error: message });
+    }
+    return res.status(500).json({ error: 'Failed to set pool ref', details: message });
   }
 });
 

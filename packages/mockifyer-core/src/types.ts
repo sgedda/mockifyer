@@ -423,4 +423,9 @@ export const ENV_VARS = {
   MOCK_USE_ENDPOINT_SLOTS: 'MOCKIFYER_USE_ENDPOINT_SLOTS',
   /** When not `false`, reject/skip slot serve on entityType mismatch. */
   MOCK_SLOT_ENTITY_TYPE_STRICT: 'MOCKIFYER_SLOT_ENTITY_TYPE_STRICT',
+  /**
+   * When `false`, skip serve-time `$pool` resolution (debug: leave raw `$pool` nodes in the body).
+   * Default on — resolve refs before field/date overrides.
+   */
+  MOCK_POOL_REFS: 'MOCKIFYER_POOL_REFS',
 } as const;

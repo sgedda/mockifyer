@@ -35,6 +35,12 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
+  createServeTimePoolResponseLoader,
+  collectPoolRefIds,
+  arePoolRefsEnabled,
+  containsPoolRefs,
+  isUsableNodeLikePoolFs,
+  type PoolResponseItem,
   shouldBypassMockifyerForUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
@@ -93,6 +99,11 @@ class MockifyerClass {
   private readonly SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   private testGenerator?: TestGenerator;
   private readonly activationMode: MockifyerActivationMode;
+  /**
+   * Promoted pool responses for serve-time `$pool` resolve when Node `fs` is
+   * unavailable (React Native / Metro stubs). Seeded via {@link warmPoolResponseCache}.
+   */
+  private readonly poolResponseCache = new Map<string, PoolResponseItem>();
 
   /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
   private logNetworkEvent(
@@ -128,6 +139,100 @@ class MockifyerClass {
     if (!requestId) return undefined;
     const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
     return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  }
+
+  /**
+   * Serve stored mock body with optional `$pool` resolution from the local fixture pool.
+   * Always passes `loadPoolResponse` — including React Native where Node `fs`/`path` are
+   * missing or Metro-stubbed — so `$pool` refs resolve via disk and/or {@link poolResponseCache}.
+   */
+  private prepareStoredResponseBody(mockData: MockData): unknown {
+    const joinPath =
+      path && typeof path.join === 'function' ? path.join.bind(path) : null;
+    return prepareMockResponseBody(mockData, getCurrentDate, {
+      loadPoolResponse: createServeTimePoolResponseLoader({
+        mockDataPath: this.config.mockDataPath,
+        nodeFs: isUsableNodeLikePoolFs(fs) ? fs : null,
+        joinPath,
+        cache: this.poolResponseCache,
+      }),
+    });
+  }
+
+  /**
+   * Ensure `$pool` fixtures are available in {@link poolResponseCache} when Node fs
+   * cannot load them (React Native). Tries database provider, then Metro.
+   */
+  private async warmPoolResponseCache(mockData: MockData): Promise<void> {
+    if (!arePoolRefsEnabled() || !containsPoolRefs(mockData.response?.data)) {
+      return;
+    }
+    if (isUsableNodeLikePoolFs(fs)) {
+      return;
+    }
+
+    const ids = collectPoolRefIds(mockData.response.data);
+    for (const id of ids) {
+      if (this.poolResponseCache.has(id)) {
+        continue;
+      }
+      const fromProvider = await this.loadPoolResponseFromProvider(id);
+      if (fromProvider) {
+        this.poolResponseCache.set(id, fromProvider);
+        continue;
+      }
+      const fromMetro = await this.loadPoolResponseFromMetro(id);
+      if (fromMetro) {
+        this.poolResponseCache.set(id, fromMetro);
+      }
+    }
+  }
+
+  private async loadPoolResponseFromProvider(
+    id: string
+  ): Promise<PoolResponseItem | undefined> {
+    const provider = this.databaseProvider as
+      | { loadPoolResponseItem?: (poolId: string) => Promise<PoolResponseItem | undefined> | PoolResponseItem | undefined }
+      | undefined;
+    if (!provider || typeof provider.loadPoolResponseItem !== 'function') {
+      return undefined;
+    }
+    try {
+      return (await provider.loadPoolResponseItem(id)) ?? undefined;
+    } catch (error) {
+      logger.warn(`[Mockifyer-Fetch] Failed to load pool response "${id}" from provider:`, error);
+      return undefined;
+    }
+  }
+
+  private async loadPoolResponseFromMetro(
+    id: string
+  ): Promise<PoolResponseItem | undefined> {
+    const metroPort = this.config.databaseProvider?.options?.metroPort ?? 8081;
+    const originalFetch =
+      (global as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch ||
+      (typeof fetch !== 'undefined' ? fetch : undefined);
+    if (!originalFetch) {
+      return undefined;
+    }
+    try {
+      const url = `http://localhost:${metroPort}/mockifyer-pool-response?id=${encodeURIComponent(id)}`;
+      const response = await originalFetch(url);
+      if (!response.ok) {
+        return undefined;
+      }
+      const payload = (await response.json()) as {
+        success?: boolean;
+        item?: PoolResponseItem;
+      };
+      if (payload.success && payload.item?.responseItemId && payload.item.response) {
+        return payload.item;
+      }
+      return undefined;
+    } catch (error) {
+      logger.warn(`[Mockifyer-Fetch] Failed to load pool response "${id}" from Metro:`, error);
+      return undefined;
+    }
   }
 
   constructor(config: MockifyerConfig) {
@@ -614,8 +719,10 @@ class MockifyerClass {
             'x-mockifyer-filepath': filePath
           };
 
+          await this.warmPoolResponseCache(mockData);
+
           const mockResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: responseHeaders,

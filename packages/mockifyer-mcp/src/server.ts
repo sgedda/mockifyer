@@ -529,12 +529,88 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_list_response_fixtures',
     {
       description:
-        'List full-response fixtures in the pool (inert catalog until a future activation path wires them into mocks).',
+        'List full-response fixtures in the pool. Use with mockifyer_preview_pool_ref / mockifyer_set_pool_ref to activate via $pool refs.',
       inputSchema: {},
     },
     async () => {
       try {
         return jsonResult(await client.listResponseFixtures());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_preview_pool_ref',
+    {
+      description:
+        'Preview resolving a promoted pool response with optional path + field/index select (document keeps envelope; value returns subtree).',
+      inputSchema: {
+        id: z.string().describe('Pool response fixture id'),
+        mode: z.enum(['document', 'value']).optional(),
+        path: z.string().optional().describe('Dot path into the pool response body'),
+        select: z
+          .object({
+            field: z.string(),
+            values: z.array(z.union([z.string(), z.number(), z.boolean()])),
+          })
+          .optional(),
+        indices: z.array(z.number().int().nonnegative()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.resolvePoolResponse(args.id, {
+            mode: args.mode,
+            path: args.path,
+            select: args.select,
+            indices: args.indices,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_pool_ref',
+    {
+      description:
+        'Embed a $pool reference into a scenario mock response (entire body or at a JSON path). Serve-time resolve loads the promoted fixture.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename relative to the scenario folder'),
+        scenario: z.string().optional(),
+        path: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Path within response.data to set; omit/null replaces entire response.data'),
+        pool: z.object({
+          id: z.string(),
+          mode: z.enum(['document', 'value']).optional(),
+          path: z.string().optional(),
+          select: z
+            .object({
+              field: z.string(),
+              values: z.array(z.union([z.string(), z.number(), z.boolean()])),
+            })
+            .optional(),
+          indices: z.array(z.number().int().nonnegative()).optional(),
+        }),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.setMockPoolRef(args.filename, {
+            pool: args.pool,
+            path: args.path ?? null,
+            scenario: args.scenario,
+          })
+        );
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }

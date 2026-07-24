@@ -1,6 +1,6 @@
 # Fixture pool (entities + response fixtures)
 
-> **Status (2026-07-22):** **Endpoint slots are deferred.** Ship the **global fixture pool** only (entities + full response fixtures): extract/promote, dashboard browse, MCP CRUD. Matching stays request-keyed recordings as today. A later optional phase may add either slots *or* `$entity` / `$response` refs inside mock bodies — TBD; slots are not required for the pool to be useful as a shared catalog.
+> **Status (2026-07-23):** **Endpoint slots remain deferred.** **`$pool` response refs are the v1 activation path** — scenario mocks can reference promoted `pool/responses/*` fixtures with path + field/index select (`document` keeps the envelope). See [`packages/mockifyer-core/docs/POOL_REFS.md`](../../packages/mockifyer-core/docs/POOL_REFS.md). Entities stay catalog/extract helpers; matching is still request-keyed scenario files plus `$pool` resolve at serve time.
 
 Technical specification for an **entity-first fixture pool** (reusable domain objects) and optional **response fixtures** (full HTTP payloads). Recording and scenario folders stay the primary serve path.
 
@@ -11,7 +11,7 @@ Technical specification for an **entity-first fixture pool** (reusable domain ob
 The earlier design added **per-scenario endpoint slots** (named rules: path pattern → compose entities). That layer is **out of scope for now** because:
 
 - Scenarios already express variants; slot naming often feels like duplicate ceremony.
-- Refs inside normal mock responses (`$entity`) may be a lighter activation path later.
+- **`$pool` refs** inside normal mock responses are the lighter activation path (shipped); `$entity` entity-id refs remain optional later.
 
 Code for slot matching/compose may remain in core as unused library helpers; **runtime, `/api/scenario-slots`, slot UI, and slot MCP tools are removed/unwired.**
 

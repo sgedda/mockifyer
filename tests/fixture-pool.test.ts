@@ -18,13 +18,28 @@ import {
   releasePoolIndexLock,
   getPoolIndexLockPath,
   PoolIndexLockError,
+  validatePoolRef,
+  resolvePoolRefsInData,
+  resolvePoolRefAgainstData,
+  PoolRefResolveError,
+  prepareMockResponseBody,
+  arePoolRefsEnabled,
+  createServeTimePoolResponseLoader,
+  collectPoolRefIds,
+  isUsableNodeLikePoolFs,
   type FixturePoolFsAdapter,
   type FixturePoolWriteFileOptions,
   type PoolEntity,
   type EndpointSlot,
   type ScenarioManifest,
   type StoredRequest,
+  type PoolResponseItem,
+  type MockData,
 } from '@sgedda/mockifyer-core';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { savePoolResponseItem } from '@sgedda/mockifyer-core';
 
 describe('fixture-pool path patterns', () => {
   it('matches single-segment wildcards', () => {
@@ -411,5 +426,289 @@ describe('fixture-pool index locking', () => {
     });
     expect(acquired).toBe(lockPath);
     releasePoolIndexLock(lockPath, fsAdapter);
+  });
+});
+
+describe('fixture-pool $pool refs', () => {
+  const poolBody = {
+    userId: 'alice',
+    meta: { total: 3 },
+    trips: [
+      { id: 'trip-rome', city: 'Rome', status: 'CONFIRMED' },
+      { id: 'trip-nyc', city: 'NYC', status: 'CONFIRMED' },
+      { id: 'trip-tokyo', city: 'Tokyo', status: 'COMPLETED' },
+    ],
+  };
+
+  const load = (id: string): PoolResponseItem | undefined => {
+    if (id !== 'trips-list-alice') return undefined;
+    return {
+      responseItemId: 'trips-list-alice',
+      response: { status: 200, data: poolBody, headers: {} },
+    };
+  };
+
+  it('validates refs and rejects select+indices together', () => {
+    expect(validatePoolRef({ id: 'trips-list-alice' })).toBeNull();
+    expect(
+      validatePoolRef({
+        id: 'trips-list-alice',
+        select: { field: 'id', values: ['a'] },
+        indices: [0],
+      })
+    ).toMatch(/mutually exclusive/);
+  });
+
+  it('document mode keeps siblings when filtering by field', () => {
+    const resolved = resolvePoolRefsInData(
+      {
+        $pool: {
+          id: 'trips-list-alice',
+          mode: 'document',
+          path: 'trips',
+          select: { field: 'id', values: ['trip-nyc', 'trip-rome'] },
+        },
+      },
+      load
+    );
+    expect(resolved).toEqual({
+      userId: 'alice',
+      meta: { total: 3 },
+      trips: [
+        { id: 'trip-nyc', city: 'NYC', status: 'CONFIRMED' },
+        { id: 'trip-rome', city: 'Rome', status: 'CONFIRMED' },
+      ],
+    });
+  });
+
+  it('value mode returns selected subtree and unwraps a single match', () => {
+    const resolved = resolvePoolRefsInData(
+      {
+        trip: {
+          $pool: {
+            id: 'trips-list-alice',
+            mode: 'value',
+            path: 'trips',
+            select: { field: 'id', values: ['trip-tokyo'] },
+          },
+        },
+      },
+      load
+    );
+    expect(resolved).toEqual({
+      trip: { id: 'trip-tokyo', city: 'Tokyo', status: 'COMPLETED' },
+    });
+  });
+
+  it('supports indices selection', () => {
+    const resolved = resolvePoolRefAgainstData(
+      { id: 'trips-list-alice', mode: 'value', path: 'trips', indices: [0, 2] },
+      poolBody
+    );
+    expect(resolved).toEqual([
+      { id: 'trip-rome', city: 'Rome', status: 'CONFIRMED' },
+      { id: 'trip-tokyo', city: 'Tokyo', status: 'COMPLETED' },
+    ]);
+  });
+
+  it('fails closed on missing field value and bad index', () => {
+    expect(() =>
+      resolvePoolRefAgainstData(
+        {
+          id: 'trips-list-alice',
+          mode: 'document',
+          path: 'trips',
+          select: { field: 'id', values: ['missing'] },
+        },
+        poolBody
+      )
+    ).toThrow(PoolRefResolveError);
+
+    expect(() =>
+      resolvePoolRefAgainstData(
+        { id: 'trips-list-alice', mode: 'value', path: 'trips', indices: [99] },
+        poolBody
+      )
+    ).toThrow(/out of range/);
+  });
+
+  it('fails when pool id is missing', () => {
+    expect(() =>
+      resolvePoolRefsInData({ $pool: { id: 'nope' } }, load)
+    ).toThrow(/not found/);
+  });
+
+  it('prepareMockResponseBody resolves $pool before field/date overrides', () => {
+    const mockData: MockData = {
+      request: { method: 'GET', url: 'https://example.com/trips', headers: {} },
+      response: {
+        status: 200,
+        headers: {},
+        data: {
+          $pool: {
+            id: 'trips-list-alice',
+            mode: 'document',
+            path: 'trips',
+            select: { field: 'id', values: ['trip-nyc'] },
+          },
+        },
+      },
+      timestamp: new Date().toISOString(),
+      responseFieldOverrides: [{ path: 'trips.0.status', value: 'CHECK_IN_OPEN' }],
+      responseDateOverrides: [
+        { path: 'trips.0.departureAt', offsetHours: 10, format: 'iso' },
+      ],
+    };
+
+    const body = prepareMockResponseBody(
+      mockData,
+      () => new Date('2026-07-23T12:00:00.000Z'),
+      { loadPoolResponse: load }
+    ) as {
+      userId: string;
+      trips: Array<{ id: string; status: string; departureAt: string }>;
+    };
+
+    expect(body.userId).toBe('alice');
+    expect(body.trips).toHaveLength(1);
+    expect(body.trips[0]!.id).toBe('trip-nyc');
+    expect(body.trips[0]!.status).toBe('CHECK_IN_OPEN');
+    expect(body.trips[0]!.departureAt).toBe('2026-07-23T22:00:00.000Z');
+  });
+
+  it('skips $pool resolve when MOCKIFYER_POOL_REFS=false', () => {
+    const prev = process.env.MOCKIFYER_POOL_REFS;
+    process.env.MOCKIFYER_POOL_REFS = 'false';
+    try {
+      expect(arePoolRefsEnabled()).toBe(false);
+      const raw = {
+        $pool: { id: 'trips-list-alice', mode: 'document' as const },
+      };
+      const body = prepareMockResponseBody(
+        {
+          request: { method: 'GET', url: 'https://example.com/x', headers: {} },
+          response: { status: 200, data: raw, headers: {} },
+          timestamp: new Date().toISOString(),
+        },
+        () => new Date(),
+        { loadPoolResponse: load }
+      );
+      expect(body).toEqual(raw);
+    } finally {
+      if (prev === undefined) delete process.env.MOCKIFYER_POOL_REFS;
+      else process.env.MOCKIFYER_POOL_REFS = prev;
+    }
+  });
+});
+
+describe('serve-time pool response loader (RN-safe)', () => {
+  it('rejects Metro empty-module stubs as unusable Node fs', () => {
+    expect(isUsableNodeLikePoolFs({})).toBe(false);
+    expect(isUsableNodeLikePoolFs(undefined)).toBe(false);
+    expect(isUsableNodeLikePoolFs(fs)).toBe(true);
+  });
+
+  it('always provides a loader; resolves via cache when Node fs is unavailable', () => {
+    const item: PoolResponseItem = {
+      responseItemId: 'trips-list-alice',
+      response: {
+        status: 200,
+        headers: {},
+        data: { trips: [{ id: 'trip-nyc' }] },
+      },
+    };
+    const cache = new Map<string, PoolResponseItem>([['trips-list-alice', item]]);
+    const loadFn = createServeTimePoolResponseLoader({
+      mockDataPath: '/nonexistent-mock-data',
+      nodeFs: null,
+      joinPath: null,
+      cache,
+    });
+
+    const body = prepareMockResponseBody(
+      {
+        request: { method: 'GET', url: 'https://example.com/trips', headers: {} },
+        response: {
+          status: 200,
+          headers: {},
+          data: { $pool: { id: 'trips-list-alice', mode: 'value', path: 'trips' } },
+        },
+        timestamp: new Date().toISOString(),
+      },
+      () => new Date(),
+      { loadPoolResponse: loadFn }
+    );
+
+    expect(body).toEqual([{ id: 'trip-nyc' }]);
+  });
+
+  it('throws missing-loader PoolRefResolveError only when loadPoolResponse is omitted', () => {
+    expect(() =>
+      prepareMockResponseBody(
+        {
+          request: { method: 'GET', url: 'https://example.com/x', headers: {} },
+          response: {
+            status: 200,
+            headers: {},
+            data: { $pool: { id: 'trips-list-alice', mode: 'document' } },
+          },
+          timestamp: new Date().toISOString(),
+        },
+        () => new Date()
+      )
+    ).toThrow(/no loadPoolResponse was provided/);
+  });
+
+  it('loads from disk when usable Node fs is provided', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-pool-loader-'));
+    try {
+      const item: PoolResponseItem = {
+        responseItemId: 'from-disk',
+        response: { status: 200, headers: {}, data: { ok: true } },
+      };
+      const adapter: FixturePoolFsAdapter = {
+        joinPath: (...parts) => path.join(...parts),
+        existsSync: (p) => fs.existsSync(p),
+        readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+        writeFileSync: (p, data, encodingOrOptions) =>
+          fs.writeFileSync(p, data, encodingOrOptions as fs.WriteFileOptions),
+        mkdirSync: (p, options) => {
+          fs.mkdirSync(p, options);
+        },
+      };
+      savePoolResponseItem(tmp, item, adapter);
+
+      const loadFn = createServeTimePoolResponseLoader({
+        mockDataPath: tmp,
+        nodeFs: fs,
+        joinPath: path.join.bind(path),
+      });
+
+      const body = prepareMockResponseBody(
+        {
+          request: { method: 'GET', url: 'https://example.com/x', headers: {} },
+          response: {
+            status: 200,
+            headers: {},
+            data: { $pool: { id: 'from-disk', mode: 'document' } },
+          },
+          timestamp: new Date().toISOString(),
+        },
+        () => new Date(),
+        { loadPoolResponse: loadFn }
+      );
+
+      expect(body).toEqual({ ok: true });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('collectPoolRefIds finds nested refs', () => {
+    const ids = collectPoolRefIds({
+      a: { $pool: { id: 'one' } },
+      b: [{ $pool: { id: 'two' } }, { keep: true }],
+    });
+    expect([...ids].sort()).toEqual(['one', 'two']);
   });
 });

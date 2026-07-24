@@ -28,9 +28,12 @@ import {
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
+  createServeTimePoolResponseLoader,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
 import {
   appendProxyNetworkEvent,
@@ -342,7 +345,13 @@ router.post('/', async (req: Request, res: Response) => {
           : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(sanitizedMock, getNow),
+        data: prepareMockResponseBody(sanitizedMock, getNow, {
+          loadPoolResponse: createServeTimePoolResponseLoader({
+            mockDataPath,
+            nodeFs: fs,
+            joinPath: path.join.bind(path),
+          }),
+        }),
       };
       if (debugProxy) {
         console.log(

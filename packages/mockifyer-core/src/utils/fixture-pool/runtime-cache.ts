@@ -130,3 +130,12 @@ export function tryResolveSlotMockFromFilesystem(
 }
 
 export { nodeFsAdapter as fixturePoolNodeFsAdapter };
+
+/**
+ * Node filesystem loader for serve-time `$pool` refs (promoted response fixtures).
+ */
+export function createFilesystemPoolResponseLoader(
+  mockDataPath: string
+): (id: string) => PoolResponseItem | undefined {
+  return (id: string) => loadPoolResponseItem(mockDataPath, id, nodeFsAdapter);
+}

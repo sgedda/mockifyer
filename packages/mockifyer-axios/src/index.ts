@@ -22,6 +22,7 @@ import {
   checkRequestLimit,
   prepareMockResponseBody,
   getCurrentDate,
+  createServeTimePoolResponseLoader,
   resolveRecordingExclusions,
   shouldExcludeRecording,
   resolveActivationMode,
@@ -96,6 +97,17 @@ class MockifyerClass {
   private usesDashboardProxy(): boolean {
     const baseUrl = this.config.proxy?.baseUrl;
     return typeof baseUrl === 'string' && baseUrl.trim().length > 0;
+  }
+
+  /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
+  private prepareStoredResponseBody(mockData: MockData): unknown {
+    return prepareMockResponseBody(mockData, getCurrentDate, {
+      loadPoolResponse: createServeTimePoolResponseLoader({
+        mockDataPath: this.config.mockDataPath,
+        nodeFs: fs,
+        joinPath: path.join.bind(path),
+      }),
+    });
   }
 
   private attachDashboardProxyAdapter(config: AxiosRequestConfig): AxiosRequestConfig {
@@ -797,7 +809,7 @@ class MockifyerClass {
         });
         
         const mockResponse: AxiosResponse = {
-          data: prepareMockResponseBody(mockData, getCurrentDate),
+          data: this.prepareStoredResponseBody(mockData),
           status: mockData.response.status,
           statusText: 'OK',
           headers: axiosHeaders,
@@ -1052,7 +1064,7 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,

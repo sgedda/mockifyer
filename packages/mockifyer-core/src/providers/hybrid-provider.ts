@@ -2,6 +2,7 @@ import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { ExpoFileSystemProvider } from './expo-filesystem-provider';
+import type { PoolResponseItem } from '../types/fixture-pool';
 
 /**
  * Hybrid Provider for React Native/Expo applications
@@ -245,6 +246,13 @@ export class HybridProvider implements DatabaseProvider {
    */
   getMockDataPath(): string {
     return (this.deviceProvider as any).getMockDataPath();
+  }
+
+  /**
+   * Load a promoted pool response from device storage for serve-time `$pool` refs.
+   */
+  async loadPoolResponseItem(id: string): Promise<PoolResponseItem | undefined> {
+    return this.deviceProvider.loadPoolResponseItem(id);
   }
 
   /**

@@ -8,7 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi } from '@sgedda/mockifyer-core';
+import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi, createServeTimePoolResponseLoader } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -22,6 +22,16 @@ class MockifyerClass {
   private httpClient: HTTPClient;
   private processingRequests: Set<string> = new Set();
   private savingResponses: Set<string> = new Set();
+
+  private prepareStoredResponseBody(mockData: MockData): unknown {
+    return prepareMockResponseBody(mockData, getCurrentDate, {
+      loadPoolResponse: createServeTimePoolResponseLoader({
+        mockDataPath: this.config.mockDataPath,
+        nodeFs: fs,
+        joinPath: path.join.bind(path),
+      }),
+    });
+  }
 
   constructor(config: MockifyerConfig) {
     // Validate database provider - only filesystem is currently supported
@@ -390,7 +400,7 @@ class MockifyerClass {
         if (this.config.httpClientType === 'fetch') {
           // Create HTTPResponse format for fetch client
           const mockResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: responseHeaders,
@@ -411,7 +421,7 @@ class MockifyerClass {
           });
           
           const mockResponse: AxiosResponse = {
-            data: prepareMockResponseBody(mockData, getCurrentDate),
+            data: this.prepareStoredResponseBody(mockData),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -585,7 +595,7 @@ class MockifyerClass {
           if (this.config.httpClientType === 'fetch') {
             // Create HTTPResponse format for fetch client
             const mockResponse = {
-              data: prepareMockResponseBody(mockData, getCurrentDate),
+              data: this.prepareStoredResponseBody(mockData),
               status: mockData.response.status,
               statusText: 'OK', // StoredResponse doesn't have statusText, use default
               headers: mockData.response.headers || {},
@@ -626,7 +636,7 @@ class MockifyerClass {
             });
 
             const mockResponse: AxiosResponse = {
-              data: prepareMockResponseBody(mockData, getCurrentDate),
+              data: this.prepareStoredResponseBody(mockData),
               status: mockData.response.status,
               statusText: 'OK',
               headers: axiosHeaders,
