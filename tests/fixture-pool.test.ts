@@ -13,14 +13,25 @@ import {
   ensurePoolLayout,
   loadPoolIndex,
   savePoolIndex,
+  savePoolEntity,
+  loadPoolEntity,
   withPoolIndexUpdate,
+  withPoolIndexLock,
+  deletePoolEntityWithIndex,
+  deletePoolResponseWithIndex,
+  updatePoolEntityWithIndex,
+  savePoolResponseItem,
+  loadPoolResponseItem,
   acquirePoolIndexLock,
   releasePoolIndexLock,
   getPoolIndexLockPath,
+  getEntityPath,
+  getResponseFixturePath,
   PoolIndexLockError,
   type FixturePoolFsAdapter,
   type FixturePoolWriteFileOptions,
   type PoolEntity,
+  type PoolResponseItem,
   type EndpointSlot,
   type ScenarioManifest,
   type StoredRequest,
@@ -411,5 +422,156 @@ describe('fixture-pool index locking', () => {
     });
     expect(acquired).toBe(lockPath);
     releasePoolIndexLock(lockPath, fsAdapter);
+  });
+
+  it('reclaims a corrupt lock file after the stale window', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const lockPath = getPoolIndexLockPath(root, fsAdapter);
+    fsAdapter.writeFileSync(lockPath, '{not-json', 'utf8');
+
+    const acquired = acquirePoolIndexLock(root, fsAdapter, {
+      timeoutMs: 250,
+      retryMs: 10,
+      staleMs: 40,
+    });
+    expect(acquired).toBe(lockPath);
+    releasePoolIndexLock(lockPath, fsAdapter);
+  });
+});
+
+function sampleEntity(id: string): PoolEntity {
+  return {
+    id,
+    label: id,
+    entityType: 'trip',
+    data: { id, origin: 'ARN' },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+function sampleResponse(id: string): PoolResponseItem {
+  return {
+    responseItemId: id,
+    label: id,
+    request: { method: 'GET', url: 'https://api.example.com/trips', headers: {} },
+    response: { status: 200, data: { ok: true }, headers: {} },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+describe('fixture-pool delete/update locking', () => {
+  it('demonstrates unlocked unlink-after-index-update can destroy a concurrent recreate', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const entity = sampleEntity('trip-1');
+    savePoolEntity(root, entity, fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.entities.push(catalogEntry('trip-1'));
+    });
+
+    // Old delete pattern: drop catalog entry, release lock, then unlink later.
+    withPoolIndexLock(root, fsAdapter, () => {
+      const index = loadPoolIndex(root, fsAdapter);
+      index.entities = index.entities.filter((e) => e.id !== 'trip-1');
+      index.updatedAt = '2026-01-01T00:00:01.000Z';
+      savePoolIndex(root, index, fsAdapter);
+    });
+
+    // Concurrent recreate wins a new catalog entry + file before the delayed unlink.
+    const recreated = sampleEntity('trip-1');
+    recreated.label = 'recreated';
+    savePoolEntity(root, recreated, fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.entities.push(catalogEntry('trip-1'));
+    });
+
+    const filePath = getEntityPath(root, 'trip-1', fsAdapter);
+    if (fsAdapter.existsSync(filePath)) fsAdapter.unlinkSync!(filePath);
+
+    expect(loadPoolIndex(root, fsAdapter).entities.map((e) => e.id)).toEqual(['trip-1']);
+    expect(loadPoolEntity(root, 'trip-1', fsAdapter)).toBeUndefined();
+  });
+
+  it('deletePoolEntityWithIndex keeps catalog and file aligned', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    savePoolEntity(root, sampleEntity('trip-1'), fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.entities.push(catalogEntry('trip-1'));
+    });
+
+    deletePoolEntityWithIndex(root, 'trip-1', fsAdapter, '2026-01-01T00:00:02.000Z');
+
+    expect(loadPoolIndex(root, fsAdapter).entities).toEqual([]);
+    expect(loadPoolEntity(root, 'trip-1', fsAdapter)).toBeUndefined();
+  });
+
+  it('deletePoolResponseWithIndex keeps catalog and file aligned', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const item = sampleResponse('resp-1');
+    savePoolResponseItem(root, item, fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.responses.push({
+        id: 'resp-1',
+        label: 'resp-1',
+        storageRef: 'pool/responses/resp-1.json',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
+    });
+
+    deletePoolResponseWithIndex(root, 'resp-1', fsAdapter, '2026-01-01T00:00:02.000Z');
+
+    expect(loadPoolIndex(root, fsAdapter).responses).toEqual([]);
+    expect(loadPoolResponseItem(root, 'resp-1', fsAdapter)).toBeUndefined();
+    expect(fsAdapter.existsSync(getResponseFixturePath(root, 'resp-1', fsAdapter))).toBe(false);
+  });
+
+  it('updatePoolEntityWithIndex refuses to resurrect a deleted catalog entry', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const entity = sampleEntity('trip-1');
+    savePoolEntity(root, entity, fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.entities.push(catalogEntry('trip-1'));
+    });
+
+    // Concurrent delete removed the catalog entry (and file).
+    deletePoolEntityWithIndex(root, 'trip-1', fsAdapter, '2026-01-01T00:00:02.000Z');
+
+    const updated = { ...entity, label: 'should-not-land', updatedAt: '2026-01-01T00:00:03.000Z' };
+    expect(updatePoolEntityWithIndex(root, updated, fsAdapter)).toBe(false);
+    expect(loadPoolIndex(root, fsAdapter).entities).toEqual([]);
+    expect(loadPoolEntity(root, 'trip-1', fsAdapter)).toBeUndefined();
+  });
+
+  it('updatePoolEntityWithIndex updates file and catalog under the lock', () => {
+    const fsAdapter = createMemoryPoolFs();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const entity = sampleEntity('trip-1');
+    savePoolEntity(root, entity, fsAdapter);
+    withPoolIndexUpdate(root, fsAdapter, (index) => {
+      index.entities.push(catalogEntry('trip-1'));
+    });
+
+    const updated = {
+      ...entity,
+      label: 'updated-label',
+      data: { id: 'trip-1', origin: 'LHR' },
+      updatedAt: '2026-01-01T00:00:04.000Z',
+    };
+    expect(updatePoolEntityWithIndex(root, updated, fsAdapter)).toBe(true);
+    expect(loadPoolEntity(root, 'trip-1', fsAdapter)?.label).toBe('updated-label');
+    expect(loadPoolIndex(root, fsAdapter).entities[0]?.label).toBe('updated-label');
   });
 });

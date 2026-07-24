@@ -117,15 +117,23 @@ interface PoolIndexLockPayload {
   createdAt: string;
 }
 
+/**
+ * Attempt to remove a stale pool-index lock.
+ * @param corruptFirstSeenMs Mutable holder: first time we observed an unreadable lock
+ *   (used so corrupt locks are reclaimed after `staleMs`, matching readable stale locks).
+ */
 function tryStealStaleLock(
   lockPath: string,
   fs: FixturePoolFsAdapter,
   nowMs: number,
-  staleMs: number
+  staleMs: number,
+  corruptFirstSeenMs: { value: number | null }
 ): boolean {
   if (!fs.unlinkSync || !fs.existsSync(lockPath)) return false;
   try {
     const raw = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as Partial<PoolIndexLockPayload>;
+    // Readable payload — reset corrupt tracking.
+    corruptFirstSeenMs.value = null;
     const createdAtMs = raw.createdAt ? Date.parse(raw.createdAt) : NaN;
     if (!Number.isFinite(createdAtMs) || nowMs - createdAtMs < staleMs) {
       return false;
@@ -133,8 +141,17 @@ function tryStealStaleLock(
     fs.unlinkSync(lockPath);
     return true;
   } catch {
-    // Corrupt / unreadable lock — leave it; timeout will surface the problem.
-    return false;
+    // Corrupt / unreadable lock: reclaim after the same stale window so a crashed
+    // writer cannot permanently block all pool mutations.
+    if (corruptFirstSeenMs.value === null) {
+      corruptFirstSeenMs.value = nowMs;
+    }
+    if (nowMs - corruptFirstSeenMs.value < staleMs) {
+      return false;
+    }
+    fs.unlinkSync(lockPath);
+    corruptFirstSeenMs.value = null;
+    return true;
   }
 }
 
@@ -160,7 +177,8 @@ export function acquirePoolIndexLock(
   const retryMs = options?.retryMs ?? POOL_INDEX_LOCK_RETRY_MS;
   const staleMs = options?.staleMs ?? POOL_INDEX_LOCK_STALE_MS;
   const deadline = Date.now() + timeoutMs;
-  let attemptedSteal = false;
+  const corruptFirstSeenMs: { value: number | null } = { value: null };
+  let lastStealAttemptMs = 0;
 
   while (Date.now() <= deadline) {
     const payload: PoolIndexLockPayload = {
@@ -181,9 +199,11 @@ export function acquirePoolIndexLock(
           }`
         );
       }
-      if (!attemptedSteal) {
-        attemptedSteal = true;
-        if (tryStealStaleLock(lockPath, fs, Date.now(), staleMs)) {
+      const nowMs = Date.now();
+      // Re-check staleness periodically (including corrupt locks aging into staleMs).
+      if (nowMs - lastStealAttemptMs >= retryMs) {
+        lastStealAttemptMs = nowMs;
+        if (tryStealStaleLock(lockPath, fs, nowMs, staleMs, corruptFirstSeenMs)) {
           continue;
         }
       }
@@ -297,6 +317,65 @@ export function savePoolEntity(
   fs.writeFileSync(getEntityPath(mockDataPath, entity.id, fs), JSON.stringify(entity, null, 2), 'utf8');
 }
 
+/**
+ * Remove an entity from the catalog and delete its file under one exclusive lock.
+ * Keeping unlink inside the lock prevents a concurrent recreate of the same id from
+ * being deleted by a delete that already released the index lock.
+ */
+export function deletePoolEntityWithIndex(
+  mockDataPath: string,
+  id: string,
+  fs: FixturePoolFsAdapter,
+  updatedAt: string
+): void {
+  withPoolIndexLock(mockDataPath, fs, () => {
+    const index = loadPoolIndex(mockDataPath, fs);
+    index.entities = index.entities.filter((e) => e.id !== id);
+    index.updatedAt = updatedAt;
+    savePoolIndex(mockDataPath, index, fs);
+    const filePath = getEntityPath(mockDataPath, id, fs);
+    if (fs.existsSync(filePath)) {
+      if (!fs.unlinkSync) {
+        throw new PoolIndexLockError(
+          'FixturePoolFsAdapter.unlinkSync is required to delete pool entity files'
+        );
+      }
+      fs.unlinkSync(filePath);
+    }
+  });
+}
+
+/**
+ * Persist an updated entity and catalog entry under one exclusive lock.
+ * Returns false when the entity was deleted concurrently (no index entry / no file).
+ * Does not resurrect catalog entries for ids that vanished mid-flight.
+ */
+export function updatePoolEntityWithIndex(
+  mockDataPath: string,
+  entity: PoolEntity,
+  fs: FixturePoolFsAdapter
+): boolean {
+  return withPoolIndexLock(mockDataPath, fs, () => {
+    const index = loadPoolIndex(mockDataPath, fs);
+    const entry = index.entities.find((e) => e.id === entity.id);
+    if (!entry) {
+      return false;
+    }
+    const existingPath = getEntityPath(mockDataPath, entity.id, fs);
+    if (!fs.existsSync(existingPath)) {
+      return false;
+    }
+    savePoolEntity(mockDataPath, entity, fs);
+    entry.label = entity.label;
+    entry.entityType = entity.entityType;
+    entry.tags = entity.tags;
+    entry.updatedAt = entity.updatedAt ?? entry.updatedAt;
+    index.updatedAt = entity.updatedAt ?? index.updatedAt;
+    savePoolIndex(mockDataPath, index, fs);
+    return true;
+  });
+}
+
 export function loadPoolResponseItem(
   mockDataPath: string,
   id: string,
@@ -323,6 +402,33 @@ export function savePoolResponseItem(
     JSON.stringify(item, null, 2),
     'utf8'
   );
+}
+
+/**
+ * Remove a response fixture from the catalog and delete its file under one exclusive lock.
+ * See {@link deletePoolEntityWithIndex} for the concurrent recreate race this prevents.
+ */
+export function deletePoolResponseWithIndex(
+  mockDataPath: string,
+  id: string,
+  fs: FixturePoolFsAdapter,
+  updatedAt: string
+): void {
+  withPoolIndexLock(mockDataPath, fs, () => {
+    const index = loadPoolIndex(mockDataPath, fs);
+    index.responses = index.responses.filter((r) => r.id !== id);
+    index.updatedAt = updatedAt;
+    savePoolIndex(mockDataPath, index, fs);
+    const filePath = getResponseFixturePath(mockDataPath, id, fs);
+    if (fs.existsSync(filePath)) {
+      if (!fs.unlinkSync) {
+        throw new PoolIndexLockError(
+          'FixturePoolFsAdapter.unlinkSync is required to delete pool response files'
+        );
+      }
+      fs.unlinkSync(filePath);
+    }
+  });
 }
 
 export function loadScenarioManifest(
