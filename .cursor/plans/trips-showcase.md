@@ -2,6 +2,18 @@
 
 Plan of record for the full-vision example app. Builds on serve-time `$pool` refs ([PR #281](https://github.com/sgedda/mockifyer/pull/281), [`POOL_REFS.md`](../../packages/mockifyer-core/docs/POOL_REFS.md)).
 
+## Document set (read together)
+
+| Doc | Role |
+|---|---|
+| [`trips-showcase.md`](./trips-showcase.md) | **Build plan** — app, services, `$pool`, lanes, MCP, tests, seed/restore |
+| [`trips-showcase-adoption-presentation.md`](./trips-showcase-adoption-presentation.md) | **Adoption slides** — start from an existing app; setup steps + capabilities (scenarios, overrides, traces, lanes, pool) |
+| [`trips-showcase-demo.md`](./trips-showcase-demo.md) | **Live demo staging** — Acts 1–4 (when present on branch / PR) |
+| [`trips-showcase-presentation.md`](./trips-showcase-presentation.md) | **Technical slides** — `$pool` graphs, curls, architecture (when present on branch / PR) |
+| [`mockifyer-why-awesome.md`](./mockifyer-why-awesome.md) | Positioning one-liners |
+
+Prefer the **adoption** deck for “how do I use Mockifyer in my project?” Prefer the **technical** deck for pool-resolve / curl depth.
+
 ## Prerequisites (product)
 
 | Dependency | Status |
