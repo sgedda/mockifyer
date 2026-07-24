@@ -36,6 +36,15 @@ describe('network-log', () => {
     expect(redacted).not.toContain('secret');
   });
 
+  it('sanitizeUrlString removes URL-embedded credentials', () => {
+    const redacted = sanitizeUrlString(
+      'https://api-user:api-password@api.example.com/users?page=1'
+    );
+    expect(redacted).toBe('https://api.example.com/users?page=1');
+    expect(redacted).not.toContain('api-user');
+    expect(redacted).not.toContain('api-password');
+  });
+
   it('sanitizeUrlString redacts query params in relative URLs', () => {
     const redacted = sanitizeUrlString('/users?token=secret&page=1#details');
     expect(decodeURIComponent(redacted)).toContain('token=[REDACTED]');

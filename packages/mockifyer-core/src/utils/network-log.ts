@@ -111,12 +111,14 @@ export function sanitizeQueryString(query: string | undefined): string | undefin
   }
 }
 
-/** Mask common secret query params in the full URL stored on network events. */
+/** Remove URL credentials and mask common secret query params before storing network events. */
 export function sanitizeUrlString(url: string): string {
   if (!url.trim()) return url;
 
   try {
     const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
     const query = sanitizeQueryString(parsed.search || undefined);
     if (query !== undefined) {
       parsed.search = query;
