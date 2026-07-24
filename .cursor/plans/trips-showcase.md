@@ -2,6 +2,18 @@
 
 Plan of record for the full-vision example app. Builds on serve-time `$pool` refs ([PR #281](https://github.com/sgedda/mockifyer/pull/281), [`POOL_REFS.md`](../../packages/mockifyer-core/docs/POOL_REFS.md)).
 
+This plan owns *what to build*. Architecture stays the same across the set; staging and slides layer on top.
+
+## Document set (read together)
+
+| Doc | Role |
+|---|---|
+| [`trips-showcase.md`](./trips-showcase.md) | **Build plan** — app, services, `$pool`, lanes, MCP, tests, seed/restore |
+| [`trips-showcase-demo.md`](./trips-showcase-demo.md) | **Live demo staging** — Acts 1–4, wow SLAs, audience cuts |
+| [`trips-showcase-presentation.md`](./trips-showcase-presentation.md) | **Technical slides** — graphs, sample payloads, curl/MCP, map to your stack |
+
+Ships with the example as `docs/` + README pitch when scaffolding `example-projects/trips-showcase/`.
+
 ## Prerequisites (product)
 
 | Dependency | Status |
@@ -18,12 +30,13 @@ Do **not** re-implement pool activation or scenario MCP tools in the example. Co
 
 ## Locked decisions
 
-- **App**: React web (Vite + TypeScript), not Expo/RN.
+- **App**: React web (Vite + TypeScript), not Expo/RN. **Positioning:** web-first for a clear demo; same intercept + scenarios + lanes pattern as React Native (call out in README / [`trips-showcase-demo.md`](./trips-showcase-demo.md) closing).
 - **E2E**: Playwright (align with [mockifyer-web](../../mockifyer-web/); pin latest `@playwright/test` via Context7 at implement time).
 - **Scaffold**: `npm create vite@latest` React-TS template (Vite 8 / Node 20.19+).
 - **Location**: [`example-projects/trips-showcase/`](../../example-projects/trips-showcase/).
 - **Store**: local Redis + dashboard `--provider redis` + `/api/proxy`.
 - **Pool reuse (headline)**: promote full trips-list (and detail) responses once → scenarios hold **`$pool` refs** (`mode: "document"`, `path: "trips"`, `select` by trip `id` or `indices`) so envelopes stay intact and trip JSON is not copied per scenario. Scenario-local `responseFieldOverrides` / `responseDateOverrides` for check-in timing and status. Optional entity extract for MCP browse only.
+- **Demo polish (for Acts 1–4):** Demo panel must support scenario switch, Mockifyer “now” / date nudge, lane/`clientId` display, and one-click `booking-error` without leaving the app. Pre-demo restore leaves NYC **outside** the check-in window until Act 1. See [`trips-showcase-demo.md`](./trips-showcase-demo.md).
 
 ## What this showcase proves (pitch alignment)
 
@@ -35,6 +48,19 @@ Do **not** re-implement pool activation or scenario MCP tools in the example. Co
 | **Shared pool data without duplication** | Promote → `$pool` document + field select → overlays |
 | Scenario / client-id for automated tests | Redis lanes + Playwright `MOCKIFYER_CLIENT_ID` |
 | In-app demo control | UI → dashboard scenario/lane APIs |
+
+## Presentation (staging, not a different app)
+
+Prospect walkthroughs follow [`trips-showcase-demo.md`](./trips-showcase-demo.md). Same example; different **order of revelation**:
+
+| Path | Acts | Audience |
+|---|---|---|
+| **A** (~90s) | Time & scenarios | First impression / sales |
+| **B** (full) | + parallel lanes → MCP `$pool` compose → optional trace/chaos | QA, platform, architects |
+
+**Success bars:** clone → Act 1 wow in &lt;2 min (`restore-demo.sh`); Act 1 without docs; Acts 2–3 with `PROMPTS.md` / DEMO.md only. **DRY line:** 1 promoted list → 4+ scenarios → 0 duplicated trip blobs.
+
+Multi-service architecture and MCP tool detail support **Acts 3–4**; do not open the live demo with the five-API diagram.
 
 ## Architecture
 
@@ -125,6 +151,9 @@ example-projects/trips-showcase/
   e2e/
   tests/
   scripts/restore-demo.sh
+  README.md                 # prospect pitch: Path A/B, DRY number, RN callout
+  docs/DEMO.md              # from trips-showcase-demo.md
+  docs/PRESENTATION.md      # from trips-showcase-presentation.md
   docs/TUTORIAL.md
   docs/PROMPTS.md
   docker-compose.yml
@@ -135,8 +164,8 @@ example-projects/trips-showcase/
 1. Login (Alice/Bob).
 2. My Trips list + detail.
 3. Check-in CTA from date/status rules.
-4. Demo panel (`VITE_DEMO_CONTROLS=true`): scenarios, lane mapping, show `MOCKIFYER_CLIENT_ID`.
-5. Optional dashboard Network link.
+4. Demo panel (`VITE_DEMO_CONTROLS=true`): scenarios (incl. `empty-trips`, `booking-error`), lane mapping, show `MOCKIFYER_CLIENT_ID`, **time/now nudge** for Act 1 check-in theater.
+5. Optional dashboard Network link (Act 4).
 
 Frontend → BFF only; `initMockifyerForDashboardProxy` with stable `clientId` (e.g. `trips-web-demo`).
 
@@ -192,9 +221,15 @@ Network + Bodies on Redis; isolated `tests/trace-home.integration.ts` / script: 
 
 ## Tutorial + restore
 
-**TUTORIAL.md:** start stack → login → Network trace → promote → preview/set `$pool` → overrides → lane switch → Playwright → `restore-demo.sh`.
+**README.md (prospect):** one-liner, Path A/B, DRY number, vs MSW/WireMock one-liner, RN callout, link to `docs/DEMO.md`.
 
-**PROMPTS.md** (must work with this seed):
+**DEMO.md:** staged Acts 1–4 from [`trips-showcase-demo.md`](./trips-showcase-demo.md); pre-demo clock/lane defaults; audience cheat sheet.
+
+**PRESENTATION.md:** slide-style technical deck from [`trips-showcase-presentation.md`](./trips-showcase-presentation.md) — architecture graphs, sample payloads, curl/MCP, “map to your stack.”
+
+**TUTORIAL.md:** builder path — start stack → login → (optional early Act 1 wow) → Network trace → promote → preview/set `$pool` → overrides → lane switch → Playwright → `restore-demo.sh`. Prefer revealing multi-hop after the first wow.
+
+**PROMPTS.md** (must work with this seed; aligns with demo Act 3 + optional Act 4):
 
 - Promote default trips list to `trips-list-alice`
 - Create scenario `check-in-open` derived from `default`
@@ -214,8 +249,9 @@ Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenar
 3. Redis proxy + clientIds + dates + demo panel.
 4. Trace suite.
 5. Jest + Playwright lane matrix (lanes set via MCP tools from PR #284).
-6. Tutorial / PROMPTS / restore; dry-run full MCP path (create scenario → `$pool` → lane → overrides).
-7. README pointer under `example-projects/`.
+6. Tutorial / PROMPTS / DEMO / restore; dry-run Path A (Act 1) then full MCP path (create scenario → `$pool` → lane → overrides).
+7. README pitch under `example-projects/trips-showcase/` (Path A/B, DRY number, RN callout) + pointer from `example-projects/`.
+8. Dry-run [`trips-showcase-demo.md`](./trips-showcase-demo.md) Acts 1–3 end-to-end; optional Act 4.
 
 ## Out of scope
 
@@ -225,6 +261,8 @@ Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenar
 
 ## Key code to leverage
 
+- Prospect staging: [`trips-showcase-demo.md`](./trips-showcase-demo.md)
+- Technical slides: [`trips-showcase-presentation.md`](./trips-showcase-presentation.md)
 - [`example-projects/multi-service-example`](../../example-projects/multi-service-example/)
 - [`POOL_REFS.md`](../../packages/mockifyer-core/docs/POOL_REFS.md) + [PR #281](https://github.com/sgedda/mockifyer/pull/281)
 - Scenario/lane MCP ([PR #284](https://github.com/sgedda/mockifyer/pull/284)) + fixture pool / MCP packages
@@ -239,3 +277,5 @@ Seed: `seeds/demo-bundle.json` + committed `mock-data/pool/responses/` (+ scenar
 - [ ] Add isolated trace integration script/test asserting multi-hop field provenance
 - [ ] Add Jest scenario unit tests + Playwright projects keyed by client-id lanes
 - [ ] TUTORIAL.md + PROMPTS.md centered on promote → create scenario → `$pool` → lane → overrides; restore-demo.sh + seed bundle; dry-run
+- [ ] Ship `docs/DEMO.md` from [`trips-showcase-demo.md`](./trips-showcase-demo.md); README pitch (Path A/B, DRY number, RN callout); Demo panel time + chaos for Acts 1/4; dry-run Acts 1–3
+- [ ] Ship `docs/PRESENTATION.md` from [`trips-showcase-presentation.md`](./trips-showcase-presentation.md) (graphs, sample JSON, curls, map-to-your-stack)
