@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import { CheckCircle2, Code, Zap, BookOpen, Settings, Play, Shield, Terminal, Monitor, TestTube, Clock } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
 import PackagesOverview from '@/components/PackagesOverview'
-import { MCP_TOOLS } from '@/lib/product-docs'
+import { MCP_TOOLS, MCP_USEFULNESS_POINTS, MCP_WORKFLOW_STEPS } from '@/lib/product-docs'
 
 export default function GettingStarted() {
   return (
@@ -292,6 +292,24 @@ await axios.get('/orders', {
             outbound traffic per <code className="bg-muted px-1 rounded">MOCKIFYER_CLIENT_ID</code> lane. Install{' '}
             <code className="bg-muted px-1 rounded">@sgedda/mockifyer-mcp</code> and point Cursor at the running dashboard.
           </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h4 className="font-semibold mb-2">How MCP works</h4>
+              <ol className="text-sm text-muted-foreground space-y-1 list-decimal pl-5">
+                {MCP_WORKFLOW_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-2">Why it helps</h4>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                {MCP_USEFULNESS_POINTS.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
           <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
             {MCP_TOOLS.map((tool) => (
               <li key={tool}>{tool}</li>

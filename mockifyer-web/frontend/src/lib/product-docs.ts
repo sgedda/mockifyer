@@ -247,3 +247,16 @@ export const MCP_TOOLS = [
   'mockifyer_set_field_overrides / mockifyer_copy_array_item',
   'mockifyer_list_scenarios / mockifyer_get_endpoint_stats',
 ] as const
+
+export const MCP_WORKFLOW_STEPS = [
+  'Run the Mockifyer dashboard against your local mock-data directory.',
+  'Start @sgedda/mockifyer-mcp in your IDE with MOCKIFYER_DASHBOARD_URL pointing at that dashboard.',
+  'Ask your assistant to search, inspect, summarize, or safely edit mocks through the registered MCP tools.',
+] as const
+
+export const MCP_USEFULNESS_POINTS = [
+  'Keeps large response bodies out of chat by returning focused fields, schema summaries, and state hints.',
+  'Lets assistants find the right recording and scenario without guessing filenames or endpoint keys.',
+  'Applies small, reviewable changes such as field overrides or cloned array items instead of rewriting entire JSON files.',
+  'Helps debug test data drift by comparing endpoint stats, scenarios, and related mocks from the dashboard API.',
+] as const
