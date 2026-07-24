@@ -8,7 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi, loadPoolResponseItem } from '@sgedda/mockifyer-core';
+import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi, createServeTimePoolResponseLoader } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -25,16 +25,11 @@ class MockifyerClass {
 
   private prepareStoredResponseBody(mockData: MockData): unknown {
     return prepareMockResponseBody(mockData, getCurrentDate, {
-      loadPoolResponse: (id) =>
-        loadPoolResponseItem(this.config.mockDataPath, id, {
-          joinPath: (...parts) => path.join(...parts),
-          existsSync: (p) => fs.existsSync(p),
-          readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
-          writeFileSync: () => {
-            throw new Error('pool loader is read-only');
-          },
-          mkdirSync: () => undefined,
-        }),
+      loadPoolResponse: createServeTimePoolResponseLoader({
+        mockDataPath: this.config.mockDataPath,
+        nodeFs: fs,
+        joinPath: path.join.bind(path),
+      }),
     });
   }
 

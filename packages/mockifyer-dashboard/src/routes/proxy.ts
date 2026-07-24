@@ -28,7 +28,7 @@ import {
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
-  loadPoolResponseItem,
+  createServeTimePoolResponseLoader,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -346,16 +346,11 @@ router.post('/', async (req: Request, res: Response) => {
       const responseWithOverrides = {
         ...mock.response,
         data: prepareMockResponseBody(sanitizedMock, getNow, {
-          loadPoolResponse: (id) =>
-            loadPoolResponseItem(mockDataPath, id, {
-              joinPath: (...parts) => path.join(...parts),
-              existsSync: (p) => fs.existsSync(p),
-              readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
-              writeFileSync: () => {
-                throw new Error('pool loader is read-only');
-              },
-              mkdirSync: () => undefined,
-            }),
+          loadPoolResponse: createServeTimePoolResponseLoader({
+            mockDataPath,
+            nodeFs: fs,
+            joinPath: path.join.bind(path),
+          }),
         }),
       };
       if (debugProxy) {

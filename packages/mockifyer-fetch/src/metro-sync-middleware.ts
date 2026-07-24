@@ -5,7 +5,8 @@
  * 1. POST /mockifyer-save - Direct save endpoint (used by Hybrid Provider for instant sync)
  * 2. GET /mockifyer-sync-to-device-manifest + /mockifyer-sync-to-device-file - Project → app (HybridProvider; avoids huge single JSON)
  * 3. GET /mockifyer-sync-to-device - Legacy: all files in one response (may fail on large scenarios)
- * 4. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
+ * 4. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
+ * 5. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -18,6 +19,11 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { MockData, TestGenerator, TestGenerationOptions } from '@sgedda/mockifyer-core';
 import { logger } from '@sgedda/mockifyer-core';
+import {
+  POOL_ID_PATTERN,
+  loadPoolResponseItem,
+  type PoolResponseItem,
+} from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
   /** Project root directory (default: process.cwd()) */
@@ -645,6 +651,37 @@ function buildSyncToDevicePayload(mockDataPath: string): {
 }
 
 /**
+ * One pool response fixture for GET /mockifyer-pool-response?id=
+ * Used by React Native serve-time `$pool` resolution when Node fs is unavailable.
+ */
+function buildPoolResponsePayload(
+  mockDataPath: string,
+  rawId: string
+): { success: boolean; item?: PoolResponseItem; error?: string } {
+  const id = String(rawId || '').trim();
+  if (!id || !POOL_ID_PATTERN.test(id)) {
+    return { success: false, error: 'Invalid pool response id' };
+  }
+  try {
+    const item = loadPoolResponseItem(mockDataPath, id, {
+      joinPath: (...parts) => path.join(...parts),
+      existsSync: (p) => fs.existsSync(p),
+      readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+      writeFileSync: () => {
+        throw new Error('pool loader is read-only');
+      },
+      mkdirSync: () => undefined,
+    });
+    if (!item) {
+      return { success: false, error: 'Not found' };
+    }
+    return { success: true, item };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
  * Normalize URL pathname from Node/Metro `req.url` so `/mockifyer-sync-to-device/` matches `/mockifyer-sync-to-device`.
  * Without this, trailing slashes fall through to Expo Web's SPA and Expo Router treats them as AppDun routes.
  */
@@ -734,6 +771,26 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const payload = buildSyncToDeviceManifest(mockDataPath);
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = payload.success ? 200 : 500;
+      res.end(JSON.stringify(payload));
+      return;
+    }
+
+    // Promoted pool response for RN `$pool` serve-time resolve
+    if (url === '/mockifyer-pool-response' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const query = qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '';
+      const params = new URLSearchParams(query);
+      const idParam = params.get('id') || '';
+      const payload = buildPoolResponsePayload(mockDataPath, idParam);
+      res.setHeader('Content-Type', 'application/json');
+      if (payload.success) {
+        res.statusCode = 200;
+      } else if (payload.error === 'Not found') {
+        res.statusCode = 404;
+      } else {
+        res.statusCode = 400;
+      }
       res.end(JSON.stringify(payload));
       return;
     }

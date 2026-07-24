@@ -8,6 +8,13 @@ import { logger } from '../utils/logger';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { getScenarioLaunchOverride } from '../utils/scenario';
+import {
+  POOL_DIR_NAME,
+  POOL_ID_PATTERN,
+  POOL_RESPONSES_DIR,
+  type PoolResponseItem,
+} from '../types/fixture-pool';
+import { validatePoolResponseItem } from '../utils/fixture-pool/validate';
 
 const DEFAULT_SCENARIO = 'default';
 
@@ -901,6 +908,36 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    */
   getMockDataPath(): string {
     return this.mockDataPath;
+  }
+
+  /**
+   * Load a promoted pool response fixture from device storage (`pool/responses/{id}.json`).
+   * Used for serve-time `$pool` resolution when Node `fs` is unavailable.
+   */
+  async loadPoolResponseItem(id: string): Promise<PoolResponseItem | undefined> {
+    if (!POOL_ID_PATTERN.test(id)) {
+      return undefined;
+    }
+    const filePath = this.joinFsUri(this.mockDataPath, POOL_DIR_NAME, POOL_RESPONSES_DIR, `${id}.json`);
+    try {
+      const info = await this.fsGetInfo(filePath);
+      if (!info.exists) {
+        return undefined;
+      }
+      const raw = await this.fsReadText(filePath);
+      const parsed = JSON.parse(raw) as unknown;
+      const validationError = validatePoolResponseItem(parsed);
+      if (validationError) {
+        logger.warn(
+          `[ExpoFileSystemProvider] Invalid pool response "${id}": ${validationError}`
+        );
+        return undefined;
+      }
+      return parsed as PoolResponseItem;
+    } catch (error) {
+      logger.warn(`[ExpoFileSystemProvider] Failed to load pool response "${id}":`, error);
+      return undefined;
+    }
   }
 
   /**

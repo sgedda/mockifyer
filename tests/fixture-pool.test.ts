@@ -24,6 +24,9 @@ import {
   PoolRefResolveError,
   prepareMockResponseBody,
   arePoolRefsEnabled,
+  createServeTimePoolResponseLoader,
+  collectPoolRefIds,
+  isUsableNodeLikePoolFs,
   type FixturePoolFsAdapter,
   type FixturePoolWriteFileOptions,
   type PoolEntity,
@@ -33,6 +36,10 @@ import {
   type PoolResponseItem,
   type MockData,
 } from '@sgedda/mockifyer-core';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { savePoolResponseItem } from '@sgedda/mockifyer-core';
 
 describe('fixture-pool path patterns', () => {
   it('matches single-segment wildcards', () => {
@@ -591,5 +598,117 @@ describe('fixture-pool $pool refs', () => {
       if (prev === undefined) delete process.env.MOCKIFYER_POOL_REFS;
       else process.env.MOCKIFYER_POOL_REFS = prev;
     }
+  });
+});
+
+describe('serve-time pool response loader (RN-safe)', () => {
+  it('rejects Metro empty-module stubs as unusable Node fs', () => {
+    expect(isUsableNodeLikePoolFs({})).toBe(false);
+    expect(isUsableNodeLikePoolFs(undefined)).toBe(false);
+    expect(isUsableNodeLikePoolFs(fs)).toBe(true);
+  });
+
+  it('always provides a loader; resolves via cache when Node fs is unavailable', () => {
+    const item: PoolResponseItem = {
+      responseItemId: 'trips-list-alice',
+      response: {
+        status: 200,
+        headers: {},
+        data: { trips: [{ id: 'trip-nyc' }] },
+      },
+    };
+    const cache = new Map<string, PoolResponseItem>([['trips-list-alice', item]]);
+    const loadFn = createServeTimePoolResponseLoader({
+      mockDataPath: '/nonexistent-mock-data',
+      nodeFs: null,
+      joinPath: null,
+      cache,
+    });
+
+    const body = prepareMockResponseBody(
+      {
+        request: { method: 'GET', url: 'https://example.com/trips', headers: {} },
+        response: {
+          status: 200,
+          headers: {},
+          data: { $pool: { id: 'trips-list-alice', mode: 'value', path: 'trips' } },
+        },
+        timestamp: new Date().toISOString(),
+      },
+      () => new Date(),
+      { loadPoolResponse: loadFn }
+    );
+
+    expect(body).toEqual([{ id: 'trip-nyc' }]);
+  });
+
+  it('throws missing-loader PoolRefResolveError only when loadPoolResponse is omitted', () => {
+    expect(() =>
+      prepareMockResponseBody(
+        {
+          request: { method: 'GET', url: 'https://example.com/x', headers: {} },
+          response: {
+            status: 200,
+            headers: {},
+            data: { $pool: { id: 'trips-list-alice', mode: 'document' } },
+          },
+          timestamp: new Date().toISOString(),
+        },
+        () => new Date()
+      )
+    ).toThrow(/no loadPoolResponse was provided/);
+  });
+
+  it('loads from disk when usable Node fs is provided', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-pool-loader-'));
+    try {
+      const item: PoolResponseItem = {
+        responseItemId: 'from-disk',
+        response: { status: 200, headers: {}, data: { ok: true } },
+      };
+      const adapter: FixturePoolFsAdapter = {
+        joinPath: (...parts) => path.join(...parts),
+        existsSync: (p) => fs.existsSync(p),
+        readFileSync: (p, encoding) => fs.readFileSync(p, encoding),
+        writeFileSync: (p, data, encodingOrOptions) =>
+          fs.writeFileSync(p, data, encodingOrOptions as fs.WriteFileOptions),
+        mkdirSync: (p, options) => {
+          fs.mkdirSync(p, options);
+        },
+      };
+      savePoolResponseItem(tmp, item, adapter);
+
+      const loadFn = createServeTimePoolResponseLoader({
+        mockDataPath: tmp,
+        nodeFs: fs,
+        joinPath: path.join.bind(path),
+      });
+
+      const body = prepareMockResponseBody(
+        {
+          request: { method: 'GET', url: 'https://example.com/x', headers: {} },
+          response: {
+            status: 200,
+            headers: {},
+            data: { $pool: { id: 'from-disk', mode: 'document' } },
+          },
+          timestamp: new Date().toISOString(),
+        },
+        () => new Date(),
+        { loadPoolResponse: loadFn }
+      );
+
+      expect(body).toEqual({ ok: true });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('collectPoolRefIds finds nested refs', () => {
+    const ids = collectPoolRefIds({
+      a: { $pool: { id: 'one' } },
+      b: [{ $pool: { id: 'two' } }, { keep: true }],
+    });
+    expect([...ids].sort()).toEqual(['one', 'two']);
   });
 });
