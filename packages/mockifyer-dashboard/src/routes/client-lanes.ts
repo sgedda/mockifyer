@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { parseScenarioName } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
@@ -93,13 +94,12 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
     if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const scenarioValue =
-      scenario === null
-        ? null
-        : typeof scenario === 'string' && scenario.trim()
-          ? scenario.trim()
-          : undefined;
-    if (scenarioValue === undefined) {
-      return res.status(400).json({ error: 'scenario must be a non-empty string or null' });
+      scenario === null ? null : parseScenarioName(scenario);
+    if (scenarioValue === null && scenario !== null) {
+      return res.status(400).json({
+        error:
+          'scenario must be null or a non-empty name using only letters, numbers, hyphens, and underscores',
+      });
     }
 
     const store = createDashboardMockStore(config, mockDataPath);
