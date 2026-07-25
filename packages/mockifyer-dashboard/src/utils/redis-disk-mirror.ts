@@ -7,6 +7,7 @@ import {
   ensureScenarioFolder,
   shouldExcludeUrl,
   checkRequestLimit,
+  isValidScenarioName,
 } from '@sgedda/mockifyer-core';
 import { RedisMockStore } from './redis-mock-store';
 import { getAllJsonFiles } from './json-files';
@@ -28,6 +29,9 @@ export function findMockOnDiskByRequestHash(
   scenarioName: string,
   hash: string
 ): MockData | null {
+  if (!isValidScenarioName(scenarioName)) {
+    return null;
+  }
   const scenarioPath = getScenarioFolderPath(mockDataPath, scenarioName);
   if (!fs.existsSync(scenarioPath)) {
     return null;
@@ -64,6 +68,12 @@ export function mirrorRecordedMockToDisk(params: {
   mockData: MockData;
 }): void {
   const { mockDataPath, scenarioName, hash, mockData } = params;
+  if (!isValidScenarioName(scenarioName)) {
+    console.warn(
+      `[Mockifyer Dashboard] Redis disk mirror: refusing unsafe scenario name "${scenarioName}"`
+    );
+    return;
+  }
   const requestUrl = mockData?.request?.url || '';
   if (shouldExcludeUrl(requestUrl, undefined)) {
     return;
