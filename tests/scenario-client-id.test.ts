@@ -1,7 +1,12 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getCurrentScenario, resetScenario } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  isValidScenarioName,
+  parseScenarioName,
+  resetScenario,
+} from '@sgedda/mockifyer-core';
 
 describe('client-specific scenario config', () => {
   let tmp: string;
@@ -52,5 +57,18 @@ describe('client-specific scenario config', () => {
     );
 
     expect(getCurrentScenario(mockDataPath, '../../../outside')).toBe('safe-global');
+  });
+});
+
+describe('parseScenarioName', () => {
+  it('accepts safe scenario names and rejects traversal / reserved values', () => {
+    expect(isValidScenarioName('check-in_open')).toBe(true);
+    expect(parseScenarioName('  check-in_open  ')).toBe('check-in_open');
+    expect(parseScenarioName('..')).toBeNull();
+    expect(parseScenarioName('../escape')).toBeNull();
+    expect(parseScenarioName('foo/bar')).toBeNull();
+    expect(parseScenarioName('pool')).toBeNull();
+    expect(parseScenarioName('')).toBeNull();
+    expect(parseScenarioName(null)).toBeNull();
   });
 });
