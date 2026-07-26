@@ -27,6 +27,7 @@ import {
   isInboundParentStubMock,
   normalizeDomainPathRule,
   readMockParentRequestIds,
+  parseScenarioName,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { RedactedRequestHeadersError } from '../utils/proxy-recording-privacy';
@@ -127,21 +128,54 @@ function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefi
 const PUT_BODY_MISSING_FIELDS_ERROR =
   'Request body must contain responseData, replayMode, or responseDateOverrides';
 
-/** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
-async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
+/**
+ * Read and validate `?scenario=`.
+ * - `undefined`: query omitted / blank → caller uses active/default scenario
+ * - `null`: invalid → 400 already sent
+ * - `string`: validated scenario name safe for path join
+ */
+function readScenarioQuery(req: Request, res: Response): string | undefined | null {
   const raw = req.query.scenario;
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.trim();
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') {
+    res.status(400).json({ error: 'Scenario name must be a string' });
+    return null;
   }
+
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  const parsed = parseScenarioName(trimmed);
+  if (parsed === null) {
+    res.status(400).json({
+      error: `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`,
+    });
+    return null;
+  }
+  return parsed;
+}
+
+/** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
+async function resolveRedisScenario(
+  req: Request,
+  res: Response,
+  store: RedisMockStore
+): Promise<string | null> {
+  const requested = readScenarioQuery(req, res);
+  if (requested === null) return null;
+  if (requested !== undefined) return requested;
   return store.getActiveScenario();
 }
 
 /** Scenario from ?scenario= or local scenario-config (align with GET /mocks list). */
-function resolveFilesystemScenario(req: Request, mockDataPath: string): string {
-  const raw = req.query.scenario;
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.trim();
-  }
+function resolveFilesystemScenario(
+  req: Request,
+  res: Response,
+  mockDataPath: string
+): string | null {
+  const requested = readScenarioQuery(req, res);
+  if (requested === null) return null;
+  if (requested !== undefined) return requested;
   return getCurrentScenario(mockDataPath);
 }
 
@@ -554,7 +588,8 @@ function finishMockListPayload(
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    const requestedScenario = req.query.scenario as string | undefined;
+    const requestedScenario = readScenarioQuery(req, res);
+    if (requestedScenario === null) return;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
     if (isCentralizedDashboardProvider(config.provider)) {
@@ -756,7 +791,8 @@ router.get('/search', async (req: Request, res: Response) => {
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const tokens = parseSearchQuery(query);
     const limit = parseLimit(req.query.limit, 200);
-    const requestedScenario = req.query.scenario as string | undefined;
+    const requestedScenario = readScenarioQuery(req, res);
+    if (requestedScenario === null) return;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
     if (tokens.length === 0) {
@@ -855,14 +891,16 @@ router.get('/domain-path-rules', async (req: Request, res: Response) => {
     const dataPath = mockDataPath || detectMockDataPath();
 
     if (!isCentralizedDashboardProvider(config.provider)) {
-      const scenario = resolveFilesystemScenario(req, dataPath);
+      const scenario = resolveFilesystemScenario(req, res, dataPath);
+      if (scenario === null) return;
       const rules = readDomainPathRulesFile(dataPath, scenario);
       return res.json({ scenario, rules });
     }
 
     const store = createDashboardMockStore(config, dataPath);
     try {
-      const scenario = await resolveRedisScenario(req, store);
+      const scenario = await resolveRedisScenario(req, res, store);
+      if (scenario === null) return;
       const fromRedis = await store.getDomainPathRules(scenario);
       const fromFile = readDomainPathRulesFile(dataPath, scenario);
       const rules = { ...fromFile, ...fromRedis };
@@ -881,8 +919,14 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
     const { mockDataPath, config } = getDashboardContext(req);
     const dataPath = mockDataPath || detectMockDataPath();
     const { scenario, domainPath, rule } = req.body || {};
-    if (typeof scenario !== 'string' || !scenario.trim()) {
-      return res.status(400).json({ error: 'scenario is required' });
+    const scenarioName = parseScenarioName(scenario);
+    if (scenarioName === null) {
+      return res.status(400).json({
+        error:
+          typeof scenario === 'string' && scenario.trim()
+            ? `Invalid scenario name: "${scenario.trim()}". Use only letters, numbers, hyphens, and underscores.`
+            : 'scenario is required',
+      });
     }
     if (typeof domainPath !== 'string' || !domainPath.trim()) {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
@@ -900,8 +944,6 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
     ) {
       return res.status(400).json({ error: 'rule.allowUpstream must be a boolean when provided' });
     }
-
-    const scenarioName = scenario.trim();
     const normalizedRule =
       rule === null
         ? null
@@ -959,7 +1001,7 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
     const includeRelated = req.query.includeRelated !== '0' && req.query.includeRelated !== 'false';
 
     let primaryMock: MockData | null = null;
-    let scenario = '';
+    let scenario: string | null = null;
 
     if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
@@ -967,19 +1009,25 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
 
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        scenario = await resolveRedisScenario(req, store);
+        scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         primaryMock = (await store.getByHash(hash, scenario)) as MockData | null;
       } finally {
         await store.close().catch(() => undefined);
       }
     } else {
-      scenario = resolveFilesystemScenario(req, mockDataPath);
+      scenario = resolveFilesystemScenario(req, res, mockDataPath);
+      if (scenario === null) return;
       const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
       const filePath = resolveFilePath(scenarioPath, relativeName);
       if (!filePath || !fs.existsSync(filePath)) {
         return res.status(404).json({ error: 'Mock file not found' });
       }
       primaryMock = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    }
+
+    if (scenario === null) {
+      return;
     }
 
     if (!primaryMock) {
@@ -1030,7 +1078,8 @@ router.get('/*/field-overrides', async (req: Request, res: Response) => {
 
       const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
         return res.json({
@@ -1043,7 +1092,8 @@ router.get('/*/field-overrides', async (req: Request, res: Response) => {
       }
     }
 
-    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
@@ -1086,7 +1136,8 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1112,7 +1163,9 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'Mock file not found' });
@@ -1130,12 +1183,11 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
     existingData.timestamp = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
-    const fsScenario = resolveFilesystemScenario(req, mockDataPath);
 
     return res.json({
       success: true,
       filename: relativeName,
-      scenario: fsScenario,
+      scenario,
       responseFieldOverrides: existingData.responseFieldOverrides ?? [],
     });
   } catch (error: unknown) {
@@ -1193,7 +1245,8 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
 
       const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1213,7 +1266,9 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'Mock file not found' });
@@ -1226,7 +1281,7 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       filename: relativeName,
-      scenario: resolveFilesystemScenario(req, mockDataPath),
+      scenario,
       path: targetPath || null,
       pool,
       responseData: existingData.response.data,
@@ -1274,7 +1329,8 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData?.response) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1296,7 +1352,9 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'Mock file not found' });
@@ -1315,7 +1373,7 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       filename: relativeName,
-      scenario: resolveFilesystemScenario(req, mockDataPath),
+      scenario,
       arrayPath: copyParams.arrayPath,
       newItemIndex: copyResult.newItemIndex,
       arrayLength: copyResult.arrayLength,
@@ -1338,7 +1396,8 @@ router.get('/*', async (req: Request, res: Response) => {
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const rec = await store.getByHashWithMeta(hash, scenario);
         if (!rec) return res.status(404).json({ error: 'Mock not found' });
         const ts = rec.mockData.timestamp ? new Date(rec.mockData.timestamp) : new Date();
@@ -1356,7 +1415,9 @@ router.get('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -1390,7 +1451,8 @@ router.put('/*', async (req: Request, res: Response) => {
 
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         if (await store.isScenarioLocked(scenario)) {
           return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
         }
@@ -1469,7 +1531,8 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
     if (isScenarioLockedFs(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
@@ -1635,7 +1698,8 @@ router.delete('/*', async (req: Request, res: Response) => {
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         if (await store.isScenarioLocked(scenario)) {
           return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
         }
@@ -1646,7 +1710,8 @@ router.delete('/*', async (req: Request, res: Response) => {
       }
     }
 
-    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
     if (isScenarioLockedFs(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
@@ -1680,7 +1745,8 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
 
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const scenario = await resolveRedisScenario(req, store);
+        const scenario = await resolveRedisScenario(req, res, store);
+        if (scenario === null) return;
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData?.request?.url) {
           return res.status(404).json({ error: 'Mock not found' });
@@ -1701,7 +1767,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
@@ -1745,7 +1813,8 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
       });
     }
 
-    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenario = resolveFilesystemScenario(req, res, mockDataPath);
+    if (scenario === null) return;
     if (isScenarioLockedFs(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
