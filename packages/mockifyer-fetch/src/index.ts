@@ -1463,6 +1463,9 @@ class MockifyerClass {
 
   async reloadMockData(syncFromProject: boolean = true): Promise<void> {
     await this.databaseProviderInitPromise;
+    // `$pool` fixtures are cached write-once for RN (no Node fs). Clear so a reload
+    // picks up updated pool response bodies from the provider / Metro sync.
+    this.poolResponseCache.clear();
     // If provider has a reload method, use it (for ExpoFileSystemProvider with caching)
     // For HybridProvider, this will also sync files from project folder to device
     if (this.databaseProvider && typeof (this.databaseProvider as any).reload === 'function') {
