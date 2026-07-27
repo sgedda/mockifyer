@@ -1,11 +1,13 @@
 # Mockifyer Prompt-as-You-Go Demo
 
-Live presentation you can **run by copying prompts** into Cursor (or any agent with `mockifyer-mcp` + repo tools). Each slide is one beat:
+Live presentation mixing **copy-paste prompts** (for beats that change state) with **presenter-driven** beats (Dashboard tour, product walkthrough). When a slide has `PROMPT (copy)`:
 
-1. **Copy the prompt**
+1. **Copy the prompt** into Cursor (or any agent with `mockifyer-mcp` + repo tools)
 2. **Wait for the agent to finish**
-3. **Show** both surfaces listed on the slide — **App** and **Dashboard**
-4. **Advance** to the next prompt
+3. **Show** both surfaces — **App** and **Dashboard**
+4. **Advance**
+
+When a slide says **presenter script — no prompt**, you click and narrate yourself. Do not invent an agent prompt for those.
 
 **Stage layout (keep this up the whole talk):**
 
@@ -20,7 +22,7 @@ The showcase is **not** app-only. The dashboard is where you browse mocks, switc
 
 Trips Showcase nouns are the default example. Beats still prove Mockifyer’s purpose when UI, destinations, ports, or filenames look different.
 
-**How to read:** each `---` is a slide. `PROMPT` = copy-paste. `SHOW` = App + Dashboard. `INVARIANT` = what must still be true.
+**How to read:** each `---` is a slide. `PROMPT` = copy-paste agent prompt (when present). `PRESENTER SCRIPT` = you drive, no agent. `SHOW` = App + Dashboard. `INVARIANT` = what must still be true.
 
 ## Document set
 
@@ -163,44 +165,42 @@ Print the exact commands to open App + Dashboard side by side.
 
 ---
 
-# 03 · Tour the Dashboard (first-class beat)
+# 03 · Tour the Dashboard (presenter script — no prompt)
 
-**Goal:** Audience knows where every later beat will be clicked — before more prompting.
+**Goal:** Orient the audience on the control plane **before** any agent prompts that change state.
 
-### PROMPT (copy)
+**Why no prompt here:** Asking Copilot to “list exact UI areas” gains almost nothing live — you already know the product, and the agent cannot see the screen. You drive this beat yourself (~60s).
 
-```text
-Give me a 60-second presenter tour of the Mockifyer Dashboard for this project.
+### PRESENTER SCRIPT (click order)
 
-List the exact UI areas I should click, in order, and what each is for in a trips demo:
-1. Mocks list / search (find trips or home)
-2. Scenario switcher (or scenario config)
-3. Opening one mock: response body, Always use live API, field/date overrides if shown
-4. Client lanes (if redis/sqlite provider)
-5. Network / network log + how to enable Bodies
-6. Fixture pool / responses (if present in this build)
-7. Settings that matter for record-on-miss / proxy
+Keep the trips **App** visible on the other monitor/half-screen; don’t click it yet.
 
-Assume dashboard is already on :3002 with --provider redis. Adapt labels to whatever this version of the UI actually shows.
-```
+| # | Dashboard click | Say (one line) |
+|---|---|---|
+| 1 | Sidebar → **Mocks** → search `trips` or `home` → open one row | “Recorded fixtures live here — this is what the app is eating.” |
+| 2 | Open that mock: response body; note **Always use live API** if shown; glance field/date overrides if present | “We curate here instead of re-recording every edge case.” |
+| 3 | Sidebar → **Settings** → scenario switcher / create scenario; scroll to **Client lanes** | “Scenarios are whole worlds. Lanes bind a client id to a scenario (needs redis/sqlite).” |
+| 4 | Sidebar → **Date Config** | “Clock for demos/tests — pairs with `getCurrentDate()` in the app.” |
+| 5 | Sidebar → **Network** → ensure **Logging on**; optionally **Bodies on** | “Multi-hop traffic shows up here after proxy calls.” |
+| 6 | Sidebar → **Fixture pool** | “Promote a list once; later scenarios reference it (`$pool`) instead of copying JSON.” |
+| 7 | Sidebar → **Settings** again only if needed for record-on-miss / proxy notes | “Proxy miss/record knobs live with the shared store — we’ll use them when we capture.” |
 
-### SHOW (presenter drives; follow the agent’s click list)
+Optional glance (skip if timeboxed): **Statistics**, **Timeline**.
+
+### SHOW (dual surface)
 
 | App | Dashboard |
 |---|---|
-| Keep My Trips visible but don’t click yet | Walk Mocks → one trips mock → response JSON |
-| — | Show scenario control |
-| — | Show Client lanes page (even if empty) |
-| — | Show Network tab; note how to enable logging/Bodies |
-| — | Show Fixture pool (or say “we’ll use this in the compose beat”) |
+| My Trips stays up, untouched | Walk the table above left → right in the sidebar |
+| — | End on **Mocks** or **Network** so the next beat has a familiar landing spot |
 
 ### INVARIANT
 
-Audience can name **Mocks, Scenarios, Lanes, Network** (and Pool if present) before you change any data.
+Audience can name **Mocks, Settings (scenarios + lanes), Date Config, Network, Fixture pool** before you change any data.
 
 ### SAY
 
-*“We won’t hide in JSON folders — the Dashboard is the control plane.”*
+*“Left side is the product. Right side is how we operate the API world — next prompts change state; this tour does not.”*
 
 ---
 
@@ -497,16 +497,19 @@ Tonight:
 
 # Appendix A · Prompt pack
 
+Prompts only (skip presenter-only slides 03 and 05):
+
 **A1** Create app — slide 01  
 **A2** Wire Mockifyer + Dashboard — slide 02  
-**A3** Dashboard tour — slide 03  
-**A4** Record golden — slide 04  
-**A5** Scenarios — slide 06  
-**A6** Overrides / time — slide 07  
-**A7** Lanes — slide 08  
-**A8** `$pool` compose — slide 09  
-**A9** Network trace + chaos — slide 10  
-**A10** Improv — slide 11  
+**A3** Record golden — slide 04  
+**A4** Scenarios — slide 06  
+**A5** Overrides / time — slide 07  
+**A6** Lanes — slide 08  
+**A7** `$pool` compose — slide 09  
+**A8** Network trace + chaos — slide 10  
+**A9** Improv — slide 11  
+
+Slide **03** = fixed Dashboard tour script (no prompt). Slide **05** = product walkthrough (no prompt).  
 
 ---
 
@@ -537,5 +540,6 @@ If this repo is not trips-themed, keep the same Mockifyer + Dashboard behaviors 
 2. **Agent UI drifts; Dashboard labels drift less** — when the app looks “wrong,” narrate from Dashboard mocks/scenarios/lanes/Network.
 3. **MCP is optional glue** — every compose beat should be doable as Dashboard clicks if MCP fails (slide 00 fail-soft).
 4. **Filesystem vs Redis** — Mocks + scenarios work on filesystem provider; lanes, proxy, and durable Network need redis/sqlite — say that honestly mid-demo if needed.
-5. **One prompt → one SHOW on both panes → breathe.**
-6. **Success metric** — audience can open Dashboard next week on *their* app and switch a scenario while their UI updates.
+5. **One prompt → one SHOW on both panes → breathe** (skip inventing prompts for presenter-only slides).
+6. **Don’t prompt the Dashboard tour** — slide 03 is you presenting; agent prompts earn their place when state must change (record / scenarios / overrides / lanes / pool / trace).
+7. **Success metric** — audience can open Dashboard next week on *their* app and switch a scenario while their UI updates.
