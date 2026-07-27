@@ -72,11 +72,13 @@ FAIL if: the talk never opens the Dashboard (app-alone is incomplete for this sh
 
 **Recommendation:** Mode C with **App | Dashboard** side-by-side from slide 03 onward.
 
+**Prompt rule:** only use `PROMPT (copy)` when the agent **changes state** or **produces an artifact** (scaffold, wire, record summary, MCP mutate, trace fetch). Never prompt “tell me where to click” — that’s the presenter script / SHOW column.
+
 ### Timing
 
 | Path | Slides | ~Duration |
 |---|---|---|
-| Fast | 03 → 04 → 06 → 07 → 08 → 10 | 10–15 min (seeded app + dashboard) |
+| Fast (seeded) | 03 → 05 → 06 → 07 → 08 → 10 | 10–15 min (skip 01–02; skip or skim 04) |
 | Full | 01–12 | 30–45 min |
 | Fail-safe | Skip 01–02; restore + open Dashboard at 03 | Always available |
 
@@ -86,7 +88,9 @@ FAIL if: the talk never opens the Dashboard (app-alone is incomplete for this sh
 
 **Goal:** Runnable product shell — login, list, detail, date-based CTA — enough surface for Mockifyer + Dashboard to matter.
 
-### PROMPT (copy)
+**When to use this prompt:** Mode **B** (from scratch) only. Mode **A/C** (seeded/hybrid): **skip** — app already exists.
+
+### PROMPT (copy) — Mode B
 
 ```text
 Create a small trips demo app I can run locally (Vite + React + TypeScript preferred).
@@ -125,7 +129,9 @@ Different fonts/cities/CTA labels are fine if list + time-gated action + HTTP bo
 
 **Goal:** Intercept HTTP **and** stand up the Mockifyer Dashboard as the second stage window (proxy + UI).
 
-### PROMPT (copy)
+**When to use this prompt:** Mode **B** only. Mode **A/C**: **skip** — already wired; just start Redis + Dashboard + app from README.
+
+### PROMPT (copy) — Mode B
 
 ```text
 Wire Mockifyer into this trips app/API and make the Mockifyer Dashboard part of the demo stack.
@@ -143,7 +149,7 @@ Requirements:
 5. Replace business-rule clocks with getCurrentDate from the same Mockifyer package as setup.
 6. Do not redesign product screens.
 
-Print the exact commands to open App + Dashboard side by side.
+Print the exact start commands for App + Dashboard (no UI click tour).
 ```
 
 ### SHOW
@@ -151,8 +157,8 @@ Print the exact commands to open App + Dashboard side by side.
 | App | Dashboard |
 |---|---|
 | Bootstrap file shows `initMockifyerForDashboardProxy` (or setup + proxy) | Open **http://localhost:3002** — home/mocks shell loads |
-| `getCurrentDate()` in check-in rule | Point at scenario indicator / mock-data path in UI |
-| Env exports visible in README | Leave Dashboard tab pinned for the rest of the talk |
+| `getCurrentDate()` in check-in rule | Leave Dashboard tab pinned for the rest of the talk |
+| Env exports visible in README | — |
 
 ### INVARIANT
 
@@ -208,26 +214,29 @@ Audience can name **Mocks, Settings (scenarios + lanes), Date Config, Network, F
 
 **Goal:** Capture traffic once; prove replay; **see the recording appear in the Dashboard**.
 
-### PROMPT (copy)
+**Mode A/C (seeded):** usually **skip the prompt** — mocks already exist. Use the SHOW table only (prove replay).  
+**Mode B / first capture:** use the prompt for env/commands + post-capture file summary (agent discovers real filenames).
+
+### PROMPT (copy) — Mode B / first capture only
 
 ```text
-Help me record a golden default scenario for this trips app with the Dashboard visible.
+Help me record a golden default scenario for this trips app.
 
-1. Set MOCKIFYER_RECORD=true (and/or dashboard record-on-miss as appropriate for proxy mode).
-2. Exact commands to start Redis + Dashboard + app stack.
-3. Manual script: login as Alice → My Trips → home/detail if present.
-4. After recording, RECORD=false; list new mocks under mock-data/default AND how to find them in the Dashboard Mocks UI.
-5. One-line summary per endpoint (method + path + purpose).
-6. Tell me what to click in the Dashboard to open the trips list mock body.
+1. Set MOCKIFYER_RECORD=true (and/or dashboard record-on-miss for proxy mode) on the right processes.
+2. Print exact commands to start Redis + Dashboard + app stack.
+3. After I manually click: login as Alice → My Trips → home/detail, I will say "done".
+4. Then set guidance for RECORD=false, list new files under mock-data/default (or active scenario), and one-line summarize each endpoint (method + path + purpose).
+
+Do not give me a Dashboard click tour — I already know Mocks. Just summarize what landed on disk / in the store.
 ```
 
-### SHOW
+### SHOW (you drive the clicks either way)
 
 | App | Dashboard |
 |---|---|
-| Record on → click Alice happy path once | Mocks list **gains** trips/home/bookings entries (refresh if needed) |
-| Record off → reload My Trips — still works | Open trips mock → show real response JSON |
-| Optional: kill upstream seed; reload again | Toggle/explain “Always use live API” if present on a fresh recording |
+| Record on → Alice happy path once *(or skip if seeded)* | Mocks list shows trips/home/bookings (refresh if needed) |
+| Record off → reload My Trips — still works | Open trips mock → real response JSON |
+| Optional: kill upstream seed; reload again | Note “Always use live API” on a fresh recording if present |
 
 ### INVARIANT
 
@@ -261,28 +270,24 @@ Help me record a golden default scenario for this trips app with the Dashboard v
 ### PROMPT (copy)
 
 ```text
-Using Mockifyer MCP and/or Dashboard APIs, create product scenarios derived from default:
+Using mockifyer-mcp (prefer tools over hand-editing JSON), create product scenarios derived from default:
 
 1. check-in-open — one CONFIRMED trip can show the check-in CTA
 2. empty-trips — My Trips empty state
 3. booking-error — bookings hop fails (e.g. 503) while trips still load (if home merge exists)
 
-For each:
-- create with deriveFrom: "default" when possible
-- prefer responseFieldOverrides / responseDateOverrides over huge JSON copies
-- tell me the Dashboard clicks to switch scenario AND the MCP/tool equivalent
-- adapt trip ids/filenames to what exists in mock-data
+For each: create with deriveFrom: "default" when possible; prefer responseFieldOverrides / responseDateOverrides over huge JSON copies; adapt trip ids/filenames to what exists in mock-data.
 
-Do not redesign the UI.
+Do not redesign the UI. Do not narrate Dashboard navigation — just create/configure the scenarios.
 ```
 
-### SHOW
+### SHOW (you switch / prove)
 
 | App | Dashboard |
 |---|---|
-| Refresh after each switch | Scenario → `empty-trips` → save/active |
-| Empty state visible | Mocks filtered/listed under that scenario |
-| Switch → `check-in-open` → CTA on | Same control; point at scenario name in chrome |
+| Refresh after each switch | Settings → scenario → `empty-trips` |
+| Empty state visible | Mocks under that scenario |
+| Switch → `check-in-open` → CTA on | Scenario control shows name |
 | Back to `default` → full list / CTA off | Scenario back to default |
 
 ### INVARIANT
@@ -300,20 +305,21 @@ Same binary; worlds change from the **Dashboard scenario control** (or lane — 
 ```text
 In scenario check-in-open, make check-in open using Mockifyer overlays — do not re-record.
 
-1. Inspect the trips list mock (mockifyer_get_mock_ai_context or Dashboard mock detail).
-2. Set responseDateOverride so the chosen trip departureAt is ~10h from Mockifyer "now".
+1. Inspect the trips list mock with mockifyer_get_mock_ai_context (adapt filename).
+2. Apply responseDateOverride so the chosen trip departureAt is ~10h from Mockifyer "now" (mockifyer_set_field_overrides / date override tools or dashboard API).
 3. Ensure status CONFIRMED via field override if needed.
-4. Tell me exactly where in the Dashboard I open/edit those overrides (or date config), and how to flip them off for contrast.
-5. Confirm the app uses getCurrentDate().
+4. Confirm in code that the app check-in rule uses getCurrentDate() (report file path only).
+
+Do not give a Dashboard click tour — I will show overrides in the UI myself after you apply them.
 ```
 
-### SHOW
+### SHOW (you flip for contrast)
 
 | App | Dashboard |
 |---|---|
-| CTA **on** after override | Mock detail → overrides / date fields visible |
-| CTA **off** after flip | Same panel — change offset or clear override; save |
-| — | Emphasize: no new “recorded at” capture required |
+| CTA **on** after agent applies overlays | Mocks → trips mock → overrides / date fields visible |
+| You flip/clear override or Date Config → CTA **off** | Same panel — no new recording timestamp |
+| — | Emphasize: curated overlay, not re-capture |
 
 ### INVARIANT
 
@@ -327,30 +333,27 @@ UI clock + payload timestamps stay aligned; Dashboard shows the override as the 
 
 # 08 · Parallel lanes (Dashboard Client lanes + two app tabs)
 
-**Goal:** Isolation for E2E / multi-tester — bind in Dashboard, prove in two browsers.
+**Goal:** Isolation for E2E / multi-tester — bind via MCP (or you in Settings); prove in two browsers.
 
 ### PROMPT (copy)
 
 ```text
-Set up Mockifyer client lanes for this trips demo (Dashboard --provider redis).
+Using mockifyer_set_client_lane_scenario / mockifyer_list_client_lanes, bind:
 
-1. Bind in Dashboard / via MCP:
-   - trips-e2e-stable → default (or qa-stable)
-   - trips-e2e-checkin → check-in-open
-   - trips-e2e-empty → empty-trips
-2. Tell me Dashboard clicks: Client lanes → set scenario per clientId.
-3. How to open two app tabs with different MOCKIFYER_CLIENT_ID / X-Mockifyer-Client-Id.
-4. Optional Playwright projects 1:1 with those ids.
+- trips-e2e-stable → default (or qa-stable)
+- trips-e2e-checkin → check-in-open
+- trips-e2e-empty → empty-trips
 
-Use mockifyer_set_client_lane_scenario / list_client_lanes when MCP is available.
+Then list lanes to confirm. Do not narrate Dashboard navigation.
+Optional: sketch Playwright projects 1:1 with those client ids (config snippet only).
 ```
 
-### SHOW
+### SHOW (you open the two tabs)
 
 | App | Dashboard |
 |---|---|
-| Tab A `trips-e2e-stable` → default world | **Client lanes** UI lists both (all three) bindings |
-| Tab B `trips-e2e-checkin` → CTA on | Point at lane → scenario mapping; no process restart |
+| Tab A `MOCKIFYER_CLIENT_ID=trips-e2e-stable` → default world | Settings → **Client lanes** shows bindings |
+| Tab B `trips-e2e-checkin` → CTA on | Point at lane → scenario; no process restart |
 | Optional third tab empty | Same page — `trips-e2e-empty` |
 
 ### INVARIANT
@@ -370,25 +373,24 @@ Redis down → show lanes UI empty/error briefly, then fall back to global scena
 ### PROMPT (copy)
 
 ```text
-Compose check-in-open from a shared fixture pool (no duplicated trip blobs).
+Compose check-in-open from a shared fixture pool (no duplicated trip blobs). Use MCP tools:
 
-1. Promote default Alice trips-list into the pool (clear id, e.g. trips-list-alice) — prefer MCP promote or Dashboard Fixture pool actions.
-2. Preview $pool document ref: keep envelope, select only the check-in candidate trip by id.
-3. Set that $pool ref on the check-in-open trips mock.
+1. mockifyer_promote_response — promote default Alice trips-list (clear id, e.g. trips-list-alice); adapt filename from mock-data.
+2. mockifyer_preview_pool_ref — document mode, keep envelope, select only the check-in candidate trip by id.
+3. mockifyer_set_pool_ref — set that ref on the check-in-open trips mock.
 4. Re-apply ~10h departure overlay on the resolved path.
-5. Tell me Dashboard places to show: pool response fixture, scenario mock with $pool node, preview if available.
-6. Bind lane trips-e2e-checkin → check-in-open; how to verify in the app.
+5. mockifyer_set_client_lane_scenario — trips-e2e-checkin → check-in-open.
 
-Adapt filenames/ids to this repo's mock-data.
+Report the pool id, selected trip id, and mock filename you changed. No Dashboard click tour.
 ```
 
-### SHOW
+### SHOW (you verify in UI)
 
 | App | Dashboard |
 |---|---|
-| Check-in lane → CTA still works | **Fixture pool** → `trips-list-alice` (or chosen id) once |
-| — | Open `check-in-open` trips mock → **`$pool` node** in body |
-| — | Preview/resolve if UI exposes it; else show agent preview output beside Dashboard |
+| Check-in lane → CTA still works | **Fixture pool** → promoted id once |
+| — | Mocks → `check-in-open` trips mock → **`$pool` node** |
+| — | Optional: show agent preview output beside Dashboard |
 
 ### INVARIANT
 
@@ -402,27 +404,33 @@ One canonical pool fixture; scenario is composition; app still shows the product
 
 # 10 · Trace in Dashboard Network (+ chaos)
 
-**Goal:** Multi-hop “who failed?” using the Dashboard Network UI (MCP optional backup).
+**Goal:** Multi-hop “who failed?” — you drive Network UI; agent fetches/explains the trace and flips chaos.
 
-### PROMPT (copy)
+### PRESENTER SCRIPT (before the prompt)
+
+1. Dashboard → **Network** → **Logging on**; optionally **Bodies on**.
+2. App → trigger Home / aggregate once.
+3. Stay on Network so the new event is visible.
+
+### PROMPT (copy) — after you clicked Home
 
 ```text
-Demonstrate Mockifyer network tracing with the Dashboard Network tab as the primary SHOW surface.
+I just triggered the app home/aggregate call. Using mockifyer_list_network_events and mockifyer_get_network_trace:
 
-1. Enable network logging and Bodies in the Dashboard; confirm with mockifyer_get_network_log_config if MCP is available.
-2. Which UI action triggers the multi-hop chain (home/aggregate — adapt to this app)?
-3. After I click it, show me how to find the request in Dashboard Network and open the ordered trace (hops, status, timing).
-4. Also give MCP/curl equivalents (list_network_events / get_network_trace) as backup.
-5. Switch to booking-error (scenario or lane), trigger home again, and show the failing bookings hop in Network while trips still render in the app.
+1. Find the latest requestId for that call and summarize ordered hops (service/path/status/duration).
+2. If provenance is available, say which hop owned a visible field (e.g. destination title).
+3. Then switch to booking-error (scenario or lane trips-e2e-* if bound), and tell me when to re-trigger Home.
+4. After I re-trigger, pull the new trace and highlight the failing bookings hop.
+
+No Dashboard navigation guide — Network is already open.
 ```
 
 ### SHOW
 
 | App | Dashboard |
 |---|---|
-| Trigger Home / chain once | **Network** → latest events → open trace / request id |
-| Trips still visible under chaos | Hops list: statuses + durations |
-| Flip `booking-error` → degraded bookings UX | Same Network view → bookings hop red/503 |
+| Home already triggered; re-trigger after chaos | **Network** → event → hops match agent summary |
+| Flip visible after `booking-error` | Bookings hop red/503; trips still ok in app |
 
 ### INVARIANT
 
@@ -440,16 +448,16 @@ Network UI shows the call chain (or honest single-hop log); chaos is a scenario,
 Without redeploying the app, create scenario demo-improv derived from default where:
 - primary list shows exactly two items ($pool select or overrides/copy_array_item)
 - one item status CANCELLED
-Show me where this appears in the Dashboard (scenario list + mock detail).
-Bind lane trips-e2e-improv → demo-improv so other tabs stay untouched.
-Explain how to delete/archive via Dashboard or MCP after the demo.
+
+Bind lane trips-e2e-improv → demo-improv. Report scenario name, mock filename, and lane binding.
+Explain briefly how to delete/archive afterward (tool or Settings). No UI click tour.
 ```
 
-### SHOW
+### SHOW (you verify)
 
 | App | Dashboard |
 |---|---|
-| Improv lane → two rows, one cancelled | New scenario visible; mock detail shows edits/`$pool` |
+| Improv lane → two rows, one cancelled | Settings scenarios + Mocks detail show edits/`$pool` |
 | Stable tab unchanged | Client lanes: improv binding only on that clientId |
 
 ---
