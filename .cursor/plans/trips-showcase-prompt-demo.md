@@ -236,11 +236,11 @@ Help me record a golden default scenario for this trips app with the Dashboard v
 
 ---
 
-# 05 · Use the product (pause — dual surface)
+# 05 · Use the product (presenter script — no prompt)
 
 **Goal:** Let them believe it’s a real app; keep Dashboard as the “source of truth” glance.
 
-### SHOW (no new prompt)
+### SHOW (you drive — no agent)
 
 | App | Dashboard |
 |---|---|
