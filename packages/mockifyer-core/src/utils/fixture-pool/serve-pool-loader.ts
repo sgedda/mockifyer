@@ -43,6 +43,7 @@ export function isUsableNodeLikePoolFs(fs: unknown): fs is NodeLikePoolFs {
 
 /**
  * Collect `$pool.id` values from mock response data (deep walk).
+ * JSON-string response roots are parsed (same as field overrides / prepare).
  */
 export function collectPoolRefIds(data: unknown, out: Set<string> = new Set()): Set<string> {
   if (isPoolRefNode(data)) {
@@ -51,6 +52,13 @@ export function collectPoolRefIds(data: unknown, out: Set<string> = new Set()): 
       out.add(id.trim());
     }
     return out;
+  }
+  if (typeof data === 'string') {
+    try {
+      return collectPoolRefIds(JSON.parse(data), out);
+    } catch {
+      return out;
+    }
   }
   if (Array.isArray(data)) {
     for (const item of data) {
