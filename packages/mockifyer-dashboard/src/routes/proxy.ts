@@ -71,6 +71,7 @@ import {
   resolveInboundParentRequestIdForChild,
 } from '../utils/inbound-parent-record-store';
 import { toPersistedRequestHeaders, toRecordStringHeaders } from '../utils/proxy-recording-privacy';
+import { shouldWriteProxyRecordOnMiss } from '../utils/proxy-recording';
 
 const router = express.Router();
 
@@ -603,6 +604,7 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    let persistedLiveCapture = false;
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       // Re-read immediately before write to minimize race window with concurrent callers
@@ -615,6 +617,7 @@ router.post('/', async (req: Request, res: Response) => {
         latestRow
       );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
+      persistedLiveCapture = true;
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
         try {
@@ -639,7 +642,7 @@ router.post('/', async (req: Request, res: Response) => {
       : response;
 
     let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true && shouldWriteNewProxyRecording(mock as MockData | null)) {
+    if (effectiveRecord === true && shouldWriteNewProxyRecording(mock as MockData | null) && shouldWriteProxyRecordOnMiss(effectiveRecord, persistedLiveCapture)) {
       const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (scenarioLocked) {
         if (debugProxy) {
