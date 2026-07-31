@@ -62,6 +62,23 @@ await initMockifyerForDashboardProxy({
 });
 ```
 
+Patch **both** `fetch` and `axios` from one call (install `@sgedda/mockifyer-axios` + `axios`):
+
+```typescript
+import axios from 'axios';
+import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-fetch';
+
+await initMockifyerForDashboardProxy({
+  dashboardBaseUrl: 'http://localhost:3002',
+  clientId: process.env.MOCKIFYER_CLIENT_ID,
+  useGlobalFetch: true,
+  useGlobalAxios: true,
+  axiosInstance: axios, // optional — defaults to require('axios')
+});
+```
+
+`setClientId` / `reloadMockData` on the returned instance are synced across both clients.
+
 Force proxy without health probe (CI that must fail at HTTP layer if dashboard is wrong, or trust the URL):
 
 ```typescript
@@ -140,6 +157,8 @@ await initMockifyerForDashboardProxy({
   useGlobalAxios: true,
 });
 ```
+
+Same dual-client option as fetch — set `useGlobalFetch: true` (and install `@sgedda/mockifyer-fetch`) to patch both stacks from axios’s preset.
 
 ### `setupMockifyer(config)`
 

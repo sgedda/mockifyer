@@ -35,11 +35,15 @@
   },
   "peerDependencies": {
     "axios": "^1.6.0 || ^1.7.0",
+    "@sgedda/mockifyer-fetch": "*",
     "react-native-launch-arguments": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "axios": {
       "optional": false
+    },
+    "@sgedda/mockifyer-fetch": {
+      "optional": true
     },
     "react-native-launch-arguments": {
       "optional": true

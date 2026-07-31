@@ -43,6 +43,11 @@ import {
   mirrorProxyRecordingToClient,
   initMockifyerForDashboardProxy as coreInitMockifyerForDashboardProxy,
   initMockifyerForLocalFilesystem as coreInitMockifyerForLocalFilesystem,
+  initMockifyerForDashboardProxyClients,
+  initMockifyerForLocalFilesystemClients,
+  resolveClientInitFlags,
+  pickPrimaryDualMockifyerInstance,
+  loadFetchSetupMockifyer,
   type InitMockifyerForDashboardProxyOptions,
   type InitMockifyerForLocalFilesystemOptions,
   isExplicitProxyScenarioContext,
@@ -2386,26 +2391,69 @@ export type { InitMockifyerForDashboardProxyOptions, InitMockifyerForLocalFilesy
 
 /**
  * Preset: dashboard central store proxy when health check passes; otherwise filesystem mocks.
+ * Set both `useGlobalAxios` and `useGlobalFetch` to patch axios and fetch in one call
+ * (requires `@sgedda/mockifyer-fetch` when fetch is enabled).
  */
 export async function initMockifyerForDashboardProxy(
   options: InitMockifyerForDashboardProxyOptions
 ): Promise<MockifyerInstance> {
-  return coreInitMockifyerForDashboardProxy(
-    { ...options, useGlobalAxios: options.useGlobalAxios ?? options.config?.useGlobalAxios ?? true },
-    setupMockifyer
+  const flags = resolveClientInitFlags(options, {
+    useGlobalFetch: false,
+    useGlobalAxios: true,
+  });
+
+  if (flags.useAxios && !flags.useFetch) {
+    return coreInitMockifyerForDashboardProxy(
+      { ...options, useGlobalAxios: true, useGlobalFetch: false },
+      setupMockifyer
+    );
+  }
+
+  const result = await initMockifyerForDashboardProxyClients(
+    options,
+    {
+      ...(flags.useAxios ? { axios: setupMockifyer } : {}),
+      ...(flags.useFetch
+        ? { fetch: loadFetchSetupMockifyer() as typeof setupMockifyer }
+        : {}),
+    },
+    flags
   );
+
+  return pickPrimaryDualMockifyerInstance('axios', flags, result);
 }
 
 /**
  * Preset: local filesystem mocks. No dashboard proxy.
+ * Set both `useGlobalAxios` and `useGlobalFetch` to patch both clients in one call.
  */
 export function initMockifyerForLocalFilesystem(
   options: InitMockifyerForLocalFilesystemOptions = {}
 ): MockifyerInstance {
-  return coreInitMockifyerForLocalFilesystem(
-    { ...options, useGlobalAxios: options.useGlobalAxios ?? options.config?.useGlobalAxios ?? true },
-    setupMockifyer
+  const flags = resolveClientInitFlags(options, {
+    useGlobalFetch: false,
+    useGlobalAxios: true,
+  });
+
+  if (flags.useAxios && !flags.useFetch) {
+    return coreInitMockifyerForLocalFilesystem(
+      { ...options, useGlobalAxios: true, useGlobalFetch: false },
+      setupMockifyer
+    );
+  }
+
+  const result = initMockifyerForLocalFilesystemClients(
+    options,
+    {
+      ...(flags.useAxios ? { axios: setupMockifyer } : {}),
+      ...(flags.useFetch
+        ? { fetch: loadFetchSetupMockifyer() as typeof setupMockifyer }
+        : {}),
+    },
+    flags
   );
+
+  return pickPrimaryDualMockifyerInstance('axios', flags, result);
 }
 
 export {
