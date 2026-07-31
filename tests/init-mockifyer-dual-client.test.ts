@@ -1,10 +1,13 @@
 import {
   resolveClientInitFlags,
   splitDualClientConfigs,
-  syncDualMockifyerControls,
   pickPrimaryDualMockifyerInstance,
   buildLocalFilesystemConfig,
   initMockifyerForLocalFilesystemClients,
+  registerMockifyerInstance,
+  clearMockifyerClientIdRuntime,
+  getClientId,
+  setClientId,
   type DualMockifyerControlSurface,
   type MockifyerConfig,
 } from '../packages/mockifyer-core/src';
@@ -122,6 +125,10 @@ describe('dual-client init presets', () => {
       return surface;
     }
 
+    afterEach(() => {
+      clearMockifyerClientIdRuntime();
+    });
+
     it('forwards setClientId to both instances', () => {
       const fetchInst = createSurface('fetch');
       const axiosInst = createSurface('axios');
@@ -146,6 +153,25 @@ describe('dual-client init presets', () => {
         { fetch: fetchInst, axios: axiosInst }
       );
       expect(primary).toBe(axiosInst);
+    });
+
+    it('re-registers primary so module-level setClientId reaches both stacks', () => {
+      const fetchInst = createSurface('fetch');
+      const axiosInst = createSurface('axios');
+      // Simulate dual setup: each setupMockifyer overwrites the singleton (last wins).
+      registerMockifyerInstance(fetchInst);
+      registerMockifyerInstance(axiosInst);
+
+      pickPrimaryDualMockifyerInstance(
+        'fetch',
+        { useFetch: true, useAxios: true },
+        { fetch: fetchInst, axios: axiosInst }
+      );
+
+      setClientId('module-lane');
+      expect(getClientId()).toBe('module-lane');
+      expect(fetchInst.getClientId()).toBe('module-lane');
+      expect(axiosInst.getClientId()).toBe('module-lane');
     });
   });
 

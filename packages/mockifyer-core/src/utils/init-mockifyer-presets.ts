@@ -4,6 +4,7 @@ import { parseProxyRecordOnMissEnv } from './proxy-record-on-miss-env';
 import { resolveRecordResponses } from './request-only-mock';
 import { resolveStrictScenarioResolution } from './strict-proxy-scenario';
 import { logger } from './logger';
+import { registerMockifyerInstance, type MockifyerClientIdRuntime } from './runtime-client-id';
 
 export { loadAxiosSetupMockifyer, loadFetchSetupMockifyer } from './load-sibling-setup';
 
@@ -180,6 +181,9 @@ export function syncDualMockifyerControls(
 
 /**
  * Picks the host package instance and syncs lane controls when both clients were initialized.
+ * Re-registers the primary on the module-level client-id runtime so {@link setClientId} /
+ * {@link getClientId} target the synced primary (dual setup overwrites the registry with
+ * whichever `setupMockifyer` ran last).
  */
 export function pickPrimaryDualMockifyerInstance<T>(
   host: 'fetch' | 'axios',
@@ -207,6 +211,8 @@ export function pickPrimaryDualMockifyerInstance<T>(
       secondary as unknown as DualMockifyerControlSurface
     );
   }
+
+  registerMockifyerInstance(primary as unknown as MockifyerClientIdRuntime);
 
   return primary;
 }
