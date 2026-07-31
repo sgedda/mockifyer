@@ -70,6 +70,7 @@ import {
 import {
   resolveInboundParentRequestIdForChild,
 } from '../utils/inbound-parent-record-store';
+import { toPersistedRequestHeaders, toRecordStringHeaders } from '../utils/proxy-recording-privacy';
 
 const router = express.Router();
 
@@ -106,16 +107,6 @@ function parseProxyParentHop(body: unknown): {
     url,
     ...(hop.data !== undefined ? { data: hop.data } : {}),
   };
-}
-
-function toRecordStringHeaders(headers: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headers || typeof headers !== 'object') return out;
-  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
-    if (v === undefined || v === null) continue;
-    out[k] = String(v);
-  }
-  return out;
 }
 
 function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
@@ -664,7 +655,7 @@ router.post('/', async (req: Request, res: Response) => {
         const requestPayload = {
           method: upperMethod,
           url,
-          headers: toRecordStringHeaders(headers),
+          headers: toPersistedRequestHeaders(headers),
           data: normalizedRequestBody,
           queryParams: {},
         };
