@@ -95,6 +95,19 @@ export function resolveClientInitFlags(
 }
 
 /**
+ * Whether the host package must run dual-client init (sibling stack requested).
+ * When false, use one-shot {@link initMockifyerForDashboardProxy} /
+ * {@link initMockifyerForLocalFilesystem} — including when both flags are false
+ * (local client only, no global patch).
+ */
+export function needsSiblingClientSetup(
+  host: 'fetch' | 'axios',
+  flags: { useFetch: boolean; useAxios: boolean }
+): boolean {
+  return host === 'fetch' ? flags.useAxios : flags.useFetch;
+}
+
+/**
  * Builds per-client configs so each package only patches its own stack.
  */
 export function splitDualClientConfigs(

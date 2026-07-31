@@ -1,5 +1,6 @@
 import {
   resolveClientInitFlags,
+  needsSiblingClientSetup,
   splitDualClientConfigs,
   pickPrimaryDualMockifyerInstance,
   buildLocalFilesystemConfig,
@@ -13,6 +14,38 @@ import {
 } from '../packages/mockifyer-core/src';
 
 describe('dual-client init presets', () => {
+  describe('needsSiblingClientSetup', () => {
+    it('is false when only the host client (or neither) is enabled — one-shot path', () => {
+      expect(
+        needsSiblingClientSetup('fetch', { useFetch: true, useAxios: false })
+      ).toBe(false);
+      expect(
+        needsSiblingClientSetup('fetch', { useFetch: false, useAxios: false })
+      ).toBe(false);
+      expect(
+        needsSiblingClientSetup('axios', { useFetch: false, useAxios: true })
+      ).toBe(false);
+      expect(
+        needsSiblingClientSetup('axios', { useFetch: false, useAxios: false })
+      ).toBe(false);
+    });
+
+    it('is true when the sibling client is requested', () => {
+      expect(
+        needsSiblingClientSetup('fetch', { useFetch: true, useAxios: true })
+      ).toBe(true);
+      expect(
+        needsSiblingClientSetup('fetch', { useFetch: false, useAxios: true })
+      ).toBe(true);
+      expect(
+        needsSiblingClientSetup('axios', { useFetch: true, useAxios: true })
+      ).toBe(true);
+      expect(
+        needsSiblingClientSetup('axios', { useFetch: true, useAxios: false })
+      ).toBe(true);
+    });
+  });
+
   describe('resolveClientInitFlags', () => {
     it('uses package defaults when options omit flags', () => {
       expect(

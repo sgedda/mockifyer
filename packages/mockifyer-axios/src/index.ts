@@ -46,6 +46,7 @@ import {
   initMockifyerForDashboardProxyClients,
   initMockifyerForLocalFilesystemClients,
   resolveClientInitFlags,
+  needsSiblingClientSetup,
   pickPrimaryDualMockifyerInstance,
   loadFetchSetupMockifyer,
   type InitMockifyerForDashboardProxyOptions,
@@ -2402,9 +2403,9 @@ export async function initMockifyerForDashboardProxy(
     useGlobalAxios: true,
   });
 
-  if (flags.useAxios && !flags.useFetch) {
+  if (!needsSiblingClientSetup('axios', flags)) {
     return coreInitMockifyerForDashboardProxy(
-      { ...options, useGlobalAxios: true, useGlobalFetch: false },
+      { ...options, useGlobalAxios: flags.useAxios, useGlobalFetch: false },
       setupMockifyer
     );
   }
@@ -2435,9 +2436,9 @@ export function initMockifyerForLocalFilesystem(
     useGlobalAxios: true,
   });
 
-  if (flags.useAxios && !flags.useFetch) {
+  if (!needsSiblingClientSetup('axios', flags)) {
     return coreInitMockifyerForLocalFilesystem(
-      { ...options, useGlobalAxios: true, useGlobalFetch: false },
+      { ...options, useGlobalAxios: flags.useAxios, useGlobalFetch: false },
       setupMockifyer
     );
   }

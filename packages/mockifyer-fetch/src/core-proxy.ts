@@ -9,6 +9,7 @@ export {
   initMockifyerForDashboardProxyClients,
   initMockifyerForLocalFilesystemClients,
   resolveClientInitFlags,
+  needsSiblingClientSetup,
   syncDualMockifyerControls,
   pickPrimaryDualMockifyerInstance,
   loadAxiosSetupMockifyer,
