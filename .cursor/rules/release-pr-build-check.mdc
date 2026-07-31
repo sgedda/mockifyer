@@ -1,23 +1,38 @@
 ---
-description: When bumping/publishing packages, build changed package before PR
+description: Bump package versions and build before PR when packages change
 alwaysApply: true
 ---
 
-# Release / PR Build Check
+# Release / PR — version bump + build check
 
-When doing the “bump + commit + PR” flow for any package in this repo, **add a build verification step before pushing / creating the PR** so CI doesn’t fail on obvious TypeScript/lint/build errors.
+When shipping changes that touch publishable packages (`packages/*`), **bump versions for every involved package** and **verify builds** before push/PR so npm tags and CI stay aligned.
 
-## What to do
+## When to bump
 
-- **Detect which package(s) were changed**:
-  - If edits touch `packages/<pkg>/...`, treat `<pkg>` as changed.
-  - If unsure, inspect `git diff --name-only` and list impacted `packages/*`.
+- If edits touch `packages/<pkg>/...` (source, config that ships with the package, or that package’s `package.json` behavior), treat `<pkg>` as **involved** and **bump its `version`**.
+- Bump **each** involved package — e.g. core + fetch + axios if all three changed — not only a dependency.
+- Do **not** bump packages that were not changed.
+- Do **not** bump or publish the **repo root** `package.json` (private monorepo root).
+- Default bump: **patch** (`1.2.3` → `1.2.4`) for fixes and most features. Use **minor** / **major** only when the user asks or the change clearly warrants it (breaking API → major).
 
-- **Run the package build(s) locally** for each changed package (fast, fail-fast). Prefer the most direct build command:
-  - If the package has a `build` script, run it via `npm --prefix packages/<pkg> run build`.
-  - If the package has multiple build parts, run the minimal ones that catch type errors (e.g. `build:backend` / `frontend run build`).
+### Detect involved packages
 
-## Mockifyer dashboard specifics
+- Prefer `git diff --name-only` (or the files you edited) and map paths to `packages/<pkg>/`.
+- Examples:
+  - `packages/mockifyer-core/src/**` → bump `@sgedda/mockifyer-core`
+  - `packages/mockifyer-fetch/src/**` → bump `@sgedda/mockifyer-fetch`
+  - `packages/mockifyer-axios/src/**` → bump `@sgedda/mockifyer-axios`
+  - `packages/mockifyer-dashboard/src/**` or `frontend/src/**` → bump dashboard (and frontend package version if that package’s `package.json` is versioned separately and changed)
+
+In-repo `file:` dependencies do not replace a version bump: consumers still need a new published version of each changed package.
+
+## Build check (before push / PR)
+
+- Run the package build(s) locally for each changed package (fast, fail-fast):
+  - Prefer `npm --prefix packages/<pkg> run build` when a `build` script exists.
+  - If the package has multiple build parts, run the minimal ones that catch type errors (e.g. `build:backend` / frontend `build`).
+
+### Mockifyer dashboard specifics
 
 If any of these files change:
 - `packages/mockifyer-dashboard/src/**`
@@ -31,12 +46,11 @@ npm --prefix packages/mockifyer-dashboard/frontend run build
 npm --prefix packages/mockifyer-dashboard run build:backend
 ```
 
-## Order of operations (when user asks “bump and create PR”)
+## Order of operations (feature/fix + PR, or “bump and create PR”)
 
-- Make code changes
-- **Run build checks (this rule)**
-- Stage + commit
-- Push
-- Create PR — follow **`.cursor/rules/git-workflow.mdc`**: include **How it works** with 1–3 code snippets (usage + key implementation), not bullets only
-
-
+1. Make code changes
+2. **Bump `version` in each involved package’s `package.json`**
+3. **Run build checks (this rule)**
+4. Stage + commit (include version bumps in the same PR; conventional commit e.g. `chore(release): bump core X.Y.Z, …` or fold into the feature commit if the user prefers one commit)
+5. Push
+6. Create/update PR — follow **`.cursor/rules/git-workflow.mdc`**: include **How it works** with 1–3 code snippets (usage + key implementation), not bullets only
