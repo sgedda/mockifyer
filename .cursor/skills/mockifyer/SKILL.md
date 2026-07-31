@@ -52,7 +52,8 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - **async/await**, explicit errors, TypeScript strict, interfaces over type aliases for objects.
 - **DRY**: extract repeated logic; no drive-by refactors outside the task.
 - **Git**: never commit/push unless the user asks.
-- **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (see `.cursor/rules/release-pr-build-check.mdc`).
+- **Versions**: when code under `packages/<pkg>/` changes, bump that package’s `version` (and every other changed package) before PR — see `.cursor/rules/release-pr-build-check.mdc`.
+- **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (same rule).
 - **Linear issues**: project `Mockifyer`, labels `feature` + `backlog` unless overridden.
 
 ## Quick tasks
