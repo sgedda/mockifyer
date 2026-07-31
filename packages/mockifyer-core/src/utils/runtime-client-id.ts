@@ -7,7 +7,8 @@ let runtime: MockifyerClientIdRuntime | null = null;
 
 /**
  * Registers the active Mockifyer instance for module-level {@link getClientId} / {@link setClientId}.
- * Called automatically by `setupMockifyer` in fetch/axios packages.
+ * Called automatically by `setupMockifyer` in fetch/axios packages, and again by dual-client
+ * presets after sync so the registry points at the primary (synced) instance.
  */
 export function registerMockifyerInstance(instance: MockifyerClientIdRuntime): void {
   runtime = instance;

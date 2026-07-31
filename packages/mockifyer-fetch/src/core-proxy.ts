@@ -6,7 +6,16 @@ export { mirrorProxyRecordingToClient } from '@sgedda/mockifyer-core/utils/mirro
 export {
   initMockifyerForDashboardProxy,
   initMockifyerForLocalFilesystem,
+  initMockifyerForDashboardProxyClients,
+  initMockifyerForLocalFilesystemClients,
+  resolveClientInitFlags,
+  needsSiblingClientSetup,
+  syncDualMockifyerControls,
+  pickPrimaryDualMockifyerInstance,
+  loadAxiosSetupMockifyer,
+  loadFetchSetupMockifyer,
   type InitMockifyerForDashboardProxyOptions,
   type InitMockifyerForLocalFilesystemOptions,
+  type DualMockifyerControlSurface,
 } from '@sgedda/mockifyer-core/utils/init-mockifyer-presets';
 export { performDashboardProxyRequest } from '@sgedda/mockifyer-core/utils/perform-dashboard-proxy-request';
