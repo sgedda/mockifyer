@@ -1661,6 +1661,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         throw error;
       }
     } as typeof fetch;
+
+    logger.info('[Mockifyer] ✅ Patched global fetch (useGlobalFetch: true)');
   }
   
   const extendedClient = httpClient as MockifyerInstance;
