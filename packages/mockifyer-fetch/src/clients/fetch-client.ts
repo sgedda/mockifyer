@@ -11,6 +11,61 @@ import {
 } from '@sgedda/mockifyer-core';
 import { performDashboardProxyRequest } from '../core-proxy';
 
+function headerContentType(headers: Headers): string | undefined {
+  const contentType = headers.get('content-type');
+  return contentType ? contentType.toLowerCase() : undefined;
+}
+
+/** Native Fetch body types that must not be JSON.stringified (bypass / direct upstream). */
+function isNativeFetchBody(value: unknown): value is BodyInit {
+  return (
+    typeof value === 'string' ||
+    (typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams) ||
+    (typeof FormData !== 'undefined' && value instanceof FormData) ||
+    (typeof Blob !== 'undefined' && value instanceof Blob) ||
+    (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) ||
+    (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value))
+  );
+}
+
+function plainObjectToUrlEncoded(body: Record<string, unknown>): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    params.append(key, String(value));
+  }
+  return params;
+}
+
+/**
+ * Build a RequestInit body for direct (non-proxy) fetch.
+ * JSON.stringify on URLSearchParams/FormData yields "{}" and corrupts OAuth/uploads on bypass paths.
+ */
+function buildDirectFetchBody(
+  data: unknown,
+  method: string,
+  headers: Headers
+): BodyInit | undefined {
+  const upperMethod = method.toUpperCase();
+  if (upperMethod === 'GET' || upperMethod === 'HEAD' || data === undefined || data === null) {
+    return undefined;
+  }
+
+  if (isNativeFetchBody(data)) {
+    return data;
+  }
+
+  if (
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    headerContentType(headers)?.includes('application/x-www-form-urlencoded')
+  ) {
+    return plainObjectToUrlEncoded(data as Record<string, unknown>);
+  }
+
+  return JSON.stringify(data);
+}
+
 export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
   private baseUrl?: string;
   private defaultHeaders: Record<string, string>;
@@ -116,7 +171,7 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     const requestConfig: RequestInit = {
       method: config.method || 'GET',
       headers,
-      body: config.data ? JSON.stringify(config.data) : undefined
+      body: buildDirectFetchBody(config.data, config.method || 'GET', headers),
     };
     
     // Use original fetch if available (when global fetch is patched), otherwise use global fetch
