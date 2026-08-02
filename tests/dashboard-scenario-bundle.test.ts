@@ -1,8 +1,10 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { setScenarioLockedFs } from '../packages/mockifyer-core/src/utils/scenario-meta';
 import {
   SCENARIO_BUNDLE_FORMAT_VERSION,
+  ScenarioLockedError,
   applyScenarioImport,
   type ScenarioExportBundle,
 } from '../packages/mockifyer-dashboard/src/utils/scenario-bundle';
@@ -76,5 +78,46 @@ describe('dashboard scenario bundle import', () => {
 
     expect(fs.existsSync(existingPath)).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'escape.json'))).toBe(false);
+  });
+
+  it('rejects import into a locked scenario without clearing or writing mocks', async () => {
+    const scenario = 'demo-locked';
+    const scenarioDir = path.join(tmpDir, scenario);
+    const existingPath = path.join(scenarioDir, 'existing.json');
+    fs.mkdirSync(scenarioDir, { recursive: true });
+    fs.writeFileSync(existingPath, JSON.stringify(makeMock('https://api.example.com/existing', scenario), null, 2));
+    setScenarioLockedFs(tmpDir, scenario, true);
+
+    const bundle: ScenarioExportBundle = {
+      formatVersion: SCENARIO_BUNDLE_FORMAT_VERSION,
+      exportedAt: EXPORT_TIMESTAMP,
+      sourceScenario: scenario,
+      dashboardProvider: 'filesystem',
+      dateManipulation: null,
+      proxyConfig: null,
+      mocks: [
+        {
+          relativePath: 'imported.json',
+          data: makeMock('https://api.example.com/imported', scenario),
+        },
+      ],
+    };
+
+    await expect(
+      applyScenarioImport({
+        mockDataPath: tmpDir,
+        targetScenario: scenario,
+        bundle,
+        replaceExistingMocks: true,
+        applyDateConfig: false,
+        bundleHadDateKey: false,
+        applyProxyConfig: false,
+        bundleHadProxyKey: false,
+        provider: 'filesystem',
+      })
+    ).rejects.toBeInstanceOf(ScenarioLockedError);
+
+    expect(fs.existsSync(existingPath)).toBe(true);
+    expect(fs.existsSync(path.join(scenarioDir, 'imported.json'))).toBe(false);
   });
 });
