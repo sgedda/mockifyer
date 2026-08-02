@@ -1,13 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
-import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import { getScenarioFolderPath, isScenarioLockedFs } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
+
+/** Thrown / returned when import targets a locked scenario (HTTP 423). */
+export const SCENARIO_LOCKED_EDIT_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
+
+export class ScenarioLockedError extends Error {
+  constructor(message: string = SCENARIO_LOCKED_EDIT_MESSAGE) {
+    super(message);
+    this.name = 'ScenarioLockedError';
+  }
+}
 
 /** JSON bundle written by GET /api/scenario-config/export and consumed by POST /api/scenario-config/import */
 export const SCENARIO_BUNDLE_FORMAT_VERSION = 1 as const;
@@ -413,6 +423,9 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
       mockDataPath
     );
     try {
+      if (await store.isScenarioLocked(targetScenario)) {
+        throw new ScenarioLockedError();
+      }
       if (replaceExistingMocks) {
         await clearRedisScenarioMocks(store, targetScenario);
       }
@@ -455,6 +468,10 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
       await store.close().catch(() => undefined);
     }
     return { mocksWritten, dateConfigApplied, proxyConfigApplied };
+  }
+
+  if (isScenarioLockedFs(mockDataPath, targetScenario)) {
+    throw new ScenarioLockedError();
   }
 
   const scenarioFolder = getScenarioFolderPath(mockDataPath, targetScenario);

@@ -45,6 +45,7 @@ import {
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
 } from '../utils/proxy-network-log';
+import { shouldPersistProxyLiveCapture } from '../utils/proxy-scenario-lock';
 
 const router = express.Router();
 
@@ -486,7 +487,13 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
-    if (mock && shouldPersistLiveCapture) {
+    const mayWriteStore = shouldPersistLiveCapture || effectiveRecord === true;
+    const scenarioLocked = mayWriteStore
+      ? await store.isScenarioLocked(resolvedScenarioName)
+      : false;
+    const persistLiveCapture = shouldPersistProxyLiveCapture(shouldPersistLiveCapture, scenarioLocked);
+
+    if (mock && persistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
@@ -503,6 +510,10 @@ router.post('/', async (req: Request, res: Response) => {
           console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
         }
       }
+    } else if (mock && shouldPersistLiveCapture && scenarioLocked && debugProxy) {
+      console.log(
+        `[ProxyRoute] skip live capture persist (scenario locked): ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (scenario=${resolvedScenarioName}) (lane=${clientId || '—'})`
+      );
     }
 
     const clientResponse = mock
@@ -511,7 +522,6 @@ router.post('/', async (req: Request, res: Response) => {
 
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {
-      const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (scenarioLocked) {
         if (debugProxy) {
           console.log(
@@ -600,7 +610,7 @@ router.post('/', async (req: Request, res: Response) => {
       ...(effectiveRecord === true && storedMockForClient
         ? { storedMock: storedMockForClient }
         : {}),
-      ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),
+      ...(persistLiveCapture ? { refreshedStoredMock: true } : {}),
     });
   } catch (error: any) {
     console.error('[ProxyRoute] Error:', error);
