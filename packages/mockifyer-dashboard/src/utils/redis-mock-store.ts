@@ -4,6 +4,7 @@ import {
   assertNotReservedScenarioName,
   generateRequestKey,
   getCurrentScenario,
+  isRedisCrossslotError,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -488,12 +489,14 @@ export class RedisMockStore {
 
     const multi = this.kv.multi();
     let copied = 0;
+    const copiedEntries: Array<{ hash: string; raw: string }> = [];
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) continue;
       const hash = hashes[i];
       const toKey = await this.dataKey(hash, to);
       multi.set(toKey, raw);
+      copiedEntries.push({ hash, raw });
       copied++;
     }
     if (copied > 0) {
@@ -503,7 +506,19 @@ export class RedisMockStore {
     // Registry + best-effort: ensures scenarios appear even if empty.
     multi.sadd(this.scenarioRegistrySetKey, to);
 
-    await multi.exec();
+    try {
+      await multi.exec();
+    } catch (err) {
+      // Redis Cluster rejects MULTI when mock/index/registry keys span slots.
+      if (!isRedisCrossslotError(err)) throw err;
+      for (const entry of copiedEntries) {
+        await this.kv.set(await this.dataKey(entry.hash, to), entry.raw);
+      }
+      if (copied > 0) {
+        await this.kv.sadd(await this.indexKey(to), ...hashes);
+      }
+      await this.kv.sadd(this.scenarioRegistrySetKey, to);
+    }
     return { mocksCopied: copied, dateConfigCopied };
   }
 
