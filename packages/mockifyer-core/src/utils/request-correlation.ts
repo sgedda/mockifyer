@@ -2,6 +2,31 @@ import { ENV_VARS } from '../types';
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
 import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
+import {
+  getActiveInboundClientId,
+  getActiveRequestCorrelation,
+  runWithMockifyerHopContext,
+  type MockifyerHopContext,
+  type RequestCorrelationContext,
+} from './hop-context';
+import {
+  installInlineTraceBodyWrapper,
+  isIncludeInlineTraceBodiesRequested,
+  isIncludeInlineTraceRequested,
+} from './inline-trace';
+
+export type {
+  InlineTraceHopBufferItem,
+  MockifyerHopContext,
+  RequestCorrelationContext,
+} from './hop-context';
+export {
+  getActiveInboundClientId,
+  getActiveMockifyerHopContext,
+  getActiveRequestCorrelation,
+  runWithMockifyerHopContext,
+  runWithRequestCorrelation,
+} from './hop-context';
 
 /** Outbound hop id — propagated to downstream services and the dashboard. */
 export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
@@ -34,48 +59,6 @@ export function isMockifyerAutoInboundCorrelationEnabled(
   env: NodeJS.ProcessEnv = typeof process !== 'undefined' ? process.env : {}
 ): boolean {
   return !isEnvFlagDisabled(env[ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION]);
-}
-
-export interface RequestCorrelationContext {
-  requestId: string;
-  parentRequestId?: string;
-}
-
-/**
- * Inbound HTTP context for service chains (Express middleware / Node http.Server).
- * Outbound `fetch`/`axios` patched by Mockifyer reads this from AsyncLocalStorage — no manual headers in app code.
- */
-export interface InlineTraceHopBufferItem {
-  index: number;
-  requestId: string | null;
-  parentRequestId: string | null;
-  timestamp: string;
-  method: string;
-  url: string;
-  status?: number;
-  source: string;
-  durationMs?: number;
-  transport: string;
-  clientId?: string | null;
-  requestBodyPreview?: string;
-  responseBodyPreview?: string;
-  errorMessage?: string;
-}
-
-export interface MockifyerHopContext {
-  /** `X-Mockifyer-Client-Id` on the inbound request (lane for downstream proxy hops). */
-  inboundClientId?: string;
-  /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
-  correlation?: RequestCorrelationContext;
-  /**
-   * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
-   * and can be wrapped into the HTTP response body (test/debug).
-   */
-  includeInlineTrace?: boolean;
-  /** When true with {@link includeInlineTrace}, store truncated body previews on hops. */
-  includeInlineTraceBodies?: boolean;
-  /** Mutable in-process hop list for the active inbound request. */
-  inlineHops?: InlineTraceHopBufferItem[];
 }
 
 export function newRequestCorrelationId(): string {
@@ -228,51 +211,6 @@ function removeOutboundHeader(headers: unknown, canonicalLower: string): unknown
   return next;
 }
 
-/** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
-let hopContextStorage: import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined;
-
-function getHopContextStorage(): import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined {
-  if (hopContextStorage) {
-    return hopContextStorage;
-  }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { AsyncLocalStorage } = require('async_hooks') as typeof import('async_hooks');
-    hopContextStorage = new AsyncLocalStorage<MockifyerHopContext>();
-    return hopContextStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-export function getActiveMockifyerHopContext(): MockifyerHopContext | undefined {
-  return getHopContextStorage()?.getStore();
-}
-
-/** Inbound lane id for the current async scope (from upstream `X-Mockifyer-Client-Id`). */
-export function getActiveInboundClientId(): string | undefined {
-  return getActiveMockifyerHopContext()?.inboundClientId;
-}
-
-export function getActiveRequestCorrelation(): RequestCorrelationContext | undefined {
-  return getActiveMockifyerHopContext()?.correlation;
-}
-
-export function runWithMockifyerHopContext<T>(ctx: MockifyerHopContext | undefined, fn: () => T): T {
-  const storage = getHopContextStorage();
-  if (!ctx || !storage) {
-    return fn();
-  }
-  return storage.run(ctx, fn);
-}
-
-export function runWithRequestCorrelation<T>(ctx: RequestCorrelationContext | undefined, fn: () => T): T {
-  if (!ctx) {
-    return fn();
-  }
-  return runWithMockifyerHopContext({ correlation: ctx }, fn);
-}
-
 /**
  * Resolve parent for the next outbound hop:
  * 1. Active inbound correlation (Node auto-capture / Express middleware / ALS)
@@ -359,14 +297,11 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
         json?: (body: unknown) => unknown;
         send?: (body: unknown) => unknown;
       } | undefined;
-      // Lazy require avoids a circular import with inline-trace ↔ request-correlation.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const inlineTrace = require('./inline-trace') as typeof import('./inline-trace');
-      const includeInlineTrace = inlineTrace.isIncludeInlineTraceRequested({
+      const includeInlineTrace = isIncludeInlineTraceRequested({
         headers: req?.headers,
         url: req?.url,
       });
-      const includeInlineTraceBodies = inlineTrace.isIncludeInlineTraceBodiesRequested({
+      const includeInlineTraceBodies = isIncludeInlineTraceBodiesRequested({
         headers: req?.headers,
         url: req?.url,
       });
@@ -379,7 +314,7 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
         maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
         return runWithMockifyerHopContext(resolved.ctx, () => {
           if (res) {
-            inlineTrace.installInlineTraceBodyWrapper(res);
+            installInlineTraceBodyWrapper(res);
           }
           return originalEmit.apply(this, [event, ...args]);
         });
@@ -444,15 +379,12 @@ export function createMockifyerCorrelationMiddleware(
     const headerBag = {
       get: (name: string) => req.header(name),
     };
-    // Lazy require avoids a circular import with inline-trace ↔ request-correlation.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const inlineTrace = require('./inline-trace') as typeof import('./inline-trace');
-    const includeInlineTrace = inlineTrace.isIncludeInlineTraceRequested({
+    const includeInlineTrace = isIncludeInlineTraceRequested({
       headers: headerBag,
       query: req.query,
       url: req.url,
     });
-    const includeInlineTraceBodies = inlineTrace.isIncludeInlineTraceBodiesRequested({
+    const includeInlineTraceBodies = isIncludeInlineTraceBodiesRequested({
       headers: headerBag,
       query: req.query,
       url: req.url,
@@ -475,7 +407,7 @@ export function createMockifyerCorrelationMiddleware(
         : isMockifyerEchoTraceIdEnabled();
     maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
     runWithMockifyerHopContext(resolved.ctx, () => {
-      inlineTrace.installInlineTraceBodyWrapper(res);
+      installInlineTraceBodyWrapper(res);
       next();
     });
   };
