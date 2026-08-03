@@ -228,6 +228,60 @@ describe('inline-trace', () => {
     expect(headers['content-length']).toBe(String(Buffer.byteLength(originalBody)));
   });
 
+  it('keeps Express prototype res.json callable (no shadowing getter)', async () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    // Simulate raw Node ServerResponse, then Express setPrototypeOf(app.response).
+    const proto = {
+      status(this: { statusCode?: number }, code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(this: { body?: unknown }, body: unknown) {
+        this.body = body;
+        return this;
+      },
+    };
+    const res = Object.setPrototypeOf(
+      {
+        headersSent: false,
+        setHeader: () => undefined,
+        getHeader: () => undefined,
+        end: () => undefined,
+      },
+      proto
+    ) as {
+      statusCode?: number;
+      body?: unknown;
+      status: (code: number) => unknown;
+      json: (body: unknown) => unknown;
+      end: () => void;
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      // Early install as Node inbound capture (before Express proto in real life;
+      // here proto is already set to assert we never leave json undefined).
+      installInlineTraceBodyWrapper(res);
+      expect(typeof res.json).toBe('function');
+      const chained = res.status(500) as { json: (body: unknown) => unknown };
+      expect(typeof chained.json).toBe('function');
+      chained.json({ error: 'x' });
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toMatchObject({
+      data: { error: 'x' },
+      mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
+    });
+  });
+
   it('does not nest envelopes when installInlineTraceBodyWrapper runs twice (inbound + middleware)', () => {
     const resolved = resolveInboundHopContext(
       {

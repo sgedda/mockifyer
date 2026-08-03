@@ -418,54 +418,69 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
     }
   };
 
-  if (typeof res.json === 'function') {
-    assignJson(res.json);
-  } else {
-    // Express adds `json` after the raw Node `request` event — intercept the assignment.
+  const resolveMethod = (name: 'json' | 'send'): ((body: unknown) => unknown) | undefined => {
+    const own = res[name];
+    if (typeof own === 'function') {
+      return own;
+    }
     try {
-      Object.defineProperty(res, 'json', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return undefined;
-        },
-        set(fn: (body: unknown) => unknown) {
-          Object.defineProperty(res, 'json', {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: wrapJsonMethod(fn.bind(res), onceWrap),
-          });
-        },
-      });
+      const proto = Object.getPrototypeOf(res) as InlineTraceHttpResponse | null;
+      const fromProto = proto?.[name];
+      if (typeof fromProto === 'function') {
+        return fromProto;
+      }
     } catch {
       // ignore
     }
-  }
+    return undefined;
+  };
 
-  if (typeof res.send === 'function') {
-    assignSend(res.send);
-  } else {
+  const tryPatchJsonSend = (): void => {
+    const jsonFn = resolveMethod('json');
+    if (jsonFn && !Object.prototype.hasOwnProperty.call(res, 'json')) {
+      // Own property missing but prototype has json (Express). Copy a wrapped
+      // instance method without defineProperty getters that shadow the prototype.
+      assignJson(jsonFn);
+    } else if (jsonFn && typeof res.json === 'function') {
+      // Already an own function (middleware path) — wrap once.
+      const desc = Object.getOwnPropertyDescriptor(res, 'json');
+      if (!desc || desc.writable !== false) {
+        assignJson(jsonFn);
+      }
+    }
+
+    const sendFn = resolveMethod('send');
+    if (sendFn && !Object.prototype.hasOwnProperty.call(res, 'send')) {
+      assignSend(sendFn);
+    } else if (sendFn && typeof res.send === 'function') {
+      const desc = Object.getOwnPropertyDescriptor(res, 'send');
+      if (!desc || desc.writable !== false) {
+        assignSend(sendFn);
+      }
+    }
+  };
+
+  tryPatchJsonSend();
+  // Node inbound capture runs before Express setPrototypeOf(res, app.response).
+  // Retry on microtask/immediate so we wrap Express json/send without shadowing
+  // the prototype with a getter that returns undefined (breaks res.status().json).
+  const schedule =
+    typeof queueMicrotask === 'function'
+      ? queueMicrotask
+      : (fn: () => void) => {
+          if (typeof setImmediate === 'function') {
+            setImmediate(fn);
+          } else {
+            setTimeout(fn, 0);
+          }
+        };
+  schedule(() => {
     try {
-      Object.defineProperty(res, 'send', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return undefined;
-        },
-        set(fn: (body: unknown) => unknown) {
-          Object.defineProperty(res, 'send', {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: wrapSendMethod(res, fn.bind(res), onceWrap),
-          });
-        },
-      });
+      tryPatchJsonSend();
     } catch {
       // ignore
     }
-  }
+  });
 
   // Apollo Server expressMiddleware writes JSON through res.end — not res.json.
   if (typeof res.end === 'function') {
