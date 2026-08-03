@@ -403,69 +403,75 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
     return wrapBodyWithInlineTrace(body, ctx);
   };
 
-  const assignJson = (fn: (body: unknown) => unknown): void => {
+  /**
+   * Resolve json/send from the prototype chain (skipping own properties).
+   * Node inbound capture installs before Express `setPrototypeOf(res, app.response)`,
+   * so the real methods often appear only later — resolve at call time.
+   */
+  const resolvePrototypeMethod = (
+    target: InlineTraceHttpResponse,
+    name: 'json' | 'send'
+  ): ((body: unknown) => unknown) | undefined => {
     try {
-      res.json = wrapJsonMethod(fn.bind(res), onceWrap);
+      let proto: object | null = Object.getPrototypeOf(target) as object | null;
+      while (proto && proto !== Object.prototype) {
+        const desc = Object.getOwnPropertyDescriptor(proto, name);
+        if (desc) {
+          if (typeof desc.value === 'function') {
+            return desc.value as (body: unknown) => unknown;
+          }
+          break;
+        }
+        proto = Object.getPrototypeOf(proto) as object | null;
+      }
     } catch {
-      // ignore non-configurable
+      // ignore
     }
+    return undefined;
   };
-  const assignSend = (fn: (body: unknown) => unknown): void => {
+
+  /**
+   * Install lazy own-property wrappers so same-tick Express `res.json` / `res.send`
+   * (after setPrototypeOf, before any microtask) still get `mockifyerTrace`.
+   * Avoid defineProperty getters that return undefined — those break `res.status().json`.
+   */
+  const installLazyMethod = (name: 'json' | 'send'): void => {
+    const desc = Object.getOwnPropertyDescriptor(res, name);
+    if (desc && desc.writable === false) {
+      return;
+    }
+
+    const priorOwn =
+      desc && typeof desc.value === 'function'
+        ? (desc.value as (body: unknown) => unknown)
+        : undefined;
+
+    const lazy = function lazyInlineTraceMethod(
+      this: InlineTraceHttpResponse,
+      body: unknown
+    ): unknown {
+      const target = this ?? res;
+      const original =
+        priorOwn ?? resolvePrototypeMethod(target, name);
+      if (typeof original !== 'function') {
+        throw new TypeError(`res.${name} is not a function`);
+      }
+      const bound = original.bind(target) as (body: unknown) => unknown;
+      if (name === 'json') {
+        return wrapJsonMethod(bound, onceWrap)(body);
+      }
+      return wrapSendMethod(target, bound, onceWrap)(body);
+    };
+
     try {
-      res.send = wrapSendMethod(res, fn.bind(res), onceWrap);
+      res[name] = lazy;
     } catch {
       // ignore non-configurable
     }
   };
 
-  if (typeof res.json === 'function') {
-    assignJson(res.json);
-  } else {
-    // Express adds `json` after the raw Node `request` event — intercept the assignment.
-    try {
-      Object.defineProperty(res, 'json', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return undefined;
-        },
-        set(fn: (body: unknown) => unknown) {
-          Object.defineProperty(res, 'json', {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: wrapJsonMethod(fn.bind(res), onceWrap),
-          });
-        },
-      });
-    } catch {
-      // ignore
-    }
-  }
-
-  if (typeof res.send === 'function') {
-    assignSend(res.send);
-  } else {
-    try {
-      Object.defineProperty(res, 'send', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return undefined;
-        },
-        set(fn: (body: unknown) => unknown) {
-          Object.defineProperty(res, 'send', {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: wrapSendMethod(res, fn.bind(res), onceWrap),
-          });
-        },
-      });
-    } catch {
-      // ignore
-    }
-  }
+  installLazyMethod('json');
+  installLazyMethod('send');
 
   // Apollo Server expressMiddleware writes JSON through res.end — not res.json.
   if (typeof res.end === 'function') {

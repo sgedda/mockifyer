@@ -277,15 +277,37 @@ export interface MockifyerCorrelationMiddlewareOptions {
   assignInboundTraceIdWhenMissing?: boolean;
 }
 
-let nodeInboundCaptureInstalled = false;
+const NODE_INBOUND_CAPTURE_INSTALLED = Symbol.for(
+  '@sgedda/mockifyer-core.nodeInboundCaptureInstalled'
+);
+const NODE_INBOUND_EMIT_PATCHED = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitPatched');
+
+function isNodeInboundCaptureInstalled(): boolean {
+  return Boolean(
+    (globalThis as typeof globalThis & { [NODE_INBOUND_CAPTURE_INSTALLED]?: boolean })[
+      NODE_INBOUND_CAPTURE_INSTALLED
+    ]
+  );
+}
+
+function markNodeInboundCaptureInstalled(): void {
+  (globalThis as typeof globalThis & { [NODE_INBOUND_CAPTURE_INSTALLED]?: boolean })[
+    NODE_INBOUND_CAPTURE_INSTALLED
+  ] = true;
+}
 
 function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => unknown }): void {
   const prototype = serverModule.Server.prototype as {
-    emit: (event: string, ...args: unknown[]) => boolean;
+    emit: ((event: string, ...args: unknown[]) => boolean) & {
+      [NODE_INBOUND_EMIT_PATCHED]?: boolean;
+    };
   };
+  if (prototype.emit?.[NODE_INBOUND_EMIT_PATCHED]) {
+    return;
+  }
   const originalEmit = prototype.emit;
 
-  prototype.emit = function patchedServerEmit(
+  const patchedServerEmit = function patchedServerEmit(
     this: unknown,
     event: string,
     ...args: unknown[]
@@ -322,6 +344,8 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
     }
     return originalEmit.apply(this, [event, ...args]);
   };
+  patchedServerEmit[NODE_INBOUND_EMIT_PATCHED] = true;
+  prototype.emit = patchedServerEmit;
 }
 
 /**
@@ -334,7 +358,7 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
  * {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
  */
 export function installNodeInboundRequestCorrelationCapture(): boolean {
-  if (nodeInboundCaptureInstalled) {
+  if (isNodeInboundCaptureInstalled()) {
     return true;
   }
   if (typeof process === 'undefined' || !process.versions?.node) {
@@ -355,7 +379,7 @@ export function installNodeInboundRequestCorrelationCapture(): boolean {
     } catch {
       // https optional
     }
-    nodeInboundCaptureInstalled = true;
+    markNodeInboundCaptureInstalled();
     return true;
   } catch {
     return false;

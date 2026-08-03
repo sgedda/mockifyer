@@ -49,17 +49,21 @@ export interface MockifyerHopContext {
 }
 
 /** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
-let hopContextStorage: import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined;
+const HOP_CONTEXT_ALS_GLOBAL = Symbol.for('@sgedda/mockifyer-core.hopContextALS');
 
 function getHopContextStorage(): import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined {
-  if (hopContextStorage) {
-    return hopContextStorage;
+  const globalStore = globalThis as typeof globalThis & {
+    [HOP_CONTEXT_ALS_GLOBAL]?: import('async_hooks').AsyncLocalStorage<MockifyerHopContext>;
+  };
+  if (globalStore[HOP_CONTEXT_ALS_GLOBAL]) {
+    return globalStore[HOP_CONTEXT_ALS_GLOBAL];
   }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { AsyncLocalStorage } = require('async_hooks') as typeof import('async_hooks');
-    hopContextStorage = new AsyncLocalStorage<MockifyerHopContext>();
-    return hopContextStorage;
+    const storage = new AsyncLocalStorage<MockifyerHopContext>();
+    globalStore[HOP_CONTEXT_ALS_GLOBAL] = storage;
+    return storage;
   } catch {
     return undefined;
   }
