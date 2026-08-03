@@ -78,6 +78,7 @@ import {
   applyRecordingPassthroughFlag,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
+  recordInlineTraceHopFromExchange,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -145,7 +146,24 @@ class MockifyerClass {
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' },
     correlation?: RequestCorrelationContext
   ): void {
+    // Dashboard proxy hops are recorded in performDashboardProxyRequest (shared axios/fetch path).
     if (this.config.proxy?.baseUrl) return;
+
+    const requestId = correlation?.requestId ?? partial.requestId ?? null;
+    const parentRequestId = correlation?.parentRequestId ?? partial.parentRequestId ?? null;
+    recordInlineTraceHopFromExchange({
+      method: partial.method,
+      url: partial.url,
+      status: partial.status,
+      source: partial.source,
+      transport: partial.transport ?? 'axios',
+      requestId,
+      parentRequestId,
+      durationMs: partial.durationMs,
+      clientId: this.config.clientId ?? partial.clientId ?? null,
+      errorMessage: partial.errorMessage,
+    });
+
     emitMockifyerNetworkEvent({
       config: this.config,
       scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),

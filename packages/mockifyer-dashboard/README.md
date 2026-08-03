@@ -157,6 +157,24 @@ curl -s 'http://localhost:3002/api/network-events/trace?eventId=ev-...&scenario=
 
 `setupMockifyer` auto-installs Node inbound capture: it assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response (disable echo with **`MOCKIFYER_ECHO_TRACE_ID=false`**; disable the whole patch with **`MOCKIFYER_AUTO_INBOUND_CORRELATION=false`**). Express apps can still mount **`createMockifyerCorrelationMiddleware()`** for explicit control. Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
 
+### Inline response trace (no Redis / no `/trace` poll)
+
+For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (optional query: `?trace-mockifyer=true`). With correlation middleware (or Node inbound capture when `res.json`/`res.send` exist), the JSON body is wrapped as:
+
+```json
+{
+  "data": { "...": "original response" },
+  "mockifyerTrace": {
+    "requestId": "...",
+    "hopCount": 2,
+    "hops": [{ "method": "GET", "url": "...", "status": 200, "source": "upstream" }],
+    "incomplete": false
+  }
+}
+```
+
+Hops are collected **in-process** for that request (no dashboard Network storage required). Optional **`X-Mockifyer-Include-Trace-Bodies: 1`** adds truncated body previews. Do not send these headers on real consumer traffic.
+
 `requestId` on `/trace` matches a logged hop **or** a virtual root id (only referenced as `parentRequestId` on downstream hops).
 
 Response shape: `trace.hops[]` ordered **root-first** (caller → callee). Each hop has `method`, `url`, `status`, `source`, and optional `request` / `response` with `body` previews. `trace.incomplete` is `true` when a parent or child is outside the loaded log window.

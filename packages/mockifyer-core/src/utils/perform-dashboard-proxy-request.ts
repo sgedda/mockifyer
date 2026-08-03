@@ -3,6 +3,10 @@ import {
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
 } from './request-correlation';
+import {
+  mapProxyPayloadSourceToNetworkSource,
+  recordInlineTraceHopFromExchange,
+} from './inline-trace';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
@@ -57,6 +61,7 @@ export async function performDashboardProxyRequest(
     logTag = 'Mockifyer',
   } = params;
   const fetchFn = params.fetchFn ?? fetch;
+  const startedAt = Date.now();
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
   const proxyResponse = await fetchFn(proxyUrl, {
@@ -129,6 +134,22 @@ export async function performDashboardProxyRequest(
           scenarioName,
         }
       : undefined;
+
+  recordInlineTraceHopFromExchange({
+    method,
+    url,
+    status,
+    source: mapProxyPayloadSourceToNetworkSource(
+      typeof payload?.source === 'string' ? payload.source : undefined
+    ),
+    transport: 'proxy',
+    requestId: requestId ?? null,
+    parentRequestId: parentRequestId ?? null,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    clientId: lane ?? null,
+    requestBody: body,
+    responseBody: data,
+  });
 
   return {
     data,
