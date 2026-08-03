@@ -428,4 +428,14 @@ export const ENV_VARS = {
    * Default on — resolve refs before field/date overrides.
    */
   MOCK_POOL_REFS: 'MOCKIFYER_POOL_REFS',
+  /**
+   * When `false` / `0` / `off` / `no`, skip installing Node inbound hop capture
+   * ({@link installNodeInboundRequestCorrelationCapture}). Default on when `setupMockifyer` runs.
+   */
+  MOCK_AUTO_INBOUND_CORRELATION: 'MOCKIFYER_AUTO_INBOUND_CORRELATION',
+  /**
+   * When `false` / `0` / `off` / `no`, do not assign/echo `X-Mockifyer-Request-Id` on HTTP responses
+   * from the Node inbound patch. Default on (echo enabled). Read per request.
+   */
+  MOCK_ECHO_TRACE_ID: 'MOCKIFYER_ECHO_TRACE_ID',
 } as const;

@@ -1,3 +1,4 @@
+import { ENV_VARS } from '../types';
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
 import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
@@ -7,6 +8,33 @@ export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
 
 /** Caller hop id — links this outbound request to the request that triggered it. */
 export const MOCKIFYER_PARENT_REQUEST_ID_HEADER = 'x-mockifyer-parent-request-id';
+
+function isEnvFlagDisabled(raw: string | undefined): boolean {
+  const value = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  return value === '0' || value === 'false' || value === 'off' || value === 'no';
+}
+
+/**
+ * Whether Node inbound capture should echo/assign `X-Mockifyer-Request-Id` on responses.
+ * Default **true**. Disable with {@link ENV_VARS.MOCK_ECHO_TRACE_ID}=false.
+ */
+export function isMockifyerEchoTraceIdEnabled(
+  env: NodeJS.ProcessEnv = typeof process !== 'undefined' ? process.env : {}
+): boolean {
+  return !isEnvFlagDisabled(env[ENV_VARS.MOCK_ECHO_TRACE_ID]);
+}
+
+/**
+ * Whether {@link installNodeInboundRequestCorrelationCapture} should install.
+ * Default **true**. Disable with {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
+ */
+export function isMockifyerAutoInboundCorrelationEnabled(
+  env: NodeJS.ProcessEnv = typeof process !== 'undefined' ? process.env : {}
+): boolean {
+  return !isEnvFlagDisabled(env[ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION]);
+}
 
 export interface RequestCorrelationContext {
   requestId: string;
@@ -52,6 +80,50 @@ export function captureInboundMockifyerContext(headers: unknown): MockifyerHopCo
       : { requestId }
     : undefined;
   return { inboundClientId, correlation };
+}
+
+/**
+ * Builds hop context for an inbound HTTP request (optional assign when the trace id is missing).
+ */
+export function resolveInboundHopContext(
+  headers: unknown,
+  options: {
+    assignInboundTraceIdWhenMissing?: boolean;
+  } = {}
+): { ctx: MockifyerHopContext; traceId?: string } | undefined {
+  const assignInboundTraceIdWhenMissing = options.assignInboundTraceIdWhenMissing !== false;
+  const captured = captureInboundMockifyerContext(headers);
+
+  let traceId = captured?.correlation?.requestId;
+  if (!traceId && assignInboundTraceIdWhenMissing) {
+    traceId = newRequestCorrelationId();
+  }
+
+  if (!traceId && !captured?.inboundClientId) {
+    return undefined;
+  }
+
+  const ctx: MockifyerHopContext = {
+    inboundClientId: captured?.inboundClientId,
+    correlation: traceId
+      ? captured?.correlation?.parentRequestId
+        ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
+        : { requestId: traceId }
+      : captured?.correlation,
+  };
+
+  return { ctx, traceId };
+}
+
+function maybeEchoTraceIdOnResponse(
+  res: { setHeader?: (name: string, value: string) => void } | undefined,
+  traceId: string | undefined,
+  echoEnabled: boolean
+): void {
+  if (!echoEnabled || !traceId || typeof res?.setHeader !== 'function') {
+    return;
+  }
+  res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, traceId);
 }
 
 /**
@@ -213,8 +285,9 @@ export interface MockifyerCorrelationMiddlewareResponse {
 
 export interface MockifyerCorrelationMiddlewareOptions {
   /**
-   * When true (default), set `X-Mockifyer-Request-Id` on the HTTP response so clients can
+   * When true, set `X-Mockifyer-Request-Id` on the HTTP response so clients can
    * call `/api/network-events/trace?requestId=…` after the request completes.
+   * When omitted, follows {@link ENV_VARS.MOCK_ECHO_TRACE_ID} (default on).
    */
   echoTraceIdOnResponse?: boolean;
   /**
@@ -238,9 +311,13 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
   ): boolean {
     if (event === 'request') {
       const req = args[0] as { headers?: unknown } | undefined;
-      const ctx = req?.headers ? captureInboundMockifyerContext(req.headers) : undefined;
-      if (ctx) {
-        return runWithMockifyerHopContext(ctx, () => originalEmit.apply(this, [event, ...args]));
+      const res = args[1] as { setHeader?: (name: string, value: string) => void } | undefined;
+      const resolved = req?.headers ? resolveInboundHopContext(req.headers) : undefined;
+      if (resolved) {
+        maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
+        return runWithMockifyerHopContext(resolved.ctx, () =>
+          originalEmit.apply(this, [event, ...args])
+        );
       }
     }
     return originalEmit.apply(this, [event, ...args]);
@@ -249,9 +326,12 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
 
 /**
  * Node.js only: wrap incoming `http(s).Server` requests so outbound Mockifyer calls inherit
- * `X-Mockifyer-Request-Id` from the caller without Express middleware.
+ * inbound lane / trace ids without Express middleware. By default also assigns a trace id when
+ * missing and echoes `X-Mockifyer-Request-Id` on the response
+ * (disable echo with {@link ENV_VARS.MOCK_ECHO_TRACE_ID}=false).
  *
- * Installed once when `setupMockifyer` runs. Disable with `MOCKIFYER_AUTO_INBOUND_CORRELATION=false`.
+ * Installed once when `setupMockifyer` runs. Disable entirely with
+ * {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
  */
 export function installNodeInboundRequestCorrelationCapture(): boolean {
   if (nodeInboundCaptureInstalled) {
@@ -260,10 +340,7 @@ export function installNodeInboundRequestCorrelationCapture(): boolean {
   if (typeof process === 'undefined' || !process.versions?.node) {
     return false;
   }
-  const disabled = String(process.env.MOCKIFYER_AUTO_INBOUND_CORRELATION ?? '')
-    .trim()
-    .toLowerCase();
-  if (disabled === '0' || disabled === 'false' || disabled === 'off' || disabled === 'no') {
+  if (!isMockifyerAutoInboundCorrelationEnabled()) {
     return false;
   }
 
@@ -296,37 +373,26 @@ export function createMockifyerCorrelationMiddleware(
   res: MockifyerCorrelationMiddlewareResponse,
   next: () => void
 ) => void {
-  const echoTraceIdOnResponse = options.echoTraceIdOnResponse !== false;
   const assignInboundTraceIdWhenMissing = options.assignInboundTraceIdWhenMissing !== false;
 
   return (req, res, next) => {
-    const captured = captureInboundMockifyerContext({
-      get: (name: string) => req.header(name),
-    });
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) => req.header(name),
+      },
+      { assignInboundTraceIdWhenMissing }
+    );
 
-    let traceId = captured?.correlation?.requestId;
-    if (!traceId && assignInboundTraceIdWhenMissing) {
-      traceId = newRequestCorrelationId();
-    }
-
-    if (echoTraceIdOnResponse && traceId && typeof res.setHeader === 'function') {
-      res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, traceId);
-    }
-
-    if (!traceId && !captured?.inboundClientId) {
+    if (!resolved) {
       next();
       return;
     }
 
-    const ctx: MockifyerHopContext = {
-      inboundClientId: captured?.inboundClientId,
-      correlation: traceId
-        ? captured?.correlation?.parentRequestId
-          ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
-          : { requestId: traceId }
-        : captured?.correlation,
-    };
-
-    runWithMockifyerHopContext(ctx, next);
+    const shouldEcho =
+      options.echoTraceIdOnResponse !== undefined
+        ? options.echoTraceIdOnResponse
+        : isMockifyerEchoTraceIdEnabled();
+    maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
+    runWithMockifyerHopContext(resolved.ctx, next);
   };
 }

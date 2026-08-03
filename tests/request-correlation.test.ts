@@ -10,6 +10,7 @@ import {
   getOutboundMockifyerParentRequestIdHeader,
   getOutboundMockifyerRequestIdHeader,
   installNodeInboundRequestCorrelationCapture,
+  isMockifyerEchoTraceIdEnabled,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
@@ -143,6 +144,7 @@ describe('request-correlation', () => {
 
     let parentDuringHandler: string | undefined;
     let hopDuringHandler: RequestCorrelationContext | undefined;
+    let echoedTraceId: string | undefined;
 
     const server = http.createServer((_req, res) => {
       parentDuringHandler = getActiveRequestCorrelation()?.requestId;
@@ -170,6 +172,7 @@ describe('request-correlation', () => {
             },
           },
           (res) => {
+            echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
             res.resume();
             res.on('end', () => {
               server.close(() => resolve());
@@ -182,5 +185,94 @@ describe('request-correlation', () => {
     expect(parentDuringHandler).toBe('req-inbound');
     expect(hopDuringHandler?.parentRequestId).toBe('req-inbound');
     expect(hopDuringHandler?.requestId).toBeTruthy();
+    expect(echoedTraceId).toBe('req-inbound');
+  });
+
+  it('Node inbound capture assigns and echoes a trace id when the request has none', async () => {
+    expect(installNodeInboundRequestCorrelationCapture()).toBe(true);
+
+    let parentDuringHandler: string | undefined;
+    let echoedTraceId: string | undefined;
+
+    const server = http.createServer((_req, res) => {
+      parentDuringHandler = getActiveRequestCorrelation()?.requestId;
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          reject(new Error('expected server address'));
+          return;
+        }
+
+        http.get({ host: '127.0.0.1', port: address.port, path: '/' }, (res) => {
+          echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
+          res.resume();
+          res.on('end', () => {
+            server.close(() => resolve());
+          });
+        }).on('error', reject);
+      });
+    });
+
+    expect(parentDuringHandler).toBeTruthy();
+    expect(echoedTraceId).toBe(parentDuringHandler);
+  });
+
+  it('respects MOCKIFYER_ECHO_TRACE_ID=false for Node inbound echo', async () => {
+    expect(installNodeInboundRequestCorrelationCapture()).toBe(true);
+
+    const previous = process.env.MOCKIFYER_ECHO_TRACE_ID;
+    process.env.MOCKIFYER_ECHO_TRACE_ID = 'false';
+
+    let parentDuringHandler: string | undefined;
+    let echoedTraceId: string | undefined;
+
+    try {
+      expect(isMockifyerEchoTraceIdEnabled()).toBe(false);
+
+      const server = http.createServer((_req, res) => {
+        parentDuringHandler = getActiveRequestCorrelation()?.requestId;
+        res.writeHead(200);
+        res.end('ok');
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          if (!address || typeof address === 'string') {
+            reject(new Error('expected server address'));
+            return;
+          }
+
+          http.get({ host: '127.0.0.1', port: address.port, path: '/' }, (res) => {
+            echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
+            res.resume();
+            res.on('end', () => {
+              server.close(() => resolve());
+            });
+          }).on('error', reject);
+        });
+      });
+
+      expect(parentDuringHandler).toBeTruthy();
+      expect(echoedTraceId).toBeUndefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MOCKIFYER_ECHO_TRACE_ID;
+      } else {
+        process.env.MOCKIFYER_ECHO_TRACE_ID = previous;
+      }
+    }
+  });
+
+  it('isMockifyerEchoTraceIdEnabled defaults on and honors falsey env values', () => {
+    expect(isMockifyerEchoTraceIdEnabled({})).toBe(true);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'false' })).toBe(false);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: '0' })).toBe(false);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'off' })).toBe(false);
   });
 });

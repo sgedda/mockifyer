@@ -54,7 +54,7 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, { provider: 'filesys
 
 **Network trace** (multi-service response chain):
 
-- After calling an entry service, read **`X-Mockifyer-Request-Id`** from the response (`createMockifyerCorrelationMiddleware()` echoes it by default).
+- After calling an entry service, read **`X-Mockifyer-Request-Id`** from the response (Node inbound capture from `setupMockifyer` echoes it by default; disable with `MOCKIFYER_ECHO_TRACE_ID=false`). Express apps can also use `createMockifyerCorrelationMiddleware()`.
 - `GET /api/network-events/trace?requestId=<that id>&scenario=default` — also matches virtual roots (id only appears as `parentRequestId` on child hops).
 - Or `?eventId=<dashboard log row id>` when you only have the network tab id.
 - `/api/proxy` JSON includes `requestId` / `parentRequestId` and sets the same response header.
