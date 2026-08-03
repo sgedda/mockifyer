@@ -22,6 +22,14 @@ export const MOCKIFYER_TRACE_RESPONSE_KEY = 'mockifyerTrace';
 /** Envelope key for the original body when wrapping. */
 export const MOCKIFYER_TRACE_DATA_KEY = 'data';
 
+/**
+ * Marks a response that already has json/send/end patched for inline trace.
+ * Symbol.for so duplicate module copies still share the same key.
+ */
+const INLINE_TRACE_BODY_WRAPPER_INSTALLED = Symbol.for(
+  '@sgedda/mockifyer-core.inlineTraceBodyWrapper'
+);
+
 const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 
 function isTruthyFlag(raw: string | undefined | null): boolean {
@@ -234,6 +242,15 @@ export function buildInlineRequestTrace(
  * Wrap a business response as `{ data, mockifyerTrace }` when inline trace is active.
  * Returns the original body when not opted in.
  */
+function isAlreadyInlineTraceWrapped(body: unknown): boolean {
+  return (
+    body != null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_RESPONSE_KEY)
+  );
+}
+
 export function wrapBodyWithInlineTrace(
   body: unknown,
   ctx: MockifyerHopContext | undefined = getActiveMockifyerHopContext()
@@ -241,6 +258,14 @@ export function wrapBodyWithInlineTrace(
   const trace = buildInlineRequestTrace(ctx);
   if (!trace) {
     return body;
+  }
+  // Avoid nested { data: { data, mockifyerTrace }, mockifyerTrace } if wrap runs twice.
+  if (isAlreadyInlineTraceWrapped(body)) {
+    const existing = body as Record<string, unknown>;
+    return {
+      [MOCKIFYER_TRACE_DATA_KEY]: existing[MOCKIFYER_TRACE_DATA_KEY],
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+    };
   }
   return {
     [MOCKIFYER_TRACE_DATA_KEY]: body,
@@ -252,24 +277,123 @@ function isNodeBuffer(value: unknown): boolean {
   return typeof Buffer !== 'undefined' && typeof Buffer.isBuffer === 'function' && Buffer.isBuffer(value);
 }
 
-type JsonCapableResponse = {
+function utf8ByteLength(value: string): number {
+  if (typeof Buffer !== 'undefined' && typeof Buffer.byteLength === 'function') {
+    return Buffer.byteLength(value);
+  }
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
+}
+
+type InlineTraceHttpResponse = {
   json?: (body: unknown) => unknown;
   send?: (body: unknown) => unknown;
-  setHeader?: (name: string, value: string | number | readonly string[]) => void;
+  end?: (...args: any[]) => any;
+  setHeader?: (name: string, value: any) => void;
+  getHeader?: (name: string) => number | string | string[] | undefined;
+  headersSent?: boolean;
 };
 
+function looksLikeJsonPayload(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+}
+
+function responseLooksJson(res: InlineTraceHttpResponse): boolean {
+  const raw = res.getHeader?.('content-type');
+  const contentType = Array.isArray(raw) ? raw.join(';') : String(raw ?? '');
+  return contentType.toLowerCase().includes('json');
+}
+
 /**
- * Patch Express-style `res.json` / `res.send` so the final JSON body includes `mockifyerTrace`.
+ * True when response headers were already flushed with a Content-Length.
+ * Rewriting the body to a different size in that state truncates or hangs clients.
+ */
+function hasCommittedContentLength(res: InlineTraceHttpResponse): boolean {
+  if (!res.headersSent) {
+    return false;
+  }
+  const raw = res.getHeader?.('content-length');
+  if (raw == null) {
+    return false;
+  }
+  if (Array.isArray(raw)) {
+    return raw.some((value) => String(value).length > 0);
+  }
+  return String(raw).length > 0;
+}
+
+function wrapJsonMethod(
+  original: (body: unknown) => unknown,
+  onceWrap: (body: unknown) => unknown
+): (body: unknown) => unknown {
+  return (body: unknown) => original(onceWrap(body));
+}
+
+function wrapSendMethod(
+  res: InlineTraceHttpResponse,
+  originalSend: (body: unknown) => unknown,
+  onceWrap: (body: unknown) => unknown
+): (body: unknown) => unknown {
+  return (body: unknown) => {
+    if (body != null && typeof body === 'object' && !isNodeBuffer(body)) {
+      return originalSend(onceWrap(body));
+    }
+    if (looksLikeJsonPayload(body)) {
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        const wrappedBody = onceWrap(parsed);
+        if (typeof res.setHeader === 'function') {
+          res.setHeader('content-type', 'application/json; charset=utf-8');
+        }
+        return originalSend(JSON.stringify(wrappedBody));
+      } catch {
+        return originalSend(body);
+      }
+    }
+    return originalSend(body);
+  };
+}
+
+/**
+ * Patch HTTP/Express/Apollo responses so the final JSON body includes `mockifyerTrace`.
+ *
+ * Covers:
+ * - Express `res.json` / `res.send` (including when Express assigns them *after* Node `request`)
+ * - Apollo / raw Node that write JSON via `res.end(chunk)`
+ *
  * No-op when the active hop context did not opt into inline trace.
  */
-export function installInlineTraceBodyWrapper(res: {
-  json?: (body: unknown) => unknown;
-  send?: (body: unknown) => unknown;
-  setHeader?: (name: string, value: any) => void;
-}): void {
+export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): void {
   const ctx = getActiveMockifyerHopContext();
   if (!ctx?.includeInlineTrace) {
     return;
+  }
+
+  // Auto inbound capture + correlation middleware both call this on the same `res`.
+  // A second install would chain another patchedEnd/json/send with its own onceWrap,
+  // nesting Apollo-style res.end JSON envelopes.
+  const marked = res as InlineTraceHttpResponse & {
+    [INLINE_TRACE_BODY_WRAPPER_INSTALLED]?: boolean;
+  };
+  if (marked[INLINE_TRACE_BODY_WRAPPER_INSTALLED]) {
+    return;
+  }
+  try {
+    Object.defineProperty(res, INLINE_TRACE_BODY_WRAPPER_INSTALLED, {
+      value: true,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  } catch {
+    // Still proceed; wrapBodyWithInlineTrace guards against nested envelopes.
   }
 
   let wrapped = false;
@@ -279,36 +403,112 @@ export function installInlineTraceBodyWrapper(res: {
     return wrapBodyWithInlineTrace(body, ctx);
   };
 
+  const assignJson = (fn: (body: unknown) => unknown): void => {
+    try {
+      res.json = wrapJsonMethod(fn.bind(res), onceWrap);
+    } catch {
+      // ignore non-configurable
+    }
+  };
+  const assignSend = (fn: (body: unknown) => unknown): void => {
+    try {
+      res.send = wrapSendMethod(res, fn.bind(res), onceWrap);
+    } catch {
+      // ignore non-configurable
+    }
+  };
+
   if (typeof res.json === 'function') {
-    const originalJson = res.json.bind(res);
-    res.json = (body: unknown) => originalJson(onceWrap(body));
+    assignJson(res.json);
+  } else {
+    // Express adds `json` after the raw Node `request` event — intercept the assignment.
+    try {
+      Object.defineProperty(res, 'json', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return undefined;
+        },
+        set(fn: (body: unknown) => unknown) {
+          Object.defineProperty(res, 'json', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: wrapJsonMethod(fn.bind(res), onceWrap),
+          });
+        },
+      });
+    } catch {
+      // ignore
+    }
   }
 
   if (typeof res.send === 'function') {
-    const originalSend = res.send.bind(res);
-    res.send = (body: unknown) => {
-      if (body != null && typeof body === 'object' && !isNodeBuffer(body)) {
-        return originalSend(onceWrap(body));
+    assignSend(res.send);
+  } else {
+    try {
+      Object.defineProperty(res, 'send', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return undefined;
+        },
+        set(fn: (body: unknown) => unknown) {
+          Object.defineProperty(res, 'send', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: wrapSendMethod(res, fn.bind(res), onceWrap),
+          });
+        },
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Apollo Server expressMiddleware writes JSON through res.end — not res.json.
+  if (typeof res.end === 'function') {
+    const originalEnd = res.end.bind(res);
+    res.end = function patchedEnd(this: unknown, chunk?: any, encoding?: any, cb?: any) {
+      if (wrapped || chunk == null || chunk === '') {
+        return originalEnd(chunk, encoding, cb);
       }
-      if (typeof body === 'string') {
-        const trimmed = body.trim();
-        if (
-          (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-          (trimmed.startsWith('[') && trimmed.endsWith(']'))
-        ) {
-          try {
-            const parsed = JSON.parse(trimmed) as unknown;
-            const wrappedBody = onceWrap(parsed);
-            if (typeof res.setHeader === 'function') {
-              res.setHeader('content-type', 'application/json; charset=utf-8');
-            }
-            return originalSend(JSON.stringify(wrappedBody));
-          } catch {
-            return originalSend(body);
+
+      let text: string | undefined;
+      if (typeof chunk === 'string') {
+        text = chunk;
+      } else if (isNodeBuffer(chunk)) {
+        const enc =
+          typeof encoding === 'string' && encoding.length > 0 ? encoding : 'utf8';
+        text = chunk.toString(enc as BufferEncoding);
+      }
+
+      if (text && (responseLooksJson(res) || looksLikeJsonPayload(text))) {
+        try {
+          // Headers already flushed with Content-Length cannot be updated;
+          // rewriting to a larger body would truncate or hang the client.
+          if (hasCommittedContentLength(res)) {
+            return originalEnd(chunk, encoding, cb);
           }
+
+          const parsed = JSON.parse(text) as unknown;
+          const wrappedBody = onceWrap(parsed);
+          const out = JSON.stringify(wrappedBody);
+          if (typeof res.setHeader === 'function' && !res.headersSent) {
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.setHeader('content-length', utf8ByteLength(out));
+          }
+          if (typeof encoding === 'function') {
+            return originalEnd(out, encoding);
+          }
+          return originalEnd(out, encoding, cb);
+        } catch {
+          return originalEnd(chunk, encoding, cb);
         }
       }
-      return originalSend(body);
+
+      return originalEnd(chunk, encoding, cb);
     };
   }
 }
