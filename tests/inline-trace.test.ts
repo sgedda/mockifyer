@@ -6,8 +6,10 @@ import {
   MOCKIFYER_TRACE_RESPONSE_KEY,
   buildInlineRequestTrace,
   createMockifyerCorrelationMiddleware,
+  installInlineTraceBodyWrapper,
   isIncludeInlineTraceRequested,
   recordInlineTraceHopFromExchange,
+  resolveInboundHopContext,
   runWithMockifyerHopContext,
   wrapBodyWithInlineTrace,
   type MockifyerHopContext,
@@ -135,6 +137,49 @@ describe('inline-trace', () => {
         hops: [expect.objectContaining({ url: 'https://booking.example/api/x' })],
       },
     });
+  });
+
+  it('wraps Apollo-style res.end JSON when include-trace is set via Node-like response', () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    let ended: string | undefined;
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string | number) => {
+        headers[name.toLowerCase()] = String(value);
+      },
+      getHeader: (name: string) => headers[name.toLowerCase()],
+      end: (chunk?: string) => {
+        ended = chunk;
+      },
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      recordInlineTraceHopFromExchange({
+        method: 'GET',
+        url: 'https://member.example/x',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-end',
+        parentRequestId: resolved!.traceId!,
+      });
+      res.end(JSON.stringify({ data: { login: true } }));
+    });
+
+    const parsed = JSON.parse(ended!);
+    expect(parsed.data).toEqual({ data: { login: true } });
+    expect(parsed.mockifyerTrace.hopCount).toBe(1);
+    expect(parsed.mockifyerTrace.hops[0].url).toContain('/x');
   });
 
   it('middleware does not wrap when include-trace is absent', () => {

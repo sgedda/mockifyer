@@ -252,21 +252,82 @@ function isNodeBuffer(value: unknown): boolean {
   return typeof Buffer !== 'undefined' && typeof Buffer.isBuffer === 'function' && Buffer.isBuffer(value);
 }
 
-type JsonCapableResponse = {
+function utf8ByteLength(value: string): number {
+  if (typeof Buffer !== 'undefined' && typeof Buffer.byteLength === 'function') {
+    return Buffer.byteLength(value);
+  }
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return value.length;
+}
+
+type InlineTraceHttpResponse = {
   json?: (body: unknown) => unknown;
   send?: (body: unknown) => unknown;
-  setHeader?: (name: string, value: string | number | readonly string[]) => void;
+  end?: (...args: any[]) => any;
+  setHeader?: (name: string, value: any) => void;
+  getHeader?: (name: string) => number | string | string[] | undefined;
+  headersSent?: boolean;
 };
 
+function looksLikeJsonPayload(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+}
+
+function responseLooksJson(res: InlineTraceHttpResponse): boolean {
+  const raw = res.getHeader?.('content-type');
+  const contentType = Array.isArray(raw) ? raw.join(';') : String(raw ?? '');
+  return contentType.toLowerCase().includes('json');
+}
+
+function wrapJsonMethod(
+  original: (body: unknown) => unknown,
+  onceWrap: (body: unknown) => unknown
+): (body: unknown) => unknown {
+  return (body: unknown) => original(onceWrap(body));
+}
+
+function wrapSendMethod(
+  res: InlineTraceHttpResponse,
+  originalSend: (body: unknown) => unknown,
+  onceWrap: (body: unknown) => unknown
+): (body: unknown) => unknown {
+  return (body: unknown) => {
+    if (body != null && typeof body === 'object' && !isNodeBuffer(body)) {
+      return originalSend(onceWrap(body));
+    }
+    if (looksLikeJsonPayload(body)) {
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        const wrappedBody = onceWrap(parsed);
+        if (typeof res.setHeader === 'function') {
+          res.setHeader('content-type', 'application/json; charset=utf-8');
+        }
+        return originalSend(JSON.stringify(wrappedBody));
+      } catch {
+        return originalSend(body);
+      }
+    }
+    return originalSend(body);
+  };
+}
+
 /**
- * Patch Express-style `res.json` / `res.send` so the final JSON body includes `mockifyerTrace`.
+ * Patch HTTP/Express/Apollo responses so the final JSON body includes `mockifyerTrace`.
+ *
+ * Covers:
+ * - Express `res.json` / `res.send` (including when Express assigns them *after* Node `request`)
+ * - Apollo / raw Node that write JSON via `res.end(chunk)`
+ *
  * No-op when the active hop context did not opt into inline trace.
  */
-export function installInlineTraceBodyWrapper(res: {
-  json?: (body: unknown) => unknown;
-  send?: (body: unknown) => unknown;
-  setHeader?: (name: string, value: any) => void;
-}): void {
+export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): void {
   const ctx = getActiveMockifyerHopContext();
   if (!ctx?.includeInlineTrace) {
     return;
@@ -279,36 +340,106 @@ export function installInlineTraceBodyWrapper(res: {
     return wrapBodyWithInlineTrace(body, ctx);
   };
 
+  const assignJson = (fn: (body: unknown) => unknown): void => {
+    try {
+      res.json = wrapJsonMethod(fn.bind(res), onceWrap);
+    } catch {
+      // ignore non-configurable
+    }
+  };
+  const assignSend = (fn: (body: unknown) => unknown): void => {
+    try {
+      res.send = wrapSendMethod(res, fn.bind(res), onceWrap);
+    } catch {
+      // ignore non-configurable
+    }
+  };
+
   if (typeof res.json === 'function') {
-    const originalJson = res.json.bind(res);
-    res.json = (body: unknown) => originalJson(onceWrap(body));
+    assignJson(res.json);
+  } else {
+    // Express adds `json` after the raw Node `request` event — intercept the assignment.
+    try {
+      Object.defineProperty(res, 'json', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return undefined;
+        },
+        set(fn: (body: unknown) => unknown) {
+          Object.defineProperty(res, 'json', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: wrapJsonMethod(fn.bind(res), onceWrap),
+          });
+        },
+      });
+    } catch {
+      // ignore
+    }
   }
 
   if (typeof res.send === 'function') {
-    const originalSend = res.send.bind(res);
-    res.send = (body: unknown) => {
-      if (body != null && typeof body === 'object' && !isNodeBuffer(body)) {
-        return originalSend(onceWrap(body));
+    assignSend(res.send);
+  } else {
+    try {
+      Object.defineProperty(res, 'send', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return undefined;
+        },
+        set(fn: (body: unknown) => unknown) {
+          Object.defineProperty(res, 'send', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: wrapSendMethod(res, fn.bind(res), onceWrap),
+          });
+        },
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Apollo Server expressMiddleware writes JSON through res.end — not res.json.
+  if (typeof res.end === 'function') {
+    const originalEnd = res.end.bind(res);
+    res.end = function patchedEnd(this: unknown, chunk?: any, encoding?: any, cb?: any) {
+      if (wrapped || chunk == null || chunk === '') {
+        return originalEnd(chunk, encoding, cb);
       }
-      if (typeof body === 'string') {
-        const trimmed = body.trim();
-        if (
-          (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-          (trimmed.startsWith('[') && trimmed.endsWith(']'))
-        ) {
-          try {
-            const parsed = JSON.parse(trimmed) as unknown;
-            const wrappedBody = onceWrap(parsed);
-            if (typeof res.setHeader === 'function') {
-              res.setHeader('content-type', 'application/json; charset=utf-8');
-            }
-            return originalSend(JSON.stringify(wrappedBody));
-          } catch {
-            return originalSend(body);
+
+      let text: string | undefined;
+      if (typeof chunk === 'string') {
+        text = chunk;
+      } else if (isNodeBuffer(chunk)) {
+        const enc =
+          typeof encoding === 'string' && encoding.length > 0 ? encoding : 'utf8';
+        text = chunk.toString(enc as BufferEncoding);
+      }
+
+      if (text && (responseLooksJson(res) || looksLikeJsonPayload(text))) {
+        try {
+          const parsed = JSON.parse(text) as unknown;
+          const wrappedBody = onceWrap(parsed);
+          const out = JSON.stringify(wrappedBody);
+          if (typeof res.setHeader === 'function' && !res.headersSent) {
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.setHeader('content-length', utf8ByteLength(out));
           }
+          if (typeof encoding === 'function') {
+            return originalEnd(out, encoding);
+          }
+          return originalEnd(out, encoding, cb);
+        } catch {
+          return originalEnd(chunk, encoding, cb);
         }
       }
-      return originalSend(body);
+
+      return originalEnd(chunk, encoding, cb);
     };
   }
 }
