@@ -27,9 +27,32 @@ export interface PerformDashboardProxyRequestParams {
   upstreamTlsInsecure: boolean;
   /** Original request config (attached to the returned response). */
   config: HTTPRequestConfig;
-  /** Fetch implementation (defaults to global `fetch`). */
+  /**
+   * Fetch implementation for the dashboard hop.
+   * Defaults to the unpatched original (`global.__mockifyer_original_fetch`) when present,
+   * otherwise global `fetch`. Callers must not use a Mockifyer-patched fetch here — that
+   * re-enters proxy routing and strips the dashboard envelope.
+   */
   fetchFn?: typeof fetch;
   logTag?: string;
+}
+
+/**
+ * Prefer the pre-patch global fetch so `/api/proxy` hops never re-enter Mockifyer.
+ * Set by `@sgedda/mockifyer-fetch` (and axios full builds) when patching `global.fetch`.
+ */
+export function resolveUnpatchedFetch(explicit?: typeof fetch): typeof fetch {
+  if (explicit) {
+    return explicit;
+  }
+  const g =
+    typeof globalThis !== 'undefined'
+      ? (globalThis as { __mockifyer_original_fetch?: typeof fetch })
+      : undefined;
+  if (g?.__mockifyer_original_fetch) {
+    return g.__mockifyer_original_fetch;
+  }
+  return fetch;
 }
 
 /**
@@ -56,7 +79,7 @@ export async function performDashboardProxyRequest(
     config,
     logTag = 'Mockifyer',
   } = params;
-  const fetchFn = params.fetchFn ?? fetch;
+  const fetchFn = resolveUnpatchedFetch(params.fetchFn);
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
   const proxyResponse = await fetchFn(proxyUrl, {

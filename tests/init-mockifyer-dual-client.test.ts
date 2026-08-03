@@ -206,6 +206,35 @@ describe('dual-client init presets', () => {
       expect(fetchInst.getClientId()).toBe('module-lane');
       expect(axiosInst.getClientId()).toBe('module-lane');
     });
+
+    it('awaits secondary async reload when axios primary reload is sync', async () => {
+      let secondaryDone = false;
+      const fetchInst: DualMockifyerControlSurface & { lane?: string } = {
+        setClientId(lane: string) {
+          fetchInst.lane = lane;
+        },
+        getClientId() {
+          return fetchInst.lane;
+        },
+        async reloadMockData() {
+          await new Promise((r) => setTimeout(r, 20));
+          secondaryDone = true;
+          return 'fetch-reloaded';
+        },
+        clearStaleCacheEntries() {
+          return 0;
+        },
+      };
+      const axiosInst = createSurface('axios');
+      const primary = pickPrimaryDualMockifyerInstance(
+        'axios',
+        { useFetch: true, useAxios: true },
+        { fetch: fetchInst, axios: axiosInst }
+      );
+
+      await primary.reloadMockData();
+      expect(secondaryDone).toBe(true);
+    });
   });
 
   describe('initMockifyerForLocalFilesystemClients', () => {
