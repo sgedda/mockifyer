@@ -45,11 +45,37 @@ export interface RequestCorrelationContext {
  * Inbound HTTP context for service chains (Express middleware / Node http.Server).
  * Outbound `fetch`/`axios` patched by Mockifyer reads this from AsyncLocalStorage — no manual headers in app code.
  */
+export interface InlineTraceHopBufferItem {
+  index: number;
+  requestId: string | null;
+  parentRequestId: string | null;
+  timestamp: string;
+  method: string;
+  url: string;
+  status?: number;
+  source: string;
+  durationMs?: number;
+  transport: string;
+  clientId?: string | null;
+  requestBodyPreview?: string;
+  responseBodyPreview?: string;
+  errorMessage?: string;
+}
+
 export interface MockifyerHopContext {
   /** `X-Mockifyer-Client-Id` on the inbound request (lane for downstream proxy hops). */
   inboundClientId?: string;
   /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
   correlation?: RequestCorrelationContext;
+  /**
+   * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
+   * and can be wrapped into the HTTP response body (test/debug).
+   */
+  includeInlineTrace?: boolean;
+  /** When true with {@link includeInlineTrace}, store truncated body previews on hops. */
+  includeInlineTraceBodies?: boolean;
+  /** Mutable in-process hop list for the active inbound request. */
+  inlineHops?: InlineTraceHopBufferItem[];
 }
 
 export function newRequestCorrelationId(): string {
@@ -89,9 +115,15 @@ export function resolveInboundHopContext(
   headers: unknown,
   options: {
     assignInboundTraceIdWhenMissing?: boolean;
+    /** Collect outbound hops for an inline response-body trace (test/debug). */
+    includeInlineTrace?: boolean;
+    includeInlineTraceBodies?: boolean;
   } = {}
 ): { ctx: MockifyerHopContext; traceId?: string } | undefined {
-  const assignInboundTraceIdWhenMissing = options.assignInboundTraceIdWhenMissing !== false;
+  const includeInlineTrace = options.includeInlineTrace === true;
+  const includeInlineTraceBodies = options.includeInlineTraceBodies === true;
+  const assignInboundTraceIdWhenMissing =
+    options.assignInboundTraceIdWhenMissing !== false || includeInlineTrace;
   const captured = captureInboundMockifyerContext(headers);
 
   let traceId = captured?.correlation?.requestId;
@@ -99,7 +131,7 @@ export function resolveInboundHopContext(
     traceId = newRequestCorrelationId();
   }
 
-  if (!traceId && !captured?.inboundClientId) {
+  if (!traceId && !captured?.inboundClientId && !includeInlineTrace) {
     return undefined;
   }
 
@@ -110,6 +142,13 @@ export function resolveInboundHopContext(
         ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
         : { requestId: traceId }
       : captured?.correlation,
+    ...(includeInlineTrace
+      ? {
+          includeInlineTrace: true,
+          includeInlineTraceBodies,
+          inlineHops: [],
+        }
+      : {}),
   };
 
   return { ctx, traceId };
@@ -277,10 +316,14 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
 
 export interface MockifyerCorrelationMiddlewareRequest {
   header(name: string): string | undefined;
+  query?: unknown;
+  url?: string;
 }
 
 export interface MockifyerCorrelationMiddlewareResponse {
   setHeader?(name: string, value: string): void;
+  json?(body: unknown): unknown;
+  send?(body: unknown): unknown;
 }
 
 export interface MockifyerCorrelationMiddlewareOptions {
@@ -310,14 +353,36 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
     ...args: unknown[]
   ): boolean {
     if (event === 'request') {
-      const req = args[0] as { headers?: unknown } | undefined;
-      const res = args[1] as { setHeader?: (name: string, value: string) => void } | undefined;
-      const resolved = req?.headers ? resolveInboundHopContext(req.headers) : undefined;
+      const req = args[0] as { headers?: unknown; url?: string } | undefined;
+      const res = args[1] as {
+        setHeader?: (name: string, value: string) => void;
+        json?: (body: unknown) => unknown;
+        send?: (body: unknown) => unknown;
+      } | undefined;
+      // Lazy require avoids a circular import with inline-trace ↔ request-correlation.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const inlineTrace = require('./inline-trace') as typeof import('./inline-trace');
+      const includeInlineTrace = inlineTrace.isIncludeInlineTraceRequested({
+        headers: req?.headers,
+        url: req?.url,
+      });
+      const includeInlineTraceBodies = inlineTrace.isIncludeInlineTraceBodiesRequested({
+        headers: req?.headers,
+        url: req?.url,
+      });
+      const resolved = req?.headers
+        ? resolveInboundHopContext(req.headers, { includeInlineTrace, includeInlineTraceBodies })
+        : includeInlineTrace
+          ? resolveInboundHopContext({}, { includeInlineTrace, includeInlineTraceBodies })
+          : undefined;
       if (resolved) {
         maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
-        return runWithMockifyerHopContext(resolved.ctx, () =>
-          originalEmit.apply(this, [event, ...args])
-        );
+        return runWithMockifyerHopContext(resolved.ctx, () => {
+          if (res) {
+            inlineTrace.installInlineTraceBodyWrapper(res);
+          }
+          return originalEmit.apply(this, [event, ...args]);
+        });
       }
     }
     return originalEmit.apply(this, [event, ...args]);
@@ -376,12 +441,28 @@ export function createMockifyerCorrelationMiddleware(
   const assignInboundTraceIdWhenMissing = options.assignInboundTraceIdWhenMissing !== false;
 
   return (req, res, next) => {
-    const resolved = resolveInboundHopContext(
-      {
-        get: (name: string) => req.header(name),
-      },
-      { assignInboundTraceIdWhenMissing }
-    );
+    const headerBag = {
+      get: (name: string) => req.header(name),
+    };
+    // Lazy require avoids a circular import with inline-trace ↔ request-correlation.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const inlineTrace = require('./inline-trace') as typeof import('./inline-trace');
+    const includeInlineTrace = inlineTrace.isIncludeInlineTraceRequested({
+      headers: headerBag,
+      query: req.query,
+      url: req.url,
+    });
+    const includeInlineTraceBodies = inlineTrace.isIncludeInlineTraceBodiesRequested({
+      headers: headerBag,
+      query: req.query,
+      url: req.url,
+    });
+
+    const resolved = resolveInboundHopContext(headerBag, {
+      assignInboundTraceIdWhenMissing,
+      includeInlineTrace,
+      includeInlineTraceBodies,
+    });
 
     if (!resolved) {
       next();
@@ -393,6 +474,9 @@ export function createMockifyerCorrelationMiddleware(
         ? options.echoTraceIdOnResponse
         : isMockifyerEchoTraceIdEnabled();
     maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
-    runWithMockifyerHopContext(resolved.ctx, next);
+    runWithMockifyerHopContext(resolved.ctx, () => {
+      inlineTrace.installInlineTraceBodyWrapper(res);
+      next();
+    });
   };
 }

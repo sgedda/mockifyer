@@ -68,6 +68,7 @@ import {
   type MockifyerActivationMode,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
+  recordInlineTraceHopFromExchange,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
   type RequestCorrelationContext,
@@ -116,10 +117,26 @@ class MockifyerClass {
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'fetch' },
     correlation?: RequestCorrelationContext
   ): void {
+    // Dashboard proxy hops are recorded in performDashboardProxyRequest (shared axios/fetch path).
     if (this.config.proxy?.baseUrl) return;
+
     const scenario =
       this.config.proxy?.scenario?.trim() ||
       getCurrentScenario(this.config.mockDataPath);
+
+    recordInlineTraceHopFromExchange({
+      method: partial.method,
+      url: partial.url,
+      status: partial.status,
+      source: partial.source,
+      transport: partial.transport ?? 'fetch',
+      requestId: correlation?.requestId ?? partial.requestId ?? null,
+      parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId ?? null,
+      durationMs: partial.durationMs,
+      clientId: this.config.clientId ?? partial.clientId ?? null,
+      errorMessage: partial.errorMessage,
+    });
+
     emitMockifyerNetworkEvent({
       config: this.config,
       scenario,
