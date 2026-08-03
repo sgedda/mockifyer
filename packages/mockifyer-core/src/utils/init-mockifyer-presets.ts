@@ -159,12 +159,16 @@ export function syncDualMockifyerControls(
   primary.reloadMockData = (...args: any[]) => {
     const primaryResult = primaryReload(...args);
     const secondaryResult = secondary.reloadMockData(...args);
-    if (
+    const primaryThenable =
       primaryResult != null &&
-      typeof (primaryResult as Promise<unknown>).then === 'function'
-    ) {
+      typeof (primaryResult as Promise<unknown>).then === 'function';
+    const secondaryThenable =
+      secondaryResult != null &&
+      typeof (secondaryResult as Promise<unknown>).then === 'function';
+    // Axios reload is often sync; fetch (hybrid/expo) may still be async — always wait for both.
+    if (primaryThenable || secondaryThenable) {
       return Promise.all([
-        primaryResult as Promise<unknown>,
+        Promise.resolve(primaryResult),
         Promise.resolve(secondaryResult),
       ]).then(([first]) => first);
     }
@@ -178,12 +182,15 @@ export function syncDualMockifyerControls(
     primary.clearAllMocks = (...args: any[]) => {
       const primaryResult = primaryClearAll(...args);
       const secondaryResult = secondaryClearAll?.(...args);
-      if (
+      const primaryThenable =
         primaryResult != null &&
-        typeof (primaryResult as Promise<unknown>).then === 'function'
-      ) {
+        typeof (primaryResult as Promise<unknown>).then === 'function';
+      const secondaryThenable =
+        secondaryResult != null &&
+        typeof (secondaryResult as Promise<unknown>).then === 'function';
+      if (primaryThenable || secondaryThenable) {
         return Promise.all([
-          primaryResult as Promise<unknown>,
+          Promise.resolve(primaryResult),
           Promise.resolve(secondaryResult),
         ]).then(([first]) => first);
       }

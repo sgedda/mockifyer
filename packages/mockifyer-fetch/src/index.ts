@@ -1573,8 +1573,15 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       const headers = init?.headers || {};
       const body = init?.body;
       
-      // Skip Mockifyer sync endpoints and Resend API to prevent infinite loops
-      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync') || url.includes('api.resend.com')) {
+      // Skip Mockifyer sync / dashboard proxy hops and Resend API to prevent infinite loops
+      // and dual-client re-entry (axios → performDashboardProxyRequest → patched fetch).
+      if (
+        url.includes('/mockifyer-save') ||
+        url.includes('/mockifyer-clear') ||
+        url.includes('/mockifyer-sync') ||
+        url.includes('/api/proxy') ||
+        url.includes('api.resend.com')
+      ) {
         return await originalFetchForPatched(input, init);
       }
       
