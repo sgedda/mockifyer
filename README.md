@@ -134,6 +134,8 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-based fallback matching |
 | `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | Verify response when similar-matching |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` — when interceptors run (overrides `activationMode` in config) |
+| `MOCKIFYER_ECHO_TRACE_ID` | When `false`/`0`/`off`/`no`, skip echoing `X-Mockifyer-Request-Id` on HTTP responses from Node inbound capture (default on) |
+| `MOCKIFYER_AUTO_INBOUND_CORRELATION` | When `false`/`0`/`off`/`no`, skip installing Node inbound hop capture on `setupMockifyer` (default on) |
 
 
 See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.

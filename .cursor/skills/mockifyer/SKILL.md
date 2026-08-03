@@ -44,6 +44,8 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` |
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-level fallback matching |
 | `MOCKIFYER_DASHBOARD_AUTH_USER` + `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` | Optional HTTP Basic Auth on dashboard |
+| `MOCKIFYER_ECHO_TRACE_ID` | Echo `X-Mockifyer-Request-Id` on responses (default on; set `false` to disable) |
+| `MOCKIFYER_AUTO_INBOUND_CORRELATION` | Node inbound hop capture on `setupMockifyer` (default on) |
 
 See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build rules.
 

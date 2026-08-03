@@ -155,7 +155,7 @@ curl -s 'http://localhost:3002/api/network-events/trace?requestId=THE_ID&scenari
 curl -s 'http://localhost:3002/api/network-events/trace?eventId=ev-...&scenario=default' | jq .
 ```
 
-Entry services should mount **`createMockifyerCorrelationMiddleware()`** from `@sgedda/mockifyer-core` (default: assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response). Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
+`setupMockifyer` auto-installs Node inbound capture: it assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response (disable echo with **`MOCKIFYER_ECHO_TRACE_ID=false`**; disable the whole patch with **`MOCKIFYER_AUTO_INBOUND_CORRELATION=false`**). Express apps can still mount **`createMockifyerCorrelationMiddleware()`** for explicit control. Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
 
 `requestId` on `/trace` matches a logged hop **or** a virtual root id (only referenced as `parentRequestId` on downstream hops).
 
