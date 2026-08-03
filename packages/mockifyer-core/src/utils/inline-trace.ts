@@ -403,31 +403,26 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
     return wrapBodyWithInlineTrace(body, ctx);
   };
 
-  const assignJson = (fn: (body: unknown) => unknown): void => {
+  /**
+   * Resolve json/send from the prototype chain (skipping own properties).
+   * Node inbound capture installs before Express `setPrototypeOf(res, app.response)`,
+   * so the real methods often appear only later — resolve at call time.
+   */
+  const resolvePrototypeMethod = (
+    target: InlineTraceHttpResponse,
+    name: 'json' | 'send'
+  ): ((body: unknown) => unknown) | undefined => {
     try {
-      res.json = wrapJsonMethod(fn.bind(res), onceWrap);
-    } catch {
-      // ignore non-configurable
-    }
-  };
-  const assignSend = (fn: (body: unknown) => unknown): void => {
-    try {
-      res.send = wrapSendMethod(res, fn.bind(res), onceWrap);
-    } catch {
-      // ignore non-configurable
-    }
-  };
-
-  const resolveMethod = (name: 'json' | 'send'): ((body: unknown) => unknown) | undefined => {
-    const own = res[name];
-    if (typeof own === 'function') {
-      return own;
-    }
-    try {
-      const proto = Object.getPrototypeOf(res) as InlineTraceHttpResponse | null;
-      const fromProto = proto?.[name];
-      if (typeof fromProto === 'function') {
-        return fromProto;
+      let proto: object | null = Object.getPrototypeOf(target) as object | null;
+      while (proto && proto !== Object.prototype) {
+        const desc = Object.getOwnPropertyDescriptor(proto, name);
+        if (desc) {
+          if (typeof desc.value === 'function') {
+            return desc.value as (body: unknown) => unknown;
+          }
+          break;
+        }
+        proto = Object.getPrototypeOf(proto) as object | null;
       }
     } catch {
       // ignore
@@ -435,52 +430,48 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
     return undefined;
   };
 
-  const tryPatchJsonSend = (): void => {
-    const jsonFn = resolveMethod('json');
-    if (jsonFn && !Object.prototype.hasOwnProperty.call(res, 'json')) {
-      // Own property missing but prototype has json (Express). Copy a wrapped
-      // instance method without defineProperty getters that shadow the prototype.
-      assignJson(jsonFn);
-    } else if (jsonFn && typeof res.json === 'function') {
-      // Already an own function (middleware path) — wrap once.
-      const desc = Object.getOwnPropertyDescriptor(res, 'json');
-      if (!desc || desc.writable !== false) {
-        assignJson(jsonFn);
-      }
+  /**
+   * Install lazy own-property wrappers so same-tick Express `res.json` / `res.send`
+   * (after setPrototypeOf, before any microtask) still get `mockifyerTrace`.
+   * Avoid defineProperty getters that return undefined — those break `res.status().json`.
+   */
+  const installLazyMethod = (name: 'json' | 'send'): void => {
+    const desc = Object.getOwnPropertyDescriptor(res, name);
+    if (desc && desc.writable === false) {
+      return;
     }
 
-    const sendFn = resolveMethod('send');
-    if (sendFn && !Object.prototype.hasOwnProperty.call(res, 'send')) {
-      assignSend(sendFn);
-    } else if (sendFn && typeof res.send === 'function') {
-      const desc = Object.getOwnPropertyDescriptor(res, 'send');
-      if (!desc || desc.writable !== false) {
-        assignSend(sendFn);
+    const priorOwn =
+      desc && typeof desc.value === 'function'
+        ? (desc.value as (body: unknown) => unknown)
+        : undefined;
+
+    const lazy = function lazyInlineTraceMethod(
+      this: InlineTraceHttpResponse,
+      body: unknown
+    ): unknown {
+      const target = this ?? res;
+      const original =
+        priorOwn ?? resolvePrototypeMethod(target, name);
+      if (typeof original !== 'function') {
+        throw new TypeError(`res.${name} is not a function`);
       }
+      const bound = original.bind(target) as (body: unknown) => unknown;
+      if (name === 'json') {
+        return wrapJsonMethod(bound, onceWrap)(body);
+      }
+      return wrapSendMethod(target, bound, onceWrap)(body);
+    };
+
+    try {
+      res[name] = lazy;
+    } catch {
+      // ignore non-configurable
     }
   };
 
-  tryPatchJsonSend();
-  // Node inbound capture runs before Express setPrototypeOf(res, app.response).
-  // Retry on microtask/immediate so we wrap Express json/send without shadowing
-  // the prototype with a getter that returns undefined (breaks res.status().json).
-  const schedule =
-    typeof queueMicrotask === 'function'
-      ? queueMicrotask
-      : (fn: () => void) => {
-          if (typeof setImmediate === 'function') {
-            setImmediate(fn);
-          } else {
-            setTimeout(fn, 0);
-          }
-        };
-  schedule(() => {
-    try {
-      tryPatchJsonSend();
-    } catch {
-      // ignore
-    }
-  });
+  installLazyMethod('json');
+  installLazyMethod('send');
 
   // Apollo Server expressMiddleware writes JSON through res.end — not res.json.
   if (typeof res.end === 'function') {

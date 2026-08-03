@@ -228,7 +228,7 @@ describe('inline-trace', () => {
     expect(headers['content-length']).toBe(String(Buffer.byteLength(originalBody)));
   });
 
-  it('keeps Express prototype res.json callable (no shadowing getter)', async () => {
+  it('keeps Express prototype res.json callable (no shadowing getter)', () => {
     const resolved = resolveInboundHopContext(
       {
         get: (name: string) =>
@@ -278,6 +278,104 @@ describe('inline-trace', () => {
     expect(res.statusCode).toBe(500);
     expect(res.body).toMatchObject({
       data: { error: 'x' },
+      mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
+    });
+  });
+
+  it('wraps same-tick res.json when Express prototype is assigned after install', () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    // Raw Node ServerResponse (no Express json/send yet) — mirrors inbound capture
+    // running before originalEmit / Express setPrototypeOf.
+    const nodeProto = {
+      end() {
+        return undefined;
+      },
+    };
+    const res = Object.setPrototypeOf(
+      {
+        headersSent: false,
+        setHeader: () => undefined,
+        getHeader: () => undefined,
+        end: () => undefined,
+      },
+      nodeProto
+    ) as {
+      body?: unknown;
+      json: (body: unknown) => unknown;
+      send: (body: unknown) => unknown;
+      end: () => void;
+    };
+
+    const expressProto = {
+      json(this: { body?: unknown }, body: unknown) {
+        this.body = body;
+        return this;
+      },
+      send(this: { body?: unknown }, body: unknown) {
+        this.body = body;
+        return this;
+      },
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      // Express app.handle: setPrototypeOf then sync route handler — same tick,
+      // before any queueMicrotask deferred patch would run.
+      Object.setPrototypeOf(res, expressProto);
+      res.json({ ok: true });
+    });
+
+    expect(res.body).toMatchObject({
+      data: { ok: true },
+      mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
+    });
+  });
+
+  it('wraps same-tick res.send after late Express prototype assignment', () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    const res = Object.setPrototypeOf(
+      {
+        headersSent: false,
+        setHeader: () => undefined,
+        getHeader: () => undefined,
+        end: () => undefined,
+      },
+      {}
+    ) as {
+      body?: unknown;
+      send: (body: unknown) => unknown;
+      end: () => void;
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      Object.setPrototypeOf(res, {
+        send(this: { body?: unknown }, body: unknown) {
+          this.body = body;
+          return this;
+        },
+      });
+      res.send({ queued: false });
+    });
+
+    expect(res.body).toMatchObject({
+      data: { queued: false },
       mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
     });
   });
