@@ -180,6 +180,122 @@ describe('inline-trace', () => {
     expect(parsed.data).toEqual({ data: { login: true } });
     expect(parsed.mockifyerTrace.hopCount).toBe(1);
     expect(parsed.mockifyerTrace.hops[0].url).toContain('/x');
+    expect(headers['content-length']).toBe(String(Buffer.byteLength(ended!)));
+  });
+
+  it('does not rewrite res.end JSON when headers were flushed with Content-Length', () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    const originalBody = JSON.stringify({ data: { login: true } });
+    let ended: string | undefined;
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'content-length': String(Buffer.byteLength(originalBody)),
+    };
+    const res = {
+      headersSent: true,
+      setHeader: (name: string, value: string | number) => {
+        headers[name.toLowerCase()] = String(value);
+      },
+      getHeader: (name: string) => headers[name.toLowerCase()],
+      end: (chunk?: string) => {
+        ended = chunk;
+      },
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      recordInlineTraceHopFromExchange({
+        method: 'GET',
+        url: 'https://member.example/x',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-end-committed',
+        parentRequestId: resolved!.traceId!,
+      });
+      res.end(originalBody);
+    });
+
+    expect(ended).toBe(originalBody);
+    expect(headers['content-length']).toBe(String(Buffer.byteLength(originalBody)));
+  });
+
+  it('does not nest envelopes when installInlineTraceBodyWrapper runs twice (inbound + middleware)', () => {
+    const resolved = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(resolved).toBeTruthy();
+
+    let ended: string | undefined;
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string | number) => {
+        headers[name.toLowerCase()] = String(value);
+      },
+      getHeader: (name: string) => headers[name.toLowerCase()],
+      end: (chunk?: string) => {
+        ended = chunk;
+      },
+    };
+
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      // Mirrors setupMockifyer auto inbound capture + createMockifyerCorrelationMiddleware.
+      installInlineTraceBodyWrapper(res);
+      installInlineTraceBodyWrapper(res);
+      recordInlineTraceHopFromExchange({
+        method: 'POST',
+        url: 'https://member.example/graphql',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-double',
+        parentRequestId: resolved!.traceId!,
+      });
+      res.end(JSON.stringify({ data: { login: { token: 't' } } }));
+    });
+
+    const parsed = JSON.parse(ended!);
+    expect(parsed).toEqual({
+      data: { data: { login: { token: 't' } } },
+      mockifyerTrace: expect.objectContaining({
+        hopCount: 1,
+        hops: [expect.objectContaining({ url: 'https://member.example/graphql' })],
+      }),
+    });
+    // Nested envelope would look like data.data.data / data.mockifyerTrace.
+    expect(parsed.data).not.toHaveProperty('mockifyerTrace');
+    expect(parsed.data.data).toEqual({ login: { token: 't' } });
+  });
+
+  it('wrapBodyWithInlineTrace does not nest when body is already enveloped', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root-rewrap' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      const first = wrapBodyWithInlineTrace({ ok: true }, ctx);
+      const second = wrapBodyWithInlineTrace(first, ctx);
+      expect(second).toEqual({
+        [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: expect.objectContaining({ requestId: 'root-rewrap' }),
+      });
+    });
   });
 
   it('middleware does not wrap when include-trace is absent', () => {

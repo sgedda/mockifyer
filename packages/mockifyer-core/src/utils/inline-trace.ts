@@ -22,6 +22,14 @@ export const MOCKIFYER_TRACE_RESPONSE_KEY = 'mockifyerTrace';
 /** Envelope key for the original body when wrapping. */
 export const MOCKIFYER_TRACE_DATA_KEY = 'data';
 
+/**
+ * Marks a response that already has json/send/end patched for inline trace.
+ * Symbol.for so duplicate module copies still share the same key.
+ */
+const INLINE_TRACE_BODY_WRAPPER_INSTALLED = Symbol.for(
+  '@sgedda/mockifyer-core.inlineTraceBodyWrapper'
+);
+
 const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 
 function isTruthyFlag(raw: string | undefined | null): boolean {
@@ -234,6 +242,15 @@ export function buildInlineRequestTrace(
  * Wrap a business response as `{ data, mockifyerTrace }` when inline trace is active.
  * Returns the original body when not opted in.
  */
+function isAlreadyInlineTraceWrapped(body: unknown): boolean {
+  return (
+    body != null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_RESPONSE_KEY)
+  );
+}
+
 export function wrapBodyWithInlineTrace(
   body: unknown,
   ctx: MockifyerHopContext | undefined = getActiveMockifyerHopContext()
@@ -241,6 +258,14 @@ export function wrapBodyWithInlineTrace(
   const trace = buildInlineRequestTrace(ctx);
   if (!trace) {
     return body;
+  }
+  // Avoid nested { data: { data, mockifyerTrace }, mockifyerTrace } if wrap runs twice.
+  if (isAlreadyInlineTraceWrapped(body)) {
+    const existing = body as Record<string, unknown>;
+    return {
+      [MOCKIFYER_TRACE_DATA_KEY]: existing[MOCKIFYER_TRACE_DATA_KEY],
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+    };
   }
   return {
     [MOCKIFYER_TRACE_DATA_KEY]: body,
@@ -284,6 +309,24 @@ function responseLooksJson(res: InlineTraceHttpResponse): boolean {
   const raw = res.getHeader?.('content-type');
   const contentType = Array.isArray(raw) ? raw.join(';') : String(raw ?? '');
   return contentType.toLowerCase().includes('json');
+}
+
+/**
+ * True when response headers were already flushed with a Content-Length.
+ * Rewriting the body to a different size in that state truncates or hangs clients.
+ */
+function hasCommittedContentLength(res: InlineTraceHttpResponse): boolean {
+  if (!res.headersSent) {
+    return false;
+  }
+  const raw = res.getHeader?.('content-length');
+  if (raw == null) {
+    return false;
+  }
+  if (Array.isArray(raw)) {
+    return raw.some((value) => String(value).length > 0);
+  }
+  return String(raw).length > 0;
 }
 
 function wrapJsonMethod(
@@ -331,6 +374,26 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
   const ctx = getActiveMockifyerHopContext();
   if (!ctx?.includeInlineTrace) {
     return;
+  }
+
+  // Auto inbound capture + correlation middleware both call this on the same `res`.
+  // A second install would chain another patchedEnd/json/send with its own onceWrap,
+  // nesting Apollo-style res.end JSON envelopes.
+  const marked = res as InlineTraceHttpResponse & {
+    [INLINE_TRACE_BODY_WRAPPER_INSTALLED]?: boolean;
+  };
+  if (marked[INLINE_TRACE_BODY_WRAPPER_INSTALLED]) {
+    return;
+  }
+  try {
+    Object.defineProperty(res, INLINE_TRACE_BODY_WRAPPER_INSTALLED, {
+      value: true,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  } catch {
+    // Still proceed; wrapBodyWithInlineTrace guards against nested envelopes.
   }
 
   let wrapped = false;
@@ -423,6 +486,12 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
 
       if (text && (responseLooksJson(res) || looksLikeJsonPayload(text))) {
         try {
+          // Headers already flushed with Content-Length cannot be updated;
+          // rewriting to a larger body would truncate or hang the client.
+          if (hasCommittedContentLength(res)) {
+            return originalEnd(chunk, encoding, cb);
+          }
+
           const parsed = JSON.parse(text) as unknown;
           const wrappedBody = onceWrap(parsed);
           const out = JSON.stringify(wrappedBody);
