@@ -5,7 +5,7 @@ import type { NetworkEventSource, NetworkEventTransport } from './network-log';
 import {
   getActiveMockifyerHopContext,
   type MockifyerHopContext,
-} from './request-correlation';
+} from './hop-context';
 
 /** Opt-in: include in-process hop trace on the HTTP response body (test/debug). */
 export const MOCKIFYER_INCLUDE_TRACE_HEADER = 'x-mockifyer-include-trace';
