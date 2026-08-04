@@ -647,6 +647,42 @@ describe('inline-trace', () => {
     });
   });
 
+  it('defaults missing nested hop transport to proxy when merging envelopes', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      unwrapAndMergeInlineTraceEnvelope({
+        [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+          requestId: 'child',
+          hopCount: 1,
+          incomplete: false,
+          hops: [
+            {
+              index: 0,
+              requestId: 'p1',
+              parentRequestId: 'child',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              method: 'GET',
+              url: 'https://booking.example/api/x',
+              source: 'upstream',
+              // transport omitted — proxy-mode chains must not be labeled axios
+            },
+          ],
+        },
+      });
+
+      const trace = buildInlineRequestTrace()!;
+      expect(trace.hops).toHaveLength(1);
+      expect(trace.hops[0].transport).toBe('proxy');
+    });
+  });
+
   it('uses business body for hop previews when response is an envelope', () => {
     const ctx: MockifyerHopContext = {
       correlation: { requestId: 'root' },
