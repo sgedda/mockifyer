@@ -280,7 +280,7 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
       status: hop.status,
       source: (hop.source as NetworkEventSource) || 'upstream',
       durationMs: hop.durationMs,
-      transport: (hop.transport as NetworkEventTransport) || 'axios',
+      transport: (hop.transport as NetworkEventTransport) || 'proxy',
       clientId: hop.clientId,
       requestBodyPreview: hop.requestBodyPreview,
       responseBodyPreview: hop.responseBodyPreview,
