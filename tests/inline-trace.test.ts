@@ -380,6 +380,60 @@ describe('inline-trace', () => {
     });
   });
 
+  it('uses nested ALS hops when inbound install is followed by middleware scope', () => {
+    const outer = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      { includeInlineTrace: true }
+    );
+    expect(outer).toBeTruthy();
+
+    const inner: MockifyerHopContext = {
+      correlation: { requestId: outer!.traceId! },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    let ended: string | undefined;
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string | number) => {
+        headers[name.toLowerCase()] = String(value);
+      },
+      getHeader: (name: string) => headers[name.toLowerCase()],
+      end: (chunk?: string) => {
+        ended = chunk;
+      },
+    };
+
+    // setupMockifyer auto inbound capture installs under outer ALS; Express middleware
+    // nests a fresh hop buffer where outbound hops are recorded.
+    runWithMockifyerHopContext(outer!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      runWithMockifyerHopContext(inner, () => {
+        recordInlineTraceHopFromExchange({
+          method: 'GET',
+          url: 'https://catalog.example/items',
+          status: 200,
+          source: 'mock-hit',
+          transport: 'fetch',
+          requestId: 'hop-nested',
+          parentRequestId: outer!.traceId!,
+        });
+        res.end(JSON.stringify({ items: [1] }));
+      });
+    });
+
+    const parsed = JSON.parse(ended!);
+    expect(parsed.mockifyerTrace.hopCount).toBe(1);
+    expect(parsed.mockifyerTrace.hops[0].url).toBe('https://catalog.example/items');
+    expect(parsed.data).toEqual({ items: [1] });
+  });
+
   it('does not nest envelopes when installInlineTraceBodyWrapper runs twice (inbound + middleware)', () => {
     const resolved = resolveInboundHopContext(
       {

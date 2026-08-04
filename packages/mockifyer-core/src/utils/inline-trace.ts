@@ -400,7 +400,17 @@ export function installInlineTraceBodyWrapper(res: InlineTraceHttpResponse): voi
   const onceWrap = (body: unknown): unknown => {
     if (wrapped) return body;
     wrapped = true;
-    return wrapBodyWithInlineTrace(body, ctx);
+    // Prefer the *active* ALS hop context at response time. Auto inbound capture
+    // installs this wrapper under an outer ALS scope; Express
+    // `createMockifyerCorrelationMiddleware` then nests a fresh context where
+    // outbound hops are recorded. Closing over install-time `ctx` would emit
+    // hopCount: 0 despite recorded hops. Fall back to install-time ctx if ALS
+    // was lost before the response.
+    const active = getActiveMockifyerHopContext();
+    return wrapBodyWithInlineTrace(
+      body,
+      active?.includeInlineTrace ? active : ctx
+    );
   };
 
   /**
