@@ -9,11 +9,35 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
 } from './inline-trace';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
-import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
+import {
+  isMockifyerDashboardProxyApiUrl,
+  joinProxyDashboardApiUrl,
+} from './join-proxy-dashboard-api-url';
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
 import { logger } from './logger';
+
+const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
+
+/**
+ * Prefer the unpatched fetch stored when Mockifyer patches `global.fetch`, so the
+ * internal POST to `/api/proxy` is not re-intercepted by a dual axios+fetch setup.
+ */
+function resolveDashboardProxyFetchFn(fetchFn?: typeof fetch): typeof fetch {
+  if (fetchFn) {
+    return fetchFn;
+  }
+  try {
+    const g = globalThis as typeof globalThis & { [MOCKIFYER_ORIGINAL_FETCH_KEY]?: typeof fetch };
+    if (typeof g[MOCKIFYER_ORIGINAL_FETCH_KEY] === 'function') {
+      return g[MOCKIFYER_ORIGINAL_FETCH_KEY]!;
+    }
+  } catch {
+    // ignore
+  }
+  return fetch;
+}
 
 export interface PerformDashboardProxyRequestParams {
   proxyBaseUrl: string;
@@ -61,7 +85,7 @@ export async function performDashboardProxyRequest(
     config,
     logTag = 'Mockifyer',
   } = params;
-  const fetchFn = params.fetchFn ?? fetch;
+  const fetchFn = resolveDashboardProxyFetchFn(params.fetchFn);
   const startedAt = Date.now();
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
@@ -137,21 +161,24 @@ export async function performDashboardProxyRequest(
       : undefined;
 
   // Parent hop first, then merge any nested mockifyerTrace from the downstream service.
-  recordInlineTraceHopFromExchange({
-    method,
-    url,
-    status,
-    source: mapProxyPayloadSourceToNetworkSource(
-      typeof payload?.source === 'string' ? payload.source : undefined
-    ),
-    transport: 'proxy',
-    requestId: requestId ?? null,
-    parentRequestId: parentRequestId ?? null,
-    durationMs: Math.max(0, Date.now() - startedAt),
-    clientId: lane ?? null,
-    requestBody: body,
-    responseBody: data,
-  });
+  // Skip when `url` is itself `/api/proxy` (re-entrant dual axios+fetch interception).
+  if (!isMockifyerDashboardProxyApiUrl(url)) {
+    recordInlineTraceHopFromExchange({
+      method,
+      url,
+      status,
+      source: mapProxyPayloadSourceToNetworkSource(
+        typeof payload?.source === 'string' ? payload.source : undefined
+      ),
+      transport: 'proxy',
+      requestId: requestId ?? null,
+      parentRequestId: parentRequestId ?? null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      clientId: lane ?? null,
+      requestBody: body,
+      responseBody: data,
+    });
+  }
   data = unwrapAndMergeInlineTraceEnvelope(data);
 
   return {

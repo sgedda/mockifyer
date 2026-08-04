@@ -13,3 +13,20 @@ export function joinProxyDashboardApiUrl(proxyBaseUrl: string, apiSubPath: strin
   const normalizedPath = apiSubPath.trim().replace(/^\/+/, '');
   return `${normalizedBase}/${normalizedPath}`;
 }
+
+/**
+ * True when `url` targets the dashboard `/api/proxy` endpoint (Mockifyer plumbing).
+ * These requests must never be mocked, recorded, or shown as user-visible hops.
+ */
+export function isMockifyerDashboardProxyApiUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  try {
+    const parsed = new URL(url, 'http://localhost');
+    const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+    return path === '/api/proxy' || path.endsWith('/api/proxy');
+  } catch {
+    return /(?:^|\/)api\/proxy\/?(?:\?|#|$)/i.test(url);
+  }
+}

@@ -575,6 +575,78 @@ describe('inline-trace', () => {
     expect(unwrapAndMergeInlineTraceEnvelope(envelope)).toBe(envelope);
   });
 
+  it('skips dashboard /api/proxy plumbing hops in the inline buffer and nested merge', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: true,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      recordInlineTraceHopFromExchange({
+        method: 'POST',
+        url: 'https://host/mockifyer/api/proxy',
+        status: 200,
+        source: 'upstream',
+        transport: 'proxy',
+        requestId: 'bad',
+        parentRequestId: 'root',
+        requestBody: { url: 'https://booking.example/api/x', method: 'GET' },
+        responseBody: { proxied: true, response: { data: { id: 1 } } },
+      });
+      expect(buildInlineRequestTrace()!.hopCount).toBe(0);
+
+      recordInlineTraceHopFromExchange({
+        method: 'GET',
+        url: 'https://booking.example/api/x',
+        status: 200,
+        source: 'upstream',
+        transport: 'proxy',
+        requestId: 'good',
+        parentRequestId: 'root',
+        responseBody: { id: 1 },
+      });
+
+      unwrapAndMergeInlineTraceEnvelope({
+        [MOCKIFYER_TRACE_DATA_KEY]: { nested: true },
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+          requestId: 'child',
+          hopCount: 2,
+          incomplete: false,
+          hops: [
+            {
+              index: 0,
+              requestId: 'p1',
+              parentRequestId: 'child',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              method: 'POST',
+              url: 'https://other/mockifyer/api/proxy',
+              source: 'upstream',
+              transport: 'proxy',
+            },
+            {
+              index: 1,
+              requestId: 'p2',
+              parentRequestId: 'child',
+              timestamp: '2026-01-01T00:00:01.000Z',
+              method: 'GET',
+              url: 'https://payments.example/charge',
+              source: 'upstream',
+              transport: 'axios',
+            },
+          ],
+        },
+      });
+
+      const trace = buildInlineRequestTrace()!;
+      expect(trace.hops.map((h) => h.url)).toEqual([
+        'https://booking.example/api/x',
+        'https://payments.example/charge',
+      ]);
+    });
+  });
+
   it('uses business body for hop previews when response is an envelope', () => {
     const ctx: MockifyerHopContext = {
       correlation: { requestId: 'root' },
