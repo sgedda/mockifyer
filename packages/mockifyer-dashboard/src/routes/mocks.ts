@@ -19,7 +19,6 @@ import {
   validateResponseFieldOverrides,
   copyArrayItemInResponseData,
   type MockResponseFieldOverride,
-  isScenarioLockedFs,
   validatePoolRef,
   setResponseDataValueAtPath,
   type PoolRef,
@@ -51,11 +50,13 @@ import {
 } from '../utils/domain-path-rules-store';
 import { favoriteIdForMock } from '../utils/favorites-store';
 import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
+import {
+  SCENARIO_MOCK_LOCKED_MESSAGE,
+  isFilesystemScenarioWriteBlocked,
+  isRedisScenarioWriteBlocked,
+} from '../utils/scenario-write-guard';
 
 const router = express.Router();
-
-/** HTTP 423: scenario lock — mock writes are forbidden while locked. */
-const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
 
 type OverridePreview = { path: string; summary: string };
 
@@ -1148,6 +1149,9 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1175,6 +1179,9 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
@@ -1257,6 +1264,9 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1278,6 +1288,9 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
@@ -1341,6 +1354,9 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData?.response) return res.status(404).json({ error: 'Mock not found' });
 
@@ -1364,6 +1380,9 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath || !fs.existsSync(filePath)) {
@@ -1463,7 +1482,7 @@ router.put('/*', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
-        if (await store.isScenarioLocked(scenario)) {
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
           return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
         }
         const existingData = await store.getByHash(hash, scenario);
@@ -1543,7 +1562,7 @@ router.put('/*', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
-    if (isScenarioLockedFs(mockDataPath, scenario)) {
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
@@ -1631,10 +1650,24 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'useLiveApi must be a boolean' });
     }
 
+    const scenarioName = scenario.trim();
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await isRedisScenarioWriteBlocked(store, scenarioName)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isFilesystemScenarioWriteBlocked(mockDataPath, scenarioName)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+
     const result = await bulkSetLiveApiForDomain({
       provider: config.provider,
       mockDataPath,
-      scenario: scenario.trim(),
+      scenario: scenarioName,
       domainPath: domainPath.trim(),
       useLiveApi,
       redisUrl: config.redisUrl,
@@ -1670,13 +1703,13 @@ router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
       const store = createDashboardMockStore(config, mockDataPath);
       try {
-        if (await store.isScenarioLocked(scenarioName)) {
+        if (await isRedisScenarioWriteBlocked(store, scenarioName)) {
           return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
         }
       } finally {
         await store.close().catch(() => undefined);
       }
-    } else if (isScenarioLockedFs(mockDataPath, scenarioName)) {
+    } else if (isFilesystemScenarioWriteBlocked(mockDataPath, scenarioName)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
 
@@ -1710,7 +1743,7 @@ router.delete('/*', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
-        if (await store.isScenarioLocked(scenario)) {
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
           return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
         }
         await store.deleteByHash(hash, scenario);
@@ -1722,7 +1755,7 @@ router.delete('/*', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
-    if (isScenarioLockedFs(mockDataPath, scenario)) {
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
@@ -1757,6 +1790,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
       try {
         const scenario = await resolveRedisScenario(req, res, store);
         if (scenario === null) return;
+        if (await isRedisScenarioWriteBlocked(store, scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData?.request?.url) {
           return res.status(404).json({ error: 'Mock not found' });
@@ -1779,6 +1815,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
@@ -1825,7 +1864,7 @@ router.post('/*/duplicate', async (req: Request, res: Response) => {
 
     const scenario = resolveFilesystemScenario(req, res, mockDataPath);
     if (scenario === null) return;
-    if (isScenarioLockedFs(mockDataPath, scenario)) {
+    if (isFilesystemScenarioWriteBlocked(mockDataPath, scenario)) {
       return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
     }
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
