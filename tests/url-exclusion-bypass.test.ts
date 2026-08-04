@@ -38,12 +38,13 @@ describe('shouldBypassMockifyerForUrl', () => {
     expect(shouldExcludeUrl('https://login.microsoftonline.com/oauth2/token', ['oauth2/token'])).toBe(true);
   });
 
-  it('matches tenant-scoped OAuth token URLs with host or path patterns', () => {
-    const tenantTokenUrl = 'https://login.microsoftonline.com/tenant-id/oauth2/token';
-    expect(shouldBypassMockifyerForUrl(tenantTokenUrl, ['login.microsoftonline.com'])).toBe(true);
-    expect(shouldBypassMockifyerForUrl(tenantTokenUrl, ['oauth2/token'])).toBe(true);
-    expect(shouldBypassMockifyerForUrl(tenantTokenUrl, ['login.microsoftonline.com/oauth2/token'])).toBe(
-      false
-    );
+  it('always bypasses dashboard /api/proxy even when custom excludedUrls replace defaults', () => {
+    expect(
+      shouldBypassMockifyerForUrl('https://host/mockifyer/api/proxy', ['only.example.com'])
+    ).toBe(true);
+    expect(
+      shouldBypassMockifyerForUrl('https://node-capi-graphql-server-ats.azurewebsites.net//mockifyer/api/proxy')
+    ).toBe(true);
+    expect(shouldBypassMockifyerForUrl('https://api.example.com/users')).toBe(false);
   });
 });

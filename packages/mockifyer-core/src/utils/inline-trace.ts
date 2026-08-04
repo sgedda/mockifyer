@@ -1,5 +1,6 @@
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
+import { isMockifyerDashboardProxyApiUrl } from './join-proxy-dashboard-api-url';
 import { toNetworkLogBodyPreview } from './network-log';
 import type { NetworkEventSource, NetworkEventTransport } from './network-log';
 import {
@@ -154,6 +155,10 @@ export function recordInlineTraceHop(input: RecordInlineTraceHopInput): void {
   if (!ctx?.includeInlineTrace || !ctx.inlineHops) {
     return;
   }
+  // Never surface the internal POST to dashboard `/api/proxy` as a user-visible hop.
+  if (isMockifyerDashboardProxyApiUrl(input.url)) {
+    return;
+  }
 
   const hop: InlineTraceHop = {
     index: ctx.inlineHops.length,
@@ -262,16 +267,20 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
   const childHops = body.mockifyerTrace.hops;
   for (const hop of childHops) {
     if (!hop || typeof hop !== 'object') continue;
+    const url = typeof hop.url === 'string' ? hop.url : '';
+    if (isMockifyerDashboardProxyApiUrl(url)) {
+      continue;
+    }
     recordInlineTraceHop({
       requestId: hop.requestId ?? null,
       parentRequestId: hop.parentRequestId ?? null,
       timestamp: typeof hop.timestamp === 'string' ? hop.timestamp : undefined,
       method: typeof hop.method === 'string' ? hop.method : 'GET',
-      url: typeof hop.url === 'string' ? hop.url : '',
+      url,
       status: hop.status,
       source: (hop.source as NetworkEventSource) || 'upstream',
       durationMs: hop.durationMs,
-      transport: (hop.transport as NetworkEventTransport) || 'proxy',
+      transport: (hop.transport as NetworkEventTransport) || 'axios',
       clientId: hop.clientId,
       requestBodyPreview: hop.requestBodyPreview,
       responseBodyPreview: hop.responseBodyPreview,

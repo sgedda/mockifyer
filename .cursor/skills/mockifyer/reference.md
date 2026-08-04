@@ -59,7 +59,7 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, { provider: 'filesys
 - Or `?eventId=<dashboard log row id>` when you only have the network tab id.
 - `/api/proxy` JSON includes `requestId` / `parentRequestId` and sets the same response header.
 - Returns `trace.hops[]` root-first with `request` / `response` body previews when **Bodies** capture is enabled.
-- **Inline (test/debug):** `X-Mockifyer-Include-Trace: 1` wraps JSON as `{ data, mockifyerTrace }` with in-process hops (no Redis). Optional `X-Mockifyer-Include-Trace-Bodies: 1`. Include-trace headers are forwarded downstream; nested `{ data, mockifyerTrace }` responses are unwrapped and child hops merged into the parent trace (parent hop first). Both services need a recent core that supports inline trace.
+- **Inline (test/debug):** `X-Mockifyer-Include-Trace: 1` wraps JSON as `{ data, mockifyerTrace }` with in-process hops (no Redis). Optional `X-Mockifyer-Include-Trace-Bodies: 1`. Include-trace headers are forwarded downstream; nested `{ data, mockifyerTrace }` responses are unwrapped and child hops merged into the parent trace (parent hop first). Internal dashboard `/api/proxy` POSTs are always bypassed and omitted from hops. Both services need a recent core that supports inline trace.
 
 ## Scenario precedence (filesystem SDK)
 

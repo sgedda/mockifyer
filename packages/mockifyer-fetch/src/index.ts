@@ -42,6 +42,7 @@ import {
   isUsableNodeLikePoolFs,
   type PoolResponseItem,
   shouldBypassMockifyerForUrl,
+  isMockifyerDashboardProxyApiUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
   mockPassesThroughToRealApi,
@@ -1596,8 +1597,14 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       const headers = init?.headers || {};
       const body = init?.body;
       
-      // Skip Mockifyer sync endpoints and Resend API to prevent infinite loops
-      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync') || url.includes('api.resend.com')) {
+      // Skip Mockifyer sync endpoints, dashboard `/api/proxy` plumbing, and Resend API
+      if (
+        url.includes('/mockifyer-save') ||
+        url.includes('/mockifyer-clear') ||
+        url.includes('/mockifyer-sync') ||
+        url.includes('api.resend.com') ||
+        isMockifyerDashboardProxyApiUrl(url)
+      ) {
         return await originalFetchForPatched(input, init);
       }
       
