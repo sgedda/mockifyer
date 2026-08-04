@@ -11,6 +11,7 @@ import {
   recordInlineTraceHopFromExchange,
   resolveInboundHopContext,
   runWithMockifyerHopContext,
+  unwrapAndMergeInlineTraceEnvelope,
   wrapBodyWithInlineTrace,
   type MockifyerHopContext,
 } from '@sgedda/mockifyer-core';
@@ -481,5 +482,129 @@ describe('inline-trace', () => {
         },
       })
     ).toBe(true);
+  });
+
+  it('unwraps nested mockifyerTrace after the parent hop (parent then children)', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'graphql-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      recordInlineTraceHopFromExchange({
+        method: 'POST',
+        url: 'https://member.example/v-2/authenticate',
+        status: 200,
+        source: 'upstream',
+        transport: 'proxy',
+        requestId: 'hop-member',
+        parentRequestId: 'graphql-root',
+      });
+
+      const nestedEnvelope = {
+        [MOCKIFYER_TRACE_DATA_KEY]: { token: 'abc' },
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+          requestId: 'member-root',
+          hopCount: 2,
+          incomplete: false,
+          hops: [
+            {
+              index: 0,
+              requestId: 'hop-auth-db',
+              parentRequestId: 'member-root',
+              timestamp: '2026-01-01T00:00:00.000Z',
+              method: 'POST',
+              url: 'https://auth.example/token',
+              status: 200,
+              source: 'upstream',
+              transport: 'axios',
+            },
+            {
+              index: 1,
+              requestId: 'hop-profile',
+              parentRequestId: 'member-root',
+              timestamp: '2026-01-01T00:00:01.000Z',
+              method: 'GET',
+              url: 'https://profile.example/me',
+              status: 200,
+              source: 'upstream',
+              transport: 'fetch',
+            },
+          ],
+        },
+      };
+
+      const business = unwrapAndMergeInlineTraceEnvelope(nestedEnvelope);
+      expect(business).toEqual({ token: 'abc' });
+
+      const trace = buildInlineRequestTrace();
+      expect(trace!.hopCount).toBe(3);
+      expect(trace!.hops.map((h) => h.url)).toEqual([
+        'https://member.example/v-2/authenticate',
+        'https://auth.example/token',
+        'https://profile.example/me',
+      ]);
+      // Parent hop keeps business-body preview semantics when bodies are off
+      expect(trace!.hops[0].responseBodyPreview).toBeUndefined();
+    });
+  });
+
+  it('does not unwrap nested envelopes when parent is not collecting inline trace', () => {
+    const envelope = {
+      [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'x',
+        hopCount: 1,
+        incomplete: false,
+        hops: [
+          {
+            index: 0,
+            requestId: 'h1',
+            parentRequestId: null,
+            timestamp: '2026-01-01T00:00:00.000Z',
+            method: 'GET',
+            url: 'https://example/a',
+            source: 'upstream',
+            transport: 'axios',
+          },
+        ],
+      },
+    };
+    expect(unwrapAndMergeInlineTraceEnvelope(envelope)).toBe(envelope);
+  });
+
+  it('uses business body for hop previews when response is an envelope', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: true,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      recordInlineTraceHopFromExchange({
+        method: 'GET',
+        url: 'https://member.example/me',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-1',
+        parentRequestId: 'root',
+        responseBody: {
+          [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-1' },
+          [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+            requestId: 'member',
+            hopCount: 0,
+            incomplete: false,
+            hops: [],
+          },
+        },
+      });
+      const hop = buildInlineRequestTrace()!.hops[0];
+      expect(hop.responseBodyPreview).toContain('user-1');
+      expect(hop.responseBodyPreview).not.toContain('mockifyerTrace');
+    });
   });
 });

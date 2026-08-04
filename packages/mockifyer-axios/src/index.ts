@@ -79,6 +79,7 @@ import {
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
+  unwrapAndMergeInlineTraceEnvelope,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -880,13 +881,65 @@ class MockifyerClass {
         return response;
       }
 
-      const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
-      if (!matchedMock) {
+      // Adapter-served mocks already logged as mock-hit; nothing to unwrap.
+      if (this.responseHasMockifyerMarker(response)) {
         return response;
       }
 
-      return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock);
+      const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
+      if (matchedMock) {
+        return this.applyLiveRefreshToAxiosResponse(response as HTTPResponse, matchedMock);
+      }
+
+      // Real upstream without live-refresh: still unwrap nested { data, mockifyerTrace }
+      // so callers see business data and child hops merge into the parent buffer.
+      const startTime = (response.config as any).__mockifyer_startTime;
+      const durationMs =
+        typeof startTime === 'number'
+          ? Date.now() - startTime
+          : typeof (response.config as any)?.metadata?.durationMs === 'number'
+            ? (response.config as any).metadata.durationMs
+            : undefined;
+
+      this.logNetworkEvent(
+        {
+          method: (response.config?.method || 'GET').toUpperCase(),
+          url: response.config?.url || '',
+          source: 'upstream',
+          status: response.status,
+          durationMs,
+        },
+        this.readRequestCorrelation(response.config)
+      );
+      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
+      return response;
     });
+  }
+
+  /** True when the response was served from a mock (or limit-reached stub). */
+  private responseHasMockifyerMarker(response: HTTPResponse): boolean {
+    const headers = response.headers as
+      | { get?: (name: string) => unknown }
+      | Record<string, unknown>
+      | undefined;
+    if (!headers) {
+      return false;
+    }
+    if (typeof headers.get === 'function') {
+      return (
+        headers.get('x-mockifyer') === 'true' ||
+        headers.get('x-mockifyer-limit-reached') === 'true'
+      );
+    }
+    const plain = headers as Record<string, unknown>;
+    const keys = Object.keys(plain);
+    const mockKey = keys.find((key) => key.toLowerCase() === 'x-mockifyer');
+    if (mockKey && plain[mockKey] === 'true') {
+      return true;
+    }
+    const limitKey = keys.find((key) => key.toLowerCase() === 'x-mockifyer-limit-reached');
+    return Boolean(limitKey && plain[limitKey] === 'true');
   }
 
   private setupDashboardProxyResponseInterceptor(): void {
@@ -1451,7 +1504,8 @@ class MockifyerClass {
           },
           this.readRequestCorrelation(response.config)
         );
-        
+        response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
         this.saveResponse(response as HTTPResponse);
         return response;
       },
@@ -1617,13 +1671,27 @@ class MockifyerClass {
     response: HTTPResponse,
     matchedMock: CachedMockData
   ): Promise<HTTPResponse> {
+    const startTime = (response.config as any).__mockifyer_startTime;
+    const durationMs = startTime ? Date.now() - startTime : undefined;
+
+    // Parent hop first, then unwrap nested mockifyerTrace from downstream services.
+    this.logNetworkEvent(
+      {
+        method: (response.config?.method || 'GET').toUpperCase(),
+        url: response.config?.url || '',
+        source: 'upstream',
+        status: response.status,
+        durationMs,
+      },
+      this.readRequestCorrelation(response.config)
+    );
+    response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
     const capturedResponse: StoredResponse = {
       status: response.status,
       data: response.data,
       headers: (response.headers as Record<string, string>) || {},
     };
-    const startTime = (response.config as any).__mockifyer_startTime;
-    const durationMs = startTime ? Date.now() - startTime : undefined;
 
     if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
       await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
@@ -1637,17 +1705,6 @@ class MockifyerClass {
     response.data = clientResponse.data;
     response.status = clientResponse.status;
     delete (response.config as any).__mockifyer_matchedMock;
-
-    this.logNetworkEvent(
-      {
-        method: (response.config?.method || 'GET').toUpperCase(),
-        url: response.config?.url || '',
-        source: 'upstream',
-        status: response.status,
-        durationMs,
-      },
-      this.readRequestCorrelation(response.config)
-    );
 
     return response;
   }

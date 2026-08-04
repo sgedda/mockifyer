@@ -69,6 +69,7 @@ import {
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
+  unwrapAndMergeInlineTraceEnvelope,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
   type RequestCorrelationContext,
@@ -901,13 +902,29 @@ class MockifyerClass {
 
         const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;
         if (matchedMock) {
+          const startTime = (response.config as any).__mockifyer_startTime;
+          const durationMs = startTime ? Date.now() - startTime : undefined;
+
+          const reqUrl = response.config?.url || url;
+          const reqMethod = (response.config?.method || 'GET').toUpperCase();
+          // Parent hop first, then unwrap nested mockifyerTrace from downstream services.
+          this.logNetworkEvent(
+            {
+              method: reqMethod,
+              url: reqUrl,
+              source: 'upstream',
+              status: response.status,
+              durationMs,
+            },
+            this.readRequestCorrelation(response.config)
+          );
+          response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
           const capturedResponse: StoredResponse = {
             status: response.status,
             data: response.data,
             headers: (response.headers as Record<string, string>) || {},
           };
-          const startTime = (response.config as any).__mockifyer_startTime;
-          const durationMs = startTime ? Date.now() - startTime : undefined;
 
           if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
             await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
@@ -922,25 +939,7 @@ class MockifyerClass {
           response.status = clientResponse.status;
           delete (response.config as any).__mockifyer_matchedMock;
 
-          const reqUrl = response.config?.url || url;
-          const reqMethod = (response.config?.method || 'GET').toUpperCase();
-          this.logNetworkEvent(
-            {
-              method: reqMethod,
-              url: reqUrl,
-              source: 'upstream',
-              status: response.status,
-              durationMs,
-            },
-            this.readRequestCorrelation(response.config)
-          );
           return response;
-        }
-
-        // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
-        // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
-        if (this.config.recordMode && !this.config.proxy?.baseUrl) {
-          await this.saveResponse(response);
         }
 
         const reqUrl = response.config?.url || url;
@@ -958,6 +957,13 @@ class MockifyerClass {
           },
           this.readRequestCorrelation(response.config)
         );
+        response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
+        // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
+        // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).
+        if (this.config.recordMode && !this.config.proxy?.baseUrl) {
+          await this.saveResponse(response);
+        }
 
         return response;
       },
