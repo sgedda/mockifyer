@@ -70,6 +70,8 @@ import {
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
   unwrapAndMergeInlineTraceEnvelope,
+  toNetworkLogBodyPreview,
+  getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
   type RequestCorrelationContext,
@@ -115,7 +117,12 @@ class MockifyerClass {
 
   /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
   private logNetworkEvent(
-    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'fetch' },
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
+      transport?: 'fetch';
+      /** Raw bodies for inline-trace / network-log previews (stripped before emit). */
+      requestBody?: unknown;
+      responseBody?: unknown;
+    },
     correlation?: RequestCorrelationContext
   ): void {
     // Dashboard proxy hops are recorded in performDashboardProxyRequest (shared axios/fetch path).
@@ -125,17 +132,22 @@ class MockifyerClass {
       this.config.proxy?.scenario?.trim() ||
       getCurrentScenario(this.config.mockDataPath);
 
+    const { requestBody, responseBody, ...eventPartial } = partial;
+    const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
+
     recordInlineTraceHopFromExchange({
-      method: partial.method,
-      url: partial.url,
-      status: partial.status,
-      source: partial.source,
-      transport: partial.transport ?? 'fetch',
-      requestId: correlation?.requestId ?? partial.requestId ?? null,
-      parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId ?? null,
-      durationMs: partial.durationMs,
-      clientId: this.config.clientId ?? partial.clientId ?? null,
-      errorMessage: partial.errorMessage,
+      method: eventPartial.method,
+      url: eventPartial.url,
+      status: eventPartial.status,
+      source: eventPartial.source,
+      transport: eventPartial.transport ?? 'fetch',
+      requestId: correlation?.requestId ?? eventPartial.requestId ?? null,
+      parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null,
+      durationMs: eventPartial.durationMs,
+      clientId: this.config.clientId ?? eventPartial.clientId ?? null,
+      errorMessage: eventPartial.errorMessage,
+      requestBody,
+      responseBody,
     });
 
     emitMockifyerNetworkEvent({
@@ -143,10 +155,16 @@ class MockifyerClass {
       scenario,
       clientId: this.config.clientId,
       event: {
-        ...partial,
-        transport: partial.transport ?? 'fetch',
-        requestId: correlation?.requestId ?? partial.requestId,
-        parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId,
+        ...eventPartial,
+        transport: eventPartial.transport ?? 'fetch',
+        requestId: correlation?.requestId ?? eventPartial.requestId,
+        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
+        requestBodyPreview:
+          eventPartial.requestBodyPreview ??
+          (requestBody !== undefined ? toNetworkLogBodyPreview(requestBody) : undefined),
+        responseBodyPreview:
+          eventPartial.responseBodyPreview ??
+          (responseBody !== undefined ? toNetworkLogBodyPreview(businessResponseBody) : undefined),
       },
     });
   }
@@ -725,6 +743,7 @@ class MockifyerClass {
             `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
               (filePath ? ` (${filePath})` : '')
           );
+          const mockResponseBody = this.prepareStoredResponseBody(mockData);
           this.logNetworkEvent(
             {
               method: (request.method || 'GET').toUpperCase(),
@@ -732,6 +751,8 @@ class MockifyerClass {
               source: 'mock-hit',
               status: mockData.response.status,
               requestHash: networkEventHashFromRequestKey(requestKey),
+              requestBody: request.data,
+              responseBody: mockResponseBody,
             },
             correlation
           );
@@ -746,7 +767,7 @@ class MockifyerClass {
           await this.warmPoolResponseCache(mockData);
 
           const mockResponse = {
-            data: this.prepareStoredResponseBody(mockData),
+            data: mockResponseBody,
             status: mockData.response.status,
             statusText: 'OK',
             headers: responseHeaders,
@@ -915,6 +936,8 @@ class MockifyerClass {
               source: 'upstream',
               status: response.status,
               durationMs,
+              requestBody: response.config?.data,
+              responseBody: response.data,
             },
             this.readRequestCorrelation(response.config)
           );
@@ -954,6 +977,8 @@ class MockifyerClass {
               typeof response.config?.metadata?.durationMs === 'number'
                 ? response.config.metadata.durationMs
                 : undefined,
+            requestBody: response.config?.data,
+            responseBody: response.data,
           },
           this.readRequestCorrelation(response.config)
         );
@@ -981,6 +1006,8 @@ class MockifyerClass {
               source: 'error',
               status: error.response?.status,
               errorMessage: error?.message ?? String(error),
+              requestBody: error.config?.data,
+              responseBody: error.response?.data,
             },
             this.readRequestCorrelation(error.config)
           );

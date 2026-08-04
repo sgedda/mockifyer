@@ -80,6 +80,8 @@ import {
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
   unwrapAndMergeInlineTraceEnvelope,
+  toNetworkLogBodyPreview,
+  getInlineTraceEnvelopeBusinessBody,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -144,25 +146,35 @@ class MockifyerClass {
   }
 
   private logNetworkEvent(
-    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & { transport?: 'axios' },
+    partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
+      transport?: 'axios';
+      /** Raw bodies for inline-trace / network-log previews (stripped before emit). */
+      requestBody?: unknown;
+      responseBody?: unknown;
+    },
     correlation?: RequestCorrelationContext
   ): void {
     // Dashboard proxy hops are recorded in performDashboardProxyRequest (shared axios/fetch path).
     if (this.config.proxy?.baseUrl) return;
 
-    const requestId = correlation?.requestId ?? partial.requestId ?? null;
-    const parentRequestId = correlation?.parentRequestId ?? partial.parentRequestId ?? null;
+    const { requestBody, responseBody, ...eventPartial } = partial;
+    const requestId = correlation?.requestId ?? eventPartial.requestId ?? null;
+    const parentRequestId = correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null;
+    const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
+
     recordInlineTraceHopFromExchange({
-      method: partial.method,
-      url: partial.url,
-      status: partial.status,
-      source: partial.source,
-      transport: partial.transport ?? 'axios',
+      method: eventPartial.method,
+      url: eventPartial.url,
+      status: eventPartial.status,
+      source: eventPartial.source,
+      transport: eventPartial.transport ?? 'axios',
       requestId,
       parentRequestId,
-      durationMs: partial.durationMs,
-      clientId: this.config.clientId ?? partial.clientId ?? null,
-      errorMessage: partial.errorMessage,
+      durationMs: eventPartial.durationMs,
+      clientId: this.config.clientId ?? eventPartial.clientId ?? null,
+      errorMessage: eventPartial.errorMessage,
+      requestBody,
+      responseBody,
     });
 
     emitMockifyerNetworkEvent({
@@ -170,10 +182,16 @@ class MockifyerClass {
       scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
       clientId: this.config.clientId,
       event: {
-        ...partial,
-        transport: partial.transport ?? 'axios',
-        requestId: correlation?.requestId ?? partial.requestId,
-        parentRequestId: correlation?.parentRequestId ?? partial.parentRequestId,
+        ...eventPartial,
+        transport: eventPartial.transport ?? 'axios',
+        requestId: correlation?.requestId ?? eventPartial.requestId,
+        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
+        requestBodyPreview:
+          eventPartial.requestBodyPreview ??
+          (requestBody !== undefined ? toNetworkLogBodyPreview(requestBody) : undefined),
+        responseBodyPreview:
+          eventPartial.responseBodyPreview ??
+          (responseBody !== undefined ? toNetworkLogBodyPreview(businessResponseBody) : undefined),
       },
     });
   }
@@ -805,6 +823,7 @@ class MockifyerClass {
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
         } else {
+        const mockResponseBody = this.prepareStoredResponseBody(mockData);
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
@@ -812,6 +831,8 @@ class MockifyerClass {
             source: 'mock-hit',
             status: mockData.response.status,
             requestHash: networkEventHashFromRequestKey(requestKey),
+            requestBody: request.data,
+            responseBody: mockResponseBody,
           },
           correlation
         );
@@ -834,7 +855,7 @@ class MockifyerClass {
         });
         
         const mockResponse: AxiosResponse = {
-          data: this.prepareStoredResponseBody(mockData),
+          data: mockResponseBody,
           status: mockData.response.status,
           statusText: 'OK',
           headers: axiosHeaders,
@@ -908,6 +929,8 @@ class MockifyerClass {
           source: 'upstream',
           status: response.status,
           durationMs,
+          requestBody: response.config?.data,
+          responseBody: response.data,
         },
         this.readRequestCorrelation(response.config)
       );
@@ -1501,6 +1524,8 @@ class MockifyerClass {
             url: response.config.url || '',
             source: 'upstream',
             status: response.status,
+            requestBody: response.config.data,
+            responseBody: response.data,
           },
           this.readRequestCorrelation(response.config)
         );
@@ -1523,6 +1548,8 @@ class MockifyerClass {
               source: 'error',
               status: error.response?.status,
               errorMessage: error?.message ?? String(error),
+              requestBody: error.config?.data,
+              responseBody: error.response?.data,
             },
             this.readRequestCorrelation(error.config)
           );
@@ -1682,6 +1709,8 @@ class MockifyerClass {
         source: 'upstream',
         status: response.status,
         durationMs,
+        requestBody: response.config?.data,
+        responseBody: response.data,
       },
       this.readRequestCorrelation(response.config)
     );
