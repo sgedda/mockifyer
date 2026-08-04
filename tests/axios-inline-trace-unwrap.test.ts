@@ -83,6 +83,61 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     ]);
   });
 
+  it('includes responseBodyPreview when includeInlineTraceBodies is on', async () => {
+    const url = 'https://api.example.test/member/with-bodies';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+
+    const nestedEnvelope = {
+      [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-2', role: 'admin' },
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'member-root',
+        hopCount: 1,
+        incomplete: false,
+        hops: [
+          {
+            index: 0,
+            requestId: 'hop-db',
+            parentRequestId: 'member-root',
+            timestamp: '2026-01-01T00:00:00.000Z',
+            method: 'GET',
+            url: 'https://db.example/users/2',
+            status: 200,
+            source: 'upstream',
+            transport: 'axios',
+            responseBodyPreview: '{"row":1}',
+          },
+        ],
+      },
+    };
+
+    upstream.onGet(url).reply(200, nestedEnvelope);
+
+    const client = setupMockifyer({
+      mockDataPath,
+      recordMode: false,
+      failOnMissingMock: false,
+      axiosInstance,
+    });
+
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'graphql-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: true,
+      inlineHops: [],
+    };
+
+    const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
+
+    expect(response.data).toEqual({ id: 'user-2', role: 'admin' });
+
+    const trace = buildInlineRequestTrace(ctx);
+    expect(trace).not.toBeNull();
+    expect(trace!.hops[0].responseBodyPreview).toContain('user-2');
+    expect(trace!.hops[0].responseBodyPreview).not.toContain('mockifyerTrace');
+    expect(trace!.hops[1].responseBodyPreview).toBe('{"row":1}');
+  });
+
   it('leaves envelopes intact when parent is not collecting inline trace', async () => {
     const url = 'https://api.example.test/member/plain';
     const axiosInstance = axios.create();
