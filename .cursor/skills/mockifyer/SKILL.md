@@ -76,4 +76,4 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - [packages/mockifyer-dashboard/README.md](../../../packages/mockifyer-dashboard/README.md) — CLI, auth, embed
 - [MULTI_CLIENT_ISOLATION.md](../../../MULTI_CLIENT_ISOLATION.md) — Redis lanes / proxy
 - [reference.md](reference.md) — condensed deep reference
-- Inline response trace: `X-Mockifyer-Include-Trace: 1` → `{ data, mockifyerTrace }` (test/debug; no Redis required for in-process hops)
+- Inline response trace: `X-Mockifyer-Include-Trace: 1` → `{ data, mockifyerTrace }` (test/debug; no Redis required for in-process hops). Opt-in is forwarded on outbound hops; nested downstream `mockifyerTrace` envelopes are unwrapped and merged into the parent buffer.

@@ -6,6 +6,7 @@ import {
 import {
   mapProxyPayloadSourceToNetworkSource,
   recordInlineTraceHopFromExchange,
+  unwrapAndMergeInlineTraceEnvelope,
 } from './inline-trace';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
 import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
@@ -115,7 +116,7 @@ export async function performDashboardProxyRequest(
   const proxyResponseBody = payload.response as
     | { data?: unknown; status?: number; headers?: Record<string, string> }
     | undefined;
-  const data = proxyResponseBody?.data;
+  let data = proxyResponseBody?.data;
   const status = proxyResponseBody?.status ?? 200;
   const responseHeaders: Record<string, string> = proxyResponseBody?.headers ?? {};
 
@@ -135,6 +136,7 @@ export async function performDashboardProxyRequest(
         }
       : undefined;
 
+  // Parent hop first, then merge any nested mockifyerTrace from the downstream service.
   recordInlineTraceHopFromExchange({
     method,
     url,
@@ -150,6 +152,7 @@ export async function performDashboardProxyRequest(
     requestBody: body,
     responseBody: data,
   });
+  data = unwrapAndMergeInlineTraceEnvelope(data);
 
   return {
     data,

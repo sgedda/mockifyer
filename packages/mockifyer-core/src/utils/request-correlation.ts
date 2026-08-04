@@ -3,18 +3,20 @@ import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
 import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
 import {
+  MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_HEADER,
+  installInlineTraceBodyWrapper,
+  isIncludeInlineTraceBodiesRequested,
+  isIncludeInlineTraceRequested,
+} from './inline-trace';
+import {
   getActiveInboundClientId,
+  getActiveMockifyerHopContext,
   getActiveRequestCorrelation,
   runWithMockifyerHopContext,
   type MockifyerHopContext,
   type RequestCorrelationContext,
 } from './hop-context';
-import {
-  installInlineTraceBodyWrapper,
-  isIncludeInlineTraceBodiesRequested,
-  isIncludeInlineTraceRequested,
-} from './inline-trace';
-
 export type {
   InlineTraceHopBufferItem,
   MockifyerHopContext,
@@ -232,12 +234,30 @@ function applyInboundClientIdToOutboundHeaders(config: { headers?: unknown }): v
   }
 }
 
+/** Forward include-trace opt-in so downstream services can return nested mockifyerTrace. */
+function applyOutboundInlineTraceHeaders(config: { headers?: unknown }): void {
+  const ctx = getActiveMockifyerHopContext();
+  if (!ctx?.includeInlineTrace) {
+    return;
+  }
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_INCLUDE_TRACE_HEADER, '1');
+  if (ctx.includeInlineTraceBodies) {
+    config.headers = setOutboundHeader(
+      config.headers,
+      MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+      '1'
+    );
+  }
+}
+
 /**
  * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
  * Strips any stale `X-Mockifyer-Request-Id` on the config so each hop gets a fresh id.
+ * When the active request opted into inline trace, also forwards include-trace headers.
  */
 export function applyOutboundRequestCorrelation(config: { headers?: unknown }): RequestCorrelationContext {
   applyInboundClientIdToOutboundHeaders(config);
+  applyOutboundInlineTraceHeaders(config);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
   const requestId = newRequestCorrelationId();
 

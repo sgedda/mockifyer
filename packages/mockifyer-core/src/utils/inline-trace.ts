@@ -198,6 +198,8 @@ export function recordInlineTraceHopFromExchange(params: {
   const ctx = getActiveMockifyerHopContext();
   if (!ctx?.includeInlineTrace) return;
 
+  const businessBody = getInlineTraceEnvelopeBusinessBody(params.responseBody);
+
   recordInlineTraceHop({
     method: params.method,
     url: params.url,
@@ -213,9 +215,71 @@ export function recordInlineTraceHopFromExchange(params: {
       ? toNetworkLogBodyPreview(params.requestBody)
       : undefined,
     responseBodyPreview: ctx.includeInlineTraceBodies
-      ? toNetworkLogBodyPreview(params.responseBody)
+      ? toNetworkLogBodyPreview(businessBody)
       : undefined,
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * True when `body` looks like an inline-trace envelope `{ data, mockifyerTrace }`.
+ */
+export function isInlineTraceEnvelope(body: unknown): body is {
+  data: unknown;
+  mockifyerTrace: InlineRequestTrace;
+} {
+  if (!isRecord(body)) return false;
+  if (!Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY)) return false;
+  if (!Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_RESPONSE_KEY)) return false;
+  const trace = body[MOCKIFYER_TRACE_RESPONSE_KEY];
+  if (!isRecord(trace)) return false;
+  return Array.isArray(trace.hops);
+}
+
+/** Business payload inside an envelope, or the body itself when not enveloped. */
+export function getInlineTraceEnvelopeBusinessBody(body: unknown): unknown {
+  return isInlineTraceEnvelope(body) ? body.data : body;
+}
+
+/**
+ * If `body` is a downstream inline-trace envelope, merge its hops into the active
+ * in-process buffer and return the unwrapped business `data`. Otherwise returns `body`.
+ */
+export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
+  if (!isInlineTraceEnvelope(body)) {
+    return body;
+  }
+
+  const ctx = getActiveMockifyerHopContext();
+  // Only unwrap when the parent request is collecting an inline trace (headers were forwarded).
+  if (!ctx?.includeInlineTrace || !ctx.inlineHops) {
+    return body;
+  }
+
+  const childHops = body.mockifyerTrace.hops;
+  for (const hop of childHops) {
+    if (!hop || typeof hop !== 'object') continue;
+    recordInlineTraceHop({
+      requestId: hop.requestId ?? null,
+      parentRequestId: hop.parentRequestId ?? null,
+      timestamp: typeof hop.timestamp === 'string' ? hop.timestamp : undefined,
+      method: typeof hop.method === 'string' ? hop.method : 'GET',
+      url: typeof hop.url === 'string' ? hop.url : '',
+      status: hop.status,
+      source: (hop.source as NetworkEventSource) || 'upstream',
+      durationMs: hop.durationMs,
+      transport: (hop.transport as NetworkEventTransport) || 'proxy',
+      clientId: hop.clientId,
+      requestBodyPreview: hop.requestBodyPreview,
+      responseBodyPreview: hop.responseBodyPreview,
+      errorMessage: hop.errorMessage,
+    });
+  }
+
+  return body.data;
 }
 
 export function buildInlineRequestTrace(

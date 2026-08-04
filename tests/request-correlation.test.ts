@@ -12,6 +12,8 @@ import {
   installNodeInboundRequestCorrelationCapture,
   isMockifyerEchoTraceIdEnabled,
   MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   resolveOutboundParentRequestId,
@@ -77,6 +79,32 @@ describe('request-correlation', () => {
       applyOutboundRequestCorrelation(config);
       expect(getOutboundMockifyerClientIdHeader(config.headers)).toBe('lane-gateway');
       expect(getActiveInboundClientId()).toBe('lane-gateway');
+    });
+  });
+
+  it('forwards include-trace headers on outbound hops when parent opted in', () => {
+    runWithMockifyerHopContext(
+      {
+        correlation: { requestId: 'root' },
+        includeInlineTrace: true,
+        includeInlineTraceBodies: true,
+        inlineHops: [],
+      },
+      () => {
+        const config = { headers: {} as Record<string, string> };
+        applyOutboundRequestCorrelation(config);
+        expect(config.headers[MOCKIFYER_INCLUDE_TRACE_HEADER]).toBe('1');
+        expect(config.headers[MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER]).toBe('1');
+      }
+    );
+  });
+
+  it('does not forward include-trace when parent did not opt in', () => {
+    runWithMockifyerHopContext({ correlation: { requestId: 'root' } }, () => {
+      const config = { headers: {} as Record<string, string> };
+      applyOutboundRequestCorrelation(config);
+      expect(config.headers[MOCKIFYER_INCLUDE_TRACE_HEADER]).toBeUndefined();
+      expect(config.headers[MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER]).toBeUndefined();
     });
   });
 

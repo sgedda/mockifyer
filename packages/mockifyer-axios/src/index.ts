@@ -79,6 +79,7 @@ import {
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
+  unwrapAndMergeInlineTraceEnvelope,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -1451,7 +1452,8 @@ class MockifyerClass {
           },
           this.readRequestCorrelation(response.config)
         );
-        
+        response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
         this.saveResponse(response as HTTPResponse);
         return response;
       },
@@ -1617,13 +1619,27 @@ class MockifyerClass {
     response: HTTPResponse,
     matchedMock: CachedMockData
   ): Promise<HTTPResponse> {
+    const startTime = (response.config as any).__mockifyer_startTime;
+    const durationMs = startTime ? Date.now() - startTime : undefined;
+
+    // Parent hop first, then unwrap nested mockifyerTrace from downstream services.
+    this.logNetworkEvent(
+      {
+        method: (response.config?.method || 'GET').toUpperCase(),
+        url: response.config?.url || '',
+        source: 'upstream',
+        status: response.status,
+        durationMs,
+      },
+      this.readRequestCorrelation(response.config)
+    );
+    response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
     const capturedResponse: StoredResponse = {
       status: response.status,
       data: response.data,
       headers: (response.headers as Record<string, string>) || {},
     };
-    const startTime = (response.config as any).__mockifyer_startTime;
-    const durationMs = startTime ? Date.now() - startTime : undefined;
 
     if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
       await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
@@ -1637,17 +1653,6 @@ class MockifyerClass {
     response.data = clientResponse.data;
     response.status = clientResponse.status;
     delete (response.config as any).__mockifyer_matchedMock;
-
-    this.logNetworkEvent(
-      {
-        method: (response.config?.method || 'GET').toUpperCase(),
-        url: response.config?.url || '',
-        source: 'upstream',
-        status: response.status,
-        durationMs,
-      },
-      this.readRequestCorrelation(response.config)
-    );
 
     return response;
   }
