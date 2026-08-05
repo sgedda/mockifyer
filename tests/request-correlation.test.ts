@@ -1,11 +1,14 @@
 import http from 'http';
 import {
   applyOutboundRequestCorrelation,
+  attachMockifyerRequestIdToError,
   captureInboundMockifyerContext,
   captureInboundRequestCorrelation,
   createMockifyerCorrelationMiddleware,
+  createMockifyerErrorHandler,
   getActiveInboundClientId,
   getActiveRequestCorrelation,
+  getMockifyerRequestIdFromError,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerParentRequestIdHeader,
   getOutboundMockifyerRequestIdHeader,
@@ -15,7 +18,9 @@ import {
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_ERROR_PROP,
   MOCKIFYER_REQUEST_ID_HEADER,
+  resolveMockifyerRequestIdForError,
   resolveOutboundParentRequestId,
   runWithMockifyerHopContext,
   runWithRequestCorrelation,
@@ -302,5 +307,115 @@ describe('request-correlation', () => {
     expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'false' })).toBe(false);
     expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: '0' })).toBe(false);
     expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'off' })).toBe(false);
+  });
+
+  it('attachMockifyerRequestIdToError stamps property and appends message marker', () => {
+    const err = new Error('boom');
+    attachMockifyerRequestIdToError(err, 'trace-abc');
+    expect(getMockifyerRequestIdFromError(err)).toBe('trace-abc');
+    expect((err as { mockifyerRequestId?: string }).mockifyerRequestId).toBe('trace-abc');
+    expect(err.message).toContain(`[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=trace-abc]`);
+
+    attachMockifyerRequestIdToError(err, 'other-id');
+    expect(getMockifyerRequestIdFromError(err)).toBe('trace-abc');
+    expect(err.message.match(/mockifyerRequestId=/g)?.length).toBe(1);
+  });
+
+  it('resolveMockifyerRequestIdForError prefers active inbound over hop id', () => {
+    runWithRequestCorrelation({ requestId: 'inbound-root' }, () => {
+      expect(
+        resolveMockifyerRequestIdForError({
+          hopRequestId: 'hop-1',
+          responseHeaders: { [MOCKIFYER_REQUEST_ID_HEADER]: 'from-header' },
+        })
+      ).toBe('inbound-root');
+    });
+    expect(
+      resolveMockifyerRequestIdForError({
+        hopRequestId: 'hop-1',
+        responseHeaders: { [MOCKIFYER_REQUEST_ID_HEADER]: 'from-header' },
+      })
+    ).toBe('from-header');
+    expect(resolveMockifyerRequestIdForError({ hopRequestId: 'hop-1' })).toBe('hop-1');
+  });
+
+  it('middleware stores mockifyerRequestId on req for error handlers', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req: { header: () => undefined; mockifyerRequestId?: string } = {
+      header: () => undefined,
+    };
+    middleware(req, { setHeader: () => undefined }, () => undefined);
+    expect(req.mockifyerRequestId).toBeTruthy();
+  });
+
+  it('error handler enriches exception and can send JSON with requestId', () => {
+    const handler = createMockifyerErrorHandler({ sendJsonResponse: true });
+    const req = { header: () => undefined, mockifyerRequestId: 'err-trace-1' };
+    let statusCode: number | undefined;
+    let body: unknown;
+    const headers: Record<string, string> = {};
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return payload;
+      },
+    };
+    let nextCalled = false;
+    handler(new Error('handler failed'), req, res, () => {
+      nextCalled = true;
+    });
+    expect(nextCalled).toBe(false);
+    expect(statusCode).toBe(500);
+    expect(body).toEqual({ error: expect.stringContaining('handler failed'), requestId: 'err-trace-1' });
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('err-trace-1');
+  });
+
+  it('error handler without sendJsonResponse only enriches and next(err)', () => {
+    const handler = createMockifyerErrorHandler();
+    const req = { header: () => undefined, mockifyerRequestId: 'err-trace-2' };
+    let forwarded: unknown;
+    handler(new Error('x'), req, { setHeader: () => undefined }, (err) => {
+      forwarded = err;
+    });
+    expect(getMockifyerRequestIdFromError(forwarded)).toBe('err-trace-2');
+    expect((forwarded as Error).message).toContain('err-trace-2');
+  });
+
+  it('error handler recovers requestId from stamped error when req and ALS lack it', () => {
+    const handler = createMockifyerErrorHandler({ sendJsonResponse: true });
+    const err = attachMockifyerRequestIdToError(new Error('upstream failed'), 'from-axios');
+    const req = { header: () => undefined };
+    let statusCode: number | undefined;
+    let body: unknown;
+    const headers: Record<string, string> = {};
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return payload;
+      },
+    };
+    handler(err, req, res, () => undefined);
+    expect(statusCode).toBe(500);
+    expect(body).toEqual({
+      error: expect.stringContaining('upstream failed'),
+      requestId: 'from-axios',
+    });
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('from-axios');
   });
 });
