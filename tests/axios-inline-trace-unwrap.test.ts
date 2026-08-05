@@ -166,4 +166,72 @@ describe('axios recordMode=false inline-trace unwrap', () => {
 
     expect(response.data).toEqual(envelope);
   });
+
+  it('unwraps on useGlobalAxios + recordMode before persisting fixtures', async () => {
+    const url = 'https://api.example.test/member/global-record';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+
+    const nestedEnvelope = {
+      [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-global', name: 'Grace' },
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'member-root',
+        hopCount: 1,
+        incomplete: false,
+        hops: [
+          {
+            index: 0,
+            requestId: 'hop-db',
+            parentRequestId: 'member-root',
+            timestamp: '2026-01-01T00:00:00.000Z',
+            method: 'GET',
+            url: 'https://db.example/users/global',
+            status: 200,
+            source: 'upstream',
+            transport: 'axios',
+          },
+        ],
+      },
+    };
+
+    upstream.onGet(url).reply(200, nestedEnvelope);
+
+    setupMockifyer({
+      mockDataPath,
+      recordMode: true,
+      useGlobalAxios: true,
+      axiosInstance,
+    });
+
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'graphql-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    const response = await runWithMockifyerHopContext(ctx, () => axiosInstance.get(url));
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ id: 'user-global', name: 'Grace' });
+    expect(response.data).not.toHaveProperty(MOCKIFYER_TRACE_RESPONSE_KEY);
+
+    // Wait for async saveResponse on the global interceptor
+    await new Promise((r) => setTimeout(r, 50));
+
+    const scenarioDir = path.join(mockDataPath, 'default');
+    const files = fs.readdirSync(scenarioDir).filter((f) => f.endsWith('.json'));
+    expect(files.length).toBeGreaterThan(0);
+
+    const saved = JSON.parse(fs.readFileSync(path.join(scenarioDir, files[0]), 'utf8'));
+    expect(saved.response.data).toEqual({ id: 'user-global', name: 'Grace' });
+    expect(saved.response.data).not.toHaveProperty(MOCKIFYER_TRACE_RESPONSE_KEY);
+
+    const trace = buildInlineRequestTrace(ctx);
+    expect(trace).not.toBeNull();
+    expect(trace!.hops.map((h) => h.url)).toEqual([
+      url,
+      'https://db.example/users/global',
+    ]);
+  });
 });

@@ -2299,6 +2299,21 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               }
               
               logger.warn('[Mockifyer] ⚠️ Global axios interceptor: Response is NOT mocked, will record it');
+
+              // Mirror non-global record path: parent hop + unwrap nested { data, mockifyerTrace }
+              // before persisting so fixtures store business data (not the debug envelope).
+              mockifyer['logNetworkEvent'](
+                {
+                  method: (axiosResponse.config?.method || 'GET').toUpperCase(),
+                  url: axiosResponse.config?.url || '',
+                  source: 'upstream',
+                  status: axiosResponse.status,
+                  requestBody: axiosResponse.config?.data,
+                  responseBody: axiosResponse.data,
+                },
+                mockifyer['readRequestCorrelation'](axiosResponse.config)
+              );
+              axiosResponse.data = unwrapAndMergeInlineTraceEnvelope(axiosResponse.data);
               
               // Convert Axios response to HTTPResponse format for saveResponse
               const httpResponse: HTTPResponse = {
@@ -2396,6 +2411,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
                 return Promise.reject(error);
               }
+
+              error.response.data = unwrapAndMergeInlineTraceEnvelope(error.response.data);
               
               // Convert Axios error response to HTTPResponse format
               const httpResponse: HTTPResponse = {
@@ -2442,6 +2459,45 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         // Verify interceptors are registered
         const handlers = (globalAxios.interceptors.response as any).handlers || [];
         logger.debug('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
+      } else {
+        // recordMode=false: BaseHTTPClient response unwrap lives on httpClient only.
+        // Wire the same unwrap/live-refresh path onto global axios.
+        globalAxios.interceptors.response.use(async (axiosResponse: any) => {
+          if ((axiosResponse.config as any)?.__mockifyer_bypass) {
+            return axiosResponse;
+          }
+          if (mockifyer['responseHasMockifyerMarker'](axiosResponse)) {
+            return axiosResponse;
+          }
+          const matchedMock = (axiosResponse.config as any).__mockifyer_matchedMock as
+            | CachedMockData
+            | undefined;
+          if (matchedMock) {
+            return mockifyer['applyLiveRefreshToAxiosResponse'](axiosResponse, matchedMock);
+          }
+          const startTime = (axiosResponse.config as any).__mockifyer_startTime;
+          const durationMs =
+            typeof startTime === 'number'
+              ? Date.now() - startTime
+              : typeof (axiosResponse.config as any)?.metadata?.durationMs === 'number'
+                ? (axiosResponse.config as any).metadata.durationMs
+                : undefined;
+          mockifyer['logNetworkEvent'](
+            {
+              method: (axiosResponse.config?.method || 'GET').toUpperCase(),
+              url: axiosResponse.config?.url || '',
+              source: 'upstream',
+              status: axiosResponse.status,
+              durationMs,
+              requestBody: axiosResponse.config?.data,
+              responseBody: axiosResponse.data,
+            },
+            mockifyer['readRequestCorrelation'](axiosResponse.config)
+          );
+          axiosResponse.data = unwrapAndMergeInlineTraceEnvelope(axiosResponse.data);
+          return axiosResponse;
+        });
+        logger.debug('[Mockifyer] ✅ Global axios unwrap/live-refresh response interceptor registered');
       }
       
       // Copy adapter if it exists (for mock responses)
