@@ -47,6 +47,8 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 | `MOCKIFYER_ECHO_TRACE_ID` | Echo `X-Mockifyer-Request-Id` on responses (default on; set `false` to disable) |
 | `MOCKIFYER_AUTO_INBOUND_CORRELATION` | Node inbound hop capture on `setupMockifyer` (default on) |
 
+Thrown/rejected HTTP errors are stamped with `error.mockifyerRequestId` (dashboard `/api/network-events/trace` lookup key). Express: `createMockifyerErrorHandler()`.
+
 See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build rules.
 
 ## Implementation rules

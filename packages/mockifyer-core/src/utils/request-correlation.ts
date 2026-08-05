@@ -36,6 +36,108 @@ export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
 /** Caller hop id — links this outbound request to the request that triggered it. */
 export const MOCKIFYER_PARENT_REQUEST_ID_HEADER = 'x-mockifyer-parent-request-id';
 
+/**
+ * Property stamped on thrown/rejected errors so debuggers can look up
+ * `/api/network-events/trace?requestId=…` without digging through response headers.
+ */
+export const MOCKIFYER_REQUEST_ID_ERROR_PROP = 'mockifyerRequestId' as const;
+
+/** Express/Connect request field used to survive ALS gaps in error middleware. */
+export const MOCKIFYER_REQUEST_ID_REQ_PROP = 'mockifyerRequestId' as const;
+
+export function getMockifyerRequestIdFromError(error: unknown): string | undefined {
+  if (!error || (typeof error !== 'object' && typeof error !== 'function')) {
+    return undefined;
+  }
+  const value = (error as Record<string, unknown>)[MOCKIFYER_REQUEST_ID_ERROR_PROP];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Prefer the active inbound trace id (dashboard entry key), then a response header echo,
+ * then the outbound hop id stashed on the HTTP client config.
+ */
+export function resolveMockifyerRequestIdForError(options: {
+  hopRequestId?: string;
+  responseHeaders?: unknown;
+  requestId?: string;
+} = {}): string | undefined {
+  const explicit = options.requestId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const active = getActiveRequestCorrelation()?.requestId?.trim();
+  if (active) {
+    return active;
+  }
+  const fromHeaders = getOutboundMockifyerRequestIdHeader(options.responseHeaders)?.trim();
+  if (fromHeaders) {
+    return fromHeaders;
+  }
+  const hop = options.hopRequestId?.trim();
+  return hop || undefined;
+}
+
+export interface AttachMockifyerRequestIdToErrorOptions {
+  /**
+   * When true (default), append `[mockifyerRequestId=…]` to `Error.message` so the id
+   * is visible in logs and test failure output without inspecting properties.
+   */
+  appendToMessage?: boolean;
+}
+
+/**
+ * Stamps {@link MOCKIFYER_REQUEST_ID_ERROR_PROP} onto an error so thrown failures
+ * carry the id to use with the dashboard network trace API.
+ */
+export function attachMockifyerRequestIdToError<T>(
+  error: T,
+  requestId?: string,
+  options: AttachMockifyerRequestIdToErrorOptions = {}
+): T {
+  const id = resolveMockifyerRequestIdForError({ requestId });
+  if (!id || error == null || (typeof error !== 'object' && typeof error !== 'function')) {
+    return error;
+  }
+
+  const target = error as Record<string, unknown>;
+  const existing =
+    typeof target[MOCKIFYER_REQUEST_ID_ERROR_PROP] === 'string'
+      ? String(target[MOCKIFYER_REQUEST_ID_ERROR_PROP]).trim()
+      : '';
+  if (!existing) {
+    try {
+      Object.defineProperty(target, MOCKIFYER_REQUEST_ID_ERROR_PROP, {
+        value: id,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    } catch {
+      try {
+        target[MOCKIFYER_REQUEST_ID_ERROR_PROP] = id;
+      } catch {
+        // non-extensible / frozen
+      }
+    }
+  }
+
+  const effectiveId = existing || id;
+  const appendToMessage = options.appendToMessage !== false;
+  if (appendToMessage && error instanceof Error) {
+    const marker = `[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=${effectiveId}]`;
+    if (!error.message.includes(`[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=`)) {
+      try {
+        error.message = error.message ? `${error.message} ${marker}` : marker;
+      } catch {
+        // message may be read-only
+      }
+    }
+  }
+
+  return error;
+}
+
 function isEnvFlagDisabled(raw: string | undefined): boolean {
   const value = String(raw ?? '')
     .trim()
@@ -276,12 +378,17 @@ export interface MockifyerCorrelationMiddlewareRequest {
   header(name: string): string | undefined;
   query?: unknown;
   url?: string;
+  /** Set by {@link createMockifyerCorrelationMiddleware} for error handlers. */
+  mockifyerRequestId?: string;
 }
 
 export interface MockifyerCorrelationMiddlewareResponse {
   setHeader?(name: string, value: string): void;
+  headersSent?: boolean;
   json?(body: unknown): unknown;
   send?(body: unknown): unknown;
+  status?(code: number): unknown;
+  statusCode?: number;
 }
 
 export interface MockifyerCorrelationMiddlewareOptions {
@@ -295,6 +402,15 @@ export interface MockifyerCorrelationMiddlewareOptions {
    * When true (default), assign a new inbound trace id when the request did not send one.
    */
   assignInboundTraceIdWhenMissing?: boolean;
+}
+
+export interface MockifyerErrorHandlerOptions {
+  /**
+   * When true, if headers are not sent yet, respond with JSON `{ error, requestId }`
+   * (status from `err.status` / `err.statusCode` or 500).
+   * Default **false** — only enrich the error, re-echo the response header, and `next(err)`.
+   */
+  sendJsonResponse?: boolean;
 }
 
 const NODE_INBOUND_CAPTURE_INSTALLED = Symbol.for(
@@ -353,12 +469,20 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
           ? resolveInboundHopContext({}, { includeInlineTrace, includeInlineTraceBodies })
           : undefined;
       if (resolved) {
+        if (req && resolved.traceId) {
+          (req as { [MOCKIFYER_REQUEST_ID_REQ_PROP]?: string })[MOCKIFYER_REQUEST_ID_REQ_PROP] =
+            resolved.traceId;
+        }
         maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
         return runWithMockifyerHopContext(resolved.ctx, () => {
           if (res) {
             installInlineTraceBodyWrapper(res);
           }
-          return originalEmit.apply(this, [event, ...args]);
+          try {
+            return originalEmit.apply(this, [event, ...args]);
+          } catch (error) {
+            throw attachMockifyerRequestIdToError(error, resolved.traceId);
+          }
         });
       }
     }
@@ -445,6 +569,10 @@ export function createMockifyerCorrelationMiddleware(
       return;
     }
 
+    if (resolved.traceId) {
+      req[MOCKIFYER_REQUEST_ID_REQ_PROP] = resolved.traceId;
+    }
+
     const shouldEcho =
       options.echoTraceIdOnResponse !== undefined
         ? options.echoTraceIdOnResponse
@@ -452,7 +580,84 @@ export function createMockifyerCorrelationMiddleware(
     maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
     runWithMockifyerHopContext(resolved.ctx, () => {
       installInlineTraceBodyWrapper(res);
-      next();
+      try {
+        next();
+      } catch (error) {
+        throw attachMockifyerRequestIdToError(error, resolved.traceId);
+      }
     });
+  };
+}
+
+function readErrorHttpStatus(error: unknown): number {
+  if (!error || typeof error !== 'object') {
+    return 500;
+  }
+  const e = error as { status?: unknown; statusCode?: unknown };
+  const raw = e.status ?? e.statusCode;
+  const status = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isInteger(status) && status >= 400 && status < 600) {
+    return status;
+  }
+  return 500;
+}
+
+/**
+ * Express error middleware: stamps {@link MOCKIFYER_REQUEST_ID_ERROR_PROP} on the error,
+ * re-echoes `X-Mockifyer-Request-Id`, and optionally sends JSON that includes `requestId`
+ * so clients/debuggers can open the dashboard trace without reading headers.
+ *
+ * Mount after routes: `app.use(createMockifyerErrorHandler())`.
+ */
+export function createMockifyerErrorHandler(
+  options: MockifyerErrorHandlerOptions = {}
+): (
+  err: unknown,
+  req: MockifyerCorrelationMiddlewareRequest,
+  res: MockifyerCorrelationMiddlewareResponse,
+  next: (err?: unknown) => void
+) => void {
+  const sendJsonResponse = options.sendJsonResponse === true;
+
+  return (err, req, res, next) => {
+    const requestId =
+      (typeof req.mockifyerRequestId === 'string' && req.mockifyerRequestId.trim()
+        ? req.mockifyerRequestId.trim()
+        : undefined) ?? getActiveRequestCorrelation()?.requestId;
+    const enriched = attachMockifyerRequestIdToError(err, requestId);
+    maybeEchoTraceIdOnResponse(res, requestId, isMockifyerEchoTraceIdEnabled());
+
+    if (!sendJsonResponse || res.headersSent) {
+      next(enriched);
+      return;
+    }
+
+    const status = readErrorHttpStatus(enriched);
+    const message =
+      enriched instanceof Error
+        ? enriched.message
+        : typeof enriched === 'string'
+          ? enriched
+          : 'Internal Server Error';
+
+    if (typeof res.status === 'function' && typeof res.json === 'function') {
+      res.status(status);
+      res.json({
+        error: message,
+        ...(requestId ? { requestId } : {}),
+      });
+      return;
+    }
+
+    if (typeof res.json === 'function') {
+      res.statusCode = status;
+      res.json({
+        error: message,
+        ...(requestId ? { requestId } : {}),
+      });
+      return;
+    }
+
+    next(enriched);
   };
 }

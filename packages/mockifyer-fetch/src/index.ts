@@ -75,6 +75,8 @@ import {
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
+  attachMockifyerRequestIdToError,
+  resolveMockifyerRequestIdForError,
   type RequestCorrelationContext,
   installNodeInboundRequestCorrelationCapture,
 } from '@sgedda/mockifyer-core';
@@ -182,6 +184,17 @@ class MockifyerClass {
     if (!requestId) return undefined;
     const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
     return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  }
+
+  /** Attach dashboard lookup id onto thrown fetch/client errors. */
+  private throwWithMockifyerRequestId(error: unknown): never {
+    const err = error as { config?: unknown; response?: { headers?: unknown } };
+    const hopRequestId = (err?.config as { __mockifyer_requestId?: string } | undefined)?.__mockifyer_requestId;
+    const requestId = resolveMockifyerRequestIdForError({
+      hopRequestId,
+      responseHeaders: err?.response?.headers,
+    });
+    throw attachMockifyerRequestIdToError(error, requestId);
   }
 
   /**
@@ -1013,7 +1026,7 @@ class MockifyerClass {
             this.readRequestCorrelation(error.config)
           );
         }
-        throw error;
+        this.throwWithMockifyerRequestId(error);
       }
     );
   }
@@ -1715,7 +1728,14 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
             headers: responseHeaders
           });
         }
-        throw error;
+        throw attachMockifyerRequestIdToError(
+          error,
+          resolveMockifyerRequestIdForError({
+            hopRequestId: (error as { config?: { __mockifyer_requestId?: string } })?.config
+              ?.__mockifyer_requestId,
+            responseHeaders: (error as { response?: { headers?: unknown } })?.response?.headers,
+          })
+        );
       }
     } as typeof fetch;
 

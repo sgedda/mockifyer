@@ -157,6 +157,8 @@ curl -s 'http://localhost:3002/api/network-events/trace?eventId=ev-...&scenario=
 
 `setupMockifyer` auto-installs Node inbound capture: it assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response (disable echo with **`MOCKIFYER_ECHO_TRACE_ID=false`**; disable the whole patch with **`MOCKIFYER_AUTO_INBOUND_CORRELATION=false`**). Express apps can still mount **`createMockifyerCorrelationMiddleware()`** for explicit control. Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
 
+When a request fails, axios/fetch rejections and Express errors stamped by Mockifyer include **`error.mockifyerRequestId`** (and append `[mockifyerRequestId=…]` to the message) so you can open the same `/api/network-events/trace?requestId=…` lookup from logs without copying response headers. Mount **`createMockifyerErrorHandler()`** (optionally `{ sendJsonResponse: true }`) after routes to re-echo the header on error responses and optionally return `{ error, requestId }` JSON.
+
 ### Inline response trace (no Redis / no `/trace` poll)
 
 For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (optional query: `?trace-mockifyer=true`). With correlation middleware (or Node inbound capture when `res.json`/`res.send` exist), the JSON body is wrapped as:

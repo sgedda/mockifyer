@@ -35,6 +35,8 @@ import {
   MOCKIFYER_DEVICE_ID_HEADER,
   newRecordingUsesAlwaysUseRealApi,
   applyOutboundRequestCorrelation,
+  attachMockifyerRequestIdToError,
+  resolveMockifyerRequestIdForError,
   type RequestCorrelationContext,
   installNodeInboundRequestCorrelationCapture,
   DatabaseProvider,
@@ -223,6 +225,17 @@ class MockifyerClass {
     if (!requestId) return undefined;
     const parentRequestId = (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
     return parentRequestId ? { requestId, parentRequestId } : { requestId };
+  }
+
+  /** Attach dashboard lookup id onto rejected axios errors. */
+  private rejectWithMockifyerRequestId(error: unknown): Promise<never> {
+    const err = error as { config?: unknown; response?: { headers?: unknown } };
+    const hopRequestId = (err?.config as { __mockifyer_requestId?: string } | undefined)?.__mockifyer_requestId;
+    const requestId = resolveMockifyerRequestIdForError({
+      hopRequestId,
+      responseHeaders: err?.response?.headers,
+    });
+    return Promise.reject(attachMockifyerRequestIdToError(error, requestId));
   }
 
   constructor(config: MockifyerConfig) {
@@ -1536,7 +1549,7 @@ class MockifyerClass {
       },
       (error) => {
         if ((error.config as any)?.__mockifyer_bypass) {
-          return Promise.reject(error);
+          return this.rejectWithMockifyerRequestId(error);
         }
 
         const errUrl = error.config?.url || '';
@@ -1584,7 +1597,7 @@ class MockifyerClass {
           
           if (isMocked) {
             logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
-            return Promise.reject(error);
+            return this.rejectWithMockifyerRequestId(error);
           }
           
           // Use the request key from the request interceptor if available
@@ -1601,7 +1614,7 @@ class MockifyerClass {
           });
           this.saveResponse(error.response as HTTPResponse);
         }
-        return Promise.reject(error);
+        return this.rejectWithMockifyerRequestId(error);
       }
     );
     } else {
@@ -2366,7 +2379,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           },
           async function(error: any) {
             if ((error.config as any)?.__mockifyer_bypass) {
-              return Promise.reject(error);
+              return mockifyer['rejectWithMockifyerRequestId'](error);
             }
 
             // CRITICAL: Clean up processingRequests after request fails
@@ -2394,7 +2407,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               
               if (isMocked) {
                 logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
-                return Promise.reject(error);
+                return mockifyer['rejectWithMockifyerRequestId'](error);
               }
               
               // Convert Axios error response to HTTPResponse format
@@ -2434,7 +2447,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               
               await mockifyer['saveResponse'](httpResponse);
             }
-            return Promise.reject(error);
+            return mockifyer['rejectWithMockifyerRequestId'](error);
           }
         );
         logger.debug(`[Mockifyer] ✅ Response interceptor added to global axios with ID: ${interceptorId}`);
