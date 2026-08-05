@@ -388,4 +388,34 @@ describe('request-correlation', () => {
     expect(getMockifyerRequestIdFromError(forwarded)).toBe('err-trace-2');
     expect((forwarded as Error).message).toContain('err-trace-2');
   });
+
+  it('error handler recovers requestId from stamped error when req and ALS lack it', () => {
+    const handler = createMockifyerErrorHandler({ sendJsonResponse: true });
+    const err = attachMockifyerRequestIdToError(new Error('upstream failed'), 'from-axios');
+    const req = { header: () => undefined };
+    let statusCode: number | undefined;
+    let body: unknown;
+    const headers: Record<string, string> = {};
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return payload;
+      },
+    };
+    handler(err, req, res, () => undefined);
+    expect(statusCode).toBe(500);
+    expect(body).toEqual({
+      error: expect.stringContaining('upstream failed'),
+      requestId: 'from-axios',
+    });
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('from-axios');
+  });
 });

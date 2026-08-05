@@ -620,11 +620,12 @@ export function createMockifyerErrorHandler(
   const sendJsonResponse = options.sendJsonResponse === true;
 
   return (err, req, res, next) => {
-    const requestId =
+    const requestIdFromReqOrAls =
       (typeof req.mockifyerRequestId === 'string' && req.mockifyerRequestId.trim()
         ? req.mockifyerRequestId.trim()
         : undefined) ?? getActiveRequestCorrelation()?.requestId;
-    const enriched = attachMockifyerRequestIdToError(err, requestId);
+    const enriched = attachMockifyerRequestIdToError(err, requestIdFromReqOrAls);
+    const requestId = requestIdFromReqOrAls ?? getMockifyerRequestIdFromError(enriched);
     maybeEchoTraceIdOnResponse(res, requestId, isMockifyerEchoTraceIdEnabled());
 
     if (!sendJsonResponse || res.headersSent) {
