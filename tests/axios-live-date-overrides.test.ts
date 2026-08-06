@@ -64,6 +64,7 @@ describe('axios live response date overrides', () => {
       mockDataPath,
       recordMode: false,
       axiosInstance,
+      useGlobalAxios: false,
       // Ungated replay — this test predates domain-path allowlist.
       domainPathRulesMode: 'off',
       dateManipulation: {
@@ -73,6 +74,8 @@ describe('axios live response date overrides', () => {
 
     const response = await client.get(url);
 
+    // Live body from MockAdapter (plan: pro), with date overrides applied on passthrough.
+    expect(upstream.history.get).toHaveLength(1);
     expect(response.status).toBe(200);
     expect(response.data).toEqual({
       plan: 'pro',

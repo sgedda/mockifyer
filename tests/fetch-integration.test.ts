@@ -43,6 +43,8 @@ describe("Mockifyer Fetch Integration", () => {
       process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE = prevDomainPathRulesMode;
     }
 
+    delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
@@ -57,101 +59,88 @@ describe("Mockifyer Fetch Integration", () => {
     }
   });
 
-  it("should return mock response when mock exists", async () => {
-    // Create a mock file
-    const mockData = {
-      request: {
-        method: "GET",
-        url: "https://api.example.com/test",
-        headers: {},
-        queryParams: {},
-      },
-      response: {
+  async function recordThenReplay(
+    url: string,
+    payload: unknown,
+    requestOptions?: { params?: Record<string, string> }
+  ) {
+    const prevRecordAlwaysLive =
+      process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API;
+    process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = "false";
+
+    const originalFetch = global.fetch;
+    try {
+      delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
         status: 200,
-        data: {
-          message: "Hello from mock!",
-          id: 123,
-        },
-        headers: {
-          "content-type": "application/json",
-        },
-      },
-      timestamp: new Date().toISOString(),
-    };
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => payload,
+        text: async () => JSON.stringify(payload),
+      } as Response);
 
-    // Mock files are stored in scenario subdirectories (default/ by default)
-    const defaultScenarioPath = path.join(testMockDataPath, "default");
-    if (!fs.existsSync(defaultScenarioPath)) {
-      fs.mkdirSync(defaultScenarioPath, { recursive: true });
+      const recorder = setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: true,
+        useGlobalFetch: false,
+      });
+
+      await recorder.get(url, requestOptions);
+
+      global.fetch = originalFetch;
+      delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+
+      const reader = setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: false,
+        useGlobalFetch: false,
+      });
+      await (reader as any).reloadMockData();
+      return reader.get(url, requestOptions);
+    } finally {
+      global.fetch = originalFetch;
+      delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+      if (prevRecordAlwaysLive === undefined) {
+        delete process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API;
+      } else {
+        process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API =
+          prevRecordAlwaysLive;
+      }
     }
-    const mockFileName = `test_GET_api_example_com_test.json`;
-    const mockFilePath = path.join(defaultScenarioPath, mockFileName);
-    fs.writeFileSync(mockFilePath, JSON.stringify(mockData, null, 2));
+  }
 
-    // Reload mock data (async)
-    await (httpClient as any).reloadMockData();
+  it("should return mock response when mock exists", async () => {
+    const payload = { message: "Hello from mock!", id: 123 };
+    const response = await recordThenReplay(
+      "https://api.example.com/test",
+      payload
+    );
 
-    // Make request using fetch client
-    const response = await httpClient.get("https://api.example.com/test");
-
-    // Verify response
     expect(response.status).toBe(200);
-    expect(response.data).toEqual({
-      message: "Hello from mock!",
-      id: 123,
-    });
+    expect(response.data).toEqual(payload);
     expect(response.headers["x-mockifyer"]).toBe("true");
     expect(response.headers["content-type"]).toBe("application/json");
   });
 
   it("should handle query parameters correctly", async () => {
-    // Create a mock file with query params
-    const mockData = {
-      request: {
-        method: "GET",
-        url: "https://api.example.com/users",
-        headers: {},
-        queryParams: {
+    const payload = {
+      user: {
+        id: 123,
+        name: "John Doe",
+      },
+    };
+    const response = await recordThenReplay(
+      "https://api.example.com/users",
+      payload,
+      {
+        params: {
           id: "123",
           name: "John",
         },
-      },
-      response: {
-        status: 200,
-        data: {
-          user: {
-            id: 123,
-            name: "John Doe",
-          },
-        },
-        headers: {
-          "content-type": "application/json",
-        },
-      },
-      timestamp: new Date().toISOString(),
-    };
+      }
+    );
 
-    // Mock files are stored in scenario subdirectories (default/ by default)
-    const defaultScenarioPath = path.join(testMockDataPath, "default");
-    if (!fs.existsSync(defaultScenarioPath)) {
-      fs.mkdirSync(defaultScenarioPath, { recursive: true });
-    }
-    const mockFileName = `test_GET_api_example_com_users.json`;
-    const mockFilePath = path.join(defaultScenarioPath, mockFileName);
-    fs.writeFileSync(mockFilePath, JSON.stringify(mockData, null, 2));
-
-    // Reload mock data (async)
-    await (httpClient as any).reloadMockData();
-
-    // Make request with query parameters
-    const response = await httpClient.get("https://api.example.com/users", {
-      params: {
-        id: "123",
-        name: "John",
-      },
-    });
-
-    // Verify response
     expect(response.status).toBe(200);
     expect(response.data.user.id).toBe(123);
     expect(response.data.user.name).toBe("John Doe");
@@ -162,6 +151,7 @@ describe("Mockifyer Fetch Integration", () => {
     // Mock global fetch to prevent actual HTTP calls
     const originalFetch = global.fetch;
     const networkError = new Error("Network error");
+    delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
     global.fetch = jest.fn().mockRejectedValue(networkError);
 
     // Setup with failOnMissingMock: false (default)
@@ -182,6 +172,7 @@ describe("Mockifyer Fetch Integration", () => {
 
     // Restore original fetch
     global.fetch = originalFetch;
+    delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
   });
 
   it("should throw error when mock does not exist and failOnMissingMock is true", async () => {
@@ -191,6 +182,7 @@ describe("Mockifyer Fetch Integration", () => {
       recordMode: false,
       failOnMissingMock: true,
       useGlobalAxios: false,
+      useGlobalFetch: false,
     });
 
     // Try to make request without mock
@@ -278,10 +270,11 @@ describe("Mockifyer Fetch Integration", () => {
         mockDataPath: testMockDataPath,
         recordMode: false,
         useGlobalAxios: false,
+        useGlobalFetch: false,
       });
 
       // Reload mock data to ensure the recorded mock is loaded
-      (readClient as any).reloadMockData();
+      await (readClient as any).reloadMockData();
 
       // Make request - should use the recorded mock
       const readResponse = await readClient.get(testUrl);
