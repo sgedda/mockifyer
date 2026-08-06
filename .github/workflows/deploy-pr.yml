@@ -43,21 +43,29 @@ jobs:
                   npm install --package-lock-only --legacy-peer-deps || echo "Lockfile generation completed (warnings OK)"
 
             # Vite (~1.1MB main chunk) is OOM-killed mid-transform on some Railway Metal builders.
-            # Build SPA here and ship as frontend-public.tar.gz (gitignored — Deploy uses
-            # --no-gitignore so the archive is uploaded). Root **/public/ still blocks public/.
+            # Build SPA here and ship as spa-railway-upload.tar.gz (NOT gitignored so normal
+            # `railway up` includes it — avoid --no-gitignore, which can break Metal builds).
             # Do not set NODE_ENV=production for npm install — that omits
             # frontend devDependencies (vite, typescript, etc.) needed by `npm run build`.
             - name: Build frontend for Railway upload
               working-directory: mockifyer-web
               run: |
                   cd frontend
-                  npm install --legacy-peer-deps --no-audit --no-fund
+                  npm install --legacy-peer-deps --no-audit --no-fund --include=dev
+                  test -d node_modules/@types/react-dom
+                  test -d node_modules/typescript
+                  test -d node_modules/vite
                   NODE_ENV=production npm run build
                   cd ..
                   test -f public/index.html
                   test -d public/assets
-                  tar -czf frontend-public.tar.gz -C public .
-                  ls -lh frontend-public.tar.gz
+                  tar -czf spa-railway-upload.tar.gz -C public .
+                  ls -lh spa-railway-upload.tar.gz
+                  # Must be uploadable without --no-gitignore
+                  if git check-ignore -q spa-railway-upload.tar.gz; then
+                    echo "spa-railway-upload.tar.gz is gitignored — Railway would skip it"
+                    exit 1
+                  fi
                   echo "Prebuilt frontend tarball ready"
 
             - name: Install Railway CLI
@@ -74,17 +82,14 @@ jobs:
                   echo "RAILWAY_TOKEN is set"
                   railway --version || echo "Railway CLI version check failed"
 
-            # railway up respects .gitignore by default. frontend-public.tar.gz is gitignored so
-            # it is not committed; --no-gitignore includes it in the upload. .railwayignore still
-            # applies (secrets, node_modules, persisted/, etc.). A .railwayignore ! negation does
-            # not reliably override .gitignore.
             - name: Deploy to Railway
               working-directory: mockifyer-web
               env:
                   RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
                   CI: "true"
               run: |
-                  railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --ci --no-gitignore
+                  test -f spa-railway-upload.tar.gz
+                  railway up --service ${{ secrets.RAILWAY_SERVICE_ID }} --ci
 
             - name: Get and Print Railway Service URL
               working-directory: mockifyer-web

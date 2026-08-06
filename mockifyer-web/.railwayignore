@@ -1,18 +1,27 @@
+# Applied by `railway up` (with normal gitignore). Keep secrets and local junk out of the archive.
 node_modules
 dist
+build
 coverage
 *.log
+*.tsbuildinfo
 .env
 .env.local
+.env.*.local
+.vscode
+.idea
+.DS_Store
 package-lock.json
 package-lock.prod.json
-# Note: mock-data is NOT ignored - it will be preserved across deployments
-# Vote files are stored in persisted/ directory (Railway volume) - don't overwrite
+# Note: mock-data is NOT ignored — demo mocks should ship with the deploy
+# Vote files live on the Railway volume — do not overwrite from the upload
+persisted/
 feature-votes.json
 user-votes.json
 ip-votes.json
-# CI ships frontend-public.tar.gz (vite prebuild); do not ignore it on upload
-# (also listed in .gitignore so it is not committed — re-include for Railway)
-!frontend-public.tar.gz
-# Root .gitignore **/public/ still blocks public/ — tarball is the upload path
-
+contact-submissions.json
+# Playwright / local test output
+test-results/
+playwright-report/
+playwright/.cache/
+# spa-railway-upload.tar.gz must NOT be listed — CI ships the prebuilt SPA here

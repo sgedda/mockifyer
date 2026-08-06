@@ -24,7 +24,8 @@ cmds = [
   "npm --version",
   "echo '@sgedda:registry=https://registry.npmjs.org/' > .npmrc",
   "echo 'legacy-peer-deps=true' >> .npmrc",
-  "npm install --legacy-peer-deps --no-audit --no-fund"
+  # --include=dev so typescript (build:backend) is installed under NODE_ENV=production
+  "npm install --legacy-peer-deps --no-audit --no-fund --include=dev"
 ]
 
 [phases.build]
@@ -32,9 +33,9 @@ cmds = [
   "export PATH=/usr/local/bin:$PATH",
   "node --version",
   "npm --version",
-  # Prefer CI-prebuilt SPA tarball — vite OOM-kills on some Railway Metal builders (~1.1MB chunk).
-  # Root .gitignore **/public/ blocks uploading public/ directly, so GHA ships frontend-public.tar.gz.
-  "bash -lc 'set -euo pipefail; echo \"📦 Starting build process...\"; mkdir -p public; if [ -f frontend-public.tar.gz ]; then echo \"✅ Extracting prebuilt frontend from frontend-public.tar.gz\"; tar -xzf frontend-public.tar.gz -C public; elif [ -f public/index.html ] && [ -d public/assets ]; then echo \"✅ Using prebuilt frontend already in public/\"; else echo \"📦 No prebuilt frontend — building on Railway (may OOM on Metal)\"; cd frontend && npm install --legacy-peer-deps --no-audit --no-fund && npm run build && cd ..; fi; echo \"🔨 Building backend...\"; npm run build:backend; test -f public/index.html; test -d public/assets; ls -la public/assets | head -20; echo \"✅ Build verified\"; mkdir -p mock-data; echo \"{\\\"deployedDate\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\\\",\\\"buildHash\\\":\\\"$(echo $RANDOM | md5sum | cut -d\\\" \\\" -f1)\\\"}\" > public/build-info.json; cat public/build-info.json'"
+  # Prefer CI-prebuilt SPA (spa-railway-upload.tar.gz) — vite OOM-kills on some Metal builders.
+  # Name is intentionally NOT gitignored so `railway up` includes it without --no-gitignore.
+  "bash -lc 'set -euo pipefail; echo \"📦 Starting build process...\"; mkdir -p public; if [ -f spa-railway-upload.tar.gz ]; then echo \"✅ Extracting prebuilt frontend from spa-railway-upload.tar.gz\"; tar -xzf spa-railway-upload.tar.gz -C public; elif [ -f frontend-public.tar.gz ]; then echo \"✅ Extracting prebuilt frontend from frontend-public.tar.gz\"; tar -xzf frontend-public.tar.gz -C public; elif [ -f public/index.html ] && [ -d public/assets ]; then echo \"✅ Using prebuilt frontend already in public/\"; else echo \"📦 No prebuilt frontend — building on Railway (may OOM on Metal)\"; cd frontend && npm install --legacy-peer-deps --no-audit --no-fund --include=dev && npm run build && cd ..; fi; echo \"🔨 Building backend...\"; npm run build:backend; test -f public/index.html; test -d public/assets; ls -la public/assets | head -20; echo \"✅ Build verified\"; mkdir -p mock-data; echo \"{\\\"deployedDate\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)\\\",\\\"buildHash\\\":\\\"$(echo $RANDOM | md5sum | cut -d\\\" \\\" -f1)\\\"}\" > public/build-info.json; cat public/build-info.json'"
 ]
 
 [start]
