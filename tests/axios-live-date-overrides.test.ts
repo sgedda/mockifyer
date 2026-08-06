@@ -64,6 +64,8 @@ describe('axios live response date overrides', () => {
       mockDataPath,
       recordMode: false,
       axiosInstance,
+      // Ungated replay — this test predates domain-path allowlist.
+      domainPathRulesMode: 'off',
       dateManipulation: {
         fixedDate: '2026-01-15T09:30:00.000Z',
       },

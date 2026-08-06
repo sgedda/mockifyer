@@ -6,8 +6,13 @@ import fs from "fs";
 describe("Mockifyer Fetch Integration", () => {
   const testMockDataPath = path.join(__dirname, "./test-mock-data-fetch");
   let httpClient: HTTPClient;
+  let prevDomainPathRulesMode: string | undefined;
 
   beforeEach(() => {
+    // Ungated record/replay — these tests predate domain-path allowlist.
+    prevDomainPathRulesMode = process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE;
+    process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE = "off";
+
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
@@ -32,6 +37,12 @@ describe("Mockifyer Fetch Integration", () => {
   });
 
   afterEach(() => {
+    if (prevDomainPathRulesMode === undefined) {
+      delete process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE;
+    } else {
+      process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE = prevDomainPathRulesMode;
+    }
+
     // Clean up test directory
     if (fs.existsSync(testMockDataPath)) {
       fs.readdirSync(testMockDataPath).forEach((file) => {
