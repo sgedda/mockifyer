@@ -3,10 +3,11 @@
  * 
  * Provides sync mechanisms:
  * 1. POST /mockifyer-save - Direct save endpoint (used by Hybrid Provider for instant sync)
- * 2. GET /mockifyer-sync-to-device-manifest + /mockifyer-sync-to-device-file - Project → app (HybridProvider; avoids huge single JSON)
- * 3. GET /mockifyer-sync-to-device - Legacy: all files in one response (may fail on large scenarios)
- * 4. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
- * 5. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
+ * 2. GET/POST /mockifyer-domain-path-rules - Load or merge discovered domain-path allowlist keys into scenario file
+ * 3. GET /mockifyer-sync-to-device-manifest + /mockifyer-sync-to-device-file - Project → app (HybridProvider; avoids huge single JSON)
+ * 4. GET /mockifyer-sync-to-device - Legacy: all files in one response (may fail on large scenarios)
+ * 5. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
+ * 6. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -23,6 +24,12 @@ import {
   POOL_ID_PATTERN,
   loadPoolResponseItem,
   type PoolResponseItem,
+  mergeDomainPathRuleUpserts,
+  parseDomainPathRules,
+  readDomainPathRulesFile,
+  writeDomainPathRulesFile,
+  type DomainPathRulesMap,
+  containsMockifyerSyncEndpointMarker,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -275,14 +282,14 @@ function saveMockToProjectFolder(
   try {
     // CRITICAL: Never save Mockifyer sync endpoint requests to prevent infinite loops
     const url = mockData?.request?.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       console.warn(`[MockSync] ⚠️ Rejecting save - Mockifyer sync endpoint detected: ${url}`);
       return { success: false, error: 'Cannot save Mockifyer sync endpoint requests' };
     }
     
     // Also check if the mockData string contains nested sync requests
     const mockDataStr = JSON.stringify(mockData);
-    if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear') || mockDataStr.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(mockDataStr)) {
       logger.warn(`[MockSync] ⚠️ Rejecting save - Mock data contains nested Mockifyer sync requests`);
       return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
     }
@@ -332,12 +339,12 @@ function saveProxyMirrorMockToProject(
 ): { success: boolean; filename?: string; scenario?: string; error?: string } {
   try {
     const url = mockData?.request?.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       console.warn(`[MockSync] ⚠️ Rejecting save - Mockifyer sync endpoint detected: ${url}`);
       return { success: false, error: 'Cannot save Mockifyer sync endpoint requests' };
     }
     const mockDataStr = JSON.stringify(mockData);
-    if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear')) {
+    if (containsMockifyerSyncEndpointMarker(mockDataStr)) {
       return { success: false, error: 'Mock data contains nested Mockifyer sync requests' };
     }
     const id = scenarioName.trim();
@@ -718,6 +725,62 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
     
+    // Handle GET endpoint for domain-path rules (RN Hybrid hydrate at startup)
+    if (url === '/mockifyer-domain-path-rules' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const query = qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '';
+      const params = new URLSearchParams(query);
+      const scenarioParam = params.get('scenario');
+      const scenarioName =
+        scenarioParam && scenarioParam.trim() !== ''
+          ? scenarioParam.trim()
+          : getCurrentScenario(mockDataPath);
+      const rules = readDomainPathRulesFile(mockDataPath, scenarioName);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, scenario: scenarioName, rules }));
+      return;
+    }
+
+    // Handle POST endpoint for domain-path rules discovery merge (Hybrid / RN)
+    if (url === '/mockifyer-domain-path-rules' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body) as {
+            scenario?: string;
+            upserts?: DomainPathRulesMap;
+            rules?: DomainPathRulesMap;
+          };
+          const scenarioName =
+            typeof parsed.scenario === 'string' && parsed.scenario.trim() !== ''
+              ? parsed.scenario.trim()
+              : getCurrentScenario(mockDataPath);
+          const upserts = parseDomainPathRules(parsed.upserts ?? parsed.rules ?? {});
+          const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
+          const { rules, changed } = mergeDomainPathRuleUpserts(existing, upserts);
+          if (changed) {
+            writeDomainPathRulesFile(mockDataPath, scenarioName, rules);
+          }
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, changed, scenario: scenarioName, rules }));
+        } catch (error) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            })
+          );
+        }
+      });
+      return;
+    }
+
     // Handle POST endpoint for direct save (HybridProvider)
     if (url === '/mockifyer-save' && req.method === 'POST') {
       let body = '';

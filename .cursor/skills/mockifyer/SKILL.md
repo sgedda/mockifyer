@@ -41,6 +41,7 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 | `MOCKIFYER_PATH` / `mockDataPath` | Mock data root |
 | `MOCKIFYER_SCENARIO` | Active scenario |
 | `MOCKIFYER_MODE` | RN: `on` \| `launch_client` \| `off` |
+| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/disk: `allowlist` (default) \| `record_all` \| `off` |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` |
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-level fallback matching |
 | `MOCKIFYER_DASHBOARD_AUTH_USER` + `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` | Optional HTTP Basic Auth on dashboard |

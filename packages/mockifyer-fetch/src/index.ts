@@ -42,6 +42,7 @@ import {
   isUsableNodeLikePoolFs,
   type PoolResponseItem,
   shouldBypassMockifyerForUrl,
+  containsMockifyerSyncEndpointMarker,
   isMockifyerDashboardProxyApiUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
@@ -78,6 +79,7 @@ import {
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   type RequestCorrelationContext,
+  DomainPathRulesSession,
   installNodeInboundRequestCorrelationCapture,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
@@ -117,6 +119,7 @@ class MockifyerClass {
    * unavailable (React Native / Metro stubs). Seeded via {@link warmPoolResponseCache}.
    */
   private readonly poolResponseCache = new Map<string, PoolResponseItem>();
+  private readonly domainPathRules: DomainPathRulesSession;
 
   /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
   private logNetworkEvent(
@@ -366,6 +369,7 @@ class MockifyerClass {
       this.config.clientId = resolveClientId(this.config);
     }
     this.activationMode = resolveActivationMode(this.config);
+    this.domainPathRules = new DomainPathRulesSession({ config: this.config });
 
     if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
       const raw =
@@ -461,18 +465,14 @@ class MockifyerClass {
   ): Promise<CachedMockData | undefined> {
     // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
     const requestUrl = request?.url || '';
-    if (requestUrl.includes('/mockifyer-save') || 
-        requestUrl.includes('/mockifyer-clear') || 
-        requestUrl.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(requestUrl)) {
       return undefined;
     }
     
     const requestKey = this.generateRequestKey(request);
     
     // CRITICAL: Also check requestKey for sync endpoint URLs (defense in depth)
-    if (requestKey.includes('/mockifyer-save') || 
-        requestKey.includes('/mockifyer-clear') || 
-        requestKey.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(requestKey)) {
       return undefined;
     }
     
@@ -494,18 +494,14 @@ class MockifyerClass {
 
     // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
     const requestUrl = request?.url || '';
-    if (requestUrl.includes('/mockifyer-save') || 
-        requestUrl.includes('/mockifyer-clear') || 
-        requestUrl.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(requestUrl)) {
       return undefined;
     }
 
     const requestKey = this.generateRequestKey(request);
     
     // CRITICAL: Also check requestKey for sync endpoint URLs (defense in depth)
-    if (requestKey.includes('/mockifyer-save') || 
-        requestKey.includes('/mockifyer-clear') || 
-        requestKey.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(requestKey)) {
       return undefined;
     }
     
@@ -685,7 +681,7 @@ class MockifyerClass {
       // CRITICAL: Completely bypass Mockifyer interception for sync endpoints
       // This prevents any Mockifyer processing (mocking, saving, etc.) for these endpoints
       const url = config.url || '';
-      if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+      if (containsMockifyerSyncEndpointMarker(url)) {
         // Mark this request to completely skip Mockifyer processing
         (config as any).__mockifyer_skip_save = true;
         (config as any).__mockifyer_bypass = true;
@@ -743,6 +739,17 @@ class MockifyerClass {
       // Dashboard proxy owns mock hits (Redis + server-side disk fallback). Do not short-circuit
       // from local mock-data while proxy.baseUrl is configured — that bypasses /api/proxy entirely.
       if (this.usesDashboardProxy()) {
+        return config;
+      }
+
+      this.domainPathRules.discover(request.url, this.config.baseUrl);
+      const trafficGate = this.domainPathRules.getTrafficGate(request.url, this.config.baseUrl);
+      (config as any).__mockifyer_domain_path_may_record = trafficGate.mayRecord;
+      if (!trafficGate.mayReplay) {
+        logger.debug(
+          `[Mockifyer-Fetch] Domain path rules: replay denied for ${request.method} ${request.url}` +
+            (trafficGate.matchedDomainPath ? ` (rule: ${trafficGate.matchedDomainPath})` : ' (allowlist unmatched)')
+        );
         return config;
       }
       
@@ -860,7 +867,7 @@ class MockifyerClass {
         const url = response.config?.url || response.request?.responseURL || response.url || (response as any).config?.url || '';
         
         // CRITICAL: Check URL FIRST before any other processing
-        if (url && (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync'))) {
+        if (containsMockifyerSyncEndpointMarker(url)) {
           // Mark as bypassed to prevent any further processing
           (response.config as any).__mockifyer_skip_save = true;
           (response.config as any).__mockifyer_bypass = true;
@@ -914,10 +921,7 @@ class MockifyerClass {
           }
           
           // CRITICAL: Check for sync endpoint URLs in response data
-          if (responseDataStr && (
-              responseDataStr.includes('/mockifyer-save') || 
-              responseDataStr.includes('/mockifyer-clear') || 
-              responseDataStr.includes('/mockifyer-sync'))) {
+          if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
             return response;
           }
         } catch (e) {
@@ -1134,6 +1138,18 @@ class MockifyerClass {
     ) {
       return;
     }
+
+    const mayRecordFlag = (response.config as any)?.__mockifyer_domain_path_may_record;
+    if (mayRecordFlag === false) {
+      return;
+    }
+    if (mayRecordFlag !== true) {
+      this.domainPathRules.discover(url, this.config.baseUrl);
+      const gate = this.domainPathRules.getTrafficGate(url, this.config.baseUrl);
+      if (!gate.mayRecord) {
+        return;
+      }
+    }
     
       // CRITICAL: Check response data for sync endpoint references and Metro rejection messages
       // This is a defense-in-depth measure
@@ -1155,10 +1171,7 @@ class MockifyerClass {
       }
       
       // CRITICAL: Check for sync endpoint URLs in response data
-      if (responseDataStr && (
-          responseDataStr.includes('/mockifyer-save') || 
-          responseDataStr.includes('/mockifyer-clear') || 
-          responseDataStr.includes('/mockifyer-sync'))) {
+      if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
         return;
       }
     } catch (e) {
@@ -1548,6 +1561,10 @@ class MockifyerClass {
         (this as any).loadMockData();
       }
     }
+    // RN Hybrid: pull domain-path-rules.json via Metro before traffic can discover
+    // allowlist defaults that would block already-enabled paths.
+    this.domainPathRules.invalidateCache();
+    await this.domainPathRules.hydrate();
   }
 
   clearStaleCacheEntries(): number {
@@ -1639,9 +1656,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       
       // Skip Mockifyer sync endpoints, dashboard `/api/proxy` plumbing, and Resend API
       if (
-        url.includes('/mockifyer-save') ||
-        url.includes('/mockifyer-clear') ||
-        url.includes('/mockifyer-sync') ||
+        containsMockifyerSyncEndpointMarker(url) ||
         url.includes('api.resend.com') ||
         isMockifyerDashboardProxyApiUrl(url)
       ) {
