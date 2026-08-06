@@ -6,6 +6,9 @@ package-lock.json
 dist/
 build/
 *.tsbuildinfo
+# Prefer spa-railway-upload.tar.gz for Railway (not ignored — must be uploadable).
+# Legacy name kept ignored if present locally.
+frontend-public.tar.gz
 
 # Environment variables
 .env
