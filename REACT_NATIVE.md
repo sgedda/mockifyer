@@ -20,7 +20,7 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
   - **`failed_no_bundled_mocks`** — activation was requested but the release bundle had no mock data module.
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
-- **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `POST /mockifyer-domain-path-rules`.
+- **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `GET/POST /mockifyer-domain-path-rules` (GET hydrates project rules onto the device at startup via `reloadMockData`).
 
 Example (local dev: unset or **`MOCKIFYER_MODE=on`**; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
 
