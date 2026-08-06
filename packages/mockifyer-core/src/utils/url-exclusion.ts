@@ -2,18 +2,37 @@ import { isMockifyerDashboardProxyApiUrl } from './join-proxy-dashboard-api-url'
 import { resolveOutboundUrl } from './recording-exclusion';
 
 /**
- * Default excluded URLs that should never be recorded or mocked
+ * Metro sync endpoint path markers that must always bypass Mockifyer
+ * (even when `excludedUrls` replaces the default exclusion list).
  */
-export const DEFAULT_EXCLUDED_URLS = [
+export const MOCKIFYER_SYNC_ENDPOINT_MARKERS = [
   '/mockifyer-save',
   '/mockifyer-clear',
   '/mockifyer-sync',
   /** Metro domain-path rules discovery merge. */
   '/mockifyer-domain-path-rules',
+] as const;
+
+/**
+ * Default excluded URLs that should never be recorded or mocked
+ */
+export const DEFAULT_EXCLUDED_URLS = [
+  ...MOCKIFYER_SYNC_ENDPOINT_MARKERS,
   /** Metro scenario sync — uses cache-bust `?t=`; recording each fetch creates duplicate mocks. */
   '/mockifyer-scenario-config',
   'api.resend.com',
 ];
+
+/**
+ * True when `text` references a Mockifyer Metro sync endpoint path.
+ * Used for request/response interceptor and save-path defense-in-depth checks.
+ */
+export function containsMockifyerSyncEndpointMarker(text: string | null | undefined): boolean {
+  if (!text) {
+    return false;
+  }
+  return MOCKIFYER_SYNC_ENDPOINT_MARKERS.some((marker) => text.includes(marker));
+}
 
 /**
  * Checks if a URL should be excluded from recording/mocking based on the exclusion list

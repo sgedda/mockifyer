@@ -1,5 +1,6 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { containsMockifyerSyncEndpointMarker } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { ExpoFileSystemProvider } from './expo-filesystem-provider';
 import type { PoolResponseItem } from '../types/fixture-pool';
@@ -58,7 +59,7 @@ export class HybridProvider implements DatabaseProvider {
   async save(mockData: MockData, options?: SaveMockOptions): Promise<void> {
     // CRITICAL: Never save Mockifyer sync endpoint requests to prevent infinite loops
     const url = mockData.request.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync') || url.includes('/mockifyer-domain-path-rules')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       return;
     }
     
@@ -82,10 +83,7 @@ export class HybridProvider implements DatabaseProvider {
       }
       
       // Check for sync endpoint URLs in response data
-      if (responseDataStr.includes('/mockifyer-save') || 
-          responseDataStr.includes('/mockifyer-clear') || 
-          responseDataStr.includes('/mockifyer-sync') ||
-          responseDataStr.includes('/mockifyer-domain-path-rules')) {
+      if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
         return;
       }
     } catch (e) {
@@ -118,7 +116,7 @@ export class HybridProvider implements DatabaseProvider {
     // CRITICAL: Never attempt to save sync endpoint requests to project folder
     // This prevents infinite loops when Metro rejects the save
     const url = mockData.request?.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync') || url.includes('/mockifyer-domain-path-rules')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       console.warn('[HybridProvider] ⚠️ BLOCKING saveToProjectFolder - request URL is a sync endpoint:', url);
       return;
     }
@@ -153,7 +151,7 @@ export class HybridProvider implements DatabaseProvider {
     
     // CRITICAL: Check if mockData contains nested Mockifyer sync requests to prevent loops
     const mockDataStr = JSON.stringify(mockData);
-    if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear') || mockDataStr.includes('/mockifyer-sync') || mockDataStr.includes('/mockifyer-domain-path-rules')) {
+    if (containsMockifyerSyncEndpointMarker(mockDataStr)) {
       console.warn('[HybridProvider] ⚠️ BLOCKING saveToProjectFolder - mockData contains nested Mockifyer sync requests');
       return;
     }
