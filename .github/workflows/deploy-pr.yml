@@ -47,11 +47,13 @@ jobs:
             # `railway up` includes it — avoid --no-gitignore, which can break Metal builds).
             # Do not set NODE_ENV=production for npm install — that omits
             # frontend devDependencies (vite, typescript, etc.) needed by `npm run build`.
+            # Do not pass --include=dev: it hung mid-install on Railway Metal; plain install
+            # still gets vite/typescript when NODE_ENV is unset (asserted below).
             - name: Build frontend for Railway upload
               working-directory: mockifyer-web
               run: |
                   cd frontend
-                  npm install --legacy-peer-deps --no-audit --no-fund --include=dev
+                  npm install --legacy-peer-deps --no-audit --no-fund
                   test -d node_modules/@types/react-dom
                   test -d node_modules/typescript
                   test -d node_modules/vite
