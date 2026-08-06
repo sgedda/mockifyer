@@ -1,17 +1,23 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   collapseDomainPathIdSegments,
   discoverDomainPathRulesForUrl,
+  DomainPathRulesSession,
   endpointUrlToDomainPath,
   findLongestDomainPathRule,
   findLongestDomainPathRuleForFolder,
   mergeDomainPathRuleUpserts,
   mergeDiscoveredDomainPathRules,
   normalizeDomainPathForDiscovery,
+  readDomainPathRulesFile,
   resolveDomainPathRulesMode,
   resolveDomainPathTrafficGate,
   resolveRecordResponsesForRequest,
   envRecordResponsesOverride,
   upsertDiscoveredDomainPathRule,
+  writeDomainPathRulesFile,
   type DomainPathRulesMap,
 } from '@sgedda/mockifyer-core';
 
@@ -218,6 +224,135 @@ describe('domain-path discovery + traffic gate', () => {
     expect(changed).toBe(true);
     expect(rules['api.example.com'].recordResponses).toBe(false);
     expect(rules['api.example.com/v1'].recordResponses).toBe(true);
+  });
+});
+
+describe('DomainPathRulesSession persistUpserts', () => {
+  let tmpRoot: string;
+  let prevScenario: string | undefined;
+
+  beforeEach(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-dpr-session-'));
+    prevScenario = process.env.MOCKIFYER_SCENARIO;
+    process.env.MOCKIFYER_SCENARIO = 'default';
+  });
+
+  afterEach(() => {
+    if (prevScenario === undefined) delete process.env.MOCKIFYER_SCENARIO;
+    else process.env.MOCKIFYER_SCENARIO = prevScenario;
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('preserves concurrent on-disk edits when discovering new keys', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1': { recordResponses: false, autoMock: false },
+    });
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'record_all' },
+    });
+    // Warm in-memory cache from the initial on-disk rules.
+    session.getTrafficGate('https://api.example.com/v1/users');
+
+    // Simulate a dashboard edit that flips flags without changing key count.
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+      'api.example.com/v1': { recordResponses: true, autoMock: true },
+    });
+
+    session.discover('https://api.example.com/v1/users/42');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com'].recordResponses).toBe(false);
+    expect(onDisk['api.example.com'].autoMock).toBe(false);
+    expect(onDisk['api.example.com/v1'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com/v1'].autoMock).toBe(true);
+    expect(onDisk['api.example.com/v1/users/:id']).toBeDefined();
+  });
+
+  it('reloads rules when domain-path-rules.json mtime changes', () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+    });
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+    });
+    const before = session.getTrafficGate('https://api.example.com/v1');
+    expect(before.mayRecord).toBe(false);
+    expect(before.mayReplay).toBe(false);
+
+    // Ensure mtime advances even on coarse filesystem clocks.
+    const filePath = path.join(tmpRoot, 'default', 'domain-path-rules.json');
+    const priorMtime = fs.statSync(filePath).mtimeMs;
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+    });
+    fs.utimesSync(filePath, new Date(), new Date(priorMtime + 1000));
+
+    const after = session.getTrafficGate('https://api.example.com/v1');
+    expect(after.mayRecord).toBe(true);
+    expect(after.mayReplay).toBe(true);
+  });
+
+  it('invalidateCache forces a reload from disk', () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+    });
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+    });
+    expect(session.getTrafficGate('https://api.example.com/x').mayRecord).toBe(false);
+
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+    });
+    session.invalidateCache();
+    expect(session.getTrafficGate('https://api.example.com/x').mayRecord).toBe(true);
+  });
+
+  it('persists discovery upserts to the scenario captured at discover time', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+    });
+    writeDomainPathRulesFile(tmpRoot, 'other', {
+      'other.example.com': { recordResponses: false, autoMock: false },
+    });
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'record_all' },
+    });
+
+    // Hold the persist queue so we can switch scenario before the job runs.
+    let releasePersist!: () => void;
+    const hold = new Promise<void>((resolve) => {
+      releasePersist = resolve;
+    });
+    const sessionInternals = session as unknown as { persistQueue: Promise<void> };
+    sessionInternals.persistQueue = hold;
+
+    session.discover('https://api.example.com/v1/users/42');
+
+    // Scenario changes while the discover persist is still queued.
+    process.env.MOCKIFYER_SCENARIO = 'other';
+    session.getTrafficGate('https://other.example.com/x');
+
+    releasePersist();
+    await sessionInternals.persistQueue;
+
+    const defaultOnDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(defaultOnDisk['api.example.com/v1/users/:id']).toBeDefined();
+
+    const otherOnDisk = readDomainPathRulesFile(tmpRoot, 'other');
+    expect(otherOnDisk['api.example.com/v1/users/:id']).toBeUndefined();
+    expect(otherOnDisk['other.example.com'].recordResponses).toBe(false);
+
+    // In-memory cache must still reflect the new scenario, not the delayed persist.
+    const gate = session.getTrafficGate('https://other.example.com/x');
+    expect(gate.matchedDomainPath).toBe('other.example.com');
   });
 });
 
