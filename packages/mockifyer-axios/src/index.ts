@@ -2310,8 +2310,32 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
                 return axiosResponse;
               }
+
+              // Mirror non-global record path: live-refresh mocks set __mockifyer_matchedMock
+              // in the request interceptor and must update/clear refresh flags — not fall through
+              // to saveResponse (which skips existing fixtures).
+              const matchedMock = (axiosResponse.config as any).__mockifyer_matchedMock as
+                | CachedMockData
+                | undefined;
+              if (matchedMock) {
+                return mockifyer['applyLiveRefreshToAxiosResponse'](axiosResponse, matchedMock);
+              }
               
               logger.warn('[Mockifyer] ⚠️ Global axios interceptor: Response is NOT mocked, will record it');
+
+              // Parent hop + unwrap nested { data, mockifyerTrace } before persist.
+              mockifyer['logNetworkEvent'](
+                {
+                  method: (axiosResponse.config?.method || 'GET').toUpperCase(),
+                  url: axiosResponse.config?.url || '',
+                  source: 'upstream',
+                  status: axiosResponse.status,
+                  requestBody: axiosResponse.config?.data,
+                  responseBody: axiosResponse.data,
+                },
+                mockifyer['readRequestCorrelation'](axiosResponse.config)
+              );
+              axiosResponse.data = unwrapAndMergeInlineTraceEnvelope(axiosResponse.data);
               
               // Convert Axios response to HTTPResponse format for saveResponse
               const httpResponse: HTTPResponse = {
@@ -2409,6 +2433,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
                 return mockifyer['rejectWithMockifyerRequestId'](error);
               }
+
+              error.response.data = unwrapAndMergeInlineTraceEnvelope(error.response.data);
               
               // Convert Axios error response to HTTPResponse format
               const httpResponse: HTTPResponse = {

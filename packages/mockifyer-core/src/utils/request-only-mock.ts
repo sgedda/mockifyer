@@ -1,5 +1,6 @@
 import type { MockData, StoredRequest } from '../types';
 import { ENV_VARS } from '../types';
+import { getInlineTraceEnvelopeBusinessBody } from './inline-trace';
 
 function parseBoolEnv(raw: string | undefined): boolean | undefined {
   if (raw === undefined || raw === '') return undefined;
@@ -41,8 +42,15 @@ export function buildRequestOnlyMockData(
   };
 }
 
+/**
+ * Persist a captured upstream response onto a mock.
+ * Strips inline-trace `{ data, mockifyerTrace }` envelopes so fixtures store business
+ * data only (dashboard `/api/proxy` has no ALS hop context to unwrap via merge).
+ */
 export function applyCapturedResponse(mockData: MockData, response: MockData['response']): void {
-  mockData.response = response;
+  const businessData = getInlineTraceEnvelopeBusinessBody(response.data);
+  mockData.response =
+    businessData === response.data ? response : { ...response, data: businessData };
   delete mockData.responsePending;
 }
 
