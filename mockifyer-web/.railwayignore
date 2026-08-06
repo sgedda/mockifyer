@@ -11,4 +11,8 @@ package-lock.prod.json
 feature-votes.json
 user-votes.json
 ip-votes.json
+# CI ships frontend-public.tar.gz (vite prebuild); do not ignore it on upload
+# (also listed in .gitignore so it is not committed — re-include for Railway)
+!frontend-public.tar.gz
+# Root .gitignore **/public/ still blocks public/ — tarball is the upload path
 

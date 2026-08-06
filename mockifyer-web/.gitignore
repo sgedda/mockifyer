@@ -6,6 +6,7 @@ package-lock.json
 dist/
 build/
 *.tsbuildinfo
+frontend-public.tar.gz
 
 # Environment variables
 .env

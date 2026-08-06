@@ -42,6 +42,23 @@ jobs:
               run: |
                   npm install --package-lock-only --legacy-peer-deps || echo "Lockfile generation completed (warnings OK)"
 
+            # Vite (~1.1MB main chunk) is OOM-killed mid-transform on some Railway Metal builders.
+            # Build SPA here and ship as a tarball (root .gitignore has **/public/, which blocks direct upload).
+            - name: Build frontend for Railway upload
+              working-directory: mockifyer-web
+              env:
+                  NODE_ENV: production
+              run: |
+                  cd frontend
+                  npm install --legacy-peer-deps --no-audit --no-fund
+                  npm run build
+                  cd ..
+                  test -f public/index.html
+                  test -d public/assets
+                  tar -czf frontend-public.tar.gz -C public .
+                  ls -lh frontend-public.tar.gz
+                  echo "Prebuilt frontend tarball ready"
+
             - name: Install Railway CLI
               run: npm install -g @railway/cli
 

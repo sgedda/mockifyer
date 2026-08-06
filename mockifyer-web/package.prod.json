@@ -10,7 +10,7 @@
   "scripts": {
     "preinstall": "rm -f package-lock.json package-lock.prod.json || true",
     "build": "npm run build:frontend && npm run build:backend",
-    "build:frontend": "cd frontend && npm install --legacy-peer-deps --no-audit --no-fund && npm run build",
+    "build:frontend": "if [ -f frontend-public.tar.gz ]; then mkdir -p public && tar -xzf frontend-public.tar.gz -C public && echo 'Extracted prebuilt frontend from frontend-public.tar.gz'; elif [ -f public/index.html ] && [ -d public/assets ]; then echo 'Using prebuilt frontend in public/'; else cd frontend && npm install --legacy-peer-deps --no-audit --no-fund && npm run build; fi",
     "build:backend": "tsc",
     "start": "node dist/index.js",
     "test": "jest"
