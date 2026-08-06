@@ -23,7 +23,7 @@ export interface DomainPathRulesSessionOptions {
   config: Pick<MockifyerConfig, 'mockDataPath' | 'domainPathRulesMode' | 'baseUrl' | 'clientId' | 'proxy' | 'databaseProvider'>;
   /** Metro port for RN Hybrid discovery writes (default 8081). */
   metroPort?: number;
-  /** Override fetch used for Metro POSTs (RN). */
+  /** Override fetch used for Metro GET/POST (RN). */
   fetchFn?: typeof fetch;
   /**
    * When false, skip filesystem I/O and use Metro GET/POST (React Native Hybrid).
@@ -45,6 +45,8 @@ export class DomainPathRulesSession {
   private mode: DomainPathRulesMode;
   private rules: DomainPathRulesMap | null = null;
   private rulesScenario: string | null = null;
+  /** File mtime (ms) at last disk load; `0` when the file was missing. Unused when not using fs. */
+  private rulesMtimeMs: number | null = null;
   /** True once rules were loaded from disk or Metro (not merely an empty in-memory seed). */
   private rulesHydrated = false;
   private readonly config: DomainPathRulesSessionOptions['config'];
@@ -89,6 +91,30 @@ export class DomainPathRulesSession {
   }
 
   /**
+   * Current on-disk mtime for the scenario rules file.
+   * Returns `0` when the file does not exist, `null` when fs is unavailable.
+   */
+  private rulesFileMtimeMs(scenario: string): number | null {
+    if (!this.useFs) {
+      return null;
+    }
+    try {
+      const { domainPathRulesFilePath } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+      const filePath = domainPathRulesFilePath(this.config.mockDataPath, scenario);
+      if (!filePath) {
+        return null;
+      }
+      const fs = require('fs') as typeof import('fs');
+      if (!fs.existsSync(filePath)) {
+        return 0;
+      }
+      return fs.statSync(filePath).mtimeMs;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Load authoritative rules from disk (Node) or Metro GET (RN Hybrid).
    * Call during startup (e.g. `reloadMockData`) so allowlist flags exist before traffic.
    */
@@ -96,20 +122,15 @@ export class DomainPathRulesSession {
     if (!this.isActive()) {
       this.rules = {};
       this.rulesScenario = this.scenarioName();
+      this.rulesMtimeMs = null;
       this.rulesHydrated = true;
       return;
     }
 
     const scenario = this.scenarioName();
     if (this.useFs) {
-      try {
-        const { readDomainPathRulesFile } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
-        this.rules = readDomainPathRulesFile(this.config.mockDataPath, scenario);
-      } catch {
-        this.rules = {};
-      }
-      this.rulesScenario = scenario;
-      this.rulesHydrated = true;
+      this.invalidateCache();
+      this.loadRulesFromDisk(scenario);
       this.flushPendingDiscovers();
       return;
     }
@@ -133,6 +154,7 @@ export class DomainPathRulesSession {
       logger.warn('[Mockifyer] Domain path rules: no fetch available to hydrate from Metro; starting empty');
       this.rules = {};
       this.rulesScenario = scenario;
+      this.rulesMtimeMs = null;
       this.rulesHydrated = true;
       this.flushPendingDiscovers();
       return;
@@ -145,6 +167,7 @@ export class DomainPathRulesSession {
         logger.warn(`[Mockifyer] Domain path rules Metro hydrate HTTP ${res.status}: ${text}`);
         this.rules = this.rules ?? {};
         this.rulesScenario = scenario;
+        this.rulesMtimeMs = null;
         this.rulesHydrated = true;
         this.flushPendingDiscovers();
         return;
@@ -156,12 +179,14 @@ export class DomainPathRulesSession {
           : {};
       this.rules = loaded;
       this.rulesScenario = scenario;
+      this.rulesMtimeMs = null;
       this.rulesHydrated = true;
       this.flushPendingDiscovers();
     } catch (err) {
       logger.warn('[Mockifyer] Domain path rules Metro hydrate failed:', err);
       this.rules = this.rules ?? {};
       this.rulesScenario = scenario;
+      this.rulesMtimeMs = null;
       this.rulesHydrated = true;
       this.flushPendingDiscovers();
     }
@@ -187,40 +212,58 @@ export class DomainPathRulesSession {
     }
   }
 
+  private loadRulesFromDisk(scenario: string): DomainPathRulesMap {
+    let loaded: DomainPathRulesMap = {};
+    const mtimeMs = this.rulesFileMtimeMs(scenario);
+    try {
+      const { readDomainPathRulesFile } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+      loaded = readDomainPathRulesFile(this.config.mockDataPath, scenario);
+    } catch {
+      loaded = {};
+    }
+    this.rules = loaded;
+    this.rulesScenario = scenario;
+    this.rulesMtimeMs = mtimeMs;
+    this.rulesHydrated = true;
+    return loaded;
+  }
+
   private loadRules(): DomainPathRulesMap {
     const scenario = this.scenarioName();
-    if (this.rules && this.rulesScenario === scenario && (this.useFs || this.rulesHydrated)) {
-      return this.rules;
-    }
 
     if (this.useFs) {
-      let loaded: DomainPathRulesMap = {};
-      try {
-        const { readDomainPathRulesFile } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
-        loaded = readDomainPathRulesFile(this.config.mockDataPath, scenario);
-      } catch {
-        loaded = {};
+      const mtimeMs = this.rulesFileMtimeMs(scenario);
+      const cacheHit =
+        this.rules !== null &&
+        this.rulesScenario === scenario &&
+        mtimeMs !== null &&
+        mtimeMs === this.rulesMtimeMs;
+      if (cacheHit) {
+        return this.rules!;
       }
-      this.rules = loaded;
-      this.rulesScenario = scenario;
-      this.rulesHydrated = true;
-      return loaded;
+      return this.loadRulesFromDisk(scenario);
     }
 
     // React Native Hybrid: never treat an empty in-memory map as authoritative.
     // Existing project rules live on disk and must be loaded via Metro GET first.
+    if (this.rules && this.rulesScenario === scenario && this.rulesHydrated) {
+      return this.rules;
+    }
     if (this.rulesScenario !== scenario) {
       this.rules = null;
       this.rulesHydrated = false;
       this.rulesScenario = null;
+      this.rulesMtimeMs = null;
     }
     this.ensureMetroHydrate();
     return this.rules ?? {};
   }
 
+  /** Drop the in-memory rules map so the next gate/discover reloads from disk (or Metro). */
   invalidateCache(): void {
     this.rules = null;
     this.rulesScenario = null;
+    this.rulesMtimeMs = null;
     this.rulesHydrated = false;
     this.hydratePromise = null;
   }
@@ -258,6 +301,7 @@ export class DomainPathRulesSession {
       return;
     }
 
+    const scenarioAtDiscover = this.scenarioName();
     const rules = this.loadRules();
     const beforeKeys = Object.keys(rules).length;
     const { changed, upserted } = discoverDomainPathRulesForUrl(
@@ -270,7 +314,7 @@ export class DomainPathRulesSession {
       return;
     }
     this.rules = rules;
-    this.rulesScenario = this.scenarioName();
+    this.rulesScenario = scenarioAtDiscover;
 
     const upsertMap: DomainPathRulesMap = {};
     for (const key of upserted) {
@@ -280,9 +324,10 @@ export class DomainPathRulesSession {
       }
     }
 
+    // Capture scenario at discover time — persist may run after scenario/lane switches.
     this.persistQueue = this.persistQueue
       .then(async () => {
-        await this.persistUpserts(upsertMap);
+        await this.persistUpserts(upsertMap, scenarioAtDiscover);
       })
       .catch((err) => {
         logger.warn('[Mockifyer] Domain path rules discover persist failed:', err);
@@ -296,12 +341,13 @@ export class DomainPathRulesSession {
   }
 
   /**
-   * Persist discovery upserts by merging onto the current on-disk rules.
+   * Persist discovery upserts by merging onto on-disk/Metro rules for `scenario`
+   * (the scenario captured at discover time, not whatever is active now).
    * Never prefer the in-memory full map by key count — that can overwrite
    * concurrent dashboard/external edits when key counts are similar.
+   * Only refreshes the in-memory cache when the active scenario still matches.
    */
-  private async persistUpserts(upsertMap: DomainPathRulesMap): Promise<void> {
-    const scenario = this.scenarioName();
+  private async persistUpserts(upsertMap: DomainPathRulesMap, scenario: string): Promise<void> {
     if (this.useFs) {
       try {
         const {
@@ -313,9 +359,12 @@ export class DomainPathRulesSession {
         if (merged.changed) {
           writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged.rules);
         }
-        this.rules = merged.rules;
-        this.rulesScenario = scenario;
-        this.rulesHydrated = true;
+        if (this.scenarioName() === scenario) {
+          this.rules = merged.rules;
+          this.rulesScenario = scenario;
+          this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
+          this.rulesHydrated = true;
+        }
         return;
       } catch (err) {
         logger.warn('[Mockifyer] Domain path rules file write failed:', err);
@@ -344,9 +393,12 @@ export class DomainPathRulesSession {
     try {
       const parsed = (await res.json()) as { success?: boolean; rules?: DomainPathRulesMap };
       if (parsed.success && parsed.rules && typeof parsed.rules === 'object') {
-        this.rules = parseDomainPathRules(parsed.rules);
-        this.rulesScenario = scenario;
-        this.rulesHydrated = true;
+        if (this.scenarioName() === scenario) {
+          this.rules = parseDomainPathRules(parsed.rules);
+          this.rulesScenario = scenario;
+          this.rulesMtimeMs = null;
+          this.rulesHydrated = true;
+        }
       }
     } catch {
       // ignore non-JSON
