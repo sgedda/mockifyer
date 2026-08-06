@@ -8,6 +8,8 @@ export const DEFAULT_EXCLUDED_URLS = [
   '/mockifyer-save',
   '/mockifyer-clear',
   '/mockifyer-sync',
+  /** Metro domain-path rules discovery merge. */
+  '/mockifyer-domain-path-rules',
   /** Metro scenario sync — uses cache-bust `?t=`; recording each fetch creates duplicate mocks. */
   '/mockifyer-scenario-config',
   'api.resend.com',

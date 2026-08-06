@@ -60,6 +60,7 @@ import {
   logMockifyerInitSummary,
   shouldBlockLocalMockRecording,
   shouldBypassMockifyerForUrl,
+  DomainPathRulesSession,
   logger,
   setLogLevel,
 } from '@sgedda/mockifyer-core';
@@ -105,6 +106,7 @@ class MockifyerClass {
   private readonly activationMode: MockifyerActivationMode;
   private databaseProvider?: DatabaseProvider;
   private databaseProviderInitPromise?: Promise<void>;
+  private readonly domainPathRules: DomainPathRulesSession;
 
   private usesDashboardProxy(): boolean {
     const baseUrl = this.config.proxy?.baseUrl;
@@ -321,6 +323,7 @@ class MockifyerClass {
     }
 
     this.activationMode = resolveActivationMode(this.config);
+    this.domainPathRules = new DomainPathRulesSession({ config: this.config });
     if (this.activationMode !== 'always') {
       logger.info(`[Mockifyer] activationMode: ${this.activationMode}`);
     }
@@ -828,6 +831,20 @@ class MockifyerClass {
         dataType: typeof request.data
       });
 
+      const requestBaseUrl = config.baseURL || this.config.baseUrl;
+      this.domainPathRules.discover(request.url, requestBaseUrl);
+      const trafficGate = this.domainPathRules.getTrafficGate(request.url, requestBaseUrl);
+      (config as any).__mockifyer_domain_path_may_record = trafficGate.mayRecord;
+      if (!trafficGate.mayReplay) {
+        logger.debug(
+          `[Mockifyer] Domain path rules: replay denied for ${request.method} ${request.url}` +
+            (trafficGate.matchedDomainPath ? ` (rule: ${trafficGate.matchedDomainPath})` : ' (allowlist unmatched)')
+        );
+        (config as any).__mockifyer_requestKey = requestKey;
+        (config as any).__mockifyer_startTime = Date.now();
+        return config;
+      }
+
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
@@ -1134,6 +1151,16 @@ class MockifyerClass {
         // CRITICAL: Check for mocks FIRST, even if request is already processing
         // This ensures that when multiple requests to the same endpoint run sequentially,
         // they all use the mock instead of making real API calls
+        const requestBaseUrl = config.baseURL || this.config.baseUrl;
+        this.domainPathRules.discover(request.url, requestBaseUrl);
+        const trafficGate = this.domainPathRules.getTrafficGate(request.url, requestBaseUrl);
+        (config as any).__mockifyer_domain_path_may_record = trafficGate.mayRecord;
+        if (!trafficGate.mayReplay) {
+          (config as any).__mockifyer_requestKey = requestKey;
+          (config as any).__mockifyer_startTime = Date.now();
+          return config;
+        }
+
         let cachedMock: CachedMockData | undefined;
         try {
           cachedMock = await this.findBestMatchingMock(request);
@@ -1788,6 +1815,18 @@ class MockifyerClass {
     if (recordingExclusions.length > 0 && shouldExcludeRecording(rawUrl, recordingExclusions, baseURL)) {
       logger.warn('[Mockifyer] ⚠️ Skipping save — URL matches recordingExclusions (host/path rule)');
       return;
+    }
+
+    const mayRecordFlag = (response.config as any)?.__mockifyer_domain_path_may_record;
+    if (mayRecordFlag === false) {
+      return;
+    }
+    if (mayRecordFlag !== true) {
+      this.domainPathRules.discover(rawUrl, baseURL);
+      const gate = this.domainPathRules.getTrafficGate(rawUrl, baseURL);
+      if (!gate.mayRecord) {
+        return;
+      }
     }
 
     // CRITICAL: Skip saving responses from Resend API (legacy default when not using recordingExclusions).

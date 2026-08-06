@@ -21,6 +21,7 @@ export * from './utils/mock-passthrough';
 export * from './utils/mock-replay-mode';
 export * from './utils/request-only-mock';
 export * from './utils/domain-path-rules';
+export * from './utils/domain-path-rules-session';
 export * from './utils/record-passthrough-config';
 export * from './utils/mock-body-similarity';
 export * from './utils/client-id';

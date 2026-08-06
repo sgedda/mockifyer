@@ -19,6 +19,15 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
 export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
 
 /**
+ * Hybrid/filesystem domain-path traffic policy (see `domain-path-rules.json`).
+ *
+ * - **`allowlist`** (default) — record/replay only when a matching rule enables flags; discovery writes keys off.
+ * - **`record_all`** — record/replay by default; discovery writes keys on; flip paths off to exclude.
+ * - **`off`** — no discover/gate (legacy ungated `recordMode`).
+ */
+export type DomainPathRulesMode = 'allowlist' | 'record_all' | 'off';
+
+/**
  * Exclude **recording** only (mock replay unchanged) when an outbound URL matches the host hierarchy and optional pathname prefix.
  *
  * - **`host`**: **`example.com`** matches that host plus any subdomain (**`*.example.com`**). **`staging.example.com`** matches only **`staging.example.com`** and its subdomains, not **`api.example.com`**.
@@ -173,6 +182,11 @@ export interface MockifyerConfig {
    * @see {@link RecordingExclusion}
    */
   recordingExclusions?: RecordingExclusion[];
+  /**
+   * Domain-path rules mode for Hybrid/filesystem record + replay gating.
+   * Env **`MOCKIFYER_DOMAIN_PATH_RULES_MODE`** overrides when set. Default **`allowlist`**.
+   */
+  domainPathRulesMode?: DomainPathRulesMode;
   /**
    * Optional HTTP proxy mode for environments that can't access the database provider directly (e.g. React Native + Redis).
    * When set, network requests can be routed through a proxy service (e.g. mockifyer-dashboard) which serves mocks and/or forwards upstream.
@@ -438,4 +452,9 @@ export const ENV_VARS = {
    * from the Node inbound patch. Default on (echo enabled). Read per request.
    */
   MOCK_ECHO_TRACE_ID: 'MOCKIFYER_ECHO_TRACE_ID',
+  /**
+   * `allowlist` \| `record_all` \| `off` — Hybrid/filesystem domain-path gate.
+   * Unset defaults to **`allowlist`**. See {@link MockifyerConfig.domainPathRulesMode}.
+   */
+  MOCK_DOMAIN_PATH_RULES_MODE: 'MOCKIFYER_DOMAIN_PATH_RULES_MODE',
 } as const;
