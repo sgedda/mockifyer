@@ -327,12 +327,15 @@ describe('DomainPathRulesSession persistUpserts', () => {
     });
 
     // Hold the persist queue so we can switch scenario before the job runs.
+    // Chain onto the existing queue — do not replace it, or discover()'s
+    // `.then(persistUpserts)` may never run.
     let releasePersist!: () => void;
     const hold = new Promise<void>((resolve) => {
       releasePersist = resolve;
     });
     const sessionInternals = session as unknown as { persistQueue: Promise<void> };
-    sessionInternals.persistQueue = hold;
+    const originalQueue = sessionInternals.persistQueue;
+    sessionInternals.persistQueue = originalQueue.then(() => hold);
 
     session.discover('https://api.example.com/v1/users/42');
 
