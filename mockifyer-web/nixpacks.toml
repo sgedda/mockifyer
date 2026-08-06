@@ -24,7 +24,8 @@ cmds = [
   "npm --version",
   "echo '@sgedda:registry=https://registry.npmjs.org/' > .npmrc",
   "echo 'legacy-peer-deps=true' >> .npmrc",
-  "npm install --legacy-peer-deps"
+  # --include=dev: Railway sets NODE_ENV=production during build; we still need typescript for tsc
+  "npm install --legacy-peer-deps --include=dev"
 ]
 
 [phases.build]
@@ -44,12 +45,14 @@ cmds = [
   "find frontend -name '.vite' -type d -exec rm -rf {} + || true",
   "find . -name 'node_modules/.vite' -type d -exec rm -rf {} + || true",
   "echo '🔨 Building frontend and backend...'",
-  "export NODE_ENV=production",
   "cd frontend && rm -rf node_modules/.vite dist .vite || true",
   "cd ..",
+  # package-lock.json is gitignored/.railwayignored — do not use npm ci.
+  # --include=dev: vite/tsc live in frontend devDependencies; NODE_ENV=production would omit them.
   "echo '📦 Ensuring fresh frontend dependencies...'",
-  "cd frontend && npm ci --legacy-peer-deps || npm install --legacy-peer-deps",
+  "cd frontend && npm install --legacy-peer-deps --include=dev",
   "cd ..",
+  "export NODE_ENV=production",
   "npm run build || (echo '❌ Build failed!' && exit 1)",
   "echo '✅ Build completed successfully'",
   "echo '🔍 Verifying build output...'",
