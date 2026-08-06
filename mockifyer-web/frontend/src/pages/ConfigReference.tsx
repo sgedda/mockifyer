@@ -6,6 +6,8 @@ import CodeBlock from '@/components/CodeBlock'
 import {
   ACTIVATION_MODE_DOCS,
   MCP_TOOLS,
+  MCP_USEFULNESS_POINTS,
+  MCP_WORKFLOW_STEPS,
   SETUP_MOCKIFYER_OPTIONS,
 } from '@/lib/product-docs'
 
@@ -132,6 +134,24 @@ npx @sgedda/mockifyer-dashboard --provider redis --redis-url redis://127.0.0.1:6
                 <p className="text-sm text-muted-foreground mb-2">
                   Connect from Cursor or Claude Desktop while the dashboard is running:
                 </p>
+                <div className="grid gap-4 md:grid-cols-2 mb-3">
+                  <div>
+                    <h5 className="text-sm font-semibold mb-2">How MCP works</h5>
+                    <ol className="text-sm text-muted-foreground space-y-1 list-decimal pl-5">
+                      {MCP_WORKFLOW_STEPS.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-semibold mb-2">Usefulness</h5>
+                    <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                      {MCP_USEFULNESS_POINTS.map((point) => (
+                        <li key={point}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
                 <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
                   {MCP_TOOLS.map((tool) => (
                     <li key={tool}>{tool}</li>

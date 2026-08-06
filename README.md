@@ -12,7 +12,7 @@ Published packages (install these, not the repo root):
 - `@sgedda/mockifyer-core` — types, providers, `getCurrentDate`, etc.
 - `@sgedda/mockifyer-axios` — Axios integration (`setupMockifyer`, **`initMockifyerForDashboardProxy`**)
 - `@sgedda/mockifyer-fetch` — `fetch` integration (`setupMockifyer`)
-- `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-test-helper` — optional tooling
+- `@sgedda/mockifyer-dashboard`, `@sgedda/mockifyer-mcp`, `@sgedda/mockifyer-test-helper` — optional tooling
 
 The root `package.json` is private workspace metadata only (not published). The legacy package is not on [npm](https://www.npmjs.com/); on **GitHub Packages** it appears as [`pkgs/npm/mockifyer`](https://github.com/sgedda/mockifyer/pkgs/npm/mockifyer) (unscoped name `mockifyer` in the API). To remove versions: `scripts/delete-github-packages-legacy-mockifyer.sh` (needs `gh` + `delete:packages`).
 
@@ -26,6 +26,7 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
 | [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node dashboard + Redis/SQLite proxy) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
+| [`@sgedda/mockifyer-mcp`](./packages/mockifyer-mcp) | MCP server for Cursor / Claude Desktop to search mocks, fetch AI context, and apply targeted mock edits through the dashboard API |
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
@@ -94,6 +95,17 @@ const response = await axios.get('https://api.example.com/data');
 - Date manipulation (fixed date, offset, timezone) for tests
 - **Easy discovery** — JSON files in the repo (searchable in your IDE)
 - **React Native** — device storage + optional Metro sync to keep repo and simulator in sync ([REACT_NATIVE.md](./REACT_NATIVE.md))
+- **MCP tooling** — connect Cursor / Claude Desktop to the dashboard for mock search, AI context, endpoint stats, and small targeted edits
+
+## Dashboard MCP workflow
+
+`@sgedda/mockifyer-mcp` lets AI assistants use the dashboard API as MCP tools:
+
+1. Run the dashboard against your local mocks: `npx @sgedda/mockifyer-dashboard --path ./mock-data`.
+2. Start the MCP server from your IDE with `MOCKIFYER_DASHBOARD_URL=http://localhost:3002`.
+3. Ask the assistant to search recordings, inspect lightweight mock context, summarize scenarios, or apply field-level mock edits.
+
+This is useful because assistants can work with schema summaries and selected response paths instead of pasting entire JSON responses into chat. It also keeps edits precise: tools such as field overrides and array-item copying change only the requested mock data while preserving the rest of the recording.
 
 ## Data discovery
 
