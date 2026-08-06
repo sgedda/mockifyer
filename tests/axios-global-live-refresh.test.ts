@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import os from 'os';
@@ -7,22 +7,17 @@ import { setupMockifyer } from '@sgedda/mockifyer-axios';
 
 describe('useGlobalAxios + recordMode live-refresh', () => {
   let mockDataPath: string;
+  let axiosInstance: AxiosInstance;
   let upstream: MockAdapter;
-  let requestHandlersBefore: unknown[];
-  let responseHandlersBefore: unknown[];
 
   beforeEach(() => {
     mockDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-axios-global-refresh-'));
     fs.mkdirSync(path.join(mockDataPath, 'default'), { recursive: true });
-    requestHandlersBefore = [...((axios.interceptors.request as any).handlers || [])];
-    responseHandlersBefore = [...((axios.interceptors.response as any).handlers || [])];
+    axiosInstance = axios.create();
   });
 
   afterEach(() => {
     upstream?.restore();
-    (axios.interceptors.request as any).handlers = requestHandlersBefore;
-    (axios.interceptors.response as any).handlers = responseHandlersBefore;
-    delete (axios.defaults as any).adapter;
     fs.rmSync(mockDataPath, { recursive: true, force: true });
   });
 
@@ -48,13 +43,14 @@ describe('useGlobalAxios + recordMode live-refresh', () => {
       mockDataPath,
       recordMode: true,
       useGlobalAxios: true,
+      axiosInstance,
       failOnMissingMock: false,
     });
 
-    upstream = new MockAdapter(axios);
+    upstream = new MockAdapter(axiosInstance);
     upstream.onGet(url).reply(200, { id: 42, status: 'fresh' });
 
-    const response = await axios.get(url);
+    const response = await axiosInstance.get(url);
     expect(response.data).toEqual({ id: 42, status: 'fresh' });
 
     const updated = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
