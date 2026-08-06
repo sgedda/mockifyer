@@ -100,6 +100,7 @@ import {
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 
 import { FetchHTTPClient } from './clients/fetch-client';
+import { bodyInitForFetchResponse } from './utils/fetch-response-body';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -1719,9 +1720,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           });
         }
         
-        const responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-        
-        return new Response(responseBody, {
+        return new Response(bodyInitForFetchResponse(response.status, response.data), {
           status: response.status,
           statusText: response.statusText || '',
           headers: responseHeaders
@@ -1732,13 +1731,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           Object.entries(error.response.headers || {}).forEach(([key, value]) => {
             responseHeaders.set(key, String(value));
           });
-          
-          const errorBody = typeof error.response.data === 'string' 
-            ? error.response.data 
-            : JSON.stringify(error.response.data);
-          
-          return new Response(errorBody, {
-            status: error.response.status,
+
+          const errorStatus = error.response.status;
+          return new Response(bodyInitForFetchResponse(errorStatus, error.response.data), {
+            status: errorStatus,
             statusText: error.response.statusText || '',
             headers: responseHeaders
           });
