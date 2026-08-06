@@ -5,6 +5,7 @@ import path from 'path';
 describe('WeatherService', () => {
   let weatherService: WeatherService;
   const mockDataPath = './mock-data';
+  let prevDomainPathRulesMode: string | undefined;
 
   beforeEach(() => {
     // Setup mockifyer for tests
@@ -12,6 +13,9 @@ describe('WeatherService', () => {
     process.env.MOCKIFYER_PATH = mockDataPath;
     process.env.MOCKIFYER_RECORD = 'false';
     process.env.WEATHER_API_KEY = 'test-key';
+    // Ungated replay — these tests predate domain-path allowlist.
+    prevDomainPathRulesMode = process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE;
+    process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE = 'off';
 
     // Create mock data directory and default scenario directory
     const defaultScenarioPath = path.join(mockDataPath, 'default');
@@ -101,6 +105,11 @@ describe('WeatherService', () => {
     delete process.env.MOCKIFYER_PATH;
     delete process.env.MOCKIFYER_RECORD;
     delete process.env.WEATHER_API_KEY;
+    if (prevDomainPathRulesMode === undefined) {
+      delete process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE;
+    } else {
+      process.env.MOCKIFYER_DOMAIN_PATH_RULES_MODE = prevDomainPathRulesMode;
+    }
   });
 
   it('should fetch current weather', async () => {

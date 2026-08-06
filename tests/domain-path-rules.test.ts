@@ -356,6 +356,108 @@ describe('DomainPathRulesSession persistUpserts', () => {
   });
 });
 
+describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
+  let prevScenario: string | undefined;
+  const projectRules: DomainPathRulesMap = {
+    'api.example.com': { recordResponses: true, autoMock: true },
+    'api.example.com/v1/users/:id': { recordResponses: true, autoMock: true },
+  };
+
+  beforeEach(() => {
+    prevScenario = process.env.MOCKIFYER_SCENARIO;
+    process.env.MOCKIFYER_SCENARIO = 'default';
+  });
+
+  afterEach(() => {
+    if (prevScenario === undefined) delete process.env.MOCKIFYER_SCENARIO;
+    else process.env.MOCKIFYER_SCENARIO = prevScenario;
+  });
+
+  function mockMetroFetch(store: { rules: DomainPathRulesMap; posts: unknown[] }): typeof fetch {
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, scenario: 'default', rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          upserts?: DomainPathRulesMap;
+        };
+        store.posts.push(body);
+        const merged = mergeDomainPathRuleUpserts(store.rules, body.upserts ?? {});
+        store.rules = merged.rules;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, changed: merged.changed, rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+  }
+
+  it('hydrates project rules before discover seeds allowlist defaults', async () => {
+    const store = { rules: { ...projectRules }, posts: [] as unknown[] };
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn: mockMetroFetch(store),
+      metroPort: 8081,
+    });
+
+    await session.hydrate();
+
+    const gate = session.getTrafficGate('https://api.example.com/v1/users/42');
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
+    expect(gate.matchedDomainPath).toBe('api.example.com/v1/users/:id');
+  });
+
+  it('queues discover until Metro hydrate so enabled paths are not blocked', async () => {
+    const store = { rules: { ...projectRules }, posts: [] as unknown[] };
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn: mockMetroFetch(store),
+      metroPort: 8081,
+    });
+
+    session.discover('https://api.example.com/v1/users/99');
+    await session.hydrate();
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const gate = session.getTrafficGate('https://api.example.com/v1/users/99');
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
+    expect(store.rules['api.example.com'].recordResponses).toBe(true);
+    expect(store.rules['api.example.com/v1/users/:id'].recordResponses).toBe(true);
+  });
+
+  it('does not treat empty {} as authoritative without Metro hydrate', async () => {
+    const store = { rules: { ...projectRules }, posts: [] as unknown[] };
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn: mockMetroFetch(store),
+    });
+
+    const before = session.getTrafficGate('https://api.example.com/v1/users/1');
+    expect(before.mayReplay).toBe(false);
+
+    await session.hydrate();
+    const after = session.getTrafficGate('https://api.example.com/v1/users/1');
+    expect(after.mayReplay).toBe(true);
+    expect(after.mayRecord).toBe(true);
+  });
+});
+
 describe('envRecordResponsesOverride', () => {
   const key = 'MOCKIFYER_RECORD_RESPONSES';
   let prev: string | undefined;
