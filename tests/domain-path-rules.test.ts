@@ -117,14 +117,14 @@ describe('domain-path discovery + traffic gate', () => {
 
   it('upsertDiscoveredDomainPathRule inserts host + path without overwriting', () => {
     const map: DomainPathRulesMap = {
-      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com': { recordResponses: false, autoMock: false },
     };
     const first = upsertDiscoveredDomainPathRule(map, 'api.example.com/v1/weather', {
       recordResponses: false,
       autoMock: false,
     });
     expect(first.changed).toBe(true);
-    expect(map['api.example.com'].recordResponses).toBe(true);
+    expect(map['api.example.com'].recordResponses).toBe(false);
     expect(map['api.example.com/v1/weather']).toEqual({
       recordResponses: false,
       autoMock: false,
@@ -151,6 +151,89 @@ describe('domain-path discovery + traffic gate', () => {
       recordResponses: false,
       autoMock: false,
     });
+  });
+
+  it('discovery under an enabled host inherits allow flags (no deny :id shadow)', () => {
+    const map: DomainPathRulesMap = {
+      'api.example.com': { recordResponses: true, autoMock: true },
+    };
+    const result = discoverDomainPathRulesForUrl(
+      map,
+      'https://api.example.com/v1/users/99',
+      'allowlist'
+    );
+    expect(result.changed).toBe(true);
+    expect(map['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: true,
+    });
+    const gate = resolveDomainPathTrafficGate(
+      'https://api.example.com/v1/users/42',
+      map,
+      'allowlist'
+    );
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
+    expect(gate.matchedDomainPath).toBe('api.example.com/v1/users/:id');
+  });
+
+  it('repairs discovery-seeded deny :id keys under an enabled host', () => {
+    const map: DomainPathRulesMap = {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+    };
+    const result = discoverDomainPathRulesForUrl(
+      map,
+      'https://api.example.com/v1/users/7',
+      'allowlist'
+    );
+    expect(result.changed).toBe(true);
+    expect(map['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: true,
+    });
+  });
+
+  it('does not repair dashboard-written deny :id keys (updatedAt set)', () => {
+    const map: DomainPathRulesMap = {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1/users/:id': {
+        recordResponses: false,
+        autoMock: false,
+        updatedAt: '2026-08-07T00:00:00.000Z',
+      },
+    };
+    const result = discoverDomainPathRulesForUrl(
+      map,
+      'https://api.example.com/v1/users/7',
+      'allowlist'
+    );
+    expect(result.changed).toBe(false);
+    expect(map['api.example.com/v1/users/:id'].recordResponses).toBe(false);
+  });
+
+  it('prefers concrete ID rules over discovery :id keys at the same depth', () => {
+    const gate = resolveDomainPathTrafficGate(
+      'https://api.example.com/v1/users/99',
+      {
+        'api.example.com': { recordResponses: true, autoMock: true },
+        'api.example.com/v1/users/:id': { recordResponses: true, autoMock: true },
+        'api.example.com/v1/users/99': { recordResponses: false, autoMock: false },
+      },
+      'allowlist'
+    );
+    expect(gate.matchedDomainPath).toBe('api.example.com/v1/users/99');
+    expect(gate.mayRecord).toBe(false);
+    expect(gate.mayReplay).toBe(false);
+  });
+
+  it('findLongestDomainPathRule matches :id discovery keys for live numeric URLs', () => {
+    const match = findLongestDomainPathRule('https://api.example.com/v1/users/42', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+    });
+    expect(match?.domainPath).toBe('api.example.com/v1/users/:id');
+    expect(match?.rule.recordResponses).toBe(false);
   });
 
   it('discoverDomainPathRulesForUrl uses record_all defaults', () => {
