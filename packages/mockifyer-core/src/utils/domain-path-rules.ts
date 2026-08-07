@@ -282,17 +282,25 @@ export function upsertDiscoveredDomainPathRule(
     return { changed: false, upserted };
   }
 
-  const ensure = (pathKey: string, ruleDefaults: DomainPathRule) => {
+  const ensure = (
+    pathKey: string,
+    ruleDefaults: DomainPathRule,
+    options?: { repairDiscoverySeed?: boolean }
+  ) => {
     const existing = rules[pathKey];
     if (existing) {
-      // Discovery seeds omit updatedAt; dashboard/API writes set it. Repair only seeds.
+      // Discovery seeds omit updatedAt; dashboard/API writes set it.
+      // Only repair path seeds when an allowing parent is being inherited — never
+      // reinterpret mode defaults as a reason to flip an existing host/path key.
       const isDiscoverySeed =
         existing.updatedAt == null &&
         existing.recordResponses !== true &&
         existing.autoMock !== true;
-      const parentAllows =
-        ruleDefaults.recordResponses === true || ruleDefaults.autoMock === true;
-      if (isDiscoverySeed && parentAllows) {
+      if (
+        options?.repairDiscoverySeed &&
+        isDiscoverySeed &&
+        (ruleDefaults.recordResponses === true || ruleDefaults.autoMock === true)
+      ) {
         rules[pathKey] = {
           recordResponses: ruleDefaults.recordResponses === true,
           autoMock: ruleDefaults.autoMock === true,
@@ -326,7 +334,7 @@ export function upsertDiscoveredDomainPathRule(
           autoMock: parent!.autoMock === true,
         }
       : defaults;
-    ensure(key, pathDefaults);
+    ensure(key, pathDefaults, { repairDiscoverySeed: inherit });
   }
 
   return { changed: upserted.length > 0, upserted };

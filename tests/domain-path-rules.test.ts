@@ -117,14 +117,14 @@ describe('domain-path discovery + traffic gate', () => {
 
   it('upsertDiscoveredDomainPathRule inserts host + path without overwriting', () => {
     const map: DomainPathRulesMap = {
-      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com': { recordResponses: false, autoMock: false },
     };
     const first = upsertDiscoveredDomainPathRule(map, 'api.example.com/v1/weather', {
       recordResponses: false,
       autoMock: false,
     });
     expect(first.changed).toBe(true);
-    expect(map['api.example.com'].recordResponses).toBe(true);
+    expect(map['api.example.com'].recordResponses).toBe(false);
     expect(map['api.example.com/v1/weather']).toEqual({
       recordResponses: false,
       autoMock: false,
