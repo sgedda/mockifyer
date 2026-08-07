@@ -135,6 +135,31 @@ export function hostKeyFromDomainPath(domainPath: string): string | null {
   return host && host.length > 0 ? host : null;
 }
 
+/** Segment count + concrete-segment score for choosing among prefix matches. */
+function domainPathMatchRank(domainPath: string): { segments: number; concrete: number } {
+  const parts = domainPath.trim().replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  let concrete = 0;
+  for (const part of parts) {
+    if (part !== ':id') {
+      concrete += 1;
+    }
+  }
+  return { segments: parts.length, concrete };
+}
+
+/** Prefer deeper rules; at the same depth prefer concrete segments over `:id`. */
+function isBetterDomainPathMatch(candidate: string, current: string | null): boolean {
+  if (!current) {
+    return true;
+  }
+  const a = domainPathMatchRank(candidate);
+  const b = domainPathMatchRank(current);
+  if (a.segments !== b.segments) {
+    return a.segments > b.segments;
+  }
+  return a.concrete > b.concrete;
+}
+
 /**
  * Longest-prefix rule match for a normalized domain path (folder key or request path).
  */
@@ -146,29 +171,81 @@ function findLongestRuleForPath(
   const normalized = requestPath.trim().replace(/^\/+|\/+$/g, '');
   if (!normalized) return null;
 
-  let best: { domainPath: string; rule: DomainPathRule; len: number } | null = null;
+  let best: { domainPath: string; rule: DomainPathRule } | null = null;
   for (const [domainPath, rule] of Object.entries(rules)) {
     if (!domainPath.trim() || !rule || typeof rule !== 'object') continue;
     const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '');
     if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
-      if (!best || prefix.length > best.len) {
-        best = { domainPath: prefix, rule, len: prefix.length };
+      if (!best || isBetterDomainPathMatch(prefix, best.domainPath)) {
+        best = { domainPath: prefix, rule };
       }
     }
   }
-  return best ? { domainPath: best.domainPath, rule: best.rule } : null;
+  return best;
+}
+
+/**
+ * Strict parent rule for a domain-path key (longest prefix shorter than `domainPath`).
+ */
+function findStrictParentDomainPathRule(
+  domainPath: string,
+  rules: DomainPathRulesMap
+): DomainPathRule | null {
+  const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
+  if (!normalized) {
+    return null;
+  }
+  const parts = normalized.split('/').filter(Boolean);
+  for (let i = parts.length - 1; i >= 1; i -= 1) {
+    const prefix = parts.slice(0, i).join('/');
+    const parent = rules[prefix];
+    if (parent && typeof parent === 'object') {
+      return parent;
+    }
+  }
+  return null;
+}
+
+function pickBetterDomainPathRuleMatch(
+  a: { domainPath: string; rule: DomainPathRule } | null,
+  b: { domainPath: string; rule: DomainPathRule } | null
+): { domainPath: string; rule: DomainPathRule } | null {
+  if (!a) return b;
+  if (!b) return a;
+  return isBetterDomainPathMatch(b.domainPath, a.domainPath) ? b : a;
+}
+
+/**
+ * Best rule for a live request URL: consider both `:id`-collapsed and exact paths,
+ * preferring deeper / more concrete keys so dashboard toggles on real IDs win over
+ * discovery keys like `…/users/:id`.
+ */
+export function findBestDomainPathRuleForUrl(
+  url: string,
+  rules: DomainPathRulesMap | null | undefined,
+  baseUrl?: string | null
+): { domainPath: string; rule: DomainPathRule } | null {
+  const resolved = resolveOutboundUrl(url, baseUrl) ?? (typeof url === 'string' ? url.trim() : '');
+  if (!resolved) {
+    return null;
+  }
+  const discoveryPath = normalizeDomainPathForDiscovery(resolved, null);
+  const exactPath = endpointUrlToDomainPath(resolved);
+  return pickBetterDomainPathRuleMatch(
+    discoveryPath ? findLongestRuleForPath(discoveryPath, rules) : null,
+    exactPath ? findLongestRuleForPath(exactPath, rules) : null
+  );
 }
 
 /**
  * Longest-prefix rule match for a request URL against stored domain paths.
+ * Uses `:id` collapse so discovery keys match live numeric/UUID URLs (Redis proxy + Hybrid).
  */
 export function findLongestDomainPathRule(
   url: string,
   rules: DomainPathRulesMap | null | undefined
 ): { domainPath: string; rule: DomainPathRule } | null {
-  const requestPath = endpointUrlToDomainPath(url);
-  if (!requestPath) return null;
-  return findLongestRuleForPath(requestPath, rules);
+  return findBestDomainPathRuleForUrl(url, rules);
 }
 
 /** Longest-prefix rule for a domain-tree folder path (same keys as {@link endpointUrlToDomainPath}). */
@@ -176,12 +253,23 @@ export function findLongestDomainPathRuleForFolder(
   folderPath: string,
   rules: DomainPathRulesMap | null | undefined
 ): { domainPath: string; rule: DomainPathRule } | null {
-  return findLongestRuleForPath(folderPath, rules);
+  const normalized = folderPath.trim().replace(/^\/+|\/+$/g, '');
+  if (!normalized) {
+    return null;
+  }
+  const collapsed = collapseDomainPathIdSegments(normalized);
+  return pickBetterDomainPathRuleMatch(
+    findLongestRuleForPath(normalized, rules),
+    collapsed !== normalized ? findLongestRuleForPath(collapsed, rules) : null
+  );
 }
 
 /**
- * Insert missing domain-path keys with the given defaults. Never overwrites existing keys.
- * @returns whether the map changed and which keys were added.
+ * Insert missing domain-path keys with the given defaults.
+ * When a parent rule already allows record/replay, new child keys inherit those flags
+ * so allowlist discovery cannot shadow an enabled host with a deny `:id` path.
+ * Also repairs discovery-seeded deny children (no `updatedAt`) under an allowing parent.
+ * @returns whether the map changed and which keys were added/repaired.
  */
 export function upsertDiscoveredDomainPathRule(
   rules: DomainPathRulesMap,
@@ -194,23 +282,52 @@ export function upsertDiscoveredDomainPathRule(
     return { changed: false, upserted };
   }
 
-  const ensure = (pathKey: string) => {
-    if (rules[pathKey]) {
+  const ensure = (pathKey: string, ruleDefaults: DomainPathRule) => {
+    const existing = rules[pathKey];
+    if (existing) {
+      // Discovery seeds omit updatedAt; dashboard/API writes set it. Repair only seeds.
+      const isDiscoverySeed =
+        existing.updatedAt == null &&
+        existing.recordResponses !== true &&
+        existing.autoMock !== true;
+      const parentAllows =
+        ruleDefaults.recordResponses === true || ruleDefaults.autoMock === true;
+      if (isDiscoverySeed && parentAllows) {
+        rules[pathKey] = {
+          recordResponses: ruleDefaults.recordResponses === true,
+          autoMock: ruleDefaults.autoMock === true,
+          updatedAt: ruleDefaults.updatedAt,
+        };
+        upserted.push(pathKey);
+      }
       return;
     }
     rules[pathKey] = {
-      recordResponses: defaults.recordResponses === true,
-      autoMock: defaults.autoMock === true,
-      updatedAt: defaults.updatedAt,
+      recordResponses: ruleDefaults.recordResponses === true,
+      autoMock: ruleDefaults.autoMock === true,
+      updatedAt: ruleDefaults.updatedAt,
     };
     upserted.push(pathKey);
   };
 
   const host = hostKeyFromDomainPath(key);
   if (host) {
-    ensure(host);
+    ensure(host, defaults);
   }
-  ensure(key);
+
+  // Path keys (beyond host) inherit allowing parents so discovery cannot shadow them.
+  if (key !== host) {
+    const parent = findStrictParentDomainPathRule(key, rules);
+    const inherit =
+      parent != null && (parent.recordResponses === true || parent.autoMock === true);
+    const pathDefaults = inherit
+      ? {
+          recordResponses: parent!.recordResponses === true,
+          autoMock: parent!.autoMock === true,
+        }
+      : defaults;
+    ensure(key, pathDefaults);
+  }
 
   return { changed: upserted.length > 0, upserted };
 }
@@ -312,12 +429,7 @@ export function resolveDomainPathTrafficGate(
     return { mayRecord: allow, mayReplay: allow, matchedDomainPath: null, matchedRule: null };
   }
 
-  // Prefer discovery-normalized path so rules written with `:id` still match live numeric/uuid URLs.
-  const discoveryPath = normalizeDomainPathForDiscovery(resolved, null);
-  const exactPath = endpointUrlToDomainPath(resolved);
-  const matched =
-    (discoveryPath ? findLongestRuleForPath(discoveryPath, rules) : null) ??
-    (exactPath ? findLongestRuleForPath(exactPath, rules) : null);
+  const matched = findBestDomainPathRuleForUrl(resolved, rules, null);
 
   if (!matched) {
     const allow = mode === 'record_all';
