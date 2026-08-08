@@ -38,6 +38,9 @@ import {
 import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
+  applyDomainPathRuleMutation,
+  loadMergedDomainPathRules,
+  persistMergedDomainPathRules,
   readDomainPathRulesFile,
   writeDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
@@ -704,9 +707,7 @@ router.get('/domain-path-rules', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, dataPath);
     try {
       const scenario = await resolveRedisScenario(req, store);
-      const fromRedis = await store.getDomainPathRules(scenario);
-      const fromFile = readDomainPathRulesFile(dataPath, scenario);
-      const rules = { ...fromFile, ...fromRedis };
+      const rules = await loadMergedDomainPathRules(store, dataPath, scenario);
       return res.json({ scenario, rules });
     } finally {
       await store.close().catch(() => undefined);
@@ -737,29 +738,26 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
       rule === null
         ? null
         : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true };
-
-    let rules: DomainPathRulesMap;
+    const domainPathKey = domainPath.trim();
 
     if (!isCentralizedDashboardProvider(config.provider)) {
-      rules = readDomainPathRulesFile(dataPath, scenarioName);
-      const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '');
-      if (normalizedRule === null) {
-        delete rules[normalizedPath];
-      } else {
-        rules[normalizedPath] = {
-          ...normalizedRule,
-          updatedAt: new Date().toISOString(),
-        };
-      }
+      const rules = applyDomainPathRuleMutation(
+        readDomainPathRulesFile(dataPath, scenarioName),
+        domainPathKey,
+        normalizedRule
+      );
       writeDomainPathRulesFile(dataPath, scenarioName, rules);
-      return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
+      return res.json({ scenario: scenarioName, domainPath: domainPathKey, rules });
     }
 
     const store = createDashboardMockStore(config, dataPath);
     try {
-      rules = await store.setDomainPathRule(scenarioName, domainPath.trim(), normalizedRule);
-      writeDomainPathRulesFile(dataPath, scenarioName, rules);
-      return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
+      // Merge file∪store before mutate — redis-only set + file overwrite used to wipe
+      // discovery keys that Hybrid wrote to disk before the store caught up.
+      const merged = await loadMergedDomainPathRules(store, dataPath, scenarioName);
+      const rules = applyDomainPathRuleMutation(merged, domainPathKey, normalizedRule);
+      await persistMergedDomainPathRules(store, dataPath, scenarioName, rules);
+      return res.json({ scenario: scenarioName, domainPath: domainPathKey, rules });
     } finally {
       await store.close().catch(() => undefined);
     }

@@ -45,6 +45,7 @@ import {
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
 } from '../utils/proxy-network-log';
+import { loadMergedDomainPathRules } from '../utils/domain-path-rules-store';
 
 const router = express.Router();
 
@@ -325,7 +326,9 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const pathRules = await store.getDomainPathRules(resolvedScenarioName);
+    // Same file∪store merge as GET/POST /domain-path-rules so proxy recording
+    // honors Hybrid discovery keys that may exist only on disk so far.
+    const pathRules = await loadMergedDomainPathRules(store, mockDataPath, resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({
       url,
       pathRules,
