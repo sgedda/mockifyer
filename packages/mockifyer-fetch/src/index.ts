@@ -43,7 +43,7 @@ import {
   type PoolResponseItem,
   shouldBypassMockifyerForUrl,
   containsMockifyerSyncEndpointMarker,
-  isMockifyerDashboardProxyApiUrl,
+  isMockifyerDashboardPlumbingApiUrl,
   resolveRecordingExclusions,
   shouldExcludeRecording,
   mockPassesThroughToRealApi,
@@ -1655,11 +1655,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       const headers = init?.headers || {};
       const body = init?.body;
       
-      // Skip Mockifyer sync endpoints, dashboard `/api/proxy` plumbing, and Resend API
+      // Skip Mockifyer sync endpoints, dashboard plumbing (/api/proxy, /api/network-events), and Resend API
       if (
         containsMockifyerSyncEndpointMarker(url) ||
         url.includes('api.resend.com') ||
-        isMockifyerDashboardProxyApiUrl(url)
+        isMockifyerDashboardPlumbingApiUrl(url)
       ) {
         return await originalFetchForPatched(input, init);
       }

@@ -1,5 +1,6 @@
 import { ENV_VARS, type MockifyerConfig } from '../types';
 import { randomEventId, sha256Hex, truncateUtf8, utf8ByteLength } from './crypto-digest';
+import { resolveUnpatchedFetch } from './unpatched-fetch';
 
 /** How the request was resolved (proxy / SDK). */
 export type NetworkEventSource =
@@ -256,9 +257,12 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): void {
   const body = JSON.stringify({ event });
 
   const post = async (): Promise<void> => {
-    if (typeof fetch !== 'function') return;
+    const fetchFn = resolveUnpatchedFetch();
+    if (typeof fetchFn !== 'function') return;
     try {
-      await fetch(url, {
+      // Always use unpatched fetch — patched global fetch would re-enter Mockifyer and
+      // can storm POST /api/network-events until OOM when useGlobalFetch is enabled.
+      await fetchFn(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,
