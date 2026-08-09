@@ -14,30 +14,10 @@ import {
   joinProxyDashboardApiUrl,
 } from './join-proxy-dashboard-api-url';
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
+import { resolveUnpatchedFetch } from './unpatched-fetch';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
 import { logger } from './logger';
-
-const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
-
-/**
- * Prefer the unpatched fetch stored when Mockifyer patches `global.fetch`, so the
- * internal POST to `/api/proxy` is not re-intercepted by a dual axios+fetch setup.
- */
-function resolveDashboardProxyFetchFn(fetchFn?: typeof fetch): typeof fetch {
-  if (fetchFn) {
-    return fetchFn;
-  }
-  try {
-    const g = globalThis as typeof globalThis & { [MOCKIFYER_ORIGINAL_FETCH_KEY]?: typeof fetch };
-    if (typeof g[MOCKIFYER_ORIGINAL_FETCH_KEY] === 'function') {
-      return g[MOCKIFYER_ORIGINAL_FETCH_KEY]!;
-    }
-  } catch {
-    // ignore
-  }
-  return fetch;
-}
 
 export interface PerformDashboardProxyRequestParams {
   proxyBaseUrl: string;
@@ -85,7 +65,7 @@ export async function performDashboardProxyRequest(
     config,
     logTag = 'Mockifyer',
   } = params;
-  const fetchFn = resolveDashboardProxyFetchFn(params.fetchFn);
+  const fetchFn = resolveUnpatchedFetch(params.fetchFn);
   const startedAt = Date.now();
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');

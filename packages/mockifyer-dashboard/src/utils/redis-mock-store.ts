@@ -4,6 +4,7 @@ import {
   assertNotReservedScenarioName,
   generateRequestKey,
   getCurrentScenario,
+  writeDomainPathRulesFile,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -409,12 +410,24 @@ export class RedisMockStore {
     }
   }
 
+  /**
+   * Replace the full domain-path rules document for a scenario.
+   */
+  async replaceDomainPathRules(scenario: string, rules: DomainPathRulesMap): Promise<void> {
+    const key = this.domainPathRulesRedisKey(scenario);
+    if (Object.keys(rules).length === 0) {
+      await this.kv.del(key);
+    } else {
+      await this.kv.set(key, JSON.stringify(rules));
+    }
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+  }
+
   async setDomainPathRule(
     scenario: string,
     domainPath: string,
     rule: { recordResponses: boolean; autoMock?: boolean } | null
   ): Promise<DomainPathRulesMap> {
-    const key = this.domainPathRulesRedisKey(scenario);
     const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
     const rules = await this.getDomainPathRules(scenario);
     if (rule === null) {
@@ -426,12 +439,7 @@ export class RedisMockStore {
         updatedAt: new Date().toISOString(),
       };
     }
-    if (Object.keys(rules).length === 0) {
-      await this.kv.del(key);
-    } else {
-      await this.kv.set(key, JSON.stringify(rules));
-    }
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.replaceDomainPathRules(scenario, rules);
     return rules;
   }
 
@@ -445,6 +453,7 @@ export class RedisMockStore {
   async cloneScenario(fromScenario: string, toScenario: string): Promise<{
     mocksCopied: number;
     dateConfigCopied: boolean;
+    domainPathRulesCopied: boolean;
   }> {
     const from = fromScenario.trim();
     const to = toScenario.trim();
@@ -474,13 +483,27 @@ export class RedisMockStore {
       }).catch(() => undefined);
     }
 
+    // Copy domain-path allowlist (filesystem derive copies the JSON via directory copy;
+    // Redis/SQLite must copy the path_rules document or derived scenarios silently deny all).
+    let domainPathRulesCopied = false;
+    const pathRules = await this.getDomainPathRules(from);
+    if (Object.keys(pathRules).length > 0) {
+      await this.replaceDomainPathRules(to, pathRules);
+      try {
+        writeDomainPathRulesFile(this.mockDataPath, to, pathRules);
+      } catch {
+        // Disk mirror is best-effort; centralized store is authoritative for redis/sqlite.
+      }
+      domainPathRulesCopied = true;
+    }
+
     // Copy mocks by walking the index set.
     const fromIndexKey = await this.indexKey(from);
     const hashes: string[] = await this.kv.smembers(fromIndexKey);
     if (hashes.length === 0) {
       // Still ensure the destination scenario is discoverable.
       await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
-      return { mocksCopied: 0, dateConfigCopied };
+      return { mocksCopied: 0, dateConfigCopied, domainPathRulesCopied };
     }
 
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
@@ -504,7 +527,7 @@ export class RedisMockStore {
     multi.sadd(this.scenarioRegistrySetKey, to);
 
     await multi.exec();
-    return { mocksCopied: copied, dateConfigCopied };
+    return { mocksCopied: copied, dateConfigCopied, domainPathRulesCopied };
   }
 
   /**

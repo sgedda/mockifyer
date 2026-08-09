@@ -6,6 +6,7 @@
 import type { DomainPathRulesMap } from './domain-path-rules';
 import {
   DOMAIN_PATH_RULES_FILENAME,
+  isUsableNodeFsModule,
   parseDomainPathRules,
 } from './domain-path-rules';
 import { getScenarioFolderPath } from './scenario';
@@ -14,8 +15,13 @@ let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
 
 try {
-  fs = require('fs');
-  pathMod = require('path');
+  const fsMod = require('fs');
+  const pathCandidate = require('path');
+  // Metro may resolve `fs` to an empty stub — do not treat that as usable Node fs.
+  if (isUsableNodeFsModule(fsMod) && pathCandidate && typeof pathCandidate.join === 'function') {
+    fs = fsMod;
+    pathMod = pathCandidate;
+  }
 } catch {
   fs = undefined;
   pathMod = undefined;

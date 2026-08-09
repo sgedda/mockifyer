@@ -3,6 +3,7 @@ import {
   type DomainPathRulesMap,
   type DomainPathTrafficGate,
   discoverDomainPathRulesForUrl,
+  isUsableNodeFsModule,
   mergeDomainPathRuleUpserts,
   parseDomainPathRules,
   resolveDomainPathRulesMode,
@@ -11,10 +12,10 @@ import {
 import { getCurrentScenario } from './scenario';
 import { logger } from './logger';
 
+/** Real Node fs only — Metro `{}` stubs must not enable filesystem mode on RN Hybrid. */
 let fsAvailable = false;
 try {
-  require('fs');
-  fsAvailable = true;
+  fsAvailable = isUsableNodeFsModule(require('fs'));
 } catch {
   fsAvailable = false;
 }

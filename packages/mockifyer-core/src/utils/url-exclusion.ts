@@ -1,4 +1,4 @@
-import { isMockifyerDashboardProxyApiUrl } from './join-proxy-dashboard-api-url';
+import { isMockifyerDashboardPlumbingApiUrl } from './join-proxy-dashboard-api-url';
 import { resolveOutboundUrl } from './recording-exclusion';
 
 /**
@@ -56,8 +56,8 @@ export function shouldExcludeUrl(url: string | null | undefined, excludedUrls?: 
  * When true, outbound HTTP should skip Mockifyer entirely (no proxy, mock lookup, or recording).
  * Resolves relative URLs with `baseUrl` when provided.
  *
- * Dashboard `/api/proxy` is always bypassed (even when `excludedUrls` replaces defaults) so the
- * internal proxy POST is never re-intercepted or shown as a user-visible hop.
+ * Dashboard `/api/proxy` and `/api/network-events` are always bypassed (even when
+ * `excludedUrls` replaces defaults) so internal dashboard POSTs are never re-intercepted.
  */
 export function shouldBypassMockifyerForUrl(
   rawUrl: string | null | undefined,
@@ -65,7 +65,7 @@ export function shouldBypassMockifyerForUrl(
   baseUrl?: string | null
 ): boolean {
   const resolved = resolveOutboundUrl(rawUrl, baseUrl);
-  if (isMockifyerDashboardProxyApiUrl(resolved) || isMockifyerDashboardProxyApiUrl(rawUrl)) {
+  if (isMockifyerDashboardPlumbingApiUrl(resolved) || isMockifyerDashboardPlumbingApiUrl(rawUrl)) {
     return true;
   }
   if (resolved && shouldExcludeUrl(resolved, excludedUrls)) {

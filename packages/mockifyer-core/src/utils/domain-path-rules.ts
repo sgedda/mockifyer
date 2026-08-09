@@ -20,6 +20,26 @@ const UUID_SEGMENT =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NUMERIC_SEGMENT = /^\d+$/;
 
+/**
+ * True when `require('fs')` exposes the sync methods domain-path file I/O needs.
+ * Rejects Metro empty-module stubs (`{}`) that succeed `require('fs')` but have no methods —
+ * those must use Metro GET/POST instead of pretending the project folder is on-device.
+ */
+export function isUsableNodeFsModule(fsMod: unknown): boolean {
+  if (!fsMod || typeof fsMod !== 'object') {
+    return false;
+  }
+  const fs = fsMod as Record<string, unknown>;
+  return (
+    typeof fs.existsSync === 'function' &&
+    typeof fs.statSync === 'function' &&
+    typeof fs.readFileSync === 'function' &&
+    typeof fs.writeFileSync === 'function' &&
+    typeof fs.mkdirSync === 'function' &&
+    typeof fs.unlinkSync === 'function'
+  );
+}
+
 function normalizeRuntimeMode(raw: unknown): DomainPathRulesMode | undefined {
   if (raw === undefined || raw === null) {
     return undefined;

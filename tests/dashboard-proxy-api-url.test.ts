@@ -1,4 +1,6 @@
 import {
+  isMockifyerDashboardNetworkEventsApiUrl,
+  isMockifyerDashboardPlumbingApiUrl,
   isMockifyerDashboardProxyApiUrl,
   joinProxyDashboardApiUrl,
 } from '@sgedda/mockifyer-core';
@@ -25,5 +27,18 @@ describe('isMockifyerDashboardProxyApiUrl', () => {
     const url = joinProxyDashboardApiUrl('https://host/apim/mockifyer/', 'api/proxy');
     expect(url).toBe('https://host/apim/mockifyer/api/proxy');
     expect(isMockifyerDashboardProxyApiUrl(url)).toBe(true);
+  });
+});
+
+describe('isMockifyerDashboardNetworkEventsApiUrl', () => {
+  it('detects network-events endpoints including subpaths', () => {
+    expect(isMockifyerDashboardNetworkEventsApiUrl('http://localhost:3002/api/network-events')).toBe(
+      true
+    );
+    expect(
+      isMockifyerDashboardNetworkEventsApiUrl('https://host/mockifyer/api/network-events/trace?x=1')
+    ).toBe(true);
+    expect(isMockifyerDashboardPlumbingApiUrl('https://host/api/network-events')).toBe(true);
+    expect(isMockifyerDashboardNetworkEventsApiUrl('https://host/api/proxy')).toBe(false);
   });
 });

@@ -14,6 +14,15 @@ export function joinProxyDashboardApiUrl(proxyBaseUrl: string, apiSubPath: strin
   return `${normalizedBase}/${normalizedPath}`;
 }
 
+function normalizeDashboardApiPath(url: string): string | undefined {
+  try {
+    const parsed = new URL(url, 'http://localhost');
+    return parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * True when `url` targets the dashboard `/api/proxy` endpoint (Mockifyer plumbing).
  * These requests must never be mocked, recorded, or shown as user-visible hops.
@@ -22,11 +31,35 @@ export function isMockifyerDashboardProxyApiUrl(url: string | null | undefined):
   if (!url || typeof url !== 'string') {
     return false;
   }
-  try {
-    const parsed = new URL(url, 'http://localhost');
-    const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+  const path = normalizeDashboardApiPath(url);
+  if (path != null) {
     return path === '/api/proxy' || path.endsWith('/api/proxy');
-  } catch {
-    return /(?:^|\/)api\/proxy\/?(?:\?|#|$)/i.test(url);
   }
+  return /(?:^|\/)api\/proxy\/?(?:\?|#|$)/i.test(url);
+}
+
+/**
+ * True when `url` targets dashboard `/api/network-events` (including `/trace`, `/config`).
+ * SDK observability POSTs must never be re-intercepted by patched `fetch`/`axios`.
+ */
+export function isMockifyerDashboardNetworkEventsApiUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  const path = normalizeDashboardApiPath(url);
+  if (path != null) {
+    return (
+      path === '/api/network-events' ||
+      path.endsWith('/api/network-events') ||
+      path.includes('/api/network-events/')
+    );
+  }
+  return /(?:^|\/)api\/network-events(?:\/|\?|#|$)/i.test(url);
+}
+
+/**
+ * Dashboard HTTP plumbing that must always bypass Mockifyer interception.
+ */
+export function isMockifyerDashboardPlumbingApiUrl(url: string | null | undefined): boolean {
+  return isMockifyerDashboardProxyApiUrl(url) || isMockifyerDashboardNetworkEventsApiUrl(url);
 }
