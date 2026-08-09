@@ -8,6 +8,7 @@ import {
   endpointUrlToDomainPath,
   findLongestDomainPathRule,
   findLongestDomainPathRuleForFolder,
+  isUsableNodeFsModule,
   mergeDomainPathRuleUpserts,
   mergeDiscoveredDomainPathRules,
   normalizeDomainPathForDiscovery,
@@ -458,6 +459,59 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
     const after = session.getTrafficGate('https://api.example.com/v1/users/1');
     expect(after.mayReplay).toBe(true);
     expect(after.mayRecord).toBe(true);
+  });
+});
+
+describe('isUsableNodeFsModule', () => {
+  it('accepts real Node fs and rejects Metro empty stubs', () => {
+    expect(isUsableNodeFsModule(fs)).toBe(true);
+    expect(isUsableNodeFsModule({})).toBe(false);
+    expect(isUsableNodeFsModule(null)).toBe(false);
+    expect(isUsableNodeFsModule({ existsSync: () => false })).toBe(false);
+  });
+});
+
+describe('DomainPathRulesSession with Metro empty fs stub', () => {
+  let prevScenario: string | undefined;
+  const projectRules: DomainPathRulesMap = {
+    'api.example.com': { recordResponses: true, autoMock: true },
+  };
+
+  beforeEach(() => {
+    prevScenario = process.env.MOCKIFYER_SCENARIO;
+    process.env.MOCKIFYER_SCENARIO = 'default';
+  });
+
+  afterEach(() => {
+    if (prevScenario === undefined) delete process.env.MOCKIFYER_SCENARIO;
+    else process.env.MOCKIFYER_SCENARIO = prevScenario;
+  });
+
+  it('useFilesystem:false hydrates project rules via Metro (RN Hybrid path)', async () => {
+    const store = { rules: { ...projectRules }, posts: [] as unknown[] };
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn,
+    });
+    await session.hydrate();
+    const gate = session.getTrafficGate('https://api.example.com/v1');
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
   });
 });
 
