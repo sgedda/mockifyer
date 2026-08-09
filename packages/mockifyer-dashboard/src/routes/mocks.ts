@@ -1444,6 +1444,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
+        if (await store.isScenarioLocked(scenario)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
         const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
         if (!existingData?.request?.url) {
           return res.status(404).json({ error: 'Mock not found' });
@@ -1464,7 +1467,11 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
       }
     }
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    if (isScenarioLockedFs(mockDataPath, scenario)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const filePath = resolveFilePath(scenarioPath, relativeName);
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
