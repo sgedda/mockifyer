@@ -739,6 +739,7 @@ export async function importScenarioBundle(payload: {
   mocksWritten: number
   dateConfigApplied: boolean
   proxyConfigApplied: boolean
+  domainPathRulesApplied?: boolean
 }> {
   const body = {
     ...payload.bundle,
