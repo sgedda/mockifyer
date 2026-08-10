@@ -409,12 +409,22 @@ export class RedisMockStore {
     }
   }
 
+  /** Replace the full domain-path rules document for a scenario. */
+  async replaceDomainPathRules(scenario: string, rules: DomainPathRulesMap): Promise<void> {
+    const key = this.domainPathRulesRedisKey(scenario);
+    if (Object.keys(rules).length === 0) {
+      await this.kv.del(key);
+    } else {
+      await this.kv.set(key, JSON.stringify(rules));
+    }
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+  }
+
   async setDomainPathRule(
     scenario: string,
     domainPath: string,
     rule: { recordResponses: boolean; autoMock?: boolean } | null
   ): Promise<DomainPathRulesMap> {
-    const key = this.domainPathRulesRedisKey(scenario);
     const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
     const rules = await this.getDomainPathRules(scenario);
     if (rule === null) {
@@ -426,12 +436,7 @@ export class RedisMockStore {
         updatedAt: new Date().toISOString(),
       };
     }
-    if (Object.keys(rules).length === 0) {
-      await this.kv.del(key);
-    } else {
-      await this.kv.set(key, JSON.stringify(rules));
-    }
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
+    await this.replaceDomainPathRules(scenario, rules);
     return rules;
   }
 
