@@ -375,7 +375,8 @@ router.get('/export', async (req: Request, res: Response) => {
 router.post('/import', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    const { meta, bundle, bundleHadDateKey, bundleHadProxyKey } = parseScenarioImportRequest(req.body);
+    const { meta, bundle, bundleHadDateKey, bundleHadProxyKey, bundleHadDomainPathRulesKey } =
+      parseScenarioImportRequest(req.body);
 
     const targetParsed = sanitizeScenarioName(meta.targetScenario ?? bundle.sourceScenario);
     if (!targetParsed.ok) {
@@ -410,6 +411,8 @@ router.post('/import', async (req: Request, res: Response) => {
       bundleHadDateKey,
       applyProxyConfig: meta.applyProxyConfig,
       bundleHadProxyKey,
+      applyDomainPathRules: meta.applyDomainPathRules,
+      bundleHadDomainPathRulesKey,
       provider: config.provider,
       redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
       keyPrefix: config.keyPrefix,
@@ -435,6 +438,7 @@ router.post('/import', async (req: Request, res: Response) => {
       mocksWritten: result.mocksWritten,
       dateConfigApplied: result.dateConfigApplied,
       proxyConfigApplied: result.proxyConfigApplied,
+      domainPathRulesApplied: result.domainPathRulesApplied,
     });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Import - Error:', error);

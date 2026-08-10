@@ -183,6 +183,11 @@ export interface ScenarioExportBundle {
     recordOnMiss: boolean
     allowUpstream: boolean
   } | null
+  /** Domain-path allowlist; omitted in older bundles */
+  domainPathRules?: Record<
+    string,
+    { recordResponses: boolean; autoMock?: boolean; updatedAt?: string }
+  > | null
 }
 
 export type NetworkEventSource =
