@@ -1,6 +1,10 @@
 {
   "name": "@sgedda/mockifyer-axios",
+<<<<<<< HEAD
   "version": "1.10.32",
+=======
+  "version": "1.10.8",
+>>>>>>> 4343275 (fix(axios,fetch): strip inline-trace envelopes in local saveResponse)
   "description": "Mockifyer for Axios - API mocking and logging utility for storing and replaying API responses",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
