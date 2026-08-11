@@ -1991,9 +1991,11 @@ class MockifyerClass {
       // Always check cache first, unless recordSameEndpoints is true
 
 
+      // ALS-free strip: callers may leave `{ data, mockifyerTrace }` when the parent
+      // hop is not collecting an inline trace (unwrapAndMerge is ALS-gated).
       const storedResponse: StoredResponse = {
         status: response.status,
-        data: response.data,
+        data: getInlineTraceEnvelopeBusinessBody(response.data),
         headers: response.headers as Record<string, string>
       };
 
