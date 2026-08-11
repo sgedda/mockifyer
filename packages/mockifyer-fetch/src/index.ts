@@ -1237,6 +1237,8 @@ class MockifyerClass {
 
       const correlation = this.readRequestCorrelation(response.config);
 
+      // ALS-free strip: callers may leave `{ data, mockifyerTrace }` when the parent
+      // hop is not collecting an inline trace (unwrapAndMerge is ALS-gated).
       const mockData: MockData = {
         request: {
           method: response.config?.method?.toUpperCase() || 'GET',
@@ -1247,7 +1249,7 @@ class MockifyerClass {
         },
         response: {
           status: response.status,
-          data: response.data,
+          data: getInlineTraceEnvelopeBusinessBody(response.data),
           headers: response.headers || {},
         },
         timestamp: new Date().toISOString(),
