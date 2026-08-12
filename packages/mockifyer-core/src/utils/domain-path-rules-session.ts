@@ -35,6 +35,8 @@ export interface DomainPathRulesSessionOptions {
 interface PendingDiscover {
   rawUrl: string;
   baseUrl?: string | null;
+  /** Scenario active when the discover was queued (Metro hydrate may finish after a lane switch). */
+  scenario: string;
 }
 
 /**
@@ -55,6 +57,11 @@ export class DomainPathRulesSession {
   private readonly useFs: boolean;
   private persistQueue: Promise<void> = Promise.resolve();
   private hydratePromise: Promise<void> | null = null;
+  /**
+   * Bumped on every `invalidateCache()` so in-flight Metro GETs cannot commit
+   * stale rules or flush discovers after a reload / scenario switch.
+   */
+  private hydrateGeneration = 0;
   private pendingDiscovers: PendingDiscover[] = [];
 
   constructor(options: DomainPathRulesSessionOptions) {
@@ -127,36 +134,79 @@ export class DomainPathRulesSession {
       return;
     }
 
-    const scenario = this.scenarioName();
     if (this.useFs) {
+      const scenario = this.scenarioName();
       this.invalidateCache();
       this.loadRulesFromDisk(scenario);
       this.flushPendingDiscovers();
       return;
     }
 
-    if (this.hydratePromise) {
-      await this.hydratePromise;
-      return;
-    }
+    // Retry until a Metro hydrate commits for the current generation + scenario.
+    // `invalidateCache()` (reloadMockData / lane switch) bumps generation while a
+    // prior GET may still be in flight — awaiting that promise alone is not enough.
+    for (;;) {
+      const generation = this.hydrateGeneration;
+      const scenario = this.scenarioName();
 
-    this.hydratePromise = this.hydrateFromMetro(scenario);
-    try {
-      await this.hydratePromise;
-    } finally {
-      this.hydratePromise = null;
+      if (
+        this.rulesHydrated &&
+        this.rulesScenario === scenario &&
+        this.hydrateGeneration === generation
+      ) {
+        return;
+      }
+
+      if (this.hydratePromise) {
+        await this.hydratePromise;
+        if (
+          this.rulesHydrated &&
+          this.rulesScenario === scenario &&
+          this.hydrateGeneration === generation
+        ) {
+          return;
+        }
+        // Invalidated or scenario changed while waiting — start a fresh hydrate.
+        continue;
+      }
+
+      this.hydratePromise = this.hydrateFromMetro(scenario, generation);
+      try {
+        await this.hydratePromise;
+      } finally {
+        this.hydratePromise = null;
+      }
+
+      if (this.hydrateGeneration === generation && this.rulesHydrated && this.rulesScenario === scenario) {
+        return;
+      }
     }
   }
 
-  private async hydrateFromMetro(scenario: string): Promise<void> {
+  private commitMetroHydrate(
+    generation: number,
+    scenario: string,
+    loaded: DomainPathRulesMap
+  ): boolean {
+    if (generation !== this.hydrateGeneration) {
+      return false;
+    }
+    if (this.scenarioName() !== scenario) {
+      return false;
+    }
+    this.rules = loaded;
+    this.rulesScenario = scenario;
+    this.rulesMtimeMs = null;
+    this.rulesHydrated = true;
+    this.flushPendingDiscovers();
+    return true;
+  }
+
+  private async hydrateFromMetro(scenario: string, generation: number): Promise<void> {
     const fetchFn = this.resolveFetch();
     if (!fetchFn) {
       logger.warn('[Mockifyer] Domain path rules: no fetch available to hydrate from Metro; starting empty');
-      this.rules = {};
-      this.rulesScenario = scenario;
-      this.rulesMtimeMs = null;
-      this.rulesHydrated = true;
-      this.flushPendingDiscovers();
+      this.commitMetroHydrate(generation, scenario, {});
       return;
     }
 
@@ -165,11 +215,9 @@ export class DomainPathRulesSession {
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         logger.warn(`[Mockifyer] Domain path rules Metro hydrate HTTP ${res.status}: ${text}`);
-        this.rules = this.rules ?? {};
-        this.rulesScenario = scenario;
-        this.rulesMtimeMs = null;
-        this.rulesHydrated = true;
-        this.flushPendingDiscovers();
+        // Keep any newer in-memory map from a later generation; otherwise seed empty.
+        const fallback = generation === this.hydrateGeneration ? (this.rules ?? {}) : {};
+        this.commitMetroHydrate(generation, scenario, fallback);
         return;
       }
       const parsed = (await res.json()) as { success?: boolean; rules?: unknown };
@@ -177,25 +225,23 @@ export class DomainPathRulesSession {
         parsed.success && parsed.rules != null
           ? parseDomainPathRules(parsed.rules)
           : {};
-      this.rules = loaded;
-      this.rulesScenario = scenario;
-      this.rulesMtimeMs = null;
-      this.rulesHydrated = true;
-      this.flushPendingDiscovers();
+      this.commitMetroHydrate(generation, scenario, loaded);
     } catch (err) {
       logger.warn('[Mockifyer] Domain path rules Metro hydrate failed:', err);
-      this.rules = this.rules ?? {};
-      this.rulesScenario = scenario;
-      this.rulesMtimeMs = null;
-      this.rulesHydrated = true;
-      this.flushPendingDiscovers();
+      const fallback = generation === this.hydrateGeneration ? (this.rules ?? {}) : {};
+      this.commitMetroHydrate(generation, scenario, fallback);
     }
   }
 
   private ensureMetroHydrate(): void {
-    if (this.useFs || this.rulesHydrated || this.hydratePromise) {
+    if (this.useFs) {
       return;
     }
+    const scenario = this.scenarioName();
+    if (this.rulesHydrated && this.rulesScenario === scenario) {
+      return;
+    }
+    // Always kick hydrate() — it coalesces in-flight work and retries after invalidate.
     void this.hydrate().catch((err) => {
       logger.warn('[Mockifyer] Domain path rules background hydrate failed:', err);
     });
@@ -205,9 +251,14 @@ export class DomainPathRulesSession {
     if (this.pendingDiscovers.length === 0) {
       return;
     }
+    const activeScenario = this.scenarioName();
     const pending = this.pendingDiscovers;
     this.pendingDiscovers = [];
     for (const item of pending) {
+      // Drop discovers queued under a different scenario (lane switch / reload).
+      if (item.scenario !== activeScenario) {
+        continue;
+      }
       this.discover(item.rawUrl, item.baseUrl);
     }
   }
@@ -265,7 +316,12 @@ export class DomainPathRulesSession {
     this.rulesScenario = null;
     this.rulesMtimeMs = null;
     this.rulesHydrated = false;
-    this.hydratePromise = null;
+    // Bump generation so in-flight Metro GETs cannot commit after this point.
+    // Keep `hydratePromise` so awaiters can finish, then `hydrate()` retries.
+    this.hydrateGeneration += 1;
+    // Pending discovers are scenario-pinned; drop them so a reload cannot replay
+    // traffic from the previous cache generation into the new rules document.
+    this.pendingDiscovers = [];
   }
 
   /**
@@ -295,8 +351,14 @@ export class DomainPathRulesSession {
 
     // Without fs, wait for Metro hydrate so discovery does not seed allowlist
     // defaults (false) over project rules that are enabled on disk.
-    if (!this.useFs && !this.rulesHydrated) {
-      this.pendingDiscovers.push({ rawUrl, baseUrl });
+    // Require hydrate for the *active* scenario — a prior lane's cache is not enough.
+    const activeScenario = this.scenarioName();
+    if (!this.useFs && !(this.rulesHydrated && this.rulesScenario === activeScenario)) {
+      this.pendingDiscovers.push({
+        rawUrl,
+        baseUrl,
+        scenario: activeScenario,
+      });
       this.ensureMetroHydrate();
       return;
     }
