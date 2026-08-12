@@ -459,6 +459,182 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
     expect(after.mayReplay).toBe(true);
     expect(after.mayRecord).toBe(true);
   });
+
+  it('ignores stale Metro hydrate after invalidateCache (reload race)', async () => {
+    const staleRules: DomainPathRulesMap = {
+      'stale.example.com': { recordResponses: true, autoMock: true },
+    };
+    const freshRules: DomainPathRulesMap = {
+      'api.example.com': { recordResponses: true, autoMock: true },
+    };
+
+    let releaseStale!: () => void;
+    const staleHold = new Promise<void>((resolve) => {
+      releaseStale = resolve;
+    });
+    let getCount = 0;
+
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (!url.includes('/mockifyer-domain-path-rules') || method !== 'GET') {
+        throw new Error(`Unexpected fetch: ${method} ${url}`);
+      }
+      getCount += 1;
+      if (getCount === 1) {
+        await staleHold;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, rules: staleRules }),
+          text: async () => '',
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, rules: freshRules }),
+        text: async () => '',
+      } as Response;
+    }) as typeof fetch;
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn,
+      metroPort: 8081,
+    });
+
+    const firstHydrate = session.hydrate();
+    // Allow the first GET to start and park on staleHold.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    session.invalidateCache();
+    const secondHydrate = session.hydrate();
+    releaseStale();
+    await Promise.all([firstHydrate, secondHydrate]);
+
+    expect(getCount).toBeGreaterThanOrEqual(2);
+    const gate = session.getTrafficGate('https://api.example.com/v1');
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
+    expect(session.getTrafficGate('https://stale.example.com/x').mayRecord).toBe(false);
+  });
+
+  it('drops pending discovers across invalidateCache so reload cannot flush old traffic', async () => {
+    const store = {
+      rules: { 'api.example.com': { recordResponses: true, autoMock: true } } as DomainPathRulesMap,
+      posts: [] as unknown[],
+    };
+
+    let releaseHydrate!: () => void;
+    const hydrateHold = new Promise<void>((resolve) => {
+      releaseHydrate = resolve;
+    });
+
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'GET') {
+        await hydrateHold;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { upserts?: DomainPathRulesMap };
+        store.posts.push(body);
+        const merged = mergeDomainPathRuleUpserts(store.rules, body.upserts ?? {});
+        store.rules = merged.rules;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, changed: merged.changed, rules: store.rules }),
+          text: async () => '',
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn,
+      metroPort: 8081,
+    });
+
+    session.discover('https://old-traffic.example.com/v1/items/1');
+    session.invalidateCache();
+    releaseHydrate();
+    await session.hydrate();
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    expect(store.posts).toHaveLength(0);
+    expect(store.rules['old-traffic.example.com']).toBeUndefined();
+  });
+
+  it('does not apply pending discovers queued under a previous scenario', async () => {
+    const stores: Record<string, DomainPathRulesMap> = {
+      default: { 'api.example.com': { recordResponses: true, autoMock: true } },
+      other: { 'other.example.com': { recordResponses: true, autoMock: true } },
+    };
+    const posts: Array<{ scenario?: string; upserts?: DomainPathRulesMap }> = [];
+
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'GET') {
+        const scenario = new URL(url).searchParams.get('scenario') || 'default';
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, rules: stores[scenario] ?? {} }),
+          text: async () => '',
+        } as Response;
+      }
+      if (url.includes('/mockifyer-domain-path-rules') && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          scenario?: string;
+          upserts?: DomainPathRulesMap;
+        };
+        posts.push(body);
+        const scenario = body.scenario || 'default';
+        const merged = mergeDomainPathRuleUpserts(stores[scenario] ?? {}, body.upserts ?? {});
+        stores[scenario] = merged.rules;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true, changed: merged.changed, rules: stores[scenario] }),
+          text: async () => '',
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${method} ${url}`);
+    }) as typeof fetch;
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'record_all' },
+      useFilesystem: false,
+      fetchFn,
+      metroPort: 8081,
+    });
+
+    // Queue under "default" before hydrate, then switch scenario without invalidate
+    // (lane change via env). Pending must not flush into "other".
+    session.discover('https://default-only.example.com/v1');
+    process.env.MOCKIFYER_SCENARIO = 'other';
+    await session.hydrate();
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    expect(posts.some((p) => p.upserts && 'default-only.example.com' in (p.upserts ?? {}))).toBe(
+      false
+    );
+    expect(stores.other['default-only.example.com']).toBeUndefined();
+    expect(session.getTrafficGate('https://other.example.com/x').mayRecord).toBe(true);
+  });
 });
 
 describe('envRecordResponsesOverride', () => {
