@@ -1,6 +1,7 @@
 import {
   readDomainPathRulesFile as readFromCore,
   writeDomainPathRulesFile as writeFromCore,
+  updateDomainPathRulesFile as updateFromCore,
   DOMAIN_PATH_RULES_FILENAME,
 } from '@sgedda/mockifyer-core';
 import type { DomainPathRulesMap } from '@sgedda/mockifyer-core';
@@ -19,4 +20,13 @@ export function writeDomainPathRulesFile(
   rules: DomainPathRulesMap
 ): void {
   writeFromCore(mockDataPath, scenario, rules);
+}
+
+/** Locked read-modify-write so dashboard edits cannot race discovery persists. */
+export async function updateDomainPathRulesFile(
+  mockDataPath: string,
+  scenario: string,
+  updater: (rules: DomainPathRulesMap) => DomainPathRulesMap
+): Promise<{ rules: DomainPathRulesMap; changed: boolean }> {
+  return updateFromCore(mockDataPath, scenario, updater);
 }

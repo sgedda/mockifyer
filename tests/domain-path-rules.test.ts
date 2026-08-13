@@ -18,6 +18,7 @@ import {
   envRecordResponsesOverride,
   upsertDiscoveredDomainPathRule,
   writeDomainPathRulesFile,
+  updateDomainPathRulesFile,
   type DomainPathRulesMap,
 } from '@sgedda/mockifyer-core';
 
@@ -357,6 +358,34 @@ describe('DomainPathRulesSession persistUpserts', () => {
     const gate = session.getTrafficGate('https://other.example.com/x');
     expect(gate.matchedDomainPath).toBe('other.example.com');
   });
+
+  it('preserves dashboard enable when it races a discover persist', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+    });
+
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+    });
+    session.getTrafficGate('https://api.example.com/v1');
+
+    const enableHost = updateDomainPathRulesFile(tmpRoot, 'default', (rules) => {
+      const next = { ...rules };
+      next['api.example.com'] = { recordResponses: true, autoMock: true };
+      return next;
+    });
+    session.discover('https://api.example.com/v1/users/42');
+
+    await Promise.all([
+      enableHost,
+      (session as unknown as { persistQueue: Promise<void> }).persistQueue,
+    ]);
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com'].autoMock).toBe(true);
+    expect(onDisk['api.example.com/v1/users/:id']).toBeDefined();
+  });
 });
 
 describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
@@ -458,6 +487,90 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
     const after = session.getTrafficGate('https://api.example.com/v1/users/1');
     expect(after.mayReplay).toBe(true);
     expect(after.mayRecord).toBe(true);
+  });
+});
+
+describe('updateDomainPathRulesFile', () => {
+  let tmpRoot: string;
+
+  beforeEach(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-dpr-update-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('keeps a dashboard enable and a concurrent discovery key', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+    });
+
+    await Promise.all([
+      updateDomainPathRulesFile(tmpRoot, 'default', (rules) => {
+        const next = { ...rules };
+        next['api.example.com'] = { recordResponses: true, autoMock: true };
+        return next;
+      }),
+      updateDomainPathRulesFile(tmpRoot, 'default', (rules) => {
+        return mergeDomainPathRuleUpserts(rules, {
+          'api.example.com/v1': { recordResponses: false, autoMock: false },
+        }).rules;
+      }),
+    ]);
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com/v1']).toBeDefined();
+  });
+
+  it('waits for an existing lockfile before writing', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+    });
+    const filePath = path.join(tmpRoot, 'default', 'domain-path-rules.json');
+    const lockPath = `${filePath}.lock`;
+    fs.writeFileSync(lockPath, 'held\n', { flag: 'wx' });
+
+    let finished = false;
+    const pending = updateDomainPathRulesFile(tmpRoot, 'default', (rules) => {
+      const next = { ...rules };
+      next['api.example.com'] = { recordResponses: true, autoMock: true };
+      return next;
+    }).then((result) => {
+      finished = true;
+      return result;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(finished).toBe(false);
+    expect(readDomainPathRulesFile(tmpRoot, 'default')['api.example.com'].recordResponses).toBe(
+      false
+    );
+
+    fs.unlinkSync(lockPath);
+    await pending;
+    expect(finished).toBe(true);
+    expect(readDomainPathRulesFile(tmpRoot, 'default')['api.example.com'].recordResponses).toBe(
+      true
+    );
+  });
+
+  it('does not replace a corrupt rules file with an empty map', async () => {
+    const scenarioPath = path.join(tmpRoot, 'default');
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    const filePath = path.join(scenarioPath, 'domain-path-rules.json');
+    const corrupt = '{ not-json';
+    fs.writeFileSync(filePath, corrupt, 'utf-8');
+
+    await expect(
+      updateDomainPathRulesFile(tmpRoot, 'default', (rules) => {
+        rules['api.example.com'] = { recordResponses: true, autoMock: true };
+        return rules;
+      })
+    ).rejects.toThrow(/Failed to parse domain-path-rules\.json/);
+
+    expect(fs.readFileSync(filePath, 'utf-8')).toBe(corrupt);
   });
 });
 

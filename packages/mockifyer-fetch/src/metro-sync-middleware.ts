@@ -27,7 +27,7 @@ import {
   mergeDomainPathRuleUpserts,
   parseDomainPathRules,
   readDomainPathRulesFile,
-  writeDomainPathRulesFile,
+  updateDomainPathRulesFile,
   type DomainPathRulesMap,
   containsMockifyerSyncEndpointMarker,
 } from '@sgedda/mockifyer-core';
@@ -749,34 +749,53 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
         body += chunk.toString();
       });
       req.on('end', () => {
-        try {
-          const parsed = JSON.parse(body) as {
-            scenario?: string;
-            upserts?: DomainPathRulesMap;
-            rules?: DomainPathRulesMap;
-          };
-          const scenarioName =
-            typeof parsed.scenario === 'string' && parsed.scenario.trim() !== ''
-              ? parsed.scenario.trim()
-              : getCurrentScenario(mockDataPath);
-          const upserts = parseDomainPathRules(parsed.upserts ?? parsed.rules ?? {});
-          const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
-          const { rules, changed } = mergeDomainPathRuleUpserts(existing, upserts);
-          if (changed) {
-            writeDomainPathRulesFile(mockDataPath, scenarioName, rules);
+        void (async () => {
+          try {
+            let parsed: {
+              scenario?: string;
+              upserts?: DomainPathRulesMap;
+              rules?: DomainPathRulesMap;
+            };
+            try {
+              parsed = JSON.parse(body) as {
+                scenario?: string;
+                upserts?: DomainPathRulesMap;
+                rules?: DomainPathRulesMap;
+              };
+            } catch (error) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  success: false,
+                  error: `Invalid JSON: ${(error as Error).message}`,
+                })
+              );
+              return;
+            }
+            const scenarioName =
+              typeof parsed.scenario === 'string' && parsed.scenario.trim() !== ''
+                ? parsed.scenario.trim()
+                : getCurrentScenario(mockDataPath);
+            const upserts = parseDomainPathRules(parsed.upserts ?? parsed.rules ?? {});
+            const { rules, changed } = await updateDomainPathRulesFile(
+              mockDataPath,
+              scenarioName,
+              (existing) => mergeDomainPathRuleUpserts(existing, upserts).rules
+            );
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, changed, scenario: scenarioName, rules }));
+          } catch (error) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                success: false,
+                error: (error as Error).message,
+              })
+            );
           }
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ success: true, changed, scenario: scenarioName, rules }));
-        } catch (error) {
-          res.statusCode = 400;
-          res.setHeader('Content-Type', 'application/json');
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: `Invalid JSON: ${(error as Error).message}`,
-            })
-          );
-        }
+        })();
       });
       return;
     }

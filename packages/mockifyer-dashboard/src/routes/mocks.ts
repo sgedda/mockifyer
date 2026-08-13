@@ -40,6 +40,7 @@ import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
   writeDomainPathRulesFile,
+  updateDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
 
 const router = express.Router();
@@ -741,17 +742,20 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
     let rules: DomainPathRulesMap;
 
     if (!isCentralizedDashboardProvider(config.provider)) {
-      rules = readDomainPathRulesFile(dataPath, scenarioName);
       const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '');
-      if (normalizedRule === null) {
-        delete rules[normalizedPath];
-      } else {
-        rules[normalizedPath] = {
-          ...normalizedRule,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      writeDomainPathRulesFile(dataPath, scenarioName, rules);
+      const updated = await updateDomainPathRulesFile(dataPath, scenarioName, (current) => {
+        const next = { ...current };
+        if (normalizedRule === null) {
+          delete next[normalizedPath];
+        } else {
+          next[normalizedPath] = {
+            ...normalizedRule,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return next;
+      });
+      rules = updated.rules;
       return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
     }
 

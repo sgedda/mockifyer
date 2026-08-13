@@ -350,17 +350,14 @@ export class DomainPathRulesSession {
   private async persistUpserts(upsertMap: DomainPathRulesMap, scenario: string): Promise<void> {
     if (this.useFs) {
       try {
-        const {
-          readDomainPathRulesFile,
-          writeDomainPathRulesFile,
-        } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
-        const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
-        const merged = mergeDomainPathRuleUpserts(onDisk, upsertMap);
-        if (merged.changed) {
-          writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged.rules);
-        }
+        const { updateDomainPathRulesFile } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+        const { rules } = await updateDomainPathRulesFile(
+          this.config.mockDataPath,
+          scenario,
+          (onDisk) => mergeDomainPathRuleUpserts(onDisk, upsertMap).rules
+        );
         if (this.scenarioName() === scenario) {
-          this.rules = merged.rules;
+          this.rules = rules;
           this.rulesScenario = scenario;
           this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
           this.rulesHydrated = true;
