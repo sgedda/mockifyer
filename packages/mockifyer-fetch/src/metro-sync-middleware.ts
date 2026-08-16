@@ -58,7 +58,32 @@ export interface MetroSyncMiddlewareOptions {
 
 const DEFAULT_SCENARIO = 'default';
 
+/** Scenario folder names must be single path segments (no traversal / separators). */
+const SAFE_SCENARIO_NAME = /^[a-zA-Z0-9_-]+$/;
+
 let autoSyncInterval: NodeJS.Timeout | null = null;
+
+function isSafeScenarioName(name: string): boolean {
+  return SAFE_SCENARIO_NAME.test(name);
+}
+
+/**
+ * Request-supplied scenario names must be a single safe segment.
+ * Missing/empty values fall back to the active scenario (from env / scenario-config).
+ */
+function resolveRequestScenarioName(
+  raw: string | null | undefined,
+  mockDataPath: string
+): { ok: true; scenario: string } | { ok: false } {
+  if (typeof raw !== 'string' || raw.trim() === '') {
+    return { ok: true, scenario: getCurrentScenario(mockDataPath) };
+  }
+  const scenario = raw.trim();
+  if (!isSafeScenarioName(scenario)) {
+    return { ok: false };
+  }
+  return { ok: true, scenario };
+}
 
 function getMockFilePathLocal(mockData: MockData, dateStr: string): { dir: string; filename: string } {
   const url = mockData.request.url || '';
@@ -336,7 +361,7 @@ function saveProxyMirrorMockToProject(
   scenarioName: string,
   relativePath: string,
   testConfig: TestGenerationOptions | null
-): { success: boolean; filename?: string; scenario?: string; error?: string } {
+): { success: boolean; filename?: string; scenario?: string; error?: string; code?: string } {
   try {
     const url = mockData?.request?.url || '';
     if (containsMockifyerSyncEndpointMarker(url)) {
@@ -351,19 +376,20 @@ function saveProxyMirrorMockToProject(
     if (!id) {
       return { success: false, error: 'scenarioName is required' };
     }
-    const normalized = relativePath.replace(/\\/g, '/').replace(/^\//, '');
-    if (!normalized) {
-      return { success: false, error: 'relativePath is required' };
+    if (!isSafeScenarioName(id)) {
+      return { success: false, error: 'Invalid scenarioName', code: 'INVALID_PATH' };
     }
     const scenarioPath = getScenarioPath(id, mockDataPath);
-    fs.mkdirSync(scenarioPath, { recursive: true });
-    const filePath = path.join(scenarioPath, normalized);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+    const resolved = resolveScenarioRelativeMockPath(relativePath, scenarioPath);
+    if (!resolved) {
+      return { success: false, error: 'Invalid relativePath', code: 'INVALID_PATH' };
+    }
+    fs.mkdirSync(path.dirname(resolved.fullPath), { recursive: true });
+    fs.writeFileSync(resolved.fullPath, JSON.stringify(mockData, null, 2));
     if (testConfig) {
       generateTestForMock(mockData, testConfig, projectRoot);
     }
-    return { success: true, filename: normalized, scenario: id };
+    return { success: true, filename: resolved.relativePath, scenario: id };
   } catch (error) {
     console.error(`[MockSync] ❌ Error saving proxy mirror mock:`, error);
     return { success: false, error: (error as Error).message };
@@ -731,11 +757,14 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const qIndex = fullUrl.indexOf('?');
       const query = qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '';
       const params = new URLSearchParams(query);
-      const scenarioParam = params.get('scenario');
-      const scenarioName =
-        scenarioParam && scenarioParam.trim() !== ''
-          ? scenarioParam.trim()
-          : getCurrentScenario(mockDataPath);
+      const resolvedScenario = resolveRequestScenarioName(params.get('scenario'), mockDataPath);
+      if (!resolvedScenario.ok) {
+        res.statusCode = 400;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ success: false, error: 'Invalid scenario name' }));
+        return;
+      }
+      const scenarioName = resolvedScenario.scenario;
       const rules = readDomainPathRulesFile(mockDataPath, scenarioName);
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ success: true, scenario: scenarioName, rules }));
@@ -755,10 +784,14 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             upserts?: DomainPathRulesMap;
             rules?: DomainPathRulesMap;
           };
-          const scenarioName =
-            typeof parsed.scenario === 'string' && parsed.scenario.trim() !== ''
-              ? parsed.scenario.trim()
-              : getCurrentScenario(mockDataPath);
+          const resolvedScenario = resolveRequestScenarioName(parsed.scenario, mockDataPath);
+          if (!resolvedScenario.ok) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Invalid scenario name' }));
+            return;
+          }
+          const scenarioName = resolvedScenario.scenario;
           const upserts = parseDomainPathRules(parsed.upserts ?? parsed.rules ?? {});
           const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
           const { rules, changed } = mergeDomainPathRuleUpserts(existing, upserts);
@@ -808,6 +841,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
               relativePath,
               testConfig
             );
+            if (result.code === 'INVALID_PATH') {
+              res.statusCode = 400;
+            }
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(result));
             return;
