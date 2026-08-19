@@ -30,6 +30,7 @@ import {
   writeDomainPathRulesFile,
   type DomainPathRulesMap,
   containsMockifyerSyncEndpointMarker,
+  parseScenarioName,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -108,8 +109,9 @@ function getMockFilePathLocal(mockData: MockData, dateStr: string): { dir: strin
  */
 function getCurrentScenario(mockDataPath: string): string {
   // Check environment variable first
-  if (process.env.MOCKIFYER_SCENARIO) {
-    return process.env.MOCKIFYER_SCENARIO;
+  const fromEnv = parseScenarioName(process.env.MOCKIFYER_SCENARIO);
+  if (fromEnv) {
+    return fromEnv;
   }
 
   // Try to load from scenario-config.json
@@ -118,8 +120,9 @@ function getCurrentScenario(mockDataPath: string): string {
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
       const config = JSON.parse(fileContent);
-      if (config.currentScenario) {
-        return config.currentScenario;
+      const fromFile = parseScenarioName(config.currentScenario);
+      if (fromFile) {
+        return fromFile;
       }
     }
   } catch (error) {
@@ -133,8 +136,8 @@ function getCurrentScenario(mockDataPath: string): string {
  * Get scenario folder path
  */
 function getScenarioPath(scenario: string, mockDataPath: string): string {
-  // Always create scenario subfolder, even for 'default'
-  return path.join(mockDataPath, scenario);
+  const parsed = parseScenarioName(scenario) ?? DEFAULT_SCENARIO;
+  return path.join(mockDataPath, parsed);
 }
 
 
@@ -916,43 +919,13 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     // Handle GET endpoint for scenario config
     if (url === '/mockifyer-scenario-config' && req.method === 'GET') {
       try {
-        // Check environment variable first (highest priority)
-        if (process.env.MOCKIFYER_SCENARIO) {
-          logger.info(`[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${process.env.MOCKIFYER_SCENARIO}`);
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ 
-            success: true, 
-            currentScenario: process.env.MOCKIFYER_SCENARIO 
-          }));
-          return;
-        }
-        
-        const configPath = path.join(mockDataPath, 'scenario-config.json');
-        const resolvedPath = path.resolve(configPath);
-        logger.info(`[MetroSyncMiddleware] Reading scenario config from: ${resolvedPath}`);
-        logger.info(`[MetroSyncMiddleware] mockDataPath: ${mockDataPath}, projectRoot: ${projectRoot}`);
-        
-        if (fs.existsSync(configPath)) {
-          const fileContent = fs.readFileSync(configPath, 'utf-8');
-          logger.info(`[MetroSyncMiddleware] File content: ${fileContent}`);
-          const config = JSON.parse(fileContent);
-          const scenario = config.currentScenario || DEFAULT_SCENARIO;
-          logger.info(`[MetroSyncMiddleware] Found scenario in config: ${scenario} (from file: ${JSON.stringify(config)})`);
-          
-          res.setHeader('Content-Type', 'application/json');
-          // Return format expected by ExpoFileSystemProvider: { success: true, currentScenario: ... }
-          res.end(JSON.stringify({ 
-            success: true, 
-            currentScenario: scenario 
-          }));
-        } else {
-          logger.info(`[MetroSyncMiddleware] Config file not found at ${resolvedPath}, returning default scenario`);
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ 
-            success: true, 
-            currentScenario: DEFAULT_SCENARIO 
-          }));
-        }
+        const scenario = getCurrentScenario(mockDataPath);
+        logger.info(`[MetroSyncMiddleware] GET /mockifyer-scenario-config → ${scenario}`);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          success: true,
+          currentScenario: scenario,
+        }));
       } catch (error) {
         logger.error(`[MetroSyncMiddleware] Error reading scenario config:`, error);
         res.statusCode = 500;
@@ -971,8 +944,21 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       req.on('end', () => {
         try {
           const config = JSON.parse(body);
+          const parsedScenario = parseScenarioName(config?.currentScenario);
+          if (config?.currentScenario != null && config.currentScenario !== '' && !parsedScenario) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              success: false,
+              error: 'Invalid scenario name. Use only letters, numbers, hyphens, and underscores.',
+            }));
+            return;
+          }
+          const toWrite = parsedScenario
+            ? { ...config, currentScenario: parsedScenario }
+            : config;
           const configPath = path.join(mockDataPath, 'scenario-config.json');
-          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          fs.writeFileSync(configPath, JSON.stringify(toWrite, null, 2));
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ success: true }));
         } catch (error) {
