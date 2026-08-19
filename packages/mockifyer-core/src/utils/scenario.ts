@@ -17,6 +17,7 @@ try {
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
+const SCENARIO_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
@@ -25,6 +26,31 @@ export function assertNotReservedScenarioName(scenarioName: string): void {
   if (scenarioName.trim() === POOL_DIR_NAME) {
     throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
   }
+}
+
+/**
+ * True when a scenario name is safe to join under `mockDataPath` (no path traversal / separators).
+ */
+export function isValidScenarioName(scenarioName: string): boolean {
+  return SCENARIO_NAME_PATTERN.test(scenarioName);
+}
+
+/**
+ * Parse and validate a scenario name from untrusted input (API body, query, env, config files).
+ * Returns null when the value is missing/invalid or reserved.
+ */
+export function parseScenarioName(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || !isValidScenarioName(trimmed)) {
+    return null;
+  }
+  if (trimmed === POOL_DIR_NAME) {
+    return null;
+  }
+  return trimmed;
 }
 
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
@@ -45,8 +71,13 @@ export function setScenarioLaunchOverride(scenario: string | null | undefined): 
     scenarioLaunchOverride = null;
     return;
   }
-  assertNotReservedScenarioName(trimmed);
-  scenarioLaunchOverride = trimmed;
+  const parsed = parseScenarioName(trimmed);
+  if (!parsed) {
+    throw new Error(
+      `Invalid scenario name: "${trimmed}". Use only letters, numbers, hyphens, and underscores.`
+    );
+  }
+  scenarioLaunchOverride = parsed;
 }
 
 /**
@@ -150,23 +181,25 @@ function configDefaultScenarioName(): string | undefined {
  */
 export function getCurrentScenario(mockDataPath?: string, clientId?: string): string {
   if (scenarioLaunchOverride) {
-    return scenarioLaunchOverride;
+    return parseScenarioName(scenarioLaunchOverride) ?? DEFAULT_SCENARIO;
   }
 
   // Check environment variable
   const envScenario = process.env[ENV_VARS.MOCK_SCENARIO];
-  if (envScenario != null && String(envScenario).trim() !== '') {
-    return String(envScenario).trim();
+  const parsedEnv = parseScenarioName(envScenario);
+  if (parsedEnv) {
+    return parsedEnv;
   }
 
-  const configScenario = configDefaultScenarioName();
-  if (configScenario) {
-    return configScenario;
+  const parsedConfig = parseScenarioName(configDefaultScenarioName());
+  if (parsedConfig) {
+    return parsedConfig;
   }
 
   const fileConfig = loadScenarioConfigFromFile(mockDataPath || currentConfig?.mockDataPath, clientId);
-  if (fileConfig?.currentScenario) {
-    return fileConfig.currentScenario;
+  const parsedFile = parseScenarioName(fileConfig?.currentScenario);
+  if (parsedFile) {
+    return parsedFile;
   }
 
   return DEFAULT_SCENARIO;
@@ -176,7 +209,8 @@ export function getCurrentScenario(mockDataPath?: string, clientId?: string): st
  * Get the scenario folder path for a given scenario name
  */
 export function getScenarioFolderPath(mockDataPath: string, scenario?: string): string {
-  const scenarioName = scenario || getCurrentScenario(mockDataPath);
+  const scenarioName =
+    parseScenarioName(scenario) ?? parseScenarioName(getCurrentScenario(mockDataPath)) ?? DEFAULT_SCENARIO;
   return joinPath(mockDataPath, scenarioName);
 }
 
@@ -251,16 +285,12 @@ export function listScenarios(mockDataPath: string): string[] {
  * Create a new scenario (creates folder)
  */
 export function createScenario(mockDataPath: string, scenarioName: string): void {
-  if (!scenarioName || scenarioName.trim() === '') {
-    throw new Error('Scenario name cannot be empty');
+  const sanitized = parseScenarioName(scenarioName);
+  if (!sanitized) {
+    throw new Error(
+      `Invalid scenario name: "${String(scenarioName ?? '')}". Use only letters, numbers, hyphens, and underscores.`
+    );
   }
-
-  // Validate scenario name (must be safe for filesystem)
-  const sanitized = scenarioName.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (sanitized !== scenarioName.trim()) {
-    throw new Error(`Invalid scenario name: "${scenarioName}". Use only letters, numbers, hyphens, and underscores.`);
-  }
-  assertNotReservedScenarioName(sanitized);
 
   // Check max scenarios limit (only if limit is set via env var)
   const MAX_SCENARIOS = process.env.MOCKIFYER_MAX_SCENARIOS 
@@ -316,11 +346,16 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
     return;
   }
 
-  assertNotReservedScenarioName(scenario);
+  const parsed = parseScenarioName(scenario);
+  if (!parsed) {
+    throw new Error(
+      `Invalid scenario name: "${scenario}". Use only letters, numbers, hyphens, and underscores.`
+    );
+  }
 
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {
-    currentScenario: scenario,
+    currentScenario: parsed,
     updatedAt: new Date().toISOString()
   };
   
