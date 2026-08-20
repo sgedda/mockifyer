@@ -101,6 +101,7 @@ import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/pr
 
 import { FetchHTTPClient } from './clients/fetch-client';
 import { bodyInitForFetchResponse } from './utils/fetch-response-body';
+import { resolvePatchedFetchRequest } from './utils/resolve-patched-fetch-request';
 
 class MockifyerClass {
   private config: MockifyerConfig;
@@ -1651,9 +1652,6 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
     
     global.fetch = async function(input: string | Request | URL, init?: RequestInit): Promise<Response> {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-      const method = init?.method || 'GET';
-      const headers = init?.headers || {};
-      const body = init?.body;
       
       // Skip Mockifyer sync endpoints, dashboard `/api/proxy` plumbing, and Resend API
       if (
@@ -1663,17 +1661,20 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       ) {
         return await originalFetchForPatched(input, init);
       }
+
+      const resolved = await resolvePatchedFetchRequest(input, init);
+      const method = resolved.method;
       
-      const simpleRequestKey = `${method}:${url}`;
+      const simpleRequestKey = `${method}:${resolved.url}`;
       const isProcessing = (mockifyerInstance as any).processingRequests?.has(simpleRequestKey);
       if (isProcessing) {
         return await originalFetchForPatched(input, init);
       }
       
       let params: Record<string, string> | undefined = undefined;
-      let baseUrl = url;
+      let baseUrl = resolved.url;
       try {
-        const urlObj = new URL(url);
+        const urlObj = new URL(resolved.url);
         if (urlObj.search) {
           params = {};
           urlObj.searchParams.forEach((value, key) => {
@@ -1686,26 +1687,13 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         // URL parsing failed, use URL as-is
       }
       
-      let headersObj: Record<string, string> = {};
-      if (headers instanceof Headers) {
-        headers.forEach((value, key) => {
-          headersObj[key] = value;
-        });
-      } else if (Array.isArray(headers)) {
-        headers.forEach(([key, value]) => {
-          headersObj[key] = value;
-        });
-      } else {
-        headersObj = headers as Record<string, string>;
-      }
-      
       try {
         const requestConfig = {
           url: baseUrl,
           method: method as any,
-          headers: headersObj,
+          headers: resolved.headers,
           params: params,
-          data: body ? (typeof body === 'string' ? (body.startsWith('{') || body.startsWith('[') ? JSON.parse(body) : body) : body) : undefined
+          data: resolved.body
         };
         
         const response = await httpClient.request(requestConfig);
