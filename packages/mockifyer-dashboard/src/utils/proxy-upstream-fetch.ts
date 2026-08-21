@@ -1,3 +1,4 @@
+import { omitProxyUpstreamRequestHeaders } from '@sgedda/mockifyer-core';
 import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici';
 import { wrapProxyUpstreamFetchError } from './proxy-upstream-error';
 import { rewriteEmulatorLoopbackUrl } from './rewrite-emulator-loopback-url';
@@ -78,7 +79,13 @@ export async function fetchProxyUpstream(
 ): Promise<Response> {
   const undiciInit: UndiciRequestInit = {
     method: init.method,
+<<<<<<< HEAD
     headers: toUndiciHeaderRecord(init.headers),
+=======
+    headers: omitProxyUpstreamRequestHeaders(
+      init.headers as Record<string, unknown> | Array<[string, unknown]> | undefined
+    ),
+>>>>>>> fb0979c (fix(dashboard): drop stale Content-Length on proxy upstream)
     body: init.body as UndiciRequestInit['body'],
     redirect: init.redirect,
     signal: init.signal,

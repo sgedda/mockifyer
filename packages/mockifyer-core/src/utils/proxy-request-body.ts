@@ -9,3 +9,8 @@ export {
   buildProxyUpstreamBodyInit,
   type ProxyUpstreamBodyInit,
 } from './build-proxy-upstream-body-init';
+export {
+  isOmittedProxyUpstreamRequestHeader,
+  omitProxyUpstreamRequestHeaders,
+  type ProxyUpstreamHeaderInput,
+} from './proxy-upstream-headers';
