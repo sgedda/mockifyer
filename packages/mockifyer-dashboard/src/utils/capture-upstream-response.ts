@@ -1,4 +1,9 @@
-import { MOCKIFYER_CLIENT_ID_HEADER, type MockData, type StoredRequest } from '@sgedda/mockifyer-core';
+import {
+  MOCKIFYER_CLIENT_ID_HEADER,
+  isOmittedProxyUpstreamRequestHeader,
+  type MockData,
+  type StoredRequest,
+} from '@sgedda/mockifyer-core';
 
 export interface UpstreamCaptureResult {
   response: MockData['response'];
@@ -13,8 +18,8 @@ export async function fetchUpstreamResponse(
   const upstreamHeaders = new Headers();
   const src = request.headers ?? {};
   for (const [k, v] of Object.entries(src)) {
-    if (k.toLowerCase() === 'host') continue;
     if (v === undefined || v === null) continue;
+    if (isOmittedProxyUpstreamRequestHeader(k)) continue;
     upstreamHeaders.set(k, String(v));
   }
   if (options?.clientId?.trim()) {

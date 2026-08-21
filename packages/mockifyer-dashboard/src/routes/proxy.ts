@@ -29,6 +29,7 @@ import {
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
   createServeTimePoolResponseLoader,
+  isOmittedProxyUpstreamRequestHeader,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -68,6 +69,13 @@ function toRecordStringHeaders(headers: unknown): Record<string, string> {
     out[k] = String(v);
   }
   return out;
+}
+
+function copySanitizedUpstreamHeaders(target: Headers, source: Record<string, string>): void {
+  for (const [k, v] of Object.entries(source)) {
+    if (isOmittedProxyUpstreamRequestHeader(k)) continue;
+    target.set(k, v);
+  }
 }
 
 function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
@@ -212,10 +220,7 @@ router.post('/', async (req: Request, res: Response) => {
         });
       }
       const upstreamHeaders = new Headers();
-      for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copySanitizedUpstreamHeaders(upstreamHeaders, toRecordStringHeaders(headers));
       if (clientId) {
         upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
       }
@@ -233,10 +238,7 @@ router.post('/', async (req: Request, res: Response) => {
         method: upperMethod,
         headers: upstreamHeaders,
       };
-      for (const [k, v] of Object.entries(upstreamBody.headers)) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copySanitizedUpstreamHeaders(upstreamHeaders, upstreamBody.headers);
       if (upstreamBody.body !== undefined) {
         init.body = upstreamBody.body as RequestInit['body'];
       }
@@ -436,10 +438,7 @@ router.post('/', async (req: Request, res: Response) => {
       });
     }
     const upstreamHeaders = new Headers();
-    for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copySanitizedUpstreamHeaders(upstreamHeaders, toRecordStringHeaders(headers));
     if (clientId) {
       upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
@@ -454,10 +453,7 @@ router.post('/', async (req: Request, res: Response) => {
       method: upperMethod,
       headers: upstreamHeaders,
     };
-    for (const [k, v] of Object.entries(upstreamBody.headers)) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copySanitizedUpstreamHeaders(upstreamHeaders, upstreamBody.headers);
     if (upstreamBody.body !== undefined) {
       init.body = upstreamBody.body as RequestInit['body'];
     }
