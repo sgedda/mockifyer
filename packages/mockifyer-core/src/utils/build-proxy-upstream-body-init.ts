@@ -1,4 +1,5 @@
 import { isProxySerializedBody } from './proxy-request-body-types';
+import { omitProxyUpstreamRequestHeaders } from './proxy-upstream-headers';
 
 export interface ProxyUpstreamBodyInit {
   body?: string | Buffer;
@@ -15,7 +16,7 @@ export function buildProxyUpstreamBodyInit(
   method: string
 ): ProxyUpstreamBodyInit {
   const upperMethod = method.toUpperCase();
-  const upstreamHeaders = { ...headers };
+  const upstreamHeaders = omitProxyUpstreamRequestHeaders(headers);
 
   if (upperMethod === 'GET' || upperMethod === 'HEAD' || body === undefined || body === null) {
     return { headers: upstreamHeaders };

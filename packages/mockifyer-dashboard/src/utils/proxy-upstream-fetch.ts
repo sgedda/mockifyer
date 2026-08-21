@@ -1,3 +1,4 @@
+import { omitProxyUpstreamRequestHeaders } from '@sgedda/mockifyer-core';
 import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici';
 
 let insecureDispatcher: Agent | undefined;
@@ -25,7 +26,9 @@ export async function fetchProxyUpstream(
 ): Promise<Response> {
   const undiciInit: UndiciRequestInit = {
     method: init.method,
-    headers: init.headers as UndiciRequestInit['headers'],
+    headers: omitProxyUpstreamRequestHeaders(
+      init.headers as Record<string, unknown> | Array<[string, unknown]> | undefined
+    ),
     body: init.body as UndiciRequestInit['body'],
     redirect: init.redirect,
     signal: init.signal,

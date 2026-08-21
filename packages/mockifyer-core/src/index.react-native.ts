@@ -40,6 +40,10 @@ export * from './utils/join-proxy-dashboard-api-url';
 export * from './utils/dashboard-central-proxy-health';
 export * from './utils/dashboard-proxy-envelope';
 export * from './utils/proxy-request-body-types';
+export {
+  isOmittedProxyUpstreamRequestHeader,
+  omitProxyUpstreamRequestHeaders,
+} from './utils/proxy-upstream-headers';
 export { serializeProxyRequestBody } from './utils/serialize-proxy-request-body';
 export * from './utils/perform-dashboard-proxy-request';
 export * from './utils/apply-proxy-record-on-miss-env';

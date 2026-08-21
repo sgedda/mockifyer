@@ -39,6 +39,30 @@ describe('fetchProxyUpstream', () => {
     expect(init.dispatcher).toBeUndefined();
   });
 
+  it('strips stale content-length before calling undici', async () => {
+    await fetchProxyUpstream(
+      'http://127.0.0.1:3132/oauth/token',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'content-length': '4096',
+          authorization: 'Bearer x',
+        },
+        body: 'grant_type=client_credentials&client_id=app',
+      },
+      false
+    );
+
+    const [, init] = undiciFetchMock.mock.calls[0] as [
+      string,
+      { headers?: Record<string, string> },
+    ];
+    expect(init.headers?.['content-length']).toBeUndefined();
+    expect(init.headers?.authorization).toBe('Bearer x');
+    expect(init.headers?.['content-type']).toBe('application/x-www-form-urlencoded');
+  });
+
   it('uses undici fetch with insecure dispatcher when tlsInsecure is true', async () => {
     await fetchProxyUpstream('https://internal.example/api', { method: 'POST', body: '{}' }, true);
 
