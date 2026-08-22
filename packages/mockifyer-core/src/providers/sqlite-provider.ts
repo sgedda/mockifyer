@@ -1,7 +1,7 @@
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
-import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { CachedMockData, generateRequestKey, isEligibleSimilarMatch } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
 /**
@@ -212,7 +212,10 @@ export class SQLiteProvider implements DatabaseProvider {
           filePath: this.dbPath
         };
       })
-      .filter((cached) => !mockPassesThroughToRealApi(cached.mockData));
+      .filter((cached) =>
+        isEligibleSimilarMatch(request, cached.mockData.request) &&
+        !mockPassesThroughToRealApi(cached.mockData)
+      );
   }
 
   exists(requestKey: string): boolean {

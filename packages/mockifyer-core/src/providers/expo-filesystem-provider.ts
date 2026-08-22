@@ -1,7 +1,7 @@
 import { MockData, StoredRequest, ENV_VARS } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
-import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { CachedMockData, generateRequestKey, isEligibleSimilarMatch } from '../utils/mock-matcher';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { logger } from '../utils/logger';
@@ -801,26 +801,15 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           continue;
         }
 
-        // Check if path and method match
-        try {
-          const requestUrl = new URL(request.url);
-          const mockUrl = new URL(mockData.request.url);
-          const requestPath = requestUrl.pathname;
-          const mockPath = mockUrl.pathname;
-
-          if (mockPath === requestPath &&
-              (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            if (!mockPassesThroughToRealApi(mockData)) {
-              results.push({
-                mockData,
-                filename: file,
-                filePath: filePath
-              });
-            }
-          }
-        } catch (e) {
-          // Invalid URL, skip
+        if (!isEligibleSimilarMatch(request, mockData.request)) {
           continue;
+        }
+        if (!mockPassesThroughToRealApi(mockData)) {
+          results.push({
+            mockData,
+            filename: file,
+            filePath: filePath
+          });
         }
       } catch (error) {
         logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);

@@ -3,7 +3,7 @@ import path from 'path';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
-import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { CachedMockData, generateRequestKey, isEligibleSimilarMatch } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
 import { getCurrentDate } from '../utils/date';
@@ -177,17 +177,11 @@ export class FilesystemProvider implements DatabaseProvider {
           continue;
         }
 
-        try {
-          const requestUrl = new URL(request.url);
-          const mockUrl = new URL(mockData.request.url);
-          if (mockUrl.pathname === requestUrl.pathname &&
-              (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            if (!mockPassesThroughToRealApi(mockData)) {
-              results.push({ mockData, filename: path.relative(scenarioPath, filePath), filePath });
-            }
-          }
-        } catch (e) {
+        if (!isEligibleSimilarMatch(request, mockData.request)) {
           continue;
+        }
+        if (!mockPassesThroughToRealApi(mockData)) {
+          results.push({ mockData, filename: path.relative(scenarioPath, filePath), filePath });
         }
       } catch (error) {
         console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
