@@ -78,6 +78,7 @@ import {
   applyOutboundRequestCorrelation,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
+  selectEligibleSimilarMatch,
   type RequestCorrelationContext,
   DomainPathRulesSession,
   installNodeInboundRequestCorrelationCapture,
@@ -512,13 +513,10 @@ class MockifyerClass {
       return exactMatch;
     }
 
-    // Try similar match if enabled
+    // Try similar match if enabled. GraphQL must stay exact-only (query + variables).
     if (this.config.useSimilarMatch) {
       const similarMatches = await this.databaseProvider.findAllForSimilarMatch(request);
-      if (similarMatches && similarMatches.length > 0) {
-        // Return first similar match
-        return similarMatches[0];
-      }
+      return selectEligibleSimilarMatch(request, similarMatches ?? []);
     }
 
     return undefined;

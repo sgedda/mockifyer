@@ -217,6 +217,41 @@ export function doRequiredParamsMatch(
 }
 
 /**
+ * True when path+method similar matching may consider this request/mock pair.
+ * GraphQL must never similar-match: different query/variables are different mocks.
+ */
+export function isEligibleSimilarMatch(request: StoredRequest, mockRequest: StoredRequest): boolean {
+  if (isGraphQLRequest(request) || isGraphQLRequest(mockRequest)) {
+    return false;
+  }
+
+  try {
+    const requestPath = new URL(request.url).pathname;
+    const mockPath = new URL(mockRequest.url).pathname;
+    return (
+      requestPath === mockPath &&
+      (request.method || 'GET').toUpperCase() === (mockRequest.method || 'GET').toUpperCase()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * First similar-match candidate that is safe to serve (never a GraphQL stand-in).
+ * Used by database-provider matching, which previously returned `similarMatches[0]`.
+ */
+export function selectEligibleSimilarMatch(
+  request: StoredRequest,
+  similarMatches: CachedMockData[]
+): CachedMockData | undefined {
+  if (isGraphQLRequest(request)) {
+    return undefined;
+  }
+  return similarMatches.find((candidate) => isEligibleSimilarMatch(request, candidate.mockData.request));
+}
+
+/**
  * Checks if a request is a GraphQL request based on its body data
  */
 export function isGraphQLRequest(request: StoredRequest): boolean {
@@ -280,54 +315,28 @@ export function findBestMatchingMock(
   // If no exact match and useSimilarMatch is true, try to find a similar match
   // (This only applies to non-GraphQL requests)
   if (config.useSimilarMatch) {
-    let requestPath: string;
-    try {
-      const requestUrl = new URL(request.url);
-      requestPath = requestUrl.pathname;
-    } catch (e) {
-      return undefined;
-    }
-    
-    // Find first matching path and method
     for (const [, cachedMock] of mockCache.entries()) {
       const mockData = cachedMock.mockData;
 
       if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
         continue;
       }
-      
-      // Skip GraphQL mocks when doing similar matching
-      if (isGraphQLRequest(mockData.request)) {
+
+      if (!isEligibleSimilarMatch(request, mockData.request)) {
         continue;
       }
-      
-      let mockPath: string;
-      try {
-        const mockUrl = new URL(mockData.request.url);
-        mockPath = mockUrl.pathname;
-      } catch (e) {
-        continue;
-      }
-      
-      // Check if path and method match
-      if (mockPath === requestPath && 
-          (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-        
-        // If ignoreAllQueryParams is set, skip query param checking entirely
-        if (config.similarMatchIgnoreAllQueryParams) {
-          return cachedMock;
-        }
-        
-        // Check if required parameters match (if configured)
-        if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
-          if (!doRequiredParamsMatch(request, mockData.request, config.similarMatchRequiredParams)) {
-            // Required parameter differs, skip this mock
-            continue;
-          }
-        }
-        
+
+      if (config.similarMatchIgnoreAllQueryParams) {
         return cachedMock;
       }
+
+      if (config.similarMatchRequiredParams && config.similarMatchRequiredParams.length > 0) {
+        if (!doRequiredParamsMatch(request, mockData.request, config.similarMatchRequiredParams)) {
+          continue;
+        }
+      }
+
+      return cachedMock;
     }
   }
 

@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
-import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { CachedMockData, generateRequestKey, isEligibleSimilarMatch } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario } from '../utils/scenario';
 import { logger } from '../utils/logger';
@@ -152,10 +152,6 @@ export class RedisProvider implements DatabaseProvider {
   async findAllForSimilarMatch(request: StoredRequest): Promise<CachedMockData[]> {
     const results: CachedMockData[] = [];
     try {
-      const requestUrl = new URL(request.url);
-      const requestPath = requestUrl.pathname;
-      const requestMethod = (request.method || 'GET').toUpperCase();
-
       const scenarioIndex = await this.indexKey();
       const client = await this.redis();
       const members = await client.smembers(scenarioIndex);
@@ -171,20 +167,18 @@ export class RedisProvider implements DatabaseProvider {
         if (!raw) continue;
         try {
           const mockData = JSON.parse(raw) as MockData;
-          const mockUrl = new URL(mockData.request.url);
-          const mockPath = mockUrl.pathname;
-          const mockMethod = (mockData.request.method || 'GET').toUpperCase();
-          if (mockPath === requestPath && mockMethod === requestMethod) {
-            if (mockPassesThroughToRealApi(mockData)) {
-              continue;
-            }
-            const h = members[i];
-            results.push({
-              mockData,
-              filename: `redis_${h.slice(0, 16)}.json`,
-              filePath: `redis://${keys[i]}`,
-            });
+          if (!isEligibleSimilarMatch(request, mockData.request)) {
+            continue;
           }
+          if (mockPassesThroughToRealApi(mockData)) {
+            continue;
+          }
+          const h = members[i];
+          results.push({
+            mockData,
+            filename: `redis_${h.slice(0, 16)}.json`,
+            filePath: `redis://${keys[i]}`,
+          });
         } catch {
           continue;
         }

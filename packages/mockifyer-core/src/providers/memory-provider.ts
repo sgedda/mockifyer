@@ -1,7 +1,7 @@
 import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
-import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { CachedMockData, generateRequestKey, isEligibleSimilarMatch } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 
 /**
@@ -54,35 +54,19 @@ export class MemoryProvider implements DatabaseProvider {
 
   findAllForSimilarMatch(request: StoredRequest): CachedMockData[] {
     const results: CachedMockData[] = [];
-    
-    try {
-      const requestUrl = new URL(request.url);
-      const requestPath = requestUrl.pathname;
-      const requestMethod = (request.method || 'GET').toUpperCase();
 
-      for (const [key, mockData] of this.mocks.entries()) {
-        try {
-          const mockUrl = new URL(mockData.request.url);
-          const mockPath = mockUrl.pathname;
-          const mockMethod = (mockData.request.method || 'GET').toUpperCase();
-          
-          if (mockPath === requestPath && mockMethod === requestMethod) {
-            if (!mockPassesThroughToRealApi(mockData)) {
-              results.push({
-                mockData,
-                filename: `memory_${key.substring(0, 50)}.json`,
-                filePath: 'memory://'
-              });
-            }
-          }
-        } catch (e) {
-          // Invalid URL, skip
-          continue;
-        }
+    for (const [key, mockData] of this.mocks.entries()) {
+      if (!isEligibleSimilarMatch(request, mockData.request)) {
+        continue;
       }
-    } catch (e) {
-      // Invalid request URL, return empty
-      return [];
+      if (mockPassesThroughToRealApi(mockData)) {
+        continue;
+      }
+      results.push({
+        mockData,
+        filename: `memory_${key.substring(0, 50)}.json`,
+        filePath: 'memory://'
+      });
     }
 
     // Sort by timestamp descending (most recent first)

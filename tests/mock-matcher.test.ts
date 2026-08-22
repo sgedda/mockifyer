@@ -4,6 +4,8 @@ import {
   isSimilarPathMatch,
   doRequiredParamsMatch,
   findBestMatchingMock,
+  isEligibleSimilarMatch,
+  selectEligibleSimilarMatch,
   CachedMockData,
   MockMatchingConfig
 } from '@sgedda/mockifyer-core';
@@ -823,6 +825,56 @@ describe('mock-matcher', () => {
 
       const result = findBestMatchingMock(request, mockCache, { useSimilarMatch: true });
       expect(result).toBeUndefined(); // Should NOT match even though URL and method match
+    });
+  });
+
+  describe('provider similar-match GraphQL guard', () => {
+    const graphqlRequest = (query: string, variables: Record<string, unknown>): StoredRequest => ({
+      method: 'POST',
+      url: 'https://api.example.com/graphql',
+      headers: {},
+      queryParams: {},
+      data: { query, variables },
+    });
+
+    const cached = (request: StoredRequest, data: unknown): CachedMockData => ({
+      mockData: {
+        request,
+        response: { status: 200, data, headers: {} },
+        timestamp: new Date().toISOString(),
+      },
+      filename: 'test.json',
+      filePath: '/test/test.json',
+    });
+
+    it('rejects GraphQL request/mock pairs even when path and method match', () => {
+      const getUser = graphqlRequest('query { user { id } }', {});
+      const getPosts = graphqlRequest('query { posts { id } }', {});
+      expect(isEligibleSimilarMatch(getPosts, getUser)).toBe(false);
+    });
+
+    it('still allows REST similar matches on the same path', () => {
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/users?page=2',
+        headers: {},
+        queryParams: { page: '2' },
+      };
+      const mock: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/users?page=1',
+        headers: {},
+        queryParams: { page: '1' },
+      };
+      expect(isEligibleSimilarMatch(request, mock)).toBe(true);
+    });
+
+    it('does not serve another GraphQL operation as similarMatches[0]', () => {
+      const getUser = graphqlRequest('query { user { id } }', {});
+      const getPosts = graphqlRequest('query { posts { id } }', {});
+      const wrongMock = cached(getUser, { data: { user: { id: '1' } } });
+
+      expect(selectEligibleSimilarMatch(getPosts, [wrongMock])).toBeUndefined();
     });
   });
 });
