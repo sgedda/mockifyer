@@ -1,7 +1,22 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getCurrentScenario, resetScenario } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, parseScenarioName, resetScenario } from '@sgedda/mockifyer-core';
+
+describe('parseScenarioName', () => {
+  it('accepts single-segment names and trims whitespace', () => {
+    expect(parseScenarioName('  check-in_open  ')).toBe('check-in_open');
+  });
+
+  it('rejects path traversal, separators, reserved pool, and empty values', () => {
+    expect(parseScenarioName('..')).toBeNull();
+    expect(parseScenarioName('../escape')).toBeNull();
+    expect(parseScenarioName('foo/bar')).toBeNull();
+    expect(parseScenarioName('pool')).toBeNull();
+    expect(parseScenarioName('')).toBeNull();
+    expect(parseScenarioName(null)).toBeNull();
+  });
+});
 
 describe('client-specific scenario config', () => {
   let tmp: string;

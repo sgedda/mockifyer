@@ -4,6 +4,7 @@ import {
   applyCapturedResponse,
   getScenarioFolderPath,
   mockHasCapturableResponse,
+  parseScenarioName,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
@@ -51,6 +52,20 @@ function needsResponseCapture(mockData: MockData): boolean {
   return !mockHasCapturableResponse(mockData);
 }
 
+/**
+ * Reject `..` / separators so bulk walks cannot escape `mock-data/<scenario>/`.
+ */
+function requireSafeScenarioName(raw: string): string {
+  const parsed = parseScenarioName(raw);
+  if (!parsed) {
+    const shown = typeof raw === 'string' ? raw.trim() : '';
+    throw new Error(
+      `Invalid scenario name: "${shown}". Use only letters, numbers, hyphens, and underscores.`
+    );
+  }
+  return parsed;
+}
+
 export async function bulkSetLiveApiForDomain(opts: {
   provider: 'filesystem' | 'sqlite' | 'redis';
   mockDataPath: string;
@@ -61,7 +76,7 @@ export async function bulkSetLiveApiForDomain(opts: {
   keyPrefix?: string;
   redisCluster?: boolean;
 }): Promise<BulkLiveApiResult> {
-  const scenarioName = opts.scenario.trim();
+  const scenarioName = requireSafeScenarioName(opts.scenario);
   const prefix = opts.domainPath.trim();
   let updated = 0;
   let skippedPending = 0;
@@ -136,7 +151,7 @@ export async function bulkCaptureResponsesForDomain(opts: {
   keyPrefix?: string;
   redisCluster?: boolean;
 }): Promise<BulkCaptureResponsesResult> {
-  const scenarioName = opts.scenario.trim();
+  const scenarioName = requireSafeScenarioName(opts.scenario);
   const prefix = opts.domainPath.trim();
   let captured = 0;
   let skippedAlready = 0;

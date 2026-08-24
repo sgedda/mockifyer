@@ -19,6 +19,7 @@ import {
   copyArrayItemInResponseData,
   type MockResponseFieldOverride,
   isScenarioLockedFs,
+  parseScenarioName,
   validatePoolRef,
   setResponseDataValueAtPath,
   type PoolRef,
@@ -1331,6 +1332,12 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
     if (typeof scenario !== 'string' || !scenario.trim()) {
       return res.status(400).json({ error: 'scenario is required' });
     }
+    const scenarioName = parseScenarioName(scenario);
+    if (!scenarioName) {
+      return res.status(400).json({
+        error: `Invalid scenario name: "${scenario.trim()}". Use only letters, numbers, hyphens, and underscores.`,
+      });
+    }
     if (typeof domainPath !== 'string' || !domainPath.trim()) {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
     }
@@ -1341,7 +1348,7 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
     const result = await bulkSetLiveApiForDomain({
       provider: config.provider,
       mockDataPath,
-      scenario: scenario.trim(),
+      scenario: scenarioName,
       domainPath: domainPath.trim(),
       useLiveApi,
       redisUrl: config.redisUrl,
@@ -1363,6 +1370,12 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
     if (typeof scenario !== 'string' || !scenario.trim()) {
       return res.status(400).json({ error: 'scenario is required' });
     }
+    const scenarioName = parseScenarioName(scenario);
+    if (!scenarioName) {
+      return res.status(400).json({
+        error: `Invalid scenario name: "${scenario.trim()}". Use only letters, numbers, hyphens, and underscores.`,
+      });
+    }
     if (typeof domainPath !== 'string' || !domainPath.trim()) {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
     }
@@ -1373,7 +1386,7 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
     const result = await bulkCaptureResponsesForDomain({
       provider: config.provider,
       mockDataPath,
-      scenario: scenario.trim(),
+      scenario: scenarioName,
       domainPath: domainPath.trim(),
       clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
       redisUrl: config.redisUrl,
