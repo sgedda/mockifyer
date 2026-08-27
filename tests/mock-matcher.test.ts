@@ -75,6 +75,56 @@ describe('mock-matcher', () => {
       expect(key).toContain('|body:');
     });
 
+    it('should not treat object `query` bodies as GraphQL (avoids [object Object] collisions)', () => {
+      const request1: StoredRequest = {
+        method: 'POST',
+        url: 'https://es.example.com/products/_search',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: { match: { name: 'apple' } },
+          size: 10,
+        },
+      };
+
+      const request2: StoredRequest = {
+        method: 'POST',
+        url: 'https://es.example.com/products/_search',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: { match: { name: 'orange' } },
+          size: 10,
+        },
+      };
+
+      const key1 = generateRequestKey(request1);
+      const key2 = generateRequestKey(request2);
+
+      expect(key1).not.toBe(key2);
+      expect(key1).not.toContain('gql:');
+      expect(key2).not.toContain('gql:');
+      expect(key1).not.toContain('[object Object]');
+      expect(key2).not.toContain('[object Object]');
+    });
+
+    it('should still use GraphQL keys when `query` is a document string', () => {
+      const request: StoredRequest = {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        queryParams: {},
+        data: {
+          query: 'query { users { id } }',
+          variables: { page: 1 },
+        },
+      };
+
+      const key = generateRequestKey(request);
+      expect(key).toContain('|body:gql:');
+      expect(key).toContain('vars:');
+    });
+
     it('should generate different keys for GraphQL queries with different queries', () => {
       const request1: StoredRequest = {
         method: 'POST',
