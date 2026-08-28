@@ -86,6 +86,10 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
   toNetworkLogBodyPreview,
   getInlineTraceEnvelopeBusinessBody,
+  configureFlightRecorder,
+  resolveFlightRecorderConfig,
+  setFlightRecorderRuntimeContext,
+  resolveActiveMockifyerSessionId,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -108,6 +112,19 @@ class MockifyerClass {
   private databaseProvider?: DatabaseProvider;
   private databaseProviderInitPromise?: Promise<void>;
   private readonly domainPathRules: DomainPathRulesSession;
+
+  /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
+  private getRuntimeSessionId(): string {
+    return resolveActiveMockifyerSessionId(() => {
+      const now = Date.now();
+      if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
+        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = now;
+        setFlightRecorderRuntimeContext({ sessionId: this.currentSessionId });
+      }
+      return this.currentSessionId;
+    });
+  }
 
   private usesDashboardProxy(): boolean {
     const baseUrl = this.config.proxy?.baseUrl;
@@ -186,6 +203,8 @@ class MockifyerClass {
       config: this.config,
       scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
       clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      responseBody: businessResponseBody,
       event: {
         ...eventPartial,
         transport: eventPartial.transport ?? 'axios',
@@ -325,6 +344,11 @@ class MockifyerClass {
 
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+    configureFlightRecorder(resolveFlightRecorderConfig(this.config));
+    setFlightRecorderRuntimeContext({
+      clientId: this.config.clientId,
+      scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+    });
     if (this.activationMode !== 'always') {
       logger.info(`[Mockifyer] activationMode: ${this.activationMode}`);
     }

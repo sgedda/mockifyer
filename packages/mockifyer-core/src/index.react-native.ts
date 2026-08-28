@@ -53,4 +53,7 @@ export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';
 export * from './utils/network-log';
 export * from './utils/network-trace';
+export * from './utils/flight-recorder';
+export * from './utils/response-shape';
+export * from './utils/incidents';
 // ai-context uses Node Buffer.byteLength — import from main entry on Node only.

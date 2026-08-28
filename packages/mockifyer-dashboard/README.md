@@ -177,11 +177,36 @@ For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (option
 
 Hops are collected **in-process** for that request (no dashboard Network storage required). Optional **`X-Mockifyer-Include-Trace-Bodies: 1`** adds truncated body previews. Do not send these headers on real consumer traffic.
 
+### Response sidecar (production-safe trace lookup)
+
+For normal app traffic, prefer reading trace ids from the **response sidecar** ([PR #333](https://github.com/sgedda/mockifyer/pull/333)) instead of wrapping JSON bodies:
+
+```typescript
+const res = await client.get('/api/foo');
+res.data;                 // upstream payload — unchanged
+res.mockifyerTrace;       // { requestId, parentRequestId? } when correlation headers or proxy envelope provide ids
+```
+
+Axios and fetch clients populate `mockifyerTrace` from `X-Mockifyer-*` response headers or dashboard `/api/proxy` JSON. Accidental `{ data, mockifyerTrace }` wrappers are stripped before `data` reaches app code or mock recordings.
+
+Use `res.mockifyerTrace?.requestId` with `/api/network-events/trace?requestId=…` **after** the request completes — no need to opt into inline body wrapping or change parsers.
+
+See [docs/architecture/debugging-and-incidents.md](../../docs/architecture/debugging-and-incidents.md) for crash forensics and soft-failure debugging direction.
+
 `requestId` on `/trace` matches a logged hop **or** a virtual root id (only referenced as `parentRequestId` on downstream hops).
 
 Response shape: `trace.hops[]` ordered **root-first** (caller → callee). Each hop has `method`, `url`, `status`, `source`, and optional `request` / `response` with `body` previews. `trace.incomplete` is `true` when a parent or child is outside the loaded log window.
 
 Requires network logging (in-memory for filesystem provider; persistent for `redis` / `sqlite`). Multi-service linking requires Mockifyer correlation headers on outbound calls (automatic when using `setupMockifyer` in each service).
+
+### Explain incident (crash forensics)
+
+```bash
+curl -s 'http://localhost:3002/api/network-events/explain?incidentId=EV_ID&scenario=default' | jq .
+# Or by session: ?sessionId=sess-…&windowMs=60000
+```
+
+Returns `{ context: { incident, hops[], suspects[] }, narrative }`. Incidents are posted via `reportIncident()` / `MockifyerErrorBoundary` or appear as `kind: "incident"` rows in the Network tab.
 
 ## MCP (Cursor / Claude Desktop)
 

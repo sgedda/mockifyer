@@ -192,12 +192,18 @@ export type NetworkEventSource =
   | 'blocked'
   | 'error'
 
-export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy'
+export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy' | 'app'
+
+export type TimelineEventKind = 'network' | 'incident'
+
+export type IncidentType = 'error_boundary' | 'unhandledrejection' | 'uncaught_exception'
 
 export interface NetworkEvent {
   id: string
   timestamp: string
   scenario: string
+  kind?: TimelineEventKind
+  incidentType?: IncidentType
   clientId?: string | null
   deviceId?: string | null
   sessionId?: string | null
@@ -215,11 +221,16 @@ export interface NetworkEvent {
   durationMs?: number
   source: NetworkEventSource
   requestHash?: string
+  matchMode?: 'exact' | 'similar' | 'passthrough' | 'upstream'
+  responseShape?: string
+  anomalyFlags?: string[]
   requestHeaders?: Record<string, string>
   responseHeaders?: Record<string, string>
   requestBodyPreview?: string
   responseBodyPreview?: string
   errorMessage?: string
+  stackPreview?: string
+  componentStackPreview?: string
 }
 
 export interface NetworkLogConfig {

@@ -78,6 +78,10 @@ import {
   applyOutboundRequestCorrelation,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
+  configureFlightRecorder,
+  resolveFlightRecorderConfig,
+  setFlightRecorderRuntimeContext,
+  resolveActiveMockifyerSessionId,
   type RequestCorrelationContext,
   DomainPathRulesSession,
   installNodeInboundRequestCorrelationCapture,
@@ -123,6 +127,19 @@ class MockifyerClass {
   private readonly poolResponseCache = new Map<string, PoolResponseItem>();
   private readonly domainPathRules: DomainPathRulesSession;
 
+  /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
+  private getRuntimeSessionId(): string {
+    return resolveActiveMockifyerSessionId(() => {
+      const now = Date.now();
+      if (!this.currentSessionId || now - this.sessionStartTime > this.SESSION_TIMEOUT_MS) {
+        this.currentSessionId = `session-${now}-${Math.random().toString(36).substring(2, 11)}`;
+        this.sessionStartTime = now;
+        setFlightRecorderRuntimeContext({ sessionId: this.currentSessionId });
+      }
+      return this.currentSessionId;
+    });
+  }
+
   /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
   private logNetworkEvent(
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
@@ -162,6 +179,8 @@ class MockifyerClass {
       config: this.config,
       scenario,
       clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      responseBody: businessResponseBody,
       event: {
         ...eventPartial,
         transport: eventPartial.transport ?? 'fetch',
@@ -372,6 +391,11 @@ class MockifyerClass {
     }
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+    configureFlightRecorder(resolveFlightRecorderConfig(this.config));
+    setFlightRecorderRuntimeContext({
+      clientId: this.config.clientId,
+      scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+    });
 
     if (this.config.proxy?.baseUrl && this.config.proxy.mirrorRecordedMocksToClient === undefined) {
       const raw =

@@ -237,6 +237,17 @@ export interface MockifyerConfig {
     dashboardBaseUrl?: string;
     /** When true, include truncated request/response body previews in events. */
     captureBodies?: boolean;
+    /** In-process ring buffer for crash forensics (works without dashboard URL). */
+    flightRecorder?: {
+      enabled?: boolean;
+      maxEvents?: number;
+      maxIncidents?: number;
+    };
+    /** App crash / ErrorBoundary incidents posted to dashboard network log. */
+    incidents?: {
+      enabled?: boolean;
+      postToDashboard?: boolean;
+    };
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.

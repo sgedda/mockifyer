@@ -448,6 +448,45 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_explain_incident',
+    {
+      description:
+        'Explain a crash or app incident with preceding network hops and heuristic suspects (weird 200s, GraphQL errors, mock misses).',
+      inputSchema: {
+        incidentId: z.string().optional().describe('Dashboard incident row id from network log'),
+        sessionId: z.string().optional().describe('Session id when incidentId is unknown'),
+        clientId: z.string().optional().describe('Client lane filter'),
+        at: z.string().optional().describe('ISO timestamp anchor (defaults to latest incident)'),
+        windowMs: z.number().int().min(1000).max(600_000).optional().describe('Lookback window in ms (default 60000)'),
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5000)
+          .optional()
+          .describe('Max network events to scan'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.explainIncident({
+          incidentId: args.incidentId,
+          sessionId: args.sessionId,
+          clientId: args.clientId,
+          at: args.at,
+          windowMs: args.windowMs,
+          scenario: args.scenario,
+          limit: args.limit,
+        });
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_get_network_log_config',
     {
       description:
