@@ -2,10 +2,6 @@ import {
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
 } from './request-correlation';
-import {
-  getInlineTraceEnvelopeBusinessBody,
-  isInlineTraceEnvelope,
-} from './inline-trace';
 
 /** Runtime trace ids for dashboard `/api/network-events/trace` lookup — never part of API payloads. */
 export interface MockifyerTraceMeta {
@@ -73,16 +69,23 @@ function isGraphqlEnvelope(body: Record<string, unknown>): boolean {
   return 'data' in body && ('errors' in body || 'extensions' in body);
 }
 
-/** `{ data, mockifyerTrace }` with trace ids only (not a full inline hop list). */
+/** `{ data, mockifyerTrace }` with trace ids only (not inline hop list envelopes). */
 function isSimpleTraceIdEnvelope(body: Record<string, unknown>): boolean {
   const keys = Object.keys(body);
-  return (
-    keys.length > 0 &&
-    keys.every((key) => key === 'data' || key === 'mockifyerTrace') &&
-    'data' in body &&
-    'mockifyerTrace' in body &&
-    !isInlineTraceEnvelope(body)
-  );
+  if (
+    keys.length === 0 ||
+    !keys.every((key) => key === 'data' || key === 'mockifyerTrace') ||
+    !('data' in body) ||
+    !('mockifyerTrace' in body)
+  ) {
+    return false;
+  }
+  const trace = body.mockifyerTrace;
+  if (!isPlainObject(trace)) {
+    return false;
+  }
+  // Full inline-trace envelopes carry hops[] — leave those to unwrapAndMergeInlineTraceEnvelope.
+  return !Array.isArray(trace.hops);
 }
 
 /**
@@ -92,10 +95,6 @@ function isSimpleTraceIdEnvelope(body: Record<string, unknown>): boolean {
 export function stripMockifyerTraceFromBody<T>(body: T): T {
   if (!isPlainObject(body)) {
     return body;
-  }
-
-  if (isInlineTraceEnvelope(body)) {
-    return stripMockifyerTraceFromBody(getInlineTraceEnvelopeBusinessBody(body)) as T;
   }
 
   if (isSimpleTraceIdEnvelope(body)) {
@@ -118,6 +117,12 @@ export function stripMockifyerTraceFromBody<T>(body: T): T {
   }
 
   if (!('mockifyerTrace' in body)) {
+    return body as T;
+  }
+
+  const traceField = body.mockifyerTrace;
+  if (isPlainObject(traceField) && Array.isArray(traceField.hops)) {
+    // Inline-trace envelope — only unwrapAndMergeInlineTraceEnvelope mutates this.
     return body as T;
   }
 
