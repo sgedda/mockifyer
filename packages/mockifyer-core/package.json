@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.34",
+  "version": "1.10.39",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -50,6 +50,10 @@
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
       "default": "./dist/utils/fixture-pool/runtime-cache.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
     }
   },
   "bin": {
@@ -77,10 +81,14 @@
   "license": "MIT",
   "peerDependencies": {
     "ioredis": ">=5.0.0",
+    "react": ">=17.0.0",
     "react-native-launch-arguments": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "ioredis": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     },
     "react-native-launch-arguments": {
@@ -89,7 +97,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "@types/react": "^18.3.12",
     "ioredis": "^5.6.1",
+    "react": "^18.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },

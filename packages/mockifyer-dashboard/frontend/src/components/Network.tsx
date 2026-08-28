@@ -330,6 +330,7 @@ export default function Network({ scenario }: NetworkProps) {
             ) : (
               <div className="max-h-[32rem] overflow-auto divide-y divide-border">
                 {filtered.map((ev) => {
+                  const isIncident = ev.kind === 'incident'
                   const depth = chainDepth(ev, chainMaps.byRequestId)
                   const isRoot = isChainRoot(ev)
                   const hasChildren = hasChainChildren(ev, chainMaps.childrenByParent)
@@ -339,15 +340,21 @@ export default function Network({ scenario }: NetworkProps) {
                     type="button"
                     className={`w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors ${
                       selected?.id === ev.id ? 'bg-accent' : ''
-                    }`}
+                    } ${isIncident ? 'border-l-2 border-destructive' : ''}`}
                     style={{ paddingLeft: `${12 + Math.min(depth, 4) * 12}px` }}
                     onClick={() => setSelectedId(ev.id)}
                   >
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-semibold w-12">{ev.method}</span>
-                      <Badge variant={SOURCE_VARIANT[ev.source]} className="text-[10px]">
-                        {SOURCE_LABELS[ev.source]}
-                      </Badge>
+                      <span className="font-mono text-xs font-semibold w-12">{isIncident ? 'ERR' : ev.method}</span>
+                      {isIncident ? (
+                        <Badge variant="destructive" className="text-[10px]">
+                          incident
+                        </Badge>
+                      ) : (
+                        <Badge variant={SOURCE_VARIANT[ev.source]} className="text-[10px]">
+                          {SOURCE_LABELS[ev.source]}
+                        </Badge>
+                      )}
                       {isRoot && hasChildren && (
                         <Badge variant="outline" className="text-[10px]">
                           chain root
@@ -367,8 +374,13 @@ export default function Network({ scenario }: NetworkProps) {
                       <span className="text-[10px] text-muted-foreground ml-auto">{ev.transport}</span>
                     </div>
                     <div className="font-mono text-xs truncate text-muted-foreground mt-0.5">
-                      {ev.path || ev.url}
+                      {isIncident ? ev.errorMessage || ev.url : ev.path || ev.url}
                     </div>
+                    {ev.anomalyFlags?.length ? (
+                      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                        ⚠ {ev.anomalyFlags.join(', ')}
+                      </div>
+                    ) : null}
                     {ev.clientId && (
                       <div className="text-[10px] text-muted-foreground mt-0.5">lane: {ev.clientId}</div>
                     )}
@@ -429,6 +441,21 @@ export default function Network({ scenario }: NetworkProps) {
                 )}
                 {selected.errorMessage && (
                   <DetailRow label="Error" value={selected.errorMessage} />
+                )}
+                {selected.kind === 'incident' && selected.incidentType && (
+                  <DetailRow label="Incident type" value={selected.incidentType} />
+                )}
+                {selected.stackPreview && (
+                  <PreviewBlock title="Stack" text={selected.stackPreview} />
+                )}
+                {selected.componentStackPreview && (
+                  <PreviewBlock title="Component stack" text={selected.componentStackPreview} />
+                )}
+                {selected.anomalyFlags?.length ? (
+                  <DetailRow label="Anomaly flags" value={selected.anomalyFlags.join(', ')} />
+                ) : null}
+                {selected.responseShape && (
+                  <DetailRow label="Response shape" value={selected.responseShape} mono />
                 )}
                 {selected.requestHeaders && Object.keys(selected.requestHeaders).length > 0 && (
                   <HeaderBlock title="Request headers" headers={selected.requestHeaders} />

@@ -1,46 +1,25 @@
 import { ENV_VARS, type MockifyerConfig } from '../types';
 import { randomEventId, sha256Hex, truncateUtf8, utf8ByteLength } from './crypto-digest';
+import {
+  configureFlightRecorder,
+  recordFlightNetworkEvent,
+  resolveFlightRecorderConfig,
+} from './flight-recorder';
+import {
+  detectResponseAnomalies,
+  responseShapeFingerprint,
+} from './response-shape';
 
-/** How the request was resolved (proxy / SDK). */
-export type NetworkEventSource =
-  | 'mock-hit'
-  | 'mock-miss'
-  | 'upstream'
-  | 'blocked'
-  | 'error';
-
-export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy';
-
-export type NetworkEventPhase = 'request_start' | 'request_end' | 'complete';
-
-/** Stored network log entry (dashboard ring buffer / SDK POST). */
-export interface NetworkEvent {
-  id: string;
-  timestamp: string;
-  scenario: string;
-  clientId?: string | null;
-  deviceId?: string | null;
-  sessionId?: string | null;
-  requestId?: string | null;
-  parentRequestId?: string | null;
-  sequence?: number;
-  phase?: NetworkEventPhase;
-  transport: NetworkEventTransport;
-  method: string;
-  url: string;
-  host?: string;
-  path?: string;
-  query?: string;
-  status?: number;
-  durationMs?: number;
-  source: NetworkEventSource;
-  requestHash?: string;
-  requestHeaders?: Record<string, string>;
-  responseHeaders?: Record<string, string>;
-  requestBodyPreview?: string;
-  responseBodyPreview?: string;
-  errorMessage?: string;
-}
+export type {
+  IncidentType,
+  MockMatchMode,
+  NetworkEvent,
+  NetworkEventPhase,
+  NetworkEventSource,
+  NetworkEventTransport,
+  TimelineEventKind,
+} from './network-event-types';
+import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
 
 export interface NetworkLogEmitterOptions {
   /** Dashboard origin + optional path prefix (same as `proxy.baseUrl`). */
@@ -236,12 +215,14 @@ export function joinDashboardNetworkEventsUrl(dashboardBaseUrl: string): string 
 }
 
 /**
- * Best-effort, non-blocking POST of a network event to the dashboard.
- * Never throws; safe to call from interceptors.
+ * Best-effort POST of a network event to the dashboard.
+ * Never throws; safe to call from interceptors. Callers may ignore the
+ * returned promise (fire-and-forget) or await it when they need the POST
+ * to finish before process exit.
  */
-export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): void {
+export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<void> {
   const base = options.dashboardBaseUrl?.trim();
-  if (!base) return;
+  if (!base) return Promise.resolve();
 
   const event = buildNetworkEvent(
     {
@@ -268,7 +249,7 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): void {
     }
   };
 
-  void post();
+  return post();
 }
 
 /** Stable hash prefix for correlating proxy rows (optional display). */
@@ -302,22 +283,57 @@ export interface EmitMockifyerNetworkEventParams {
   config: Pick<MockifyerConfig, 'networkLog' | 'proxy'>;
   scenario?: string;
   clientId?: string;
+  sessionId?: string;
   event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario' | 'transport'> & {
     transport?: NetworkEventTransport;
   };
+  /** Raw response body for shape / anomaly detection (not persisted unless captureBodies). */
+  responseBody?: unknown;
 }
 
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
 export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParams): void {
+  const recorderConfig = resolveFlightRecorderConfig(params.config);
+  configureFlightRecorder(recorderConfig);
+
+  const captureBodies = resolveNetworkLogCaptureBodies(params.config);
   const dashboardBaseUrl = resolveNetworkLogDashboardUrl(params.config);
-  if (!dashboardBaseUrl) return;
-  emitNetworkLogEvent({
-    dashboardBaseUrl,
-    captureBodies: resolveNetworkLogCaptureBodies(params.config),
-    event: {
+
+  const responseShape =
+    params.responseBody !== undefined ? responseShapeFingerprint(params.responseBody) : params.event.responseShape;
+
+  const anomalyFlags =
+    params.event.anomalyFlags ??
+    detectResponseAnomalies({
+      status: params.event.status,
+      source: params.event.source,
+      durationMs: params.event.durationMs,
+      responseBody: params.responseBody,
+    });
+
+  const built = buildNetworkEvent(
+    {
       ...params.event,
+      kind: params.event.kind ?? 'network',
       scenario: params.scenario ?? 'default',
       transport: params.event.transport ?? 'fetch',
+      sessionId: params.event.sessionId ?? params.sessionId ?? null,
+      clientId: params.event.clientId ?? params.clientId ?? null,
+      responseShape,
+      anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
     },
+    { captureBodies }
+  );
+
+  if (recorderConfig.enabled !== false) {
+    recordFlightNetworkEvent(built);
+  }
+
+  if (!dashboardBaseUrl) return;
+
+  emitNetworkLogEvent({
+    dashboardBaseUrl,
+    captureBodies,
+    event: built,
   });
 }

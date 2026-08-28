@@ -75,6 +75,7 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_get_endpoint_stats` | Endpoint / status / method aggregates |
 | `mockifyer_list_network_events` | Recent network log hops (find `requestId` / `eventId`) |
 | `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
+| `mockifyer_explain_incident` | Crash / incident context with preceding hops and heuristic suspects |
 | `mockifyer_get_network_log_config` | Whether network logging and body capture are enabled |
 | `mockifyer_list_entities` | List fixture-pool entities (filter by type/tag) |
 | `mockifyer_get_entity` / `mockifyer_create_entity` / `mockifyer_delete_entity` | Entity CRUD |

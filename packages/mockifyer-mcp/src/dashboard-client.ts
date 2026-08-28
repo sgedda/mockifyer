@@ -486,6 +486,39 @@ export class DashboardApiClient {
     return this.request<NetworkLogConfigResponse>(`/network-events/config${qs}`);
   }
 
+  async explainIncident(params: {
+    incidentId?: string;
+    sessionId?: string;
+    clientId?: string;
+    at?: string;
+    windowMs?: number;
+    scenario?: string;
+    limit?: number;
+  }): Promise<{
+    scenario: string;
+    context: unknown;
+    narrative: string;
+  }> {
+    const incidentId = params.incidentId?.trim() ?? '';
+    const sessionId = params.sessionId?.trim() ?? '';
+    if (!incidentId && !sessionId) {
+      throw new Error('Provide incidentId or sessionId');
+    }
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (incidentId) qs.set('incidentId', incidentId);
+    if (sessionId) qs.set('sessionId', sessionId);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    if (params.at) qs.set('at', params.at);
+    if (typeof params.windowMs === 'number' && Number.isFinite(params.windowMs)) {
+      qs.set('windowMs', String(params.windowMs));
+    }
+    if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    return this.request(`/network-events/explain?${qs.toString()}`);
+  }
+
   async listEntities(params?: {
     entityType?: string;
     tag?: string;
