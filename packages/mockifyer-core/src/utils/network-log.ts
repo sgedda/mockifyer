@@ -215,12 +215,14 @@ export function joinDashboardNetworkEventsUrl(dashboardBaseUrl: string): string 
 }
 
 /**
- * Best-effort, non-blocking POST of a network event to the dashboard.
- * Never throws; safe to call from interceptors.
+ * Best-effort POST of a network event to the dashboard.
+ * Never throws; safe to call from interceptors. Callers may ignore the
+ * returned promise (fire-and-forget) or await it when they need the POST
+ * to finish before process exit.
  */
-export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): void {
+export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<void> {
   const base = options.dashboardBaseUrl?.trim();
-  if (!base) return;
+  if (!base) return Promise.resolve();
 
   const event = buildNetworkEvent(
     {
@@ -247,7 +249,7 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): void {
     }
   };
 
-  void post();
+  return post();
 }
 
 /** Stable hash prefix for correlating proxy rows (optional display). */

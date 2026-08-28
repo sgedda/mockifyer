@@ -486,6 +486,12 @@ export interface InstallCrashHooksOptions extends ReportIncidentOptions {
   registerGlobals?: boolean;
 }
 
+/** Max wait for the incident POST before exiting after an uncaught exception. */
+const UNCAUGHT_EXIT_FLUSH_TIMEOUT_MS = 2000;
+
+/** Collapse process + DOM reports of the same rejection into one incident. */
+const CRASH_REPORT_DEDUPE_MS = 250;
+
 let hooksInstalled = false;
 let uninstallHooks: (() => void) | null = null;
 
@@ -496,18 +502,50 @@ export function installMockifyerCrashHooks(options: InstallCrashHooksOptions = {
   }
 
   const handlers: Array<() => void> = [];
+  let lastReportKey = '';
+  let lastReportAt = 0;
 
-  const report = (type: ReportIncidentInput['type'], error: unknown): void => {
+  /**
+   * Records locally always; POSTs to the dashboard when configured and returns a
+   * promise that settles when that POST finishes (or immediately if skipped).
+   */
+  const report = async (
+    type: ReportIncidentInput['type'],
+    error: unknown
+  ): Promise<void> => {
     try {
       const err = error instanceof Error ? error : new Error(String(error));
-      reportIncident(
+      const key = `${type}:${err.message}:${(err.stack ?? '').slice(0, 200)}`;
+      const now = Date.now();
+      if (key === lastReportKey && now - lastReportAt < CRASH_REPORT_DEDUPE_MS) {
+        return;
+      }
+      lastReportKey = key;
+      lastReportAt = now;
+
+      const event = reportIncident(
         {
           type,
           message: err.message || String(error),
           stack: err.stack,
         },
-        options
+        { ...options, postToDashboard: false }
       );
+
+      if (options.postToDashboard === false || !shouldPostIncident(options.config)) {
+        return;
+      }
+
+      const dashboardBaseUrl = resolveNetworkLogDashboardUrl(options.config ?? {});
+      if (!dashboardBaseUrl) {
+        return;
+      }
+
+      await emitNetworkLogEvent({
+        dashboardBaseUrl,
+        captureBodies: resolveNetworkLogCaptureBodies(options.config ?? {}),
+        event,
+      });
     } catch {
       // observability must never throw
     }
@@ -522,13 +560,29 @@ export function installMockifyerCrashHooks(options: InstallCrashHooksOptions = {
         onerror?: OnErrorEventHandler;
       };
 
+      // Register both when available. RN / Electron / jsdom often expose process.on
+      // while promise rejections still surface as globalThis `unhandledrejection`.
       if (typeof process !== 'undefined' && typeof process.on === 'function') {
         const onUnhandled = (reason: unknown): void => {
-          report('unhandledrejection', reason);
+          void report('unhandledrejection', reason);
         };
         const onUncaught = (error: Error): void => {
-          report('uncaught_exception', error);
-          process.exit(1);
+          void (async () => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                report('uncaught_exception', error),
+                new Promise<void>((resolve) => {
+                  timeoutId = setTimeout(resolve, UNCAUGHT_EXIT_FLUSH_TIMEOUT_MS);
+                }),
+              ]);
+            } finally {
+              if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+              }
+            }
+            process.exit(1);
+          })();
         };
         process.on('unhandledRejection', onUnhandled);
         process.on('uncaughtException', onUncaught);
@@ -536,10 +590,12 @@ export function installMockifyerCrashHooks(options: InstallCrashHooksOptions = {
           process.off('unhandledRejection', onUnhandled);
           process.off('uncaughtException', onUncaught);
         });
-      } else if (typeof g.addEventListener === 'function') {
+      }
+
+      if (typeof g.addEventListener === 'function') {
         const onRejection = (ev: Event): void => {
           const reason = (ev as PromiseRejectionEvent).reason;
-          report('unhandledrejection', reason);
+          void report('unhandledrejection', reason);
         };
         g.addEventListener('unhandledrejection', onRejection);
         handlers.push(() => g.removeEventListener?.('unhandledrejection', onRejection));
