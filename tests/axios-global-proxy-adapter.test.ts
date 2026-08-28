@@ -37,6 +37,9 @@ describe('dashboard proxy axios adapter', () => {
       axiosInstance = axios.create();
       fetchMock = jest.fn().mockResolvedValue({
         ok: true,
+        headers: {
+          forEach() {},
+        },
         json: async () => ({
           proxied: true,
           source: 'upstream',
@@ -54,6 +57,49 @@ describe('dashboard proxy axios adapter', () => {
     afterEach(() => {
       global.fetch = originalFetch;
       fs.rmSync(mockDataPath, { recursive: true, force: true });
+    });
+
+    it('exposes mockifyerTrace on the axios response (not config)', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        headers: {
+          forEach(cb: (value: string, key: string) => void) {
+            cb('req-proxy-hop', 'x-mockifyer-request-id');
+          },
+        },
+        json: async () => ({
+          proxied: true,
+          source: 'upstream',
+          requestId: 'req-proxy-hop',
+          parentRequestId: 'req-root',
+          response: {
+            status: 200,
+            data: { routed: true },
+            headers: { 'content-type': 'application/json' },
+          },
+        }),
+      });
+
+      setupMockifyer({
+        mockDataPath,
+        useGlobalAxios: true,
+        axiosInstance,
+        clientId: 'test-lane',
+        proxy: {
+          baseUrl: 'http://localhost:3002',
+          recordResponses: false,
+          strictLaneScenario: false,
+        },
+        databaseProvider: { type: 'memory' },
+      });
+
+      const response = await axiosInstance.get('https://api.example.com/items/1');
+
+      expect(response.data).toEqual({ routed: true });
+      expect(response).toMatchObject({
+        mockifyerTrace: { requestId: 'req-proxy-hop', parentRequestId: 'req-root' },
+      });
+      expect(response.config).not.toHaveProperty('mockifyerTrace');
     });
 
     it('routes global axios.get through dashboard /api/proxy', async () => {
@@ -237,6 +283,9 @@ describe('dashboard proxy axios adapter', () => {
     it('rejects non-2xx proxied responses per the default validateStatus (parity with built-in adapters)', async () => {
       fetchMock.mockResolvedValue({
         ok: true,
+        headers: {
+          forEach() {},
+        },
         json: async () => ({
           proxied: true,
           source: 'upstream',
@@ -271,6 +320,9 @@ describe('dashboard proxy axios adapter', () => {
     it('resolves a non-2xx proxied response when validateStatus permits it', async () => {
       fetchMock.mockResolvedValue({
         ok: true,
+        headers: {
+          forEach() {},
+        },
         json: async () => ({
           proxied: true,
           source: 'upstream',

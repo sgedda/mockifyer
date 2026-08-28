@@ -103,16 +103,34 @@ export function stripMockifyerTraceFromBody<T>(body: T): T {
 
   if (isGraphqlEnvelope(body)) {
     const extensions = body.extensions;
-    if (!isPlainObject(extensions) || !('mockifyerTrace' in extensions)) {
+    const hasExtensionsTrace =
+      isPlainObject(extensions) && 'mockifyerTrace' in extensions;
+    const hasTopLevelTrace = 'mockifyerTrace' in body;
+
+    if (!hasExtensionsTrace && !hasTopLevelTrace) {
       return body as T;
     }
-    const { mockifyerTrace: _removed, ...restExtensions } = extensions;
-    const next: Record<string, unknown> = { ...body };
-    if (Object.keys(restExtensions).length > 0) {
-      next.extensions = restExtensions;
-    } else {
-      delete next.extensions;
+
+    let next: Record<string, unknown> = { ...body };
+
+    if (hasExtensionsTrace) {
+      const { mockifyerTrace: _removed, ...restExtensions } = extensions;
+      if (Object.keys(restExtensions).length > 0) {
+        next.extensions = restExtensions;
+      } else {
+        delete next.extensions;
+      }
     }
+
+    if ('mockifyerTrace' in next) {
+      const traceField = next.mockifyerTrace;
+      if (isPlainObject(traceField) && Array.isArray(traceField.hops)) {
+        return next as T;
+      }
+      const { mockifyerTrace: _removed, ...rest } = next;
+      next = rest;
+    }
+
     return next as T;
   }
 

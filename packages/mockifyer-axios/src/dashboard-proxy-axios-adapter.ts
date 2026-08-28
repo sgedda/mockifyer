@@ -152,7 +152,7 @@ function httpResponseToAxiosResponse(
   }
 
   if (response.mockifyerTrace) {
-    (axiosResponse.config as HTTPRequestConfig & { mockifyerTrace?: unknown }).mockifyerTrace =
+    (axiosResponse as AxiosResponse & { mockifyerTrace?: unknown }).mockifyerTrace =
       response.mockifyerTrace;
   }
 

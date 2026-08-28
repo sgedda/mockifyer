@@ -62,4 +62,31 @@ describe('mockifyer-trace', () => {
       extensions: { other: true },
     });
   });
+
+  it('stripMockifyerTraceFromBody removes top-level mockifyerTrace from GraphQL errors envelopes', () => {
+    const body = {
+      data: null,
+      errors: [{ message: 'Not found' }],
+      mockifyerTrace: { requestId: 'req-gql-top' },
+    };
+    expect(stripMockifyerTraceFromBody(body)).toEqual({
+      data: null,
+      errors: [{ message: 'Not found' }],
+    });
+  });
+
+  it('stripMockifyerTraceFromBody removes both GraphQL trace locations when present', () => {
+    const body = {
+      data: { matchday: { id: 'md_1' } },
+      extensions: {
+        mockifyerTrace: { requestId: 'req-ext' },
+        other: true,
+      },
+      mockifyerTrace: { requestId: 'req-top' },
+    };
+    expect(stripMockifyerTraceFromBody(body)).toEqual({
+      data: { matchday: { id: 'md_1' } },
+      extensions: { other: true },
+    });
+  });
 });
