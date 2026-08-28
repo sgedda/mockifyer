@@ -1,4 +1,5 @@
 import type { MockData } from '../types';
+import type { MockifyerTraceMeta } from '../utils/mockifyer-trace';
 
 /** Payload from dashboard `/api/proxy` when a mock was persisted to Redis (optional client-side mirror). */
 export interface MockifyerProxyRecordingMeta {
@@ -25,6 +26,8 @@ export interface HTTPResponse<T = any> {
   headers: Record<string, string>;
   config: HTTPRequestConfig;
   mockifyerProxyRecording?: MockifyerProxyRecordingMeta;
+  /** Populated from response headers or dashboard proxy envelope; upstream body stays unchanged. */
+  mockifyerTrace?: MockifyerTraceMeta;
 }
 
 export interface HTTPClient<T = any, R = HTTPResponse<T>> {

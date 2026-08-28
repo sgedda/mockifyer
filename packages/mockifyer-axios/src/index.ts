@@ -63,6 +63,7 @@ import {
   DomainPathRulesSession,
   logger,
   setLogLevel,
+  stripMockifyerTraceFromBody,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -1758,7 +1759,7 @@ class MockifyerClass {
 
     const capturedResponse: StoredResponse = {
       status: response.status,
-      data: response.data,
+      data: stripMockifyerTraceFromBody(response.data),
       headers: (response.headers as Record<string, string>) || {},
     };
 
@@ -1993,7 +1994,7 @@ class MockifyerClass {
 
       const storedResponse: StoredResponse = {
         status: response.status,
-        data: response.data,
+        data: stripMockifyerTraceFromBody(response.data),
         headers: response.headers as Record<string, string>
       };
 

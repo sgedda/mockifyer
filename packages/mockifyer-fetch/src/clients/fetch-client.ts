@@ -8,6 +8,7 @@ import {
   getOutboundMockifyerDeviceIdHeader,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
+  resolveMockifyerTraceFromHeaders,
 } from '@sgedda/mockifyer-core';
 import { performDashboardProxyRequest } from '../core-proxy';
 
@@ -188,12 +189,15 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       responseHeaders[key] = value;
     });
 
+    const mockifyerTrace = resolveMockifyerTraceFromHeaders(responseHeaders);
+
     return {
       data,
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
       config,
+      ...(mockifyerTrace ? { mockifyerTrace } : {}),
     };
   }
 
