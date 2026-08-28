@@ -151,6 +151,11 @@ function httpResponseToAxiosResponse(
       response.mockifyerProxyRecording;
   }
 
+  if (response.mockifyerTrace) {
+    (axiosResponse.config as HTTPRequestConfig & { mockifyerTrace?: unknown }).mockifyerTrace =
+      response.mockifyerTrace;
+  }
+
   return axiosResponse;
 }
 

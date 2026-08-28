@@ -81,6 +81,7 @@ import {
   type RequestCorrelationContext,
   DomainPathRulesSession,
   installNodeInboundRequestCorrelationCapture,
+  stripMockifyerTraceFromBody,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -964,7 +965,7 @@ class MockifyerClass {
 
           const capturedResponse: StoredResponse = {
             status: response.status,
-            data: response.data,
+            data: stripMockifyerTraceFromBody(response.data),
             headers: (response.headers as Record<string, string>) || {},
           };
 
@@ -1247,7 +1248,7 @@ class MockifyerClass {
         },
         response: {
           status: response.status,
-          data: response.data,
+          data: stripMockifyerTraceFromBody(response.data),
           headers: response.headers || {},
         },
         timestamp: new Date().toISOString(),

@@ -9,6 +9,8 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_DEVICE_ID_HEADER,
   performDashboardProxyRequest,
+  resolveMockifyerTraceFromHeaders,
+  stripMockifyerTraceFromBody,
 } from '@sgedda/mockifyer-core';
 
 export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
@@ -177,12 +179,15 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       }
     }
 
+    const mockifyerTrace = resolveMockifyerTraceFromHeaders(headersOut);
+
     return {
-      data: response.data,
+      data: stripMockifyerTraceFromBody(response.data),
       status: response.status,
       statusText: response.statusText,
       headers: headersOut,
       config,
+      ...(mockifyerTrace ? { mockifyerTrace } : {}),
     };
   }
 

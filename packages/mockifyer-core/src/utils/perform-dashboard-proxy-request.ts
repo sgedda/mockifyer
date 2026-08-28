@@ -16,6 +16,10 @@ import {
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
+import {
+  resolveMockifyerTraceFromProxyPayload,
+  stripMockifyerTraceFromBody,
+} from './mockifyer-trace';
 import { logger } from './logger';
 
 const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
@@ -121,6 +125,10 @@ export async function performDashboardProxyRequest(
     throw new Error(`[${logTag}] Proxy error: ${proxyResponse.status} ${txt}`);
   }
   const payload = (await proxyResponse.json()) as Record<string, unknown>;
+  const outerProxyHeaders: Record<string, string> = {};
+  proxyResponse.headers.forEach((value: string, key: string) => {
+    outerProxyHeaders[key.toLowerCase()] = value;
+  });
   try {
     const source = String(payload?.source || '');
     const hash = typeof payload?.hash === 'string' ? payload.hash : '';
@@ -143,6 +151,12 @@ export async function performDashboardProxyRequest(
   let data = proxyResponseBody?.data;
   const status = proxyResponseBody?.status ?? 200;
   const responseHeaders: Record<string, string> = proxyResponseBody?.headers ?? {};
+
+  const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
+    payload,
+    outerProxyHeaders,
+    responseHeaders
+  );
 
   const scenarioResolution = payload?.scenarioResolution as { scenario?: string | null } | undefined;
   const scenarioName =
@@ -180,6 +194,7 @@ export async function performDashboardProxyRequest(
     });
   }
   data = unwrapAndMergeInlineTraceEnvelope(data);
+  data = stripMockifyerTraceFromBody(data);
 
   return {
     data,
@@ -188,5 +203,6 @@ export async function performDashboardProxyRequest(
     headers: responseHeaders,
     config,
     mockifyerProxyRecording,
+    ...(mockifyerTrace ? { mockifyerTrace } : {}),
   };
 }
