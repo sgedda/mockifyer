@@ -73,6 +73,18 @@ function isGraphqlEnvelope(body: Record<string, unknown>): boolean {
   return 'data' in body && ('errors' in body || 'extensions' in body);
 }
 
+/** `{ data, mockifyerTrace }` with trace ids only (not a full inline hop list). */
+function isSimpleTraceIdEnvelope(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  return (
+    keys.length > 0 &&
+    keys.every((key) => key === 'data' || key === 'mockifyerTrace') &&
+    'data' in body &&
+    'mockifyerTrace' in body &&
+    !isInlineTraceEnvelope(body)
+  );
+}
+
 /**
  * Removes accidental trace metadata from parsed bodies before returning to app code or persisting mocks.
  * Does not wrap or reshape valid API payloads.
@@ -84,6 +96,10 @@ export function stripMockifyerTraceFromBody<T>(body: T): T {
 
   if (isInlineTraceEnvelope(body)) {
     return stripMockifyerTraceFromBody(getInlineTraceEnvelopeBusinessBody(body)) as T;
+  }
+
+  if (isSimpleTraceIdEnvelope(body)) {
+    return stripMockifyerTraceFromBody(body.data) as T;
   }
 
   if (isGraphqlEnvelope(body)) {
