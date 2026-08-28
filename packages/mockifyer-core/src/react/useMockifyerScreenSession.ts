@@ -26,6 +26,14 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
       clientId: options.clientId,
       scenario: options.scenario,
     });
+
+    return () => {
+      setFlightRecorderRuntimeContext({
+        sessionId: undefined,
+        clientId: undefined,
+        scenario: undefined,
+      });
+    };
   }, [sessionId, options.clientId, options.scenario]);
 
   return sessionId;

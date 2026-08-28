@@ -435,11 +435,23 @@ export function reportIncident(
     sessionId: input.sessionId ?? options.sessionId ?? null,
   };
 
-  setFlightRecorderRuntimeContext({
-    scenario: enriched.scenario,
-    clientId: enriched.clientId ?? undefined,
-    sessionId: enriched.sessionId ?? undefined,
-  });
+  const contextUpdate: {
+    scenario?: string;
+    clientId?: string;
+    sessionId?: string;
+  } = {};
+  if (enriched.scenario !== undefined) {
+    contextUpdate.scenario = enriched.scenario;
+  }
+  if (enriched.clientId !== null && enriched.clientId !== undefined) {
+    contextUpdate.clientId = enriched.clientId;
+  }
+  if (enriched.sessionId !== null && enriched.sessionId !== undefined) {
+    contextUpdate.sessionId = enriched.sessionId;
+  }
+  if (Object.keys(contextUpdate).length > 0) {
+    setFlightRecorderRuntimeContext(contextUpdate);
+  }
 
   const event =
     recordFlightIncidentEvent(
@@ -510,21 +522,13 @@ export function installMockifyerCrashHooks(options: InstallCrashHooksOptions = {
         onerror?: OnErrorEventHandler;
       };
 
-      if (typeof g.addEventListener === 'function') {
-        const onRejection = (ev: Event): void => {
-          const reason = (ev as PromiseRejectionEvent).reason;
-          report('unhandledrejection', reason);
-        };
-        g.addEventListener('unhandledrejection', onRejection);
-        handlers.push(() => g.removeEventListener?.('unhandledrejection', onRejection));
-      }
-
       if (typeof process !== 'undefined' && typeof process.on === 'function') {
         const onUnhandled = (reason: unknown): void => {
           report('unhandledrejection', reason);
         };
         const onUncaught = (error: Error): void => {
           report('uncaught_exception', error);
+          process.exit(1);
         };
         process.on('unhandledRejection', onUnhandled);
         process.on('uncaughtException', onUncaught);
@@ -532,6 +536,13 @@ export function installMockifyerCrashHooks(options: InstallCrashHooksOptions = {
           process.off('unhandledRejection', onUnhandled);
           process.off('uncaughtException', onUncaught);
         });
+      } else if (typeof g.addEventListener === 'function') {
+        const onRejection = (ev: Event): void => {
+          const reason = (ev as PromiseRejectionEvent).reason;
+          report('unhandledrejection', reason);
+        };
+        g.addEventListener('unhandledrejection', onRejection);
+        handlers.push(() => g.removeEventListener?.('unhandledrejection', onRejection));
       }
     }
   }

@@ -65,6 +65,7 @@ export class MockifyerErrorBoundary extends Component<
           scenario: this.props.scenario,
           clientId: this.props.clientId,
           sessionId: this.props.sessionId,
+          postToDashboard: true,
         }
       );
 

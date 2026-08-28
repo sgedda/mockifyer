@@ -140,7 +140,7 @@ class MockifyerClass {
     });
   }
 
-  /** Best-effort dashboard network log (skipped when traffic goes through `proxy.baseUrl`). */
+  /** Best-effort dashboard network log. */
   private logNetworkEvent(
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
       transport?: 'fetch';
@@ -150,9 +150,6 @@ class MockifyerClass {
     },
     correlation?: RequestCorrelationContext
   ): void {
-    // Dashboard proxy hops are recorded in performDashboardProxyRequest (shared axios/fetch path).
-    if (this.config.proxy?.baseUrl) return;
-
     const scenario =
       this.config.proxy?.scenario?.trim() ||
       getCurrentScenario(this.config.mockDataPath);
@@ -160,20 +157,22 @@ class MockifyerClass {
     const { requestBody, responseBody, ...eventPartial } = partial;
     const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
 
-    recordInlineTraceHopFromExchange({
-      method: eventPartial.method,
-      url: eventPartial.url,
-      status: eventPartial.status,
-      source: eventPartial.source,
-      transport: eventPartial.transport ?? 'fetch',
-      requestId: correlation?.requestId ?? eventPartial.requestId ?? null,
-      parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null,
-      durationMs: eventPartial.durationMs,
-      clientId: this.config.clientId ?? eventPartial.clientId ?? null,
-      errorMessage: eventPartial.errorMessage,
-      requestBody,
-      responseBody,
-    });
+    if (!this.config.proxy?.baseUrl) {
+      recordInlineTraceHopFromExchange({
+        method: eventPartial.method,
+        url: eventPartial.url,
+        status: eventPartial.status,
+        source: eventPartial.source,
+        transport: eventPartial.transport ?? 'fetch',
+        requestId: correlation?.requestId ?? eventPartial.requestId ?? null,
+        parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null,
+        durationMs: eventPartial.durationMs,
+        clientId: this.config.clientId ?? eventPartial.clientId ?? null,
+        errorMessage: eventPartial.errorMessage,
+        requestBody,
+        responseBody,
+      });
+    }
 
     emitMockifyerNetworkEvent({
       config: this.config,
