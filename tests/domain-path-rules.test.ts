@@ -18,6 +18,7 @@ import {
   envRecordResponsesOverride,
   upsertDiscoveredDomainPathRule,
   writeDomainPathRulesFile,
+  isNodeFsApiAvailable,
   type DomainPathRulesMap,
 } from '@sgedda/mockifyer-core';
 
@@ -359,6 +360,19 @@ describe('DomainPathRulesSession persistUpserts', () => {
   });
 });
 
+describe('isNodeFsApiAvailable', () => {
+  it('rejects empty Metro-style fs stubs', () => {
+    expect(isNodeFsApiAvailable({})).toBe(false);
+    expect(isNodeFsApiAvailable(undefined)).toBe(false);
+    expect(isNodeFsApiAvailable(null)).toBe(false);
+  });
+
+  it('accepts real Node fs sync APIs', () => {
+    expect(isNodeFsApiAvailable()).toBe(true);
+    expect(isNodeFsApiAvailable(fs)).toBe(true);
+  });
+});
+
 describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
   let prevScenario: string | undefined;
   const projectRules: DomainPathRulesMap = {
@@ -458,6 +472,29 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
     const after = session.getTrafficGate('https://api.example.com/v1/users/1');
     expect(after.mayReplay).toBe(true);
     expect(after.mayRecord).toBe(true);
+  });
+
+  it('persists discovery via Metro POST when filesystem is disabled', async () => {
+    const store = { rules: {} as DomainPathRulesMap, posts: [] as unknown[] };
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn: mockMetroFetch(store),
+    });
+
+    await session.hydrate();
+    session.discover('https://api.example.com/v1/items/1');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    expect(store.posts.length).toBe(1);
+    expect(store.rules['api.example.com']).toEqual({
+      recordResponses: false,
+      autoMock: false,
+    });
+    expect(store.rules['api.example.com/v1/items/:id']).toEqual({
+      recordResponses: false,
+      autoMock: false,
+    });
   });
 });
 
