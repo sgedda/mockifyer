@@ -81,6 +81,7 @@ export function filterNetworkEventsForAtlasDoc(
 ): NetworkEvent[] {
   const screenKeys = new Set<string>()
   const pageKeys = new Set<string>()
+  const prefetchKeys = new Set<string>()
   for (const screen of Object.keys(doc.screens)) {
     screenKeys.add(screen)
   }
@@ -88,17 +89,17 @@ export function filterNetworkEventsForAtlasDoc(
     pageKeys.add(page.pageId)
     if (page.pageSlug?.trim()) screenKeys.add(page.pageSlug.trim())
   }
-  const hasPrefetchDoc = Object.keys(doc.prefetches).length > 0
+  for (const prefetchId of Object.keys(doc.prefetches)) {
+    prefetchKeys.add(prefetchId)
+  }
 
   const matched = events.filter((ev) => {
     const usages = usageList(ev.usage)
-    if (usages.length === 0) {
-      return hasPrefetchDoc && !ev.parentRequestId
-    }
     return usages.some(
       (u) =>
         Boolean(u.screen && screenKeys.has(u.screen)) ||
-        Boolean(u.cms?.pageId && (pageKeys.has(u.cms.pageId) || screenKeys.has(u.cms.pageId)))
+        Boolean(u.cms?.pageId && (pageKeys.has(u.cms.pageId) || screenKeys.has(u.cms.pageId))) ||
+        Boolean(u.datasourceId && prefetchKeys.has(u.datasourceId))
     )
   })
 
