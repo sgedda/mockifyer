@@ -14,19 +14,45 @@ export function joinProxyDashboardApiUrl(proxyBaseUrl: string, apiSubPath: strin
   return `${normalizedBase}/${normalizedPath}`;
 }
 
+/** Dashboard HTTP paths that must never be mocked, recorded, or shown as user hops. */
+const DASHBOARD_PLUMBING_PATHS: ReadonlyArray<{ suffix: string; includeSubpaths: boolean }> = [
+  { suffix: '/api/proxy', includeSubpaths: false },
+  { suffix: '/api/network-events', includeSubpaths: true },
+];
+
+function normalizeDashboardPathname(pathname: string): string {
+  return pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+}
+
+function pathMatchesDashboardPlumbing(path: string): boolean {
+  return DASHBOARD_PLUMBING_PATHS.some(({ suffix, includeSubpaths }) => {
+    if (path === suffix || path.endsWith(suffix)) {
+      return true;
+    }
+    return includeSubpaths && path.includes(`${suffix}/`);
+  });
+}
+
 /**
- * True when `url` targets the dashboard `/api/proxy` endpoint (Mockifyer plumbing).
+ * True when `url` targets dashboard plumbing (`/api/proxy` or `/api/network-events`).
  * These requests must never be mocked, recorded, or shown as user-visible hops.
  */
-export function isMockifyerDashboardProxyApiUrl(url: string | null | undefined): boolean {
+export function isMockifyerDashboardPlumbingUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return false;
   }
   try {
     const parsed = new URL(url, 'http://localhost');
-    const path = parsed.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '');
-    return path === '/api/proxy' || path.endsWith('/api/proxy');
+    return pathMatchesDashboardPlumbing(normalizeDashboardPathname(parsed.pathname));
   } catch {
-    return /(?:^|\/)api\/proxy\/?(?:\?|#|$)/i.test(url);
+    return /(?:^|\/)api\/(?:proxy|network-events)(?:\/[^?#]*)?(?:\?|#|$)/i.test(url);
   }
+}
+
+/**
+ * True when `url` targets dashboard plumbing (`/api/proxy` or `/api/network-events`).
+ * These requests must never be mocked, recorded, or shown as user-visible hops.
+ */
+export function isMockifyerDashboardProxyApiUrl(url: string | null | undefined): boolean {
+  return isMockifyerDashboardPlumbingUrl(url);
 }
