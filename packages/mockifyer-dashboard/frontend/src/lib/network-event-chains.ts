@@ -64,6 +64,59 @@ export function chainDepth(event: NetworkEvent, byRequestId: Map<string, Network
   return getNetworkEventChain(event, byRequestId).length - 1
 }
 
+/** Surfaces documented in the Atlas auto-doc map (for filtering live network hops). */
+export interface AtlasDocFilterSource {
+  pages: Record<string, { pageId: string; pageSlug?: string }>
+  screens: Record<string, { screen: string }>
+  prefetches: Record<string, unknown>
+}
+
+/**
+ * Network hops that illustrate the auto-doc: usage matches a documented screen/page,
+ * plus parent hops in the same call chain (so waterfalls stay readable).
+ */
+export function filterNetworkEventsForAtlasDoc(
+  events: NetworkEvent[],
+  doc: AtlasDocFilterSource
+): NetworkEvent[] {
+  const screenKeys = new Set<string>()
+  const pageKeys = new Set<string>()
+  for (const screen of Object.keys(doc.screens)) {
+    screenKeys.add(screen)
+  }
+  for (const page of Object.values(doc.pages)) {
+    pageKeys.add(page.pageId)
+    if (page.pageSlug?.trim()) screenKeys.add(page.pageSlug.trim())
+  }
+  const hasPrefetchDoc = Object.keys(doc.prefetches).length > 0
+
+  const matched = events.filter((ev) => {
+    const usages = usageList(ev.usage)
+    if (usages.length === 0) {
+      return hasPrefetchDoc && !ev.parentRequestId
+    }
+    return usages.some(
+      (u) =>
+        Boolean(u.screen && screenKeys.has(u.screen)) ||
+        Boolean(u.cms?.pageId && (pageKeys.has(u.cms.pageId) || screenKeys.has(u.cms.pageId)))
+    )
+  })
+
+  if (matched.length === 0) return []
+
+  const maps = buildNetworkEventChainMaps(events)
+  const include = new Set<string>()
+  for (const ev of matched) {
+    for (const hop of getNetworkEventChain(ev, maps.byRequestId)) {
+      include.add(hop.id)
+    }
+  }
+
+  return events
+    .filter((e) => include.has(e.id))
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+}
+
 export interface TraceTreeNode {
   event: NetworkEvent
   children: TraceTreeNode[]

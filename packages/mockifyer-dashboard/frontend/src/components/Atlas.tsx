@@ -1,10 +1,26 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Map, RefreshCw, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, GanttChart, Map as MapIcon, Network as NetworkIcon, RefreshCw, Route, Trash2 } from 'lucide-react'
 import { getApiBase } from '@/lib/base-path'
+import { getNetworkEvents } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import type { NetworkEvent } from '@/types'
+import {
+  buildJourneySteps,
+  buildNetworkEventChainMaps,
+  buildTraceForest,
+  filterNetworkEventsForAtlasDoc,
+  flattenTraceForest,
+  formatNetworkHopLabel,
+} from '@/lib/network-event-chains'
+import { formatUsage, usageList } from '@/lib/network-usage'
+import {
+  NetworkGanttView,
+  NetworkJourneyView,
+  NetworkWaterfallView,
+} from '@/components/network/NetworkJourneyViews'
 
 const API_BASE = getApiBase()
 const noStore: RequestInit = { cache: 'no-store' }
@@ -96,6 +112,14 @@ interface AtlasProps {
 }
 
 type AtlasTab = 'doc' | 'session'
+type DocViewMode = 'map' | 'waterfall' | 'gantt' | 'journey'
+
+const DOC_VIEW_MODES: Array<{ id: DocViewMode; label: string; icon: typeof MapIcon }> = [
+  { id: 'map', label: 'Map', icon: MapIcon },
+  { id: 'waterfall', label: 'Waterfall', icon: NetworkIcon },
+  { id: 'gantt', label: 'Gantt', icon: GanttChart },
+  { id: 'journey', label: 'Journey', icon: Route },
+]
 
 function TreeNodeView({
   node,
@@ -205,7 +229,10 @@ function DocNodeRow({
 export default function Atlas({ scenario }: AtlasProps) {
   const { toast } = useToast()
   const [tab, setTab] = useState<AtlasTab>('doc')
+  const [docView, setDocView] = useState<DocViewMode>('map')
   const [doc, setDoc] = useState<AtlasDocMap | null>(null)
+  const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([])
+  const [selectedHopId, setSelectedHopId] = useState<string | null>(null)
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedScreen, setSelectedScreen] = useState<string | null>(null)
@@ -263,6 +290,12 @@ export default function Atlas({ scenario }: AtlasProps) {
     [scenario]
   )
 
+  const loadNetwork = useCallback(async () => {
+    const data = await getNetworkEvents({ scenario, limit: 500 })
+    setNetworkEvents(data.events)
+    return data.events
+  }, [scenario])
+
   const refresh = useCallback(async () => {
     try {
       setLoading(true)
@@ -270,6 +303,9 @@ export default function Atlas({ scenario }: AtlasProps) {
       const pages = Object.keys(nextDoc.pages)
       if (pages.length && (!selectedPageId || !nextDoc.pages[selectedPageId])) {
         setSelectedPageId(pages.sort()[0])
+      }
+      if (tab === 'doc') {
+        await loadNetwork()
       }
       if (tab === 'session') {
         const nextSessions = await loadSessions()
@@ -286,7 +322,7 @@ export default function Atlas({ scenario }: AtlasProps) {
     } finally {
       setLoading(false)
     }
-  }, [loadDoc, loadSessions, loadTree, selectedPageId, sessionId, tab, toast])
+  }, [loadDoc, loadNetwork, loadSessions, loadTree, selectedPageId, sessionId, tab, toast])
 
   useEffect(() => {
     void refresh()
@@ -353,17 +389,41 @@ export default function Atlas({ scenario }: AtlasProps) {
   const activeScreen =
     selectedScreen && doc ? doc.screens[selectedScreen] ?? null : null
 
+  const docNetworkEvents = useMemo(() => {
+    if (!doc) return []
+    return filterNetworkEventsForAtlasDoc(networkEvents, doc)
+  }, [doc, networkEvents])
+
+  const docChainMaps = useMemo(
+    () => buildNetworkEventChainMaps(docNetworkEvents),
+    [docNetworkEvents]
+  )
+  const docDepthById = useMemo(() => {
+    const forest = buildTraceForest(docNetworkEvents, docChainMaps)
+    const map = new Map<string, number>()
+    for (const row of flattenTraceForest(forest, new Set())) {
+      map.set(row.event.id, row.depth)
+    }
+    return map
+  }, [docNetworkEvents, docChainMaps])
+  const docJourneySteps = useMemo(
+    () => buildJourneySteps(docNetworkEvents),
+    [docNetworkEvents]
+  )
+  const selectedHop =
+    docNetworkEvents.find((e) => e.id === selectedHopId) ?? docNetworkEvents[0] ?? null
+
   return (
     <div className="space-y-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
-            <Map className="h-5 w-5" />
+            <MapIcon className="h-5 w-5" />
             Atlas
           </h1>
           <p className="text-sm text-muted-foreground">
-            Auto-doc map upserts by page/node (structure union; last sample for values). Session log
-            stays separate. Network holds the hop spine.
+            Auto-doc map (structure union) plus Waterfall / Gantt / Journey over hops that match
+            documented screens. Session log stays separate.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -372,7 +432,7 @@ export default function Atlas({ scenario }: AtlasProps) {
             variant={tab === 'doc' ? 'default' : 'outline'}
             onClick={() => {
               setTab('doc')
-              void loadDoc().catch(() => undefined)
+              void refresh()
             }}
           >
             Doc map
@@ -426,6 +486,116 @@ export default function Atlas({ scenario }: AtlasProps) {
       </div>
 
       {tab === 'doc' && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {DOC_VIEW_MODES.map(({ id, label, icon: Icon }) => (
+              <Button
+                key={id}
+                type="button"
+                size="sm"
+                variant={docView === id ? 'default' : 'outline'}
+                onClick={() => setDocView(id)}
+              >
+                <Icon className="mr-1 h-4 w-4" />
+                {label}
+              </Button>
+            ))}
+            <span className="text-xs text-muted-foreground">
+              {docView === 'map'
+                ? 'Stable upserted structure'
+                : `${docNetworkEvents.length} hop(s) matching the doc map`}
+            </span>
+          </div>
+
+          {docView !== 'map' && (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card className="lg:col-span-2 overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base capitalize">{docView}</CardTitle>
+                  <CardDescription>
+                    Live network hops filtered to documented screens/pages (plus parent chain). Same
+                    charts as Network — here they illustrate the auto-doc.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {docNetworkEvents.length === 0 ? (
+                    <p className="p-4 text-sm text-muted-foreground">
+                      No matching hops yet. Capture Atlas surfaces / screen usage, generate traffic
+                      with network logging, then refresh. Full traffic stays under Network.
+                    </p>
+                  ) : docView === 'waterfall' ? (
+                    <NetworkWaterfallView
+                      events={docNetworkEvents}
+                      depthById={docDepthById}
+                      selectedId={selectedHop?.id ?? null}
+                      onSelect={setSelectedHopId}
+                    />
+                  ) : docView === 'gantt' ? (
+                    <NetworkGanttView
+                      steps={docJourneySteps}
+                      selectedId={selectedHop?.id ?? null}
+                      onSelect={setSelectedHopId}
+                    />
+                  ) : (
+                    <NetworkJourneyView
+                      steps={docJourneySteps}
+                      selectedId={selectedHop?.id ?? null}
+                      onSelect={setSelectedHopId}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Selected hop</CardTitle>
+                  <CardDescription>
+                    {selectedHop
+                      ? formatNetworkHopLabel(selectedHop)
+                      : 'Select a bar or journey hop'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {!selectedHop && (
+                    <p className="text-muted-foreground">Nothing selected.</p>
+                  )}
+                  {selectedHop && (
+                    <>
+                      <div>
+                        <div className="text-xs text-muted-foreground">Time</div>
+                        <div>{new Date(selectedHop.timestamp).toLocaleString()}</div>
+                      </div>
+                      {selectedHop.requestId && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Request id</div>
+                          <div className="font-mono text-xs break-all">{selectedHop.requestId}</div>
+                        </div>
+                      )}
+                      {selectedHop.durationMs != null && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Duration</div>
+                          <div>{selectedHop.durationMs} ms</div>
+                        </div>
+                      )}
+                      {usageList(selectedHop.usage).length > 0 && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">Used by</div>
+                          <ul className="mt-1 space-y-1">
+                            {usageList(selectedHop.usage).map((u, i) => (
+                              <li key={i} className="rounded border px-2 py-1 text-xs">
+                                {formatUsage(u)}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {docView === 'map' && (
         <div className="grid gap-4 lg:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
@@ -616,6 +786,8 @@ export default function Atlas({ scenario }: AtlasProps) {
               )}
             </CardContent>
           </Card>
+        </div>
+          )}
         </div>
       )}
 
