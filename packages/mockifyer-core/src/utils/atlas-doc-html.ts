@@ -21,6 +21,8 @@ try {
 
 const HTML_WRITE_DEBOUNCE_MS = 250;
 const MAX_HTML_NETWORK_EVENTS = 500;
+/** Cap body previews embedded in HTML to keep files openable. */
+const MAX_BODY_CHARS_IN_HTML = 12_000;
 
 /** Directory for generated `index.html` + `pages/*.html` (Node only). */
 let htmlOutputPath: string | undefined;
@@ -131,6 +133,14 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .journey-strip { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0 1rem; }
 .journey-step { min-width: 9rem; max-width: 14rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; background: var(--card); flex-shrink: 0; }
 .used-by { color: #0369a1; font-size: 0.75rem; }
+.layout { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 900px) { .layout { grid-template-columns: 1.4fr 1fr; } }
+.detail { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; position: sticky; top: 0.75rem; max-height: 80vh; overflow: auto; }
+.detail h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.hop-row.selected, .timing-row.selected { background: #e8eefc; }
+.hop-row { cursor: pointer; }
+.timing-row { cursor: pointer; }
+.body-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 0.75rem 0 0.25rem; }
 `.trim();
 }
 
@@ -209,6 +219,12 @@ function renderPageBody(page: AtlasDocPage): string {
 ${nodesHtml}`;
 }
 
+function truncateBodyPreview(text: string | undefined): string | undefined {
+  if (text == null || text === '') return undefined;
+  if (text.length <= MAX_BODY_CHARS_IN_HTML) return text;
+  return `${text.slice(0, MAX_BODY_CHARS_IN_HTML)}\n… [truncated ${text.length - MAX_BODY_CHARS_IN_HTML} chars]`;
+}
+
 function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
   return {
     id: ev.id,
@@ -222,6 +238,8 @@ function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
     requestId: ev.requestId,
     parentRequestId: ev.parentRequestId,
     usage: ev.usage,
+    requestBodyPreview: truncateBodyPreview(ev.requestBodyPreview),
+    responseBodyPreview: truncateBodyPreview(ev.responseBodyPreview),
   };
 }
 
@@ -236,6 +254,7 @@ function interactiveClientScript(): string {
   var events = DATA.events || [];
   var collapsed = {};
   var view = 'map';
+  var selectedId = null;
 
   function usageList(u) {
     if (!u) return [];
@@ -251,6 +270,49 @@ function interactiveClientScript(): string {
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function prettyBody(text) {
+    if (text == null || text === '') return null;
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2);
+    } catch (e) {
+      return String(text);
+    }
+  }
+  function findEvent(id) {
+    for (var i = 0; i < events.length; i++) if (events[i].id === id) return events[i];
+    return null;
+  }
+  function findByRequestId(rid) {
+    if (!rid) return null;
+    for (var i = 0; i < events.length; i++) if (events[i].requestId === rid) return events[i];
+    return null;
+  }
+
+  function renderDetail(el) {
+    if (!el) return;
+    var e = selectedId ? findEvent(selectedId) : null;
+    if (!e) {
+      el.innerHTML = '<h3>Hop detail</h3><p class="empty">Select a hop in Trace / Waterfall / Gantt / Journey to see request &amp; response bodies.</p>';
+      return;
+    }
+    var html = '<h3>' + esc(e.method) + ' ' + esc(e.path || e.url) + '</h3>';
+    html += '<p class="meta">' + esc(e.timestamp);
+    if (e.status != null) html += ' · status ' + esc(e.status);
+    if (e.durationMs != null) html += ' · ' + esc(e.durationMs) + 'ms';
+    html += ' · ' + esc(e.source) + '</p>';
+    if (e.requestId) html += '<p class="meta">requestId <code>' + esc(e.requestId) + '</code></p>';
+    var us = usageList(e.usage);
+    if (us.length) {
+      html += '<p class="used-by">used by: ' + us.map(formatUsage).map(esc).join(', ') + '</p>';
+    }
+    var reqBody = prettyBody(e.requestBodyPreview);
+    html += '<div class="body-label">Request body</div>';
+    html += reqBody ? '<pre>' + esc(reqBody) + '</pre>' : '<p class="empty">No request body captured (enable Bodies / captureBodies).</p>';
+    var resBody = prettyBody(e.responseBodyPreview);
+    html += '<div class="body-label">Response body</div>';
+    html += resBody ? '<pre>' + esc(resBody) + '</pre>' : '<p class="empty">No response body captured (enable Bodies / captureBodies).</p>';
+    el.innerHTML = html;
   }
 
   function filterEvents() {
@@ -405,6 +467,13 @@ function interactiveClientScript(): string {
             html += '<div class="used-by">' + n.datasources.map(function (d) {
               return esc(d.datasourceId) + (d.dataRoot ? ' · ' + esc(d.dataRoot) : '');
             }).join('; ') + '</div>';
+            n.datasources.forEach(function (d) {
+              var hop = findByRequestId(d.lastRequestId);
+              if (hop && hop.responseBodyPreview) {
+                html += '<div class="body-label">Response body · ' + esc(d.lastRequestId) + '</div>';
+                html += '<pre>' + esc(prettyBody(hop.responseBodyPreview) || hop.responseBodyPreview) + '</pre>';
+              }
+            });
           }
           html += '</div></div>';
         });
@@ -450,12 +519,13 @@ function interactiveClientScript(): string {
     rows.forEach(function (r) {
       var e = r.event;
       var pad = 8 + r.depth * 14;
-      html += '<div class="hop-row" style="padding-left:' + pad + 'px">';
+      html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + '" style="padding-left:' + pad + 'px" data-select="' + esc(e.id) + '">';
       if (r.hasChildren) {
         html += '<button type="button" class="chev" data-collapse="' + esc(e.id) + '">' + (collapsed[e.id] ? '▶' : '▼') + '</button>';
       } else html += '<span class="chev"></span>';
       html += '<div><strong>' + esc(e.method) + '</strong> ' + esc(e.path || e.url);
       html += ' <span class="meta">' + (e.durationMs != null ? e.durationMs + 'ms' : '') + (e.status != null ? ' · ' + e.status : '') + '</span>';
+      if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
       var us = usageList(e.usage);
       if (us.length) html += '<div class="used-by">used by: ' + us.map(formatUsage).map(esc).join(', ') + '</div>';
       html += '</div></div>';
@@ -469,15 +539,17 @@ function interactiveClientScript(): string {
       el.innerHTML = '<p class="empty">No timing data</p>';
       return;
     }
-    var html = '<p class="meta">Absolute time bars (parallel vs sequential)</p>';
+    var html = '<p class="meta">Absolute time bars — click a row for bodies</p>';
     tw.bars.forEach(function (b) {
       var left = (b.start / tw.span) * 100;
       var width = Math.max((b.dur / tw.span) * 100, 0.4);
-      html += '<div class="timing-row"><div>' + esc(b.event.method) + ' ' + esc(b.event.path || b.event.url);
-      var us = usageList(b.event.usage);
+      var e = b.event;
+      html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + '" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+      if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
+      var us = usageList(e.usage);
       if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
-      html += '</div><div class="track"><div class="' + barClass(b.event.source) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
-      html += '<div class="meta">' + (b.event.durationMs != null ? b.event.durationMs + 'ms' : '—') + '</div></div>';
+      html += '</div><div class="track"><div class="' + barClass(e.source) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
+      html += '<div class="meta">' + (e.durationMs != null ? e.durationMs + 'ms' : '—') + '</div></div>';
     });
     el.innerHTML = html;
   }
@@ -512,7 +584,9 @@ function interactiveClientScript(): string {
         var d = Math.max(e.durationMs > 0 ? e.durationMs : 8, 1);
         var left = (s / global.span) * 100;
         var width = Math.max((d / global.span) * 100, 0.4);
-        html += '<div class="timing-row" style="padding:0.3rem 0.75rem"><div>' + esc(e.method) + ' ' + esc(e.path || e.url) + '</div>';
+        html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + '" style="padding:0.3rem 0.75rem" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+        if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
+        html += '</div>';
         html += '<div class="track"><div class="' + barClass(e.source) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
         html += '<div class="meta">' + (e.durationMs != null ? e.durationMs + 'ms' : '—') + '</div></div>';
       });
@@ -536,7 +610,8 @@ function interactiveClientScript(): string {
     steps.forEach(function (st) {
       html += '<div class="group"><div class="group-h">' + esc(st.label) + '</div>';
       st.events.forEach(function (e) {
-        html += '<div class="hop-row"><div><strong>' + esc(e.method) + '</strong> ' + esc(e.path || e.url);
+        html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + '" data-select="' + esc(e.id) + '"><div><strong>' + esc(e.method) + '</strong> ' + esc(e.path || e.url);
+        if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
         var us = usageList(e.usage);
         if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
         html += '</div></div>';
@@ -548,16 +623,19 @@ function interactiveClientScript(): string {
 
   function render() {
     var list = filterEvents();
+    if (!selectedId && list.length) selectedId = list[list.length - 1].id;
     var mapEl = document.getElementById('view-map');
     var traceEl = document.getElementById('view-trace');
     var wfEl = document.getElementById('view-waterfall');
     var ganttEl = document.getElementById('view-gantt');
     var journeyEl = document.getElementById('view-journey');
+    var detailEl = document.getElementById('hop-detail');
     if (view === 'map') renderMap(mapEl);
     if (view === 'trace') renderTrace(traceEl, list);
     if (view === 'waterfall') renderWaterfall(wfEl, list);
     if (view === 'gantt') renderGantt(ganttEl, list);
     if (view === 'journey') renderJourney(journeyEl, list);
+    renderDetail(detailEl);
     document.querySelectorAll('.tabs button').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-view') === view);
     });
@@ -568,14 +646,23 @@ function interactiveClientScript(): string {
 
   document.getElementById('atlas-app').addEventListener('click', function (ev) {
     var t = ev.target;
-    if (t && t.getAttribute && t.getAttribute('data-view')) {
+    while (t && t !== ev.currentTarget && !(t.getAttribute && (t.getAttribute('data-view') || t.getAttribute('data-collapse') || t.getAttribute('data-select')))) {
+      t = t.parentNode;
+    }
+    if (!t || t === ev.currentTarget) return;
+    if (t.getAttribute('data-view')) {
       view = t.getAttribute('data-view');
       render();
       return;
     }
-    if (t && t.getAttribute && t.getAttribute('data-collapse')) {
+    if (t.getAttribute('data-collapse')) {
       var id = t.getAttribute('data-collapse');
       collapsed[id] = !collapsed[id];
+      render();
+      return;
+    }
+    if (t.getAttribute('data-select')) {
+      selectedId = t.getAttribute('data-select');
       render();
     }
   });
@@ -593,7 +680,7 @@ function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-  <p class="meta">Interactive Atlas — Map structure plus Trace / Waterfall / Gantt / Journey from hops captured while running.</p>
+  <p class="meta">Interactive Atlas — Map / Trace / Waterfall / Gantt / Journey. Click a hop to inspect request &amp; response bodies (when captureBodies is on).</p>
   <div class="tabs">
     <button type="button" class="active" data-view="map">Map</button>
     <button type="button" data-view="trace">Trace</button>
@@ -601,11 +688,16 @@ function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string
     <button type="button" data-view="gantt">Gantt</button>
     <button type="button" data-view="journey">Journey</button>
   </div>
-  <div id="view-map" class="panel active"></div>
-  <div id="view-trace" class="panel"></div>
-  <div id="view-waterfall" class="panel"></div>
-  <div id="view-gantt" class="panel"></div>
-  <div id="view-journey" class="panel"></div>
+  <div class="layout">
+    <div>
+      <div id="view-map" class="panel active"></div>
+      <div id="view-trace" class="panel"></div>
+      <div id="view-waterfall" class="panel"></div>
+      <div id="view-gantt" class="panel"></div>
+      <div id="view-journey" class="panel"></div>
+    </div>
+    <aside id="hop-detail" class="detail"></aside>
+  </div>
 </div>
 <script type="application/json" id="atlas-data">${json}</script>
 <script>

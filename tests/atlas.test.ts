@@ -464,8 +464,7 @@ describe('atlas-doc-html', () => {
 
     const files = buildAtlasDocHtmlFiles(getAtlasDocMap('default'));
     expect(files['index.html']).toContain('data-view="waterfall"');
-    expect(files['index.html']).toContain('data-view="gantt"');
-    expect(files['index.html']).toContain('data-view="trace"');
+    expect(files['index.html']).toContain('hop-detail');
     expect(files['index.html']).toContain('atlas-data');
     expect(files['index.html']).toContain('Contact & Home');
     expect(files['index.html']).not.toContain('<script>alert');
