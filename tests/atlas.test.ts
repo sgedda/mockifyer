@@ -25,6 +25,7 @@ import {
   setAtlasUsageContext,
   startAtlasSession,
   upsertAtlasDocFromPresentation,
+  upsertAtlasDocFromUsage,
 } from '@sgedda/mockifyer-core';
 
 describe('atlas', () => {
@@ -110,6 +111,42 @@ describe('atlas', () => {
     const tree = buildAtlasTree(getAtlasEvents(), sessionId);
     expect(tree).toHaveLength(1);
     expect(tree[0].children[0].type).toBe('hero');
+  });
+
+  it('buildAtlasTree does not duplicate nodes on re-presentation', () => {
+    configureAtlas({ atlas: { mode: 'live' } });
+    const sessionId = startAtlasSession('sess-dup');
+    capturePresentation({
+      sessionId,
+      cms: { pageId: 'home', nodeId: 'page', type: 'page', path: 'home' },
+      shown: {},
+    });
+    capturePresentation({
+      sessionId,
+      cms: {
+        pageId: 'home',
+        nodeId: 'hero',
+        type: 'hero',
+        path: 'home/hero',
+        parentId: 'page',
+      },
+      shown: { headline: 'Hi' },
+    });
+    capturePresentation({
+      sessionId,
+      cms: {
+        pageId: 'home',
+        nodeId: 'hero',
+        type: 'hero',
+        path: 'home/hero',
+        parentId: 'page',
+      },
+      shown: { headline: 'Hi again' },
+    });
+    const tree = buildAtlasTree(getAtlasEvents(), sessionId);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].children).toHaveLength(1);
+    expect(tree[0].children[0].shown).toEqual({ headline: 'Hi again' });
   });
 
   it('endAtlasSession returns events and clears session id', () => {
@@ -347,5 +384,42 @@ describe('atlas-doc (auto map)', () => {
       a: 'number',
       b: 'string',
     });
+  });
+
+  it('preserves presentation label when usage reinforces the same node', () => {
+    configureAtlas({ atlas: { mode: 'live' } });
+    captureTrackedSurface({
+      id: 'checkout-summary',
+      label: 'Checkout',
+      shown: { total: 10 },
+      datasources: [{ datasourceId: 'pricing', requestId: 'req-9' }],
+    });
+    upsertAtlasDocFromUsage({
+      cms: { pageId: '_app', nodeId: 'checkout-summary', type: 'checkout-summary' },
+      component: 'checkout-summary',
+      datasourceId: 'pricing',
+      requestId: 'req-9',
+    });
+    expect(getAtlasDocMap('default').pages._app.nodes['checkout-summary'].label).toBe('Checkout');
+    expect(
+      getAtlasDocMap('default').pages._app.nodes['checkout-summary'].datasources[0].lastRequestId
+    ).toBe('req-9');
+  });
+
+  it('dedupes usage when merging ambient stamp with annotations', () => {
+    const merged = mergeUsageOntoNetworkEvents(
+      [{ requestId: 'hop-1', usage: { screen: 'contact', component: 'Phone' } }],
+      [
+        {
+          id: 'a',
+          timestamp: new Date().toISOString(),
+          scenario: 'default',
+          requestId: 'hop-1',
+          usage: { screen: 'contact', component: 'Phone' },
+        },
+      ]
+    );
+    const usage = (merged[0] as { usage?: unknown }).usage;
+    expect(Array.isArray(usage) ? usage : [usage]).toHaveLength(1);
   });
 });

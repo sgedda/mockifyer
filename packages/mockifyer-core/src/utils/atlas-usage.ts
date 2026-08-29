@@ -25,10 +25,19 @@ export interface AtlasUsageContext {
 }
 
 let usageContext: AtlasUsageContext = {};
+/** Nested screen sessions push previous context here. */
+const usageContextStack: AtlasUsageContext[] = [];
 let usageSessionId: string | null = null;
+/** Prefer atlas.dashboardBaseUrl from {@link configureAtlas}. */
+let usageDashboardBaseUrl: string | undefined;
 const usageByRequestId = new Map<string, NetworkEventUsage[]>();
 const usageAnnotations: AtlasUsageAnnotation[] = [];
 const MAX_USAGE_ANNOTATIONS = 2_000;
+
+/** Called from {@link configureAtlas} so usage POSTs share the atlas dashboard URL. */
+export function setAtlasUsageDashboardBaseUrl(url: string | undefined): void {
+  usageDashboardBaseUrl = url?.trim() || undefined;
+}
 
 /** Optional session id for usage annotations (often shared with atlas session). */
 export function setAtlasUsageSessionId(sessionId: string | null): void {
@@ -40,9 +49,24 @@ export function setAtlasUsageContext(ctx: AtlasUsageContext): void {
   usageContext = { ...ctx };
 }
 
-/** Clear ambient usage (e.g. on screen unmount). */
+/**
+ * Push ambient usage (nested screens). Pair with {@link popAtlasUsageContext} on unmount.
+ */
+export function pushAtlasUsageContext(ctx: AtlasUsageContext): void {
+  usageContextStack.push({ ...usageContext });
+  usageContext = { ...ctx };
+}
+
+/** Restore previous ambient usage after {@link pushAtlasUsageContext}. */
+export function popAtlasUsageContext(): void {
+  const prev = usageContextStack.pop();
+  usageContext = prev ? { ...prev } : {};
+}
+
+/** Clear ambient usage (e.g. on screen unmount when not using push/pop). */
 export function clearAtlasUsageContext(): void {
   usageContext = {};
+  usageContextStack.length = 0;
 }
 
 export function getAtlasUsageContext(): AtlasUsageContext {
@@ -69,12 +93,39 @@ export function resolveUsageForNetworkEmit(): NetworkEventUsage | undefined {
   return contextToUsage();
 }
 
+function usageDedupeKey(usage: NetworkEventUsage): string {
+  return [
+    usage.screen ?? '',
+    usage.component ?? '',
+    usage.label ?? '',
+    usage.datasourceId ?? '',
+    usage.dataRoot ?? '',
+    usage.cms?.pageId ?? '',
+    usage.cms?.nodeId ?? '',
+    usage.cms?.type ?? '',
+    usage.cms?.path ?? '',
+  ].join('\0');
+}
+
+/** Deduplicate usage entries that describe the same consumer. */
+export function dedupeUsageList(list: NetworkEventUsage[]): NetworkEventUsage[] {
+  const seen = new Set<string>();
+  const out: NetworkEventUsage[] = [];
+  for (const u of list) {
+    const key = usageDedupeKey(u);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(u);
+  }
+  return out;
+}
+
 function rememberUsage(requestId: string, usage: NetworkEventUsage): void {
   const key = requestId.trim();
   if (!key) return;
   const list = usageByRequestId.get(key) ?? [];
   list.push(usage);
-  usageByRequestId.set(key, list);
+  usageByRequestId.set(key, dedupeUsageList(list));
 }
 
 /**
@@ -99,6 +150,8 @@ export function recordUsage(input: {
     screen: input.usage.screen,
     component: input.usage.component,
     datasourceId: input.usage.datasourceId,
+    dataRoot: input.usage.dataRoot,
+    requestId,
     cms: input.usage.cms,
   });
 
@@ -128,7 +181,15 @@ async function postUsageAnnotation(
   if (typeof fetch !== 'function') return;
   const fromEnv =
     typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_DASHBOARD_URL]?.trim() : undefined;
-  const base = resolveNetworkLogDashboardUrl(config ?? {}) || fromEnv;
+  const fromAtlasConfig =
+    config && 'atlas' in (config as object)
+      ? (config as MockifyerConfig).atlas?.dashboardBaseUrl?.trim()
+      : undefined;
+  const base =
+    usageDashboardBaseUrl ||
+    fromAtlasConfig ||
+    resolveNetworkLogDashboardUrl(config ?? {}) ||
+    fromEnv;
   if (!base) return;
   try {
     await fetch(`${base.replace(/\/+$/, '')}/api/atlas/usage`, {
@@ -156,7 +217,9 @@ export function clearAtlasUsageAnnotations(): void {
 
 export function resetAtlasUsageRuntime(): void {
   usageContext = {};
+  usageContextStack.length = 0;
   usageSessionId = null;
+  usageDashboardBaseUrl = undefined;
   clearAtlasUsageAnnotations();
 }
 
@@ -180,7 +243,7 @@ export function mergeUsageOntoNetworkEvents<
 
     const existing = ev.usage;
     const existingList = Array.isArray(existing) ? existing : existing ? [existing] : [];
-    const merged = [...existingList, ...extra];
+    const merged = dedupeUsageList([...existingList, ...extra]);
     return { ...ev, usage: merged.length === 1 ? merged[0] : merged };
   });
 }

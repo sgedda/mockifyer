@@ -1,6 +1,6 @@
 import { ENV_VARS, type MockifyerConfig } from '../types';
 import { randomEventId, truncateUtf8, utf8ByteLength } from './crypto-digest';
-import { recordUsage, setAtlasUsageSessionId, resetAtlasUsageRuntime } from './atlas-usage';
+import { recordUsage, setAtlasUsageSessionId, resetAtlasUsageRuntime, setAtlasUsageDashboardBaseUrl } from './atlas-usage';
 import {
   resetAtlasDocRuntime,
   upsertAtlasDocFromPrefetch,
@@ -193,6 +193,8 @@ export function configureAtlas(
     maxShownBytes,
   };
 
+  setAtlasUsageDashboardBaseUrl(runtime.dashboardBaseUrl);
+
   if (mode !== 'off' && !runtime.sessionId) {
     startAtlasSession();
   }
@@ -247,7 +249,10 @@ function pushEvent(event: AtlasEvent): void {
   if (runtime.events.length > DEFAULT_MAX_EVENTS) {
     runtime.events.length = DEFAULT_MAX_EVENTS;
   }
-  void postAtlasEvent(event);
+  // `session` buffers locally; `live` posts when a dashboard URL is configured.
+  if (runtime.mode === 'live') {
+    void postAtlasEvent(event);
+  }
 }
 
 async function postAtlasEvent(event: AtlasEvent): Promise<void> {
@@ -367,6 +372,7 @@ export function capturePrefetch(input: CapturePrefetchInput): AtlasPrefetchEvent
     kind: event.datasourceKind,
     operation: event.operation,
     phase: event.phase,
+    requestId: event.requestId,
     timestamp: event.timestamp,
   });
   return event;
@@ -412,7 +418,13 @@ export function capturePresentation(input: CapturePresentationInput): AtlasPrese
     scenario: event.scenario,
     timestamp: event.timestamp,
     cms: event.cms,
-    datasources: event.datasources,
+    datasources: event.datasources.map((d) => ({
+      datasourceId: d.datasourceId,
+      dataRoot: d.dataRoot,
+      kind: d.kind,
+      operation: d.operation,
+      requestId: d.requestId,
+    })),
     shown: event.shown,
   });
 
@@ -489,11 +501,12 @@ export function buildAtlasTree(events: readonly AtlasEvent[], sessionId?: string
       e.kind === 'presentation' && (!sessionId || e.sessionId === sessionId)
   );
 
-  const byId = new Map<string, AtlasTreeNode>();
-  const roots: AtlasTreeNode[] = [];
+  /** Newest events first in the buffer — keep first write per nodeId (latest wins). */
+  const byId = new Map<string, AtlasTreeNode & { parentId?: string | null }>();
 
-  for (const ev of [...presentations].reverse()) {
-    const node: AtlasTreeNode = {
+  for (const ev of presentations) {
+    if (byId.has(ev.cms.nodeId)) continue;
+    byId.set(ev.cms.nodeId, {
       nodeId: ev.cms.nodeId,
       type: ev.cms.type,
       path: ev.cms.path,
@@ -505,20 +518,24 @@ export function buildAtlasTree(events: readonly AtlasEvent[], sessionId?: string
       children: [],
       eventId: ev.id,
       timestamp: ev.timestamp,
-    };
-    byId.set(ev.cms.nodeId, node);
+      parentId: ev.cms.parentId,
+    });
   }
 
-  for (const ev of [...presentations].reverse()) {
-    const node = byId.get(ev.cms.nodeId);
-    if (!node) continue;
-    const parentId = ev.cms.parentId;
-    if (parentId && byId.has(parentId)) {
+  const roots: AtlasTreeNode[] = [];
+  for (const node of byId.values()) {
+    const parentId = node.parentId;
+    if (parentId && byId.has(parentId) && parentId !== node.nodeId) {
       byId.get(parentId)!.children.push(node);
     } else {
       roots.push(node);
     }
   }
 
+  const sortRecursive = (nodes: AtlasTreeNode[]) => {
+    nodes.sort((a, b) => a.path.localeCompare(b.path) || a.nodeId.localeCompare(b.nodeId));
+    for (const n of nodes) sortRecursive(n.children);
+  };
+  sortRecursive(roots);
   return roots;
 }

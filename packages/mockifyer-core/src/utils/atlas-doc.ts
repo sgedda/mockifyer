@@ -14,11 +14,13 @@ export type AtlasDocSchema =
   | { [key: string]: AtlasDocSchema };
 
 export interface AtlasDocDatasourceEdge {
-  datasourceId: string
-  dataRoot?: string
-  kind?: string
+  datasourceId: string;
+  dataRoot?: string;
+  kind?: string;
   /** Union of seen GraphQL/REST operation names. */
-  operations: string[]
+  operations: string[];
+  /** Last hop id that produced this edge (for Network jump). */
+  lastRequestId?: string;
 }
 
 export interface AtlasDocNode {
@@ -52,11 +54,13 @@ export interface AtlasDocScreen {
 }
 
 export interface AtlasDocPrefetch {
-  datasourceId: string
-  kind?: string
-  operations: string[]
-  phases: string[]
-  lastSeenAt: string
+  datasourceId: string;
+  kind?: string;
+  operations: string[];
+  phases: string[];
+  lastSeenAt: string;
+  /** Last hop id for this prefetch datasource. */
+  lastRequestId?: string;
 }
 
 export interface AtlasDocMap {
@@ -156,20 +160,22 @@ function datasourceKey(ds: { datasourceId: string; dataRoot?: string }): string 
 function mergeDatasourceEdge(
   existing: AtlasDocDatasourceEdge | undefined,
   incoming: {
-    datasourceId: string
-    dataRoot?: string
-    kind?: string
-    operation?: string
+    datasourceId: string;
+    dataRoot?: string;
+    kind?: string;
+    operation?: string;
+    requestId?: string;
   }
 ): AtlasDocDatasourceEdge {
-  const operations = new Set(existing?.operations ?? [])
-  if (incoming.operation?.trim()) operations.add(incoming.operation.trim())
+  const operations = new Set(existing?.operations ?? []);
+  if (incoming.operation?.trim()) operations.add(incoming.operation.trim());
   return {
     datasourceId: incoming.datasourceId,
     dataRoot: incoming.dataRoot ?? existing?.dataRoot,
     kind: incoming.kind ?? existing?.kind,
     operations: [...operations].sort(),
-  }
+    lastRequestId: incoming.requestId?.trim() || existing?.lastRequestId,
+  };
 }
 
 export interface UpsertDocPresentationInput {
@@ -185,13 +191,14 @@ export interface UpsertDocPresentationInput {
     label?: string
   }
   datasources?: Array<{
-    datasourceId: string
-    dataRoot?: string
-    kind?: string
-    operation?: string
-  }>
-  shown?: unknown
-  timestamp?: string
+    datasourceId: string;
+    dataRoot?: string;
+    kind?: string;
+    operation?: string;
+    requestId?: string;
+  }>;
+  shown?: unknown;
+  timestamp?: string;
 }
 
 /** Upsert a CMS/hardcoded surface into the auto-doc map. */
@@ -244,26 +251,27 @@ export function upsertAtlasDocFromPresentation(input: UpsertDocPresentationInput
 }
 
 export interface UpsertDocPrefetchInput {
-  scenario?: string
-  datasourceId: string
-  kind?: string
-  operation?: string
-  phase?: string
-  timestamp?: string
+  scenario?: string;
+  datasourceId: string;
+  kind?: string;
+  operation?: string;
+  phase?: string;
+  requestId?: string;
+  timestamp?: string;
 }
 
 export function upsertAtlasDocFromPrefetch(input: UpsertDocPrefetchInput): AtlasDocMap {
-  const scenario = input.scenario?.trim() || 'default'
-  const map = ensureMap(scenario)
-  const now = input.timestamp ?? new Date().toISOString()
-  const id = input.datasourceId.trim()
-  if (!id) return map
+  const scenario = input.scenario?.trim() || 'default';
+  const map = ensureMap(scenario);
+  const now = input.timestamp ?? new Date().toISOString();
+  const id = input.datasourceId.trim();
+  if (!id) return map;
 
-  const prev = map.prefetches[id]
-  const operations = new Set(prev?.operations ?? [])
-  if (input.operation?.trim()) operations.add(input.operation.trim())
-  const phases = new Set(prev?.phases ?? [])
-  if (input.phase?.trim()) phases.add(input.phase.trim())
+  const prev = map.prefetches[id];
+  const operations = new Set(prev?.operations ?? []);
+  if (input.operation?.trim()) operations.add(input.operation.trim());
+  const phases = new Set(prev?.phases ?? []);
+  if (input.phase?.trim()) phases.add(input.phase.trim());
 
   map.prefetches[id] = {
     datasourceId: id,
@@ -271,32 +279,35 @@ export function upsertAtlasDocFromPrefetch(input: UpsertDocPrefetchInput): Atlas
     operations: [...operations].sort(),
     phases: [...phases].sort(),
     lastSeenAt: now,
-  }
-  return touch(map)
+    lastRequestId: input.requestId?.trim() || prev?.lastRequestId,
+  };
+  return touch(map);
 }
 
 export interface UpsertDocUsageInput {
-  scenario?: string
-  screen?: string
-  component?: string
-  datasourceId?: string
+  scenario?: string;
+  screen?: string;
+  component?: string;
+  datasourceId?: string;
+  dataRoot?: string;
+  requestId?: string;
   cms?: {
-    pageId?: string
-    nodeId?: string
-    type?: string
-    path?: string
-  }
-  timestamp?: string
+    pageId?: string;
+    nodeId?: string;
+    type?: string;
+    path?: string;
+  };
+  timestamp?: string;
 }
 
 /**
- * Upsert from usage annotations. CMS-shaped usage reinforces pages;
- * screen-only usage fills the screens map.
+ * Upsert from usage annotations. CMS-shaped usage reinforces pages without
+ * overwriting a friendlier presentation label; screen-only fills screens map.
  */
 export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap {
-  const scenario = input.scenario?.trim() || 'default'
-  const map = ensureMap(scenario)
-  const now = input.timestamp ?? new Date().toISOString()
+  const scenario = input.scenario?.trim() || 'default';
+  const map = ensureMap(scenario);
+  const now = input.timestamp ?? new Date().toISOString();
 
   if (input.cms?.pageId && input.cms.nodeId) {
     upsertAtlasDocFromPresentation({
@@ -307,31 +318,37 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
         nodeId: input.cms.nodeId,
         type: input.cms.type || input.component || input.cms.nodeId,
         path: input.cms.path || `${input.cms.pageId}/${input.cms.nodeId}`,
-        label: input.component,
+        // Do not pass label — preserves capturePresentation / tracked-surface labels.
       },
       datasources: input.datasourceId
-        ? [{ datasourceId: input.datasourceId }]
+        ? [
+            {
+              datasourceId: input.datasourceId,
+              dataRoot: input.dataRoot,
+              requestId: input.requestId,
+            },
+          ]
         : undefined,
-    })
+    });
   }
 
-  const screen = input.screen?.trim()
+  const screen = input.screen?.trim();
   if (screen) {
-    const prev = map.screens[screen]
-    const components = new Set(prev?.components ?? [])
-    if (input.component?.trim()) components.add(input.component.trim())
-    const datasourceIds = new Set(prev?.datasourceIds ?? [])
-    if (input.datasourceId?.trim()) datasourceIds.add(input.datasourceId.trim())
+    const prev = map.screens[screen];
+    const components = new Set(prev?.components ?? []);
+    if (input.component?.trim()) components.add(input.component.trim());
+    const datasourceIds = new Set(prev?.datasourceIds ?? []);
+    if (input.datasourceId?.trim()) datasourceIds.add(input.datasourceId.trim());
     map.screens[screen] = {
       screen,
       components: [...components].sort(),
       datasourceIds: [...datasourceIds].sort(),
       lastSeenAt: now,
-    }
-    touch(map)
+    };
+    touch(map);
   }
 
-  return map
+  return map;
 }
 
 export function getAtlasDocMap(scenario = 'default'): AtlasDocMap {

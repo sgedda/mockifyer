@@ -60,6 +60,7 @@ function upsertDocFromEvent(scenario: string, event: AtlasEvent): void {
       kind: event.datasourceKind,
       operation: event.operation,
       phase: event.phase,
+      requestId: event.requestId,
       timestamp: event.timestamp,
     });
     return;
@@ -68,7 +69,13 @@ function upsertDocFromEvent(scenario: string, event: AtlasEvent): void {
     scenario,
     timestamp: event.timestamp,
     cms: event.cms,
-    datasources: event.datasources,
+    datasources: event.datasources.map((d) => ({
+      datasourceId: d.datasourceId,
+      dataRoot: d.dataRoot,
+      kind: d.kind,
+      operation: d.operation,
+      requestId: d.requestId,
+    })),
     shown: event.shown,
   });
 }
@@ -114,6 +121,8 @@ class MemoryAtlasStore implements AtlasStore {
       screen: normalized.usage.screen,
       component: normalized.usage.component,
       datasourceId: normalized.usage.datasourceId,
+      dataRoot: normalized.usage.dataRoot,
+      requestId: normalized.requestId,
       cms: normalized.usage.cms,
       timestamp: normalized.timestamp,
     });

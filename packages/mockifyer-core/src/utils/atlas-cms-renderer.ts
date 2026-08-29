@@ -1,7 +1,6 @@
 import {
   capturePresentation,
   isAtlasEnabled,
-  sampleDeep,
   type AtlasCmsNode,
   type AtlasDatasourceRef,
 } from './atlas';
@@ -93,7 +92,7 @@ export function createCmsRenderer<TNode, TProps = Record<string, unknown>>(
       capturePresentation({
         cms: atlasCms,
         datasources: refs,
-        shown: sampleDeep(props),
+        shown: props,
       });
     }
 
