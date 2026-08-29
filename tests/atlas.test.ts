@@ -26,8 +26,17 @@ import {
   startAtlasSession,
   upsertAtlasDocFromPresentation,
   upsertAtlasDocFromUsage,
+  buildAtlasDocHtmlFiles,
+  escapeHtml,
+  writeAtlasDocHtml,
+  setAtlasDocHtmlOutputPath,
+  flushAtlasDocHtmlRewrite,
+  resolveAtlasHtmlOutputPath,
+  getAtlasDocHtmlOutputPath,
 } from '@sgedda/mockifyer-core';
-
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 describe('atlas', () => {
   beforeEach(() => {
     resetAtlasRuntime();
@@ -421,5 +430,121 @@ describe('atlas-doc (auto map)', () => {
     );
     const usage = (merged[0] as { usage?: unknown }).usage;
     expect(Array.isArray(usage) ? usage : [usage]).toHaveLength(1);
+  });
+});
+
+describe('atlas-doc-html', () => {
+  beforeEach(() => {
+    resetAtlasRuntime();
+    resetAtlasDocRuntime();
+    delete process.env.MOCKIFYER_ATLAS;
+    delete process.env.MOCKIFYER_ATLAS_HTML_PATH;
+  });
+
+  afterEach(() => {
+    resetAtlasRuntime();
+    resetAtlasDocRuntime();
+    delete process.env.MOCKIFYER_ATLAS;
+    delete process.env.MOCKIFYER_ATLAS_HTML_PATH;
+  });
+
+  it('buildAtlasDocHtmlFiles includes page titles and escapes HTML', () => {
+    upsertAtlasDocFromPresentation({
+      scenario: 'default',
+      cms: {
+        pageId: 'contact<script>',
+        pageSlug: 'Contact & Home',
+        nodeId: 'phone-1',
+        type: 'phonedetails',
+        path: 'contact/phone-1',
+        label: '<b>Phone</b>',
+      },
+      shown: { number: '<+46>' },
+    });
+
+    const files = buildAtlasDocHtmlFiles(getAtlasDocMap('default'));
+    expect(files['index.html']).toContain('Contact &amp; Home');
+    expect(files['index.html']).not.toContain('<script>');
+    expect(files['index.html']).toContain('pages/contact_script.html');
+
+    const pageHtml = files['pages/contact_script.html'];
+    expect(pageHtml).toBeDefined();
+    expect(pageHtml).toContain('&lt;b&gt;Phone&lt;/b&gt;');
+    expect(pageHtml).toContain('&lt;+46&gt;');
+    expect(escapeHtml('<x>')).toBe('&lt;x&gt;');
+  });
+
+  it('resolveAtlasHtmlOutputPath prefers env then config then mockDataPath default', () => {
+    expect(resolveAtlasHtmlOutputPath({ mockDataPath: './mock-data' }, 'off')).toBeUndefined();
+    expect(resolveAtlasHtmlOutputPath({ mockDataPath: './mock-data' }, 'live')).toBe(
+      './mock-data/atlas-html'
+    );
+    expect(
+      resolveAtlasHtmlOutputPath(
+        { mockDataPath: './mock-data', atlas: { htmlOutputPath: './custom-html' } },
+        'live'
+      )
+    ).toBe('./custom-html');
+
+    process.env.MOCKIFYER_ATLAS_HTML_PATH = '/tmp/atlas-env';
+    expect(
+      resolveAtlasHtmlOutputPath(
+        { mockDataPath: './mock-data', atlas: { htmlOutputPath: './custom-html' } },
+        'live'
+      )
+    ).toBe('/tmp/atlas-env');
+  });
+
+  it('configureAtlas stores html path and capture writes files', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-html-'));
+    try {
+      configureAtlas({
+        mockDataPath: './mock-data',
+        atlas: { mode: 'live', htmlOutputPath: dir },
+      });
+      expect(getAtlasDocHtmlOutputPath()).toBe(dir);
+
+      capturePresentation({
+        cms: {
+          pageId: 'home',
+          nodeId: 'hero',
+          type: 'hero',
+          path: 'home/hero',
+        },
+        shown: { title: 'Welcome' },
+      });
+      flushAtlasDocHtmlRewrite();
+
+      const indexPath = path.join(dir, 'index.html');
+      expect(fs.existsSync(indexPath)).toBe(true);
+      const index = fs.readFileSync(indexPath, 'utf8');
+      expect(index).toContain('home');
+      expect(fs.existsSync(path.join(dir, 'pages', 'home.html'))).toBe(true);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writeAtlasDocHtml writes index and page files to a directory', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-html-write-'));
+    try {
+      setAtlasDocHtmlOutputPath(dir);
+      upsertAtlasDocFromPresentation({
+        cms: {
+          pageId: 'about',
+          nodeId: 'bio',
+          type: 'text',
+          path: 'about/bio',
+        },
+        shown: { body: 'Hi' },
+      });
+      const map = getAtlasDocMap('default');
+      const n = writeAtlasDocHtml(dir, map);
+      expect(n).toBeGreaterThanOrEqual(2);
+      expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toContain('about');
+    } finally {
+      setAtlasDocHtmlOutputPath(undefined);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -1,7 +1,13 @@
 /**
  * Auto-documentation map for Atlas — upsert by stable ids (page/node/screen).
  * Structure is a union across users/sessions; prop *values* keep last sample + schema.
+ * When HTML output is configured (see atlas-doc-html), upserts schedule a debounced rewrite.
  */
+
+import {
+  resetAtlasDocHtmlRuntime,
+  scheduleAtlasDocHtmlRewrite,
+} from './atlas-doc-html';
 
 export type AtlasDocSchema =
   | 'string'
@@ -247,7 +253,9 @@ export function upsertAtlasDocFromPresentation(input: UpsertDocPresentationInput
     lastSeenAt: now,
   }
 
-  return touch(map)
+  const updated = touch(map)
+  scheduleAtlasDocHtmlRewrite(updated)
+  return updated
 }
 
 export interface UpsertDocPrefetchInput {
@@ -281,7 +289,9 @@ export function upsertAtlasDocFromPrefetch(input: UpsertDocPrefetchInput): Atlas
     lastSeenAt: now,
     lastRequestId: input.requestId?.trim() || prev?.lastRequestId,
   };
-  return touch(map);
+  const updated = touch(map);
+  scheduleAtlasDocHtmlRewrite(updated);
+  return updated;
 }
 
 export interface UpsertDocUsageInput {
@@ -348,6 +358,7 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
     touch(map);
   }
 
+  scheduleAtlasDocHtmlRewrite(map);
   return map;
 }
 
@@ -468,6 +479,7 @@ export function clearAtlasDocMap(scenario?: string): void {
 
 export function resetAtlasDocRuntime(): void {
   docsByScenario.clear()
+  resetAtlasDocHtmlRuntime()
 }
 
 /** Pages sorted for display. */

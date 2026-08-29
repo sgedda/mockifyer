@@ -6,7 +6,7 @@ import {
   upsertAtlasDocFromPrefetch,
   upsertAtlasDocFromPresentation,
 } from './atlas-doc';
-
+import { setAtlasDocHtmlOutputPath } from './atlas-doc-html';
 /** Atlas capture mode — `off` by default. */
 export type AtlasMode = 'off' | 'live' | 'session';
 
@@ -78,6 +78,11 @@ export interface AtlasConfig {
   captureValues?: AtlasCaptureValues;
   /** Max UTF-8 bytes for serialized `shown` snapshots (default 8192). */
   maxShownBytes?: number;
+  /**
+   * Directory for self-contained auto-doc HTML (Node). Env `MOCKIFYER_ATLAS_HTML_PATH` wins.
+   * Default when atlas is on: `{mockDataPath}/atlas-html`.
+   */
+  htmlOutputPath?: string;
 }
 
 export interface AtlasRuntimeState {
@@ -88,6 +93,8 @@ export interface AtlasRuntimeState {
   dashboardBaseUrl?: string;
   captureValues: AtlasCaptureValues;
   maxShownBytes: number;
+  /** Resolved HTML output directory (Node); undefined when unset / RN. */
+  htmlOutputPath?: string;
   /** In-process buffer (also POSTed when dashboard URL is set). */
   events: AtlasEvent[];
 }
@@ -165,11 +172,44 @@ function resolveDashboardUrl(
 }
 
 /**
+ * Resolve HTML output directory for auto-doc files.
+ * Priority: `MOCKIFYER_ATLAS_HTML_PATH` → `atlas.htmlOutputPath` → `{mockDataPath}/atlas-html` when atlas is on.
+ */
+export function resolveAtlasHtmlOutputPath(
+  config?: (Pick<MockifyerConfig, 'atlas'> & { mockDataPath?: string }) | AtlasConfig | null,
+  mode: AtlasMode = 'off'
+): string | undefined {
+  if (typeof process !== 'undefined') {
+    const fromEnv = process.env[ENV_VARS.MOCK_ATLAS_HTML_PATH]?.trim();
+    if (fromEnv) return fromEnv;
+  }
+
+  const atlasCfg =
+    config && 'atlas' in (config as object) && (config as MockifyerConfig).atlas
+      ? (config as MockifyerConfig).atlas
+      : (config as AtlasConfig | undefined);
+  const explicit = atlasCfg?.htmlOutputPath?.trim();
+  if (explicit) return explicit;
+
+  if (mode === 'off') return undefined;
+
+  const mockDataPath =
+    config && 'mockDataPath' in (config as object)
+      ? (config as { mockDataPath?: string }).mockDataPath?.trim()
+      : undefined;
+  if (!mockDataPath) return undefined;
+
+  const base = mockDataPath.replace(/[/\\]+$/, '');
+  return `${base}/atlas-html`;
+}
+
+/**
  * Configure atlas capture (typically once at `setupMockifyer`).
  * Safe to call repeatedly; starts a session when mode is `live` or `session` and none is active.
+ * Resolves and stores {@link AtlasRuntimeState.htmlOutputPath} for on-capture HTML generation.
  */
 export function configureAtlas(
-  config?: Pick<MockifyerConfig, 'atlas' | 'networkLog' | 'proxy'> | null,
+  config?: (Pick<MockifyerConfig, 'atlas' | 'networkLog' | 'proxy'> & { mockDataPath?: string }) | null,
   options?: { scenario?: string; clientId?: string | null }
 ): AtlasRuntimeState {
   const atlasCfg = (config as MockifyerConfig | undefined)?.atlas ?? (config as AtlasConfig | undefined);
@@ -182,6 +222,7 @@ export function configureAtlas(
     atlasCfg && 'maxShownBytes' in atlasCfg && typeof atlasCfg.maxShownBytes === 'number'
       ? atlasCfg.maxShownBytes
       : DEFAULT_MAX_SHOWN_BYTES;
+  const htmlOutputPath = resolveAtlasHtmlOutputPath(config ?? null, mode);
 
   runtime = {
     ...runtime,
@@ -191,9 +232,11 @@ export function configureAtlas(
     dashboardBaseUrl: resolveDashboardUrl(config ?? null),
     captureValues,
     maxShownBytes,
+    htmlOutputPath,
   };
 
   setAtlasUsageDashboardBaseUrl(runtime.dashboardBaseUrl);
+  setAtlasDocHtmlOutputPath(htmlOutputPath);
 
   if (mode !== 'off' && !runtime.sessionId) {
     startAtlasSession();

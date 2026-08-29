@@ -268,6 +268,13 @@ export interface MockifyerConfig {
     captureValues?: 'off' | 'sample' | 'schema' | 'full';
     /** Max UTF-8 bytes for serialized props snapshots (default 8192). */
     maxShownBytes?: number;
+    /**
+     * Directory for self-contained Atlas auto-doc HTML written on capture (Node).
+     * Env **`MOCKIFYER_ATLAS_HTML_PATH`** wins when set.
+     * When atlas is enabled and this is unset, Node defaults to `{mockDataPath}/atlas-html`.
+     * Open `{path}/index.html` in VS Code / a browser.
+     */
+    htmlOutputPath?: string;
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
@@ -452,6 +459,11 @@ export const ENV_VARS = {
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
   /** `off` \| `live` \| `session` — CMS/surface atlas capture (see {@link MockifyerConfig.atlas}). */
   MOCK_ATLAS: 'MOCKIFYER_ATLAS',
+  /**
+   * Directory for Atlas auto-doc HTML written on capture (Node).
+   * See {@link MockifyerConfig.atlas.htmlOutputPath}; default `{mockDataPath}/atlas-html` when atlas is on.
+   */
+  MOCK_ATLAS_HTML_PATH: 'MOCKIFYER_ATLAS_HTML_PATH',
   /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */
