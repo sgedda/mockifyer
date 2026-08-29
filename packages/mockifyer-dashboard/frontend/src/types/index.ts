@@ -231,6 +231,16 @@ export interface NetworkEvent {
   errorMessage?: string
   stackPreview?: string
   componentStackPreview?: string
+  usage?: NetworkEventUsage | NetworkEventUsage[]
+}
+
+export interface NetworkEventUsage {
+  screen?: string
+  component?: string
+  label?: string
+  cms?: { pageId?: string; nodeId?: string; type?: string; path?: string }
+  datasourceId?: string
+  dataRoot?: string
 }
 
 export interface NetworkLogConfig {

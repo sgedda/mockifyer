@@ -17,9 +17,11 @@ export type {
   NetworkEventPhase,
   NetworkEventSource,
   NetworkEventTransport,
+  NetworkEventUsage,
   TimelineEventKind,
 } from './network-event-types';
 import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
+import { resolveUsageForNetworkEmit } from './atlas-usage';
 
 export interface NetworkLogEmitterOptions {
   /** Dashboard origin + optional path prefix (same as `proxy.baseUrl`). */
@@ -321,6 +323,7 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       clientId: params.event.clientId ?? params.clientId ?? null,
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
+      usage: params.event.usage ?? resolveUsageForNetworkEmit(),
     },
     { captureBodies }
   );

@@ -7,6 +7,7 @@ import MockEditor from './MockEditor'
 import StatsView from './StatsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
+import Atlas from './Atlas'
 import Network from './Network'
 import DateConfig from './DateConfig'
 import FixturePool from './FixturePool'
@@ -46,6 +47,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
     if (path === '/timeline') return 'timeline'
+    if (path === '/atlas') return 'atlas'
     if (path === '/network') return 'network'
     if (path === '/fixture-pool') return 'fixture-pool'
     if (path === '/date-config') return 'date-config'
@@ -167,6 +169,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
       'timeline': '/timeline',
+      'atlas': '/atlas',
       'network': '/network',
       'fixture-pool': '/fixture-pool',
       'stats': '/',
@@ -476,6 +479,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />
             <Route path="/date-config" element={<DateConfig />} />

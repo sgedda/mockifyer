@@ -10,15 +10,35 @@ import {
   updateNetworkLogConfig,
 } from '@/lib/api'
 import type { NetworkEvent, NetworkEventSource } from '@/types'
-import { RefreshCw, Trash2, Radio, GitBranch, ChevronRight } from 'lucide-react'
 import {
+  RefreshCw,
+  Trash2,
+  Radio,
+  GitBranch,
+  ChevronRight,
+  List,
+  Network as NetworkIcon,
+  GanttChart,
+  Route,
+} from 'lucide-react'
+import {
+  buildJourneySteps,
   buildNetworkEventChainMaps,
+  buildTraceForest,
   chainDepth,
+  flattenTraceForest,
   formatNetworkHopLabel,
   getNetworkEventChain,
   hasChainChildren,
   isChainRoot,
 } from '@/lib/network-event-chains'
+import { formatUsage, usageList } from '@/lib/network-usage'
+import { NetworkTraceView } from '@/components/network/NetworkTraceView'
+import {
+  NetworkGanttView,
+  NetworkJourneyView,
+  NetworkWaterfallView,
+} from '@/components/network/NetworkJourneyViews'
 
 const SOURCE_LABELS: Record<NetworkEventSource, string> = {
   'mock-hit': 'Mock',
@@ -41,6 +61,16 @@ const SOURCE_VARIANT: Record<
 
 const POLL_MS = 3000
 
+type NetworkViewMode = 'list' | 'trace' | 'waterfall' | 'gantt' | 'journey'
+
+const VIEW_MODES: Array<{ id: NetworkViewMode; label: string; icon: typeof List }> = [
+  { id: 'list', label: 'List', icon: List },
+  { id: 'trace', label: 'Trace', icon: GitBranch },
+  { id: 'waterfall', label: 'Waterfall', icon: NetworkIcon },
+  { id: 'gantt', label: 'Gantt', icon: GanttChart },
+  { id: 'journey', label: 'Journey', icon: Route },
+]
+
 interface NetworkProps {
   scenario: string
 }
@@ -59,6 +89,8 @@ export default function Network({ scenario }: NetworkProps) {
   const [sourceFilter, setSourceFilter] = useState<NetworkEventSource | ''>('')
   const [laneFilter, setLaneFilter] = useState('')
   const [chainOnly, setChainOnly] = useState(false)
+  const [viewMode, setViewMode] = useState<NetworkViewMode>('trace')
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
   const sinceRef = useRef<string | undefined>(undefined)
   const [live, setLive] = useState(true)
 
@@ -77,7 +109,6 @@ export default function Network({ scenario }: NetworkProps) {
         setLogEnabled(data.networkLogConfig.enabled)
         setCaptureBodies(data.networkLogConfig.captureBodies)
         if (since) {
-          // Incremental poll: only merge new rows — empty response must not wipe the list.
           if (data.events.length > 0) {
             setEvents((prev) => {
               const ids = new Set(prev.map((e) => e.id))
@@ -132,12 +163,31 @@ export default function Network({ scenario }: NetworkProps) {
         if (!inChain) return false
       }
       if (!q) return true
-      const hay = `${e.method} ${e.url} ${e.path ?? ''} ${e.host ?? ''} ${e.clientId ?? ''} ${e.requestId ?? ''} ${e.parentRequestId ?? ''}`.toLowerCase()
+      const hay = `${e.method} ${e.url} ${e.path ?? ''} ${e.host ?? ''} ${e.clientId ?? ''} ${e.requestId ?? ''} ${e.parentRequestId ?? ''} ${usageList(e.usage)
+        .map(formatUsage)
+        .join(' ')}`.toLowerCase()
       return hay.includes(q)
     })
   }, [events, search, methodFilter, sourceFilter, chainOnly, chainMaps.childrenByParent])
 
-  const selected = filtered.find((e) => e.id === selectedId) ?? filtered[0] ?? null
+  const forest = useMemo(() => buildTraceForest(filtered, chainMaps), [filtered, chainMaps])
+  const traceRows = useMemo(
+    () => flattenTraceForest(forest, collapsedIds),
+    [forest, collapsedIds]
+  )
+  const depthById = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of flattenTraceForest(forest, new Set())) {
+      map.set(row.event.id, row.depth)
+    }
+    return map
+  }, [forest])
+  const journeySteps = useMemo(() => buildJourneySteps(filtered), [filtered])
+
+  const selected =
+    filtered.find((e) => e.id === selectedId) ??
+    (viewMode === 'trace' ? traceRows[0]?.event : filtered[0]) ??
+    null
   const selectedChain = selected ? getNetworkEventChain(selected, chainMaps.byRequestId) : []
 
   useEffect(() => {
@@ -145,6 +195,15 @@ export default function Network({ scenario }: NetworkProps) {
       setSelectedId(selected.id)
     }
   }, [selected, selectedId])
+
+  function toggleCollapse(eventId: string) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(eventId)) next.delete(eventId)
+      else next.add(eventId)
+      return next
+    })
+  }
 
   async function handleToggleEnabled() {
     try {
@@ -205,6 +264,14 @@ export default function Network({ scenario }: NetworkProps) {
     return [...set].sort()
   }, [events])
 
+  const viewDescription: Record<NetworkViewMode, string> = {
+    list: 'Flat chronological list (indent hints chain depth).',
+    trace: 'Collapse / expand correlated request trees. Spine for drill-down.',
+    waterfall: 'Absolute time bars — see parallel vs sequential hops.',
+    gantt: 'Same timeline, grouped by screen / prefetch (usage).',
+    journey: 'Screen steps in order; hops that fired or were consumed under each.',
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -264,7 +331,7 @@ export default function Network({ scenario }: NetworkProps) {
 
       <div className="flex flex-wrap gap-2">
         <Input
-          placeholder="Filter URL, path, lane…"
+          placeholder="Filter URL, path, lane, used by…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md h-9"
@@ -310,12 +377,62 @@ export default function Network({ scenario }: NetworkProps) {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        {VIEW_MODES.map(({ id, label, icon: Icon }) => (
+          <Button
+            key={id}
+            type="button"
+            size="sm"
+            variant={viewMode === id ? 'default' : 'outline'}
+            onClick={() => setViewMode(id)}
+          >
+            <Icon className="h-4 w-4 mr-1" />
+            {label}
+          </Button>
+        ))}
+        {viewMode === 'trace' && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setCollapsedIds(new Set())}
+            >
+              Expand all
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const ids = new Set<string>()
+                for (const row of flattenTraceForest(forest, new Set())) {
+                  if (row.hasChildren) ids.add(row.event.id)
+                }
+                setCollapsedIds(ids)
+              }}
+            >
+              Collapse all
+            </Button>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground -mt-2">{viewDescription[viewMode]}</p>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-[24rem]">
         <Card className="overflow-hidden">
           <CardHeader className="py-3">
             <CardTitle className="text-sm font-medium">
-              Requests ({filtered.length}
-              {filtered.length !== events.length ? ` / ${events.length}` : ''})
+              {viewMode === 'list' && (
+                <>
+                  Requests ({filtered.length}
+                  {filtered.length !== events.length ? ` / ${events.length}` : ''})
+                </>
+              )}
+              {viewMode === 'trace' && <>Trace ({traceRows.length} visible)</>}
+              {viewMode === 'waterfall' && <>Waterfall ({filtered.length} hops)</>}
+              {viewMode === 'gantt' && <>Gantt ({journeySteps.length} groups)</>}
+              {viewMode === 'journey' && <>Journey ({journeySteps.length} steps)</>}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -327,67 +444,103 @@ export default function Network({ scenario }: NetworkProps) {
                   ? 'No chained requests match “Chains only”. Turn off the filter or run a multi-service flow so hops carry correlation ids.'
                   : 'No events yet. Send traffic through the dashboard proxy or an SDK with network logging.'}
               </p>
-            ) : (
-              <div className="max-h-[32rem] overflow-auto divide-y divide-border">
+            ) : viewMode === 'list' ? (
+              <div className="max-h-[36rem] overflow-auto divide-y divide-border">
                 {filtered.map((ev) => {
                   const isIncident = ev.kind === 'incident'
                   const depth = chainDepth(ev, chainMaps.byRequestId)
                   const isRoot = isChainRoot(ev)
                   const hasChildren = hasChainChildren(ev, chainMaps.childrenByParent)
                   return (
-                  <button
-                    key={ev.id}
-                    type="button"
-                    className={`w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors ${
-                      selected?.id === ev.id ? 'bg-accent' : ''
-                    } ${isIncident ? 'border-l-2 border-destructive' : ''}`}
-                    style={{ paddingLeft: `${12 + Math.min(depth, 4) * 12}px` }}
-                    onClick={() => setSelectedId(ev.id)}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-semibold w-12">{isIncident ? 'ERR' : ev.method}</span>
-                      {isIncident ? (
-                        <Badge variant="destructive" className="text-[10px]">
-                          incident
-                        </Badge>
-                      ) : (
-                        <Badge variant={SOURCE_VARIANT[ev.source]} className="text-[10px]">
-                          {SOURCE_LABELS[ev.source]}
-                        </Badge>
-                      )}
-                      {isRoot && hasChildren && (
-                        <Badge variant="outline" className="text-[10px]">
-                          chain root
-                        </Badge>
-                      )}
-                      {!isRoot && (
-                        <Badge variant="outline" className="text-[10px]">
-                          hop {depth + 1}
-                        </Badge>
-                      )}
-                      {ev.status != null && (
-                        <span className="text-xs text-muted-foreground">{ev.status}</span>
-                      )}
-                      {ev.durationMs != null && (
-                        <span className="text-xs text-muted-foreground">{ev.durationMs}ms</span>
-                      )}
-                      <span className="text-[10px] text-muted-foreground ml-auto">{ev.transport}</span>
-                    </div>
-                    <div className="font-mono text-xs truncate text-muted-foreground mt-0.5">
-                      {isIncident ? ev.errorMessage || ev.url : ev.path || ev.url}
-                    </div>
-                    {ev.anomalyFlags?.length ? (
-                      <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
-                        ⚠ {ev.anomalyFlags.join(', ')}
+                    <button
+                      key={ev.id}
+                      type="button"
+                      className={`w-full text-left px-3 py-2 hover:bg-accent/50 transition-colors ${
+                        selected?.id === ev.id ? 'bg-accent' : ''
+                      } ${isIncident ? 'border-l-2 border-destructive' : ''}`}
+                      style={{ paddingLeft: `${12 + Math.min(depth, 4) * 12}px` }}
+                      onClick={() => setSelectedId(ev.id)}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-semibold w-12">
+                          {isIncident ? 'ERR' : ev.method}
+                        </span>
+                        {isIncident ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            incident
+                          </Badge>
+                        ) : (
+                          <Badge variant={SOURCE_VARIANT[ev.source]} className="text-[10px]">
+                            {SOURCE_LABELS[ev.source]}
+                          </Badge>
+                        )}
+                        {isRoot && hasChildren && (
+                          <Badge variant="outline" className="text-[10px]">
+                            chain root
+                          </Badge>
+                        )}
+                        {!isRoot && (
+                          <Badge variant="outline" className="text-[10px]">
+                            hop {depth + 1}
+                          </Badge>
+                        )}
+                        {ev.status != null && (
+                          <span className="text-xs text-muted-foreground">{ev.status}</span>
+                        )}
+                        {ev.durationMs != null && (
+                          <span className="text-xs text-muted-foreground">{ev.durationMs}ms</span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto">{ev.transport}</span>
                       </div>
-                    ) : null}
-                    {ev.clientId && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">lane: {ev.clientId}</div>
-                    )}
-                  </button>
+                      <div className="font-mono text-xs truncate text-muted-foreground mt-0.5">
+                        {isIncident ? ev.errorMessage || ev.url : ev.path || ev.url}
+                      </div>
+                      {ev.anomalyFlags?.length ? (
+                        <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5">
+                          ⚠ {ev.anomalyFlags.join(', ')}
+                        </div>
+                      ) : null}
+                      {ev.clientId && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          lane: {ev.clientId}
+                        </div>
+                      )}
+                      {usageList(ev.usage).length > 0 && (
+                        <div className="text-[10px] text-sky-700 dark:text-sky-400 mt-0.5">
+                          used by: {usageList(ev.usage).map(formatUsage).join(', ')}
+                        </div>
+                      )}
+                    </button>
                   )
                 })}
               </div>
+            ) : viewMode === 'trace' ? (
+              <NetworkTraceView
+                rows={traceRows}
+                selectedId={selected?.id ?? null}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={toggleCollapse}
+                onSelect={setSelectedId}
+              />
+            ) : viewMode === 'waterfall' ? (
+              <NetworkWaterfallView
+                events={filtered}
+                depthById={depthById}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelectedId}
+              />
+            ) : viewMode === 'gantt' ? (
+              <NetworkGanttView
+                steps={journeySteps}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelectedId}
+              />
+            ) : (
+              <NetworkJourneyView
+                steps={journeySteps}
+                selectedId={selected?.id ?? null}
+                onSelect={setSelectedId}
+              />
             )}
           </CardContent>
         </Card>
@@ -396,7 +549,7 @@ export default function Network({ scenario }: NetworkProps) {
           <CardHeader className="py-3">
             <CardTitle className="text-sm font-medium">Details</CardTitle>
           </CardHeader>
-          <CardContent className="text-sm space-y-3 max-h-[32rem] overflow-auto">
+          <CardContent className="text-sm space-y-3 max-h-[36rem] overflow-auto">
             {!selected ? (
               <p className="text-muted-foreground">Select a request</p>
             ) : (
@@ -414,6 +567,23 @@ export default function Network({ scenario }: NetworkProps) {
                 <DetailRow label="Source" value={SOURCE_LABELS[selected.source]} />
                 <DetailRow label="Transport" value={selected.transport} />
                 {selected.requestId && <DetailRow label="Request id" value={selected.requestId} mono />}
+                {usageList(selected.usage).length > 0 && (
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Used by (app)</div>
+                    <ul className="space-y-1">
+                      {usageList(selected.usage).map((u, i) => (
+                        <li key={i} className="rounded border px-2 py-1.5 text-sm">
+                          <div className="font-medium">{formatUsage(u)}</div>
+                          {(u.datasourceId || u.dataRoot || u.cms?.path) && (
+                            <div className="text-xs text-muted-foreground">
+                              {[u.datasourceId, u.dataRoot, u.cms?.path].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {selected.parentRequestId && (
                   <div>
                     <div className="text-xs text-muted-foreground">Triggered by</div>

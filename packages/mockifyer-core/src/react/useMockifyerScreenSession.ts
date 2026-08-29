@@ -1,16 +1,22 @@
 import { useEffect, useMemo } from 'react';
 import { setFlightRecorderRuntimeContext } from '../utils/flight-recorder';
+import { clearAtlasUsageContext, setAtlasUsageContext } from '../utils/atlas-usage';
 
 export interface UseMockifyerScreenSessionOptions {
   /** Stable screen or flow name, e.g. `matchday` or `settings-profile`. */
   screenName: string;
   clientId?: string;
   scenario?: string;
+  /** Optional component/feature label stamped on outbound hops while this screen is active. */
+  component?: string;
 }
 
 /**
  * Per-screen session id for crash forensics — ties ErrorBoundary incidents and
  * subsequent network hops to the same bucket (via {@link setFlightRecorderRuntimeContext}).
+ *
+ * Also sets {@link setAtlasUsageContext} so network events are auto-tagged with this screen
+ * (trace spine + "used by" in the dashboard).
  *
  * Use the returned `sessionId` on {@link MockifyerErrorBoundary} for the same screen.
  */
@@ -26,6 +32,10 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
       clientId: options.clientId,
       scenario: options.scenario,
     });
+    setAtlasUsageContext({
+      screen: options.screenName.trim(),
+      component: options.component,
+    });
 
     return () => {
       setFlightRecorderRuntimeContext({
@@ -33,8 +43,9 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
         clientId: undefined,
         scenario: undefined,
       });
+      clearAtlasUsageContext();
     };
-  }, [sessionId, options.clientId, options.scenario]);
+  }, [sessionId, options.clientId, options.scenario, options.screenName, options.component]);
 
   return sessionId;
 }
