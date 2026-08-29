@@ -7,6 +7,7 @@
 
 import type { AtlasDocMap, AtlasDocNode, AtlasDocPage } from './atlas-doc';
 import type { NetworkEvent } from './network-event-types';
+import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -326,15 +327,16 @@ function interactiveClientScript(): string {
     screens.forEach(function (s) { screenSet[s] = true; });
     var pageSet = {};
     pages.forEach(function (p) { pageSet[p] = true; });
-    var hasPref = Object.keys(doc.prefetches || {}).length > 0;
+    var prefetchSet = {};
+    Object.keys(doc.prefetches || {}).forEach(function (id) { prefetchSet[id] = true; });
     var byReq = {};
     events.forEach(function (e) { if (e.requestId) byReq[e.requestId] = e; });
     var matched = events.filter(function (ev) {
       var us = usageList(ev.usage);
-      if (!us.length) return hasPref && !ev.parentRequestId;
       return us.some(function (u) {
         return (u.screen && screenSet[u.screen]) ||
-          (u.cms && u.cms.pageId && (pageSet[u.cms.pageId] || screenSet[u.cms.pageId]));
+          (u.cms && u.cms.pageId && (pageSet[u.cms.pageId] || screenSet[u.cms.pageId])) ||
+          (u.datasourceId && prefetchSet[u.datasourceId]);
       });
     });
     var include = {};
@@ -457,7 +459,7 @@ function interactiveClientScript(): string {
       html += '<div class="card">';
       html += '<div class="tree-row"><button type="button" class="chev" data-collapse="page:' + esc(pid) + '">' + (open ? '▼' : '▶') + '</button>';
       html += '<div><strong>' + esc(p.pageSlug || p.pageId) + '</strong> <span class="badge">' + nodes.length + ' nodes</span>';
-      html += ' <a href="pages/' + esc(pid.replace(/[^a-zA-Z0-9._-]+/g, '_')) + '.html">static page →</a></div></div>';
+      html += ' <a href="pages/' + esc((pid.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'page')) + '.html">static page →</a></div></div>';
       if (open) {
         nodes.forEach(function (n) {
           html += '<div class="tree-row" style="padding-left:1.5rem"><span class="indent"></span><div>';
@@ -673,9 +675,11 @@ function interactiveClientScript(): string {
 }
 
 function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string {
+  const annotations = getAtlasUsageAnnotations();
+  const merged = mergeUsageOntoNetworkEvents(events, annotations);
   const payload = {
     doc: map,
-    events: events.map(slimNetworkEvent),
+    events: merged.map(slimNetworkEvent),
   };
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
