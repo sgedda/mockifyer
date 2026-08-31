@@ -93,6 +93,8 @@ export async function initializeMockifyer() {
 
 Node / Jest / server apps use **`await initMockifyerForDashboardProxy(...)`** (`dashboardBaseUrl`, **`skipDashboardRedisHealthCheck`**, etc.) — same **`/api/health`** idea as RN strict proxy vs Hybrid.
 
+On an **Android emulator**, use `http://10.0.2.2:3002` (or your dashboard port) as `dashboardBaseUrl` / `proxyBaseUrl`. The app's **API** base URL may also be `http://10.0.2.2:…`. The dashboard proxy runs on the host and rewrites those emulator loopback hosts to `127.0.0.1` before calling upstream — no extra Express middleware is required. Physical devices should keep using the Mac's LAN IP for both dashboard and API.
+
 ---
 
 ## Metro sync middleware (required for Hybrid)
