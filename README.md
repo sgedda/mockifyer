@@ -158,6 +158,8 @@ Per proxied request: **`scenario`** in the POST body (**client override**) **→
 
 With strict lane (default when using the dashboard proxy): non-empty **`clientId`** plus missing **`client_scenario:{clientId}`** ⇒ upstream passthrough only (no global **`active_scenario`**). Configure per app via **`proxy.strictLaneScenario`** in **`setupMockifyer`** / **`setupMockifyerForReactNative`** (overridable with **`MOCKIFYER_STRICT_LANE_SCENARIO`** env).
 
+Android emulators reach the host via **`10.0.2.2`** (AVD) or **`10.0.3.2`** (Genymotion). Those addresses are meaningless on the host, so `/api/proxy` rewrites them to **`127.0.0.1`** before matching, recording, and fetching upstream. Point the app's **dashboard** URL at `http://10.0.2.2:3002` as usual; you do not need a host-side rewrite of the **API** URL.
+
 For optional app escape hatches (**`proxy.scenario`** SDK / proxy body **`scenario`**), **`last seen resolved`** in the Client Lanes UI can diverge from the configured lane scenario.
 
 

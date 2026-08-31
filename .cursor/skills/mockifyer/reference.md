@@ -77,6 +77,8 @@ Per request: body `scenario` → `client_scenario:{clientId}` → Redis `active_
 
 `MOCKIFYER_STRICT_LANE_SCENARIO`: with `clientId`, missing lane → upstream only (no mock replay/record).
 
+`/api/proxy` rewrites Android emulator loopback hosts (`10.0.2.2`, `10.0.3.2`) to `127.0.0.1` before matching and upstream fetch.
+
 ## Tests
 
 ```bash

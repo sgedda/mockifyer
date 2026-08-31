@@ -133,6 +133,12 @@ npx mockifyer-dashboard --host 0.0.0.0
 
 ⚠️ **Note**: The dashboard reads files directly from the filesystem, so it must run on the same machine where your mock data files are located. For remote access, you would need to run the dashboard on the server and access it via network.
 
+### Android emulator loopback (`10.0.2.2`)
+
+When an Android emulator sends `/api/proxy` a target URL whose host is **`10.0.2.2`** (AVD) or **`10.0.3.2`** (Genymotion), the dashboard rewrites it to **`127.0.0.1`** before mock matching and the upstream fetch. Those aliases only mean "host machine" *inside* the emulator; fetching them from the dashboard process would time out (`UND_ERR_CONNECT_TIMEOUT`).
+
+The emulator should still use `http://10.0.2.2:<dashboard-port>` to **reach** the dashboard. Physical devices should use the host's LAN IP instead.
+
 ## Network request trace API
 
 Resolve a **multi-service call chain** from the network log (gateway → downstream services → external APIs). Each hop includes response data when **Bodies** capture is enabled in the Network tab.

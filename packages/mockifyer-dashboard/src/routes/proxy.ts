@@ -35,6 +35,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
+import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
 import {
   appendProxyNetworkEvent,
   applyProxyCorrelationToMockData,
@@ -103,7 +104,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   const {
-    url,
+    url: rawUrl,
     method,
     headers,
     body,
@@ -132,7 +133,11 @@ router.post('/', async (req: Request, res: Response) => {
       : deviceIdFromHeader && deviceIdFromHeader.trim()
         ? deviceIdFromHeader.trim()
         : deriveFallbackDeviceId(req);
-  if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
+  if (!rawUrl || typeof rawUrl !== 'string') return res.status(400).json({ error: 'url is required' });
+  const url = rewriteEmulatorLoopbackUrl(rawUrl);
+  if (debugProxy && url !== rawUrl) {
+    console.log(`[ProxyRoute] rewrote emulator loopback host: ${rawUrl} → ${url}`);
+  }
 
   const inboundCorrelation = resolveProxyInboundCorrelation(req, req.body);
 
