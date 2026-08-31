@@ -106,38 +106,38 @@ export function createCacheRegistry(options?: AtlasCacheRegistryOptions) {
    */
   function trackAccess<T>(fn: () => T): { result: T; datasources: AtlasDatasourceRef[] } {
     const frame = new Set<string>();
-    const run = (): { result: T; datasources: AtlasDatasourceRef[] } => {
-      accessStack.push(frame);
-      try {
+    if (accessAls) {
+      return accessAls.run(frame, () => {
         const result = fn();
         return { result, datasources: refsFromAccessed(frame) };
-      } finally {
-        removeFrame(frame);
-      }
-    };
-    if (accessAls) {
-      return accessAls.run(frame, run);
+      });
     }
-    return run();
+    accessStack.push(frame);
+    try {
+      const result = fn();
+      return { result, datasources: refsFromAccessed(frame) };
+    } finally {
+      removeFrame(frame);
+    }
   }
 
   async function trackAccessAsync<T>(
     fn: () => Promise<T>
   ): Promise<{ result: T; datasources: AtlasDatasourceRef[] }> {
     const frame = new Set<string>();
-    const run = async (): Promise<{ result: T; datasources: AtlasDatasourceRef[] }> => {
-      accessStack.push(frame);
-      try {
+    if (accessAls) {
+      return accessAls.run(frame, async () => {
         const result = await fn();
         return { result, datasources: refsFromAccessed(frame) };
-      } finally {
-        removeFrame(frame);
-      }
-    };
-    if (accessAls) {
-      return accessAls.run(frame, run);
+      });
     }
-    return run();
+    accessStack.push(frame);
+    try {
+      const result = await fn();
+      return { result, datasources: refsFromAccessed(frame) };
+    } finally {
+      removeFrame(frame);
+    }
   }
 
   function listIds(): string[] {
