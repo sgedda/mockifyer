@@ -17,9 +17,12 @@ export type {
   NetworkEventPhase,
   NetworkEventSource,
   NetworkEventTransport,
+  NetworkEventUsage,
   TimelineEventKind,
 } from './network-event-types';
 import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
+import { resolveUsageForNetworkEmit } from './atlas-usage';
+import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 
 export interface NetworkLogEmitterOptions {
   /** Dashboard origin + optional path prefix (same as `proxy.baseUrl`). */
@@ -321,12 +324,17 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       clientId: params.event.clientId ?? params.clientId ?? null,
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
+      usage: params.event.usage ?? resolveUsageForNetworkEmit(),
     },
     { captureBodies }
   );
 
   if (recorderConfig.enabled !== false) {
     recordFlightNetworkEvent(built);
+  }
+
+  if (getAtlasDocHtmlOutputPath()) {
+    rememberAtlasHtmlNetworkEvent(built);
   }
 
   if (!dashboardBaseUrl) return;

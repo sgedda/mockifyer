@@ -250,6 +250,33 @@ export interface MockifyerConfig {
     };
   };
   /**
+   * CMS / surface atlas + usage annotations on the network trace spine.
+   * Env **`MOCKIFYER_ATLAS`**: `off` \| `live` \| `session` (wins over this field).
+   *
+   * Prefer trace-first: {@link setAtlasUsageContext} / {@link useMockifyerScreenSession}
+   * auto-tags outbound hops; {@link recordUsage} / CMS {@link capturePresentation} attach
+   * after-the-fact by `requestId`. See Network dashboard "used by".
+   */
+  atlas?: {
+    /** When false, all atlas capture is a no-op. */
+    enabled?: boolean;
+    /** `off` (default) \| `live` (stream to dashboard) \| `session` (bounded run). */
+    mode?: 'off' | 'live' | 'session';
+    /** Dashboard origin for `POST /api/atlas/events`. Falls back to networkLog / proxy / `MOCKIFYER_DASHBOARD_URL`. */
+    dashboardBaseUrl?: string;
+    /** How much of component props to store: `sample` (default) \| `schema` \| `full` \| `off`. */
+    captureValues?: 'off' | 'sample' | 'schema' | 'full';
+    /** Max UTF-8 bytes for serialized props snapshots (default 8192). */
+    maxShownBytes?: number;
+    /**
+     * Directory for self-contained Atlas auto-doc HTML written on capture (Node).
+     * Env **`MOCKIFYER_ATLAS_HTML_PATH`** wins when set.
+     * When atlas is enabled and this is unset, Node defaults to `{mockDataPath}/atlas-html`.
+     * Open `{path}/index.html` in VS Code / a browser.
+     */
+    htmlOutputPath?: string;
+  };
+  /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
    * Use `redis` with `mockifyer-fetch` (Node) for a shared Redis-backed store; requires `ioredis`.
    * `mockifyer-axios` currently supports filesystem only for mock lookup.
@@ -430,6 +457,13 @@ export const ENV_VARS = {
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
+  /** `off` \| `live` \| `session` — CMS/surface atlas capture (see {@link MockifyerConfig.atlas}). */
+  MOCK_ATLAS: 'MOCKIFYER_ATLAS',
+  /**
+   * Directory for Atlas auto-doc HTML written on capture (Node).
+   * See {@link MockifyerConfig.atlas.htmlOutputPath}; default `{mockDataPath}/atlas-html` when atlas is on.
+   */
+  MOCK_ATLAS_HTML_PATH: 'MOCKIFYER_ATLAS_HTML_PATH',
   /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */

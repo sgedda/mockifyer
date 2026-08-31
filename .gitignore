@@ -41,3 +41,5 @@ test-mock-data/
 
 # Local checkout / submodule (not part of mockifyer releases)
 example-projects/capp-react-native/ 
+# Local Atlas HTML preview samples
+.atlas-html-preview/

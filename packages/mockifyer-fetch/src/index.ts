@@ -81,6 +81,7 @@ import {
   configureFlightRecorder,
   resolveFlightRecorderConfig,
   setFlightRecorderRuntimeContext,
+  configureAtlas,
   resolveActiveMockifyerSessionId,
   type RequestCorrelationContext,
   DomainPathRulesSession,
@@ -391,6 +392,10 @@ class MockifyerClass {
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
+    configureAtlas(this.config, {
+      scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
+      clientId: this.config.clientId ?? null,
+    });
     setFlightRecorderRuntimeContext({
       clientId: this.config.clientId,
       scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),

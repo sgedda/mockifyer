@@ -8,6 +8,7 @@ import {
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
+import { mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-store';
 
 const router = express.Router();
 
@@ -180,12 +181,13 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
+    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, events);
     return res.json({
       scenario,
       provider: config.provider,
       ephemeral,
       networkLogConfig,
-      events,
+      events: withUsage,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to list network events' });
@@ -247,6 +249,7 @@ router.post('/', async (req: Request, res: Response) => {
       errorMessage: incoming.errorMessage,
       stackPreview: incoming.stackPreview,
       componentStackPreview: incoming.componentStackPreview,
+      usage: incoming.usage,
       id: incoming.id,
       timestamp: incoming.timestamp,
     });

@@ -3,10 +3,7 @@ export const ANDROID_EMULATOR_LOOPBACK_HOSTS = ['10.0.2.2', '10.0.3.2'] as const
 
 const HOST_LOOPBACK_REPLACEMENT = '127.0.0.1';
 
-const EMULATOR_LOOPBACK_HOST_RE = new RegExp(
-  `^(https?://)(${ANDROID_EMULATOR_LOOPBACK_HOSTS.map((host) => host.replace(/\./g, '\\.')).join('|')})(?=[:/?#]|$)`,
-  'i'
-);
+const EMULATOR_LOOPBACK_HOST_RE = /^(https?:\/\/)(10\.0\.2\.2|10\.0\.3\.2)(?=[:/?#]|$)/i;
 
 /**
  * Rewrites Android emulator host-loopback aliases to `127.0.0.1`.
