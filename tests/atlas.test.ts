@@ -240,6 +240,55 @@ describe('atlas-cache', () => {
     expect(datasources).toHaveLength(1);
     expect(datasources[0].datasourceId).toBe('app-user');
   });
+
+  it('nested trackAccess keeps outer datasources isolated from inner', () => {
+    const cache = createCacheRegistry();
+    cache.set('outer-a', { data: 1, requestId: 'r1' });
+    cache.set('inner-b', { data: 2, requestId: 'r2' });
+    cache.set('outer-c', { data: 3, requestId: 'r3' });
+
+    const { datasources: outer } = cache.trackAccess(() => {
+      cache.getCache('outer-a');
+      const { datasources: inner } = cache.trackAccess(() => {
+        cache.getCache('inner-b');
+        return null;
+      });
+      expect(inner.map((d) => d.datasourceId)).toEqual(['inner-b']);
+      cache.getCache('outer-c');
+      return null;
+    });
+
+    expect(outer.map((d) => d.datasourceId).sort()).toEqual(['outer-a', 'outer-c']);
+  });
+
+  it('overlapping trackAccessAsync sessions do not steal each other reads', async () => {
+    const cache = createCacheRegistry();
+    cache.set('a', { data: 1, requestId: 'ra' });
+    cache.set('b', { data: 2, requestId: 'rb' });
+    cache.set('c', { data: 3, requestId: 'rc' });
+    cache.set('d', { data: 4, requestId: 'rd' });
+
+    const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+    const p1 = cache.trackAccessAsync(async () => {
+      cache.getCache('a');
+      await delay(20);
+      cache.getCache('b');
+      return 'p1';
+    });
+    const p2 = cache.trackAccessAsync(async () => {
+      cache.getCache('c');
+      await delay(20);
+      cache.getCache('d');
+      return 'p2';
+    });
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1.result).toBe('p1');
+    expect(r2.result).toBe('p2');
+    expect(r1.datasources.map((d) => d.datasourceId).sort()).toEqual(['a', 'b']);
+    expect(r2.datasources.map((d) => d.datasourceId).sort()).toEqual(['c', 'd']);
+  });
 });
 
 describe('createCmsRenderer', () => {
