@@ -20,7 +20,7 @@ import {
   resolveNetworkLogDashboardUrl,
 } from './network-log';
 import { enrichNetworkEventsWithAtlasUsage } from './atlas-usage';
-import { formatHopLineForDisplay } from './hop-display';
+import { formatHopLineForDisplay, primaryScreenForHop } from './hop-display';
 
 export interface CrashSuspect {
   eventId: string;
@@ -628,9 +628,19 @@ export interface LogCompactIncidentOptions {
   crashContext?: CrashContext | null;
 }
 
+/** Metro / LogBox often hides `console.groupCollapsed` children — use flat lines instead. */
+function prefersFlatConsoleHopLog(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    (navigator as { product?: string }).product === 'ReactNative'
+  );
+}
+
+const MAX_CONSOLE_HOPS = 12;
+
 /**
- * One-line error in the console; hop details inside a collapsed group (Metro / Chrome / Node).
- * Keeps the frontend error visible — network context is opt-in to expand.
+ * One-line error in the console; hop details inside a collapsed group (Chrome / Node)
+ * or as flat warn lines (React Native / Metro).
  */
 export function logCompactIncidentToConsole(options: LogCompactIncidentOptions): void {
   if (typeof console === 'undefined') return;
@@ -651,30 +661,54 @@ export function logCompactIncidentToConsole(options: LogCompactIncidentOptions):
 
   const groupLabel =
     suspectCount > 0
-      ? `[Mockifyer] Network context — ${hopCount} hops, ${suspectCount} flagged (expand, ranked)`
-      : `[Mockifyer] Network context — ${hopCount} hops (expand, ranked)`;
+      ? `[Mockifyer] Network context — ${hopCount} hops, ${suspectCount} flagged (ranked)`
+      : `[Mockifyer] Network context — ${hopCount} hops (ranked)`;
 
-  if (typeof console.groupCollapsed === 'function') {
-    console.groupCollapsed(groupLabel);
-  } else {
-    console.error(groupLabel);
-  }
-
-  if (crashContext.incident.sessionId) {
-    console.log('sessionId:', crashContext.incident.sessionId);
-  }
-  if (suspectCount > 0) {
-    for (const s of crashContext.suspects) {
-      console.log(`⚠ ${s.method} ${s.url} — ${s.summary}`);
+  const logHopLine = (line: string): void => {
+    if (typeof console.warn === 'function') {
+      console.warn(line);
+    } else {
+      console.error(line);
     }
-  }
-  for (const hop of crashContext.hops) {
-    const isPrefetch = crashContext.prefetchHopIds?.includes(hop.id);
-    console.log(`${isPrefetch ? '(prefetch) ' : ''}${formatHopLineForDisplay(hop)}`);
-  }
+  };
 
-  if (typeof console.groupEnd === 'function') {
-    console.groupEnd();
+  const printHopDetails = (): void => {
+    if (crashContext!.incident.sessionId) {
+      logHopLine(`[Mockifyer] sessionId: ${crashContext!.incident.sessionId}`);
+    }
+    if (suspectCount > 0) {
+      for (const s of crashContext!.suspects) {
+        logHopLine(`[Mockifyer] ⚠ ${s.method} ${s.url} — ${s.summary}`);
+      }
+    }
+    const hopsToShow = crashContext!.hops.slice(0, MAX_CONSOLE_HOPS);
+    let lastScreen: string | undefined;
+    for (const hop of hopsToShow) {
+      const screen = primaryScreenForHop(hop);
+      if (screen && screen !== lastScreen) {
+        logHopLine(`[Mockifyer] — ${screen} —`);
+        lastScreen = screen;
+      }
+      const isPrefetch = crashContext!.prefetchHopIds?.includes(hop.id);
+      logHopLine(`[Mockifyer]   ${isPrefetch ? '(prefetch) ' : ''}${formatHopLineForDisplay(hop)}`);
+    }
+    if (hopCount > MAX_CONSOLE_HOPS) {
+      logHopLine(`[Mockifyer]   … +${hopCount - MAX_CONSOLE_HOPS} more (see on-screen fallback)`);
+    }
+  };
+
+  if (prefersFlatConsoleHopLog()) {
+    logHopLine(groupLabel);
+    printHopDetails();
+  } else if (typeof console.groupCollapsed === 'function') {
+    console.groupCollapsed(groupLabel);
+    printHopDetails();
+    if (typeof console.groupEnd === 'function') {
+      console.groupEnd();
+    }
+  } else {
+    logHopLine(groupLabel);
+    printHopDetails();
   }
 
   if (error.stack) {
