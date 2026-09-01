@@ -248,6 +248,24 @@ export function mergeUsageOntoNetworkEvents<
   });
 }
 
+/**
+ * Merge in-process atlas usage onto network events (emit-time usage + annotations index).
+ * Used by crash forensics and dashboard exports.
+ */
+export function enrichNetworkEventsWithAtlasUsage<
+  T extends { requestId?: string | null; usage?: NetworkEventUsage | NetworkEventUsage[] },
+>(events: T[]): T[] {
+  const merged = mergeUsageOntoNetworkEvents(events, getAtlasUsageAnnotations());
+  return merged.map((ev) => {
+    if (ev.usage) return ev;
+    const rid = ev.requestId?.trim();
+    if (!rid) return ev;
+    const extra = getUsagesForRequestId(rid);
+    if (!extra.length) return ev;
+    return { ...ev, usage: extra.length === 1 ? extra[0] : dedupeUsageList(extra) };
+  });
+}
+
 /** Format usage for list badges. */
 export function formatUsageLabel(usage: NetworkEventUsage): string {
   if (usage.label) return usage.label;

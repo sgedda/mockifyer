@@ -15,7 +15,13 @@ import {
   setFlightRecorderRuntimeContext,
   collectCrashContextHops,
   sortHopsByRelevance,
+  recordUsage,
+  resetAtlasUsageRuntime,
+  setAtlasUsageContext,
+  enrichNetworkEventsWithAtlasUsage,
+  type NetworkEventUsage,
 } from '@sgedda/mockifyer-core';
+import { formatHopLineForDisplay } from '../packages/mockifyer-core/src/utils/hop-display';
 
 describe('response-shape', () => {
   it('fingerprints object shape', () => {
@@ -242,5 +248,74 @@ describe('incidents', () => {
     const ctx = explainIncidentFromEvents(events, { incidentId: 'inc-1', windowMs: 60_000 });
     expect(ctx?.hops).toHaveLength(1);
     expect(ctx?.suspects[0]?.flags).toContain('http_error_status');
+  });
+
+  it('merges atlas usage onto crash context hops', () => {
+    resetAtlasUsageRuntime();
+    const sessionId = 'sess-atlas';
+    const at = '2026-08-20T20:00:00.000Z';
+    const requestId = 'req-cms-phone';
+
+    setAtlasUsageContext({ screen: 'AppDun', component: 'PhoneDetails' });
+    recordFlightNetworkEvent(
+      buildNetworkEvent({
+        scenario: 'default',
+        transport: 'fetch',
+        method: 'GET',
+        url: 'https://example.com/cms/phone',
+        source: 'mock-hit',
+        status: 200,
+        sessionId,
+        requestId,
+        timestamp: '2026-08-20T19:59:55.000Z',
+      })
+    );
+    recordUsage({
+      requestId,
+      usage: {
+        screen: 'AppDun',
+        component: 'PhoneDetails',
+        cms: { pageId: 'contact', nodeId: 'phone-1', type: 'phonedetails' },
+      },
+    });
+
+    const incident = reportIncident({
+      type: 'error_boundary',
+      message: 'render fail',
+      sessionId,
+      at,
+    });
+
+    const ctx = getCrashContext({ incidentId: incident.id, at, windowMs: 60_000 });
+    expect(ctx?.hops[0].usage).toBeTruthy();
+    const line = formatHopLineForDisplay(ctx!.hops[0]);
+    expect(line).toContain('[AppDun / PhoneDetails]');
+    expect(line).toContain('page:contact');
+    expect(line).toContain('node:phone-1');
+  });
+});
+
+describe('enrichNetworkEventsWithAtlasUsage', () => {
+  beforeEach(() => {
+    resetAtlasUsageRuntime();
+  });
+
+  it('merges annotation index by requestId', () => {
+    const events = [
+      {
+        id: '1',
+        requestId: 'r1',
+        method: 'GET',
+        url: 'https://a.test',
+        source: 'mock-hit' as const,
+        usage: undefined as NetworkEventUsage | undefined,
+      },
+    ];
+    recordUsage({
+      requestId: 'r1',
+      usage: { screen: 'matchday', component: 'Hero' },
+    });
+    const enriched = enrichNetworkEventsWithAtlasUsage(events);
+    expect(enriched[0].usage).toEqual({ screen: 'matchday', component: 'Hero' });
   });
 });

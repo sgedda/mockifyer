@@ -19,6 +19,8 @@ import {
   resolveNetworkLogCaptureBodies,
   resolveNetworkLogDashboardUrl,
 } from './network-log';
+import { enrichNetworkEventsWithAtlasUsage } from './atlas-usage';
+import { formatHopLineForDisplay } from './hop-display';
 
 export interface CrashSuspect {
   eventId: string;
@@ -312,11 +314,12 @@ function finalizeCrashContext(
     hopLimit: options.hopLimit,
   });
 
-  const suspects = orderSuspectsLikeHops(buildSuspects(hops), hops);
+  const enrichedHops = enrichNetworkEventsWithAtlasUsage(hops);
+  const suspects = orderSuspectsLikeHops(buildSuspects(enrichedHops), enrichedHops);
 
   return {
     incident,
-    hops,
+    hops: enrichedHops,
     prefetchHopIds,
     suspects,
     windowMs,
@@ -667,10 +670,7 @@ export function logCompactIncidentToConsole(options: LogCompactIncidentOptions):
   }
   for (const hop of crashContext.hops) {
     const isPrefetch = crashContext.prefetchHopIds?.includes(hop.id);
-    const flags = hop.anomalyFlags?.length ? ` ⚠ ${hop.anomalyFlags.join(', ')}` : '';
-    console.log(
-      `${isPrefetch ? '(prefetch) ' : ''}${hop.method} ${hop.url} · ${hop.source}${hop.status != null ? ` ${hop.status}` : ''}${flags}`
-    );
+    console.log(`${isPrefetch ? '(prefetch) ' : ''}${formatHopLineForDisplay(hop)}`);
   }
 
   if (typeof console.groupEnd === 'function') {

@@ -54,6 +54,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -89,6 +90,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: false },
     });
     await client.get('https://api.example.com/x');
@@ -119,6 +121,7 @@ describe('fetch proxy bypass', () => {
         mockDataPath: testMockDataPath,
         recordMode: false,
         useGlobalFetch: false,
+        networkLog: { enabled: false },
         proxy: { baseUrl: 'http://dashboard.local' },
       });
       await client.get('https://api.example.com/env');
@@ -192,6 +195,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -217,6 +221,7 @@ describe('fetch proxy bypass', () => {
       useGlobalFetch: false,
       activationMode: 'off',
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -244,6 +249,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
       excludedUrls: ['login.microsoftonline.com'],
     });
@@ -276,6 +282,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false, flightRecorder: { enabled: true } },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 

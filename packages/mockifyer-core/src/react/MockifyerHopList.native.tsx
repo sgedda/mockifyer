@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CrashSuspect } from '../utils/incidents';
+import { buildHopDisplayRows, formatHopLineForDisplay } from '../utils/hop-display';
 import type { NetworkEvent } from '../utils/network-event-types';
 import type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
 
@@ -11,14 +12,6 @@ const DEFAULT_VISIBLE_HOPS = 8;
 function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
   if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
   return suspects.some((s) => s.eventId === hop.id);
-}
-
-function formatHopLine(hop: NetworkEvent): string {
-  const parts = [hop.method, hop.url, hop.source];
-  if (hop.status != null) parts.push(String(hop.status));
-  if (hop.requestId) parts.push(hop.requestId);
-  if (hop.anomalyFlags?.length) parts.push(`⚠ ${hop.anomalyFlags.join(', ')}`);
-  return parts.join(' · ');
 }
 
 function HopRow({
@@ -36,9 +29,45 @@ function HopRow({
     <View style={styles.hopRow}>
       <Text style={[styles.hopText, suspect ? styles.suspectText : undefined]}>
         {isPrefetch ? '(prefetch) ' : ''}
-        {formatHopLine(hop)}
+        {formatHopLineForDisplay(hop)}
       </Text>
     </View>
+  );
+}
+
+function ScreenHeader({ screen }: { screen: string }): ReactNode {
+  return (
+    <View style={styles.screenHeaderRow}>
+      <Text style={styles.screenHeaderText}>{screen}</Text>
+    </View>
+  );
+}
+
+function HopTimeline({
+  hops,
+  suspects,
+  prefetchHopIds,
+}: {
+  hops: NetworkEvent[];
+  suspects?: CrashSuspect[];
+  prefetchHopIds?: string[];
+}): ReactNode {
+  const rows = buildHopDisplayRows(hops);
+  return (
+    <>
+      {rows.map((row, index) =>
+        row.kind === 'screen-header' ? (
+          <ScreenHeader key={`screen-${row.screen}-${index}`} screen={row.screen} />
+        ) : (
+          <HopRow
+            key={row.hop.id}
+            hop={row.hop}
+            suspects={suspects}
+            prefetchHopIds={prefetchHopIds}
+          />
+        )
+      )}
+    </>
   );
 }
 
@@ -54,7 +83,10 @@ export function MockifyerHopList({
   if (items.length === 0) {
     return (
       <View style={[styles.card, styles.emptyCard]}>
-        <Text style={styles.mutedText}>No Mockifyer hops in this time window.</Text>
+        <Text style={styles.mutedText}>
+          No Mockifyer hops in this time window. Browse CMS screens first so hops carry screen
+          labels.
+        </Text>
       </View>
     );
   }
@@ -64,9 +96,7 @@ export function MockifyerHopList({
       <Text style={styles.sectionTitle}>
         {`Network context (${hops.length} hop${hops.length === 1 ? '' : 's'}, most relevant first)`}
       </Text>
-      {items.map((hop) => (
-        <HopRow key={hop.id} hop={hop} suspects={suspects} prefetchHopIds={prefetchHopIds} />
-      ))}
+      <HopTimeline hops={items} suspects={suspects} prefetchHopIds={prefetchHopIds} />
     </View>
   );
 }
@@ -118,14 +148,11 @@ export function MockifyerCrashFallback({
           </Text>
 
           <View style={[styles.card, styles.hopListCard]}>
-            {visibleHops.map((hop) => (
-              <HopRow
-                key={hop.id}
-                hop={hop}
-                suspects={crashContext!.suspects}
-                prefetchHopIds={crashContext!.prefetchHopIds}
-              />
-            ))}
+            <HopTimeline
+              hops={visibleHops}
+              suspects={crashContext!.suspects}
+              prefetchHopIds={crashContext!.prefetchHopIds}
+            />
           </View>
 
           {hasMoreHops ? (
@@ -143,7 +170,7 @@ export function MockifyerCrashFallback({
       ) : crashContext ? (
         <View style={[styles.card, styles.emptyCard]}>
           <Text style={styles.mutedText}>
-            {`No network hops in the last ${Math.round((crashContext.windowMs ?? 60000) / 1000)}s — navigate with API traffic first`}
+            {`No network hops in the last ${Math.round((crashContext.windowMs ?? 60000) / 1000)}s — browse AppDun / CMS screens with API traffic first so hops show screen and CMS labels`}
           </Text>
         </View>
       ) : null}
@@ -215,6 +242,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
     marginBottom: 8,
+  },
+  screenHeaderRow: {
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  screenHeaderText: {
+    color: '#7eb8ff',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   hopRow: {
     marginBottom: 6,
