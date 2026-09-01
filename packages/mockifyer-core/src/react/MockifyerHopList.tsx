@@ -213,12 +213,12 @@ export function MockifyerCrashFallback({
             </button>
           ) : null}
         </div>
-      ) : (
+      ) : crashContext ? (
         <div style={{ ...cardStyle, opacity: 0.8 }}>
-          No network hops in the last 60s — browse AppDun / CMS screens first so hops show screen and
-          CMS labels
+          No network hops in the last {Math.round((crashContext.windowMs ?? 60000) / 1000)}s — browse
+          AppDun / CMS screens first so hops show screen and CMS labels
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
