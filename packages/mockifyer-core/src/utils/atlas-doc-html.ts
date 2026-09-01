@@ -2731,6 +2731,9 @@ export function writeCrashIncidentHtmlFile(
   const root = htmlRoot.trim();
   const id = incidentId.trim();
   if (!root || !id) return undefined;
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return undefined;
+  }
   try {
     const dir = pathMod.join(root, 'incidents');
     fs.mkdirSync(dir, { recursive: true });

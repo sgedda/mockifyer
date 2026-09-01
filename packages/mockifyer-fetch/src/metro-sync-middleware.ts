@@ -715,6 +715,9 @@ function saveAtlasHtmlIncident(
   if (!id || !html.trim()) {
     return { success: false, error: 'incidentId and html are required' };
   }
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return { success: false, error: 'Invalid incident id' };
+  }
   try {
     const dir = path.join(mockDataPath, 'atlas-html', 'incidents');
     fs.mkdirSync(dir, { recursive: true });

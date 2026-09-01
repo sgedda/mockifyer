@@ -95,27 +95,31 @@ export class MockifyerErrorBoundary extends Component<
     crashContext: CrashContext | null,
     dashboardExplainUrl: string | null
   ): Promise<void> {
-    let localTrace: LocalCrashTraceLinks | null = null;
-    if (crashContext && crashContext.hops.length > 0) {
-      localTrace = await exportCrashContextHtmlLocal({
-        crashContext,
-        incidentId,
-        errorMessage: error.message,
-        mockDataPath: this.props.mockDataPath,
-      });
-      if (localTrace) {
-        this.setState({ localTrace });
+    try {
+      let localTrace: LocalCrashTraceLinks | null = null;
+      if (crashContext && crashContext.hops.length > 0) {
+        localTrace = await exportCrashContextHtmlLocal({
+          crashContext,
+          incidentId,
+          errorMessage: error.message,
+          mockDataPath: this.props.mockDataPath,
+        });
+        if (localTrace) {
+          this.setState({ localTrace });
+        }
       }
-    }
 
-    if (this.props.logToConsole !== false) {
-      logCompactIncidentToConsole({
-        error,
-        incidentId,
-        crashContext: crashContext ?? undefined,
-        dashboardExplainUrl: dashboardExplainUrl ?? undefined,
-        localTrace,
-      });
+      if (this.props.logToConsole !== false) {
+        logCompactIncidentToConsole({
+          error,
+          incidentId,
+          crashContext: crashContext ?? undefined,
+          dashboardExplainUrl: dashboardExplainUrl ?? undefined,
+          localTrace,
+        });
+      }
+    } catch {
+      // observability must never break the boundary
     }
   }
 

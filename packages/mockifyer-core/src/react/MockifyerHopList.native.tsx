@@ -169,7 +169,9 @@ export function MockifyerCrashFallback({
         <Pressable
           accessibilityRole="button"
           onPress={() => {
-            void Linking.openURL(dashboardExplainUrl);
+            void Linking.openURL(dashboardExplainUrl).catch(() => {
+              // Link open failure must not crash the fallback
+            });
           }}
           style={styles.button}
         >
@@ -181,7 +183,9 @@ export function MockifyerCrashFallback({
         <Pressable
           accessibilityRole="button"
           onPress={() => {
-            void Linking.openURL(localTraceBrowseUrl);
+            void Linking.openURL(localTraceBrowseUrl).catch(() => {
+              // Link open failure must not crash the fallback
+            });
           }}
           style={styles.button}
         >

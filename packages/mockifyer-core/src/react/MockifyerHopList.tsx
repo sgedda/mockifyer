@@ -127,6 +127,9 @@ export function MockifyerCrashFallback({
   error,
   crashContext,
   incidentId,
+  dashboardExplainUrl,
+  localTraceBrowseUrl,
+  localTraceFileHint,
   visibleHopCount = DEFAULT_VISIBLE_HOPS,
 }: MockifyerCrashFallbackProps): ReactNode {
   const [showAllHops, setShowAllHops] = useState(false);
@@ -171,6 +174,53 @@ export function MockifyerCrashFallback({
 
       {incidentId ? (
         <p style={{ opacity: 0.5, fontSize: '11px', marginTop: '8px' }}>Mockifyer incident: {incidentId}</p>
+      ) : null}
+
+      {dashboardExplainUrl ? (
+        <a
+          href={dashboardExplainUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-block',
+            marginTop: '8px',
+            background: 'transparent',
+            border: '1px solid #555',
+            color: '#aaa',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            textDecoration: 'none',
+          }}
+        >
+          Open in dashboard
+        </a>
+      ) : null}
+
+      {localTraceBrowseUrl ? (
+        <a
+          href={localTraceBrowseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-block',
+            marginTop: '8px',
+            marginLeft: '8px',
+            background: 'transparent',
+            border: '1px solid #555',
+            color: '#aaa',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            textDecoration: 'none',
+          }}
+        >
+          Open trace HTML
+        </a>
+      ) : null}
+
+      {localTraceFileHint ? (
+        <p style={{ color: '#7eb8ff', fontSize: '11px', marginTop: '6px' }}>{`Local: ${localTraceFileHint}`}</p>
       ) : null}
 
       {hopCount > 0 ? (
