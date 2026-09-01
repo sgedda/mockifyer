@@ -512,7 +512,8 @@ describe('atlas-doc-html', () => {
     });
 
     const files = buildAtlasDocHtmlFiles(getAtlasDocMap('default'));
-    expect(files['index.html']).toContain('data-view="waterfall"');
+    expect(files['index.html']).toContain('data-view="chains"');
+    expect(files['index.html']).toContain('kind-filters');
     expect(files['index.html']).toContain('hop-detail');
     expect(files['index.html']).toContain('atlas-data');
     expect(files['index.html']).toContain('Contact & Home');
@@ -569,7 +570,8 @@ describe('atlas-doc-html', () => {
       const indexPath = path.join(dir, 'index.html');
       expect(fs.existsSync(indexPath)).toBe(true);
       const index = fs.readFileSync(indexPath, 'utf8');
-      expect(index).toContain('home');
+      expect(index).toContain('"pageId":"home"');
+      expect(index).toContain('data-view="chains"');
       expect(fs.existsSync(path.join(dir, 'pages', 'home.html'))).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -592,7 +594,7 @@ describe('atlas-doc-html', () => {
       const map = getAtlasDocMap('default');
       const n = writeAtlasDocHtml(dir, map);
       expect(n).toBeGreaterThanOrEqual(2);
-      expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toContain('about');
+      expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toContain('"pageId":"about"');
     } finally {
       setAtlasDocHtmlOutputPath(undefined);
       fs.rmSync(dir, { recursive: true, force: true });
