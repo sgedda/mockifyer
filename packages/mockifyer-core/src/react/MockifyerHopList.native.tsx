@@ -140,7 +140,13 @@ export function MockifyerCrashFallback({
             </Pressable>
           ) : null}
         </View>
-      ) : null}
+      ) : (
+        <View style={[styles.card, styles.emptyCard]}>
+          <Text style={styles.mutedText}>
+            No network hops in the last 60s — navigate with API traffic first
+          </Text>
+        </View>
+      )}
     </ScrollView>
   );
 }

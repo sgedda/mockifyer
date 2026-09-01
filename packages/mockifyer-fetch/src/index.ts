@@ -144,7 +144,7 @@ class MockifyerClass {
   /** Best-effort dashboard network log. */
   private logNetworkEvent(
     partial: Parameters<typeof emitMockifyerNetworkEvent>[0]['event'] & {
-      transport?: 'fetch';
+      transport?: 'fetch' | 'proxy';
       /** Raw bodies for inline-trace / network-log previews (stripped before emit). */
       requestBody?: unknown;
       responseBody?: unknown;
@@ -962,6 +962,39 @@ class MockifyerClass {
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
         const isLimitReached = response.headers && (response.headers as any)['x-mockifyer-limit-reached'] === 'true';
         if (isMocked || isLimitReached) {
+          // Local mock hits are logged in the request interceptor; proxy mock hits must
+          // be recorded here before early return (otherwise flight recorder stays empty).
+          const shouldLogMockOrLimit =
+            isLimitReached || (isMocked && this.usesDashboardProxy());
+          if (shouldLogMockOrLimit) {
+            const reqUrl = response.config?.url || url;
+            const reqMethod = (response.config?.method || 'GET').toUpperCase();
+            const startTime = (response.config as any).__mockifyer_startTime;
+            const durationMs = startTime ? Date.now() - startTime : undefined;
+            this.logNetworkEvent(
+              {
+                method: reqMethod,
+                url: reqUrl,
+                source: isLimitReached ? 'error' : 'mock-hit',
+                status: response.status,
+                durationMs,
+                transport: this.usesDashboardProxy() ? 'proxy' : 'fetch',
+                requestBody: response.config?.data,
+                responseBody: response.data,
+                ...(isLimitReached
+                  ? {
+                      errorMessage:
+                        typeof response.data === 'object' &&
+                        response.data !== null &&
+                        'message' in response.data
+                          ? String((response.data as { message?: unknown }).message)
+                          : 'Request limit reached',
+                    }
+                  : {}),
+              },
+              this.readRequestCorrelation(response.config)
+            );
+          }
           return response;
         }
 
