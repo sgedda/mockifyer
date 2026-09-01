@@ -4,11 +4,14 @@ import {
   resolveNetworkRequestTrace,
   explainIncidentFromEvents,
   explainCrashContext,
+  rememberAtlasHtmlNetworkEvent,
+  scheduleAtlasDocHtmlRewrite,
+  getAtlasDocHtmlOutputPath,
 } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
-import { mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-store';
+import { getAtlasStore, mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-store';
 
 const router = express.Router();
 
@@ -255,6 +258,14 @@ router.post('/', async (req: Request, res: Response) => {
     });
     if (!saved) {
       return res.json({ ok: true, skipped: true, reason: 'network_logging_disabled' });
+    }
+    if (saved.kind !== 'incident' && getAtlasDocHtmlOutputPath()) {
+      rememberAtlasHtmlNetworkEvent(saved);
+      try {
+        scheduleAtlasDocHtmlRewrite(getAtlasStore().getDoc(scenario));
+      } catch {
+        // HTML rewrite must not fail the ingest
+      }
     }
     return res.status(201).json({ ok: true, event: saved });
   } catch (error: any) {

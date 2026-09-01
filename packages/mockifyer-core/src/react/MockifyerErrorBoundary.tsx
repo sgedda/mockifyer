@@ -1,11 +1,15 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import type { MockifyerConfig } from '../types';
 import {
+  exportCrashContextHtmlLocal,
   getCrashContext,
   logCompactIncidentToConsole,
   reportIncident,
+  resolveCrashContextUrl,
   type CrashContext,
+  type LocalCrashTraceLinks,
 } from '../utils/incidents';
+import { resolveForensicsDashboardBaseUrl } from '../utils/network-log';
 import { MockifyerCrashFallback } from './MockifyerHopList';
 
 export interface MockifyerErrorBoundaryProps {
@@ -14,11 +18,12 @@ export interface MockifyerErrorBoundaryProps {
   scenario?: string;
   clientId?: string;
   sessionId?: string;
-  config?: Pick<MockifyerConfig, 'networkLog' | 'proxy'>;
+  config?: Pick<MockifyerConfig, 'networkLog' | 'proxy' | 'atlas'>;
+  mockDataPath?: string;
   windowMs?: number;
   /** Cross-session prefetch lookback when sessionId is set. Default 5000ms; 0 to disable. */
   prefetchGraceMs?: number;
-  /** Log a one-line error + collapsed hop group to console (Metro / browser). Default true. */
+  /** Log a single multi-line error block + stack to console (Metro / browser). Default true. */
   logToConsole?: boolean;
   /** Hops shown in default fallback before “Show all”. Default 8. */
   visibleHopCount?: number;
@@ -28,6 +33,8 @@ export interface MockifyerErrorBoundaryState {
   error: Error | null;
   crashContext: CrashContext | null;
   incidentId: string | null;
+  dashboardExplainUrl: string | null;
+  localTrace: LocalCrashTraceLinks | null;
 }
 
 /**
@@ -42,6 +49,8 @@ export class MockifyerErrorBoundary extends Component<
     error: null,
     crashContext: null,
     incidentId: null,
+    dashboardExplainUrl: null,
+    localTrace: null,
   };
 
   static getDerivedStateFromError(error: Error): Partial<MockifyerErrorBoundaryState> {
@@ -78,22 +87,62 @@ export class MockifyerErrorBoundary extends Component<
         prefetchGraceMs: this.props.prefetchGraceMs,
       });
 
-      this.setState({ crashContext, incidentId: incident.id });
+      const dashboardBaseUrl = resolveForensicsDashboardBaseUrl(this.props.config ?? {});
+      const linkParams = {
+        incidentId: incident.id,
+        sessionId: this.props.sessionId ?? incident.sessionId ?? undefined,
+        at: incident.timestamp,
+        windowMs: this.props.windowMs ?? crashContext?.windowMs,
+      };
+      const dashboardExplainUrl = dashboardBaseUrl
+        ? resolveCrashContextUrl(dashboardBaseUrl, linkParams)
+        : null;
 
-      if (this.props.logToConsole !== false) {
-        logCompactIncidentToConsole({
-          error,
-          incidentId: incident.id,
-          crashContext: crashContext ?? undefined,
-        });
-      }
+      this.setState({
+        crashContext,
+        incidentId: incident.id,
+        dashboardExplainUrl,
+        localTrace: null,
+      });
+
+      void this.exportAndLogForensics(error, incident.id, crashContext, dashboardExplainUrl);
     } catch {
       // observability must never break the boundary
     }
   }
 
+  private async exportAndLogForensics(
+    error: Error,
+    incidentId: string,
+    crashContext: CrashContext | null,
+    dashboardExplainUrl: string | null
+  ): Promise<void> {
+    let localTrace: LocalCrashTraceLinks | null = null;
+    if (crashContext && crashContext.hops.length > 0) {
+      localTrace = await exportCrashContextHtmlLocal({
+        crashContext,
+        incidentId,
+        errorMessage: error.message,
+        mockDataPath: this.props.mockDataPath,
+      });
+      if (localTrace) {
+        this.setState({ localTrace });
+      }
+    }
+
+    if (this.props.logToConsole !== false) {
+      logCompactIncidentToConsole({
+        error,
+        incidentId,
+        crashContext: crashContext ?? undefined,
+        dashboardExplainUrl: dashboardExplainUrl ?? undefined,
+        localTrace,
+      });
+    }
+  }
+
   render(): ReactNode {
-    const { error, crashContext, incidentId } = this.state;
+    const { error, crashContext, incidentId, dashboardExplainUrl, localTrace } = this.state;
     if (error) {
       if (this.props.fallback) {
         return this.props.fallback({ error, crashContext, incidentId });
@@ -103,6 +152,9 @@ export class MockifyerErrorBoundary extends Component<
           error={error}
           crashContext={crashContext}
           incidentId={incidentId}
+          dashboardExplainUrl={dashboardExplainUrl ?? undefined}
+          localTraceBrowseUrl={localTrace?.browseUrl ?? localTrace?.fileUrl}
+          localTraceFileHint={localTrace?.relativePath}
           visibleHopCount={this.props.visibleHopCount}
         />
       );

@@ -25,8 +25,13 @@ declare module 'react-native' {
     style?: unknown;
     onPress?: () => void;
     accessibilityRole?: string;
+    disabled?: boolean;
     children?: ReactNode;
   }
+
+  export const Linking: {
+    openURL(url: string): Promise<void>;
+  };
 
   export const View: ComponentType<ViewProps>;
   export const Text: ComponentType<TextProps>;

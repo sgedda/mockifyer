@@ -39,6 +39,11 @@ export function setAtlasUsageDashboardBaseUrl(url: string | undefined): void {
   usageDashboardBaseUrl = url?.trim() || undefined;
 }
 
+/** Dashboard origin captured at {@link configureAtlas} (proxy / networkLog / env). */
+export function getAtlasUsageDashboardBaseUrl(): string | undefined {
+  return usageDashboardBaseUrl;
+}
+
 /** Optional session id for usage annotations (often shared with atlas session). */
 export function setAtlasUsageSessionId(sessionId: string | null): void {
   usageSessionId = sessionId;

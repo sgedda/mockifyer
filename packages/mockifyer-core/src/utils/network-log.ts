@@ -22,6 +22,7 @@ export type {
 } from './network-event-types';
 import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
 import { resolveUsageForNetworkEmit } from './atlas-usage';
+import { getAtlasUsageDashboardBaseUrl } from './atlas-usage';
 import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 
 export interface NetworkLogEmitterOptions {
@@ -276,6 +277,20 @@ export function resolveNetworkLogDashboardUrl(
   const fromProxy = config.proxy?.baseUrl?.trim();
   if (fromProxy) return fromProxy;
   return undefined;
+}
+
+/**
+ * Dashboard origin for crash forensics links — includes runtime URL from {@link configureAtlas}
+ * when ErrorBoundary config omits proxy / dashboardBaseUrl.
+ */
+export function resolveForensicsDashboardBaseUrl(
+  config?: Pick<MockifyerConfig, 'networkLog' | 'proxy' | 'atlas'>
+): string | undefined {
+  const fromConfig = resolveNetworkLogDashboardUrl(config ?? {});
+  if (fromConfig) return fromConfig;
+  const atlasUrl = config?.atlas?.dashboardBaseUrl?.trim();
+  if (atlasUrl) return atlasUrl;
+  return getAtlasUsageDashboardBaseUrl();
 }
 
 export function resolveNetworkLogCaptureBodies(config: Pick<MockifyerConfig, 'networkLog'>): boolean {

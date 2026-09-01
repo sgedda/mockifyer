@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { CrashSuspect } from '../utils/incidents';
+import { looksLikeIntentionalTestCrash } from '../utils/incidents';
 import { buildHopDisplayRows, formatHopLineForDisplay } from '../utils/hop-display';
 import type { NetworkEvent } from '../utils/network-event-types';
 import type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
@@ -25,13 +26,27 @@ function HopRow({
 }): ReactNode {
   const suspect = isSuspect(hop, suspects);
   const isPrefetch = prefetchHopIds?.includes(hop.id);
+  const hasPreview = Boolean(hop.responseBodyPreview?.trim());
+  const [expanded, setExpanded] = useState(suspect && hasPreview);
+
   return (
-    <View style={styles.hopRow}>
+    <Pressable
+      accessibilityRole={hasPreview ? 'button' : undefined}
+      disabled={!hasPreview}
+      onPress={hasPreview ? () => setExpanded((v) => !v) : undefined}
+      style={styles.hopRow}
+    >
       <Text style={[styles.hopText, suspect ? styles.suspectText : undefined]}>
         {isPrefetch ? '(prefetch) ' : ''}
         {formatHopLineForDisplay(hop)}
       </Text>
-    </View>
+      {hasPreview && !expanded ? (
+        <Text style={styles.previewHint}>Tap for response preview</Text>
+      ) : null}
+      {hasPreview && expanded ? (
+        <Text style={styles.previewText}>{hop.responseBodyPreview}</Text>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -106,6 +121,9 @@ export function MockifyerCrashFallback({
   error,
   crashContext,
   incidentId,
+  dashboardExplainUrl,
+  localTraceBrowseUrl,
+  localTraceFileHint,
   visibleHopCount = DEFAULT_VISIBLE_HOPS,
 }: MockifyerCrashFallbackProps): ReactNode {
   const [showAllHops, setShowAllHops] = useState(false);
@@ -122,6 +140,14 @@ export function MockifyerCrashFallback({
       <Text style={styles.title}>Something went wrong</Text>
       <Text style={styles.errorMessage}>{error.message}</Text>
 
+      {looksLikeIntentionalTestCrash(error.message) ? (
+        <View style={styles.devBanner}>
+          <Text style={styles.devBannerText}>
+            Dev note: intentional test crash — network context below is for debugging.
+          </Text>
+        </View>
+      ) : null}
+
       {error.stack ? (
         <View style={styles.stackSection}>
           <Pressable
@@ -137,6 +163,34 @@ export function MockifyerCrashFallback({
 
       {incidentId ? (
         <Text style={styles.incidentId}>{`Mockifyer incident: ${incidentId}`}</Text>
+      ) : null}
+
+      {dashboardExplainUrl ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            void Linking.openURL(dashboardExplainUrl);
+          }}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Open in dashboard</Text>
+        </Pressable>
+      ) : null}
+
+      {localTraceBrowseUrl ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            void Linking.openURL(localTraceBrowseUrl);
+          }}
+          style={styles.button}
+        >
+          <Text style={styles.buttonText}>Open trace HTML</Text>
+        </Pressable>
+      ) : null}
+
+      {localTraceFileHint ? (
+        <Text style={styles.localFileHint}>{`Local: ${localTraceFileHint}`}</Text>
       ) : null}
 
       {hopCount > 0 ? (
@@ -195,6 +249,19 @@ const styles = StyleSheet.create({
     color: '#ffb4b4',
     fontSize: 14,
     marginTop: 8,
+  },
+  devBanner: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#555',
+    borderRadius: 6,
+    padding: 10,
+    backgroundColor: '#2a2418',
+  },
+  devBannerText: {
+    color: '#ffd166',
+    fontSize: 12,
+    lineHeight: 17,
   },
   stackSection: {
     marginTop: 8,
@@ -266,6 +333,19 @@ const styles = StyleSheet.create({
   suspectText: {
     color: '#ffb4b4',
   },
+  previewHint: {
+    color: '#888',
+    fontSize: 10,
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  previewText: {
+    color: '#ccc',
+    fontSize: 10,
+    marginTop: 4,
+    lineHeight: 14,
+    fontFamily: 'Menlo',
+  },
   mutedText: {
     color: '#eee',
     fontSize: 12,
@@ -283,5 +363,11 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#aaa',
     fontSize: 12,
+  },
+  localFileHint: {
+    color: '#7eb8ff',
+    fontSize: 11,
+    marginTop: 6,
+    fontFamily: 'Menlo',
   },
 });
