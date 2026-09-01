@@ -19,6 +19,29 @@ export type IncidentType =
 
 export type MockMatchMode = 'exact' | 'similar' | 'passthrough' | 'upstream';
 
+/**
+ * How the app used a network hop — annotations on the trace spine.
+ */
+export interface NetworkEventUsage {
+  /** Screen / flow name, e.g. `contact`. */
+  screen?: string;
+  /** Component or feature name, e.g. `PhoneDetails`. */
+  component?: string;
+  /** Human label for the UI. */
+  label?: string;
+  /** Optional CMS enrichment when the hop feeds a CMS node. */
+  cms?: {
+    pageId?: string;
+    nodeId?: string;
+    type?: string;
+    path?: string;
+  };
+  /** Optional logical datasource name (app-defined). */
+  datasourceId?: string;
+  /** Optional slice within a shared response. */
+  dataRoot?: string;
+}
+
 /** Stored network log entry (dashboard ring buffer / SDK POST). */
 export interface NetworkEvent {
   id: string;
@@ -53,4 +76,9 @@ export interface NetworkEvent {
   errorMessage?: string;
   stackPreview?: string;
   componentStackPreview?: string;
+  /**
+   * How the app used this hop (screen / component / optional CMS).
+   * Single object when stamped at emit; array when multiple usages merged.
+   */
+  usage?: NetworkEventUsage | NetworkEventUsage[];
 }

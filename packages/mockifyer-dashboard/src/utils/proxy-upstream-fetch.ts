@@ -1,4 +1,5 @@
 import { Agent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici';
+import { rewriteEmulatorLoopbackUrl } from './rewrite-emulator-loopback-url';
 
 let insecureDispatcher: Agent | undefined;
 
@@ -17,6 +18,9 @@ function getInsecureDispatcher(): Agent {
  * the Mockifyer-patched global fetch.
  *
  * When `tlsInsecure` is true, skips TLS certificate verification (dev / internal CAs).
+ *
+ * Android emulator loopback aliases (`10.0.2.2`, `10.0.3.2`) are rewritten to
+ * `127.0.0.1` so upstream connects on the host running the dashboard.
  */
 export async function fetchProxyUpstream(
   url: string,
@@ -35,5 +39,5 @@ export async function fetchProxyUpstream(
     undiciInit.dispatcher = getInsecureDispatcher();
   }
 
-  return undiciFetch(url, undiciInit) as unknown as Promise<Response>;
+  return undiciFetch(rewriteEmulatorLoopbackUrl(url), undiciInit) as unknown as Promise<Response>;
 }

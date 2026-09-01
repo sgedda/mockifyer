@@ -11,10 +11,18 @@ import {
 import { getCurrentScenario } from './scenario';
 import { logger } from './logger';
 
+/**
+ * React Native / Metro often stubs `require('fs')` as `{}` without throwing.
+ * Only treat Node fs as available when the sync APIs we need are real functions.
+ */
 let fsAvailable = false;
 try {
-  require('fs');
-  fsAvailable = true;
+  const nodeFs = require('fs') as Partial<typeof import('fs')>;
+  fsAvailable =
+    typeof nodeFs?.existsSync === 'function' &&
+    typeof nodeFs?.readFileSync === 'function' &&
+    typeof nodeFs?.writeFileSync === 'function' &&
+    typeof nodeFs?.mkdirSync === 'function';
 } catch {
   fsAvailable = false;
 }
@@ -104,7 +112,10 @@ export class DomainPathRulesSession {
       if (!filePath) {
         return null;
       }
-      const fs = require('fs') as typeof import('fs');
+      const fs = require('fs') as Partial<typeof import('fs')>;
+      if (typeof fs.existsSync !== 'function' || typeof fs.statSync !== 'function') {
+        return null;
+      }
       if (!fs.existsSync(filePath)) {
         return 0;
       }
@@ -356,16 +367,19 @@ export class DomainPathRulesSession {
         } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
         const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
         const merged = mergeDomainPathRuleUpserts(onDisk, upsertMap);
-        if (merged.changed) {
+        const wrote =
+          !merged.changed ||
           writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged.rules);
+        if (wrote) {
+          if (this.scenarioName() === scenario) {
+            this.rules = merged.rules;
+            this.rulesScenario = scenario;
+            this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
+            this.rulesHydrated = true;
+          }
+          return;
         }
-        if (this.scenarioName() === scenario) {
-          this.rules = merged.rules;
-          this.rulesScenario = scenario;
-          this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
-          this.rulesHydrated = true;
-        }
-        return;
+        // Stubbed/empty `fs` (e.g. RN Metro) — fall through to Metro POST.
       } catch (err) {
         logger.warn('[Mockifyer] Domain path rules file write failed:', err);
       }

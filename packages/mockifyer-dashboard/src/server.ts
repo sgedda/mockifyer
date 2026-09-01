@@ -11,6 +11,7 @@ import { clientLanesRouter } from './routes/client-lanes';
 import { proxyConfigRouter } from './routes/proxy-config';
 import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
+import { atlasRouter } from './routes/atlas';
 import type {
   DashboardContextConfig,
   RedisDiskMirrorConfigInput,
@@ -86,10 +87,11 @@ export function createServer(
   app.use('/api/client-lanes', clientLanesRouter);
   app.use('/api/network-events', networkEventsRouter);
   app.use('/api/fixture-pool', fixturePoolRouter);
+  app.use('/api/atlas', atlasRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas'
   );
 
   // Serve static files from public directory (React build output)

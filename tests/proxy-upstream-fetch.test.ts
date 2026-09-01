@@ -47,4 +47,12 @@ describe('fetchProxyUpstream', () => {
     const [, init] = undiciFetchMock.mock.calls[0] as [string, { dispatcher?: unknown }];
     expect(init.dispatcher).toBeDefined();
   });
+
+  it('rewrites Android emulator loopback host before connecting', async () => {
+    await fetchProxyUpstream('http://10.0.2.2:4000/graphql', { method: 'POST' }, false);
+
+    expect(undiciFetchMock).toHaveBeenCalledTimes(1);
+    const [url] = undiciFetchMock.mock.calls[0] as [string];
+    expect(url).toBe('http://127.0.0.1:4000/graphql');
+  });
 });
