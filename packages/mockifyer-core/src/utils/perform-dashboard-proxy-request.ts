@@ -21,24 +21,16 @@ import {
   stripMockifyerTraceFromBody,
 } from './mockifyer-trace';
 import { logger } from './logger';
-
-const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
+import { resolveUnpatchedGlobalFetch } from './unpatched-fetch';
 
 /**
  * Prefer the unpatched fetch stored when Mockifyer patches `global.fetch`, so the
  * internal POST to `/api/proxy` is not re-intercepted by a dual axios+fetch setup.
  */
 function resolveDashboardProxyFetchFn(fetchFn?: typeof fetch): typeof fetch {
-  if (fetchFn) {
-    return fetchFn;
-  }
-  try {
-    const g = globalThis as typeof globalThis & { [MOCKIFYER_ORIGINAL_FETCH_KEY]?: typeof fetch };
-    if (typeof g[MOCKIFYER_ORIGINAL_FETCH_KEY] === 'function') {
-      return g[MOCKIFYER_ORIGINAL_FETCH_KEY]!;
-    }
-  } catch {
-    // ignore
+  const resolved = resolveUnpatchedGlobalFetch(fetchFn);
+  if (typeof resolved === 'function') {
+    return resolved;
   }
   return fetch;
 }
