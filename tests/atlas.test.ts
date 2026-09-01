@@ -86,6 +86,60 @@ describe('atlas', () => {
     expect(getUsagesForRequestId('req-1')[0].component).toBe('phonedetails');
   });
 
+  it('posts atlas events and usage with unpatched fetch when global fetch is patched', async () => {
+    const originalFetch = jest.fn(async () => ({ ok: true } as Response));
+    const patchedFetch = jest.fn(async () => {
+      throw new Error('patched fetch must not handle dashboard atlas POSTs');
+    });
+    const previousFetch = globalThis.fetch;
+    const previousOriginal = (globalThis as { __mockifyer_original_fetch?: typeof fetch })
+      .__mockifyer_original_fetch;
+
+    (globalThis as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+      originalFetch as unknown as typeof fetch;
+    globalThis.fetch = patchedFetch as unknown as typeof fetch;
+
+    try {
+      configureAtlas({
+        atlas: { enabled: true, mode: 'live', dashboardBaseUrl: 'http://localhost:3002' },
+      });
+      capturePrefetch({
+        datasourceId: 'app-bootstrap',
+        requestId: 'req-atlas',
+        kind: 'graphql',
+        operation: 'AppBootstrap',
+      });
+      capturePresentation({
+        cms: {
+          pageId: 'contact',
+          nodeId: 'phone-1',
+          type: 'phonedetails',
+          path: 'contact/phone-1',
+        },
+        datasources: [{ datasourceId: 'app-bootstrap', requestId: 'req-atlas' }],
+      });
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(patchedFetch).not.toHaveBeenCalled();
+      expect(originalFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+      const postedUrls = originalFetch.mock.calls.map(
+        (call) => (call as unknown as [string, RequestInit])[0]
+      );
+      expect(postedUrls).toContain('http://localhost:3002/api/atlas/events');
+      expect(postedUrls).toContain('http://localhost:3002/api/atlas/usage');
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousOriginal) {
+        (globalThis as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+          previousOriginal;
+      } else {
+        delete (globalThis as { __mockifyer_original_fetch?: typeof fetch })
+          .__mockifyer_original_fetch;
+      }
+    }
+  });
+
   it('env MOCKIFYER_ATLAS wins over config', () => {
     process.env.MOCKIFYER_ATLAS = 'off';
     configureAtlas({ atlas: { enabled: true, mode: 'live' } });

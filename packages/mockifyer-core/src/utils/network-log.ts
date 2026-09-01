@@ -9,6 +9,7 @@ import {
   detectResponseAnomalies,
   responseShapeFingerprint,
 } from './response-shape';
+import { resolveUnpatchedGlobalFetch } from './unpatched-fetch';
 
 export type {
   IncidentType,
@@ -240,9 +241,10 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<
   const body = JSON.stringify({ event });
 
   const post = async (): Promise<void> => {
-    if (typeof fetch !== 'function') return;
+    const fetchFn = resolveUnpatchedGlobalFetch();
+    if (typeof fetchFn !== 'function') return;
     try {
-      await fetch(url, {
+      await fetchFn(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,

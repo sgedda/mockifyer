@@ -7,6 +7,7 @@ import {
   upsertAtlasDocFromPresentation,
 } from './atlas-doc';
 import { setAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { resolveUnpatchedGlobalFetch } from './unpatched-fetch';
 /** Atlas capture mode — `off` by default. */
 export type AtlasMode = 'off' | 'live' | 'session';
 
@@ -300,10 +301,12 @@ function pushEvent(event: AtlasEvent): void {
 
 async function postAtlasEvent(event: AtlasEvent): Promise<void> {
   const base = runtime.dashboardBaseUrl?.trim();
-  if (!base || typeof fetch !== 'function') return;
+  if (!base) return;
+  const fetchFn = resolveUnpatchedGlobalFetch();
+  if (typeof fetchFn !== 'function') return;
   const url = `${base.replace(/\/+$/, '')}/api/atlas/events`;
   try {
-    await fetch(url, {
+    await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ event }),

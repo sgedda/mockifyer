@@ -3,6 +3,7 @@ import { randomEventId } from './crypto-digest';
 import { resolveNetworkLogDashboardUrl } from './network-log';
 import type { NetworkEventUsage } from './network-event-types';
 import { upsertAtlasDocFromUsage } from './atlas-doc';
+import { resolveUnpatchedGlobalFetch } from './unpatched-fetch';
 
 export type { NetworkEventUsage };
 
@@ -178,7 +179,8 @@ async function postUsageAnnotation(
   annotation: AtlasUsageAnnotation,
   config?: Pick<MockifyerConfig, 'atlas' | 'networkLog' | 'proxy'>
 ): Promise<void> {
-  if (typeof fetch !== 'function') return;
+  const fetchFn = resolveUnpatchedGlobalFetch();
+  if (typeof fetchFn !== 'function') return;
   const fromEnv =
     typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_DASHBOARD_URL]?.trim() : undefined;
   const fromAtlasConfig =
@@ -192,7 +194,7 @@ async function postUsageAnnotation(
     fromEnv;
   if (!base) return;
   try {
-    await fetch(`${base.replace(/\/+$/, '')}/api/atlas/usage`, {
+    await fetchFn(`${base.replace(/\/+$/, '')}/api/atlas/usage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ annotation }),

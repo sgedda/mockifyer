@@ -56,8 +56,9 @@ export function shouldExcludeUrl(url: string | null | undefined, excludedUrls?: 
  * When true, outbound HTTP should skip Mockifyer entirely (no proxy, mock lookup, or recording).
  * Resolves relative URLs with `baseUrl` when provided.
  *
- * Dashboard `/api/proxy` is always bypassed (even when `excludedUrls` replaces defaults) so the
- * internal proxy POST is never re-intercepted or shown as a user-visible hop.
+ * Dashboard `/api/proxy`, `/api/network-events`, and `/api/atlas` are always bypassed (even when
+ * `excludedUrls` replaces defaults) so SDK observability POSTs are never re-intercepted
+ * or recorded as user mocks.
  */
 export function shouldBypassMockifyerForUrl(
   rawUrl: string | null | undefined,
