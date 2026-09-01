@@ -140,13 +140,13 @@ export function MockifyerCrashFallback({
             </Pressable>
           ) : null}
         </View>
-      ) : (
+      ) : crashContext ? (
         <View style={[styles.card, styles.emptyCard]}>
           <Text style={styles.mutedText}>
-            No network hops in the last 60s — navigate with API traffic first
+            {`No network hops in the last ${Math.round((crashContext.windowMs ?? 60000) / 1000)}s — navigate with API traffic first`}
           </Text>
         </View>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
