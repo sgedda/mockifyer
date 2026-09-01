@@ -840,8 +840,9 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   function labelInSet(label, set) {
     if (!label) return false;
     if (set[label]) return true;
+    var norm = normLabel(label);
     for (var key in set) {
-      if (Object.prototype.hasOwnProperty.call(set, key) && softLabelMatch(label, key)) return true;
+      if (Object.prototype.hasOwnProperty.call(set, key) && normLabel(key) === norm) return true;
     }
     return false;
   }
@@ -865,6 +866,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     pages.forEach(function (p) { pageSet[p] = true; });
     var byReq = {};
     events.forEach(function (e) { if (e.requestId) byReq[e.requestId] = e; });
+    var prefetchSet = {};
+    Object.keys(doc.prefetches || {}).forEach(function (id) { prefetchSet[id] = true; });
     var matched = events.filter(function (ev) {
       var us = usageList(ev.usage);
       // Untagged hops: keep root requests when prefetch map exists (bootstrap traffic).
@@ -872,7 +875,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       return us.some(function (u) {
         if (u.screen && (labelInSet(u.screen, screenSet) || labelInSet(u.screen, pageSet))) return true;
         var pageId = u.cms && u.cms.pageId;
-        return !!(pageId && (labelInSet(pageId, pageSet) || labelInSet(pageId, screenSet)));
+        if (pageId && (labelInSet(pageId, pageSet) || labelInSet(pageId, screenSet))) return true;
+        return !!(u.datasourceId && prefetchSet[u.datasourceId]);
       });
     });
     // Screen session ids (route paths) often diverge from CMS pageIds/slugs — never blank Trace.
@@ -887,6 +891,22 @@ function renderRepeatBadgeHtml(key, count, expanded) {
         include[cur.id] = true;
         if (!cur.parentRequestId) break;
         cur = byReq[cur.parentRequestId];
+      }
+    });
+    // Include untagged children of untagged roots (bootstrap fan-out).
+    matched.forEach(function (ev) {
+      if (!usageList(ev.usage).length && !ev.parentRequestId) {
+        var stack = [ev];
+        var guardChild = 0;
+        while (stack.length && guardChild++ < 100) {
+          var parent = stack.pop();
+          events.forEach(function (child) {
+            if (child.parentRequestId === parent.requestId && !include[child.id]) {
+              include[child.id] = true;
+              stack.push(child);
+            }
+          });
+        }
       }
     });
     return sortByTs(events.filter(function (e) { return include[e.id]; }));
@@ -1413,11 +1433,11 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     var labels = [page.pageId, page.pageSlug].filter(Boolean);
     events.forEach(function (e) {
       usageList(e.usage).forEach(function (u) {
-        if (u.screen && labels.some(function (l) { return softLabelMatch(u.screen, l); })) {
+        if (u.screen && labels.some(function (l) { return exactScreenMatch(u.screen, l); })) {
           byId[e.id] = e;
         }
         var pageId = u.cms && u.cms.pageId;
-        if (pageId && labels.some(function (l) { return softLabelMatch(pageId, l); })) {
+        if (pageId && labels.some(function (l) { return exactScreenMatch(pageId, l); })) {
           byId[e.id] = e;
         }
       });
@@ -1448,7 +1468,7 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       html += '<div><strong>' + esc(p.pageSlug || p.pageId) + '</strong> <span class="badge">' + nodes.length + ' nodes</span>';
       if (pageHops.length) html += ' <span class="badge">' + esc(hopCountLabel(pageHops)) + '</span>';
       if (p.editUrl) html += ' <a href="' + esc(p.editUrl) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Edit in CMS ↗</a>';
-      html += ' <a href="pages/' + esc(pid.replace(/[^a-zA-Z0-9._-]+/g, '_')) + '.html" onclick="event.stopPropagation()">static page →</a></div></div>';
+      html += ' <a href="pages/' + esc((pid.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'page')) + '.html" onclick="event.stopPropagation()">static page →</a></div></div>';
       if (open) {
         if (nodes.length) {
           html += '<div class="meta" style="padding:0.25rem 0.65rem">Nodes</div>';
