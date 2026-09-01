@@ -1,14 +1,17 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { CrashSuspect } from '../utils/incidents';
 import type { NetworkEvent } from '../utils/network-event-types';
-import {
-  DEFAULT_VISIBLE_HOPS,
-  isSuspect,
-  type MockifyerCrashFallbackProps,
-  type MockifyerHopListProps,
-} from './MockifyerHopList.shared';
+import type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
 
-export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.shared';
+export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
+
+const DEFAULT_VISIBLE_HOPS = 8;
+
+function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
+  if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
+  return suspects.some((s) => s.eventId === hop.id);
+}
 
 function formatHopLine(hop: NetworkEvent): string {
   const parts = [hop.method, hop.url, hop.source];

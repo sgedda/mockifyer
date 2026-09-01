@@ -4,5 +4,5 @@ export type {
   MockifyerErrorBoundaryProps,
   MockifyerErrorBoundaryState,
 } from './MockifyerErrorBoundary';
-export type { MockifyerHopListProps, MockifyerCrashFallbackProps } from './MockifyerHopList.shared';
+export type { MockifyerHopListProps, MockifyerCrashFallbackProps } from './MockifyerHopList.types';
 export type { UseMockifyerScreenSessionOptions } from './useMockifyerScreenSession';

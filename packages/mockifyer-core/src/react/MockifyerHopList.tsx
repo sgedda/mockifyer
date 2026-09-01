@@ -1,13 +1,16 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
+import type { CrashSuspect } from '../utils/incidents';
 import type { NetworkEvent } from '../utils/network-event-types';
-import {
-  DEFAULT_VISIBLE_HOPS,
-  isSuspect,
-  type MockifyerCrashFallbackProps,
-  type MockifyerHopListProps,
-} from './MockifyerHopList.shared';
+import type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
 
-export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.shared';
+export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
+
+const DEFAULT_VISIBLE_HOPS = 8;
+
+function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
+  if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
+  return suspects.some((s) => s.eventId === hop.id);
+}
 
 const panelStyle: CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
