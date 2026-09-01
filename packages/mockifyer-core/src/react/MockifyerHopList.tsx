@@ -1,6 +1,13 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import type { CrashContext, CrashSuspect } from '../utils/incidents';
 import type { NetworkEvent } from '../utils/network-event-types';
+import {
+  DEFAULT_VISIBLE_HOPS,
+  isSuspect,
+  type MockifyerCrashFallbackProps,
+  type MockifyerHopListProps,
+} from './MockifyerHopList.shared';
+
+export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.shared';
 
 const panelStyle: CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -17,34 +24,19 @@ const cardStyle: CSSProperties = {
   color: '#eee',
 };
 
-const DEFAULT_VISIBLE_HOPS = 8;
-
-export interface MockifyerHopListProps {
-  /** Pre-sorted most-relevant-first from {@link getCrashContext}. */
-  hops: NetworkEvent[];
-  suspects?: CrashSuspect[];
-  prefetchHopIds?: string[];
-  maxItems?: number;
-}
-
-function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
-  if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
-  return suspects.some((s) => s.eventId === hop.id);
-}
-
 function HopRow({
   hop,
   suspects,
   prefetchHopIds,
 }: {
   hop: NetworkEvent;
-  suspects?: CrashSuspect[];
+  suspects?: MockifyerHopListProps['suspects'];
   prefetchHopIds?: string[];
 }): ReactNode {
   const suspect = isSuspect(hop, suspects);
   const isPrefetch = prefetchHopIds?.includes(hop.id);
   return (
-    <li key={hop.id} style={{ marginBottom: '6px', color: suspect ? '#ffb4b4' : undefined }}>
+    <li style={{ marginBottom: '6px', color: suspect ? '#ffb4b4' : undefined }}>
       {isPrefetch ? <span style={{ opacity: 0.7 }}>(prefetch) </span> : null}
       <span>{hop.method}</span> <span>{hop.url}</span>
       {' · '}
@@ -83,14 +75,6 @@ export function MockifyerHopList({
       </ol>
     </div>
   );
-}
-
-export interface MockifyerCrashFallbackProps {
-  error: Error;
-  crashContext: CrashContext | null;
-  incidentId?: string | null;
-  /** Hops shown before “Show more”. Default 8. */
-  visibleHopCount?: number;
 }
 
 /** Default ErrorBoundary fallback — error first; ranked hops visible by default. */
