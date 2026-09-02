@@ -59,17 +59,24 @@ export function setAtlasUsageContext(ctx: AtlasUsageContext): void {
 
 /**
  * Push ambient usage (nested screens). Pair with {@link popAtlasUsageContext} on unmount.
+ * Does **not** take a screenshot by default (mount is often still skeleton).
+ * Pass `{ captureScreenshot: true }` or call {@link requestAtlasScreenshotCapture} when ready.
  */
-export function pushAtlasUsageContext(ctx: AtlasUsageContext): void {
+export function pushAtlasUsageContext(
+  ctx: AtlasUsageContext,
+  options?: { captureScreenshot?: boolean }
+): void {
   usageContextStack.push({ ...usageContext });
   usageContext = { ...ctx };
 
-  const screen = ctx.screen?.trim();
-  if (screen) {
-    scheduleAtlasScreenshotCapture({
-      screen,
-      sessionId: ctx.sessionId ?? usageSessionId,
-    });
+  if (options?.captureScreenshot) {
+    const screen = ctx.screen?.trim();
+    if (screen) {
+      scheduleAtlasScreenshotCapture({
+        screen,
+        sessionId: ctx.sessionId ?? usageSessionId,
+      });
+    }
   }
 }
 

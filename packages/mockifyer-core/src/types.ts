@@ -277,6 +277,14 @@ export interface MockifyerConfig {
     htmlOutputPath?: string;
     /** Opt-in screen screenshots — requires {@link registerAtlasScreenshotCapturer}. Default false. */
     captureScreenshots?: boolean;
+    /** Delay after paint before screenshot (default 600). Avoids skeleton frames. */
+    screenshotSettleMs?: number;
+    /**
+     * When to write PNGs under `atlas-html/screenshots/`.
+     * - `on-flush` (default): buffer in memory; write on Dev Menu render / crash export
+     * - `immediate`: write as soon as captured
+     */
+    screenshotPersist?: 'immediate' | 'on-flush';
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.

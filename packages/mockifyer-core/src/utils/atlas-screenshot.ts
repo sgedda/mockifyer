@@ -22,6 +22,10 @@ try {
 
 const DEFAULT_METRO_PORT = 8081;
 const METRO_UPLOAD_TIMEOUT_MS = 4_000;
+/** Wait after paint so CMS/skeleton content can settle before capture. */
+const DEFAULT_SCREENSHOT_SETTLE_MS = 600;
+const DEFAULT_SCREENSHOT_MAX_ATTEMPTS = 4;
+const DEFAULT_SCREENSHOT_RETRY_MS = 400;
 
 /** Result from an app-registered capturer (RN tmpfile URI, base64, or raw PNG bytes). */
 export interface AtlasScreenshotCaptureResult {
@@ -39,12 +43,33 @@ export type AtlasScreenshotCapturer = () => Promise<AtlasScreenshotCaptureResult
 
 let registeredCapturer: AtlasScreenshotCapturer | null = null;
 let captureEnabled = false;
+let settleMs = DEFAULT_SCREENSHOT_SETTLE_MS;
+let maxAttempts = DEFAULT_SCREENSHOT_MAX_ATTEMPTS;
+let retryMs = DEFAULT_SCREENSHOT_RETRY_MS;
+/** `on-flush` = buffer in memory until Dev Menu render / crash export (default). */
+let persistMode: 'immediate' | 'on-flush' = 'on-flush';
 /** Dedupe: one screenshot per sessionId + screen per runtime. */
 const capturedKeys = new Set<string>();
 const pendingKeys = new Set<string>();
 
+interface BufferedScreenshot {
+  relativePath: string;
+  bytes: Uint8Array;
+  sessionId: string;
+  screen: string;
+  scenario?: string;
+  pageId?: string;
+  capturedAt: string;
+  /** False until written to disk / Metro. */
+  flushed: boolean;
+}
+
+/** In-memory PNGs — flushed on Dev Menu render / crash export. */
+const screenshotBuffer = new Map<string, BufferedScreenshot>();
+
 /**
  * Register an app-provided screenshot function (e.g. html2canvas, react-native-view-shot).
+ * Return `undefined` to skip this attempt (core will retry a few times after settle).
  * Pass `null` to unregister.
  */
 export function registerAtlasScreenshotCapturer(capturer: AtlasScreenshotCapturer | null): void {
@@ -79,19 +104,59 @@ export function resolveAtlasCaptureScreenshots(
 export function configureAtlasScreenshotCapture(options: {
   enabled: boolean;
   htmlOutputPath?: string;
+  settleMs?: number;
+  maxAttempts?: number;
+  retryMs?: number;
+  /** Default `on-flush` — write PNGs when {@link flushAtlasScreenshotsAsync} runs. */
+  persistMode?: 'immediate' | 'on-flush';
 }): void {
   captureEnabled = options.enabled;
+  if (typeof options.settleMs === 'number' && Number.isFinite(options.settleMs) && options.settleMs >= 0) {
+    settleMs = options.settleMs;
+  } else {
+    settleMs = DEFAULT_SCREENSHOT_SETTLE_MS;
+  }
+  if (typeof options.maxAttempts === 'number' && options.maxAttempts >= 1) {
+    maxAttempts = Math.floor(options.maxAttempts);
+  } else {
+    maxAttempts = DEFAULT_SCREENSHOT_MAX_ATTEMPTS;
+  }
+  if (typeof options.retryMs === 'number' && options.retryMs >= 0) {
+    retryMs = options.retryMs;
+  } else {
+    retryMs = DEFAULT_SCREENSHOT_RETRY_MS;
+  }
+  if (options.persistMode === 'immediate' || options.persistMode === 'on-flush') {
+    persistMode = options.persistMode;
+  } else {
+    persistMode = 'on-flush';
+  }
   if (!options.enabled) {
     capturedKeys.clear();
     pendingKeys.clear();
+    screenshotBuffer.clear();
   }
 }
 
 export function resetAtlasScreenshotRuntime(): void {
   registeredCapturer = null;
   captureEnabled = false;
+  settleMs = DEFAULT_SCREENSHOT_SETTLE_MS;
+  maxAttempts = DEFAULT_SCREENSHOT_MAX_ATTEMPTS;
+  retryMs = DEFAULT_SCREENSHOT_RETRY_MS;
+  persistMode = 'on-flush';
   capturedKeys.clear();
   pendingKeys.clear();
+  screenshotBuffer.clear();
+}
+
+/** How many captured screenshots are waiting to be written to disk. */
+export function getPendingAtlasScreenshotFlushCount(): number {
+  let n = 0;
+  for (const entry of screenshotBuffer.values()) {
+    if (!entry.flushed) n += 1;
+  }
+  return n;
 }
 
 function safeSegment(value: string): string {
@@ -284,11 +349,21 @@ export interface ScheduleAtlasScreenshotInput {
   scenario?: string;
   pageId?: string;
   timestamp?: string;
+  /** Override configured settle delay (ms after paint). */
+  settleMs?: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Schedule a one-per-(sessionId+screen) screenshot after layout paint.
- * No-op when atlas is off, capture disabled, capturer unset, or already captured.
+ * Schedule a one-per-(sessionId+screen) screenshot after layout paint + settle delay.
+ * Prefer {@link requestAtlasScreenshotCapture} once the screen content is ready (not on mount).
+ * Capturer may return `undefined` to retry (skeleton still showing).
+ *
+ * By default PNGs stay in memory until {@link flushAtlasScreenshotsAsync}
+ * (Dev Menu “Render Atlas docs” / crash export) — same model as other Atlas artifacts.
  */
 export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInput): void {
   if (!isAtlasEnabled() || !captureEnabled || !registeredCapturer) return;
@@ -301,46 +376,60 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
   if (capturedKeys.has(key) || pendingKeys.has(key)) return;
 
   pendingKeys.add(key);
+  const waitMs = input.settleMs ?? settleMs;
 
   afterLayoutPaint(() => {
     void (async () => {
       try {
+        if (waitMs > 0) {
+          await sleep(waitMs);
+        }
         if (capturedKeys.has(key)) return;
 
-        const result = await registeredCapturer!();
-        if (!result) return;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          if (attempt > 0 && retryMs > 0) {
+            await sleep(retryMs);
+          }
+          if (capturedKeys.has(key)) return;
 
-        const bytes = await readCaptureBytes(result);
-        if (!bytes?.length) return;
+          const result = await registeredCapturer!();
+          if (!result) continue;
 
-        const htmlRoot = getAtlasDocHtmlOutputPath()?.trim();
-        const relPath = relativeScreenshotPath(sessionId, screen);
-        const capturedAt = input.timestamp ?? new Date().toISOString();
+          const bytes = await readCaptureBytes(result);
+          if (!bytes?.length) continue;
 
-        let persisted = false;
-        if (htmlRoot && fs) {
-          persisted = writeScreenshotPng(htmlRoot, relPath, bytes);
-        }
-        if (!persisted) {
-          persisted = await uploadScreenshotViaMetro(relPath, bytes, {
+          const relPath = relativeScreenshotPath(sessionId, screen);
+          const capturedAt = input.timestamp ?? new Date().toISOString();
+          const meta = {
             sessionId,
             screen,
             scenario: input.scenario,
             pageId: input.pageId,
             capturedAt,
-          });
-        }
-        if (!persisted) return;
+          };
 
-        capturedKeys.add(key);
-        setAtlasDocScreenshot({
-          scenario: input.scenario,
-          screen,
-          sessionId,
-          screenshotPath: relPath,
-          capturedAt,
-          pageId: input.pageId,
-        });
+          screenshotBuffer.set(relPath, {
+            relativePath: relPath,
+            bytes,
+            ...meta,
+            flushed: false,
+          });
+
+          capturedKeys.add(key);
+          setAtlasDocScreenshot({
+            scenario: input.scenario,
+            screen,
+            sessionId,
+            screenshotPath: relPath,
+            capturedAt,
+            pageId: input.pageId,
+          });
+
+          if (persistMode === 'immediate') {
+            await persistBufferedScreenshot(relPath);
+          }
+          return;
+        }
       } catch {
         // Observability must not break the app
       } finally {
@@ -348,4 +437,53 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
       }
     })();
   });
+}
+
+async function persistBufferedScreenshot(relPath: string): Promise<boolean> {
+  const entry = screenshotBuffer.get(relPath);
+  if (!entry || entry.flushed) return entry?.flushed === true;
+
+  const htmlRoot = getAtlasDocHtmlOutputPath()?.trim();
+  let persisted = false;
+  if (htmlRoot && fs) {
+    persisted = writeScreenshotPng(htmlRoot, entry.relativePath, entry.bytes);
+  }
+  if (!persisted) {
+    persisted = await uploadScreenshotViaMetro(entry.relativePath, entry.bytes, {
+      sessionId: entry.sessionId,
+      screen: entry.screen,
+      scenario: entry.scenario,
+      pageId: entry.pageId,
+      capturedAt: entry.capturedAt,
+    });
+  }
+  if (persisted) {
+    entry.flushed = true;
+  }
+  return persisted;
+}
+
+/**
+ * Write buffered Atlas screenshots to `atlas-html/screenshots/` (Node fs or Metro).
+ * Call from Dev Menu render and crash export — same “save later” model as Atlas HTML.
+ */
+export async function flushAtlasScreenshotsAsync(): Promise<{ flushed: number; failed: number }> {
+  let flushed = 0;
+  let failed = 0;
+  for (const [relPath, entry] of screenshotBuffer) {
+    if (entry.flushed) continue;
+    const ok = await persistBufferedScreenshot(relPath);
+    if (ok) flushed += 1;
+    else failed += 1;
+  }
+  return { flushed, failed };
+}
+
+/**
+ * App-facing alias: call when the screen has finished loading (not on first mount).
+ * Example: after `isLoading === false` and first content paint.
+ * PNG bytes are buffered until {@link flushAtlasScreenshotsAsync}.
+ */
+export function requestAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInput): void {
+  scheduleAtlasScreenshotCapture(input);
 }

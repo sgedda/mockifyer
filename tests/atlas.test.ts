@@ -38,6 +38,10 @@ import {
   resolveAtlasCaptureScreenshots,
   setAtlasDocScreenshot,
   isAtlasScreenshotCaptureEnabled,
+  flushAtlasScreenshotsAsync,
+  requestAtlasScreenshotCapture,
+  pushAtlasUsageContext,
+  popAtlasUsageContext,
 } from '@sgedda/mockifyer-core';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -759,13 +763,19 @@ describe('atlas-screenshot', () => {
     expect(resolveAtlasCaptureScreenshots({})).toBe(true);
   });
 
-  it('captures one PNG per sessionId+screen on presentation', async () => {
+  it('buffers screenshots until flushAtlasScreenshotsAsync (on-flush)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-shot-'));
     try {
       registerAtlasScreenshotCapturer(async () => ({ data: PNG_BYTES, platform: 'web' }));
       configureAtlas({
         mockDataPath: './mock-data',
-        atlas: { mode: 'live', captureScreenshots: true, htmlOutputPath: dir },
+        atlas: {
+          mode: 'live',
+          captureScreenshots: true,
+          screenshotSettleMs: 0,
+          screenshotPersist: 'on-flush',
+          htmlOutputPath: dir,
+        },
       });
       expect(isAtlasScreenshotCaptureEnabled()).toBe(true);
 
@@ -779,24 +789,29 @@ describe('atlas-screenshot', () => {
         },
         shown: { title: 'Hi' },
       });
-      capturePresentation({
-        cms: {
-          pageId: 'home',
-          pageSlug: 'Home',
-          nodeId: 'footer',
-          type: 'footer',
-          path: 'home/footer',
-        },
+
+      requestAtlasScreenshotCapture({
+        screen: 'Home',
+        sessionId: getAtlasSessionId(),
+        pageId: 'home',
+      });
+      requestAtlasScreenshotCapture({
+        screen: 'Home',
+        sessionId: getAtlasSessionId(),
+        pageId: 'home',
       });
 
       await new Promise((r) => setTimeout(r, 150));
 
-      const relPath = 'screenshots';
       const map = getAtlasDocMap('default');
-      expect(map.pages.home?.screenshotPath).toMatch(new RegExp(`^${relPath}/`));
+      expect(map.pages.home?.screenshotPath).toMatch(/^screenshots\//);
       expect(map.screens.Home?.screenshotPath).toBe(map.pages.home?.screenshotPath);
 
       const pngPath = path.join(dir, map.pages.home!.screenshotPath!);
+      expect(fs.existsSync(pngPath)).toBe(false);
+
+      const flush = await flushAtlasScreenshotsAsync();
+      expect(flush.flushed).toBe(1);
       expect(fs.existsSync(pngPath)).toBe(true);
       expect(fs.readFileSync(pngPath).subarray(0, 8)).toEqual(PNG_BYTES.subarray(0, 8));
 
@@ -810,22 +825,35 @@ describe('atlas-screenshot', () => {
     }
   });
 
-  it('pushAtlasUsageContext schedules screen screenshot', async () => {
+  it('requestAtlasScreenshotCapture schedules after content ready (push does not)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-shot-ctx-'));
     try {
       registerAtlasScreenshotCapturer(async () => ({ data: PNG_BYTES }));
       configureAtlas({
-        atlas: { mode: 'live', captureScreenshots: true, htmlOutputPath: dir },
+        atlas: {
+          mode: 'live',
+          captureScreenshots: true,
+          screenshotSettleMs: 0,
+          screenshotPersist: 'on-flush',
+          htmlOutputPath: dir,
+        },
       });
 
-      const { pushAtlasUsageContext, popAtlasUsageContext } = require('@sgedda/mockifyer-core') as typeof import('@sgedda/mockifyer-core');
       pushAtlasUsageContext({ screen: 'booking', sessionId: 'screen-booking-1' });
+      await new Promise((r) => setTimeout(r, 80));
+      expect(getAtlasDocMap('default').screens.booking?.screenshotPath).toBeUndefined();
+
+      requestAtlasScreenshotCapture({ screen: 'booking', sessionId: 'screen-booking-1' });
       await new Promise((r) => setTimeout(r, 150));
       popAtlasUsageContext();
 
       const map = getAtlasDocMap('default');
       expect(map.screens.booking?.screenshotPath).toMatch(/^screenshots\//);
       expect(map.screens.booking?.screenshotSessionId).toBe('screen-booking-1');
+      expect(fs.existsSync(path.join(dir, map.screens.booking!.screenshotPath!))).toBe(false);
+
+      await flushAtlasScreenshotsAsync();
+      expect(fs.existsSync(path.join(dir, map.screens.booking!.screenshotPath!))).toBe(true);
     } finally {
       resetAtlasScreenshotRuntime();
       fs.rmSync(dir, { recursive: true, force: true });
