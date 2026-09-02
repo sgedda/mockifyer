@@ -1145,13 +1145,19 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
   function atlasAssetUrl(rel) {
     if (!rel) return '';
-    var s = String(rel);
+    var s = String(rel).replace(/^\\.\\//, '');
     if (/^(https?:|data:|file:|\\/)/i.test(s)) return s;
     try {
       var pathName = (typeof location !== 'undefined' && location.pathname) ? String(location.pathname) : '';
-      // incidents/*.html and pages/*.html live one level below atlas-html/
-      if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName) || /(?:^|\\/)(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
-        return '../' + s.replace(/^\\.\\//, '');
+      // Metro serves under /mockifyer-atlas-html/… — keep assets under that prefix
+      var metroMarker = '/mockifyer-atlas-html/';
+      var metroIdx = pathName.indexOf(metroMarker);
+      if (metroIdx >= 0) {
+        return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
+      }
+      // file:// …/atlas-html/incidents|pages/*.html → sibling screenshots/
+      if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
+        return '../' + s;
       }
     } catch (err) {}
     return s;

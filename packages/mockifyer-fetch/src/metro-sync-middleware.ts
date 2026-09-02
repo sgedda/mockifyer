@@ -11,6 +11,7 @@
  * 7. POST /mockifyer-atlas-html — write crash-scoped trace HTML to mock-data/atlas-html/incidents/
  * 8. GET /mockifyer-atlas-html/incidents/{id}.html — serve crash trace HTML from project folder
  * 9. POST /mockifyer-atlas-screenshot — write screen PNG under mock-data/atlas-html/screenshots/
+ * 10. GET /mockifyer-atlas-html/screenshots/{file}.png — serve screen PNGs for incident HTML
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -797,7 +798,7 @@ function saveAtlasScreenshot(
 function serveAtlasHtmlIncident(
   mockDataPath: string,
   incidentId: string,
-  res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string) => void }
+  res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string | Buffer) => void }
 ): boolean {
   const id = incidentId.trim();
   if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
@@ -815,6 +816,35 @@ function serveAtlasHtmlIncident(
   }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.end(fs.readFileSync(filePath, 'utf8'));
+  return true;
+}
+
+/**
+ * Serve a PNG from mock-data/atlas-html/screenshots/ via Metro
+ * (`GET /mockifyer-atlas-html/screenshots/<file>.png`).
+ */
+function serveAtlasHtmlScreenshot(
+  mockDataPath: string,
+  fileName: string,
+  res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string | Buffer) => void }
+): boolean {
+  const name = fileName.trim();
+  if (!name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.endsWith('.png')) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Invalid screenshot name');
+    return true;
+  }
+  const filePath = path.join(mockDataPath, 'atlas-html', 'screenshots', name);
+  if (!fs.existsSync(filePath)) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Screenshot not found — flush Atlas screenshots (Dev Menu render / crash) first.');
+    return true;
+  }
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.end(fs.readFileSync(filePath));
   return true;
 }
 
@@ -901,6 +931,14 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const suffix = url.slice('/mockifyer-atlas-html/incidents/'.length);
       const incidentId = suffix.endsWith('.html') ? suffix.slice(0, -'.html'.length) : suffix;
       if (serveAtlasHtmlIncident(mockDataPath, incidentId, res)) {
+        return;
+      }
+    }
+
+    // Screen screenshots for incident / atlas HTML opened via Metro
+    if (url.startsWith('/mockifyer-atlas-html/screenshots/') && req.method === 'GET') {
+      const fileName = url.slice('/mockifyer-atlas-html/screenshots/'.length).split('?')[0] || '';
+      if (serveAtlasHtmlScreenshot(mockDataPath, fileName, res)) {
         return;
       }
     }
