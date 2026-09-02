@@ -528,14 +528,14 @@ export function mergeAtlasDocMap(incoming: AtlasDocMap): AtlasDocMap {
 
   for (const page of Object.values(incoming.pages ?? {})) {
     if (page.screenshotPath?.trim()) {
-      setAtlasDocScreenshot({
-        scenario,
-        screen: page.pageSlug || page.pageId,
-        sessionId: page.screenshotSessionId || 'imported',
-        screenshotPath: page.screenshotPath,
-        capturedAt: page.screenshotCapturedAt || page.lastSeenAt,
-        pageId: page.pageId,
-      })
+      const map = ensureMap(scenario)
+      const existingPage = map.pages[page.pageId]
+      if (existingPage) {
+        existingPage.screenshotPath = page.screenshotPath
+        existingPage.screenshotSessionId = page.screenshotSessionId || 'imported'
+        existingPage.screenshotCapturedAt = page.screenshotCapturedAt || page.lastSeenAt
+        touch(map)
+      }
     }
   }
 
