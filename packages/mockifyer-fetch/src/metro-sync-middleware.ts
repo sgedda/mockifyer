@@ -35,6 +35,7 @@ import {
   containsMockifyerSyncEndpointMarker,
   setAtlasDocScreenshot,
   flushAtlasDocHtmlRewrite,
+  setAtlasDocHtmlOutputPath,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -770,6 +771,8 @@ function saveAtlasScreenshot(
 
     // Update Atlas doc map with screenshot metadata (Metro has fs, so HTML will be written)
     if (metadata?.screen && metadata?.sessionId) {
+      const htmlPath = path.join(mockDataPath, 'atlas-html');
+      setAtlasDocHtmlOutputPath(htmlPath);
       setAtlasDocScreenshot({
         scenario: metadata.scenario,
         screen: metadata.screen,
@@ -778,7 +781,6 @@ function saveAtlasScreenshot(
         capturedAt: metadata.capturedAt ?? new Date().toISOString(),
         pageId: metadata.pageId,
       });
-      // Immediately flush the HTML rewrite since we're on Node.js
       flushAtlasDocHtmlRewrite();
     }
 
