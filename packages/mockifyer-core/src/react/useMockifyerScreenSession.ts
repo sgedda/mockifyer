@@ -9,6 +9,11 @@ export interface UseMockifyerScreenSessionOptions {
   scenario?: string;
   /** Optional component/feature label stamped on outbound hops while this screen is active. */
   component?: string;
+  /**
+   * When false, do not push usage / flight context (e.g. blurred AppDun screen).
+   * Defaults to true when omitted.
+   */
+  focused?: boolean;
 }
 
 /**
@@ -26,7 +31,12 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
     return `screen-${slug}-${Date.now()}`;
   }, [options.screenName]);
 
+  const focused = options.focused !== false;
+
   useEffect(() => {
+    if (!focused) {
+      return;
+    }
     setFlightRecorderRuntimeContext({
       sessionId,
       clientId: options.clientId,
@@ -46,7 +56,7 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
       });
       popAtlasUsageContext();
     };
-  }, [sessionId, options.clientId, options.scenario, options.screenName, options.component]);
+  }, [sessionId, options.clientId, options.scenario, options.screenName, options.component, focused]);
 
   return sessionId;
 }

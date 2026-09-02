@@ -10,6 +10,7 @@
  * 6. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 7. POST /mockifyer-atlas-html — write crash-scoped trace HTML to mock-data/atlas-html/incidents/
  * 8. GET /mockifyer-atlas-html/incidents/{id}.html — serve crash trace HTML from project folder
+ * 9. POST /mockifyer-atlas-screenshot — write screen PNG under mock-data/atlas-html/screenshots/
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -734,6 +735,39 @@ function saveAtlasHtmlIncident(
   }
 }
 
+function saveAtlasScreenshot(
+  projectRoot: string,
+  mockDataPath: string,
+  relativePath: string,
+  base64: string
+): { success: boolean; filePath?: string; relativePath?: string; error?: string } {
+  const rel = relativePath.trim().replace(/^\/+/, '');
+  if (!rel || !base64.trim()) {
+    return { success: false, error: 'relativePath and base64 are required' };
+  }
+  if (rel.includes('..') || !rel.startsWith('screenshots/') || !rel.endsWith('.png')) {
+    return { success: false, error: 'relativePath must be screenshots/<name>.png' };
+  }
+  const fileName = path.basename(rel);
+  if (!fileName || fileName === '.' || fileName === '..') {
+    return { success: false, error: 'Invalid screenshot file name' };
+  }
+  try {
+    const dir = path.join(mockDataPath, 'atlas-html', 'screenshots');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, fileName);
+    fs.writeFileSync(filePath, Buffer.from(base64.trim(), 'base64'));
+    const relativeFromRoot = path.relative(projectRoot, filePath);
+    return {
+      success: true,
+      filePath,
+      relativePath: relativeFromRoot.split(path.sep).join('/'),
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
 function serveAtlasHtmlIncident(
   mockDataPath: string,
   incidentId: string,
@@ -856,6 +890,35 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           const incidentId = typeof parsed.incidentId === 'string' ? parsed.incidentId : '';
           const html = typeof parsed.html === 'string' ? parsed.html : '';
           const result = saveAtlasHtmlIncident(projectRoot, mockDataPath, incidentId, html);
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = result.success ? 201 : 400;
+          res.end(JSON.stringify(result));
+        } catch (error) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    // Atlas screen screenshot (device → project mock-data/atlas-html/screenshots/)
+    if (url === '/mockifyer-atlas-screenshot' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body) as { relativePath?: string; base64?: string };
+          const relativePath = typeof parsed.relativePath === 'string' ? parsed.relativePath : '';
+          const base64 = typeof parsed.base64 === 'string' ? parsed.base64 : '';
+          const result = saveAtlasScreenshot(projectRoot, mockDataPath, relativePath, base64);
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = result.success ? 201 : 400;
           res.end(JSON.stringify(result));
