@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
   clearFlightRecorder,
   configureFlightRecorder,
@@ -15,7 +18,18 @@ import {
   setFlightRecorderRuntimeContext,
   collectCrashContextHops,
   sortHopsByRelevance,
+  recordUsage,
+  resetAtlasUsageRuntime,
+  setAtlasUsageContext,
+  enrichNetworkEventsWithAtlasUsage,
+  logCompactIncidentToConsole,
+  looksLikeIntentionalTestCrash,
+  resolveForensicsDashboardBaseUrl,
+  configureAtlas,
+  exportCrashContextHtmlLocal,
+  type NetworkEventUsage,
 } from '@sgedda/mockifyer-core';
+import { formatHopLineForDisplay } from '../packages/mockifyer-core/src/utils/hop-display';
 
 describe('response-shape', () => {
   it('fingerprints object shape', () => {
@@ -242,5 +256,235 @@ describe('incidents', () => {
     const ctx = explainIncidentFromEvents(events, { incidentId: 'inc-1', windowMs: 60_000 });
     expect(ctx?.hops).toHaveLength(1);
     expect(ctx?.suspects[0]?.flags).toContain('http_error_status');
+  });
+
+  it('merges atlas usage onto crash context hops', () => {
+    resetAtlasUsageRuntime();
+    const sessionId = 'sess-atlas';
+    const at = '2026-08-20T20:00:00.000Z';
+    const requestId = 'req-cms-phone';
+
+    setAtlasUsageContext({ screen: 'AppDun', component: 'PhoneDetails' });
+    recordFlightNetworkEvent(
+      buildNetworkEvent({
+        scenario: 'default',
+        transport: 'fetch',
+        method: 'GET',
+        url: 'https://example.com/cms/phone',
+        source: 'mock-hit',
+        status: 200,
+        sessionId,
+        requestId,
+        timestamp: '2026-08-20T19:59:55.000Z',
+      })
+    );
+    recordUsage({
+      requestId,
+      usage: {
+        screen: 'AppDun',
+        component: 'PhoneDetails',
+        cms: { pageId: 'contact', nodeId: 'phone-1', type: 'phonedetails' },
+      },
+    });
+
+    const incident = reportIncident({
+      type: 'error_boundary',
+      message: 'render fail',
+      sessionId,
+      at,
+    });
+
+    const ctx = getCrashContext({ incidentId: incident.id, at, windowMs: 60_000 });
+    expect(ctx?.hops[0].usage).toBeTruthy();
+    const line = formatHopLineForDisplay(ctx!.hops[0]);
+    expect(line).toContain('[AppDun / PhoneDetails]');
+    expect(line).toContain('page:contact');
+    expect(line).toContain('node:phone-1');
+  });
+
+  it('logCompactIncidentToConsole uses single error block with suspects and dashboard URL', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const hop = buildNetworkEvent(
+      {
+        id: 'hop-bad',
+        scenario: 'default',
+        transport: 'fetch',
+        method: 'GET',
+        url: 'https://example.com/weather',
+        source: 'mock-hit',
+        status: 200,
+        responseBodyPreview: JSON.stringify({ tempC: null }),
+        anomalyFlags: ['null_body'],
+      },
+      { captureBodies: true }
+    );
+
+    logCompactIncidentToConsole({
+      error: new Error('Cannot read tempC'),
+      incidentId: 'inc-123',
+      crashContext: {
+        incident: buildNetworkEvent({
+          id: 'inc-123',
+          kind: 'incident',
+          incidentType: 'error_boundary',
+          scenario: 'default',
+          transport: 'app',
+          method: 'INCIDENT',
+          url: 'app://error_boundary',
+          source: 'error',
+          errorMessage: 'Cannot read tempC',
+        }),
+        hops: [hop],
+        suspects: [
+          {
+            eventId: 'hop-bad',
+            method: 'GET',
+            url: 'https://example.com/weather',
+            source: 'mock-hit',
+            status: 200,
+            flags: ['null_body'],
+            summary: 'null_body',
+          },
+        ],
+        windowMs: 60_000,
+      },
+      dashboardExplainUrl: 'http://localhost:3002/api/network-events/explain?incidentId=inc-123',
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const block = String(errorSpy.mock.calls[0][0]);
+    expect(block).toContain('[inc-123]');
+    expect(block).toContain('Cannot read tempC');
+    expect(block).toContain('Suspects (1)');
+    expect(block).toContain('body:');
+    expect(block).toContain('1 hop in window');
+    expect(block).toContain('Dashboard: http://localhost:3002/api/network-events/explain?incidentId=inc-123');
+
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('looksLikeIntentionalTestCrash detects dev crash messages', () => {
+    expect(looksLikeIntentionalTestCrash('Intentional test crash from dev menu')).toBe(true);
+    expect(looksLikeIntentionalTestCrash('trigger test crash now')).toBe(true);
+    expect(looksLikeIntentionalTestCrash('Cannot read tempC')).toBe(false);
+  });
+
+  it('resolveForensicsDashboardBaseUrl falls back to configureAtlas runtime URL', () => {
+    resetAtlasUsageRuntime();
+    configureAtlas({
+      mockDataPath: './mock-data',
+      proxy: { baseUrl: 'https://api.example.com/mockifyer/' },
+      atlas: { mode: 'live' },
+    });
+    expect(resolveForensicsDashboardBaseUrl({ networkLog: { enabled: true } })).toBe(
+      'https://api.example.com/mockifyer/'
+    );
+    resetAtlasUsageRuntime();
+  });
+
+  it('exportCrashContextHtmlLocal writes Node HTML and returns file links', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'crash-html-'));
+    const hop = buildNetworkEvent({
+      id: 'hop-1',
+      scenario: 'default',
+      transport: 'fetch',
+      method: 'GET',
+      url: 'https://example.com/a',
+      source: 'mock-hit',
+      status: 200,
+    });
+    const result = await exportCrashContextHtmlLocal({
+      crashContext: {
+        incident: buildNetworkEvent({
+          id: 'inc-local',
+          kind: 'incident',
+          incidentType: 'error_boundary',
+          scenario: 'default',
+          transport: 'app',
+          method: 'INCIDENT',
+          url: 'app://error_boundary',
+          source: 'error',
+          errorMessage: 'boom',
+        }),
+        hops: [hop],
+        suspects: [],
+      },
+      incidentId: 'inc-local',
+      errorMessage: 'boom',
+      mockDataPath: tmp,
+    });
+    expect(result?.filePath).toBeTruthy();
+    expect(fs.existsSync(result!.filePath!)).toBe(true);
+    expect(result?.relativePath).toContain('atlas-html/incidents/inc-local.html');
+    const html = fs.readFileSync(result!.filePath!, 'utf8');
+    expect(html).toContain('"mode":"crash"');
+    expect(html).toContain('highlightJsonHtml');
+    expect(html).toContain('errors-toggle');
+    expect(html).toContain('.json-k');
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('logCompactIncidentToConsole includes local trace links in footer', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    logCompactIncidentToConsole({
+      error: new Error('boom'),
+      incidentId: 'inc-123',
+      crashContext: {
+        incident: buildNetworkEvent({
+          id: 'inc-123',
+          kind: 'incident',
+          incidentType: 'error_boundary',
+          scenario: 'default',
+          transport: 'app',
+          method: 'INCIDENT',
+          url: 'app://error_boundary',
+          source: 'error',
+          errorMessage: 'boom',
+        }),
+        hops: [],
+        suspects: [],
+        windowMs: 60_000,
+      },
+      dashboardExplainUrl: 'http://localhost:3002/api/network-events/explain?incidentId=inc-123',
+      localTrace: {
+        relativePath: 'mock-data/atlas-html/incidents/inc-123.html',
+        browseUrl: 'http://localhost:8081/mockifyer-atlas-html/incidents/inc-123.html',
+      },
+    });
+    const block = String(errorSpy.mock.calls[0][0]);
+    expect(block).toContain(
+      'Trace HTML: http://localhost:8081/mockifyer-atlas-html/incidents/inc-123.html'
+    );
+    expect(block).toContain('Local file: mock-data/atlas-html/incidents/inc-123.html');
+    errorSpy.mockRestore();
+  });
+});
+
+describe('enrichNetworkEventsWithAtlasUsage', () => {
+  beforeEach(() => {
+    resetAtlasUsageRuntime();
+  });
+
+  it('merges annotation index by requestId', () => {
+    const events = [
+      {
+        id: '1',
+        requestId: 'r1',
+        method: 'GET',
+        url: 'https://a.test',
+        source: 'mock-hit' as const,
+        usage: undefined as NetworkEventUsage | undefined,
+      },
+    ];
+    recordUsage({
+      requestId: 'r1',
+      usage: { screen: 'matchday', component: 'Hero' },
+    });
+    const enriched = enrichNetworkEventsWithAtlasUsage(events);
+    expect(enriched[0].usage).toEqual({ screen: 'matchday', component: 'Hero' });
   });
 });

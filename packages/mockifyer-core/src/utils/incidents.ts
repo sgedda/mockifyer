@@ -19,6 +19,8 @@ import {
   resolveNetworkLogCaptureBodies,
   resolveNetworkLogDashboardUrl,
 } from './network-log';
+import { enrichNetworkEventsWithAtlasUsage } from './atlas-usage';
+import type { LocalCrashTraceLinks } from './crash-html-export';
 
 export interface CrashSuspect {
   eventId: string;
@@ -312,11 +314,12 @@ function finalizeCrashContext(
     hopLimit: options.hopLimit,
   });
 
-  const suspects = orderSuspectsLikeHops(buildSuspects(hops), hops);
+  const enrichedHops = enrichNetworkEventsWithAtlasUsage(hops);
+  const suspects = orderSuspectsLikeHops(buildSuspects(enrichedHops), enrichedHops);
 
   return {
     incident,
-    hops,
+    hops: enrichedHops,
     prefetchHopIds,
     suspects,
     windowMs,
@@ -623,59 +626,77 @@ export interface LogCompactIncidentOptions {
   error: Error;
   incidentId?: string | null;
   crashContext?: CrashContext | null;
+  dashboardExplainUrl?: string;
+  /** Local Metro / file trace from {@link exportCrashContextHtmlLocal}. */
+  localTrace?: LocalCrashTraceLinks | null;
+}
+
+const MAX_CONSOLE_BODY_PREVIEW_CHARS = 200;
+
+/** True when the error message looks like a deliberate test crash (dev tooling). */
+export function looksLikeIntentionalTestCrash(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('intentional test crash') || lower.includes('test crash');
+}
+
+function truncateConsoleBodyPreview(text: string): string {
+  if (text.length <= MAX_CONSOLE_BODY_PREVIEW_CHARS) return text;
+  return `${text.slice(0, MAX_CONSOLE_BODY_PREVIEW_CHARS)}…`;
 }
 
 /**
- * One-line error in the console; hop details inside a collapsed group (Metro / Chrome / Node).
- * Keeps the frontend error visible — network context is opt-in to expand.
+ * Single multi-line `console.error` block for Metro / browser — no groupCollapsed or warn spam.
+ * Stack trace is logged separately afterward.
  */
 export function logCompactIncidentToConsole(options: LogCompactIncidentOptions): void {
   if (typeof console === 'undefined') return;
 
-  const { error, incidentId, crashContext } = options;
-  const suspectCount = crashContext?.suspects.length ?? 0;
+  const { error, incidentId, crashContext, dashboardExplainUrl, localTrace } = options;
   const hopCount = crashContext?.hops.length ?? 0;
-  const idSuffix = incidentId ? ` [${incidentId}]` : '';
+  const suspectCount = crashContext?.suspects.length ?? 0;
+  const lines: string[] = [];
 
-  console.error(`[Mockifyer]${idSuffix} ${error.message}`);
+  const idPart = incidentId ? `[${incidentId}] ` : '';
+  lines.push(`[Mockifyer] ${idPart}${error.message}`);
 
-  if (!crashContext || (hopCount === 0 && suspectCount === 0)) {
-    if (error.stack) {
-      console.error(error.stack);
-    }
-    return;
+  if (looksLikeIntentionalTestCrash(error.message)) {
+    lines.push('(Dev: intentional test crash — network context below is for debugging)');
   }
 
-  const groupLabel =
-    suspectCount > 0
-      ? `[Mockifyer] Network context — ${hopCount} hops, ${suspectCount} flagged (expand, ranked)`
-      : `[Mockifyer] Network context — ${hopCount} hops (expand, ranked)`;
-
-  if (typeof console.groupCollapsed === 'function') {
-    console.groupCollapsed(groupLabel);
-  } else {
-    console.error(groupLabel);
-  }
-
-  if (crashContext.incident.sessionId) {
-    console.log('sessionId:', crashContext.incident.sessionId);
-  }
-  if (suspectCount > 0) {
-    for (const s of crashContext.suspects) {
-      console.log(`⚠ ${s.method} ${s.url} — ${s.summary}`);
+  if (crashContext && suspectCount > 0) {
+    lines.push('');
+    lines.push(`Suspects (${suspectCount}):`);
+    const hopById = new Map(crashContext.hops.map((h) => [h.id, h]));
+    for (const suspect of crashContext.suspects) {
+      lines.push(`  ${suspect.method} ${suspect.url} — ${suspect.summary}`);
+      const hop = hopById.get(suspect.eventId);
+      if (hop?.responseBodyPreview?.trim()) {
+        lines.push(`    body: ${truncateConsoleBodyPreview(hop.responseBodyPreview.trim())}`);
+      }
     }
   }
-  for (const hop of crashContext.hops) {
-    const isPrefetch = crashContext.prefetchHopIds?.includes(hop.id);
-    const flags = hop.anomalyFlags?.length ? ` ⚠ ${hop.anomalyFlags.join(', ')}` : '';
-    console.log(
-      `${isPrefetch ? '(prefetch) ' : ''}${hop.method} ${hop.url} · ${hop.source}${hop.status != null ? ` ${hop.status}` : ''}${flags}`
-    );
+
+  const footerParts: string[] = [];
+  if (hopCount > 0) {
+    footerParts.push(`${hopCount} hop${hopCount === 1 ? '' : 's'} in window`);
+  }
+  if (dashboardExplainUrl) {
+    footerParts.push(`Dashboard: ${dashboardExplainUrl}`);
+  }
+  if (localTrace?.browseUrl) {
+    footerParts.push(`Trace HTML: ${localTrace.browseUrl}`);
+  }
+  if (localTrace?.relativePath) {
+    footerParts.push(`Local file: ${localTrace.relativePath}`);
+  } else if (localTrace?.fileUrl) {
+    footerParts.push(`Local file: ${localTrace.fileUrl}`);
+  }
+  if (footerParts.length > 0) {
+    lines.push('');
+    lines.push(footerParts.join(' · '));
   }
 
-  if (typeof console.groupEnd === 'function') {
-    console.groupEnd();
-  }
+  console.error(lines.join('\n'));
 
   if (error.stack) {
     console.error(error.stack);
@@ -719,3 +740,6 @@ export function resolveCrashContextUrl(
   const suffix = qs.toString();
   return `${base}/api/network-events/explain${suffix ? `?${suffix}` : ''}`;
 }
+
+export type { LocalCrashTraceLinks, ExportCrashContextHtmlOptions } from './crash-html-export';
+export { exportCrashContextHtmlLocal } from './crash-html-export';

@@ -1,7 +1,8 @@
 /**
  * Self-contained Atlas auto-doc HTML for local browsing (file:// / VS Code).
  * Written on Node capture upserts when {@link setAtlasDocHtmlOutputPath} is set.
- * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey — kind filters, dedup, colored chain boxes.
+ * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey — kind filters, dedup, colored chain boxes,
+ * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters.
  * Safe on React Native: `fs`/`path` require is try/caught; writes no-op.
  */
 
@@ -97,13 +98,13 @@ export function safeAtlasPageFileId(pageId: string): string {
 
 function sharedCss(): string {
   return `
-:root { color-scheme: light; --bg: #f7f7f5; --fg: #1a1a1a; --muted: #5c5c5c; --border: #d8d8d4; --accent: #0b5fff; --card: #fff; --bar: #3b82f6; --bar2: #10b981; }
+:root { color-scheme: light; --bg: #f7f7f5; --fg: #1a1a1a; --muted: #5c5c5c; --border: #d8d8d4; --accent: #0b5fff; --card: #fff; --bar: #3b82f6; --bar2: #10b981; --err: #b91c1c; --err-bg: #fef2f2; --ok: #15803d; --warn: #a16207; --slow: #d97706; --slow-bg: #fffbeb; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.45; }
 header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--card); }
 header h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
 header p { margin: 0; color: var(--muted); font-size: 0.9rem; }
-main { padding: 1.25rem 1.5rem 2.5rem; max-width: 1100px; }
+main { padding: 1.25rem 1.5rem 2.5rem; max-width: 1280px; }
 a { color: var(--accent); }
 h2 { font-size: 1.1rem; margin: 1.75rem 0 0.75rem; }
 ul { padding-left: 1.2rem; }
@@ -112,7 +113,41 @@ li { margin: 0.35rem 0; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; margin: 0.75rem 0; }
 .card h3 { margin: 0 0 0.4rem; font-size: 1rem; }
 .badge { display: inline-block; font-size: 0.75rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.4rem; margin-right: 0.35rem; }
-pre { background: #f0f0ec; border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; overflow: auto; font-size: 0.8rem; }
+.badge.status-ok { color: var(--ok); border-color: #86efac; background: #f0fdf4; }
+.badge.status-warn { color: var(--warn); border-color: #fde68a; background: #fffbeb; }
+.badge.status-err, .badge.err { color: #fff; border-color: var(--err); background: var(--err); font-weight: 600; }
+.badge.slow { color: #92400e; border-color: #fbbf24; background: #fde68a; font-weight: 600; }
+.badge.dur-est { border-style: dashed; color: var(--muted); }
+.badge.status-muted { color: var(--muted); }
+pre { background: #1e1e1e; color: #d4d4d4; border: 1px solid #333; border-radius: 6px; padding: 0.75rem; overflow: auto; font-size: 0.78rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; line-height: 1.45; }
+pre.json { white-space: pre; }
+.json-k { color: #9cdcfe; }
+.json-s { color: #ce9178; }
+.json-n { color: #b5cea8; }
+.json-b { color: #569cd6; }
+.json-null { color: #569cd6; }
+.error-panel { background: var(--err-bg); border: 1px solid #fecaca; border-left: 4px solid var(--err); border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
+.error-panel-title { font-size: 0.8rem; font-weight: 700; color: var(--err); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
+.error-item { margin: 0.35rem 0; font-size: 0.85rem; }
+.error-msg { color: #7f1d1d; font-weight: 600; word-break: break-word; }
+.error-meta { color: #991b1b; font-size: 0.75rem; opacity: 0.9; }
+.slow-panel { background: var(--slow-bg); border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
+.slow-panel-title { font-size: 0.8rem; font-weight: 700; color: #b45309; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
+.slow-item { margin: 0.35rem 0; font-size: 0.85rem; }
+.slow-msg { color: #92400e; font-weight: 600; }
+.slow-meta { color: #b45309; font-size: 0.75rem; opacity: 0.9; }
+.hop-row.has-error, .timing-row.has-error { background: #fff1f1; }
+.hop-row.has-error.selected, .timing-row.has-error.selected { background: #ffe4e4; }
+.hop-row.has-slow, .timing-row.has-slow { background: #fffbeb; }
+.hop-row.has-slow.selected, .timing-row.has-slow.selected { background: #fef3c7; }
+.hop-row.error-context, .timing-row.error-context { opacity: 0.78; }
+.badge.ctx { color: var(--muted); border-style: dashed; }
+.chain-box.has-error { border-color: var(--err); background: var(--err-bg); }
+.chain-box.has-slow { border-color: #f59e0b; background: var(--slow-bg); }
+.chain-box.error-context { opacity: 0.8; border-style: dashed; }
+.kind-filters button.errors-toggle.on { background: var(--err); color: #fff; border-color: var(--err); }
+.kind-filters button.slow-toggle.on { background: #f59e0b; color: #78350f; border-color: #d97706; }
+.bar.slow { background: #f59e0b; }
 nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .empty { color: var(--muted); font-style: italic; }
 .tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; }
@@ -151,12 +186,42 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .map-row .col { flex: 1; min-width: 0; }
 .map-row .col-side { flex: 0 0 auto; text-align: right; color: var(--muted); font-size: 0.75rem; white-space: nowrap; }
 .map-sub { margin-left: 1.25rem; border-left: 2px solid var(--border); }
-.journey-strip { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.5rem 0 1rem; }
-.journey-step { min-width: 9rem; max-width: 14rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.75rem; background: var(--card); flex-shrink: 0; }
+.journey-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.4rem 0.3rem; padding: 0.35rem 0 0.85rem; }
+.journey-step { flex: 1 1 7.5rem; min-width: 6.5rem; max-width: 11rem; border: 1px solid var(--border); border-radius: 8px; padding: 0.45rem 0.6rem; background: var(--card); text-align: left; cursor: pointer; font-family: inherit; color: inherit; }
+.journey-step:hover { border-color: var(--accent); background: #f5f8ff; }
+.journey-step.active { border-color: var(--accent); background: #e8eefc; box-shadow: 0 0 0 1px var(--accent); }
+.journey-step strong { display: block; font-size: 0.82rem; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.journey-step .meta { margin-top: 0.15rem; font-size: 0.72rem; }
+.journey-arrow { flex: 0 0 auto; align-self: center; color: var(--muted); font-size: 0.85rem; padding: 0 0.05rem; user-select: none; }
+.journey-group { scroll-margin-top: 0.85rem; }
+.journey-group.journey-group-active { border-color: #93c5fd; box-shadow: 0 0 0 1px #bfdbfe; }
+.journey-group .group-h { gap: 0.5rem; }
+.journey-hop { padding: 0.55rem 0.75rem; gap: 0.5rem; align-items: flex-start; }
+.journey-hop .hop-main { flex: 1; min-width: 0; }
+.journey-hop .hop-line { display: flex; align-items: baseline; gap: 0.4rem; min-width: 0; }
+.journey-hop .hop-line strong { flex: 0 0 auto; font-size: 0.8rem; }
+.journey-hop .hop-path-trunc { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; word-break: normal; }
+.journey-hop .hop-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; margin-top: 0.3rem; }
+.journey-hop .hop-badges .badge { margin-right: 0; }
+.journey-hop .hop-meta { display: block; margin-top: 0.2rem; font-size: 0.72rem; }
+.journey-hop .used-by { margin-top: 0.2rem; }
 .used-by { color: #0369a1; font-size: 0.75rem; }
-.layout { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-@media (min-width: 900px) { .layout { grid-template-columns: 1.4fr 1fr; } }
-.detail { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; position: sticky; top: 0.75rem; max-height: 80vh; overflow: auto; }
+.trigger-panel { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
+.trigger-panel-title { font-size: 0.8rem; font-weight: 700; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
+.trigger-detail { font-size: 0.85rem; color: #1e3a8a; word-break: break-word; }
+.trigger-meta { font-size: 0.75rem; color: #1d4ed8; opacity: 0.85; margin-top: 0.25rem; }
+.badge.trigger { font-weight: 600; }
+.badge.trigger-prefetch { color: #6d28d9; border-color: #c4b5fd; background: #f5f3ff; }
+.badge.trigger-navigation { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }
+.badge.trigger-child { color: #0f766e; border-color: #99f6e4; background: #f0fdfa; }
+.badge.trigger-unknown { color: var(--muted); }
+.layout { display: grid; grid-template-columns: 1fr; gap: 1rem; min-width: 0; }
+.layout > div { min-width: 0; }
+@media (min-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1.55fr) minmax(16rem, 1fr); }
+  .layout.layout-journey { grid-template-columns: minmax(0, 2.1fr) minmax(15rem, 0.85fr); }
+}
+.detail { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 0.9rem 1rem; position: sticky; top: 0.75rem; max-height: 80vh; overflow: auto; min-width: 0; }
 .detail h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
 .hop-row.selected, .timing-row.selected { background: #e8eefc; }
 .hop-row { cursor: pointer; }
@@ -290,7 +355,7 @@ function truncateBodyPreview(text: string | undefined): string | undefined {
 }
 
 function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
-  return {
+  const slim: Record<string, unknown> = {
     id: ev.id,
     timestamp: ev.timestamp,
     method: ev.method,
@@ -305,6 +370,10 @@ function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
     requestBodyPreview: truncateBodyPreview(ev.requestBodyPreview),
     responseBodyPreview: truncateBodyPreview(ev.responseBodyPreview),
   };
+  if (ev.errorMessage) slim.errorMessage = ev.errorMessage;
+  if (ev.kind) slim.kind = ev.kind;
+  if (ev.anomalyFlags?.length) slim.anomalyFlags = ev.anomalyFlags;
+  return slim;
 }
 
 function interactiveClientScript(): string {
@@ -450,11 +519,399 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   var enc = encodeURIComponent(key);
   return ' <button type="button" class="badge repeat" data-unique-expand="' + enc + '" title="' + count + ' identical requests — click to ' + (expanded ? 'collapse' : 'expand') + '">' + label + '</button>';
 }
+function parseBodyJson(text) {
+  if (text == null || text === '') return { ok: false, value: null, raw: '' };
+  var raw = String(text);
+  try {
+    return { ok: true, value: JSON.parse(raw), raw: raw };
+  } catch (err) {
+    return { ok: false, value: null, raw: raw };
+  }
+}
+function pushErrorItem(out, item) {
+  if (!item || !item.message) return;
+  var msg = String(item.message).trim();
+  if (!msg) return;
+  for (var i = 0; i < out.length; i++) {
+    if (out[i].message === msg && out[i].where === item.where) return;
+  }
+  out.push(item);
+}
+function isErrorishObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  if (typeof obj.message === 'string' && obj.message) return true;
+  if (typeof obj.ErrorMessage === 'string' && obj.ErrorMessage) return true;
+  if (typeof obj.errorMessage === 'string' && obj.errorMessage) return true;
+  if (typeof obj.error === 'string' && obj.error) return true;
+  if (obj.exception != null) return true;
+  if (obj.stacktrace != null || obj.stack != null) return true;
+  if (typeof obj.code === 'string' && /error|fail|exception|fault/i.test(obj.code)) return true;
+  return false;
+}
+function messageFromErrorish(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  if (typeof obj.message === 'string' && obj.message) return obj.message;
+  if (typeof obj.ErrorMessage === 'string' && obj.ErrorMessage) return obj.ErrorMessage;
+  if (typeof obj.errorMessage === 'string' && obj.errorMessage) return obj.errorMessage;
+  if (typeof obj.error === 'string' && obj.error) return obj.error;
+  if (typeof obj.code === 'string' && obj.code) return String(obj.code);
+  if (obj.exception && typeof obj.exception === 'object' && typeof obj.exception.message === 'string') {
+    return obj.exception.message;
+  }
+  return 'error';
+}
+function collectGraphqlErrorsFromNode(node, where, out, depth) {
+  if (node == null || depth > 6) return;
+  if (Array.isArray(node)) {
+    for (var i = 0; i < node.length; i++) collectGraphqlErrorsFromNode(node[i], where + '[' + i + ']', out, depth + 1);
+    return;
+  }
+  if (typeof node !== 'object') return;
+  if (Array.isArray(node.errors) && node.errors.length) {
+    collectGraphqlErrorsFromNode(node.errors, where ? where + '.errors' : 'errors', out, depth + 1);
+  }
+  if (isErrorishObject(node) && (where.indexOf('errors') >= 0 || where.indexOf('extensions') >= 0)) {
+    var pathStr = '';
+    if (Array.isArray(node.path)) pathStr = node.path.join('.');
+    else if (node.path != null) pathStr = String(node.path);
+    var code = null;
+    if (node.extensions && typeof node.extensions === 'object' && node.extensions.code != null) code = node.extensions.code;
+    else if (node.code != null) code = node.code;
+    else if (node.StatusCode != null) code = node.StatusCode;
+    pushErrorItem(out, {
+      message: messageFromErrorish(node),
+      code: code != null ? String(code) : null,
+      path: pathStr || null,
+      where: where || 'errors'
+    });
+  }
+  if (node.extensions != null) collectExtensionErrors(node.extensions, where ? where + '.extensions' : 'extensions', out, depth + 1);
+}
+function collectExtensionErrors(ext, where, out, depth) {
+  if (ext == null || depth > 6) return;
+  if (Array.isArray(ext)) {
+    for (var i = 0; i < ext.length; i++) collectExtensionErrors(ext[i], where + '[' + i + ']', out, depth + 1);
+    return;
+  }
+  if (typeof ext !== 'object') return;
+  if (isErrorishObject(ext)) {
+    pushErrorItem(out, {
+      message: messageFromErrorish(ext),
+      code: ext.code != null ? String(ext.code) : null,
+      path: null,
+      where: where
+    });
+  }
+  var keys = ['errors', 'error', 'exception', 'exceptions', 'fault', 'failures', 'problem', 'problems'];
+  for (var k = 0; k < keys.length; k++) {
+    var key = keys[k];
+    if (ext[key] != null) collectGraphqlErrorsFromNode(ext[key], where + '.' + key, out, depth + 1);
+  }
+  if (typeof ext.code === 'string' && /error|fail|exception|fault/i.test(ext.code) && !isErrorishObject(ext)) {
+    pushErrorItem(out, { message: String(ext.code), code: String(ext.code), path: null, where: where });
+  }
+}
+function collectBodyErrorItems(parsed, raw) {
+  var out = [];
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    collectGraphqlErrorsFromNode(parsed, '', out, 0);
+    if (typeof parsed.ErrorMessage === 'string' && parsed.ErrorMessage) {
+      pushErrorItem(out, {
+        message: parsed.ErrorMessage,
+        code: parsed.StatusCode != null ? String(parsed.StatusCode) : null,
+        path: null,
+        where: 'body'
+      });
+    }
+    if (parsed.success === false) {
+      pushErrorItem(out, {
+        message: (typeof parsed.message === 'string' && parsed.message) ? parsed.message : 'success: false',
+        code: parsed.code != null ? String(parsed.code) : null,
+        path: null,
+        where: 'body'
+      });
+    }
+  }
+  if (!out.length && raw) {
+    var lower = raw.toLowerCase();
+    if (lower.indexOf('"errors"') >= 0 || lower.indexOf('"errormessage"') >= 0) {
+      pushErrorItem(out, {
+        message: 'Error payload detected (body may be truncated)',
+        code: null,
+        path: null,
+        where: 'body-scan'
+      });
+    }
+  }
+  return out;
+}
+/** Analyze hop for HTTP / network / GraphQL / extension / body errors. */
+function analyzeHopErrors(e) {
+  var items = [];
+  var httpError = typeof e.status === 'number' && e.status >= 400;
+  var networkError = e.source === 'error' || e.source === 'blocked';
+  if (e.errorMessage) {
+    pushErrorItem(items, { message: String(e.errorMessage), code: null, path: null, where: 'errorMessage' });
+  }
+  var parsedRes = parseBodyJson(e.responseBodyPreview);
+  var bodyItems = collectBodyErrorItems(parsedRes.value, parsedRes.raw);
+  for (var i = 0; i < bodyItems.length; i++) items.push(bodyItems[i]);
+  var graphqlError = false;
+  for (var j = 0; j < items.length; j++) {
+    var w = String(items[j].where || '');
+    if (w.indexOf('errors') === 0 || w.indexOf('extensions') === 0 || w === 'body-scan') graphqlError = true;
+  }
+  if (parsedRes.ok && parsedRes.value && typeof parsedRes.value === 'object' && !Array.isArray(parsedRes.value)) {
+    if (Array.isArray(parsedRes.value.errors) && parsedRes.value.errors.length) graphqlError = true;
+    if (parsedRes.value.extensions != null && bodyItems.length) graphqlError = true;
+  }
+  var bodyError = items.length > 0 && !graphqlError && !httpError && !networkError;
+  var isError = httpError || networkError || items.length > 0;
+  var badgeLabel = 'error';
+  if (graphqlError) badgeLabel = 'GQL error';
+  else if (httpError) badgeLabel = 'HTTP ' + e.status;
+  else if (networkError) badgeLabel = 'network';
+  else if (items.length) badgeLabel = 'error';
+  var summary = items.length ? items[0].message : (httpError ? ('HTTP ' + e.status) : (networkError ? 'network error' : ''));
+  if (items.length > 1) summary += ' (+' + (items.length - 1) + ' more)';
+  return {
+    isError: isError,
+    httpError: httpError,
+    networkError: networkError,
+    graphqlError: graphqlError,
+    bodyError: bodyError,
+    badgeLabel: badgeLabel,
+    summary: summary,
+    items: items
+  };
+}
+/**
+ * Keep matched hops plus ancestors (overlying) and descendants (underlying) via parentRequestId.
+ * @param {Array} list
+ * @param {(e: any) => boolean} matchFn
+ */
+function expandMatchedContextHops(list, matchFn) {
+  var byReq = {};
+  var childrenOf = {};
+  list.forEach(function (e) {
+    if (e.requestId) byReq[e.requestId] = e;
+    if (e.parentRequestId) {
+      if (!childrenOf[e.parentRequestId]) childrenOf[e.parentRequestId] = [];
+      childrenOf[e.parentRequestId].push(e);
+    }
+  });
+  var keep = {};
+  function markAncestors(e) {
+    var cur = e;
+    var guard = 0;
+    while (cur && guard++ < 48) {
+      keep[cur.id] = true;
+      if (!cur.parentRequestId) break;
+      cur = byReq[cur.parentRequestId];
+    }
+  }
+  function markDescendants(e) {
+    if (!e || !e.requestId) return;
+    var stack = (childrenOf[e.requestId] || []).slice();
+    var guard = 0;
+    while (stack.length && guard++ < 4000) {
+      var child = stack.pop();
+      keep[child.id] = true;
+      if (child.requestId && childrenOf[child.requestId]) {
+        childrenOf[child.requestId].forEach(function (c) { stack.push(c); });
+      }
+    }
+  }
+  var any = false;
+  list.forEach(function (e) {
+    if (!matchFn(e)) return;
+    any = true;
+    markAncestors(e);
+    markDescendants(e);
+  });
+  if (!any) return [];
+  return list.filter(function (e) { return !!keep[e.id]; });
+}
+/** @deprecated use expandMatchedContextHops — kept for callers/tests */
+function expandErrorContextHops(list, analyzeFn) {
+  var analyze = analyzeFn || analyzeHopErrors;
+  return expandMatchedContextHops(list, function (e) { return !!analyze(e).isError; });
+}
+/** Default slow threshold (ms) — matches detectResponseAnomalies; override via DATA.slowThresholdMs / MOCKIFYER_ATLAS_SLOW_MS. */
+var ATLAS_DEFAULT_SLOW_MS = 3000;
+function isSlowHop(e, thresholdMs) {
+  var th = typeof thresholdMs === 'number' && thresholdMs > 0 ? thresholdMs : ATLAS_DEFAULT_SLOW_MS;
+  var dur = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+  return typeof dur === 'number' && dur >= th;
+}
+function statusClassFor(status, analysis) {
+  if (analysis && analysis.isError) return 'status-err';
+  if (typeof status !== 'number') return 'status-muted';
+  if (status >= 400) return 'status-err';
+  if (status >= 300) return 'status-warn';
+  return 'status-ok';
+}
+function hopStatusBadgesHtml(e) {
+  var a = analyzeHopErrors(e);
+  var html = '';
+  if (e.status != null) {
+    html += ' <span class="badge ' + statusClassFor(e.status, a) + '">' + String(e.status) + '</span>';
+  }
+  if (a.isError) {
+    var title = a.summary || a.badgeLabel;
+    html += ' <span class="badge err" title="' + String(title).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;') + '">' + a.badgeLabel + '</span>';
+  }
+  return html;
+}
+function hopDurationBadgeHtml(e, thresholdMs) {
+  var dur = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+  if (dur == null) return '';
+  var slow = typeof dur === 'number' && dur >= (thresholdMs || ATLAS_DEFAULT_SLOW_MS);
+  var estimated = e.durationMs == null && e._estimatedDurationMs != null;
+  var label = String(dur) + 'ms' + (estimated ? '~' : '');
+  if (!slow) {
+    return ' <span class="badge' + (estimated ? ' dur-est' : '') + '" title="' + (estimated ? 'Estimated from child hop span (parent duration not captured)' : '') + '">' + label + '</span>';
+  }
+  return ' <span class="badge slow" title="' + (estimated ? 'Estimated from child hop span · ' : '') + 'Slow (≥ ' + String(thresholdMs || ATLAS_DEFAULT_SLOW_MS) + 'ms)">' + label + '</span>';
+}
+function renderSlowPanelHtml(e, thresholdMs, escFn) {
+  if (!isSlowHop(e, thresholdMs)) return '';
+  var th = typeof thresholdMs === 'number' && thresholdMs > 0 ? thresholdMs : ATLAS_DEFAULT_SLOW_MS;
+  var dur = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+  var estimated = e.durationMs == null && e._estimatedDurationMs != null;
+  var html = '<div class="slow-panel">';
+  html += '<div class="slow-panel-title">Slow response' + (estimated ? ' (estimated)' : '') + '</div>';
+  html += '<div class="slow-item"><div class="slow-msg">' + escFn(String(dur) + 'ms' + (estimated ? '~' : '')) + '</div>';
+  html += '<div class="slow-meta">threshold ≥ ' + escFn(String(th)) + 'ms';
+  if (estimated) html += ' · estimated from child hop wall-clock span';
+  html += '</div></div>';
+  html += '</div>';
+  return html;
+}
+function prettyJsonText(text) {
+  if (text == null || text === '') return null;
+  var parsed = parseBodyJson(text);
+  if (parsed.ok) {
+    try { return JSON.stringify(parsed.value, null, 2); } catch (err) { return parsed.raw; }
+  }
+  return parsed.raw;
+}
+function highlightJsonHtml(prettyText) {
+  if (prettyText == null || prettyText === '') return '';
+  var s = String(prettyText);
+  var out = '';
+  var i = 0;
+  function escSlice(from, to) {
+    return s.slice(from, to)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  while (i < s.length) {
+    var ch = s.charAt(i);
+    if (ch === '"') {
+      var j = i + 1;
+      while (j < s.length) {
+        if (s.charAt(j) === '\\\\') { j += 2; continue; }
+        if (s.charAt(j) === '"') { j += 1; break; }
+        j += 1;
+      }
+      var strHtml = escSlice(i, j);
+      var k = j;
+      while (k < s.length && (s.charAt(k) === ' ' || s.charAt(k) === '\\t')) k += 1;
+      if (s.charAt(k) === ':') {
+        out += '<span class="json-k">' + strHtml + '</span>';
+      } else {
+        out += '<span class="json-s">' + strHtml + '</span>';
+      }
+      i = j;
+      continue;
+    }
+    if (ch === 't' && s.slice(i, i + 4) === 'true') {
+      out += '<span class="json-b">true</span>';
+      i += 4;
+      continue;
+    }
+    if (ch === 'f' && s.slice(i, i + 5) === 'false') {
+      out += '<span class="json-b">false</span>';
+      i += 5;
+      continue;
+    }
+    if (ch === 'n' && s.slice(i, i + 4) === 'null') {
+      out += '<span class="json-null">null</span>';
+      i += 4;
+      continue;
+    }
+    if (ch === '-' || (ch >= '0' && ch <= '9')) {
+      var n = i + 1;
+      while (n < s.length) {
+        var c = s.charAt(n);
+        if ((c >= '0' && c <= '9') || c === '.' || c === 'e' || c === 'E' || c === '+' || c === '-') n += 1;
+        else break;
+      }
+      out += '<span class="json-n">' + escSlice(i, n) + '</span>';
+      i = n;
+      continue;
+    }
+    out += escSlice(i, i + 1);
+    i += 1;
+  }
+  return out;
+}
+function renderJsonPre(text) {
+  var pretty = prettyJsonText(text);
+  if (pretty == null) return '<p class="empty">No body captured.</p>';
+  return '<pre class="json">' + highlightJsonHtml(pretty) + '</pre>';
+}
+function renderErrorPanelHtml(analysis, escFn) {
+  if (!analysis || !analysis.isError) return '';
+  var html = '<div class="error-panel">';
+  html += '<div class="error-panel-title">' + escFn(analysis.badgeLabel);
+  if (analysis.graphqlError) html += ' · check GraphQL errors / extensions';
+  html += '</div>';
+  if (!analysis.items.length) {
+    html += '<div class="error-item">' + escFn(analysis.summary || 'Request failed') + '</div>';
+  } else {
+    analysis.items.forEach(function (it) {
+      html += '<div class="error-item">';
+      html += '<div class="error-msg">' + escFn(it.message) + '</div>';
+      var meta = [];
+      if (it.code) meta.push('code ' + it.code);
+      if (it.path) meta.push('path ' + it.path);
+      if (it.where) meta.push(it.where);
+      if (meta.length) html += '<div class="error-meta">' + escFn(meta.join(' · ')) + '</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
   var raw = document.getElementById('atlas-data');
   if (!raw) return;
   var DATA = JSON.parse(raw.textContent);
   var doc = DATA.doc || {};
   var events = DATA.events || [];
+  /** Fill missing parent durationMs from child wall-clock span (GraphQL BFF often lacked client duration). */
+  (function estimateMissingParentDurations(list) {
+    var childrenOf = {};
+    list.forEach(function (e) {
+      if (!e.parentRequestId) return;
+      if (!childrenOf[e.parentRequestId]) childrenOf[e.parentRequestId] = [];
+      childrenOf[e.parentRequestId].push(e);
+    });
+    list.forEach(function (e) {
+      if (typeof e.durationMs === 'number') return;
+      if (!e.requestId || !childrenOf[e.requestId]) return;
+      var parentStart = new Date(e.timestamp).getTime();
+      if (!isFinite(parentStart)) return;
+      var maxEnd = parentStart;
+      childrenOf[e.requestId].forEach(function (c) {
+        var cs = new Date(c.timestamp).getTime();
+        var cd = typeof c.durationMs === 'number' ? c.durationMs : 0;
+        if (isFinite(cs)) maxEnd = Math.max(maxEnd, cs + cd);
+      });
+      var est = Math.round(maxEnd - parentStart);
+      if (est > 0) e._estimatedDurationMs = est;
+    });
+  })(events);
   var collapsed = {};
   var view = 'map';
   var selectedId = null;
@@ -462,10 +919,15 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   var selectedMap = null;
   /** Traffic lanes — Noise off by default to cut probe/analytics clutter. */
   var kindEnabled = { cms: true, bff: true, backend: true, other: true, noise: false };
+  var errorsOnly = false;
+  var slowOnly = false;
+  var slowThresholdMs = (DATA.slowThresholdMs > 0) ? DATA.slowThresholdMs : ATLAS_DEFAULT_SLOW_MS;
   var uniqueMode = 'off';
   var uniqueScope = 'global';
   var uniqueKeep = 'first';
   var expandedUniqueGroups = {};
+  /** Selected journey strip step key (scrolls / highlights matching group). */
+  var selectedJourneyStep = null;
   var KIND_ORDER = ['cms', 'bff', 'backend', 'other', 'noise'];
   var KIND_META = {
     cms: { label: 'CMS', hint: 'deliveryapi / Umbraco content' },
@@ -491,12 +953,170 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function prettyBody(text) {
-    if (text == null || text === '') return null;
-    try {
-      return JSON.stringify(JSON.parse(text), null, 2);
-    } catch (e) {
-      return String(text);
+    return prettyJsonText(text);
+  }
+  /** Reverse map hop.id → prefetch entry (rebuilt each render). */
+  var prefetchByHopId = null;
+  function getPrefetchByHopId() {
+    if (prefetchByHopId) return prefetchByHopId;
+    prefetchByHopId = {};
+    var prefs = doc.prefetches || {};
+    Object.keys(prefs).forEach(function (pid) {
+      var pref = prefs[pid];
+      if (pref && pref.lastRequestId && String(pref.lastRequestId).indexOf('prefetch-') !== 0) {
+        var byId = findByRequestId(pref.lastRequestId);
+        if (byId) prefetchByHopId[byId.id] = { id: pid, pref: pref };
+      }
+    });
+    var matched = matchPrefetchesToHops();
+    Object.keys(matched).forEach(function (pid) {
+      var hop = matched[pid];
+      if (hop && !prefetchByHopId[hop.id]) {
+        prefetchByHopId[hop.id] = { id: pid, pref: prefs[pid] };
+      }
+    });
+    return prefetchByHopId;
+  }
+  function prefetchLaneLabel(pref, hop) {
+    var ds = String((pref && pref.datasourceId) || '');
+    var lane = hop ? hopKind(hop) : 'other';
+    var kind = String((pref && pref.kind) || '');
+    if (lane === 'cms' || ds.indexOf('oden:') === 0 || ds.indexOf('deliveryapi') >= 0) return 'Prefetch CMS';
+    if (lane === 'bff' || kind === 'graphql' || ds.indexOf('graphql') >= 0) return 'Prefetch GraphQL';
+    if (lane === 'backend' || ds.indexOf('crm') >= 0 || ds.indexOf('booking') >= 0) return 'Prefetch backend';
+    if (ds.indexOf('prefetch-spec') === 0 || ds === 'prefetch-specification') return 'Prefetch spec';
+    return 'Prefetch';
+  }
+  /**
+   * Best-effort “what triggered this hop”: prefetch map, parent chain, or screen usage.
+   */
+  function resolveHopTrigger(e, depth) {
+    depth = depth || 0;
+    if (!e || depth > 4) {
+      return { kind: 'unknown', label: 'Unattributed', detail: 'No trigger annotation', badgeClass: 'trigger-unknown' };
     }
+    var prefHit = getPrefetchByHopId()[e.id];
+    if (prefHit && prefHit.pref) {
+      var pref = prefHit.pref;
+      var phase = (pref.phases && pref.phases.length) ? pref.phases.join('+') : 'prefetch';
+      var lane = prefetchLaneLabel(pref, e);
+      var ds = pref.datasourceId || prefHit.id;
+      var ops = (pref.operations && pref.operations.length) ? pref.operations.join(', ') : '';
+      var detail = lane + ' · phase ' + phase + ' · ' + ds;
+      if (ops) detail += ' · ' + ops;
+      return { kind: 'prefetch', label: lane, detail: detail, badgeClass: 'trigger-prefetch', phase: phase, datasourceId: ds };
+    }
+    var us = usageList(e.usage);
+    for (var i = 0; i < us.length; i++) {
+      var u = us[i];
+      var comp = String(u.component || '').toLowerCase();
+      if (comp.indexOf('prefetch') >= 0) {
+        var plabel = u.label || u.datasourceId || 'Prefetch';
+        if (String(u.datasourceId || '').indexOf('oden:') === 0) plabel = 'Prefetch CMS';
+        return {
+          kind: 'prefetch',
+          label: plabel.indexOf('Prefetch') === 0 ? plabel : ('Prefetch · ' + plabel),
+          detail: formatUsage(u),
+          badgeClass: 'trigger-prefetch',
+          datasourceId: u.datasourceId
+        };
+      }
+    }
+    if (e.parentRequestId) {
+      var parent = findByRequestId(e.parentRequestId);
+      if (parent) {
+        var parentTrig = resolveHopTrigger(parent, depth + 1);
+        var parentPath = shortPathLabel(parent.path || parent.url);
+        var detailC = 'Child of ' + parent.method + ' ' + parentPath;
+        if (parentTrig.kind === 'prefetch') detailC += ' · via ' + parentTrig.label;
+        else if (parentTrig.kind === 'navigation') detailC += ' · on ' + parentTrig.label;
+        return {
+          kind: 'child',
+          label: 'Child hop',
+          detail: detailC,
+          badgeClass: 'trigger-child',
+          parentId: parent.id
+        };
+      }
+    }
+    if (us.length) {
+      var u0 = us[0];
+      if (u0.screen) {
+        var navLabel = 'Screen · ' + u0.screen;
+        var navDetail = 'Navigation / screen context';
+        if (u0.component) navDetail += ' · ' + u0.component;
+        if (u0.cms && u0.cms.pageId) navDetail += ' · CMS page ' + u0.cms.pageId;
+        if (u0.datasourceId) navDetail += ' · ' + u0.datasourceId;
+        return { kind: 'navigation', label: navLabel, detail: navDetail, badgeClass: 'trigger-navigation', screen: u0.screen };
+      }
+      if (u0.component || u0.label || u0.datasourceId) {
+        return {
+          kind: 'navigation',
+          label: formatUsage(u0),
+          detail: formatUsage(u0),
+          badgeClass: 'trigger-navigation'
+        };
+      }
+    }
+    return { kind: 'unknown', label: 'Unattributed', detail: 'No screen / prefetch annotation on this hop', badgeClass: 'trigger-unknown' };
+  }
+  function hopTriggerBadgeHtml(e) {
+    var t = resolveHopTrigger(e);
+    return ' <span class="badge trigger ' + t.badgeClass + '" title="' + esc(t.detail) + '">' + esc(t.label) + '</span>';
+  }
+  function renderTriggerPanelHtml(e) {
+    var t = resolveHopTrigger(e);
+    var html = '<div class="trigger-panel">';
+    html += '<div class="trigger-panel-title">Triggered by</div>';
+    html += '<div class="trigger-detail">' + esc(t.detail) + '</div>';
+    if (t.kind === 'prefetch' && t.phase) {
+      html += '<div class="trigger-meta">prefetch phase: ' + esc(t.phase) + '</div>';
+    }
+    if (t.kind === 'child' && e.parentRequestId) {
+      html += '<div class="trigger-meta">parentRequestId <code>' + esc(e.parentRequestId) + '</code></div>';
+    }
+    if (t.screen) html += '<div class="trigger-meta">screen <code>' + esc(t.screen) + '</code></div>';
+    if (t.datasourceId) html += '<div class="trigger-meta">datasource <code>' + esc(t.datasourceId) + '</code></div>';
+    html += '</div>';
+    return html;
+  }
+  function applyIssueFilters(list) {
+    if (!errorsOnly && !slowOnly) return list;
+    var keep = {};
+    function merge(subset) {
+      subset.forEach(function (e) { keep[e.id] = true; });
+    }
+    if (errorsOnly) {
+      merge(expandMatchedContextHops(list, function (e) { return analyzeHopErrors(e).isError; }));
+    }
+    if (slowOnly) {
+      merge(expandMatchedContextHops(list, function (e) { return isSlowHop(e, slowThresholdMs); }));
+    }
+    return list.filter(function (e) { return !!keep[e.id]; });
+  }
+  function countErrors(list) {
+    var n = 0;
+    list.forEach(function (e) { if (analyzeHopErrors(e).isError) n++; });
+    return n;
+  }
+  function countSlow(list) {
+    var n = 0;
+    list.forEach(function (e) { if (isSlowHop(e, slowThresholdMs)) n++; });
+    return n;
+  }
+  function hopRowIssueClass(e) {
+    var err = analyzeHopErrors(e).isError;
+    var slow = isSlowHop(e, slowThresholdMs);
+    if (err) return ' has-error';
+    if (slow) return ' has-slow';
+    if (errorsOnly || slowOnly) return ' error-context';
+    return '';
+  }
+  function hopContextBadgeHtml(e) {
+    var err = analyzeHopErrors(e).isError;
+    var slow = isSlowHop(e, slowThresholdMs);
+    if (!(errorsOnly || slowOnly) || err || slow) return '';
+    return ' <span class="badge ctx" title="Kept for chain context around an error or slow hop">context</span>';
   }
   function eventHost(e) {
     if (e && e.host) return e.host;
@@ -539,15 +1159,19 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     return 'other';
   }
   function applyKindFilter(list) {
-    return list.filter(function (e) { return kindEnabled[hopKind(e)] !== false; });
+    return applyIssueFilters(list.filter(function (e) { return kindEnabled[hopKind(e)] !== false; }));
   }
   function countByKind(list) {
     var counts = { cms: 0, bff: 0, backend: 0, other: 0, noise: 0 };
     list.forEach(function (e) { counts[hopKind(e)] = (counts[hopKind(e)] || 0) + 1; });
     return counts;
   }
-  function renderKindFilters(list) {
-    var counts = countByKind(list);
+  function renderKindFilters(_list) {
+    // Counts ignore issue toggles so buttons stay stable while filtering.
+    var kindBase = filterEvents().filter(function (e) { return kindEnabled[hopKind(e)] !== false; });
+    var counts = countByKind(kindBase);
+    var errCount = countErrors(kindBase);
+    var slowCount = countSlow(kindBase);
     var html = '<div class="kind-filters"><span class="label">Show:</span>';
     KIND_ORDER.forEach(function (k) {
       var meta = KIND_META[k];
@@ -555,6 +1179,10 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       html += '<button type="button" class="' + (on ? 'on' : '') + '" data-kind-toggle="' + k + '" title="' + esc(meta.hint) + '">';
       html += esc(meta.label) + '<span class="n">' + (counts[k] || 0) + '</span></button>';
     });
+    html += '<button type="button" class="errors-toggle' + (errorsOnly ? ' on' : '') + '" data-errors-only="1" title="Show errors plus parent/child hops in the same chain (parentRequestId). HTTP 4xx/5xx, network, GraphQL errors / extensions, ErrorMessage bodies.">';
+    html += 'Errors<span class="n">' + errCount + '</span></button>';
+    html += '<button type="button" class="slow-toggle' + (slowOnly ? ' on' : '') + '" data-slow-only="1" title="Show slow hops (≥ ' + slowThresholdMs + 'ms) plus parent/child chain context. Override with MOCKIFYER_ATLAS_SLOW_MS when rendering.">';
+    html += 'Slow<span class="n">' + slowCount + '</span></button>';
     html += '</div>';
     return html;
   }
@@ -610,10 +1238,14 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     var pad = (padBase || 8) + (depth || 0) * 14 + 14;
     members.forEach(function (m) {
       if (m.id === rep.id) return;
-      html += '<div class="hop-row dup-member' + (selectedId === m.id ? ' selected' : '') + '" style="padding-left:' + pad + 'px" data-select="' + esc(m.id) + '">';
+      html += '<div class="hop-row dup-member' + (selectedId === m.id ? ' selected' : '') + hopRowIssueClass(m) + '" style="padding-left:' + pad + 'px" data-select="' + esc(m.id) + '">';
       html += '<span class="chev"></span><div class="hop-path"><strong>' + esc(m.method) + '</strong> ' + esc(m.path || m.url);
-      html += ' <span class="meta">' + esc(formatWhen(m.timestamp));
-      html += (m.durationMs != null ? ' · ' + m.durationMs + 'ms' : '') + (m.status != null ? ' · ' + m.status : '') + '</span></div></div>';
+      html += ' <span class="meta">' + esc(formatWhen(m.timestamp)) + '</span>';
+      html += hopStatusBadgesHtml(m);
+      html += hopDurationBadgeHtml(m, slowThresholdMs);
+      html += hopTriggerBadgeHtml(m);
+      html += hopContextBadgeHtml(m);
+      html += '</div></div>';
     });
     return html;
   }
@@ -642,25 +1274,28 @@ function renderRepeatBadgeHtml(key, count, expanded) {
 
   function renderHopBodies(e) {
     var html = '';
-    var reqBody = prettyBody(e.requestBodyPreview);
     html += '<div class="body-label">Request body</div>';
-    html += reqBody ? '<pre>' + esc(reqBody) + '</pre>' : '<p class="empty">No request body captured.</p>';
-    var resBody = prettyBody(e.responseBodyPreview);
+    html += e.requestBodyPreview ? renderJsonPre(e.requestBodyPreview) : '<p class="empty">No request body captured.</p>';
     html += '<div class="body-label">Response body</div>';
-    html += resBody ? '<pre>' + esc(resBody) + '</pre>' : '<p class="empty">No response body captured.</p>';
+    html += e.responseBodyPreview ? renderJsonPre(e.responseBodyPreview) : '<p class="empty">No response body captured.</p>';
     return html;
   }
 
   function renderHopSummary(e) {
+    var analysis = analyzeHopErrors(e);
     var html = '<h3>' + esc(e.method) + ' ' + esc(e.path || e.url) + '</h3>';
     html += '<p class="meta">' + esc(eventHost(e)) + '<br/>' + esc(e.timestamp);
-    if (e.status != null) html += ' · status ' + esc(e.status);
-    if (e.durationMs != null) html += ' · ' + esc(e.durationMs) + 'ms';
+    html += hopStatusBadgesHtml(e);
+    html += hopDurationBadgeHtml(e, slowThresholdMs);
+    html += hopTriggerBadgeHtml(e);
     html += ' · ' + esc(e.source) + '</p>';
     if (e.requestId) html += '<p class="meta">requestId <code>' + esc(e.requestId) + '</code></p>';
     if (e.parentRequestId) html += '<p class="meta">parentRequestId <code>' + esc(e.parentRequestId) + '</code></p>';
     var us = usageList(e.usage);
     if (us.length) html += '<p class="used-by">used by: ' + us.map(formatUsage).map(esc).join(', ') + '</p>';
+    html += renderTriggerPanelHtml(e);
+    html += renderErrorPanelHtml(analysis, esc);
+    html += renderSlowPanelHtml(e, slowThresholdMs, esc);
     html += renderHopBodies(e);
     return html;
   }
@@ -717,7 +1352,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
         htmlN += '</ul>';
       }
       if (node.propsSample != null) {
-        htmlN += '<div class="body-label">Last sample</div><pre>' + esc(prettyBody(typeof node.propsSample === 'string' ? node.propsSample : JSON.stringify(node.propsSample)) || '') + '</pre>';
+        htmlN += '<div class="body-label">Last sample</div>';
+        htmlN += renderJsonPre(typeof node.propsSample === 'string' ? node.propsSample : JSON.stringify(node.propsSample));
       }
       var firstHop = null;
       (node.datasources || []).some(function (d) { firstHop = findByRequestId(d.lastRequestId); return !!firstHop; });
@@ -847,6 +1483,9 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   }
 
   function filterEvents() {
+    if (DATA.mode === 'crash') {
+      return sortByTs(events);
+    }
     var screens = Object.keys(doc.screens || {});
     var pages = Object.keys(doc.pages || {});
     Object.keys(doc.pages || {}).forEach(function (id) {
@@ -1115,7 +1754,10 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   function renderChainBox(hop, service, opts) {
     opts = opts || {};
     var selected = selectedId === hop.id;
-    var cls = 'chain-box kind-' + service.kind + (opts.isRoot ? ' chain-box-root' : '') + (opts.small ? ' chain-box-sm' : '') + (selected ? ' selected' : '');
+    var err = analyzeHopErrors(hop);
+    var slow = isSlowHop(hop, slowThresholdMs);
+    var ctx = (errorsOnly || slowOnly) && !err.isError && !slow;
+    var cls = 'chain-box kind-' + service.kind + (opts.isRoot ? ' chain-box-root' : '') + (opts.small ? ' chain-box-sm' : '') + (selected ? ' selected' : '') + (err.isError ? ' has-error' : '') + (!err.isError && slow ? ' has-slow' : '') + (ctx ? ' error-context' : '');
     var html = '<button type="button" class="' + cls + '" data-select="' + esc(hop.id) + '">';
     html += '<span class="chain-box-kind">' + esc(service.kindLabel) + '</span>';
     html += '<span class="chain-box-host">' + esc(service.label) + '</span>';
@@ -1124,7 +1766,13 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     if (opts.childCount > 0) {
       html += '<span class="chain-box-n">' + opts.childCount + ' unique call' + (opts.childCount === 1 ? '' : 's') + ' below</span>';
     }
-    if (hop.responseBodyPreview) html += '<span class="chain-box-n">body captured</span>';
+    if (err.isError) html += '<span class="chain-box-n">' + esc(err.badgeLabel) + '</span>';
+    else if (slow) {
+      var dShow = hop.durationMs != null ? hop.durationMs : hop._estimatedDurationMs;
+      html += '<span class="chain-box-n">' + esc(String(dShow) + 'ms' + (hop.durationMs == null ? '~' : '') + ' slow') + '</span>';
+    }
+    else if (ctx) html += '<span class="chain-box-n">context</span>';
+    else if (hop.responseBodyPreview) html += '<span class="chain-box-n">body captured</span>';
     html += '</button>';
     return html;
   }
@@ -1236,13 +1884,16 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     rows.forEach(function (r) {
       var e = r.event;
       var pad = (padBase || 8) + r.depth * 14;
-      html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + '" style="padding-left:' + pad + 'px" data-select="' + esc(e.id) + '">';
+      html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" style="padding-left:' + pad + 'px" data-select="' + esc(e.id) + '">';
       if (r.hasChildren) {
         html += '<button type="button" class="chev" data-collapse="' + esc(e.id) + '">' + (isCollapsed(e.id) ? '▶' : '▼') + '</button>';
       } else html += '<span class="chev"></span>';
       html += '<div class="hop-path"><strong>' + esc(e.method) + '</strong> ' + esc(e.path || e.url);
-      html += ' <span class="meta">' + esc(formatWhen(e.timestamp));
-      html += (e.durationMs != null ? ' · ' + e.durationMs + 'ms' : '') + (e.status != null ? ' · ' + e.status : '') + '</span>';
+      html += ' <span class="meta">' + esc(formatWhen(e.timestamp)) + '</span>';
+      html += hopStatusBadgesHtml(e);
+      html += hopDurationBadgeHtml(e, slowThresholdMs);
+      html += hopTriggerBadgeHtml(e);
+      html += hopContextBadgeHtml(e);
       html += repeatBadgeHtml(uniqueMeta, e);
       if (r.hasChildren) html += ' <span class="badge">' + r.childCount + ' nested</span>';
       if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
@@ -1259,7 +1910,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     var t0 = Infinity, t1 = -Infinity;
     list.forEach(function (e) {
       var s = new Date(e.timestamp).getTime();
-      var d = e.durationMs > 0 ? e.durationMs : 8;
+      var raw = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+      var d = raw > 0 ? raw : 8;
       t0 = Math.min(t0, s);
       t1 = Math.max(t1, s + d);
     });
@@ -1269,7 +1921,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       span: span,
       bars: list.map(function (e) {
         var s = new Date(e.timestamp).getTime() - t0;
-        var d = Math.max(e.durationMs > 0 ? e.durationMs : 8, 1);
+        var raw = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+        var d = Math.max(raw > 0 ? raw : 8, 1);
         return { event: e, start: s, dur: d };
       }).sort(function (a, b) { return a.start - b.start; })
     };
@@ -1302,9 +1955,11 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       .sort(function (a, b) { return a.first - b.first; });
   }
 
-  function barClass(src) {
+  function barClass(e) {
+    var src = e && e.source;
+    if (analyzeHopErrors(e).isError || src === 'error' || src === 'blocked') return 'bar err';
+    if (isSlowHop(e, slowThresholdMs)) return 'bar slow';
     if (src === 'mock-hit') return 'bar mock';
-    if (src === 'error' || src === 'blocked') return 'bar err';
     return 'bar';
   }
 
@@ -1498,11 +2153,12 @@ function renderRepeatBadgeHtml(key, count, expanded) {
             html += '<div class="map-row' + (selectedId === hop.id ? ' selected' : '') + '" data-select="' + esc(hop.id) + '">';
             html += '<div class="col"><strong>' + esc(hop.method) + '</strong> ' + esc(hop.path || hop.url);
             html += ' <span class="badge">' + esc(hopKind(hop)) + '</span>';
+            html += hopStatusBadgesHtml(hop);
+            html += hopDurationBadgeHtml(hop, slowThresholdMs);
             if (hop.responseBodyPreview) html += ' <span class="badge">body</span>';
             var us = usageList(hop.usage);
             if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
             html += '</div><div class="col-side">' + esc(formatWhen(hop.timestamp));
-            if (hop.status != null) html += '<div>' + esc(hop.status) + '</div>';
             html += '</div></div>';
           });
         }
@@ -1549,13 +2205,16 @@ function renderRepeatBadgeHtml(key, count, expanded) {
           html += '<strong>' + esc(pref.datasourceId || id) + '</strong>';
           if (pref.kind) html += ' <span class="badge">' + esc(pref.kind) + '</span>';
           if (hop && hop.responseBodyPreview) html += ' <span class="badge">body</span>';
+          if (hop) {
+            html += hopStatusBadgesHtml(hop);
+            html += hopDurationBadgeHtml(hop, slowThresholdMs);
+          }
           if (!hop) html += ' <span class="badge">no hop</span>';
           html += '<div class="meta">phase: ' + esc(phases) + '</div>';
           html += '<div class="meta">ops: ' + esc(ops) + '</div>';
           if (hop) html += '<div class="meta">' + esc(hop.method) + ' ' + esc(hop.path || hop.url) + '</div>';
           html += '</div>';
           html += '<div class="col-side">' + esc(formatWhen(hop ? hop.timestamp : pref.lastSeenAt));
-          if (hop && hop.status != null) html += '<div>' + esc(hop.status) + '</div>';
           html += '</div></div>';
         });
       }
@@ -1689,14 +2348,19 @@ function renderRepeatBadgeHtml(key, count, expanded) {
             var left = (b.start / tw.span) * 100;
             var width = Math.max((b.dur / tw.span) * 100, 0.4);
             var e = b.event;
-            html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + '" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+            html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
             html += repeatBadgeHtml(uniqueMeta, e);
+            html += hopStatusBadgesHtml(e);
+            html += hopDurationBadgeHtml(e, slowThresholdMs);
+            html += hopTriggerBadgeHtml(e);
+            html += hopContextBadgeHtml(e);
             html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + '</div>';
             if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
             var us = usageList(e.usage);
             if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
-            html += '</div><div class="track"><div class="' + barClass(e.source) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
-            html += '<div class="meta">' + (e.durationMs != null ? e.durationMs + 'ms' : '—') + '</div></div>';
+            html += '</div><div class="track"><div class="' + barClass(e) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
+            var durRight = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+            html += '<div class="meta">' + (durRight != null ? durRight + 'ms' + (e.durationMs == null ? '~' : '') : '—') + '</div></div>';
             html += renderDupMemberRows(uniqueMeta, e, 0, 0);
           });
         }
@@ -1734,16 +2398,22 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       all.forEach(function (e) { t0 = Math.min(t0, new Date(e.timestamp).getTime()); });
       stepList.forEach(function (e) {
         var s = new Date(e.timestamp).getTime() - t0;
-        var d = Math.max(e.durationMs > 0 ? e.durationMs : 8, 1);
+        var rawD = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+        var d = Math.max(rawD > 0 ? rawD : 8, 1);
         var left = (s / global.span) * 100;
         var width = Math.max((d / global.span) * 100, 0.4);
-        html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + '" style="padding:0.3rem 0.75rem" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+        html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" style="padding:0.3rem 0.75rem" data-select="' + esc(e.id) + '"><div>' + esc(e.method) + ' ' + esc(e.path || e.url);
         html += repeatBadgeHtml(stepUnique, e);
+        html += hopStatusBadgesHtml(e);
+        html += hopDurationBadgeHtml(e, slowThresholdMs);
+        html += hopTriggerBadgeHtml(e);
+        html += hopContextBadgeHtml(e);
         html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</div>';
         if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
         html += '</div>';
-        html += '<div class="track"><div class="' + barClass(e.source) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
-        html += '<div class="meta">' + (e.durationMs != null ? e.durationMs + 'ms' : '—') + '</div></div>';
+        html += '<div class="track"><div class="' + barClass(e) + '" style="left:' + left + '%;width:' + width + '%"></div></div>';
+        var durRight = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+        html += '<div class="meta">' + (durRight != null ? durRight + 'ms' + (e.durationMs == null ? '~' : '') : '—') + '</div></div>';
         html += renderDupMemberRows(stepUnique, e, 0, 0);
       });
       html += '</div>';
@@ -1760,25 +2430,45 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       el.innerHTML = html;
       return;
     }
-    html += '<div class="journey-strip">';
+    if (!selectedJourneyStep || !steps.some(function (st) { return st.key === selectedJourneyStep; })) {
+      selectedJourneyStep = steps[0].key;
+    }
+    html += '<div class="journey-strip" role="list">';
     steps.forEach(function (st, i) {
-      if (i) html += '<div class="meta" style="align-self:center">→</div>';
+      if (i) html += '<span class="journey-arrow" aria-hidden="true">→</span>';
       var stepUnique = applyUniqueFilter(st.events, { mode: uniqueMode, scope: uniqueScope, keep: uniqueKeep }, usageList);
       var hopLabel = uniqueMode === 'off'
         ? st.events.length + ' hops'
         : formatHopCountLabel(st.events.length, stepUnique.uniqueCount, uniqueMode);
-      html += '<div class="journey-step"><strong>' + esc(st.label) + '</strong><div class="meta">' + esc(hopLabel) + '</div></div>';
+      var active = selectedJourneyStep === st.key;
+      html += '<button type="button" class="journey-step' + (active ? ' active' : '') + '" role="listitem" data-journey-step="' + esc(st.key) + '" title="' + esc(st.label) + '">';
+      html += '<strong>' + esc(st.label) + '</strong><div class="meta">' + esc(hopLabel) + '</div></button>';
     });
     html += '</div>';
     steps.forEach(function (st) {
       var stepUnique = applyUniqueFilter(st.events, { mode: uniqueMode, scope: uniqueScope, keep: uniqueKeep }, usageList);
       var stepList = uniqueMode === 'off' ? st.events : stepUnique.list;
-      html += '<div class="group"><div class="group-h">' + esc(st.label) + '</div>';
+      var groupActive = selectedJourneyStep === st.key;
+      html += '<div class="group journey-group' + (groupActive ? ' journey-group-active' : '') + '" id="journey-step-' + esc(st.key) + '" data-journey-group="' + esc(st.key) + '">';
+      html += '<div class="group-h">' + esc(st.label);
+      html += '<span class="spacer">' + esc(uniqueMode === 'off'
+        ? st.events.length + ' hops'
+        : formatHopCountLabel(st.events.length, stepUnique.uniqueCount, uniqueMode)) + '</span></div>';
       stepList.forEach(function (e) {
-        html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + '" data-select="' + esc(e.id) + '"><div><strong>' + esc(e.method) + '</strong> ' + esc(e.path || e.url);
+        var fullPath = e.path || e.url || '';
+        var shortPath = shortPathLabel(fullPath);
+        html += '<div class="hop-row journey-hop' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" data-select="' + esc(e.id) + '">';
+        html += '<div class="hop-main"><div class="hop-line"><strong>' + esc(e.method) + '</strong>';
+        html += '<span class="hop-path-trunc" title="' + esc(fullPath) + '">' + esc(shortPath) + '</span></div>';
+        html += '<div class="hop-badges">';
         html += repeatBadgeHtml(stepUnique, e);
-        html += ' <span class="meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</span>';
-        if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
+        html += hopStatusBadgesHtml(e);
+        html += hopDurationBadgeHtml(e, slowThresholdMs);
+        html += hopTriggerBadgeHtml(e);
+        html += hopContextBadgeHtml(e);
+        if (e.responseBodyPreview) html += '<span class="badge">body</span>';
+        html += '</div>';
+        html += '<span class="meta hop-meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</span>';
         var us = usageList(e.usage);
         if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
         html += '</div></div>';
@@ -1790,6 +2480,7 @@ function renderRepeatBadgeHtml(key, count, expanded) {
   }
 
   function render() {
+    prefetchByHopId = null;
     var uniqueMeta = buildViewList();
     var list = uniqueMeta.list;
     if (!selectedId && !selectedMap && list.length && view !== 'map') selectedId = list[list.length - 1].id;
@@ -1800,6 +2491,8 @@ function renderRepeatBadgeHtml(key, count, expanded) {
     var ganttEl = document.getElementById('view-gantt');
     var journeyEl = document.getElementById('view-journey');
     var detailEl = document.getElementById('hop-detail');
+    var layoutEl = document.querySelector('#atlas-app .layout');
+    if (layoutEl) layoutEl.classList.toggle('layout-journey', view === 'journey');
     if (view === 'map') renderMap(mapEl);
     if (view === 'trace') renderTrace(traceEl, list, uniqueMeta);
     if (view === 'chains') renderChains(chainsEl, applyKindFilter(filterEvents()), uniqueMeta);
@@ -1834,10 +2527,13 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       t.getAttribute('data-domains') ||
       t.getAttribute('data-trees') ||
       t.getAttribute('data-kind-toggle') ||
+      t.getAttribute('data-errors-only') ||
+      t.getAttribute('data-slow-only') ||
       t.getAttribute('data-unique-mode') ||
       t.getAttribute('data-unique-scope') ||
       t.getAttribute('data-unique-keep') ||
-      t.getAttribute('data-unique-expand')
+      t.getAttribute('data-unique-expand') ||
+      t.getAttribute('data-journey-step')
     ))) {
       t = t.parentNode;
     }
@@ -1847,9 +2543,29 @@ function renderRepeatBadgeHtml(key, count, expanded) {
       render();
       return;
     }
+    if (t.getAttribute('data-journey-step')) {
+      selectedJourneyStep = t.getAttribute('data-journey-step');
+      render();
+      var target = document.getElementById('journey-step-' + selectedJourneyStep);
+      if (target && target.scrollIntoView) {
+        try { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        catch (err) { target.scrollIntoView(true); }
+      }
+      return;
+    }
     if (t.getAttribute('data-kind-toggle')) {
       var kind = t.getAttribute('data-kind-toggle');
       kindEnabled[kind] = !kindEnabled[kind];
+      render();
+      return;
+    }
+    if (t.getAttribute('data-errors-only')) {
+      errorsOnly = !errorsOnly;
+      render();
+      return;
+    }
+    if (t.getAttribute('data-slow-only')) {
+      slowOnly = !slowOnly;
       render();
       return;
     }
@@ -1963,12 +2679,106 @@ function renderRepeatBadgeHtml(key, count, expanded) {
 }
 
 function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string {
+  const body = buildInteractiveAtlasBody(map, events);
+  return shell(`Atlas — ${map.scenario}`, body);
+}
+
+export interface CrashIncidentHtmlInput {
+  incident: NetworkEvent;
+  hops: NetworkEvent[];
+  suspectSummaries?: string[];
+  errorMessage: string;
+  incidentId: string;
+}
+
+/**
+ * Self-contained interactive HTML for one crash incident (Trace / Waterfall / Journey).
+ * Intended for local browsing via Metro serve or `file://`.
+ */
+export function buildCrashIncidentHtml(map: AtlasDocMap, input: CrashIncidentHtmlInput): string {
+  const title = `Crash — ${input.incidentId.slice(0, 8)}`;
+  const suspectLine =
+    input.suspectSummaries && input.suspectSummaries.length > 0
+      ? `<p class="meta"><strong>Suspects:</strong> ${escapeHtml(input.suspectSummaries.join(' · '))}</p>`
+      : '';
+  const banner = `<div class="card">
+  <p class="meta"><strong>Error:</strong> ${escapeHtml(input.errorMessage)}</p>
+  <p class="meta">Incident ${escapeHtml(input.incidentId)} · ${input.hops.length} hop${input.hops.length === 1 ? '' : 's'} in window</p>
+  ${suspectLine}
+  <p class="meta">Open Trace / Waterfall / Journey tabs below — click hops for request &amp; response bodies.</p>
+</div>`;
+  const body = `${banner}\n${buildInteractiveAtlasBody(map, input.hops, {
+    mode: 'crash',
+    crash: {
+      errorMessage: input.errorMessage,
+      incidentId: input.incidentId,
+      suspectSummaries: input.suspectSummaries,
+    },
+  })}`;
+  return shell(title, body, undefined, '');
+}
+
+/**
+ * Write one incident HTML file under `{htmlRoot}/incidents/{incidentId}.html`.
+ * @returns absolute path when written, otherwise undefined (RN / no fs).
+ */
+export function writeCrashIncidentHtmlFile(
+  htmlRoot: string,
+  incidentId: string,
+  html: string
+): string | undefined {
+  if (!fs || !pathMod) return undefined;
+  const root = htmlRoot.trim();
+  const id = incidentId.trim();
+  if (!root || !id) return undefined;
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return undefined;
+  }
+  try {
+    const dir = pathMod.join(root, 'incidents');
+    fs.mkdirSync(dir, { recursive: true });
+    const abs = pathMod.join(dir, `${id}.html`);
+    fs.writeFileSync(abs, html, 'utf8');
+    return abs;
+  } catch {
+    return undefined;
+  }
+}
+
+interface CrashHtmlPayload {
+  errorMessage: string;
+  incidentId: string;
+  suspectSummaries?: string[];
+}
+
+interface InteractiveAtlasBodyOptions {
+  /** Crash forensics: show every embedded hop (skip CMS doc filtering). */
+  mode?: 'crash';
+  crash?: CrashHtmlPayload;
+}
+
+function buildInteractiveAtlasBody(
+  map: AtlasDocMap,
+  events: NetworkEvent[],
+  options?: InteractiveAtlasBodyOptions
+): string {
   const annotations = getAtlasUsageAnnotations();
   const merged = mergeUsageOntoNetworkEvents(events, annotations);
-  const payload = {
+  const payload: {
+    doc: AtlasDocMap;
+    events: ReturnType<typeof slimNetworkEvent>[];
+    mode?: 'crash';
+    crash?: CrashHtmlPayload;
+  } = {
     doc: map,
     events: merged.map(slimNetworkEvent),
   };
+  if (options?.mode === 'crash') {
+    payload.mode = 'crash';
+  }
+  if (options?.crash) {
+    payload.crash = options.crash;
+  }
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
@@ -1997,7 +2807,7 @@ function buildInteractiveIndex(map: AtlasDocMap, events: NetworkEvent[]): string
 <script>
 ${interactiveClientScript()}
 </script>`;
-  return shell(`Atlas — ${map.scenario}`, body);
+  return body;
 }
 
 /**

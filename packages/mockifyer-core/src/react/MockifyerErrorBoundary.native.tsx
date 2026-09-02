@@ -10,36 +10,14 @@ import {
   type LocalCrashTraceLinks,
 } from '../utils/incidents';
 import { resolveForensicsDashboardBaseUrl } from '../utils/network-log';
-import { MockifyerCrashFallback } from './MockifyerHopList';
+import type { MockifyerErrorBoundaryProps, MockifyerErrorBoundaryState } from './MockifyerErrorBoundary';
+import { MockifyerCrashFallback } from './MockifyerHopList.native';
 
-export interface MockifyerErrorBoundaryProps {
-  children: ReactNode;
-  fallback?: (props: { error: Error; crashContext: CrashContext | null; incidentId: string | null }) => ReactNode;
-  scenario?: string;
-  clientId?: string;
-  sessionId?: string;
-  config?: Pick<MockifyerConfig, 'networkLog' | 'proxy' | 'atlas'>;
-  mockDataPath?: string;
-  windowMs?: number;
-  /** Cross-session prefetch lookback when sessionId is set. Default 5000ms; 0 to disable. */
-  prefetchGraceMs?: number;
-  /** Log a single multi-line error block + stack to console (Metro / browser). Default true. */
-  logToConsole?: boolean;
-  /** Hops shown in default fallback before “Show all”. Default 8. */
-  visibleHopCount?: number;
-}
-
-export interface MockifyerErrorBoundaryState {
-  error: Error | null;
-  crashContext: CrashContext | null;
-  incidentId: string | null;
-  dashboardExplainUrl: string | null;
-  localTrace: LocalCrashTraceLinks | null;
-}
+export type { MockifyerErrorBoundaryProps, MockifyerErrorBoundaryState };
 
 /**
- * React ErrorBoundary that reports a Mockifyer incident and shows recent hops.
- * Forensics panel never throws — if context lookup fails, the React error still renders.
+ * React Native ErrorBoundary — uses View/Text fallback via explicit `.native` import
+ * so Metro never resolves the web HTML bundle from pre-built dist.
  */
 export class MockifyerErrorBoundary extends Component<
   MockifyerErrorBoundaryProps,
@@ -167,4 +145,4 @@ export class MockifyerErrorBoundary extends Component<
   }
 }
 
-export { MockifyerHopList, MockifyerCrashFallback } from './MockifyerHopList';
+export { MockifyerHopList, MockifyerCrashFallback } from './MockifyerHopList.native';

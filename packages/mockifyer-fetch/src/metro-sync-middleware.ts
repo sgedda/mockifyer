@@ -8,6 +8,8 @@
  * 4. GET /mockifyer-sync-to-device - Legacy: all files in one response (may fail on large scenarios)
  * 5. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
  * 6. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
+ * 7. POST /mockifyer-atlas-html — write crash-scoped trace HTML to mock-data/atlas-html/incidents/
+ * 8. GET /mockifyer-atlas-html/incidents/{id}.html — serve crash trace HTML from project folder
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -703,6 +705,59 @@ function normalizeMiddlewarePathname(reqUrl: string): string {
   return pathname;
 }
 
+function saveAtlasHtmlIncident(
+  projectRoot: string,
+  mockDataPath: string,
+  incidentId: string,
+  html: string
+): { success: boolean; filePath?: string; relativePath?: string; error?: string } {
+  const id = incidentId.trim();
+  if (!id || !html.trim()) {
+    return { success: false, error: 'incidentId and html are required' };
+  }
+  if (id.includes('..') || id.includes('/') || id.includes('\\')) {
+    return { success: false, error: 'Invalid incident id' };
+  }
+  try {
+    const dir = path.join(mockDataPath, 'atlas-html', 'incidents');
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `${id}.html`);
+    fs.writeFileSync(filePath, html, 'utf8');
+    const relativeFromRoot = path.relative(projectRoot, filePath);
+    return {
+      success: true,
+      filePath,
+      relativePath: relativeFromRoot.split(path.sep).join('/'),
+    };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+function serveAtlasHtmlIncident(
+  mockDataPath: string,
+  incidentId: string,
+  res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string) => void }
+): boolean {
+  const id = incidentId.trim();
+  if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Invalid incident id');
+    return true;
+  }
+  const filePath = path.join(mockDataPath, 'atlas-html', 'incidents', `${id}.html`);
+  if (!fs.existsSync(filePath)) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Crash trace HTML not found yet — retry after the export POST completes.');
+    return true;
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(fs.readFileSync(filePath, 'utf8'));
+  return true;
+}
+
 /**
  * Metro middleware function
  */
@@ -767,6 +822,43 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ success: true, changed, scenario: scenarioName, rules }));
+        } catch (error) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    // Crash-scoped Atlas HTML trace (device → project mock-data/atlas-html/incidents/)
+    if (url.startsWith('/mockifyer-atlas-html/incidents/') && req.method === 'GET') {
+      const suffix = url.slice('/mockifyer-atlas-html/incidents/'.length);
+      const incidentId = suffix.endsWith('.html') ? suffix.slice(0, -'.html'.length) : suffix;
+      if (serveAtlasHtmlIncident(mockDataPath, incidentId, res)) {
+        return;
+      }
+    }
+
+    if (url === '/mockifyer-atlas-html' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body) as { incidentId?: string; html?: string };
+          const incidentId = typeof parsed.incidentId === 'string' ? parsed.incidentId : '';
+          const html = typeof parsed.html === 'string' ? parsed.html : '';
+          const result = saveAtlasHtmlIncident(projectRoot, mockDataPath, incidentId, html);
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = result.success ? 201 : 400;
+          res.end(JSON.stringify(result));
         } catch (error) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');

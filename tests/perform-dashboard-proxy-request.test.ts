@@ -41,6 +41,7 @@ describe('performDashboardProxyRequest mockifyerTrace', () => {
     });
 
     expect(result.data).toEqual({ city: 'Stockholm' });
+    expect(result.headers['x-mockifyer']).toBe('true');
     expect(result.mockifyerTrace).toEqual({
       requestId: 'req-proxy-hop',
       parentRequestId: 'req-root',

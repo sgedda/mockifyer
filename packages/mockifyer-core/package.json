@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.47",
+  "version": "1.10.58",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,6 +52,7 @@
       "default": "./dist/utils/fixture-pool/runtime-cache.js"
     },
     "./react": {
+      "react-native": "./dist/react/index.native.js",
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
     }
@@ -89,6 +90,9 @@
       "optional": true
     },
     "react": {
+      "optional": true
+    },
+    "react-native": {
       "optional": true
     },
     "react-native-launch-arguments": {

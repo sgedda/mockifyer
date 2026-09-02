@@ -1,6 +1,7 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
-import { initializeDateManipulation } from '@sgedda/mockifyer-core';
+import { configureAtlas, initializeDateManipulation } from '@sgedda/mockifyer-core';
 import { mocksRouter } from './routes/mocks';
 import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
@@ -52,6 +53,13 @@ export function createServer(
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });
 
+  const atlasMode =
+    process.env.MOCKIFYER_ATLAS?.trim().toLowerCase() === 'off' ? 'off' : 'live';
+  configureAtlas({
+    mockDataPath,
+    atlas: { mode: atlasMode },
+  });
+
   // Middleware
   const jsonBodyLimit = getDashboardJsonBodyLimit();
   app.use(express.json({ limit: jsonBodyLimit }));
@@ -94,6 +102,23 @@ export function createServer(
     '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas'
   );
 
+  // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
+  app.use('/atlas-html', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    const dir = path.join(mockDataPath, 'atlas-html');
+    if (!fs.existsSync(dir)) {
+      return res
+        .status(404)
+        .type('text/plain')
+        .send(
+          'Atlas HTML trace not generated yet. Capture network traffic with atlas mode enabled.'
+        );
+    }
+    return express.static(dir, { index: 'index.html' })(req, res, next);
+  });
+
   // Serve static files from public directory (React build output)
   // Only serve static files for GET requests to non-API paths
   app.use('/assets', (req, res, next) => {
@@ -121,6 +146,9 @@ export function createServer(
     }
     if (req.path.startsWith('/assets/')) {
       return res.status(404).send('Asset not found');
+    }
+    if (req.path.startsWith('/atlas-html/')) {
+      return res.status(404).send('Atlas HTML trace not found');
     }
     // Serve React app's index.html for all other GET routes
     res.sendFile(path.join(publicDir, 'index.html'));

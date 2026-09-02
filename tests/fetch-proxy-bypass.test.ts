@@ -1,3 +1,8 @@
+import {
+  clearFlightRecorder,
+  configureFlightRecorder,
+  getRecentFlightHops,
+} from '@sgedda/mockifyer-core';
 import { clearMockifyerClientIdRuntime, setupMockifyer } from '@sgedda/mockifyer-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -16,6 +21,8 @@ describe('fetch proxy bypass', () => {
   beforeEach(() => {
     delete (global as any).__mockifyer_original_fetch;
     clearMockifyerClientIdRuntime();
+    clearFlightRecorder();
+    configureFlightRecorder({ enabled: true, maxEvents: 50 });
     fs.mkdirSync(testMockDataPath, { recursive: true });
   });
 
@@ -47,6 +54,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -82,6 +90,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: false },
     });
     await client.get('https://api.example.com/x');
@@ -112,6 +121,7 @@ describe('fetch proxy bypass', () => {
         mockDataPath: testMockDataPath,
         recordMode: false,
         useGlobalFetch: false,
+        networkLog: { enabled: false },
         proxy: { baseUrl: 'http://dashboard.local' },
       });
       await client.get('https://api.example.com/env');
@@ -185,6 +195,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -210,6 +221,7 @@ describe('fetch proxy bypass', () => {
       useGlobalFetch: false,
       activationMode: 'off',
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -237,6 +249,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
       excludedUrls: ['login.microsoftonline.com'],
     });
@@ -248,5 +261,42 @@ describe('fetch proxy bypass', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
+  });
+
+  it('records proxy mock hits with x-mockifyer header to the flight recorder', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'redis',
+        hash: 'abc123def',
+        response: {
+          status: 200,
+          data: { fromRedisMock: true },
+          headers: { 'x-mockifyer': 'true' },
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      networkLog: { enabled: false, flightRecorder: { enabled: true } },
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/users');
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ fromRedisMock: true });
+    expect(response.headers['x-mockifyer']).toBe('true');
+
+    const hops = getRecentFlightHops({ limit: 10 });
+    expect(hops.length).toBeGreaterThanOrEqual(1);
+    const hop = hops.find((h) => h.url.includes('/users'));
+    expect(hop).toBeDefined();
+    expect(hop!.source).toBe('mock-hit');
+    expect(hop!.transport).toBe('proxy');
   });
 });

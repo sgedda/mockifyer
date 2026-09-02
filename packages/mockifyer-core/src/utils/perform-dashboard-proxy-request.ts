@@ -150,7 +150,13 @@ export async function performDashboardProxyRequest(
     | undefined;
   let data = proxyResponseBody?.data;
   const status = proxyResponseBody?.status ?? 200;
-  const responseHeaders: Record<string, string> = proxyResponseBody?.headers ?? {};
+  const responseHeaders: Record<string, string> = { ...(proxyResponseBody?.headers ?? {}) };
+  const networkSource = mapProxyPayloadSourceToNetworkSource(
+    typeof payload?.source === 'string' ? payload.source : undefined
+  );
+  if (networkSource === 'mock-hit') {
+    responseHeaders['x-mockifyer'] = 'true';
+  }
 
   const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
     payload,
@@ -181,9 +187,7 @@ export async function performDashboardProxyRequest(
       method,
       url,
       status,
-      source: mapProxyPayloadSourceToNetworkSource(
-        typeof payload?.source === 'string' ? payload.source : undefined
-      ),
+      source: networkSource,
       transport: 'proxy',
       requestId: requestId ?? null,
       parentRequestId: parentRequestId ?? null,

@@ -1,6 +1,17 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import type { CrashContext, CrashSuspect } from '../utils/incidents';
+import type { CrashSuspect } from '../utils/incidents';
+import { buildHopDisplayRows, formatHopLineForDisplay } from '../utils/hop-display';
 import type { NetworkEvent } from '../utils/network-event-types';
+import type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
+
+export type { MockifyerCrashFallbackProps, MockifyerHopListProps } from './MockifyerHopList.types';
+
+const DEFAULT_VISIBLE_HOPS = 8;
+
+function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
+  if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
+  return suspects.some((s) => s.eventId === hop.id);
+}
 
 const panelStyle: CSSProperties = {
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
@@ -17,42 +28,68 @@ const cardStyle: CSSProperties = {
   color: '#eee',
 };
 
-const DEFAULT_VISIBLE_HOPS = 8;
-
-export interface MockifyerHopListProps {
-  /** Pre-sorted most-relevant-first from {@link getCrashContext}. */
-  hops: NetworkEvent[];
-  suspects?: CrashSuspect[];
-  prefetchHopIds?: string[];
-  maxItems?: number;
-}
-
-function isSuspect(hop: NetworkEvent, suspects?: CrashSuspect[]): boolean {
-  if (!suspects?.length) return Boolean(hop.anomalyFlags?.length);
-  return suspects.some((s) => s.eventId === hop.id);
-}
-
 function HopRow({
   hop,
   suspects,
   prefetchHopIds,
 }: {
   hop: NetworkEvent;
-  suspects?: CrashSuspect[];
+  suspects?: MockifyerHopListProps['suspects'];
   prefetchHopIds?: string[];
 }): ReactNode {
   const suspect = isSuspect(hop, suspects);
   const isPrefetch = prefetchHopIds?.includes(hop.id);
   return (
-    <li key={hop.id} style={{ marginBottom: '6px', color: suspect ? '#ffb4b4' : undefined }}>
+    <li style={{ marginBottom: '6px', color: suspect ? '#ffb4b4' : undefined }}>
       {isPrefetch ? <span style={{ opacity: 0.7 }}>(prefetch) </span> : null}
-      <span>{hop.method}</span> <span>{hop.url}</span>
-      {' · '}
-      <span>{hop.source}</span>
-      {hop.status != null ? ` · ${hop.status}` : ''}
-      {hop.requestId ? ` · ${hop.requestId}` : ''}
-      {hop.anomalyFlags?.length ? ` · ⚠ ${hop.anomalyFlags.join(', ')}` : ''}
+      {formatHopLineForDisplay(hop)}
     </li>
+  );
+}
+
+function ScreenHeader({ screen }: { screen: string }): ReactNode {
+  return (
+    <li
+      style={{
+        listStyle: 'none',
+        margin: '6px 0 2px',
+        color: '#7eb8ff',
+        fontSize: '11px',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+      }}
+    >
+      {screen}
+    </li>
+  );
+}
+
+function HopTimeline({
+  hops,
+  suspects,
+  prefetchHopIds,
+}: {
+  hops: NetworkEvent[];
+  suspects?: MockifyerHopListProps['suspects'];
+  prefetchHopIds?: string[];
+}): ReactNode {
+  const rows = buildHopDisplayRows(hops);
+  return (
+    <>
+      {rows.map((row, index) =>
+        row.kind === 'screen-header' ? (
+          <ScreenHeader key={`screen-${row.screen}-${index}`} screen={row.screen} />
+        ) : (
+          <HopRow
+            key={row.hop.id}
+            hop={row.hop}
+            suspects={suspects}
+            prefetchHopIds={prefetchHopIds}
+          />
+        )
+      )}
+    </>
   );
 }
 
@@ -68,29 +105,21 @@ export function MockifyerHopList({
   if (items.length === 0) {
     return (
       <div style={{ ...panelStyle, ...cardStyle, opacity: 0.8 }}>
-        No Mockifyer hops in this time window.
+        No Mockifyer hops in this time window. Browse CMS screens first so hops carry screen labels.
       </div>
     );
   }
 
   return (
     <div style={{ ...panelStyle, ...cardStyle }}>
-      <strong>Network context ({hops.length} hop{hops.length === 1 ? '' : 's'}, most relevant first)</strong>
+      <strong>
+        Network context ({hops.length} hop{hops.length === 1 ? '' : 's'}, most relevant first)
+      </strong>
       <ol style={{ margin: '8px 0 0', paddingLeft: '18px' }}>
-        {items.map((hop) => (
-          <HopRow key={hop.id} hop={hop} suspects={suspects} prefetchHopIds={prefetchHopIds} />
-        ))}
+        <HopTimeline hops={items} suspects={suspects} prefetchHopIds={prefetchHopIds} />
       </ol>
     </div>
   );
-}
-
-export interface MockifyerCrashFallbackProps {
-  error: Error;
-  crashContext: CrashContext | null;
-  incidentId?: string | null;
-  /** Hops shown before “Show more”. Default 8. */
-  visibleHopCount?: number;
 }
 
 /** Default ErrorBoundary fallback — error first; ranked hops visible by default. */
@@ -98,6 +127,9 @@ export function MockifyerCrashFallback({
   error,
   crashContext,
   incidentId,
+  dashboardExplainUrl,
+  localTraceBrowseUrl,
+  localTraceFileHint,
   visibleHopCount = DEFAULT_VISIBLE_HOPS,
 }: MockifyerCrashFallbackProps): ReactNode {
   const [showAllHops, setShowAllHops] = useState(false);
@@ -144,6 +176,53 @@ export function MockifyerCrashFallback({
         <p style={{ opacity: 0.5, fontSize: '11px', marginTop: '8px' }}>Mockifyer incident: {incidentId}</p>
       ) : null}
 
+      {dashboardExplainUrl ? (
+        <a
+          href={dashboardExplainUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-block',
+            marginTop: '8px',
+            background: 'transparent',
+            border: '1px solid #555',
+            color: '#aaa',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            textDecoration: 'none',
+          }}
+        >
+          Open in dashboard
+        </a>
+      ) : null}
+
+      {localTraceBrowseUrl ? (
+        <a
+          href={localTraceBrowseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-block',
+            marginTop: '8px',
+            marginLeft: '8px',
+            background: 'transparent',
+            border: '1px solid #555',
+            color: '#aaa',
+            borderRadius: '4px',
+            padding: '4px 8px',
+            cursor: 'pointer',
+            textDecoration: 'none',
+          }}
+        >
+          Open trace HTML
+        </a>
+      ) : null}
+
+      {localTraceFileHint ? (
+        <p style={{ color: '#7eb8ff', fontSize: '11px', marginTop: '6px' }}>{`Local: ${localTraceFileHint}`}</p>
+      ) : null}
+
       {hopCount > 0 ? (
         <div style={{ marginTop: '12px' }}>
           {suspectCount > 0 ? (
@@ -158,14 +237,11 @@ export function MockifyerCrashFallback({
 
           <div style={{ ...cardStyle, marginTop: 0 }}>
             <ol style={{ margin: 0, paddingLeft: '18px' }}>
-              {visibleHops.map((hop) => (
-                <HopRow
-                  key={hop.id}
-                  hop={hop}
-                  suspects={crashContext!.suspects}
-                  prefetchHopIds={crashContext!.prefetchHopIds}
-                />
-              ))}
+              <HopTimeline
+                hops={visibleHops}
+                suspects={crashContext!.suspects}
+                prefetchHopIds={crashContext!.prefetchHopIds}
+              />
             </ol>
           </div>
 
@@ -186,6 +262,11 @@ export function MockifyerCrashFallback({
               {showAllHops ? 'Show fewer hops' : `Show all ${hopCount} hops`}
             </button>
           ) : null}
+        </div>
+      ) : crashContext ? (
+        <div style={{ ...cardStyle, opacity: 0.8 }}>
+          No network hops in the last {Math.round((crashContext.windowMs ?? 60000) / 1000)}s — browse
+          AppDun / CMS screens first so hops show screen and CMS labels
         </div>
       ) : null}
     </div>
