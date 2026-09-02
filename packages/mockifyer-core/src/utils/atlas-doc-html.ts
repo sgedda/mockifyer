@@ -1114,14 +1114,17 @@ function renderErrorPanelHtml(analysis, escFn) {
   function resolveScreenshotForHop(e) {
     var sessionId = e.sessionId || '';
     var usages = usageList(e.usage);
+    var fallback = null;
     for (var ui = 0; ui < usages.length; ui++) {
       var u = usages[ui];
       if (!u || !u.screen) continue;
       var sc = (doc.screens || {})[u.screen];
       if (sc && sc.screenshotPath) {
+        var shot = { path: sc.screenshotPath, capturedAt: sc.screenshotCapturedAt };
         if (!sc.screenshotSessionId || !sessionId || sc.screenshotSessionId === sessionId) {
-          return { path: sc.screenshotPath, capturedAt: sc.screenshotCapturedAt };
+          return shot;
         }
+        if (!fallback) fallback = shot;
       }
       var pages = doc.pages || {};
       for (var pid in pages) {
@@ -1129,20 +1132,39 @@ function renderErrorPanelHtml(analysis, escFn) {
         var pg = pages[pid];
         if (pid === u.screen || pg.pageSlug === u.screen) {
           if (pg.screenshotPath) {
+            var pageShot = { path: pg.screenshotPath, capturedAt: pg.screenshotCapturedAt };
             if (!pg.screenshotSessionId || !sessionId || pg.screenshotSessionId === sessionId) {
-              return { path: pg.screenshotPath, capturedAt: pg.screenshotCapturedAt };
+              return pageShot;
             }
+            if (!fallback) fallback = pageShot;
           }
         }
       }
     }
-    return null;
+    return fallback;
+  }
+  function atlasAssetUrl(rel) {
+    if (!rel) return '';
+    var s = String(rel);
+    if (/^(https?:|data:|file:|\\/)/i.test(s)) return s;
+    try {
+      var pathName = (typeof location !== 'undefined' && location.pathname) ? String(location.pathname) : '';
+      // incidents/*.html and pages/*.html live one level below atlas-html/
+      if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName) || /(?:^|\\/)(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
+        return '../' + s.replace(/^\\.\\//, '');
+      }
+    } catch (err) {}
+    return s;
   }
   function renderScreenshotPanelHtml(shot) {
     if (!shot || !shot.path) return '';
+    var src = atlasAssetUrl(shot.path);
     var html = '<div class="screenshot-panel"><div class="body-label">Screen capture</div>';
-    html += '<img class="screenshot-preview" src="' + esc(shot.path) + '" alt="Screen at capture" loading="lazy" />';
+    html += '<img class="screenshot-preview" src="' + esc(src) + '" alt="Screen at capture" loading="lazy"';
+    html += ' onerror="this.style.display=\\'none\\';var m=this.nextSibling;if(m)m.style.display=\\'block\\';" />';
+    html += '<p class="meta" style="display:none;color:var(--err)">Missing image <code>' + esc(src) + '</code></p>';
     if (shot.capturedAt) html += '<p class="meta">captured ' + esc(shot.capturedAt) + '</p>';
+    html += '<p class="meta">file <code>' + esc(shot.path) + '</code></p>';
     html += '</div>';
     return html;
   }

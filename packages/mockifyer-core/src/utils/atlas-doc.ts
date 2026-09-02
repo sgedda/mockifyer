@@ -515,6 +515,28 @@ export function mergeAtlasDocMap(incoming: AtlasDocMap): AtlasDocMap {
         timestamp: screen.lastSeenAt,
       })
     }
+    if (screen.screenshotPath?.trim()) {
+      setAtlasDocScreenshot({
+        scenario,
+        screen: screen.screen,
+        sessionId: screen.screenshotSessionId || 'imported',
+        screenshotPath: screen.screenshotPath,
+        capturedAt: screen.screenshotCapturedAt || screen.lastSeenAt,
+      })
+    }
+  }
+
+  for (const page of Object.values(incoming.pages ?? {})) {
+    if (page.screenshotPath?.trim()) {
+      setAtlasDocScreenshot({
+        scenario,
+        screen: page.pageSlug || page.pageId,
+        sessionId: page.screenshotSessionId || 'imported',
+        screenshotPath: page.screenshotPath,
+        capturedAt: page.screenshotCapturedAt || page.lastSeenAt,
+        pageId: page.pageId,
+      })
+    }
   }
 
   return getAtlasDocMap(scenario)

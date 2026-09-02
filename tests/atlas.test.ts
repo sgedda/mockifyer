@@ -859,5 +859,20 @@ describe('atlas-screenshot', () => {
     const files = buildAtlasDocHtmlFiles(map, events);
     expect(files['index.html']).toContain('screenshots/sess-1__booking.png');
     expect(files['index.html']).toContain('screenshot-preview');
+    expect(files['index.html']).toContain('atlasAssetUrl');
+  });
+
+  it('preserves screenshotPath across usage upserts', () => {
+    upsertAtlasDocFromUsage({ screen: 'my-profile', component: 'AppDun' });
+    setAtlasDocScreenshot({
+      screen: 'my-profile',
+      sessionId: 'screen-my-profile-1',
+      screenshotPath: 'screenshots/screen-my-profile-1__my-profile.png',
+      capturedAt: new Date().toISOString(),
+    });
+    upsertAtlasDocFromUsage({ screen: 'my-profile', component: 'Extra' });
+    expect(getAtlasDocMap('default').screens['my-profile']?.screenshotPath).toBe(
+      'screenshots/screen-my-profile-1__my-profile.png'
+    );
   });
 });
