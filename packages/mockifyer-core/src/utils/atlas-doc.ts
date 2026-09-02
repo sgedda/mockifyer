@@ -362,6 +362,9 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
       components: [...components].sort(),
       datasourceIds: [...datasourceIds].sort(),
       lastSeenAt: now,
+      screenshotPath: prev?.screenshotPath,
+      screenshotSessionId: prev?.screenshotSessionId,
+      screenshotCapturedAt: prev?.screenshotCapturedAt,
     };
     touch(map);
   }

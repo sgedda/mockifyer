@@ -138,16 +138,6 @@ export function collectUsedResponsePaths(
     walk(scope.base, scope.prefix);
   }
 
-  // Promote ancestors when a descendant matched (highlight enclosing objects).
-  const sorted = [...used].sort((a, b) => b.length - a.length);
-  for (const p of sorted) {
-    let cur = p;
-    while (cur.includes('.')) {
-      cur = cur.slice(0, cur.lastIndexOf('.'));
-      used.add(cur);
-    }
-  }
-
   return used;
 }
 

@@ -416,6 +416,7 @@ function slimNetworkEvent(
     source: ev.source,
     requestId: ev.requestId,
     parentRequestId: ev.parentRequestId,
+    sessionId: ev.sessionId,
     usage: ev.usage,
     guiAttribution: resolveHopGuiAttribution(ev, guiLinkedRequestIds),
     usedResponsePaths: fieldUsage.paths,
