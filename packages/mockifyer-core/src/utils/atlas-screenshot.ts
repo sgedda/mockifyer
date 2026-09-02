@@ -206,6 +206,28 @@ async function readCaptureBytes(result: AtlasScreenshotCaptureResult): Promise<U
     const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
   } catch {
+    // Fall back to XMLHttpRequest for file:// URIs on React Native
+    if (typeof XMLHttpRequest !== 'undefined') {
+      try {
+        const bytes = await new Promise<Uint8Array | undefined>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onload = () => {
+            if (xhr.status === 200 || xhr.status === 0) {
+              resolve(new Uint8Array(xhr.response));
+            } else {
+              resolve(undefined);
+            }
+          };
+          xhr.onerror = () => resolve(undefined);
+          xhr.responseType = 'arraybuffer';
+          xhr.open('GET', tmpUri, true);
+          xhr.send();
+        });
+        if (bytes) return bytes;
+      } catch {
+        // XMLHttpRequest failed too
+      }
+    }
     return undefined;
   }
 }
@@ -222,7 +244,17 @@ function writeScreenshotPng(rootDir: string, relPath: string, bytes: Uint8Array)
   }
 }
 
-async function uploadScreenshotViaMetro(relPath: string, bytes: Uint8Array): Promise<boolean> {
+async function uploadScreenshotViaMetro(
+  relPath: string,
+  bytes: Uint8Array,
+  metadata: {
+    sessionId: string;
+    screen: string;
+    scenario?: string;
+    pageId?: string;
+    capturedAt: string;
+  }
+): Promise<boolean> {
   if (typeof fetch !== 'function') return false;
   const base64 = encodeBytesToBase64(bytes);
   if (!base64) return false;
@@ -236,7 +268,7 @@ async function uploadScreenshotViaMetro(relPath: string, bytes: Uint8Array): Pro
     const res = await fetch(`http://localhost:${metroPort}/mockifyer-atlas-screenshot`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ relativePath: relPath, base64 }),
+      body: JSON.stringify({ relativePath: relPath, base64, ...metadata }),
       signal: controller?.signal,
     });
     if (timeout) clearTimeout(timeout);
@@ -290,7 +322,13 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
           persisted = writeScreenshotPng(htmlRoot, relPath, bytes);
         }
         if (!persisted) {
-          persisted = await uploadScreenshotViaMetro(relPath, bytes);
+          persisted = await uploadScreenshotViaMetro(relPath, bytes, {
+            sessionId,
+            screen,
+            scenario: input.scenario,
+            pageId: input.pageId,
+            capturedAt,
+          });
         }
         if (!persisted) return;
 

@@ -33,6 +33,8 @@ import {
   writeDomainPathRulesFile,
   type DomainPathRulesMap,
   containsMockifyerSyncEndpointMarker,
+  setAtlasDocScreenshot,
+  flushAtlasDocHtmlRewrite,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -739,7 +741,14 @@ function saveAtlasScreenshot(
   projectRoot: string,
   mockDataPath: string,
   relativePath: string,
-  base64: string
+  base64: string,
+  metadata?: {
+    sessionId?: string;
+    screen?: string;
+    scenario?: string;
+    pageId?: string;
+    capturedAt?: string;
+  }
 ): { success: boolean; filePath?: string; relativePath?: string; error?: string } {
   const rel = relativePath.trim().replace(/^\/+/, '');
   if (!rel || !base64.trim()) {
@@ -758,6 +767,21 @@ function saveAtlasScreenshot(
     const filePath = path.join(dir, fileName);
     fs.writeFileSync(filePath, Buffer.from(base64.trim(), 'base64'));
     const relativeFromRoot = path.relative(projectRoot, filePath);
+
+    // Update Atlas doc map with screenshot metadata (Metro has fs, so HTML will be written)
+    if (metadata?.screen && metadata?.sessionId) {
+      setAtlasDocScreenshot({
+        scenario: metadata.scenario,
+        screen: metadata.screen,
+        sessionId: metadata.sessionId,
+        screenshotPath: rel,
+        capturedAt: metadata.capturedAt ?? new Date().toISOString(),
+        pageId: metadata.pageId,
+      });
+      // Immediately flush the HTML rewrite since we're on Node.js
+      flushAtlasDocHtmlRewrite();
+    }
+
     return {
       success: true,
       filePath,
@@ -915,10 +939,25 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       });
       req.on('end', () => {
         try {
-          const parsed = JSON.parse(body) as { relativePath?: string; base64?: string };
+          const parsed = JSON.parse(body) as {
+            relativePath?: string;
+            base64?: string;
+            sessionId?: string;
+            screen?: string;
+            scenario?: string;
+            pageId?: string;
+            capturedAt?: string;
+          };
           const relativePath = typeof parsed.relativePath === 'string' ? parsed.relativePath : '';
           const base64 = typeof parsed.base64 === 'string' ? parsed.base64 : '';
-          const result = saveAtlasScreenshot(projectRoot, mockDataPath, relativePath, base64);
+          const metadata = {
+            sessionId: typeof parsed.sessionId === 'string' ? parsed.sessionId : undefined,
+            screen: typeof parsed.screen === 'string' ? parsed.screen : undefined,
+            scenario: typeof parsed.scenario === 'string' ? parsed.scenario : undefined,
+            pageId: typeof parsed.pageId === 'string' ? parsed.pageId : undefined,
+            capturedAt: typeof parsed.capturedAt === 'string' ? parsed.capturedAt : undefined,
+          };
+          const result = saveAtlasScreenshot(projectRoot, mockDataPath, relativePath, base64, metadata);
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = result.success ? 201 : 400;
           res.end(JSON.stringify(result));
