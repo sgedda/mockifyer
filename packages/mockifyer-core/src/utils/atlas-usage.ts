@@ -3,6 +3,7 @@ import { randomEventId } from './crypto-digest';
 import { resolveNetworkLogDashboardUrl } from './network-log';
 import type { NetworkEventUsage } from './network-event-types';
 import { upsertAtlasDocFromUsage } from './atlas-doc';
+import { scheduleAtlasScreenshotCapture } from './atlas-screenshot';
 
 export type { NetworkEventUsage };
 
@@ -22,6 +23,8 @@ export interface AtlasUsageContext {
   label?: string;
   cms?: NetworkEventUsage['cms'];
   datasourceId?: string;
+  /** Screen-scoped session id for screenshot dedupe (e.g. useMockifyerScreenSession). */
+  sessionId?: string;
 }
 
 let usageContext: AtlasUsageContext = {};
@@ -60,6 +63,14 @@ export function setAtlasUsageContext(ctx: AtlasUsageContext): void {
 export function pushAtlasUsageContext(ctx: AtlasUsageContext): void {
   usageContextStack.push({ ...usageContext });
   usageContext = { ...ctx };
+
+  const screen = ctx.screen?.trim();
+  if (screen) {
+    scheduleAtlasScreenshotCapture({
+      screen,
+      sessionId: ctx.sessionId ?? usageSessionId,
+    });
+  }
 }
 
 /** Restore previous ambient usage after {@link pushAtlasUsageContext}. */

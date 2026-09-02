@@ -33,6 +33,11 @@ import {
   flushAtlasDocHtmlRewrite,
   resolveAtlasHtmlOutputPath,
   getAtlasDocHtmlOutputPath,
+  registerAtlasScreenshotCapturer,
+  resetAtlasScreenshotRuntime,
+  resolveAtlasCaptureScreenshots,
+  setAtlasDocScreenshot,
+  isAtlasScreenshotCaptureEnabled,
 } from '@sgedda/mockifyer-core';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -514,6 +519,9 @@ describe('atlas-doc-html', () => {
     const files = buildAtlasDocHtmlFiles(getAtlasDocMap('default'));
     expect(files['index.html']).toContain('data-view="chains"');
     expect(files['index.html']).toContain('kind-filters');
+    expect(files['index.html']).toContain('data-view="requests"');
+    expect(files['index.html']).toContain('req-table');
+    expect(files['index.html']).toContain('data-req-search');
     expect(files['index.html']).toContain('hop-detail');
     expect(files['index.html']).toContain('atlas-data');
     expect(files['index.html']).toContain('Contact & Home');
@@ -599,5 +607,257 @@ describe('atlas-doc-html', () => {
       setAtlasDocHtmlOutputPath(undefined);
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('hop-gui-attribution', () => {
+  it('classifies gui-linked, screen-only, and unattributed hops', () => {
+    const {
+      buildGuiLinkedRequestIdSet,
+      resolveHopGuiAttribution,
+    } = require('../packages/mockifyer-core/src/utils/hop-gui-attribution') as typeof import('../packages/mockifyer-core/src/utils/hop-gui-attribution');
+
+    const map = upsertAtlasDocFromPresentation({
+      cms: {
+        pageId: 'contact',
+        nodeId: 'phone-1',
+        type: 'phonedetails',
+        path: 'contact/phone-1',
+      },
+      datasources: [{ datasourceId: 'crm:phone', requestId: 'req-gui-1' }],
+      shown: { number: '+46' },
+    });
+
+    const guiLinkedIds = buildGuiLinkedRequestIdSet(map);
+
+    expect(
+      resolveHopGuiAttribution({ requestId: 'req-gui-1' }, guiLinkedIds)
+    ).toBe('gui-linked');
+
+    expect(
+      resolveHopGuiAttribution(
+        {
+          requestId: 'req-cms-usage',
+          usage: { cms: { pageId: 'contact', nodeId: 'phone-1', type: 'phonedetails' } },
+        },
+        guiLinkedIds
+      )
+    ).toBe('gui-linked');
+
+    expect(
+      resolveHopGuiAttribution(
+        { requestId: 'req-screen', usage: { screen: 'booking' } },
+        guiLinkedIds
+      )
+    ).toBe('screen-only');
+
+    expect(
+      resolveHopGuiAttribution({ requestId: 'req-none' }, guiLinkedIds)
+    ).toBe('unattributed');
+  });
+
+  it('embeds guiAttribution on slim network events in HTML payload', () => {
+    const map = upsertAtlasDocFromPresentation({
+      cms: {
+        pageId: 'home',
+        nodeId: 'hero',
+        type: 'hero',
+        path: 'home/hero',
+      },
+      datasources: [{ datasourceId: 'oden:home', requestId: 'req-hero' }],
+      shown: { title: 'Hi' },
+    });
+
+    const events = [
+      {
+        id: 'e1',
+        timestamp: new Date().toISOString(),
+        scenario: 'default',
+        transport: 'fetch' as const,
+        method: 'GET',
+        url: 'https://example.com/hero',
+        source: 'upstream' as const,
+        requestId: 'req-hero',
+      },
+      {
+        id: 'e2',
+        timestamp: new Date().toISOString(),
+        scenario: 'default',
+        transport: 'fetch' as const,
+        method: 'GET',
+        url: 'https://example.com/noise',
+        source: 'upstream' as const,
+        requestId: 'req-ambient',
+        usage: { screen: 'home' },
+      },
+    ];
+
+    const files = buildAtlasDocHtmlFiles(map, events);
+    expect(files['index.html']).toContain('"guiAttribution":"gui-linked"');
+    expect(files['index.html']).toContain('"guiAttribution":"screen-only"');
+    expect(files['index.html']).toContain('"usedResponsePaths"');
+  });
+});
+
+describe('response-field-usage', () => {
+  it('marks response paths whose values appear in linked GUI propsSample', () => {
+    const {
+      collectUsedResponsePaths,
+      computeUsedResponsePaths,
+    } = require('../packages/mockifyer-core/src/utils/response-field-usage') as typeof import('../packages/mockifyer-core/src/utils/response-field-usage');
+
+    const response = {
+      data: {
+        user: { email: 'a@b.c', debugToken: 'secret' },
+        meta: { version: 1 },
+      },
+    };
+    const props = { email: 'a@b.c', name: 'Ada' };
+
+    const used = collectUsedResponsePaths(response, [props]);
+    expect(used.has('data.user.email')).toBe(true);
+    expect(used.has('data.user.debugToken')).toBe(false);
+
+    const map = upsertAtlasDocFromPresentation({
+      cms: { pageId: 'home', nodeId: 'header', type: 'header', path: 'home/header' },
+      datasources: [{ datasourceId: 'gql:user', requestId: 'req-1' }],
+      shown: props,
+    });
+
+    const result = computeUsedResponsePaths(map, {
+      requestId: 'req-1',
+      responseBodyPreview: JSON.stringify(response),
+    });
+    expect(result.paths).toContain('data.user.email');
+    expect(result.nodes.length).toBe(1);
+  });
+});
+
+describe('atlas-screenshot', () => {
+  const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+  beforeEach(() => {
+    resetAtlasRuntime();
+    resetAtlasUsageRuntime();
+    delete process.env.MOCKIFYER_ATLAS;
+    delete process.env.MOCKIFYER_ATLAS_SCREENSHOTS;
+  });
+
+  afterEach(() => {
+    resetAtlasRuntime();
+    resetAtlasUsageRuntime();
+    delete process.env.MOCKIFYER_ATLAS;
+    delete process.env.MOCKIFYER_ATLAS_SCREENSHOTS;
+  });
+
+  it('resolveAtlasCaptureScreenshots defaults false unless env or config enables', () => {
+    expect(resolveAtlasCaptureScreenshots({})).toBe(false);
+    expect(resolveAtlasCaptureScreenshots({ captureScreenshots: true })).toBe(true);
+    process.env.MOCKIFYER_ATLAS_SCREENSHOTS = 'false';
+    expect(resolveAtlasCaptureScreenshots({ captureScreenshots: true })).toBe(false);
+    process.env.MOCKIFYER_ATLAS_SCREENSHOTS = 'true';
+    expect(resolveAtlasCaptureScreenshots({})).toBe(true);
+  });
+
+  it('captures one PNG per sessionId+screen on presentation', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-shot-'));
+    try {
+      registerAtlasScreenshotCapturer(async () => ({ data: PNG_BYTES, platform: 'web' }));
+      configureAtlas({
+        mockDataPath: './mock-data',
+        atlas: { mode: 'live', captureScreenshots: true, htmlOutputPath: dir },
+      });
+      expect(isAtlasScreenshotCaptureEnabled()).toBe(true);
+
+      capturePresentation({
+        cms: {
+          pageId: 'home',
+          pageSlug: 'Home',
+          nodeId: 'hero',
+          type: 'hero',
+          path: 'home/hero',
+        },
+        shown: { title: 'Hi' },
+      });
+      capturePresentation({
+        cms: {
+          pageId: 'home',
+          pageSlug: 'Home',
+          nodeId: 'footer',
+          type: 'footer',
+          path: 'home/footer',
+        },
+      });
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      const relPath = 'screenshots';
+      const map = getAtlasDocMap('default');
+      expect(map.pages.home?.screenshotPath).toMatch(new RegExp(`^${relPath}/`));
+      expect(map.screens.Home?.screenshotPath).toBe(map.pages.home?.screenshotPath);
+
+      const pngPath = path.join(dir, map.pages.home!.screenshotPath!);
+      expect(fs.existsSync(pngPath)).toBe(true);
+      expect(fs.readFileSync(pngPath).subarray(0, 8)).toEqual(PNG_BYTES.subarray(0, 8));
+
+      flushAtlasDocHtmlRewrite();
+      const index = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+      expect(index).toContain(map.pages.home!.screenshotPath!);
+      expect(index).toContain('screenshot-preview');
+    } finally {
+      resetAtlasScreenshotRuntime();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('pushAtlasUsageContext schedules screen screenshot', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-shot-ctx-'));
+    try {
+      registerAtlasScreenshotCapturer(async () => ({ data: PNG_BYTES }));
+      configureAtlas({
+        atlas: { mode: 'live', captureScreenshots: true, htmlOutputPath: dir },
+      });
+
+      const { pushAtlasUsageContext, popAtlasUsageContext } = require('@sgedda/mockifyer-core') as typeof import('@sgedda/mockifyer-core');
+      pushAtlasUsageContext({ screen: 'booking', sessionId: 'screen-booking-1' });
+      await new Promise((r) => setTimeout(r, 150));
+      popAtlasUsageContext();
+
+      const map = getAtlasDocMap('default');
+      expect(map.screens.booking?.screenshotPath).toMatch(/^screenshots\//);
+      expect(map.screens.booking?.screenshotSessionId).toBe('screen-booking-1');
+    } finally {
+      resetAtlasScreenshotRuntime();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('embeds screenshot path on hops with matching screen usage in HTML', () => {
+    setAtlasDocScreenshot({
+      screen: 'booking',
+      sessionId: 'sess-1',
+      screenshotPath: 'screenshots/sess-1__booking.png',
+      capturedAt: new Date().toISOString(),
+    });
+
+    const map = getAtlasDocMap('default');
+    const events = [
+      {
+        id: 'e-shot',
+        timestamp: new Date().toISOString(),
+        scenario: 'default',
+        transport: 'fetch' as const,
+        method: 'GET',
+        url: 'https://example.com/booking',
+        source: 'upstream' as const,
+        requestId: 'req-book',
+        sessionId: 'sess-1',
+        usage: { screen: 'booking' },
+      },
+    ];
+
+    const files = buildAtlasDocHtmlFiles(map, events);
+    expect(files['index.html']).toContain('screenshots/sess-1__booking.png');
+    expect(files['index.html']).toContain('screenshot-preview');
   });
 });

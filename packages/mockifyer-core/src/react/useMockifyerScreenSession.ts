@@ -35,6 +35,7 @@ export function useMockifyerScreenSession(options: UseMockifyerScreenSessionOpti
     pushAtlasUsageContext({
       screen: options.screenName.trim(),
       component: options.component,
+      sessionId,
     });
 
     return () => {

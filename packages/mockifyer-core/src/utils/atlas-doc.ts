@@ -49,6 +49,10 @@ export interface AtlasDocPage {
   pageSlug?: string
   nodes: Record<string, AtlasDocNode>
   lastSeenAt: string
+  /** Relative path under atlas-html when captured via CMS presentation. */
+  screenshotPath?: string
+  screenshotSessionId?: string
+  screenshotCapturedAt?: string
 }
 
 /** Light doc entry when only usage.screen is known (no CMS presentation). */
@@ -57,6 +61,10 @@ export interface AtlasDocScreen {
   components: string[]
   datasourceIds: string[]
   lastSeenAt: string
+  /** Relative path under atlas-html, e.g. `screenshots/session__screen.png`. */
+  screenshotPath?: string
+  screenshotSessionId?: string
+  screenshotCapturedAt?: string
 }
 
 export interface AtlasDocPrefetch {
@@ -360,6 +368,46 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
 
   scheduleAtlasDocHtmlRewrite(map);
   return map;
+}
+
+export interface SetAtlasDocScreenshotInput {
+  scenario?: string;
+  screen: string;
+  sessionId: string;
+  screenshotPath: string;
+  capturedAt: string;
+  pageId?: string;
+}
+
+/** Persist screenshot path on screen / page entries after capture. */
+export function setAtlasDocScreenshot(input: SetAtlasDocScreenshotInput): AtlasDocMap {
+  const scenario = input.scenario?.trim() || 'default';
+  const map = ensureMap(scenario);
+  const screen = input.screen.trim();
+  const now = input.capturedAt;
+
+  const prevScreen = map.screens[screen];
+  map.screens[screen] = {
+    screen,
+    components: prevScreen?.components ?? [],
+    datasourceIds: prevScreen?.datasourceIds ?? [],
+    lastSeenAt: prevScreen?.lastSeenAt ?? now,
+    screenshotPath: input.screenshotPath,
+    screenshotSessionId: input.sessionId,
+    screenshotCapturedAt: input.capturedAt,
+  };
+
+  const pageId = input.pageId?.trim();
+  if (pageId && map.pages[pageId]) {
+    const page = map.pages[pageId];
+    page.screenshotPath = input.screenshotPath;
+    page.screenshotSessionId = input.sessionId;
+    page.screenshotCapturedAt = input.capturedAt;
+  }
+
+  const updated = touch(map);
+  scheduleAtlasDocHtmlRewrite(updated);
+  return updated;
 }
 
 export function getAtlasDocMap(scenario = 'default'): AtlasDocMap {

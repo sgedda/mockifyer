@@ -7,6 +7,12 @@ import {
   upsertAtlasDocFromPresentation,
 } from './atlas-doc';
 import { setAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { resetAtlasScreenshotRuntime } from './atlas-screenshot';
+import {
+  configureAtlasScreenshotCapture,
+  resolveAtlasCaptureScreenshots,
+  scheduleAtlasScreenshotCapture,
+} from './atlas-screenshot';
 /** Atlas capture mode — `off` by default. */
 export type AtlasMode = 'off' | 'live' | 'session';
 
@@ -83,6 +89,12 @@ export interface AtlasConfig {
    * Default when atlas is on: `{mockDataPath}/atlas-html`.
    */
   htmlOutputPath?: string;
+  /**
+   * When true (and {@link registerAtlasScreenshotCapturer} is wired), capture one PNG per
+   * sessionId+screen on presentation / screen mount. Default false. Env `MOCKIFYER_ATLAS_SCREENSHOTS`
+   * can force on/off.
+   */
+  captureScreenshots?: boolean;
 }
 
 export interface AtlasRuntimeState {
@@ -237,6 +249,10 @@ export function configureAtlas(
 
   setAtlasUsageDashboardBaseUrl(runtime.dashboardBaseUrl);
   setAtlasDocHtmlOutputPath(htmlOutputPath);
+  configureAtlasScreenshotCapture({
+    enabled: resolveAtlasCaptureScreenshots(atlasCfg ?? null),
+    htmlOutputPath,
+  });
 
   if (mode !== 'off' && !runtime.sessionId) {
     startAtlasSession();
@@ -285,6 +301,7 @@ export function resetAtlasRuntime(): void {
   setAtlasUsageSessionId(null);
   resetAtlasUsageRuntime();
   resetAtlasDocRuntime();
+  resetAtlasScreenshotRuntime();
 }
 
 function pushEvent(event: AtlasEvent): void {
@@ -494,6 +511,14 @@ export function capturePresentation(input: CapturePresentationInput): AtlasPrese
       },
     });
   }
+
+  scheduleAtlasScreenshotCapture({
+    screen: event.cms.pageSlug || event.cms.pageId,
+    sessionId: event.sessionId,
+    scenario: event.scenario,
+    pageId: event.cms.pageId,
+    timestamp: event.timestamp,
+  });
 
   return event;
 }
