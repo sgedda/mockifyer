@@ -98,6 +98,33 @@ describe('atlas', () => {
     expect(sampled.items.length).toBeLessThanOrEqual(4);
   });
 
+  it('sampleDeep schema mode terminates on circular CMS props', () => {
+    configureAtlas({ atlas: { mode: 'live', captureValues: 'schema' } });
+    const shown: Record<string, unknown> = { type: 'hero', headline: 'Hi' };
+    shown.parent = shown;
+    const sampled = sampleDeep(shown, { mode: 'schema', depth: 2 }) as Record<string, unknown>;
+    expect(sampled.type).toBe('string');
+    expect(sampled.headline).toBe('string');
+    expect(sampled.parent).toEqual(
+      expect.objectContaining({
+        type: 'string',
+        parent: 'object',
+      })
+    );
+  });
+
+  it('capturePresentation schema mode does not crash on circular shown', () => {
+    configureAtlas({ atlas: { mode: 'live', captureValues: 'schema' } });
+    const shown: Record<string, unknown> = { headline: 'Hi' };
+    shown.self = shown;
+    expect(() =>
+      capturePresentation({
+        cms: { pageId: 'home', nodeId: 'hero', type: 'hero', path: 'home/hero' },
+        shown,
+      })
+    ).not.toThrow();
+  });
+
   it('buildAtlasTree nests by parentId', () => {
     configureAtlas({ atlas: { mode: 'live' } });
     const sessionId = startAtlasSession('sess-tree');

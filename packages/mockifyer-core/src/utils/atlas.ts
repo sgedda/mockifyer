@@ -331,6 +331,8 @@ export function sampleDeep(
       if (v === null || v === undefined) return v === null ? 'null' : 'undefined';
       if (Array.isArray(v)) return `array(${v.length})`;
       if (typeof v === 'object') {
+        // Same depth cap as sample/full — CMS props often have parent cycles.
+        if (depth >= maxDepth) return 'object';
         const keys = Object.keys(v as object);
         return Object.fromEntries(keys.map((k) => [k, walk((v as Record<string, unknown>)[k], depth + 1)]));
       }
