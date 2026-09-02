@@ -55,6 +55,7 @@ export * from './utils/atlas-cache';
 export * from './utils/atlas-cms-renderer';
 export * from './utils/atlas-doc';
 export * from './utils/atlas-doc-html';
+export * from './utils/atlas-doc-data';
 export * from './utils/atlas-usage';
 export * from './utils/atlas-screenshot';
 export * from './utils/flight-recorder';

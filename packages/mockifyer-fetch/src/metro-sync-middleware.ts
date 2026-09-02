@@ -12,6 +12,7 @@
  * 8. GET /mockifyer-atlas-html/incidents/{id}.html — serve crash trace HTML from project folder
  * 9. POST /mockifyer-atlas-screenshot — write screen PNG under mock-data/atlas-html/screenshots/
  * 10. GET /mockifyer-atlas-html/screenshots/{file}.png — serve screen PNGs for incident HTML
+ * 11. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -37,6 +38,10 @@ import {
   setAtlasDocScreenshot,
   flushAtlasDocHtmlRewrite,
   setAtlasDocHtmlOutputPath,
+  writeAtlasDocHtml,
+  setAtlasDocMap,
+  type AtlasDocMap,
+  type NetworkEvent,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -1001,6 +1006,68 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = result.success ? 201 : 400;
           res.end(JSON.stringify(result));
+        } catch (error) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    // Full Atlas interactive HTML (Dev Menu → requestAtlasDocsRender)
+    if (url === '/mockifyer-atlas-render' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      req.on('end', () => {
+        try {
+          const parsed = JSON.parse(body) as {
+            outputRelativeDir?: string;
+            doc?: AtlasDocMap;
+            events?: NetworkEvent[];
+          };
+          const rel =
+            typeof parsed.outputRelativeDir === 'string' && parsed.outputRelativeDir.trim()
+              ? parsed.outputRelativeDir.trim().replace(/^[/\\]+/, '')
+              : 'atlas-html';
+          if (rel.includes('..')) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Invalid outputRelativeDir' }));
+            return;
+          }
+          const outDir = path.join(mockDataPath, rel);
+          const doc = parsed.doc;
+          if (!doc || typeof doc !== 'object') {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'doc is required' }));
+            return;
+          }
+          setAtlasDocMap(doc);
+          setAtlasDocHtmlOutputPath(outDir);
+          const events = Array.isArray(parsed.events) ? parsed.events : [];
+          const written = writeAtlasDocHtml(outDir, doc, events);
+          const relativeFromRoot = path.relative(projectRoot, outDir).split(path.sep).join('/');
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = written > 0 ? 201 : 500;
+          res.end(
+            JSON.stringify({
+              success: written > 0,
+              written,
+              dir: outDir,
+              outputDir: relativeFromRoot,
+              hopCount: events.length,
+              error: written > 0 ? undefined : 'writeAtlasDocHtml wrote 0 files',
+            })
+          );
         } catch (error) {
           res.statusCode = 400;
           res.setHeader('Content-Type', 'application/json');
