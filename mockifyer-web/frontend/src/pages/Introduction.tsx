@@ -15,7 +15,7 @@ import {
 import { HERO_TAGLINE } from '@/lib/use-page-seo'
 import HomeFaq from '@/components/HomeFaq'
 import PackagesOverview from '@/components/PackagesOverview'
-import { KEY_FEATURES, MCP_TOOLS } from '@/lib/product-docs'
+import { KEY_FEATURES, MCP_TOOLS, MCP_USEFULNESS_POINTS, MCP_WORKFLOW_STEPS } from '@/lib/product-docs'
 import CodeBlock from '@/components/CodeBlock'
 
 export default function Introduction() {
@@ -106,11 +106,32 @@ export default function Introduction() {
             language="bash"
             code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
           />
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            {MCP_TOOLS.map((tool) => (
-              <li key={tool}>{tool}</li>
-            ))}
-          </ul>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h4 className="text-sm font-semibold mb-2">How MCP works</h4>
+              <ol className="text-sm text-muted-foreground space-y-1 list-decimal pl-5">
+                {MCP_WORKFLOW_STEPS.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Why it is useful</h4>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                {MCP_USEFULNESS_POINTS.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold mb-2">Available tools</h4>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+              {MCP_TOOLS.map((tool) => (
+                <li key={tool}>{tool}</li>
+              ))}
+            </ul>
+          </div>
           <Link to="/config-reference">
             <Button variant="outline" size="sm">
               Configuration reference
