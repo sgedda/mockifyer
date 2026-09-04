@@ -1,14 +1,22 @@
 /**
  * Self-contained Atlas auto-doc HTML for local browsing (file:// / VS Code).
  * Written on Node capture upserts when {@link setAtlasDocHtmlOutputPath} is set.
- * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey — kind filters, dedup, colored chain boxes,
- * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters.
+ * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey, Scrub, Requests — kind filters, dedup,
+ * search/date filters (FlexSearch), sortable request table, colored chain boxes,
+ * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters, GUI-linked vs screen-only badges.
+ * Scrub: drag a playhead or Play/Pause through session time; detail pane follows the active hop.
  * Safe on React Native: `fs`/`path` require is try/caught; writes no-op.
  */
 
 import type { AtlasDocMap, AtlasDocNode, AtlasDocPage } from './atlas-doc';
+import {
+  buildGuiLinkedRequestIdSet,
+  resolveHopGuiAttribution,
+} from './hop-gui-attribution';
 import type { NetworkEvent } from './network-event-types';
+import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage';
+import { getFlexSearchEmbedScript } from './atlas-flexsearch-embed';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -126,6 +134,19 @@ pre.json { white-space: pre; }
 .json-n { color: #b5cea8; }
 .json-b { color: #569cd6; }
 .json-null { color: #569cd6; }
+.json-used-direct { background: rgba(34, 197, 94, 0.22); border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.45); }
+.json-used-descendant { background: rgba(34, 197, 94, 0.08); border-radius: 2px; }
+.json-unused-dim { opacity: 0.38; }
+.field-usage-toolbar { display: flex; flex-wrap: wrap; gap: 0.65rem 1rem; align-items: center; margin: 0.35rem 0 0.5rem; font-size: 0.8rem; }
+.field-usage-toolbar label { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; color: var(--muted); }
+.field-usage-meta { margin: 0 0 0.5rem; font-size: 0.78rem; color: #166534; }
+.field-usage-legend { font-size: 0.75rem; color: var(--muted); margin: 0 0 0.35rem; }
+.field-usage-legend .swatch { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 2px; margin-right: 0.2rem; vertical-align: middle; }
+.field-usage-legend .swatch.direct { background: rgba(34, 197, 94, 0.45); }
+.field-usage-legend .swatch.desc { background: rgba(34, 197, 94, 0.15); }
+.screenshot-panel { margin: 0.65rem 0 0.85rem; }
+.screenshot-panel img.screenshot-preview { display: block; max-width: min(280px, 100%); height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.screenshot-panel .meta { margin-top: 0.35rem; }
 .error-panel { background: var(--err-bg); border: 1px solid #fecaca; border-left: 4px solid var(--err); border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
 .error-panel-title { font-size: 0.8rem; font-weight: 700; color: var(--err); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
 .error-item { margin: 0.35rem 0; font-size: 0.85rem; }
@@ -166,6 +187,27 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .bar { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; background: var(--bar); min-width: 2px; }
 .bar.mock { background: var(--bar2); }
 .bar.err { background: #dc2626; }
+.scrub-toolbar { display: flex; flex-wrap: wrap; gap: 0.65rem 1rem; align-items: center; margin: 0.5rem 0 0.75rem; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.scrub-toolbar .scrub-slider-wrap { flex: 1 1 14rem; min-width: 10rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.scrub-toolbar input[type="range"] { width: 100%; accent-color: var(--accent); }
+.scrub-toolbar .scrub-time { font-variant-numeric: tabular-nums; font-size: 0.85rem; font-weight: 600; min-width: 7rem; }
+.scrub-play-controls { display: flex; gap: 0.35rem; align-items: center; }
+.scrub-play-controls button { border: 1px solid var(--border); background: var(--fg); color: var(--card); border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+.scrub-play-controls button[data-scrub-pause] { background: var(--card); color: var(--fg); }
+.scrub-play-controls button:hover { opacity: 0.9; }
+.scrub-counts { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.scrub-counts .badge.in-flight { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; font-weight: 600; }
+.scrub-counts .badge.done { color: #166534; border-color: #86efac; background: #f0fdf4; }
+.scrub-counts .badge.future { color: var(--muted); border-style: dashed; }
+.scrub-global-track { position: relative; height: 1.35rem; background: #ebebe6; border-radius: 4px; margin: 0 0 0.85rem; overflow: hidden; }
+.scrub-global-track .bar { top: 3px; bottom: 3px; opacity: 0.85; }
+.scrub-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #111; z-index: 2; pointer-events: none; }
+.scrub-playhead::after { content: ''; position: absolute; top: -2px; left: -3px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #111; }
+.timing-row.scrub-future, .hop-row.scrub-future { opacity: 0.35; }
+.timing-row.scrub-inflight, .hop-row.scrub-inflight { background: #eff6ff; }
+.badge.scrub-state-future { color: var(--muted); border-style: dashed; }
+.badge.scrub-state-inflight { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; font-weight: 600; }
+.badge.scrub-state-done { color: #166534; border-color: #86efac; background: #f0fdf4; }
 .group { border: 1px solid var(--border); border-radius: 8px; margin: 0.75rem 0; overflow: hidden; background: var(--card); }
 .group-h { padding: 0.5rem 0.75rem; background: #efefe9; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.35rem; justify-content: flex-start; }
 .group-h .spacer { margin-left: auto; font-weight: 500; color: var(--muted); }
@@ -215,6 +257,32 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .badge.trigger-navigation { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }
 .badge.trigger-child { color: #0f766e; border-color: #99f6e4; background: #f0fdfa; }
 .badge.trigger-unknown { color: var(--muted); }
+.badge.gui-linked { color: #166534; border-color: #86efac; background: #f0fdf4; font-weight: 600; }
+.badge.screen-only { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }
+.badge.unattributed { color: var(--muted); border-style: dashed; }
+.kind-filters button.gui-filter.on { background: #166534; color: #fff; border-color: #166534; }
+.kind-filters button.gui-filter.screen-only.on { background: #1d4ed8; border-color: #1d4ed8; }
+.req-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; margin: 0.35rem 0 0.75rem; align-items: center; }
+.req-filter-label { font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
+.req-filter-label input[type="search"], .req-filter-label input[type="date"] { border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.45rem; font-size: 0.8rem; font-family: inherit; background: var(--card); color: var(--fg); }
+.req-filter-label input[type="search"] { min-width: 12rem; }
+.req-clear { border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 0.2rem 0.55rem; cursor: pointer; font-size: 0.75rem; }
+.req-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin: 0.5rem 0; }
+.req-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.req-table th { text-align: left; padding: 0.45rem 0.5rem; background: #efefe9; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.req-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.req-table tr.req-row { cursor: pointer; }
+.req-table tr.req-row:hover { background: #eee; }
+.req-table tr.req-row.selected { background: #e8eefc; }
+.req-table tr.req-row.has-error { background: #fff1f1; }
+.req-table tr.req-row.has-slow { background: #fffbeb; }
+.req-sort { border: 0; background: transparent; cursor: pointer; font: inherit; font-weight: 600; padding: 0; color: inherit; }
+.req-sort.active { color: var(--accent); }
+.req-col-date { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.req-col-time { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.75rem; }
+.req-col-path { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-col-num { text-align: right; font-variant-numeric: tabular-nums; }
+.req-count { font-size: 0.8rem; color: var(--muted); margin: 0.25rem 0 0.5rem; }
 .layout { display: grid; grid-template-columns: 1fr; gap: 1rem; min-width: 0; }
 .layout > div { min-width: 0; }
 @media (min-width: 900px) {
@@ -354,7 +422,12 @@ function truncateBodyPreview(text: string | undefined): string | undefined {
   return `${text.slice(0, MAX_BODY_CHARS_IN_HTML)}\n… [truncated ${text.length - MAX_BODY_CHARS_IN_HTML} chars]`;
 }
 
-function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
+function slimNetworkEvent(
+  ev: NetworkEvent,
+  guiLinkedRequestIds: ReadonlySet<string>,
+  doc: AtlasDocMap
+): Record<string, unknown> {
+  const fieldUsage = computeUsedResponsePaths(doc, ev);
   const slim: Record<string, unknown> = {
     id: ev.id,
     timestamp: ev.timestamp,
@@ -366,7 +439,16 @@ function slimNetworkEvent(ev: NetworkEvent): Record<string, unknown> {
     source: ev.source,
     requestId: ev.requestId,
     parentRequestId: ev.parentRequestId,
+    sessionId: ev.sessionId,
     usage: ev.usage,
+    guiAttribution: resolveHopGuiAttribution(ev, guiLinkedRequestIds),
+    usedResponsePaths: fieldUsage.paths,
+    linkedGuiNodes: fieldUsage.nodes.map((n) => ({
+      pageId: n.pageId,
+      nodeId: n.nodeId,
+      type: n.type,
+      label: n.label,
+    })),
     requestBodyPreview: truncateBodyPreview(ev.requestBodyPreview),
     responseBodyPreview: truncateBodyPreview(ev.responseBodyPreview),
   };
@@ -571,9 +653,9 @@ function collectGraphqlErrorsFromNode(node, where, out, depth) {
     collectGraphqlErrorsFromNode(node.errors, where ? where + '.errors' : 'errors', out, depth + 1);
   }
   if (isErrorishObject(node) && (where.indexOf('errors') >= 0 || where.indexOf('extensions') >= 0)) {
-    var pathStr = '';
-    if (Array.isArray(node.path)) pathStr = node.path.join('.');
-    else if (node.path != null) pathStr = String(node.path);
+    var errPathLabel = '';
+    if (Array.isArray(node.path)) errPathLabel = node.path.join('.');
+    else if (node.path != null) errPathLabel = String(node.path);
     var code = null;
     if (node.extensions && typeof node.extensions === 'object' && node.extensions.code != null) code = node.extensions.code;
     else if (node.code != null) code = node.code;
@@ -581,7 +663,7 @@ function collectGraphqlErrorsFromNode(node, where, out, depth) {
     pushErrorItem(out, {
       message: messageFromErrorish(node),
       code: code != null ? String(code) : null,
-      path: pathStr || null,
+      path: errPathLabel || null,
       where: where || 'errors'
     });
   }
@@ -856,10 +938,87 @@ function highlightJsonHtml(prettyText) {
   }
   return out;
 }
-function renderJsonPre(text) {
+function renderJsonPre(text, usedPathMap, dimUnused) {
+  var parsed = parseBodyJson(text);
+  if (parsed.ok && usedPathMap && Object.keys(usedPathMap).length) {
+    return '<pre class="json">' + renderJsonValueHtml(parsed.value, '', usedPathMap, 0, !!dimUnused) + '</pre>';
+  }
   var pretty = prettyJsonText(text);
   if (pretty == null) return '<p class="empty">No body captured.</p>';
   return '<pre class="json">' + highlightJsonHtml(pretty) + '</pre>';
+}
+function buildUsedPathMap(paths) {
+  var m = {};
+  (paths || []).forEach(function (p) { if (p) m[p] = true; });
+  return m;
+}
+function pathUsageKind(path, map) {
+  if (!map || !Object.keys(map).length) return 'none';
+  if (map[path]) return 'direct';
+  var prefix = path ? path + '.' : '';
+  for (var k in map) {
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+    if (path === '' || k.indexOf(prefix) === 0) return 'descendant';
+  }
+  return 'unused';
+}
+function usageClassForKind(kind, role, dimUnused) {
+  if (kind === 'direct') return role + ' json-used-direct';
+  if (kind === 'descendant') return role + ' json-used-descendant';
+  if (kind === 'unused' && dimUnused) return role + ' json-unused-dim';
+  return role;
+}
+function escJsonStr(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function renderJsonValueHtml(value, path, map, indent, dimUnused) {
+  var kind = pathUsageKind(path, map);
+  if (dimUnused && kind === 'unused' && path !== '') return '';
+  var pad = '';
+  for (var i = 0; i < indent; i++) pad += '  ';
+  var childPad = pad + '  ';
+  if (value === null) {
+    return pad + '<span class="' + usageClassForKind(kind, 'json-null', dimUnused) + '">null</span>';
+  }
+  if (typeof value === 'boolean') {
+    return pad + '<span class="' + usageClassForKind(kind, 'json-b', dimUnused) + '">' + (value ? 'true' : 'false') + '</span>';
+  }
+  if (typeof value === 'number') {
+    return pad + '<span class="' + usageClassForKind(kind, 'json-n', dimUnused) + '">' + String(value) + '</span>';
+  }
+  if (typeof value === 'string') {
+    return pad + '<span class="' + usageClassForKind(kind, 'json-s', dimUnused) + '">"' + escJsonStr(value) + '"</span>';
+  }
+  if (Array.isArray(value)) {
+    if (dimUnused && kind === 'unused') return '';
+    var itemLines = [];
+    value.forEach(function (item, idx) {
+      var childPath = path ? path + '.' + idx : String(idx);
+      var line = renderJsonValueHtml(item, childPath, map, indent + 1, dimUnused);
+      if (line !== '') itemLines.push(line);
+    });
+    if (dimUnused && !itemLines.length) return '';
+    return pad + '[\\n' + itemLines.join(',\\n') + (itemLines.length ? '\\n' : '') + pad + ']';
+  }
+  if (typeof value === 'object') {
+    if (dimUnused && kind === 'unused' && path !== '') return '';
+    var entries = [];
+    Object.keys(value).forEach(function (k) {
+      var childPath = path ? path + '.' + k : k;
+      var childKind = pathUsageKind(childPath, map);
+      if (dimUnused && childKind === 'unused') return;
+      var childVal = renderJsonValueHtml(value[k], childPath, map, indent + 1, dimUnused);
+      if (childVal === '') return;
+      var keyCls = usageClassForKind(childKind, 'json-k', dimUnused);
+      var valPart = childVal;
+      if (childVal.indexOf(childPad) === 0) valPart = childVal.slice(childPad.length);
+      else if (childVal.indexOf(pad) === 0) valPart = childVal.slice(pad.length);
+      entries.push(childPad + '<span class="' + keyCls + '">"' + escJsonStr(k) + '"</span>: ' + valPart);
+    });
+    if (dimUnused && !entries.length && path !== '') return '';
+    return pad + '{\\n' + entries.join(',\\n') + (entries.length ? '\\n' : '') + pad + '}';
+  }
+  return pad + escJsonStr(String(value));
 }
 function renderErrorPanelHtml(analysis, escFn) {
   if (!analysis || !analysis.isError) return '';
@@ -921,6 +1080,16 @@ function renderErrorPanelHtml(analysis, escFn) {
   var kindEnabled = { cms: true, bff: true, backend: true, other: true, noise: false };
   var errorsOnly = false;
   var slowOnly = false;
+  /** null = all; otherwise filter to one GUI attribution bucket. */
+  var guiAttributionFilter = null;
+  var requestSearch = '';
+  var requestDateFrom = '';
+  var requestDateTo = '';
+  var requestSortKey = 'timestamp';
+  var requestSortDir = 'desc';
+  var reqSearchFocus = false;
+  var highlightUsedFields = true;
+  var dimUnusedFields = false;
   var slowThresholdMs = (DATA.slowThresholdMs > 0) ? DATA.slowThresholdMs : ATLAS_DEFAULT_SLOW_MS;
   var uniqueMode = 'off';
   var uniqueScope = 'global';
@@ -928,6 +1097,15 @@ function renderErrorPanelHtml(analysis, escFn) {
   var expandedUniqueGroups = {};
   /** Selected journey strip step key (scrolls / highlights matching group). */
   var selectedJourneyStep = null;
+  /** Scrub playhead offset from session t0 (ms). null = use end of span on first render. */
+  var scrubPlayheadMs = null;
+  /** When true, Scrub list hides hops that have not started yet. */
+  var scrubHideFuture = true;
+  var scrubFocus = false;
+  var scrubPlaying = false;
+  var scrubTimerId = null;
+  var scrubSpanMs = 1;
+  var SCRUB_TICK_MS = 80;
   var KIND_ORDER = ['cms', 'bff', 'backend', 'other', 'noise'];
   var KIND_META = {
     cms: { label: 'CMS', hint: 'deliveryapi / Umbraco content' },
@@ -935,6 +1113,23 @@ function renderErrorPanelHtml(analysis, escFn) {
     backend: { label: 'Backend', hint: 'booking / CRM / tokens / hotspot' },
     other: { label: 'Other', hint: 'uncategorized' },
     noise: { label: 'Noise', hint: 'probes / diagnostics' }
+  };
+  var GUI_ATTRIBUTION_META = {
+    'gui-linked': {
+      label: 'GUI-linked',
+      detail: 'Hop read by a CMS node / presentation (datasource or CMS usage)',
+      badgeClass: 'gui-linked'
+    },
+    'screen-only': {
+      label: 'Screen-only',
+      detail: 'Tagged while a screen was active — received on screen, not tied to a CMS node',
+      badgeClass: 'screen-only'
+    },
+    unattributed: {
+      label: 'Unattributed',
+      detail: 'No screen or CMS node usage annotation',
+      badgeClass: 'unattributed'
+    }
   };
 
   function usageList(u) {
@@ -947,6 +1142,78 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (parts.length) return parts.join(' / ');
     if (u.cms && u.cms.type) return u.cms.type;
     return u.datasourceId || 'app';
+  }
+  function resolveScreenshotForHop(e) {
+    var sessionId = e.sessionId || '';
+    var usages = usageList(e.usage);
+    var fallback = null;
+    for (var ui = 0; ui < usages.length; ui++) {
+      var u = usages[ui];
+      if (!u || !u.screen) continue;
+      var sc = (doc.screens || {})[u.screen];
+      if (sc && sc.screenshotPath) {
+        var shot = { path: sc.screenshotPath, capturedAt: sc.screenshotCapturedAt };
+        if (!sc.screenshotSessionId || !sessionId || sc.screenshotSessionId === sessionId) {
+          return shot;
+        }
+        if (!fallback) fallback = shot;
+      }
+      var pages = doc.pages || {};
+      for (var pid in pages) {
+        if (!Object.prototype.hasOwnProperty.call(pages, pid)) continue;
+        var pg = pages[pid];
+        if (pid === u.screen || pg.pageSlug === u.screen) {
+          if (pg.screenshotPath) {
+            var pageShot = { path: pg.screenshotPath, capturedAt: pg.screenshotCapturedAt };
+            if (!pg.screenshotSessionId || !sessionId || pg.screenshotSessionId === sessionId) {
+              return pageShot;
+            }
+            if (!fallback) fallback = pageShot;
+          }
+        }
+      }
+    }
+    return fallback;
+  }
+  function atlasAssetUrl(rel) {
+    if (!rel) return '';
+    var s = String(rel).replace(/^\\.\\//, '');
+    if (/^(https?:|data:|file:|\\/)/i.test(s)) return s;
+    try {
+      var pathName = (typeof location !== 'undefined' && location.pathname) ? String(location.pathname) : '';
+      // Metro serves under /mockifyer-atlas-html/… — keep assets under that prefix
+      var metroMarker = '/mockifyer-atlas-html/';
+      var metroIdx = pathName.indexOf(metroMarker);
+      if (metroIdx >= 0) {
+        return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
+      }
+      // Also match /mockifyer-atlas-html without trailing slash (index served at exact path)
+      if (pathName.endsWith('/mockifyer-atlas-html')) {
+        return pathName + '/' + s.replace(/^\\.\\.\\//, '');
+      }
+      // Static / Live Preview under …/mock-data/atlas-html/index.html
+      var atlasHtmlMarker = '/atlas-html/';
+      var atlasIdx = pathName.indexOf(atlasHtmlMarker);
+      if (atlasIdx >= 0) {
+        return pathName.slice(0, atlasIdx + atlasHtmlMarker.length) + s.replace(/^\\.\\.\\//, '');
+      }
+      // file:// …/atlas-html/incidents|pages/*.html → sibling screenshots/
+      if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
+        return '../' + s;
+      }
+    } catch (err) {}
+    return s;
+  }
+  function renderScreenshotPanelHtml(shot) {
+    if (!shot || !shot.path) return '';
+    var src = atlasAssetUrl(shot.path);
+    var html = '<div class="screenshot-panel"><div class="body-label">Screen capture</div>';
+    html += '<img class="screenshot-preview" src="' + esc(src) + '" alt="Screen at capture" loading="lazy" data-atlas-img />';
+    html += '<p class="meta atlas-img-missing" hidden style="color:var(--err)">Missing image <code>' + esc(src) + '</code></p>';
+    if (shot.capturedAt) html += '<p class="meta">captured ' + esc(shot.capturedAt) + '</p>';
+    html += '<p class="meta">file <code>' + esc(shot.path) + '</code></p>';
+    html += '</div>';
+    return html;
   }
   function esc(s) {
     return String(s == null ? '' : s)
@@ -1135,6 +1402,174 @@ function renderErrorPanelHtml(analysis, escFn) {
       return String(ts);
     }
   }
+  /** Date-only field (YYYY-MM-DD) for filters and table column. */
+  function formatDateOnly(ts) {
+    if (!ts) return '';
+    try {
+      var d = new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      function pad(n) { return n < 10 ? '0' + n : String(n); }
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    } catch (err) {
+      return '';
+    }
+  }
+  function formatTimeOnly(ts) {
+    if (!ts) return '';
+    try {
+      var d = new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      function pad(n) { return n < 10 ? '0' + n : String(n); }
+      return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    } catch (err) {
+      return '';
+    }
+  }
+  function hopSearchHaystack(e) {
+    var parts = [
+      e.method, e.path, e.url, e.requestId, e.parentRequestId, e.host,
+      eventHost(e), hopKind(e), e.guiAttribution, e.source, formatWhen(e.timestamp)
+    ];
+    usageList(e.usage).forEach(function (u) {
+      parts.push(u.screen, u.component, u.label, u.datasourceId);
+      if (u.cms) parts.push(u.cms.pageId, u.cms.nodeId, u.cms.type, u.cms.path);
+    });
+    return parts.filter(Boolean).join(' ').toLowerCase();
+  }
+  /** FlexSearch index of hop haystacks — rebuilt when event set is first searched. */
+  var hopFlexIndex = null;
+  var hopFlexIndexReady = false;
+  function ensureHopFlexIndex() {
+    if (hopFlexIndexReady) return hopFlexIndex;
+    hopFlexIndexReady = true;
+    var FS = typeof FlexSearch !== 'undefined' ? FlexSearch : null;
+    if (!FS || !FS.Index) {
+      hopFlexIndex = null;
+      return null;
+    }
+    hopFlexIndex = new FS.Index({
+      tokenize: 'forward',
+      cache: true,
+      resolution: 9
+    });
+    events.forEach(function (e) {
+      hopFlexIndex.add(e.id, hopSearchHaystack(e));
+    });
+    return hopFlexIndex;
+  }
+  function applyRequestQueryFilters(list) {
+    var filtered = list;
+    if (requestDateFrom || requestDateTo) {
+      filtered = filtered.filter(function (e) {
+        var dk = formatDateOnly(e.timestamp);
+        if (!dk) return false;
+        if (requestDateFrom && dk < requestDateFrom) return false;
+        if (requestDateTo && dk > requestDateTo) return false;
+        return true;
+      });
+    }
+  var q = requestSearch.trim();
+  if (!q) return filtered;
+  var index = ensureHopFlexIndex();
+  if (index) {
+    var ids = index.search(q.toLowerCase(), { suggest: true, limit: Math.max(filtered.length * 2, 200) });
+    var idSet = {};
+    for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
+    return filtered.filter(function (e) { return !!idSet[e.id]; });
+  }
+    var ql = q.toLowerCase();
+    return filtered.filter(function (e) { return hopSearchHaystack(e).indexOf(ql) >= 0; });
+  }
+  function sortRequests(list, key, dir) {
+    var mul = dir === 'desc' ? -1 : 1;
+    return list.slice().sort(function (a, b) {
+      var av;
+      var bv;
+      switch (key) {
+        case 'method':
+          av = String(a.method || '').toUpperCase();
+          bv = String(b.method || '').toUpperCase();
+          break;
+        case 'path':
+          av = String(a.path || a.url || '').toLowerCase();
+          bv = String(b.path || b.url || '').toLowerCase();
+          break;
+        case 'status':
+          av = typeof a.status === 'number' ? a.status : -1;
+          bv = typeof b.status === 'number' ? b.status : -1;
+          break;
+        case 'duration':
+          av = typeof a.durationMs === 'number' ? a.durationMs : (a._estimatedDurationMs != null ? a._estimatedDurationMs : -1);
+          bv = typeof b.durationMs === 'number' ? b.durationMs : (b._estimatedDurationMs != null ? b._estimatedDurationMs : -1);
+          break;
+        case 'kind':
+          av = hopKind(a);
+          bv = hopKind(b);
+          break;
+        case 'gui':
+          av = a.guiAttribution || 'unattributed';
+          bv = b.guiAttribution || 'unattributed';
+          break;
+        default:
+          av = new Date(a.timestamp).getTime();
+          bv = new Date(b.timestamp).getTime();
+          if (!isFinite(av)) av = 0;
+          if (!isFinite(bv)) bv = 0;
+      }
+      if (av < bv) return -1 * mul;
+      if (av > bv) return 1 * mul;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  }
+  function sortHeaderHtml(key, label) {
+    var active = requestSortKey === key;
+    var arrow = active ? (requestSortDir === 'asc' ? ' ↑' : ' ↓') : '';
+    return '<button type="button" class="req-sort' + (active ? ' active' : '') + '" data-req-sort="' + key + '">' + esc(label) + arrow + '</button>';
+  }
+  function renderRequestQueryFilters() {
+    var html = '<div class="req-filters">';
+    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, method, requestId, screen…" value="' + esc(requestSearch) + '" title="FlexSearch prefix match across hop fields"></label>';
+    html += '<label class="req-filter-label">From<input type="date" data-req-date-from value="' + esc(requestDateFrom) + '"></label>';
+    html += '<label class="req-filter-label">To<input type="date" data-req-date-to value="' + esc(requestDateTo) + '"></label>';
+    if (requestSearch || requestDateFrom || requestDateTo) {
+      html += '<button type="button" class="req-clear" data-req-clear>Clear filters</button>';
+    }
+    html += '</div>';
+    return html;
+  }
+  function renderRequestTable(list) {
+    if (!list.length) {
+      return '<p class="empty">No requests match the current filters.</p>';
+    }
+    var html = '<p class="req-count">' + list.length + ' request' + (list.length === 1 ? '' : 's') + '</p>';
+    html += '<div class="req-table-wrap"><table class="req-table"><thead><tr>';
+    html += '<th>' + sortHeaderHtml('timestamp', 'Date') + '</th>';
+    html += '<th>Time</th>';
+    html += '<th>' + sortHeaderHtml('method', 'Method') + '</th>';
+    html += '<th>' + sortHeaderHtml('path', 'Path') + '</th>';
+    html += '<th class="req-col-num">' + sortHeaderHtml('status', 'Status') + '</th>';
+    html += '<th class="req-col-num">' + sortHeaderHtml('duration', 'Duration') + '</th>';
+    html += '<th>' + sortHeaderHtml('kind', 'Kind') + '</th>';
+    html += '<th>' + sortHeaderHtml('gui', 'GUI') + '</th>';
+    html += '</tr></thead><tbody>';
+    list.forEach(function (e) {
+      var path = e.path || e.url || '';
+      var dur = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+      var guiMeta = GUI_ATTRIBUTION_META[e.guiAttribution || 'unattributed'] || GUI_ATTRIBUTION_META.unattributed;
+      html += '<tr class="req-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" data-select="' + esc(e.id) + '">';
+      html += '<td class="req-col-date">' + esc(formatDateOnly(e.timestamp) || '—') + '</td>';
+      html += '<td class="req-col-time">' + esc(formatTimeOnly(e.timestamp) || '—') + '</td>';
+      html += '<td><strong>' + esc(e.method || '') + '</strong></td>';
+      html += '<td class="req-col-path" title="' + esc(path) + '">' + esc(path) + '</td>';
+      html += '<td class="req-col-num">' + (e.status != null ? esc(String(e.status)) : '—') + '</td>';
+      html += '<td class="req-col-num">' + (dur != null ? esc(String(dur) + 'ms' + (e.durationMs == null ? '~' : '')) : '—') + '</td>';
+      html += '<td>' + esc(KIND_META[hopKind(e)].label) + '</td>';
+      html += '<td><span class="badge ' + guiMeta.badgeClass + '">' + esc(guiMeta.label) + '</span></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+  }
   /** Classify hop for CMS vs app-backend separation. */
   function hopKind(e) {
     var path = String((e && e.path) || (e && e.url) || '').toLowerCase();
@@ -1158,8 +1593,25 @@ function renderErrorPanelHtml(analysis, escFn) {
     ) return 'backend';
     return 'other';
   }
+  function hopGuiAttributionBadgeHtml(e) {
+    var kind = e.guiAttribution || 'unattributed';
+    var meta = GUI_ATTRIBUTION_META[kind] || GUI_ATTRIBUTION_META.unattributed;
+    return ' <span class="badge ' + meta.badgeClass + '" title="' + esc(meta.detail) + '">' + esc(meta.label) + '</span>';
+  }
+  function applyGuiAttributionFilter(list) {
+    if (!guiAttributionFilter) return list;
+    return list.filter(function (e) { return (e.guiAttribution || 'unattributed') === guiAttributionFilter; });
+  }
+  function countByGuiAttribution(list) {
+    var counts = { 'gui-linked': 0, 'screen-only': 0, unattributed: 0 };
+    list.forEach(function (e) {
+      var k = e.guiAttribution || 'unattributed';
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    return counts;
+  }
   function applyKindFilter(list) {
-    return applyIssueFilters(list.filter(function (e) { return kindEnabled[hopKind(e)] !== false; }));
+    return applyRequestQueryFilters(applyGuiAttributionFilter(applyIssueFilters(list.filter(function (e) { return kindEnabled[hopKind(e)] !== false; }))));
   }
   function countByKind(list) {
     var counts = { cms: 0, bff: 0, backend: 0, other: 0, noise: 0 };
@@ -1172,6 +1624,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     var counts = countByKind(kindBase);
     var errCount = countErrors(kindBase);
     var slowCount = countSlow(kindBase);
+    var guiCounts = countByGuiAttribution(kindBase);
     var html = '<div class="kind-filters"><span class="label">Show:</span>';
     KIND_ORDER.forEach(function (k) {
       var meta = KIND_META[k];
@@ -1183,6 +1636,15 @@ function renderErrorPanelHtml(analysis, escFn) {
     html += 'Errors<span class="n">' + errCount + '</span></button>';
     html += '<button type="button" class="slow-toggle' + (slowOnly ? ' on' : '') + '" data-slow-only="1" title="Show slow hops (≥ ' + slowThresholdMs + 'ms) plus parent/child chain context. Override with MOCKIFYER_ATLAS_SLOW_MS when rendering.">';
     html += 'Slow<span class="n">' + slowCount + '</span></button>';
+    html += '</div>';
+    html += '<div class="kind-filters"><span class="label">GUI:</span>';
+    html += '<button type="button" class="gui-filter' + (!guiAttributionFilter ? ' on' : '') + '" data-gui-filter="" title="Show all hops regardless of GUI linkage">All<span class="n">' + kindBase.length + '</span></button>';
+    ['gui-linked', 'screen-only', 'unattributed'].forEach(function (gk) {
+      var gmeta = GUI_ATTRIBUTION_META[gk];
+      var on = guiAttributionFilter === gk;
+      html += '<button type="button" class="gui-filter ' + gmeta.badgeClass + (on ? ' on' : '') + '" data-gui-filter="' + gk + '" title="' + esc(gmeta.detail) + '">';
+      html += esc(gmeta.label) + '<span class="n">' + (guiCounts[gk] || 0) + '</span></button>';
+    });
     html += '</div>';
     return html;
   }
@@ -1215,7 +1677,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     return html;
   }
   function renderListFilters(baseList, uniqueMeta) {
-    return renderKindFilters(baseList) + renderUniqueFilters(baseList, uniqueMeta);
+    return renderKindFilters(baseList) + renderRequestQueryFilters() + renderUniqueFilters(baseList, uniqueMeta);
   }
   function hopCountLabel(hops) {
     if (!hops || !hops.length) return '0 hops';
@@ -1244,6 +1706,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += hopStatusBadgesHtml(m);
       html += hopDurationBadgeHtml(m, slowThresholdMs);
       html += hopTriggerBadgeHtml(m);
+      html += hopGuiAttributionBadgeHtml(m);
       html += hopContextBadgeHtml(m);
       html += '</div></div>';
     });
@@ -1277,22 +1740,51 @@ function renderErrorPanelHtml(analysis, escFn) {
     html += '<div class="body-label">Request body</div>';
     html += e.requestBodyPreview ? renderJsonPre(e.requestBodyPreview) : '<p class="empty">No request body captured.</p>';
     html += '<div class="body-label">Response body</div>';
-    html += e.responseBodyPreview ? renderJsonPre(e.responseBodyPreview) : '<p class="empty">No response body captured.</p>';
+    var hasFieldUsage = e.usedResponsePaths && e.usedResponsePaths.length;
+    if (hasFieldUsage) {
+      html += '<div class="field-usage-toolbar">';
+      html += '<label><input type="checkbox" data-toggle-used-fields' + (highlightUsedFields ? ' checked' : '') + '> Highlight GUI-used fields</label>';
+      if (highlightUsedFields) {
+        html += '<label><input type="checkbox" data-toggle-dim-unused' + (dimUnusedFields ? ' checked' : '') + '> Hide unused branches</label>';
+      }
+      html += '</div>';
+      if (highlightUsedFields) {
+        html += '<p class="field-usage-legend"><span class="swatch direct"></span> direct match';
+        html += ' · <span class="swatch desc"></span> parent of used field</p>';
+      }
+      if (e.linkedGuiNodes && e.linkedGuiNodes.length) {
+        html += '<p class="meta field-usage-meta">Compared to GUI props from: ' + e.linkedGuiNodes.map(function (n) {
+          return esc(n.label || n.type) + ' (' + esc(n.pageId) + '/' + esc(n.nodeId) + ')';
+        }).join(', ') + '</p>';
+      }
+    } else if (e.guiAttribution === 'gui-linked') {
+      html += '<p class="meta">No props sample linked yet — capture presentation with shown props to highlight used response fields.</p>';
+    }
+    var usedMap = highlightUsedFields && hasFieldUsage ? buildUsedPathMap(e.usedResponsePaths) : null;
+    html += e.responseBodyPreview
+      ? renderJsonPre(e.responseBodyPreview, usedMap, dimUnusedFields)
+      : '<p class="empty">No response body captured.</p>';
     return html;
   }
 
   function renderHopSummary(e) {
     var analysis = analyzeHopErrors(e);
     var html = '<h3>' + esc(e.method) + ' ' + esc(e.path || e.url) + '</h3>';
-    html += '<p class="meta">' + esc(eventHost(e)) + '<br/>' + esc(e.timestamp);
+    html += '<p class="meta">' + esc(eventHost(e)) + '<br/>';
+    html += 'date <code>' + esc(formatDateOnly(e.timestamp) || '—') + '</code>';
+    html += ' · time <code>' + esc(formatTimeOnly(e.timestamp) || '—') + '</code>';
+    html += ' · ' + esc(e.timestamp);
     html += hopStatusBadgesHtml(e);
     html += hopDurationBadgeHtml(e, slowThresholdMs);
     html += hopTriggerBadgeHtml(e);
+    html += hopGuiAttributionBadgeHtml(e);
     html += ' · ' + esc(e.source) + '</p>';
     if (e.requestId) html += '<p class="meta">requestId <code>' + esc(e.requestId) + '</code></p>';
     if (e.parentRequestId) html += '<p class="meta">parentRequestId <code>' + esc(e.parentRequestId) + '</code></p>';
     var us = usageList(e.usage);
     if (us.length) html += '<p class="used-by">used by: ' + us.map(formatUsage).map(esc).join(', ') + '</p>';
+    var shotHop = resolveScreenshotForHop(e);
+    if (shotHop) html += renderScreenshotPanelHtml(shotHop);
     html += renderTriggerPanelHtml(e);
     html += renderErrorPanelHtml(analysis, esc);
     html += renderSlowPanelHtml(e, slowThresholdMs, esc);
@@ -1310,6 +1802,9 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '<p class="meta">pageId <code>' + esc(page.pageId) + '</code>';
       if (page.documentId) html += '<br/>documentId <code>' + esc(page.documentId) + '</code>';
       html += '<br/>lastSeenAt ' + esc(page.lastSeenAt || '') + '</p>';
+      if (page.screenshotPath) {
+        html += renderScreenshotPanelHtml({ path: page.screenshotPath, capturedAt: page.screenshotCapturedAt });
+      }
       if (page.editUrl) html += '<p class="meta"><a href="' + esc(page.editUrl) + '" target="_blank" rel="noopener noreferrer">Edit page in CMS ↗</a></p>';
       html += '<div class="body-label">Linked hops (' + pageHops.length + ')</div>';
       if (!pageHops.length) html += '<p class="empty">No hops linked yet (usage screen / datasource requestId).</p>';
@@ -1373,6 +1868,9 @@ function renderErrorPanelHtml(analysis, escFn) {
       htmlS += '<p class="meta">Route / flow screen (not a CMS page — see Pages for presentation tree).</p>';
       htmlS += '<div class="meta">components: ' + esc((scDoc.components || []).join(', ') || '—') + '</div>';
       htmlS += '<div class="meta">datasources: ' + esc((scDoc.datasourceIds || []).join(', ') || '—') + '</div>';
+      if (scDoc.screenshotPath) {
+        htmlS += renderScreenshotPanelHtml({ path: scDoc.screenshotPath, capturedAt: scDoc.screenshotCapturedAt });
+      }
       htmlS += '<div class="body-label">Linked hops (' + scHops.length + ')</div>';
       if (!scHops.length) {
         htmlS += '<p class="empty">No hops tagged with this exact screen yet.</p>';
@@ -1893,6 +2391,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += hopStatusBadgesHtml(e);
       html += hopDurationBadgeHtml(e, slowThresholdMs);
       html += hopTriggerBadgeHtml(e);
+      html += hopGuiAttributionBadgeHtml(e);
       html += hopContextBadgeHtml(e);
       html += repeatBadgeHtml(uniqueMeta, e);
       if (r.hasChildren) html += ' <span class="badge">' + r.childCount + ' nested</span>';
@@ -2155,6 +2654,7 @@ function renderErrorPanelHtml(analysis, escFn) {
             html += ' <span class="badge">' + esc(hopKind(hop)) + '</span>';
             html += hopStatusBadgesHtml(hop);
             html += hopDurationBadgeHtml(hop, slowThresholdMs);
+            html += hopGuiAttributionBadgeHtml(hop);
             if (hop.responseBodyPreview) html += ' <span class="badge">body</span>';
             var us = usageList(hop.usage);
             if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
@@ -2208,6 +2708,7 @@ function renderErrorPanelHtml(analysis, escFn) {
           if (hop) {
             html += hopStatusBadgesHtml(hop);
             html += hopDurationBadgeHtml(hop, slowThresholdMs);
+            html += hopGuiAttributionBadgeHtml(hop);
           }
           if (!hop) html += ' <span class="badge">no hop</span>';
           html += '<div class="meta">phase: ' + esc(phases) + '</div>';
@@ -2353,6 +2854,7 @@ function renderErrorPanelHtml(analysis, escFn) {
             html += hopStatusBadgesHtml(e);
             html += hopDurationBadgeHtml(e, slowThresholdMs);
             html += hopTriggerBadgeHtml(e);
+            html += hopGuiAttributionBadgeHtml(e);
             html += hopContextBadgeHtml(e);
             html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + '</div>';
             if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
@@ -2407,6 +2909,7 @@ function renderErrorPanelHtml(analysis, escFn) {
         html += hopStatusBadgesHtml(e);
         html += hopDurationBadgeHtml(e, slowThresholdMs);
         html += hopTriggerBadgeHtml(e);
+        html += hopGuiAttributionBadgeHtml(e);
         html += hopContextBadgeHtml(e);
         html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</div>';
         if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
@@ -2465,6 +2968,7 @@ function renderErrorPanelHtml(analysis, escFn) {
         html += hopStatusBadgesHtml(e);
         html += hopDurationBadgeHtml(e, slowThresholdMs);
         html += hopTriggerBadgeHtml(e);
+        html += hopGuiAttributionBadgeHtml(e);
         html += hopContextBadgeHtml(e);
         if (e.responseBodyPreview) html += '<span class="badge">body</span>';
         html += '</div>';
@@ -2479,6 +2983,257 @@ function renderErrorPanelHtml(analysis, escFn) {
     el.innerHTML = html;
   }
 
+  /** Mirror of atlas-request-scrubber resolveHopDurationMs / hopStateAt (keep in sync). */
+  function scrubDurationMs(e) {
+    var raw = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+    if (raw > 0) return Math.max(raw, 1);
+    return 8;
+  }
+  function scrubHopState(e, playheadMs, t0Ms) {
+    var startAbs = new Date(e.timestamp).getTime();
+    if (!isFinite(startAbs)) return 'future';
+    var start = startAbs - t0Ms;
+    var end = start + scrubDurationMs(e);
+    if (start > playheadMs) return 'future';
+    if (end <= playheadMs) return 'done';
+    return 'in-flight';
+  }
+  function formatScrubOffset(ms) {
+    if (!(ms >= 0)) return '+0ms';
+    if (ms < 1000) return '+' + Math.round(ms) + 'ms';
+    return '+' + (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
+  }
+  function collectDocScreenshots() {
+    var shots = [];
+    var seen = {};
+    function addShot(shot) {
+      if (!shot || !shot.path || seen[shot.path]) return;
+      seen[shot.path] = true;
+      shots.push(shot);
+    }
+    function addFromEntry(entry, labelPrefix, key) {
+      if (!entry) return;
+      var labelBase = labelPrefix + ' ' + ((entry.screen || entry.pageSlug || key) || '');
+      if (entry.screenshots && entry.screenshots.length) {
+        entry.screenshots.forEach(function (s) {
+          addShot({
+            path: s.path,
+            capturedAt: s.capturedAt,
+            label: labelBase + (s.phase ? ' · ' + s.phase : '')
+          });
+        });
+        return;
+      }
+      if (entry.screenshotPath) {
+        addShot({ path: entry.screenshotPath, capturedAt: entry.screenshotCapturedAt, label: labelBase });
+      }
+    }
+    var screens = doc.screens || {};
+    Object.keys(screens).forEach(function (k) { addFromEntry(screens[k], 'screen', k); });
+    var pages = doc.pages || {};
+    Object.keys(pages).forEach(function (pid) { addFromEntry(pages[pid], 'page', pid); });
+    return shots;
+  }
+  function nearestDocScreenshot(absoluteMs) {
+    var shots = collectDocScreenshots();
+    var best = null;
+    var bestAt = -Infinity;
+    var upcoming = null;
+    var upcomingAt = Infinity;
+    shots.forEach(function (shot) {
+      if (!shot || !shot.path) return;
+      var at = shot.capturedAt ? new Date(shot.capturedAt).getTime() : NaN;
+      if (!isFinite(at)) return;
+      if (at <= absoluteMs) {
+        if (at >= bestAt) {
+          bestAt = at;
+          best = shot;
+        }
+      } else if (at < upcomingAt) {
+        upcomingAt = at;
+        upcoming = shot;
+      }
+    });
+    return { atOrBefore: best, upcoming: upcoming, upcomingAt: isFinite(upcomingAt) ? upcomingAt : null };
+  }
+  function scrubStateBadgeHtml(state) {
+    if (state === 'in-flight') return ' <span class="badge scrub-state-inflight">in-flight</span>';
+    if (state === 'done') return ' <span class="badge scrub-state-done">done</span>';
+    return ' <span class="badge scrub-state-future">future</span>';
+  }
+  function scrubRowClass(state) {
+    if (state === 'in-flight') return ' scrub-inflight';
+    if (state === 'future') return ' scrub-future';
+    return '';
+  }
+  function stopScrubPlayback() {
+    scrubPlaying = false;
+    if (scrubTimerId != null) {
+      clearInterval(scrubTimerId);
+      scrubTimerId = null;
+    }
+  }
+  function startScrubPlayback() {
+    if (scrubPlaying) return;
+    if (!(scrubSpanMs > 0)) return;
+    if (scrubPlayheadMs == null || scrubPlayheadMs >= scrubSpanMs) scrubPlayheadMs = 0;
+    scrubPlaying = true;
+    scrubTimerId = setInterval(function () {
+      var step = Math.max(scrubSpanMs / 100, 20);
+      var next = (scrubPlayheadMs == null ? 0 : scrubPlayheadMs) + step;
+      if (next >= scrubSpanMs) {
+        scrubPlayheadMs = scrubSpanMs;
+        stopScrubPlayback();
+      } else {
+        scrubPlayheadMs = next;
+      }
+      render();
+    }, SCRUB_TICK_MS);
+  }
+  /** Prefer in-flight hop at playhead, else latest completed — drives right-hand detail. */
+  function pickHopAtPlayhead(rows) {
+    var inflight = null;
+    var latestDone = null;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r.state === 'in-flight') inflight = r.event;
+      else if (r.state === 'done') latestDone = r.event;
+    }
+    return inflight || latestDone;
+  }
+
+  function renderScrub(el, uniqueMeta) {
+    var base = applyKindFilter(filterEvents());
+    var html = renderListFilters(base, uniqueMeta);
+    var list = uniqueMeta.list;
+    if (!list.length) {
+      stopScrubPlayback();
+      html += '<p class="empty">No hops to scrub for the selected kinds.</p>';
+      el.innerHTML = html;
+      return;
+    }
+    var tw = timing(list);
+    var t0 = Infinity;
+    list.forEach(function (e) {
+      var s = new Date(e.timestamp).getTime();
+      if (isFinite(s)) t0 = Math.min(t0, s);
+    });
+    if (!isFinite(t0)) t0 = Date.now();
+    var span = tw.span;
+    scrubSpanMs = span;
+    if (scrubPlayheadMs == null || !isFinite(scrubPlayheadMs)) scrubPlayheadMs = scrubPlaying ? 0 : span;
+    if (scrubPlayheadMs < 0) scrubPlayheadMs = 0;
+    if (scrubPlayheadMs > span) scrubPlayheadMs = span;
+    var playhead = scrubPlayheadMs;
+    var counts = { future: 0, inFlight: 0, done: 0, appeared: 0 };
+    var rows = tw.bars.map(function (b) {
+      var state = scrubHopState(b.event, playhead, t0);
+      if (state === 'future') counts.future += 1;
+      else if (state === 'in-flight') { counts.inFlight += 1; counts.appeared += 1; }
+      else { counts.done += 1; counts.appeared += 1; }
+      return { event: b.event, start: b.start, dur: b.dur, state: state };
+    });
+    var pick = pickHopAtPlayhead(rows);
+    if (pick) {
+      selectedId = pick.id;
+      selectedMap = null;
+    }
+    var absNow = t0 + playhead;
+    var near = nearestDocScreenshot(absNow);
+    var shot = near.atOrBefore;
+    html += '<p class="meta">Drag the playhead or press Play — the detail pane on the right follows the request active at that moment.</p>';
+    html += '<div class="scrub-toolbar">';
+    html += '<div class="scrub-play-controls">';
+    if (scrubPlaying) {
+      html += '<button type="button" data-scrub-pause title="Pause playback">Pause</button>';
+    } else {
+      html += '<button type="button" data-scrub-play title="Play from playhead (restarts at 0 if at end)">Play</button>';
+    }
+    html += '</div>';
+    html += '<div class="scrub-slider-wrap">';
+    html += '<label class="meta" for="scrub-playhead">Playhead</label>';
+    html += '<input id="scrub-playhead" type="range" min="0" max="' + Math.max(Math.round(span), 1) + '" step="1" value="' + Math.round(playhead) + '" data-scrub-ms />';
+    html += '</div>';
+    html += '<div class="scrub-time" title="' + esc(new Date(absNow).toISOString()) + '">' + esc(formatScrubOffset(playhead));
+    html += '<div class="meta">' + esc(formatWhen(new Date(absNow).toISOString())) + '</div></div>';
+    html += '<div class="scrub-counts">';
+    html += '<span class="badge done">done ' + counts.done + '</span>';
+    html += '<span class="badge in-flight">in-flight ' + counts.inFlight + '</span>';
+    html += '<span class="badge future">future ' + counts.future + '</span>';
+    html += '<span class="badge">appeared ' + counts.appeared + '/' + list.length + '</span>';
+    html += '</div>';
+    html += '<label class="meta"><input type="checkbox" data-scrub-hide-future' + (scrubHideFuture ? ' checked' : '') + '> Hide future</label>';
+    html += '</div>';
+    var playPct = span > 0 ? (playhead / span) * 100 : 0;
+    html += '<div class="scrub-global-track" title="Session timeline">';
+    rows.forEach(function (r) {
+      var left = (r.start / span) * 100;
+      var width = Math.max((r.dur / span) * 100, 0.35);
+      html += '<div class="' + barClass(r.event) + (r.state === 'future' ? ' scrub-future-bar' : '') + '" style="left:' + left + '%;width:' + width + '%;opacity:' + (r.state === 'future' ? '0.25' : '0.9') + '"></div>';
+    });
+    html += '<div class="scrub-playhead" style="left:' + playPct + '%"></div>';
+    html += '</div>';
+    if (shot) {
+      html += renderScreenshotPanelHtml(shot);
+      if (shot.label) html += '<p class="meta">Nearest capture: ' + esc(shot.label) + '</p>';
+    } else if (near.upcoming) {
+      html += '<p class="meta">No screenshot at or before this playhead — next capture at ' + esc(formatScrubOffset(near.upcomingAt - t0));
+      if (near.upcoming.label) html += ' (' + esc(near.upcoming.label) + ')';
+      html += '.</p>';
+      html += renderScreenshotPanelHtml(near.upcoming);
+      html += '<p class="meta">Showing upcoming capture (after playhead).</p>';
+    } else {
+      html += '<p class="meta">No screenshot at or before this playhead.</p>';
+    }
+    html += '<div class="group"><div class="group-h">Requests at playhead<span class="spacer">' + (scrubHideFuture ? counts.appeared : list.length) + '</span></div>';
+    rows.forEach(function (r) {
+      if (scrubHideFuture && r.state === 'future') return;
+      var e = r.event;
+      html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + scrubRowClass(r.state) + hopRowIssueClass(e) + '" data-select="' + esc(e.id) + '">';
+      html += '<div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+      html += scrubStateBadgeHtml(r.state);
+      html += repeatBadgeHtml(uniqueMeta, e);
+      html += hopStatusBadgesHtml(e);
+      html += hopDurationBadgeHtml(e, slowThresholdMs);
+      html += hopTriggerBadgeHtml(e);
+      html += hopGuiAttributionBadgeHtml(e);
+      html += hopContextBadgeHtml(e);
+      html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(formatScrubOffset(r.start)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</div>';
+      var us = usageList(e.usage);
+      if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
+      html += '</div>';
+      html += '<div class="track"><div class="' + barClass(e) + '" style="left:' + ((r.start / span) * 100) + '%;width:' + Math.max((r.dur / span) * 100, 0.4) + '%"></div>';
+      html += '<div class="scrub-playhead" style="left:' + playPct + '%"></div></div>';
+      var durRight = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+      html += '<div class="meta">' + (durRight != null ? durRight + 'ms' + (e.durationMs == null ? '~' : '') : '—') + '</div></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    if (scrubFocus) {
+      var inp = el.querySelector('[data-scrub-ms]');
+      if (inp) {
+        inp.focus();
+      }
+      scrubFocus = false;
+    }
+  }
+
+  function renderRequests(el, uniqueMeta) {
+    var base = applyKindFilter(filterEvents());
+    var list = sortRequests(uniqueMeta.list, requestSortKey, requestSortDir);
+    var html = renderListFilters(base, uniqueMeta);
+    html += renderRequestTable(list);
+    el.innerHTML = html;
+    if (reqSearchFocus) {
+      var inp = el.querySelector('[data-req-search]');
+      if (inp) {
+        inp.focus();
+        try { inp.selectionStart = inp.selectionEnd = inp.value.length; } catch (err) { /* ignore */ }
+      }
+      reqSearchFocus = false;
+    }
+  }
+
   function render() {
     prefetchByHopId = null;
     var uniqueMeta = buildViewList();
@@ -2490,6 +3245,8 @@ function renderErrorPanelHtml(analysis, escFn) {
     var wfEl = document.getElementById('view-waterfall');
     var ganttEl = document.getElementById('view-gantt');
     var journeyEl = document.getElementById('view-journey');
+    var scrubEl = document.getElementById('view-scrub');
+    var requestsEl = document.getElementById('view-requests');
     var detailEl = document.getElementById('hop-detail');
     var layoutEl = document.querySelector('#atlas-app .layout');
     if (layoutEl) layoutEl.classList.toggle('layout-journey', view === 'journey');
@@ -2499,6 +3256,8 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (view === 'waterfall') renderWaterfall(wfEl, list, uniqueMeta);
     if (view === 'gantt') renderGantt(ganttEl, uniqueMeta);
     if (view === 'journey') renderJourney(journeyEl, uniqueMeta);
+    if (view === 'scrub') renderScrub(scrubEl, uniqueMeta);
+    if (view === 'requests') renderRequests(requestsEl, uniqueMeta);
     renderDetail(detailEl);
     document.querySelectorAll('.tabs button').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-view') === view);
@@ -2507,6 +3266,19 @@ function renderErrorPanelHtml(analysis, escFn) {
       p.classList.toggle('active', p.id === 'view-' + view);
     });
   }
+
+  // img onerror does not bubble — capture phase; avoid inline onerror handlers.
+  document.getElementById('atlas-app').addEventListener('error', function (ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute || !t.getAttribute('data-atlas-img')) return;
+    t.style.display = 'none';
+    var m = t.nextSibling;
+    while (m && m.nodeType !== 1) m = m.nextSibling;
+    if (m && m.classList && m.classList.contains('atlas-img-missing')) {
+      m.hidden = false;
+      m.style.display = 'block';
+    }
+  }, true);
 
   document.getElementById('atlas-app').addEventListener('click', function (ev) {
     var t = ev.target;
@@ -2529,17 +3301,33 @@ function renderErrorPanelHtml(analysis, escFn) {
       t.getAttribute('data-kind-toggle') ||
       t.getAttribute('data-errors-only') ||
       t.getAttribute('data-slow-only') ||
+      t.hasAttribute('data-gui-filter') ||
+      t.getAttribute('data-req-sort') ||
+      t.getAttribute('data-req-clear') ||
       t.getAttribute('data-unique-mode') ||
       t.getAttribute('data-unique-scope') ||
       t.getAttribute('data-unique-keep') ||
       t.getAttribute('data-unique-expand') ||
-      t.getAttribute('data-journey-step')
+      t.getAttribute('data-journey-step') ||
+      t.getAttribute('data-scrub-play') != null ||
+      t.getAttribute('data-scrub-pause') != null
     ))) {
       t = t.parentNode;
     }
     if (!t || t === ev.currentTarget) return;
+    if (t.getAttribute('data-scrub-play') != null) {
+      startScrubPlayback();
+      render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-pause') != null) {
+      stopScrubPlayback();
+      render();
+      return;
+    }
     if (t.getAttribute('data-view')) {
       view = t.getAttribute('data-view');
+      if (view !== 'scrub') stopScrubPlayback();
       render();
       return;
     }
@@ -2566,6 +3354,30 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
     if (t.getAttribute('data-slow-only')) {
       slowOnly = !slowOnly;
+      render();
+      return;
+    }
+    if (t.hasAttribute('data-gui-filter')) {
+      var gf = t.getAttribute('data-gui-filter');
+      guiAttributionFilter = gf ? gf : null;
+      render();
+      return;
+    }
+    if (t.getAttribute('data-req-sort')) {
+      var sk = t.getAttribute('data-req-sort') || 'timestamp';
+      if (requestSortKey === sk) {
+        requestSortDir = requestSortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        requestSortKey = sk;
+        requestSortDir = sk === 'timestamp' ? 'desc' : 'asc';
+      }
+      render();
+      return;
+    }
+    if (t.getAttribute('data-req-clear')) {
+      requestSearch = '';
+      requestDateFrom = '';
+      requestDateTo = '';
       render();
       return;
     }
@@ -2673,6 +3485,52 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
   });
 
+  document.getElementById('atlas-app').addEventListener('input', function (ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute) return;
+    if (t.getAttribute('data-req-search') != null) {
+      requestSearch = t.value || '';
+      reqSearchFocus = true;
+      render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-ms') != null) {
+      var v = Number(t.value);
+      scrubPlayheadMs = isFinite(v) ? v : 0;
+      scrubFocus = true;
+      if (scrubPlaying) stopScrubPlayback();
+      render();
+    }
+  });
+  document.getElementById('atlas-app').addEventListener('change', function (ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute) return;
+    if (t.getAttribute('data-req-date-from') != null) {
+      requestDateFrom = t.value || '';
+      render();
+      return;
+    }
+    if (t.getAttribute('data-req-date-to') != null) {
+      requestDateTo = t.value || '';
+      render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-hide-future') != null) {
+      scrubHideFuture = !!t.checked;
+      render();
+      return;
+    }
+    if (t.getAttribute('data-toggle-used-fields') != null) {
+      highlightUsedFields = !!t.checked;
+      render();
+      return;
+    }
+    if (t.getAttribute('data-toggle-dim-unused') != null) {
+      dimUnusedFields = !!t.checked;
+      render();
+    }
+  });
+
   render();
 })();
 `.trim();
@@ -2764,6 +3622,7 @@ function buildInteractiveAtlasBody(
 ): string {
   const annotations = getAtlasUsageAnnotations();
   const merged = mergeUsageOntoNetworkEvents(events, annotations);
+  const guiLinkedRequestIds = buildGuiLinkedRequestIdSet(map);
   const payload: {
     doc: AtlasDocMap;
     events: ReturnType<typeof slimNetworkEvent>[];
@@ -2771,7 +3630,7 @@ function buildInteractiveAtlasBody(
     crash?: CrashHtmlPayload;
   } = {
     doc: map,
-    events: merged.map(slimNetworkEvent),
+    events: merged.map((ev) => slimNetworkEvent(ev, guiLinkedRequestIds, map)),
   };
   if (options?.mode === 'crash') {
     payload.mode = 'crash';
@@ -2782,7 +3641,7 @@ function buildInteractiveAtlasBody(
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-<p class="meta">Interactive Atlas — Map / Trace / Chains / Waterfall / Gantt / Journey. Click a hop or chain box to inspect request &amp; response bodies (when captureBodies is on).</p>
+<p class="meta">Interactive Atlas — Map / Trace / Chains / Waterfall / Gantt / Journey / Scrub / Requests. Click a hop or chain box to inspect request &amp; response bodies (when captureBodies is on).</p>
   <div class="tabs">
     <button type="button" class="active" data-view="map">Map</button>
     <button type="button" data-view="trace">Trace</button>
@@ -2790,6 +3649,8 @@ function buildInteractiveAtlasBody(
     <button type="button" data-view="waterfall">Waterfall</button>
     <button type="button" data-view="gantt">Gantt</button>
     <button type="button" data-view="journey">Journey</button>
+    <button type="button" data-view="scrub">Scrub</button>
+    <button type="button" data-view="requests">Requests</button>
   </div>
   <div class="layout">
     <div>
@@ -2799,11 +3660,14 @@ function buildInteractiveAtlasBody(
       <div id="view-waterfall" class="panel"></div>
       <div id="view-gantt" class="panel"></div>
       <div id="view-journey" class="panel"></div>
+      <div id="view-scrub" class="panel"></div>
+      <div id="view-requests" class="panel"></div>
     </div>
     <aside id="hop-detail" class="detail"></aside>
   </div>
 </div>
 <script type="application/json" id="atlas-data">${json}</script>
+${getFlexSearchEmbedScript()}
 <script>
 ${interactiveClientScript()}
 </script>`;

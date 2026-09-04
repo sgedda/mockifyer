@@ -275,6 +275,16 @@ export interface MockifyerConfig {
      * Open `{path}/index.html` in VS Code / a browser.
      */
     htmlOutputPath?: string;
+    /** Opt-in screen screenshots — requires {@link registerAtlasScreenshotCapturer}. Default false. */
+    captureScreenshots?: boolean;
+    /** Delay after paint before screenshot (default 600). Avoids skeleton frames. */
+    screenshotSettleMs?: number;
+    /**
+     * When to write PNGs under `atlas-html/screenshots/`.
+     * - `on-flush` (default): buffer in memory; write on Dev Menu render / crash export
+     * - `immediate`: write as soon as captured
+     */
+    screenshotPersist?: 'immediate' | 'on-flush';
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
@@ -464,6 +474,8 @@ export const ENV_VARS = {
    * See {@link MockifyerConfig.atlas.htmlOutputPath}; default `{mockDataPath}/atlas-html` when atlas is on.
    */
   MOCK_ATLAS_HTML_PATH: 'MOCKIFYER_ATLAS_HTML_PATH',
+  /** When `false`, disables atlas screenshot capture even if config enables it. */
+  MOCK_ATLAS_SCREENSHOTS: 'MOCKIFYER_ATLAS_SCREENSHOTS',
   /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */
