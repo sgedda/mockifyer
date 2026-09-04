@@ -1187,6 +1187,10 @@ function renderErrorPanelHtml(analysis, escFn) {
       if (metroIdx >= 0) {
         return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
       }
+      // Also match /mockifyer-atlas-html without trailing slash (index served at exact path)
+      if (pathName.endsWith('/mockifyer-atlas-html')) {
+        return pathName + '/' + s.replace(/^\\.\\.\\//, '');
+      }
       // Static / Live Preview under …/mock-data/atlas-html/index.html
       var atlasHtmlMarker = '/atlas-html/';
       var atlasIdx = pathName.indexOf(atlasHtmlMarker);
@@ -1468,7 +1472,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (!q) return filtered;
     var index = ensureHopFlexIndex();
     if (index) {
-      var ids = index.search(q.toLowerCase(), { limit: Math.max(filtered.length * 2, 200), suggest: true });
+      var ids = index.search(q.toLowerCase(), { suggest: true });
       var idSet = {};
       for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
       return filtered.filter(function (e) { return !!idSet[e.id]; });
