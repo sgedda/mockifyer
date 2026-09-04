@@ -44,6 +44,14 @@ export interface AtlasDocNode {
   lastSeenAt: string
 }
 
+/** One Atlas screen/page PNG capture (supports early + ready phases). */
+export interface AtlasDocScreenshotRef {
+  path: string
+  capturedAt: string
+  sessionId?: string
+  phase?: string
+}
+
 export interface AtlasDocPage {
   pageId: string
   pageSlug?: string
@@ -53,6 +61,8 @@ export interface AtlasDocPage {
   screenshotPath?: string
   screenshotSessionId?: string
   screenshotCapturedAt?: string
+  /** All captures for this page (early + ready) — Scrub uses capturedAt. */
+  screenshots?: AtlasDocScreenshotRef[]
 }
 
 /** Light doc entry when only usage.screen is known (no CMS presentation). */
@@ -65,6 +75,8 @@ export interface AtlasDocScreen {
   screenshotPath?: string
   screenshotSessionId?: string
   screenshotCapturedAt?: string
+  /** All captures for this screen (early + ready) — Scrub uses capturedAt. */
+  screenshots?: AtlasDocScreenshotRef[]
 }
 
 export interface AtlasDocPrefetch {
@@ -365,6 +377,7 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
       screenshotPath: prev?.screenshotPath,
       screenshotSessionId: prev?.screenshotSessionId,
       screenshotCapturedAt: prev?.screenshotCapturedAt,
+      screenshots: prev?.screenshots,
     };
     touch(map);
   }
@@ -380,6 +393,25 @@ export interface SetAtlasDocScreenshotInput {
   screenshotPath: string;
   capturedAt: string;
   pageId?: string;
+  /** Capture phase — `early` vs `ready` (appended to history). */
+  phase?: string;
+}
+
+function appendScreenshotRef(
+  existing: AtlasDocScreenshotRef[] | undefined,
+  ref: AtlasDocScreenshotRef
+): AtlasDocScreenshotRef[] {
+  const next = [...(existing ?? [])];
+  const idx = next.findIndex(
+    (s) => s.path === ref.path || (ref.phase && s.phase === ref.phase && s.sessionId === ref.sessionId)
+  );
+  if (idx >= 0) {
+    next[idx] = ref;
+  } else {
+    next.push(ref);
+  }
+  next.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+  return next;
 }
 
 /** Persist screenshot path on screen / page entries after capture. */
@@ -388,8 +420,15 @@ export function setAtlasDocScreenshot(input: SetAtlasDocScreenshotInput): AtlasD
   const map = ensureMap(scenario);
   const screen = input.screen.trim();
   const now = input.capturedAt;
+  const ref: AtlasDocScreenshotRef = {
+    path: input.screenshotPath,
+    capturedAt: input.capturedAt,
+    sessionId: input.sessionId,
+    phase: input.phase?.trim() || undefined,
+  };
 
   const prevScreen = map.screens[screen];
+  const screenShots = appendScreenshotRef(prevScreen?.screenshots, ref);
   map.screens[screen] = {
     screen,
     components: prevScreen?.components ?? [],
@@ -398,6 +437,7 @@ export function setAtlasDocScreenshot(input: SetAtlasDocScreenshotInput): AtlasD
     screenshotPath: input.screenshotPath,
     screenshotSessionId: input.sessionId,
     screenshotCapturedAt: input.capturedAt,
+    screenshots: screenShots,
   };
 
   const pageId = input.pageId?.trim();
@@ -406,6 +446,7 @@ export function setAtlasDocScreenshot(input: SetAtlasDocScreenshotInput): AtlasD
     page.screenshotPath = input.screenshotPath;
     page.screenshotSessionId = input.sessionId;
     page.screenshotCapturedAt = input.capturedAt;
+    page.screenshots = appendScreenshotRef(page.screenshots, ref);
   }
 
   const updated = touch(map);
@@ -515,25 +556,61 @@ export function mergeAtlasDocMap(incoming: AtlasDocMap): AtlasDocMap {
         timestamp: screen.lastSeenAt,
       })
     }
-    if (screen.screenshotPath?.trim()) {
-      setAtlasDocScreenshot({
-        scenario,
-        screen: screen.screen,
-        sessionId: screen.screenshotSessionId || 'imported',
-        screenshotPath: screen.screenshotPath,
-        capturedAt: screen.screenshotCapturedAt || screen.lastSeenAt,
-      })
+    if (screen.screenshotPath?.trim() || (screen.screenshots && screen.screenshots.length)) {
+      const shots =
+        screen.screenshots && screen.screenshots.length
+          ? screen.screenshots
+          : [
+              {
+                path: screen.screenshotPath!,
+                capturedAt: screen.screenshotCapturedAt || screen.lastSeenAt,
+                sessionId: screen.screenshotSessionId || 'imported',
+              },
+            ];
+      for (const shot of shots) {
+        if (!shot.path?.trim()) continue;
+        setAtlasDocScreenshot({
+          scenario,
+          screen: screen.screen,
+          sessionId: shot.sessionId || screen.screenshotSessionId || 'imported',
+          screenshotPath: shot.path,
+          capturedAt: shot.capturedAt || screen.screenshotCapturedAt || screen.lastSeenAt,
+          phase: shot.phase,
+        });
+      }
     }
   }
 
   for (const page of Object.values(incoming.pages ?? {})) {
-    if (page.screenshotPath?.trim()) {
+    if (page.screenshotPath?.trim() || (page.screenshots && page.screenshots.length)) {
       const map = ensureMap(scenario)
       const existingPage = map.pages[page.pageId]
       if (existingPage) {
-        existingPage.screenshotPath = page.screenshotPath
-        existingPage.screenshotSessionId = page.screenshotSessionId || 'imported'
-        existingPage.screenshotCapturedAt = page.screenshotCapturedAt || page.lastSeenAt
+        const shots =
+          page.screenshots && page.screenshots.length
+            ? page.screenshots
+            : page.screenshotPath
+              ? [
+                  {
+                    path: page.screenshotPath,
+                    capturedAt: page.screenshotCapturedAt || page.lastSeenAt,
+                    sessionId: page.screenshotSessionId || 'imported',
+                    phase: undefined as string | undefined,
+                  },
+                ]
+              : [];
+        for (const shot of shots) {
+          if (!shot.path?.trim()) continue;
+          existingPage.screenshotPath = shot.path
+          existingPage.screenshotSessionId = shot.sessionId || page.screenshotSessionId || 'imported'
+          existingPage.screenshotCapturedAt = shot.capturedAt || page.lastSeenAt
+          existingPage.screenshots = appendScreenshotRef(existingPage.screenshots, {
+            path: shot.path,
+            capturedAt: shot.capturedAt || page.lastSeenAt,
+            sessionId: shot.sessionId || page.screenshotSessionId || 'imported',
+            phase: shot.phase,
+          })
+        }
         touch(map)
       }
     }

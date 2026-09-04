@@ -524,8 +524,11 @@ describe('atlas-doc-html', () => {
     expect(files['index.html']).toContain('data-view="chains"');
     expect(files['index.html']).toContain('kind-filters');
     expect(files['index.html']).toContain('data-view="requests"');
+    expect(files['index.html']).toContain('data-view="scrub"');
     expect(files['index.html']).toContain('req-table');
     expect(files['index.html']).toContain('data-req-search');
+    expect(files['index.html']).toContain('FlexSearch');
+    expect(files['index.html']).toContain('ensureHopFlexIndex');
     expect(files['index.html']).toContain('hop-detail');
     expect(files['index.html']).toContain('atlas-data');
     expect(files['index.html']).toContain('Contact & Home');

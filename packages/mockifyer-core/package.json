@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.65",
+  "version": "1.10.71",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -117,5 +117,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sgedda/mockifyer.git"
+  },
+  "dependencies": {
+    "flexsearch": "^0.8.212"
   }
 }

@@ -9,10 +9,9 @@
  * 5. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
  * 6. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 7. POST /mockifyer-atlas-html — write crash-scoped trace HTML to mock-data/atlas-html/incidents/
- * 8. GET /mockifyer-atlas-html/incidents/{id}.html — serve crash trace HTML from project folder
- * 9. POST /mockifyer-atlas-screenshot — write screen PNG under mock-data/atlas-html/screenshots/
- * 10. GET /mockifyer-atlas-html/screenshots/{file}.png — serve screen PNGs for incident HTML
- * 11. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
+ * 8. GET /mockifyer-atlas-html[/…] — serve atlas-html static files (index, pages, incidents, screenshots)
+ * 9. POST /mockifyer-atlas-screenshot — write screen image (png/jpg/webp) under mock-data/atlas-html/screenshots/
+ * 10. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -761,8 +760,8 @@ function saveAtlasScreenshot(
   if (!rel || !base64.trim()) {
     return { success: false, error: 'relativePath and base64 are required' };
   }
-  if (rel.includes('..') || !rel.startsWith('screenshots/') || !rel.endsWith('.png')) {
-    return { success: false, error: 'relativePath must be screenshots/<name>.png' };
+  if (rel.includes('..') || !rel.startsWith('screenshots/') || !/\.(png|jpe?g|webp)$/i.test(rel)) {
+    return { success: false, error: 'relativePath must be screenshots/<name>.(png|jpg|webp)' };
   }
   const fileName = path.basename(rel);
   if (!fileName || fileName === '.' || fileName === '..') {
@@ -800,54 +799,93 @@ function saveAtlasScreenshot(
   }
 }
 
-function serveAtlasHtmlIncident(
-  mockDataPath: string,
-  incidentId: string,
-  res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string | Buffer) => void }
-): boolean {
-  const id = incidentId.trim();
-  if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'text/plain');
-    res.end('Invalid incident id');
-    return true;
-  }
-  const filePath = path.join(mockDataPath, 'atlas-html', 'incidents', `${id}.html`);
-  if (!fs.existsSync(filePath)) {
-    res.statusCode = 404;
-    res.setHeader('Content-Type', 'text/plain');
-    res.end('Crash trace HTML not found yet — retry after the export POST completes.');
-    return true;
-  }
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.end(fs.readFileSync(filePath, 'utf8'));
-  return true;
-}
+const ATLAS_HTML_CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.json': 'application/json; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+};
 
 /**
- * Serve a PNG from mock-data/atlas-html/screenshots/ via Metro
- * (`GET /mockifyer-atlas-html/screenshots/<file>.png`).
+ * Serve any safe file under mock-data/atlas-html/ (index, pages, incidents, screenshots).
+ * Prevents path traversal; directories resolve to index.html.
  */
-function serveAtlasHtmlScreenshot(
+function serveAtlasHtmlStatic(
   mockDataPath: string,
-  fileName: string,
+  relativeUrlPath: string,
   res: { setHeader: (k: string, v: string) => void; statusCode: number; end: (b?: string | Buffer) => void }
 ): boolean {
-  const name = fileName.trim();
-  if (!name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.endsWith('.png')) {
+  let rel = relativeUrlPath.split('?')[0] || '';
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
     res.statusCode = 400;
     res.setHeader('Content-Type', 'text/plain');
-    res.end('Invalid screenshot name');
+    res.end('Invalid path encoding');
     return true;
   }
-  const filePath = path.join(mockDataPath, 'atlas-html', 'screenshots', name);
+  rel = rel.replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!rel || rel.endsWith('/')) {
+    rel = `${rel}index.html`.replace(/^\//, '');
+  }
+  if (!rel || rel.includes('..') || path.isAbsolute(rel)) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Invalid atlas-html path');
+    return true;
+  }
+
+  const root = path.resolve(mockDataPath, 'atlas-html');
+  const filePath = path.resolve(root, rel);
+  const rootPrefix = root.endsWith(path.sep) ? root : root + path.sep;
+  if (filePath !== root && !filePath.startsWith(rootPrefix)) {
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Invalid atlas-html path');
+    return true;
+  }
+
   if (!fs.existsSync(filePath)) {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'text/plain');
-    res.end('Screenshot not found — flush Atlas screenshots (Dev Menu render / crash) first.');
+    res.end('Atlas HTML file not found — run Dev Menu “Render Atlas docs” first.');
     return true;
   }
-  res.setHeader('Content-Type', 'image/png');
+
+  const stat = fs.statSync(filePath);
+  if (stat.isDirectory()) {
+    const indexPath = path.join(filePath, 'index.html');
+    if (!fs.existsSync(indexPath) || !fs.statSync(indexPath).isFile()) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end('Atlas HTML index not found in directory.');
+      return true;
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.end(fs.readFileSync(indexPath, 'utf8'));
+    return true;
+  }
+
+  if (!stat.isFile()) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end('Not a file');
+    return true;
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType = ATLAS_HTML_CONTENT_TYPES[ext] || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
   res.setHeader('Cache-Control', 'no-cache');
   res.end(fs.readFileSync(filePath));
   return true;
@@ -931,19 +969,16 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
-    // Crash-scoped Atlas HTML trace (device → project mock-data/atlas-html/incidents/)
-    if (url.startsWith('/mockifyer-atlas-html/incidents/') && req.method === 'GET') {
-      const suffix = url.slice('/mockifyer-atlas-html/incidents/'.length);
-      const incidentId = suffix.endsWith('.html') ? suffix.slice(0, -'.html'.length) : suffix;
-      if (serveAtlasHtmlIncident(mockDataPath, incidentId, res)) {
-        return;
-      }
-    }
-
-    // Screen screenshots for incident / atlas HTML opened via Metro
-    if (url.startsWith('/mockifyer-atlas-html/screenshots/') && req.method === 'GET') {
-      const fileName = url.slice('/mockifyer-atlas-html/screenshots/'.length).split('?')[0] || '';
-      if (serveAtlasHtmlScreenshot(mockDataPath, fileName, res)) {
+    // Atlas HTML static files (index, pages, incidents, screenshots) — must not fall through to Expo web shell
+    if (
+      req.method === 'GET' &&
+      (url === '/mockifyer-atlas-html' || url.startsWith('/mockifyer-atlas-html/'))
+    ) {
+      const suffix =
+        url === '/mockifyer-atlas-html' || url === '/mockifyer-atlas-html/'
+          ? 'index.html'
+          : url.slice('/mockifyer-atlas-html/'.length);
+      if (serveAtlasHtmlStatic(mockDataPath, suffix, res)) {
         return;
       }
     }

@@ -1,9 +1,10 @@
 /**
  * Self-contained Atlas auto-doc HTML for local browsing (file:// / VS Code).
  * Written on Node capture upserts when {@link setAtlasDocHtmlOutputPath} is set.
- * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey, Requests — kind filters, dedup,
- * search/date filters, sortable request table, colored chain boxes,
+ * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey, Scrub, Requests — kind filters, dedup,
+ * search/date filters (FlexSearch), sortable request table, colored chain boxes,
  * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters, GUI-linked vs screen-only badges.
+ * Scrub: drag a playhead or Play/Pause through session time; detail pane follows the active hop.
  * Safe on React Native: `fs`/`path` require is try/caught; writes no-op.
  */
 
@@ -15,6 +16,7 @@ import {
 import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage';
+import { getFlexSearchEmbedScript } from './atlas-flexsearch-embed';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -143,7 +145,7 @@ pre.json { white-space: pre; }
 .field-usage-legend .swatch.direct { background: rgba(34, 197, 94, 0.45); }
 .field-usage-legend .swatch.desc { background: rgba(34, 197, 94, 0.15); }
 .screenshot-panel { margin: 0.65rem 0 0.85rem; }
-.screenshot-panel img.screenshot-preview { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.screenshot-panel img.screenshot-preview { display: block; max-width: min(280px, 100%); height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
 .screenshot-panel .meta { margin-top: 0.35rem; }
 .error-panel { background: var(--err-bg); border: 1px solid #fecaca; border-left: 4px solid var(--err); border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
 .error-panel-title { font-size: 0.8rem; font-weight: 700; color: var(--err); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
@@ -185,6 +187,27 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .bar { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; background: var(--bar); min-width: 2px; }
 .bar.mock { background: var(--bar2); }
 .bar.err { background: #dc2626; }
+.scrub-toolbar { display: flex; flex-wrap: wrap; gap: 0.65rem 1rem; align-items: center; margin: 0.5rem 0 0.75rem; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.scrub-toolbar .scrub-slider-wrap { flex: 1 1 14rem; min-width: 10rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.scrub-toolbar input[type="range"] { width: 100%; accent-color: var(--accent); }
+.scrub-toolbar .scrub-time { font-variant-numeric: tabular-nums; font-size: 0.85rem; font-weight: 600; min-width: 7rem; }
+.scrub-play-controls { display: flex; gap: 0.35rem; align-items: center; }
+.scrub-play-controls button { border: 1px solid var(--border); background: var(--fg); color: var(--card); border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+.scrub-play-controls button[data-scrub-pause] { background: var(--card); color: var(--fg); }
+.scrub-play-controls button:hover { opacity: 0.9; }
+.scrub-counts { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.scrub-counts .badge.in-flight { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; font-weight: 600; }
+.scrub-counts .badge.done { color: #166534; border-color: #86efac; background: #f0fdf4; }
+.scrub-counts .badge.future { color: var(--muted); border-style: dashed; }
+.scrub-global-track { position: relative; height: 1.35rem; background: #ebebe6; border-radius: 4px; margin: 0 0 0.85rem; overflow: hidden; }
+.scrub-global-track .bar { top: 3px; bottom: 3px; opacity: 0.85; }
+.scrub-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #111; z-index: 2; pointer-events: none; }
+.scrub-playhead::after { content: ''; position: absolute; top: -2px; left: -3px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #111; }
+.timing-row.scrub-future, .hop-row.scrub-future { opacity: 0.35; }
+.timing-row.scrub-inflight, .hop-row.scrub-inflight { background: #eff6ff; }
+.badge.scrub-state-future { color: var(--muted); border-style: dashed; }
+.badge.scrub-state-inflight { color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; font-weight: 600; }
+.badge.scrub-state-done { color: #166534; border-color: #86efac; background: #f0fdf4; }
 .group { border: 1px solid var(--border); border-radius: 8px; margin: 0.75rem 0; overflow: hidden; background: var(--card); }
 .group-h { padding: 0.5rem 0.75rem; background: #efefe9; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 0.35rem; justify-content: flex-start; }
 .group-h .spacer { margin-left: auto; font-weight: 500; color: var(--muted); }
@@ -630,9 +653,9 @@ function collectGraphqlErrorsFromNode(node, where, out, depth) {
     collectGraphqlErrorsFromNode(node.errors, where ? where + '.errors' : 'errors', out, depth + 1);
   }
   if (isErrorishObject(node) && (where.indexOf('errors') >= 0 || where.indexOf('extensions') >= 0)) {
-    var pathStr = '';
-    if (Array.isArray(node.path)) pathStr = node.path.join('.');
-    else if (node.path != null) pathStr = String(node.path);
+    var errPathLabel = '';
+    if (Array.isArray(node.path)) errPathLabel = node.path.join('.');
+    else if (node.path != null) errPathLabel = String(node.path);
     var code = null;
     if (node.extensions && typeof node.extensions === 'object' && node.extensions.code != null) code = node.extensions.code;
     else if (node.code != null) code = node.code;
@@ -640,7 +663,7 @@ function collectGraphqlErrorsFromNode(node, where, out, depth) {
     pushErrorItem(out, {
       message: messageFromErrorish(node),
       code: code != null ? String(code) : null,
-      path: pathStr || null,
+      path: errPathLabel || null,
       where: where || 'errors'
     });
   }
@@ -1074,6 +1097,15 @@ function renderErrorPanelHtml(analysis, escFn) {
   var expandedUniqueGroups = {};
   /** Selected journey strip step key (scrolls / highlights matching group). */
   var selectedJourneyStep = null;
+  /** Scrub playhead offset from session t0 (ms). null = use end of span on first render. */
+  var scrubPlayheadMs = null;
+  /** When true, Scrub list hides hops that have not started yet. */
+  var scrubHideFuture = true;
+  var scrubFocus = false;
+  var scrubPlaying = false;
+  var scrubTimerId = null;
+  var scrubSpanMs = 1;
+  var SCRUB_TICK_MS = 80;
   var KIND_ORDER = ['cms', 'bff', 'backend', 'other', 'noise'];
   var KIND_META = {
     cms: { label: 'CMS', hint: 'deliveryapi / Umbraco content' },
@@ -1155,6 +1187,12 @@ function renderErrorPanelHtml(analysis, escFn) {
       if (metroIdx >= 0) {
         return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
       }
+      // Static / Live Preview under …/mock-data/atlas-html/index.html
+      var atlasHtmlMarker = '/atlas-html/';
+      var atlasIdx = pathName.indexOf(atlasHtmlMarker);
+      if (atlasIdx >= 0) {
+        return pathName.slice(0, atlasIdx + atlasHtmlMarker.length) + s.replace(/^\\.\\.\\//, '');
+      }
       // file:// …/atlas-html/incidents|pages/*.html → sibling screenshots/
       if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
         return '../' + s;
@@ -1166,9 +1204,8 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (!shot || !shot.path) return '';
     var src = atlasAssetUrl(shot.path);
     var html = '<div class="screenshot-panel"><div class="body-label">Screen capture</div>';
-    html += '<img class="screenshot-preview" src="' + esc(src) + '" alt="Screen at capture" loading="lazy"';
-    html += ' onerror="this.style.display=\\'none\\';var m=this.nextSibling;if(m)m.style.display=\\'block\\';" />';
-    html += '<p class="meta" style="display:none;color:var(--err)">Missing image <code>' + esc(src) + '</code></p>';
+    html += '<img class="screenshot-preview" src="' + esc(src) + '" alt="Screen at capture" loading="lazy" data-atlas-img />';
+    html += '<p class="meta atlas-img-missing" hidden style="color:var(--err)">Missing image <code>' + esc(src) + '</code></p>';
     if (shot.capturedAt) html += '<p class="meta">captured ' + esc(shot.capturedAt) + '</p>';
     html += '<p class="meta">file <code>' + esc(shot.path) + '</code></p>';
     html += '</div>';
@@ -1395,18 +1432,49 @@ function renderErrorPanelHtml(analysis, escFn) {
     });
     return parts.filter(Boolean).join(' ').toLowerCase();
   }
+  /** FlexSearch index of hop haystacks — rebuilt when event set is first searched. */
+  var hopFlexIndex = null;
+  var hopFlexIndexReady = false;
+  function ensureHopFlexIndex() {
+    if (hopFlexIndexReady) return hopFlexIndex;
+    hopFlexIndexReady = true;
+    var FS = typeof FlexSearch !== 'undefined' ? FlexSearch : null;
+    if (!FS || !FS.Index) {
+      hopFlexIndex = null;
+      return null;
+    }
+    hopFlexIndex = new FS.Index({
+      tokenize: 'forward',
+      cache: true,
+      resolution: 9
+    });
+    events.forEach(function (e) {
+      hopFlexIndex.add(e.id, hopSearchHaystack(e));
+    });
+    return hopFlexIndex;
+  }
   function applyRequestQueryFilters(list) {
-    var q = requestSearch.trim().toLowerCase();
-    return list.filter(function (e) {
-      if (requestDateFrom || requestDateTo) {
+    var filtered = list;
+    if (requestDateFrom || requestDateTo) {
+      filtered = filtered.filter(function (e) {
         var dk = formatDateOnly(e.timestamp);
         if (!dk) return false;
         if (requestDateFrom && dk < requestDateFrom) return false;
         if (requestDateTo && dk > requestDateTo) return false;
-      }
-      if (!q) return true;
-      return hopSearchHaystack(e).indexOf(q) >= 0;
-    });
+        return true;
+      });
+    }
+    var q = requestSearch.trim();
+    if (!q) return filtered;
+    var index = ensureHopFlexIndex();
+    if (index) {
+      var ids = index.search(q.toLowerCase(), { limit: Math.max(filtered.length * 2, 200), suggest: true });
+      var idSet = {};
+      for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
+      return filtered.filter(function (e) { return !!idSet[e.id]; });
+    }
+    var ql = q.toLowerCase();
+    return filtered.filter(function (e) { return hopSearchHaystack(e).indexOf(ql) >= 0; });
   }
   function sortRequests(list, key, dir) {
     var mul = dir === 'desc' ? -1 : 1;
@@ -1456,7 +1524,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
   function renderRequestQueryFilters() {
     var html = '<div class="req-filters">';
-    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, method, requestId…" value="' + esc(requestSearch) + '"></label>';
+    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, method, requestId, screen…" value="' + esc(requestSearch) + '" title="FlexSearch prefix match across hop fields"></label>';
     html += '<label class="req-filter-label">From<input type="date" data-req-date-from value="' + esc(requestDateFrom) + '"></label>';
     html += '<label class="req-filter-label">To<input type="date" data-req-date-to value="' + esc(requestDateTo) + '"></label>';
     if (requestSearch || requestDateFrom || requestDateTo) {
@@ -2911,6 +2979,241 @@ function renderErrorPanelHtml(analysis, escFn) {
     el.innerHTML = html;
   }
 
+  /** Mirror of atlas-request-scrubber resolveHopDurationMs / hopStateAt (keep in sync). */
+  function scrubDurationMs(e) {
+    var raw = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+    if (raw > 0) return Math.max(raw, 1);
+    return 8;
+  }
+  function scrubHopState(e, playheadMs, t0Ms) {
+    var startAbs = new Date(e.timestamp).getTime();
+    if (!isFinite(startAbs)) return 'future';
+    var start = startAbs - t0Ms;
+    var end = start + scrubDurationMs(e);
+    if (start > playheadMs) return 'future';
+    if (end <= playheadMs) return 'done';
+    return 'in-flight';
+  }
+  function formatScrubOffset(ms) {
+    if (!(ms >= 0)) return '+0ms';
+    if (ms < 1000) return '+' + Math.round(ms) + 'ms';
+    return '+' + (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + 's';
+  }
+  function collectDocScreenshots() {
+    var shots = [];
+    var seen = {};
+    function addShot(shot) {
+      if (!shot || !shot.path || seen[shot.path]) return;
+      seen[shot.path] = true;
+      shots.push(shot);
+    }
+    function addFromEntry(entry, labelPrefix, key) {
+      if (!entry) return;
+      var labelBase = labelPrefix + ' ' + ((entry.screen || entry.pageSlug || key) || '');
+      if (entry.screenshots && entry.screenshots.length) {
+        entry.screenshots.forEach(function (s) {
+          addShot({
+            path: s.path,
+            capturedAt: s.capturedAt,
+            label: labelBase + (s.phase ? ' · ' + s.phase : '')
+          });
+        });
+        return;
+      }
+      if (entry.screenshotPath) {
+        addShot({ path: entry.screenshotPath, capturedAt: entry.screenshotCapturedAt, label: labelBase });
+      }
+    }
+    var screens = doc.screens || {};
+    Object.keys(screens).forEach(function (k) { addFromEntry(screens[k], 'screen', k); });
+    var pages = doc.pages || {};
+    Object.keys(pages).forEach(function (pid) { addFromEntry(pages[pid], 'page', pid); });
+    return shots;
+  }
+  function nearestDocScreenshot(absoluteMs) {
+    var shots = collectDocScreenshots();
+    var best = null;
+    var bestAt = -Infinity;
+    var upcoming = null;
+    var upcomingAt = Infinity;
+    shots.forEach(function (shot) {
+      if (!shot || !shot.path) return;
+      var at = shot.capturedAt ? new Date(shot.capturedAt).getTime() : NaN;
+      if (!isFinite(at)) return;
+      if (at <= absoluteMs) {
+        if (at >= bestAt) {
+          bestAt = at;
+          best = shot;
+        }
+      } else if (at < upcomingAt) {
+        upcomingAt = at;
+        upcoming = shot;
+      }
+    });
+    return { atOrBefore: best, upcoming: upcoming, upcomingAt: isFinite(upcomingAt) ? upcomingAt : null };
+  }
+  function scrubStateBadgeHtml(state) {
+    if (state === 'in-flight') return ' <span class="badge scrub-state-inflight">in-flight</span>';
+    if (state === 'done') return ' <span class="badge scrub-state-done">done</span>';
+    return ' <span class="badge scrub-state-future">future</span>';
+  }
+  function scrubRowClass(state) {
+    if (state === 'in-flight') return ' scrub-inflight';
+    if (state === 'future') return ' scrub-future';
+    return '';
+  }
+  function stopScrubPlayback() {
+    scrubPlaying = false;
+    if (scrubTimerId != null) {
+      clearInterval(scrubTimerId);
+      scrubTimerId = null;
+    }
+  }
+  function startScrubPlayback() {
+    if (scrubPlaying) return;
+    if (!(scrubSpanMs > 0)) return;
+    if (scrubPlayheadMs == null || scrubPlayheadMs >= scrubSpanMs) scrubPlayheadMs = 0;
+    scrubPlaying = true;
+    scrubTimerId = setInterval(function () {
+      var step = Math.max(scrubSpanMs / 100, 20);
+      var next = (scrubPlayheadMs == null ? 0 : scrubPlayheadMs) + step;
+      if (next >= scrubSpanMs) {
+        scrubPlayheadMs = scrubSpanMs;
+        stopScrubPlayback();
+      } else {
+        scrubPlayheadMs = next;
+      }
+      render();
+    }, SCRUB_TICK_MS);
+  }
+  /** Prefer in-flight hop at playhead, else latest completed — drives right-hand detail. */
+  function pickHopAtPlayhead(rows) {
+    var inflight = null;
+    var latestDone = null;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (r.state === 'in-flight') inflight = r.event;
+      else if (r.state === 'done') latestDone = r.event;
+    }
+    return inflight || latestDone;
+  }
+
+  function renderScrub(el, uniqueMeta) {
+    var base = applyKindFilter(filterEvents());
+    var html = renderListFilters(base, uniqueMeta);
+    var list = uniqueMeta.list;
+    if (!list.length) {
+      stopScrubPlayback();
+      html += '<p class="empty">No hops to scrub for the selected kinds.</p>';
+      el.innerHTML = html;
+      return;
+    }
+    var tw = timing(list);
+    var t0 = Infinity;
+    list.forEach(function (e) {
+      var s = new Date(e.timestamp).getTime();
+      if (isFinite(s)) t0 = Math.min(t0, s);
+    });
+    if (!isFinite(t0)) t0 = Date.now();
+    var span = tw.span;
+    scrubSpanMs = span;
+    if (scrubPlayheadMs == null || !isFinite(scrubPlayheadMs)) scrubPlayheadMs = scrubPlaying ? 0 : span;
+    if (scrubPlayheadMs < 0) scrubPlayheadMs = 0;
+    if (scrubPlayheadMs > span) scrubPlayheadMs = span;
+    var playhead = scrubPlayheadMs;
+    var counts = { future: 0, inFlight: 0, done: 0, appeared: 0 };
+    var rows = tw.bars.map(function (b) {
+      var state = scrubHopState(b.event, playhead, t0);
+      if (state === 'future') counts.future += 1;
+      else if (state === 'in-flight') { counts.inFlight += 1; counts.appeared += 1; }
+      else { counts.done += 1; counts.appeared += 1; }
+      return { event: b.event, start: b.start, dur: b.dur, state: state };
+    });
+    var pick = pickHopAtPlayhead(rows);
+    if (pick) {
+      selectedId = pick.id;
+      selectedMap = null;
+    }
+    var absNow = t0 + playhead;
+    var near = nearestDocScreenshot(absNow);
+    var shot = near.atOrBefore;
+    html += '<p class="meta">Drag the playhead or press Play — the detail pane on the right follows the request active at that moment.</p>';
+    html += '<div class="scrub-toolbar">';
+    html += '<div class="scrub-play-controls">';
+    if (scrubPlaying) {
+      html += '<button type="button" data-scrub-pause title="Pause playback">Pause</button>';
+    } else {
+      html += '<button type="button" data-scrub-play title="Play from playhead (restarts at 0 if at end)">Play</button>';
+    }
+    html += '</div>';
+    html += '<div class="scrub-slider-wrap">';
+    html += '<label class="meta" for="scrub-playhead">Playhead</label>';
+    html += '<input id="scrub-playhead" type="range" min="0" max="' + Math.max(Math.round(span), 1) + '" step="1" value="' + Math.round(playhead) + '" data-scrub-ms />';
+    html += '</div>';
+    html += '<div class="scrub-time" title="' + esc(new Date(absNow).toISOString()) + '">' + esc(formatScrubOffset(playhead));
+    html += '<div class="meta">' + esc(formatWhen(new Date(absNow).toISOString())) + '</div></div>';
+    html += '<div class="scrub-counts">';
+    html += '<span class="badge done">done ' + counts.done + '</span>';
+    html += '<span class="badge in-flight">in-flight ' + counts.inFlight + '</span>';
+    html += '<span class="badge future">future ' + counts.future + '</span>';
+    html += '<span class="badge">appeared ' + counts.appeared + '/' + list.length + '</span>';
+    html += '</div>';
+    html += '<label class="meta"><input type="checkbox" data-scrub-hide-future' + (scrubHideFuture ? ' checked' : '') + '> Hide future</label>';
+    html += '</div>';
+    var playPct = span > 0 ? (playhead / span) * 100 : 0;
+    html += '<div class="scrub-global-track" title="Session timeline">';
+    rows.forEach(function (r) {
+      var left = (r.start / span) * 100;
+      var width = Math.max((r.dur / span) * 100, 0.35);
+      html += '<div class="' + barClass(r.event) + (r.state === 'future' ? ' scrub-future-bar' : '') + '" style="left:' + left + '%;width:' + width + '%;opacity:' + (r.state === 'future' ? '0.25' : '0.9') + '"></div>';
+    });
+    html += '<div class="scrub-playhead" style="left:' + playPct + '%"></div>';
+    html += '</div>';
+    if (shot) {
+      html += renderScreenshotPanelHtml(shot);
+      if (shot.label) html += '<p class="meta">Nearest capture: ' + esc(shot.label) + '</p>';
+    } else if (near.upcoming) {
+      html += '<p class="meta">No screenshot at or before this playhead — next capture at ' + esc(formatScrubOffset(near.upcomingAt - t0));
+      if (near.upcoming.label) html += ' (' + esc(near.upcoming.label) + ')';
+      html += '.</p>';
+      html += renderScreenshotPanelHtml(near.upcoming);
+      html += '<p class="meta">Showing upcoming capture (after playhead).</p>';
+    } else {
+      html += '<p class="meta">No screenshot at or before this playhead.</p>';
+    }
+    html += '<div class="group"><div class="group-h">Requests at playhead<span class="spacer">' + (scrubHideFuture ? counts.appeared : list.length) + '</span></div>';
+    rows.forEach(function (r) {
+      if (scrubHideFuture && r.state === 'future') return;
+      var e = r.event;
+      html += '<div class="timing-row' + (selectedId === e.id ? ' selected' : '') + scrubRowClass(r.state) + hopRowIssueClass(e) + '" data-select="' + esc(e.id) + '">';
+      html += '<div>' + esc(e.method) + ' ' + esc(e.path || e.url);
+      html += scrubStateBadgeHtml(r.state);
+      html += repeatBadgeHtml(uniqueMeta, e);
+      html += hopStatusBadgesHtml(e);
+      html += hopDurationBadgeHtml(e, slowThresholdMs);
+      html += hopTriggerBadgeHtml(e);
+      html += hopGuiAttributionBadgeHtml(e);
+      html += hopContextBadgeHtml(e);
+      html += '<div class="meta">' + esc(formatWhen(e.timestamp)) + ' · ' + esc(formatScrubOffset(r.start)) + ' · ' + esc(KIND_META[hopKind(e)].label) + '</div>';
+      var us = usageList(e.usage);
+      if (us.length) html += '<div class="used-by">' + us.map(formatUsage).map(esc).join(', ') + '</div>';
+      html += '</div>';
+      html += '<div class="track"><div class="' + barClass(e) + '" style="left:' + ((r.start / span) * 100) + '%;width:' + Math.max((r.dur / span) * 100, 0.4) + '%"></div>';
+      html += '<div class="scrub-playhead" style="left:' + playPct + '%"></div></div>';
+      var durRight = typeof e.durationMs === 'number' ? e.durationMs : e._estimatedDurationMs;
+      html += '<div class="meta">' + (durRight != null ? durRight + 'ms' + (e.durationMs == null ? '~' : '') : '—') + '</div></div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    if (scrubFocus) {
+      var inp = el.querySelector('[data-scrub-ms]');
+      if (inp) {
+        inp.focus();
+      }
+      scrubFocus = false;
+    }
+  }
+
   function renderRequests(el, uniqueMeta) {
     var base = applyKindFilter(filterEvents());
     var list = sortRequests(uniqueMeta.list, requestSortKey, requestSortDir);
@@ -2938,6 +3241,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     var wfEl = document.getElementById('view-waterfall');
     var ganttEl = document.getElementById('view-gantt');
     var journeyEl = document.getElementById('view-journey');
+    var scrubEl = document.getElementById('view-scrub');
     var requestsEl = document.getElementById('view-requests');
     var detailEl = document.getElementById('hop-detail');
     var layoutEl = document.querySelector('#atlas-app .layout');
@@ -2948,6 +3252,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (view === 'waterfall') renderWaterfall(wfEl, list, uniqueMeta);
     if (view === 'gantt') renderGantt(ganttEl, uniqueMeta);
     if (view === 'journey') renderJourney(journeyEl, uniqueMeta);
+    if (view === 'scrub') renderScrub(scrubEl, uniqueMeta);
     if (view === 'requests') renderRequests(requestsEl, uniqueMeta);
     renderDetail(detailEl);
     document.querySelectorAll('.tabs button').forEach(function (btn) {
@@ -2957,6 +3262,19 @@ function renderErrorPanelHtml(analysis, escFn) {
       p.classList.toggle('active', p.id === 'view-' + view);
     });
   }
+
+  // img onerror does not bubble — capture phase; avoid inline onerror handlers.
+  document.getElementById('atlas-app').addEventListener('error', function (ev) {
+    var t = ev.target;
+    if (!t || !t.getAttribute || !t.getAttribute('data-atlas-img')) return;
+    t.style.display = 'none';
+    var m = t.nextSibling;
+    while (m && m.nodeType !== 1) m = m.nextSibling;
+    if (m && m.classList && m.classList.contains('atlas-img-missing')) {
+      m.hidden = false;
+      m.style.display = 'block';
+    }
+  }, true);
 
   document.getElementById('atlas-app').addEventListener('click', function (ev) {
     var t = ev.target;
@@ -2986,13 +3304,26 @@ function renderErrorPanelHtml(analysis, escFn) {
       t.getAttribute('data-unique-scope') ||
       t.getAttribute('data-unique-keep') ||
       t.getAttribute('data-unique-expand') ||
-      t.getAttribute('data-journey-step')
+      t.getAttribute('data-journey-step') ||
+      t.getAttribute('data-scrub-play') != null ||
+      t.getAttribute('data-scrub-pause') != null
     ))) {
       t = t.parentNode;
     }
     if (!t || t === ev.currentTarget) return;
+    if (t.getAttribute('data-scrub-play') != null) {
+      startScrubPlayback();
+      render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-pause') != null) {
+      stopScrubPlayback();
+      render();
+      return;
+    }
     if (t.getAttribute('data-view')) {
       view = t.getAttribute('data-view');
+      if (view !== 'scrub') stopScrubPlayback();
       render();
       return;
     }
@@ -3157,6 +3488,14 @@ function renderErrorPanelHtml(analysis, escFn) {
       requestSearch = t.value || '';
       reqSearchFocus = true;
       render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-ms') != null) {
+      var v = Number(t.value);
+      scrubPlayheadMs = isFinite(v) ? v : 0;
+      scrubFocus = true;
+      if (scrubPlaying) stopScrubPlayback();
+      render();
     }
   });
   document.getElementById('atlas-app').addEventListener('change', function (ev) {
@@ -3170,6 +3509,12 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (t.getAttribute('data-req-date-to') != null) {
       requestDateTo = t.value || '';
       render();
+      return;
+    }
+    if (t.getAttribute('data-scrub-hide-future') != null) {
+      scrubHideFuture = !!t.checked;
+      render();
+      return;
     }
     if (t.getAttribute('data-toggle-used-fields') != null) {
       highlightUsedFields = !!t.checked;
@@ -3292,7 +3637,7 @@ function buildInteractiveAtlasBody(
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-<p class="meta">Interactive Atlas — Map / Trace / Chains / Waterfall / Gantt / Journey / Requests. Click a hop or chain box to inspect request &amp; response bodies (when captureBodies is on).</p>
+<p class="meta">Interactive Atlas — Map / Trace / Chains / Waterfall / Gantt / Journey / Scrub / Requests. Click a hop or chain box to inspect request &amp; response bodies (when captureBodies is on).</p>
   <div class="tabs">
     <button type="button" class="active" data-view="map">Map</button>
     <button type="button" data-view="trace">Trace</button>
@@ -3300,6 +3645,7 @@ function buildInteractiveAtlasBody(
     <button type="button" data-view="waterfall">Waterfall</button>
     <button type="button" data-view="gantt">Gantt</button>
     <button type="button" data-view="journey">Journey</button>
+    <button type="button" data-view="scrub">Scrub</button>
     <button type="button" data-view="requests">Requests</button>
   </div>
   <div class="layout">
@@ -3310,12 +3656,14 @@ function buildInteractiveAtlasBody(
       <div id="view-waterfall" class="panel"></div>
       <div id="view-gantt" class="panel"></div>
       <div id="view-journey" class="panel"></div>
+      <div id="view-scrub" class="panel"></div>
       <div id="view-requests" class="panel"></div>
     </div>
     <aside id="hop-detail" class="detail"></aside>
   </div>
 </div>
 <script type="application/json" id="atlas-data">${json}</script>
+${getFlexSearchEmbedScript()}
 <script>
 ${interactiveClientScript()}
 </script>`;

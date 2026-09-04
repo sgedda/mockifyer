@@ -29,14 +29,16 @@ const DEFAULT_SCREENSHOT_RETRY_MS = 400;
 
 /** Result from an app-registered capturer (RN tmpfile URI, base64, or raw PNG bytes). */
 export interface AtlasScreenshotCaptureResult {
-  /** PNG bytes — preferred on web/Node when capturer returns data directly. */
+  /** PNG/JPEG/WebP bytes — preferred on web/Node when capturer returns data directly. */
   data?: Uint8Array | Buffer;
-  /** Base64 PNG (no data-URL prefix) — preferred on React Native. */
+  /** Base64 image (no data-URL prefix) — preferred on React Native. */
   base64?: string;
   /** Temporary file URI (React Native `react-native-view-shot` tmpfile). */
   tmpUri?: string;
   platform?: 'web' | 'react-native';
   viewport?: { width?: number; height?: number; scale?: number };
+  /** File format for persistence. Default `png`. Prefer `jpg` for smaller Atlas captures. */
+  format?: 'png' | 'jpg' | 'jpeg' | 'webp';
 }
 
 export type AtlasScreenshotCapturer = () => Promise<AtlasScreenshotCaptureResult | undefined>;
@@ -167,12 +169,21 @@ function safeSegment(value: string): string {
   return cleaned || 'screen';
 }
 
-function dedupeKey(sessionId: string, screen: string): string {
-  return `${sessionId.trim()}::${screen.trim()}`;
+function dedupeKey(sessionId: string, screen: string, phase?: string): string {
+  const p = phase?.trim() || 'default';
+  return `${sessionId.trim()}::${screen.trim()}::${p}`;
 }
 
-function relativeScreenshotPath(sessionId: string, screen: string): string {
-  const file = `${safeSegment(sessionId)}__${safeSegment(screen)}.png`;
+function relativeScreenshotPath(
+  sessionId: string,
+  screen: string,
+  phase?: string,
+  format?: string
+): string {
+  const phaseSeg = phase?.trim() ? `__${safeSegment(phase)}` : '';
+  const ext =
+    format === 'jpg' || format === 'jpeg' ? 'jpg' : format === 'webp' ? 'webp' : 'png';
+  const file = `${safeSegment(sessionId)}__${safeSegment(screen)}${phaseSeg}.${ext}`;
   return `screenshots/${file}`;
 }
 
@@ -351,6 +362,11 @@ export interface ScheduleAtlasScreenshotInput {
   timestamp?: string;
   /** Override configured settle delay (ms after paint). */
   settleMs?: number;
+  /**
+   * Capture phase for multi-shot per screen (e.g. `early` on focus, `ready` after content).
+   * Dedupe key and filename include phase so both can coexist.
+   */
+  phase?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -358,7 +374,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Schedule a one-per-(sessionId+screen) screenshot after layout paint + settle delay.
+ * Schedule a one-per-(sessionId+screen+phase) screenshot after layout paint + settle delay.
  * Prefer {@link requestAtlasScreenshotCapture} once the screen content is ready (not on mount).
  * Capturer may return `undefined` to retry (skeleton still showing).
  *
@@ -372,7 +388,8 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
   if (!screen) return;
 
   const sessionId = input.sessionId?.trim() || getAtlasSessionId()?.trim() || 'session';
-  const key = dedupeKey(sessionId, screen);
+  const phase = input.phase?.trim() || undefined;
+  const key = dedupeKey(sessionId, screen, phase);
   if (capturedKeys.has(key) || pendingKeys.has(key)) return;
 
   pendingKeys.add(key);
@@ -398,7 +415,7 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
           const bytes = await readCaptureBytes(result);
           if (!bytes?.length) continue;
 
-          const relPath = relativeScreenshotPath(sessionId, screen);
+          const relPath = relativeScreenshotPath(sessionId, screen, phase, result.format);
           const capturedAt = input.timestamp ?? new Date().toISOString();
           const meta = {
             sessionId,
@@ -423,6 +440,7 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
             screenshotPath: relPath,
             capturedAt,
             pageId: input.pageId,
+            phase,
           });
 
           if (persistMode === 'immediate') {
