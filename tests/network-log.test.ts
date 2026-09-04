@@ -1,5 +1,6 @@
 import {
   buildNetworkEvent,
+  emitNetworkLogEvent,
   redactHeaders,
   sanitizeQueryString,
   sanitizeNetworkEvent,
@@ -82,5 +83,47 @@ describe('network-log', () => {
       { captureBodies: true, maxEventBytes: 4096 }
     );
     expect(event.requestBodyPreview).toContain('ok');
+  });
+
+  it('posts network events with the unpatched fetch when global fetch is patched', async () => {
+    const originalFetch = jest.fn(async () => ({ ok: true } as Response));
+    const patchedFetch = jest.fn(async () => {
+      throw new Error('patched fetch must not handle dashboard network-events POSTs');
+    });
+    const previousFetch = globalThis.fetch;
+    const previousOriginal = (globalThis as { __mockifyer_original_fetch?: typeof fetch })
+      .__mockifyer_original_fetch;
+
+    (globalThis as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+      originalFetch as unknown as typeof fetch;
+    globalThis.fetch = patchedFetch as unknown as typeof fetch;
+
+    try {
+      await emitNetworkLogEvent({
+        dashboardBaseUrl: 'http://localhost:3002',
+        event: {
+          scenario: 'default',
+          transport: 'fetch',
+          method: 'GET',
+          url: 'https://api.example.com/weather',
+          source: 'upstream',
+        },
+      });
+
+      expect(patchedFetch).not.toHaveBeenCalled();
+      expect(originalFetch).toHaveBeenCalledTimes(1);
+      const [postedUrl, init] = originalFetch.mock.calls[0] as unknown as [string, RequestInit];
+      expect(postedUrl).toBe('http://localhost:3002/api/network-events');
+      expect(init.method).toBe('POST');
+    } finally {
+      globalThis.fetch = previousFetch;
+      if (previousOriginal) {
+        (globalThis as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+          previousOriginal;
+      } else {
+        delete (globalThis as { __mockifyer_original_fetch?: typeof fetch })
+          .__mockifyer_original_fetch;
+      }
+    }
   });
 });

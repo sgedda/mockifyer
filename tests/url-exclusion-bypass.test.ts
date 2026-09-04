@@ -72,4 +72,15 @@ describe('shouldBypassMockifyerForUrl', () => {
     ).toBe(true);
     expect(shouldBypassMockifyerForUrl('https://api.example.com/users')).toBe(false);
   });
+
+  it('always bypasses dashboard /api/network-events even when custom excludedUrls replace defaults', () => {
+    expect(
+      shouldBypassMockifyerForUrl('http://localhost:3002/api/network-events', ['only.example.com'])
+    ).toBe(true);
+    expect(
+      shouldBypassMockifyerForUrl('https://host/mockifyer/api/network-events/trace', [
+        'only.example.com',
+      ])
+    ).toBe(true);
+  });
 });
