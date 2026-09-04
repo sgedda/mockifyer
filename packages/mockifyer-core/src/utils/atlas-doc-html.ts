@@ -1468,15 +1468,15 @@ function renderErrorPanelHtml(analysis, escFn) {
         return true;
       });
     }
-    var q = requestSearch.trim();
-    if (!q) return filtered;
-    var index = ensureHopFlexIndex();
-    if (index) {
-      var ids = index.search(q.toLowerCase(), { suggest: true });
-      var idSet = {};
-      for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
-      return filtered.filter(function (e) { return !!idSet[e.id]; });
-    }
+  var q = requestSearch.trim();
+  if (!q) return filtered;
+  var index = ensureHopFlexIndex();
+  if (index) {
+    var ids = index.search(q.toLowerCase(), { suggest: true, limit: Math.max(filtered.length * 2, 200) });
+    var idSet = {};
+    for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
+    return filtered.filter(function (e) { return !!idSet[e.id]; });
+  }
     var ql = q.toLowerCase();
     return filtered.filter(function (e) { return hopSearchHaystack(e).indexOf(ql) >= 0; });
   }
