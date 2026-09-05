@@ -46,6 +46,7 @@ import {
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
 } from '../utils/proxy-network-log';
+import { toPersistedRequestHeaders, toRecordStringHeaders } from '../utils/proxy-recording-privacy';
 
 const router = express.Router();
 
@@ -59,16 +60,6 @@ function deriveFallbackDeviceId(req: Request): string | undefined {
   const raw = `${ip}|${ua}`.trim();
   if (!raw || raw === '|') return undefined;
   return `derived:${sha256Hex(raw).slice(0, 16)}`;
-}
-
-function toRecordStringHeaders(headers: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headers || typeof headers !== 'object') return out;
-  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
-    if (v === undefined || v === null) continue;
-    out[k] = String(v);
-  }
-  return out;
 }
 
 function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
@@ -530,7 +521,7 @@ router.post('/', async (req: Request, res: Response) => {
         const requestPayload = {
           method: upperMethod,
           url,
-          headers: toRecordStringHeaders(headers),
+          headers: toPersistedRequestHeaders(headers),
           data: normalizedRequestBody,
           queryParams: {},
         };
