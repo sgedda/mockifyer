@@ -36,6 +36,11 @@ import {
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
+import {
+  findPoolRefReferencingScenariosOnDisk,
+  mergeReferencingScenarios,
+  mockDataReferencesPoolResponse,
+} from '../utils/fixture-pool-ref-usage';
 
 const router = Router();
 
@@ -288,6 +293,51 @@ function findEntityReferencingScenarios(mockDataPath: string, entityId: string):
 function findResponseReferencingScenarios(mockDataPath: string, responseItemId: string): string[] {
   return findManifestReferencingScenarios(mockDataPath, (assignment) =>
     assignmentReferencesResponse(assignment, responseItemId)
+  );
+}
+
+/**
+ * Scan Redis/SQLite scenario mocks for `$pool` embeds of `responseItemId`.
+ * Filesystem embeds are covered by {@link findPoolRefReferencingScenariosOnDisk}.
+ */
+async function findPoolRefReferencingScenariosInStore(
+  req: Request,
+  responseItemId: string
+): Promise<string[]> {
+  const { mockDataPath, config } = getDashboardContext(req);
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    return [];
+  }
+
+  const store = createDashboardMockStore(config, mockDataPath);
+  try {
+    const scenarios = await store.listScenarios();
+    const referencing: string[] = [];
+    for (const scenario of scenarios) {
+      const items = await store.list(scenario);
+      if (items.some((item) => mockDataReferencesPoolResponse(item.mockData, responseItemId))) {
+        referencing.push(scenario);
+      }
+    }
+    return referencing;
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Scenarios that still depend on a pool response fixture — deferred slot manifests
+ * and/or v1 `$pool` embeds in mock `response.data`.
+ */
+async function findAllResponseReferencingScenarios(
+  req: Request,
+  mockDataPath: string,
+  responseItemId: string
+): Promise<string[]> {
+  return mergeReferencingScenarios(
+    findResponseReferencingScenarios(mockDataPath, responseItemId),
+    findPoolRefReferencingScenariosOnDisk(mockDataPath, responseItemId),
+    await findPoolRefReferencingScenariosInStore(req, responseItemId)
   );
 }
 
@@ -803,7 +853,7 @@ router.post('/responses/promote', async (req: Request, res: Response) => {
 });
 
 /** DELETE /api/fixture-pool/responses/:id */
-router.delete('/responses/:id', (req: Request, res: Response) => {
+router.delete('/responses/:id', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const id = req.params.id;
@@ -811,10 +861,11 @@ router.delete('/responses/:id', (req: Request, res: Response) => {
 
     const force =
       req.query.force === 'true' || req.query.force === '1' || req.query.force === 'yes';
-    const referencingScenarios = findResponseReferencingScenarios(mockDataPath, id);
+    // Guard both deferred slot manifests and v1 `$pool` embeds (the active activation path).
+    const referencingScenarios = await findAllResponseReferencingScenarios(req, mockDataPath, id);
     if (referencingScenarios.length > 0 && !force) {
       return res.status(409).json({
-        error: `Response fixture is referenced by scenario slot(s): ${referencingScenarios.join(', ')}`,
+        error: `Response fixture is referenced by scenario(s): ${referencingScenarios.join(', ')}`,
         referencingScenarios,
       });
     }
