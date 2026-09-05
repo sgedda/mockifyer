@@ -24,6 +24,7 @@ import {
   PoolRefResolveError,
   prepareMockResponseBody,
   arePoolRefsEnabled,
+  containsPoolRefs,
   createServeTimePoolResponseLoader,
   collectPoolRefIds,
   isUsableNodeLikePoolFs,
@@ -710,5 +711,100 @@ describe('serve-time pool response loader (RN-safe)', () => {
       b: [{ $pool: { id: 'two' } }, { keep: true }],
     });
     expect([...ids].sort()).toEqual(['one', 'two']);
+  });
+
+  it('collectPoolRefIds and containsPoolRefs see $pool inside JSON-string roots', () => {
+    const stringRoot = JSON.stringify({
+      envelope: { $pool: { id: 'trips-list-alice', mode: 'value', path: 'trips' } },
+    });
+    expect(containsPoolRefs(stringRoot)).toBe(true);
+    expect([...collectPoolRefIds(stringRoot)]).toEqual(['trips-list-alice']);
+  });
+
+  it('value mode does not alias into a shared poolResponseCache entry', () => {
+    const item: PoolResponseItem = {
+      responseItemId: 'trips-list-alice',
+      response: {
+        status: 200,
+        headers: {},
+        data: { trips: [{ id: 'trip-nyc', city: 'NYC' }] },
+      },
+    };
+    const cache = new Map<string, PoolResponseItem>([['trips-list-alice', item]]);
+    const loadFn = createServeTimePoolResponseLoader({
+      mockDataPath: '/nonexistent-mock-data',
+      nodeFs: null,
+      joinPath: null,
+      cache,
+    });
+
+    const mockData: MockData = {
+      request: { method: 'GET', url: 'https://example.com/trips', headers: {} },
+      response: {
+        status: 200,
+        headers: {},
+        data: { $pool: { id: 'trips-list-alice', mode: 'value', path: 'trips' } },
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    const first = prepareMockResponseBody(mockData, () => new Date(), {
+      loadPoolResponse: loadFn,
+    }) as Array<{ id: string; city: string }>;
+    first[0]!.city = 'HACKED';
+
+    const second = prepareMockResponseBody(mockData, () => new Date(), {
+      loadPoolResponse: loadFn,
+    }) as Array<{ id: string; city: string }>;
+
+    expect(second[0]!.city).toBe('NYC');
+    expect(cache.get('trips-list-alice')!.response.data).toEqual({
+      trips: [{ id: 'trip-nyc', city: 'NYC' }],
+    });
+  });
+
+  it('prepareMockResponseBody resolves $pool embedded in a JSON-string response root', () => {
+    const loadFn = createServeTimePoolResponseLoader({
+      mockDataPath: '/nonexistent-mock-data',
+      nodeFs: null,
+      joinPath: null,
+      cache: new Map([
+        [
+          'trips-list-alice',
+          {
+            responseItemId: 'trips-list-alice',
+            response: {
+              status: 200,
+              headers: {},
+              data: { trips: [{ id: 'trip-nyc' }] },
+            },
+          },
+        ],
+      ]),
+    });
+
+    const body = prepareMockResponseBody(
+      {
+        request: { method: 'GET', url: 'https://example.com/trips', headers: {} },
+        response: {
+          status: 200,
+          headers: {},
+          // Path-embed / some recorders store response.data as a JSON string.
+          data: JSON.stringify({
+            payload: {
+              $pool: { id: 'trips-list-alice', mode: 'value', path: 'trips' },
+            },
+          }),
+        },
+        timestamp: new Date().toISOString(),
+      },
+      () => new Date(),
+      { loadPoolResponse: loadFn }
+    );
+
+    expect(typeof body).toBe('string');
+    expect(JSON.parse(body as string)).toEqual({
+      payload: [{ id: 'trip-nyc' }],
+    });
   });
 });

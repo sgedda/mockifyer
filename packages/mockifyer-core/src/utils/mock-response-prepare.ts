@@ -18,6 +18,24 @@ export interface PrepareMockResponseOptions {
 }
 
 /**
+ * Parse JSON-string response roots the same way field/date overrides do, so
+ * `$pool` nodes embedded inside a stringified body are visible to resolve.
+ */
+function normalizeResponseDataRootForPoolRefs(data: unknown): {
+  root: unknown;
+  wasJsonString: boolean;
+} {
+  if (typeof data !== 'string') {
+    return { root: data, wasJsonString: false };
+  }
+  try {
+    return { root: JSON.parse(data), wasJsonString: true };
+  } catch {
+    return { root: data, wasJsonString: false };
+  }
+}
+
+/**
  * Returns response body for a mock hit:
  * 1. Resolve `$pool` refs (when enabled)
  * 2. Field overrides
@@ -32,13 +50,17 @@ export function prepareMockResponseBody(
 ): unknown {
   let data: unknown = mockData.response.data;
 
-  if (arePoolRefsEnabled() && containsPoolRefs(data)) {
-    if (!options?.loadPoolResponse) {
-      throw new PoolRefResolveError(
-        'Mock response contains $pool refs but no loadPoolResponse was provided'
-      );
+  if (arePoolRefsEnabled()) {
+    const { root, wasJsonString } = normalizeResponseDataRootForPoolRefs(data);
+    if (containsPoolRefs(root)) {
+      if (!options?.loadPoolResponse) {
+        throw new PoolRefResolveError(
+          'Mock response contains $pool refs but no loadPoolResponse was provided'
+        );
+      }
+      const resolved = resolvePoolRefsInData(root, options.loadPoolResponse);
+      data = wasJsonString ? JSON.stringify(resolved) : resolved;
     }
-    data = resolvePoolRefsInData(data, options.loadPoolResponse);
   }
 
   if (mockData.responseFieldOverrides?.length) {
