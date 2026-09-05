@@ -17,6 +17,8 @@ try {
 let currentConfig: MockifyerConfig | null = null;
 const DEFAULT_SCENARIO = 'default';
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
+/** Letters, numbers, hyphens, underscores — rejects path segments like `..` or `/`. */
+const SCENARIO_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
@@ -25,6 +27,31 @@ export function assertNotReservedScenarioName(scenarioName: string): void {
   if (scenarioName.trim() === POOL_DIR_NAME) {
     throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
   }
+}
+
+/**
+ * True when a scenario name is safe to join under `mockDataPath` (no path traversal / separators).
+ */
+export function isValidScenarioName(scenarioName: string): boolean {
+  return SCENARIO_NAME_PATTERN.test(scenarioName);
+}
+
+/**
+ * Parse and validate a scenario name from untrusted input (API body, query, MCP tools).
+ * Returns null when the value is missing/invalid or reserved.
+ */
+export function parseScenarioName(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || !isValidScenarioName(trimmed)) {
+    return null;
+  }
+  if (trimmed === POOL_DIR_NAME) {
+    return null;
+  }
+  return trimmed;
 }
 
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
