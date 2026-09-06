@@ -3,14 +3,13 @@
  * Written on Node capture upserts when {@link setAtlasDocHtmlOutputPath} is set.
  * Interactive: Architecture (default living doc), Map, Trace, Chains, Waterfall, Gantt, Journey,
  * Scrub, Requests — unique-endpoint focus, connection diagrams, screenshots, kind filters, dedup,
- * search/date filters (FlexSearch + substring fallback on hop + body text), sortable request table, colored chain boxes,
+ * search/date filters (exact substring on hop + body text), sortable request table, colored chain boxes,
  * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters, GUI-linked vs screen-only badges.
  * Scrub: drag a playhead or Play/Pause through session time; detail pane follows the active hop.
  * Safe on React Native: `fs`/`path` require is try/caught; writes no-op.
  */
 
 import type { AtlasDocMap, AtlasDocNode, AtlasDocPage } from './atlas-doc';
-import { getFlexSearchEmbedScript } from './atlas-flexsearch-embed';
 import { buildAtlasHarJson } from './atlas-har';
 import {
   buildGuiLinkedRequestIdSet,
@@ -1717,35 +1716,14 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
   /** Full body text by hop id (from bodies-search.json). */
   var bodySearchById = {};
-  /** Split query on whitespace without regex (script lives in a TS template literal). */
-  function splitSearchTerms(q) {
-    var terms = [];
-    var cur = '';
-    for (var i = 0; i < q.length; i++) {
-      var ch = q.charAt(i);
-      var code = ch.charCodeAt(0);
-      // space / tab / LF / CR — avoid \\t \\n \\r inside the TS template literal host
-      if (code === 32 || code === 9 || code === 10 || code === 13) {
-        if (cur) {
-          terms.push(cur);
-          cur = '';
-        }
-      } else {
-        cur += ch;
-      }
-    }
-    if (cur) terms.push(cur);
-    return terms;
-  }
-  /** True when every term is a substring of the hop haystack (narrows as you type). */
+  /**
+   * Exact contiguous match: the full query (lowercased, trimmed) must appear as-is
+   * in the hop haystack. No fuzzy / prefix-suggest — adding characters only narrows.
+   */
   function hopMatchesSearchQuery(e, q) {
-    var hay = hopSearchHaystack(e);
-    var terms = splitSearchTerms(String(q || '').toLowerCase());
-    if (!terms.length) return true;
-    for (var i = 0; i < terms.length; i++) {
-      if (hay.indexOf(terms[i]) < 0) return false;
-    }
-    return true;
+    var needle = String(q || '').trim().toLowerCase();
+    if (!needle) return true;
+    return hopSearchHaystack(e).indexOf(needle) >= 0;
   }
   function loadBodySearchCorpus() {
     if (typeof fetch !== 'function') return;
@@ -1759,27 +1737,6 @@ function renderErrorPanelHtml(analysis, escFn) {
       .catch(function () { /* optional sidecar */ });
   }
   loadBodySearchCorpus();
-  /** FlexSearch index of hop haystacks — rebuilt when event set is first searched. */
-  var hopFlexIndex = null;
-  var hopFlexIndexReady = false;
-  function ensureHopFlexIndex() {
-    if (hopFlexIndexReady) return hopFlexIndex;
-    hopFlexIndexReady = true;
-    var FS = typeof FlexSearch !== 'undefined' ? FlexSearch : null;
-    if (!FS || !FS.Index) {
-      hopFlexIndex = null;
-      return null;
-    }
-    hopFlexIndex = new FS.Index({
-      tokenize: 'forward',
-      cache: true,
-      resolution: 9
-    });
-    events.forEach(function (e) {
-      hopFlexIndex.add(e.id, hopSearchHaystack(e));
-    });
-    return hopFlexIndex;
-  }
   function applyRequestQueryFilters(list) {
     var filtered = list;
     if (requestDateFrom || requestDateTo) {
@@ -1791,17 +1748,9 @@ function renderErrorPanelHtml(analysis, escFn) {
         return true;
       });
     }
-  var q = requestSearch.trim();
-  if (!q) return filtered;
-  var index = ensureHopFlexIndex();
-  if (index) {
-    var ids = index.search(q.toLowerCase(), { suggest: true, limit: Math.max(filtered.length * 2, 200) });
-    var idSet = {};
-    for (var i = 0; i < ids.length; i++) idSet[ids[i]] = true;
-    return filtered.filter(function (e) { return !!idSet[e.id]; });
-  }
-    var ql = q.toLowerCase();
-    return filtered.filter(function (e) { return hopSearchHaystack(e).indexOf(ql) >= 0; });
+    var q = requestSearch.trim();
+    if (!q) return filtered;
+    return filtered.filter(function (e) { return hopMatchesSearchQuery(e, q); });
   }
   function sortRequests(list, key, dir) {
     var mul = dir === 'desc' ? -1 : 1;
@@ -1851,7 +1800,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
   function renderRequestQueryFilters() {
     var html = '<div class="req-filters">';
-    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, body JSON, requestId, screen…" value="' + esc(requestSearch) + '" title="FlexSearch prefix match across hop fields (substring fallback if FlexSearch unavailable)"></label>';
+    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="exact text in path, body, requestId…" value="' + esc(requestSearch) + '" title="Exact contiguous match (case-insensitive). Longer query = fewer hits."></label>';
     html += '<label class="req-filter-label">From<input type="date" data-req-date-from value="' + esc(requestDateFrom) + '"></label>';
     html += '<label class="req-filter-label">To<input type="date" data-req-date-to value="' + esc(requestDateTo) + '"></label>';
     if (requestSearch || requestDateFrom || requestDateTo) {
@@ -4980,7 +4929,6 @@ function buildInteractiveAtlasBody(
   </div>
 </div>
 <script type="application/json" id="atlas-data">${json}</script>
-${getFlexSearchEmbedScript()}
 <script>
 ${interactiveClientScript()}
 </script>`;
