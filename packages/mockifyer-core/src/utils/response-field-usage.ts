@@ -178,18 +178,111 @@ export function findLinkedGuiNodes(
     }
   }
 
-  for (const usage of usageListForHop(hop as NetworkEvent)) {
+  const usages = usageListForHop(hop as NetworkEvent);
+  const usageDatasourceIds = new Set(
+    usages.map((u) => u.datasourceId?.trim()).filter(Boolean) as string[]
+  );
+
+  for (const usage of usages) {
     const pageId = usage.cms?.pageId?.trim();
     const nodeId = usage.cms?.nodeId?.trim();
-    if (!pageId || !nodeId) continue;
-    const page = doc.pages?.[pageId];
-    const node = page?.nodes?.[nodeId];
-    if (page && node) {
-      push(nodeRef(page, node, usage.dataRoot));
+    if (pageId && nodeId) {
+      const page = doc.pages?.[pageId];
+      const node = page?.nodes?.[nodeId];
+      if (page && node) {
+        push(nodeRef(page, node, usage.dataRoot));
+      }
+    }
+  }
+
+  // CMS / Oden: usage.datasourceId (e.g. oden:discover/hotels) may match many nodes
+  // even when usage.cms.pageId is a path alias that differs from doc pageId.
+  if (usageDatasourceIds.size) {
+    for (const page of Object.values(doc.pages ?? {})) {
+      for (const node of Object.values(page.nodes ?? {})) {
+        for (const ds of node.datasources ?? []) {
+          if (usageDatasourceIds.has(ds.datasourceId)) {
+            push(nodeRef(page, node, ds.dataRoot ?? usages.find((u) => u.datasourceId === ds.datasourceId)?.dataRoot));
+          }
+        }
+      }
     }
   }
 
   return out;
+}
+
+export interface AggregatedGuiUsedField {
+  path: string;
+  hopIds: string[];
+  hopSummaries: string[];
+  hopKinds: string[];
+  guiNodes: Array<{ pageId: string; nodeId: string; type: string; label?: string }>;
+}
+
+export interface AggregateGuiUsedFieldsInputHop {
+  id: string;
+  method?: string;
+  path?: string;
+  url?: string;
+  kind?: string;
+  usedResponsePaths?: string[];
+  linkedGuiNodes?: Array<{ pageId: string; nodeId: string; type: string; label?: string }>;
+}
+
+/**
+ * Aggregate GUI-used response paths across hops (CMS, GraphQL, etc.) for a Fields catalog view.
+ */
+export function aggregateGuiUsedFields(
+  hops: readonly AggregateGuiUsedFieldsInputHop[],
+  options?: { hopKind?: (hop: AggregateGuiUsedFieldsInputHop) => string }
+): AggregatedGuiUsedField[] {
+  const byPath = new Map<
+    string,
+    {
+      hopIds: Set<string>;
+      hopSummaries: Set<string>;
+      hopKinds: Set<string>;
+      guiNodes: Map<string, { pageId: string; nodeId: string; type: string; label?: string }>;
+    }
+  >();
+
+  for (const hop of hops) {
+    const paths = hop.usedResponsePaths ?? [];
+    if (!paths.length) continue;
+    const kind = options?.hopKind?.(hop) ?? hop.kind ?? 'other';
+    const summary = `${hop.method || '?'} ${hop.path || hop.url || hop.id}`.trim();
+    for (const path of paths) {
+      let entry = byPath.get(path);
+      if (!entry) {
+        entry = {
+          hopIds: new Set(),
+          hopSummaries: new Set(),
+          hopKinds: new Set(),
+          guiNodes: new Map(),
+        };
+        byPath.set(path, entry);
+      }
+      entry.hopIds.add(hop.id);
+      entry.hopSummaries.add(summary);
+      entry.hopKinds.add(kind);
+      for (const n of hop.linkedGuiNodes ?? []) {
+        entry.guiNodes.set(`${n.pageId}\0${n.nodeId}`, n);
+      }
+    }
+  }
+
+  return [...byPath.entries()]
+    .map(([path, entry]) => ({
+      path,
+      hopIds: [...entry.hopIds],
+      hopSummaries: [...entry.hopSummaries].sort(),
+      hopKinds: [...entry.hopKinds].sort(),
+      guiNodes: [...entry.guiNodes.values()].sort((a, b) =>
+        `${a.pageId}/${a.nodeId}`.localeCompare(`${b.pageId}/${b.nodeId}`)
+      ),
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function parseResponseBody(text: string | undefined): unknown | undefined {

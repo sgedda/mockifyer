@@ -12,6 +12,8 @@ import {
   configureAtlasScreenshotCapture,
   resolveAtlasCaptureScreenshots,
 } from './atlas-screenshot';
+import { setNetworkBodySpillEnabled } from './network-body-spill';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 /** Atlas capture mode — `off` by default. */
 export type AtlasMode = 'off' | 'live' | 'session';
 
@@ -44,6 +46,9 @@ export interface AtlasCmsNode {
   parentId?: string | null;
   source: AtlasSurfaceSource;
   label?: string;
+  /** CMS/site tree path (e.g. umbracoUrlAlias). Same page may appear under multiple paths. */
+  treePath?: string;
+  parentPageId?: string | null;
 }
 
 export interface AtlasPrefetchEvent {
@@ -171,6 +176,11 @@ export function getAtlasSessionId(): string | null {
   return runtime.sessionId;
 }
 
+/** Active Atlas capture scenario (set via {@link configureAtlas}; often `_scratch` when unset). */
+export function getAtlasRuntimeScenario(): string {
+  return runtime.scenario;
+}
+
 export function getAtlasEvents(): readonly AtlasEvent[] {
   return runtime.events;
 }
@@ -258,6 +268,8 @@ export function configureAtlas(
 
   setAtlasUsageDashboardBaseUrl(runtime.dashboardBaseUrl);
   setAtlasDocHtmlOutputPath(htmlOutputPath);
+  const networkLog = (config as MockifyerConfig | undefined)?.networkLog;
+  setNetworkBodySpillEnabled(networkLog?.spillBodies !== false && networkLog?.captureBodies === true);
   configureAtlasScreenshotCapture({
     enabled: resolveAtlasCaptureScreenshots(atlasCfg ?? null),
     htmlOutputPath,
@@ -334,10 +346,12 @@ function pushEvent(event: AtlasEvent): void {
 
 async function postAtlasEvent(event: AtlasEvent): Promise<void> {
   const base = runtime.dashboardBaseUrl?.trim();
-  if (!base || typeof fetch !== 'function') return;
+  if (!base) return;
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return;
   const url = `${base.replace(/\/+$/, '')}/api/atlas/events`;
   try {
-    await fetch(url, {
+    await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ event }),

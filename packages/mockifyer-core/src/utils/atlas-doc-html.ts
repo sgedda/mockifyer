@@ -1,14 +1,17 @@
 /**
  * Self-contained Atlas auto-doc HTML for local browsing (file:// / VS Code).
  * Written on Node capture upserts when {@link setAtlasDocHtmlOutputPath} is set.
- * Interactive: Map, Trace, Chains, Waterfall, Gantt, Journey, Scrub, Requests — kind filters, dedup,
- * search/date filters (FlexSearch), sortable request table, colored chain boxes,
+ * Interactive: Architecture (default living doc), Map, Trace, Chains, Waterfall, Gantt, Journey,
+ * Scrub, Requests — unique-endpoint focus, connection diagrams, screenshots, kind filters, dedup,
+ * search/date filters (FlexSearch + substring fallback on hop + body text), sortable request table, colored chain boxes,
  * JSON syntax highlighting, hop error/slow panels, Errors/Slow filters, GUI-linked vs screen-only badges.
  * Scrub: drag a playhead or Play/Pause through session time; detail pane follows the active hop.
  * Safe on React Native: `fs`/`path` require is try/caught; writes no-op.
  */
 
 import type { AtlasDocMap, AtlasDocNode, AtlasDocPage } from './atlas-doc';
+import { getFlexSearchEmbedScript } from './atlas-flexsearch-embed';
+import { buildAtlasHarJson } from './atlas-har';
 import {
   buildGuiLinkedRequestIdSet,
   resolveHopGuiAttribution,
@@ -16,7 +19,7 @@ import {
 import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
 import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage';
-import { getFlexSearchEmbedScript } from './atlas-flexsearch-embed';
+import { prettyPrintJsonText } from './json-pretty';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -33,6 +36,62 @@ const HTML_WRITE_DEBOUNCE_MS = 250;
 const MAX_HTML_NETWORK_EVENTS = 500;
 /** Cap body previews embedded in HTML to keep files openable. */
 const MAX_BODY_CHARS_IN_HTML = 12_000;
+/** Cap per-hop text in bodies-search.json (chars). */
+export const BODY_SEARCH_MAX_CHARS_PER_HOP = 32_000;
+/** Soft cap on total corpus chars so render stays responsive. */
+const BODY_SEARCH_MAX_TOTAL_CHARS = 2_000_000;
+
+/**
+ * Hop id → searchable body text (previews + spilled full bodies under atlas-html/bodies/).
+ * Written as `bodies-search.json` so Requests search can cover full payloads without bloating hop JSON.
+ */
+export function buildAtlasBodiesSearchCorpus(
+  events: readonly NetworkEvent[],
+  options?: {
+    readSpillText?: (relativePath: string) => string | undefined;
+  }
+): Record<string, string> {
+  const read = options?.readSpillText;
+  const corpus: Record<string, string> = {};
+  let totalChars = 0;
+
+  for (const ev of events) {
+    if (!ev?.id) continue;
+    if (totalChars >= BODY_SEARCH_MAX_TOTAL_CHARS) break;
+    const parts: string[] = [];
+
+    if (ev.requestBodyRef && read) {
+      const spilled = read(ev.requestBodyRef);
+      if (spilled) parts.push(spilled);
+      else if (ev.requestBodyPreview) parts.push(ev.requestBodyPreview);
+    } else if (ev.requestBodyPreview) {
+      parts.push(ev.requestBodyPreview);
+    }
+
+    if (ev.responseBodyRef && read) {
+      const spilled = read(ev.responseBodyRef);
+      if (spilled) parts.push(spilled);
+      else if (ev.responseBodyPreview) parts.push(ev.responseBodyPreview);
+    } else if (ev.responseBodyPreview) {
+      parts.push(ev.responseBodyPreview);
+    }
+
+    if (!parts.length) continue;
+    let text = parts.join('\n');
+    if (text.length > BODY_SEARCH_MAX_CHARS_PER_HOP) {
+      text = text.slice(0, BODY_SEARCH_MAX_CHARS_PER_HOP);
+    }
+    const remaining = BODY_SEARCH_MAX_TOTAL_CHARS - totalChars;
+    if (text.length > remaining) {
+      text = text.slice(0, Math.max(0, remaining));
+    }
+    if (!text) break;
+    corpus[ev.id] = text;
+    totalChars += text.length;
+  }
+
+  return corpus;
+}
 
 /** Directory for generated `index.html` + `pages/*.html` (Node only). */
 let htmlOutputPath: string | undefined;
@@ -128,7 +187,7 @@ li { margin: 0.35rem 0; }
 .badge.dur-est { border-style: dashed; color: var(--muted); }
 .badge.status-muted { color: var(--muted); }
 pre { background: #1e1e1e; color: #d4d4d4; border: 1px solid #333; border-radius: 6px; padding: 0.75rem; overflow: auto; font-size: 0.78rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; line-height: 1.45; }
-pre.json { white-space: pre; }
+pre.json { white-space: pre-wrap; word-break: break-word; max-height: 32rem; overflow: auto; }
 .json-k { color: #9cdcfe; }
 .json-s { color: #ce9178; }
 .json-n { color: #b5cea8; }
@@ -147,6 +206,46 @@ pre.json { white-space: pre; }
 .screenshot-panel { margin: 0.65rem 0 0.85rem; }
 .screenshot-panel img.screenshot-preview { display: block; max-width: min(280px, 100%); height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
 .screenshot-panel .meta { margin-top: 0.35rem; }
+.arch-hero { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; margin: 0 0 1rem; }
+.arch-hero h2 { margin: 0 0 0.4rem; font-size: 1.15rem; }
+.arch-hero .arch-intent { margin: 0.35rem 0 0.65rem; font-size: 0.95rem; max-width: 48rem; }
+.arch-stats { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.5rem 0 0; }
+.arch-stat { border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; background: #f3f3ef; }
+.arch-stat strong { font-weight: 700; }
+.arch-shot-strip { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+.arch-shot { max-width: 11rem; border: 1px solid transparent; border-radius: 8px; padding: 0.25rem; cursor: pointer; background: transparent; font: inherit; text-align: left; color: inherit; }
+.arch-shot:hover { border-color: var(--border); background: #f3f3ef; }
+.arch-shot.selected { border-color: var(--accent); background: #e8eefc; box-shadow: 0 0 0 1px var(--accent); }
+.arch-shot img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; pointer-events: none; }
+.arch-shot .meta { font-size: 0.72rem; margin-top: 0.25rem; }
+.arch-section { margin: 1.25rem 0 0.75rem; }
+.arch-section h2 { font-size: 1.05rem; margin: 0 0 0.45rem; }
+.arch-section > .meta { margin: 0 0 0.65rem; }
+.arch-mermaid { white-space: pre; overflow: auto; background: #1e1e1e; color: #d4d4d4; border: 1px solid #333; border-radius: 6px; padding: 0.75rem; font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; line-height: 1.4; max-height: 22rem; }
+.arch-conn-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.arch-conn-table th { text-align: left; padding: 0.45rem 0.55rem; background: #efefe9; border-bottom: 1px solid var(--border); }
+.arch-conn-table td { padding: 0.4rem 0.55rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.arch-conn-table tr.arch-conn-row { cursor: pointer; }
+.arch-conn-table tr.arch-conn-row:hover { background: #eee; }
+.arch-conn-table tr.arch-conn-row.selected { background: #e8eefc; }
+.arch-gui-list { margin: 0.35rem 0 0; padding-left: 0; list-style: none; font-size: 0.85rem; }
+.arch-gui-list li { margin: 0.3rem 0; }
+.arch-gui-item { display: block; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.55rem; background: var(--card); cursor: pointer; font: inherit; color: inherit; }
+.arch-gui-item:hover { border-color: var(--accent); background: #f3f6ff; }
+.arch-gui-item.selected { border-color: var(--accent); background: #e8eefc; }
+.arch-nav-hint { font-size: 0.8rem; color: var(--muted); margin: 1rem 0 0; }
+.arch-drill { margin: 0 0 0.75rem; padding: 0.55rem 0.65rem; background: #f3f3ef; border: 1px solid var(--border); border-radius: 6px; }
+.arch-drill-btns { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.arch-drill-btns button { border: 1px solid var(--border); background: var(--card); border-radius: 6px; padding: 0.25rem 0.55rem; cursor: pointer; font-size: 0.75rem; font-family: inherit; }
+.arch-drill-btns button:hover { border-color: var(--accent); color: var(--accent); }
+.arch-neighbor { display: flex; gap: 0.35rem; align-items: flex-start; padding: 0.35rem 0.25rem; border-bottom: 1px solid var(--border); font-size: 0.8rem; cursor: pointer; width: 100%; text-align: left; background: transparent; border-left: 0; border-right: 0; border-top: 0; font-family: inherit; color: inherit; }
+.arch-neighbor:hover { background: #eee; }
+.arch-neighbor .role { flex: 0 0 3.5rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.arch-empty-hint { font-size: 0.85rem; line-height: 1.45; }
+.arch-empty-hint li { margin: 0.25rem 0; }
+@media (min-width: 900px) {
+  .layout.layout-architecture { grid-template-columns: minmax(0, 1.85fr) minmax(15rem, 0.9fr); }
+}
 .error-panel { background: var(--err-bg); border: 1px solid #fecaca; border-left: 4px solid var(--err); border-radius: 6px; padding: 0.65rem 0.75rem; margin: 0.5rem 0 0.75rem; }
 .error-panel-title { font-size: 0.8rem; font-weight: 700; color: var(--err); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.35rem; }
 .error-item { margin: 0.35rem 0; font-size: 0.85rem; }
@@ -180,6 +279,44 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .tree-row:hover, .hop-row:hover { background: #eee; }
 .tree-row.map-selectable { cursor: pointer; }
 .tree-row.map-selectable.selected { background: #e8eefc; }
+.page-tree { border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin: 0.5rem 0 1.25rem; padding: 0.25rem 0; overflow: auto; }
+.page-tree-item { display: flex; align-items: baseline; gap: 0.45rem; padding: 0.3rem 0.75rem; font-size: 0.85rem; cursor: pointer; border-bottom: 1px solid transparent; }
+.page-tree-item:hover { background: #eee; }
+.page-tree-item.selected { background: #e8eefc; }
+.page-tree-item.stub { opacity: 0.72; }
+.page-tree-guide { flex: 0 0 auto; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; white-space: pre; user-select: none; }
+.page-tree-label { flex: 1 1 auto; min-width: 0; }
+.page-tree-label code.path { font-size: 0.72rem; color: var(--muted); }
+.badge.dup { color: #9a3412; border-color: #fdba74; background: #fff7ed; }
+.badge.level { color: #4338ca; border-color: #c7d2fe; background: #eef2ff; font-variant-numeric: tabular-nums; }
+.fields-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem 0.85rem; align-items: center; margin: 0.5rem 0 0.75rem; }
+.fields-toolbar input[type="search"] { min-width: 12rem; flex: 1 1 14rem; padding: 0.3rem 0.55rem; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+.fields-toolbar .seg { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
+.fields-toolbar .seg button { border: 1px solid var(--border); background: var(--card); border-radius: 999px; padding: 0.2rem 0.65rem; cursor: pointer; font-size: 0.75rem; }
+.fields-toolbar .seg button.on { background: var(--fg); color: var(--card); border-color: var(--fg); }
+.fields-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.fields-table th, .fields-table td { text-align: left; vertical-align: top; padding: 0.45rem 0.65rem; border-bottom: 1px solid var(--border); }
+.fields-table th { background: #efefe9; font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+.fields-table tr.fields-row { cursor: pointer; }
+.fields-table tr.fields-row:hover { background: #eee; }
+.fields-table tr.fields-row.selected { background: #e8eefc; }
+.fields-table code.path { font-size: 0.78rem; word-break: break-all; }
+.fields-hop-list, .fields-node-list { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.fields-hop-list button, .fields-node-list button { border: 1px solid var(--border); background: #f7f7f3; border-radius: 4px; padding: 0.15rem 0.4rem; cursor: pointer; font-size: 0.72rem; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fields-hop-list button:hover, .fields-node-list button:hover { border-color: var(--accent); }
+.cms-tree { margin: 0.15rem 0 0.5rem; }
+.cms-tree-node { border-left: 1px solid transparent; }
+.cms-tree-row { display: flex; align-items: flex-start; gap: 0.35rem; padding: 0.28rem 0.45rem; border-radius: 4px; font-size: 0.82rem; }
+.cms-tree-row:hover { background: #eee; }
+.cms-tree-row.selected { background: #e8eefc; }
+.cms-tree-row.container-node { background: #f4f4ef; }
+.cms-tree-children { margin-left: 1.05rem; border-left: 1px dashed var(--border); padding-left: 0.15rem; }
+.cms-tree-links { margin: 0.15rem 0 0.35rem 1.6rem; padding: 0.25rem 0.45rem; border-left: 2px solid #c7d2fe; background: #f8f9ff; border-radius: 0 4px 4px 0; font-size: 0.75rem; }
+.cms-tree-links .link-row { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; padding: 0.12rem 0; }
+.cms-tree-links button.link-page { border: 1px solid #c7d2fe; background: #eef2ff; border-radius: 4px; padding: 0.1rem 0.4rem; cursor: pointer; font-size: 0.72rem; }
+.cms-tree-links button.link-page:hover { border-color: #6366f1; }
+.badge.link { color: #3730a3; border-color: #c7d2fe; background: #eef2ff; }
+.badge.wrap { color: #854d0e; border-color: #fde68a; background: #fffbeb; }
 .chev { width: 1.1rem; border: 0; background: transparent; cursor: pointer; font-family: inherit; padding: 0; }
 .indent { display: inline-block; }
 .timing-row { display: grid; grid-template-columns: minmax(10rem, 14rem) 1fr 3.5rem; gap: 0.5rem; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
@@ -295,6 +432,11 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .hop-row { cursor: pointer; }
 .timing-row { cursor: pointer; }
 .body-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 0.75rem 0 0.25rem; }
+.body-block { position: relative; }
+.body-block pre.json { padding-top: 1.85rem; }
+.body-copy-btn { position: absolute; top: 0.35rem; right: 0.35rem; z-index: 1; font-size: 0.7rem; padding: 0.15rem 0.45rem; border: 1px solid #555; border-radius: 4px; background: #2d2d2d; color: #ddd; cursor: pointer; }
+.body-copy-btn:hover { background: #3a3a3a; color: #fff; }
+.body-copy-btn.copied { border-color: #86efac; color: #86efac; }
 .unique-filters { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.35rem 0 0.5rem; align-items: center; }
 .unique-filters.secondary { margin-top: 0; margin-bottom: 0.75rem; }
 .unique-filters .label { font-size: 0.75rem; color: var(--muted); margin-right: 0.15rem; }
@@ -357,7 +499,7 @@ ${extraHead}
 <body>
 <header>
   <h1>${escapeHtml(title)}</h1>
-  <p>Mockifyer Atlas auto-doc (generated on capture)</p>
+  <p>Mockifyer Atlas — living architecture doc (generated on capture)</p>
 </header>
 <main>
 ${crumbHtml}
@@ -391,11 +533,26 @@ function renderNode(node: AtlasDocNode): string {
             return `<li><code>${escapeHtml(d.datasourceId)}</code>${kind}${root} · ops: ${ops}${req}</li>`;
           })
           .join('')}</ul>`;
+  const parent =
+    node.parentId != null && node.parentId !== ''
+      ? `<p class="meta">parentId <code>${escapeHtml(node.parentId)}</code> (surrounded by container/section)</p>`
+      : '';
+  const links =
+    node.links && node.links.length
+      ? `<h4>Page links</h4><ul>${node.links
+          .map(
+            (l) =>
+              `<li><span class="badge">${escapeHtml(l.type)}</span> <code>${escapeHtml(l.value)}</code></li>`
+          )
+          .join('')}</ul>`
+      : '';
 
   return `<article class="card">
   <h3>${escapeHtml(node.label || node.type)} <span class="badge">${escapeHtml(node.source)}</span></h3>
   <p class="meta">nodeId <code>${escapeHtml(node.nodeId)}</code> · type <code>${escapeHtml(node.type)}</code> · path <code>${escapeHtml(node.path)}</code></p>
   <p class="meta">lastSeenAt ${escapeHtml(node.lastSeenAt)}</p>
+  ${parent}
+  ${links}
   <h4>Datasources</h4>
   ${dsRows}
   <h4>Props schema</h4>
@@ -409,17 +566,60 @@ function renderPageBody(page: AtlasDocPage): string {
   const nodes = Object.values(page.nodes).sort(
     (a, b) => a.path.localeCompare(b.path) || a.nodeId.localeCompare(b.nodeId)
   );
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const childrenOf = new Map<string, AtlasDocNode[]>();
+  const roots: AtlasDocNode[] = [];
+  for (const n of nodes) {
+    const parentId = n.parentId;
+    if (parentId && byId.has(parentId) && parentId !== n.nodeId) {
+      const list = childrenOf.get(parentId) ?? [];
+      list.push(n);
+      childrenOf.set(parentId, list);
+    } else {
+      roots.push(n);
+    }
+  }
+  const renderTree = (n: AtlasDocNode, depth: number): string => {
+    const kids = childrenOf.get(n.nodeId) ?? [];
+    const indent = depth > 0 ? `<div style="margin-left:${depth * 1.1}rem;border-left:1px dashed #ccc;padding-left:0.5rem">` : '';
+    const indentEnd = depth > 0 ? '</div>' : '';
+    return `${indent}${renderNode(n)}${kids.map((c) => renderTree(c, depth + 1)).join('')}${indentEnd}`;
+  };
   const slug = page.pageSlug ? ` · slug <code>${escapeHtml(page.pageSlug)}</code>` : '';
+  const placements = page.placements ?? [];
+  const treeHtml =
+    placements.length === 0
+      ? ''
+      : `<h3>Site tree placements</h3><ul>${placements
+          .map((p) => {
+            const crumb = escapeHtml(p.treePath);
+            const under =
+              p.parentTreePath != null
+                ? ` · under <code>${escapeHtml(p.parentTreePath)}</code>`
+                : ' · root';
+            return `<li><span class="badge level">L${p.depth}</span> <code>${crumb}</code>${under}${
+              placements.length > 1 ? ' <span class="badge dup">duplicate path</span>' : ''
+            }</li>`;
+          })
+          .join('')}</ul>`;
   const nodesHtml =
-    nodes.length === 0 ? `<p class="empty">No nodes yet</p>` : nodes.map(renderNode).join('\n');
+    nodes.length === 0
+      ? `<p class="empty">No nodes yet</p>`
+      : `<h3>Component tree</h3>${(roots.length ? roots : nodes).map((n) => renderTree(n, 0)).join('\n')}`;
   return `<p class="meta">pageId <code>${escapeHtml(page.pageId)}</code>${slug} · lastSeenAt ${escapeHtml(page.lastSeenAt)}</p>
+${treeHtml}
 ${nodesHtml}`;
 }
 
+/**
+ * Pretty-print JSON for Atlas HTML previews, then cap length.
+ * Pretty-first so truncated bodies still show indented structure (not one giant line).
+ */
 function truncateBodyPreview(text: string | undefined): string | undefined {
   if (text == null || text === '') return undefined;
-  if (text.length <= MAX_BODY_CHARS_IN_HTML) return text;
-  return `${text.slice(0, MAX_BODY_CHARS_IN_HTML)}\n… [truncated ${text.length - MAX_BODY_CHARS_IN_HTML} chars]`;
+  const formatted = prettyPrintJsonText(text);
+  if (formatted.length <= MAX_BODY_CHARS_IN_HTML) return formatted;
+  return `${formatted.slice(0, MAX_BODY_CHARS_IN_HTML)}\n… [truncated ${formatted.length - MAX_BODY_CHARS_IN_HTML} chars]`;
 }
 
 function slimNetworkEvent(
@@ -451,6 +651,10 @@ function slimNetworkEvent(
     })),
     requestBodyPreview: truncateBodyPreview(ev.requestBodyPreview),
     responseBodyPreview: truncateBodyPreview(ev.responseBodyPreview),
+    requestBodyRef: ev.requestBodyRef,
+    responseBodyRef: ev.responseBodyRef,
+    requestBodyTruncated: ev.requestBodyTruncated === true,
+    responseBodyTruncated: ev.responseBodyTruncated === true,
   };
   if (ev.errorMessage) slim.errorMessage = ev.errorMessage;
   if (ev.kind) slim.kind = ev.kind;
@@ -872,11 +1076,68 @@ function renderSlowPanelHtml(e, thresholdMs, escFn) {
 }
 function prettyJsonText(text) {
   if (text == null || text === '') return null;
-  var parsed = parseBodyJson(text);
+  var raw = String(text);
+  var trimmed = raw.replace(/^\\s+|\\s+$/g, '');
+  if (/^(#\\s*operationName:|(query|mutation|subscription)\\b)/.test(trimmed)) return raw;
+  var parsed = parseBodyJson(raw);
   if (parsed.ok) {
     try { return JSON.stringify(parsed.value, null, 2); } catch (err) { return parsed.raw; }
   }
-  return parsed.raw;
+  // Truncated body footer — format the head when it is still valid JSON
+  var footer = String.fromCharCode(10) + String.fromCharCode(8230) + ' [truncated';
+  var cut = raw.indexOf(footer);
+  var head = cut > 0 ? raw.slice(0, cut) : raw;
+  var headParsed = parseBodyJson(head);
+  if (headParsed.ok) {
+    try {
+      var prettyHead = JSON.stringify(headParsed.value, null, 2);
+      return cut > 0 ? prettyHead + raw.slice(cut) : prettyHead;
+    } catch (err2) { /* fall through */ }
+  }
+  // Incomplete compact JSON — soft-pretty for readable Atlas previews
+  var soft = softPrettyJsonClient(head);
+  return cut > 0 ? soft + raw.slice(cut) : soft;
+}
+function softPrettyJsonClient(text) {
+  var out = '';
+  var depth = 0;
+  var inStr = false;
+  var esc = false;
+  function indent() {
+    var pad = '';
+    for (var i = 0; i < depth; i++) pad += '  ';
+    return pad;
+  }
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charAt(i);
+    if (inStr) {
+      out += ch;
+      if (esc) esc = false;
+      else if (ch === String.fromCharCode(92)) esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; out += ch; continue; }
+    if (ch === '{' || ch === '[') {
+      depth += 1;
+      out += ch + String.fromCharCode(10) + indent();
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      depth = Math.max(0, depth - 1);
+      out += String.fromCharCode(10) + indent() + ch;
+      continue;
+    }
+    if (ch === ',') {
+      out += ch + String.fromCharCode(10) + indent();
+      continue;
+    }
+    if (ch === ':') { out += ': '; continue; }
+    var code = ch.charCodeAt(0);
+    if (code === 32 || code === 9 || code === 10 || code === 13) continue;
+    out += ch;
+  }
+  return out;
 }
 function highlightJsonHtml(prettyText) {
   if (prettyText == null || prettyText === '') return '';
@@ -941,11 +1202,20 @@ function highlightJsonHtml(prettyText) {
 function renderJsonPre(text, usedPathMap, dimUnused) {
   var parsed = parseBodyJson(text);
   if (parsed.ok && usedPathMap && Object.keys(usedPathMap).length) {
-    return '<pre class="json">' + renderJsonValueHtml(parsed.value, '', usedPathMap, 0, !!dimUnused) + '</pre>';
+    return wrapCopyableBodyPre(renderJsonValueHtml(parsed.value, '', usedPathMap, 0, !!dimUnused));
   }
   var pretty = prettyJsonText(text);
   if (pretty == null) return '<p class="empty">No body captured.</p>';
-  return '<pre class="json">' + highlightJsonHtml(pretty) + '</pre>';
+  var trimmed = String(pretty).replace(/^\\s+|\\s+$/g, '');
+  if (/^(#\\s*operationName:|(query|mutation|subscription)\\b)/.test(trimmed)) {
+    return wrapCopyableBodyPre(escJsonStr(pretty));
+  }
+  return wrapCopyableBodyPre(highlightJsonHtml(pretty));
+}
+function wrapCopyableBodyPre(innerHtml) {
+  return '<div class="body-block">'
+    + '<button type="button" class="body-copy-btn" data-copy-body>Copy</button>'
+    + '<pre class="json">' + innerHtml + '</pre></div>';
 }
 function buildUsedPathMap(paths) {
   var m = {};
@@ -998,7 +1268,8 @@ function renderJsonValueHtml(value, path, map, indent, dimUnused) {
       if (line !== '') itemLines.push(line);
     });
     if (dimUnused && !itemLines.length) return '';
-    return pad + '[\\n' + itemLines.join(',\\n') + (itemLines.length ? '\\n' : '') + pad + ']';
+    var nl = String.fromCharCode(10);
+    return pad + '[' + nl + itemLines.join(',' + nl) + (itemLines.length ? nl : '') + pad + ']';
   }
   if (typeof value === 'object') {
     if (dimUnused && kind === 'unused' && path !== '') return '';
@@ -1016,7 +1287,8 @@ function renderJsonValueHtml(value, path, map, indent, dimUnused) {
       entries.push(childPad + '<span class="' + keyCls + '">"' + escJsonStr(k) + '"</span>: ' + valPart);
     });
     if (dimUnused && !entries.length && path !== '') return '';
-    return pad + '{\\n' + entries.join(',\\n') + (entries.length ? '\\n' : '') + pad + '}';
+    var nl2 = String.fromCharCode(10);
+    return pad + '{' + nl2 + entries.join(',' + nl2) + (entries.length ? nl2 : '') + pad + '}';
   }
   return pad + escJsonStr(String(value));
 }
@@ -1072,7 +1344,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     });
   })(events);
   var collapsed = {};
-  var view = 'map';
+  var view = 'architecture';
   var selectedId = null;
   /** Map selection: { type: 'page'|'prefetch'|'node', id, pageId? } */
   var selectedMap = null;
@@ -1090,8 +1362,12 @@ function renderErrorPanelHtml(analysis, escFn) {
   var reqSearchFocus = false;
   var highlightUsedFields = true;
   var dimUnusedFields = false;
+  var fieldsSearch = '';
+  var fieldsGroupBy = 'path';
+  var fieldsFocus = false;
+  var fieldsCmsOnly = false;
   var slowThresholdMs = (DATA.slowThresholdMs > 0) ? DATA.slowThresholdMs : ATLAS_DEFAULT_SLOW_MS;
-  var uniqueMode = 'off';
+  var uniqueMode = 'endpoint';
   var uniqueScope = 'global';
   var uniqueKeep = 'first';
   var expandedUniqueGroups = {};
@@ -1428,14 +1704,61 @@ function renderErrorPanelHtml(analysis, escFn) {
   function hopSearchHaystack(e) {
     var parts = [
       e.method, e.path, e.url, e.requestId, e.parentRequestId, e.host,
-      eventHost(e), hopKind(e), e.guiAttribution, e.source, formatWhen(e.timestamp)
+      eventHost(e), hopKind(e), e.guiAttribution, e.source, formatWhen(e.timestamp),
+      e.requestBodyPreview, e.responseBodyPreview, e.errorMessage
     ];
     usageList(e.usage).forEach(function (u) {
       parts.push(u.screen, u.component, u.label, u.datasourceId);
       if (u.cms) parts.push(u.cms.pageId, u.cms.nodeId, u.cms.type, u.cms.path);
     });
+    var blob = bodySearchById[e.id];
+    if (blob) parts.push(blob);
     return parts.filter(Boolean).join(' ').toLowerCase();
   }
+  /** Full body text by hop id (from bodies-search.json). */
+  var bodySearchById = {};
+  /** Split query on whitespace without regex (script lives in a TS template literal). */
+  function splitSearchTerms(q) {
+    var terms = [];
+    var cur = '';
+    for (var i = 0; i < q.length; i++) {
+      var ch = q.charAt(i);
+      var code = ch.charCodeAt(0);
+      // space / tab / LF / CR — avoid \\t \\n \\r inside the TS template literal host
+      if (code === 32 || code === 9 || code === 10 || code === 13) {
+        if (cur) {
+          terms.push(cur);
+          cur = '';
+        }
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur) terms.push(cur);
+    return terms;
+  }
+  /** True when every term is a substring of the hop haystack (narrows as you type). */
+  function hopMatchesSearchQuery(e, q) {
+    var hay = hopSearchHaystack(e);
+    var terms = splitSearchTerms(String(q || '').toLowerCase());
+    if (!terms.length) return true;
+    for (var i = 0; i < terms.length; i++) {
+      if (hay.indexOf(terms[i]) < 0) return false;
+    }
+    return true;
+  }
+  function loadBodySearchCorpus() {
+    if (typeof fetch !== 'function') return;
+    fetch('bodies-search.json')
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        if (!data || typeof data !== 'object') return;
+        bodySearchById = data;
+        if (requestSearch && String(requestSearch).trim()) render();
+      })
+      .catch(function () { /* optional sidecar */ });
+  }
+  loadBodySearchCorpus();
   /** FlexSearch index of hop haystacks — rebuilt when event set is first searched. */
   var hopFlexIndex = null;
   var hopFlexIndexReady = false;
@@ -1528,7 +1851,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   }
   function renderRequestQueryFilters() {
     var html = '<div class="req-filters">';
-    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, method, requestId, screen…" value="' + esc(requestSearch) + '" title="FlexSearch prefix match across hop fields"></label>';
+    html += '<label class="req-filter-label">Search<input type="search" data-req-search placeholder="path, body JSON, requestId, screen…" value="' + esc(requestSearch) + '" title="FlexSearch prefix match across hop fields (substring fallback if FlexSearch unavailable)"></label>';
     html += '<label class="req-filter-label">From<input type="date" data-req-date-from value="' + esc(requestDateFrom) + '"></label>';
     html += '<label class="req-filter-label">To<input type="date" data-req-date-to value="' + esc(requestDateTo) + '"></label>';
     if (requestSearch || requestDateFrom || requestDateTo) {
@@ -1735,10 +2058,29 @@ function renderErrorPanelHtml(analysis, escFn) {
     return null;
   }
 
+  function renderBodyFullLink(ref, label) {
+    if (!ref) return '';
+    var href = String(ref);
+    // Avoid regex with "/" — this script is embedded in a TS template literal.
+    while (href.charAt(0) === '/') href = href.slice(1);
+    return '<p class="meta"><a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a></p>';
+  }
+
   function renderHopBodies(e) {
     var html = '';
     html += '<div class="body-label">Request body</div>';
-    html += e.requestBodyPreview ? renderJsonPre(e.requestBodyPreview) : '<p class="empty">No request body captured.</p>';
+    if (e.requestBodyPreview) {
+      html += renderJsonPre(e.requestBodyPreview);
+      if (e.requestBodyTruncated || e.requestBodyRef) {
+        html += '<p class="meta">Preview truncated' + (e.requestBodyRef ? '' : '') + '.</p>';
+        html += renderBodyFullLink(e.requestBodyRef, 'Open full request body');
+      }
+    } else if (e.requestBodyRef) {
+      html += '<p class="empty">Request body omitted from hop preview (too large).</p>';
+      html += renderBodyFullLink(e.requestBodyRef, 'Open full request body');
+    } else {
+      html += '<p class="empty">No request body captured.</p>';
+    }
     html += '<div class="body-label">Response body</div>';
     var hasFieldUsage = e.usedResponsePaths && e.usedResponsePaths.length;
     if (hasFieldUsage) {
@@ -1761,9 +2103,18 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '<p class="meta">No props sample linked yet — capture presentation with shown props to highlight used response fields.</p>';
     }
     var usedMap = highlightUsedFields && hasFieldUsage ? buildUsedPathMap(e.usedResponsePaths) : null;
-    html += e.responseBodyPreview
-      ? renderJsonPre(e.responseBodyPreview, usedMap, dimUnusedFields)
-      : '<p class="empty">No response body captured.</p>';
+    if (e.responseBodyPreview) {
+      html += renderJsonPre(e.responseBodyPreview, usedMap, dimUnusedFields);
+      if (e.responseBodyTruncated || e.responseBodyRef) {
+        html += '<p class="meta">Preview truncated.</p>';
+        html += renderBodyFullLink(e.responseBodyRef, 'Open full response body');
+      }
+    } else if (e.responseBodyRef) {
+      html += '<p class="empty">Response body omitted from hop preview (too large).</p>';
+      html += renderBodyFullLink(e.responseBodyRef, 'Open full response body');
+    } else {
+      html += '<p class="empty">No response body captured.</p>';
+    }
     return html;
   }
 
@@ -1792,13 +2143,111 @@ function renderErrorPanelHtml(analysis, escFn) {
     return html;
   }
 
+  function renderDrillDownBar(hopId) {
+    var html = '<div class="arch-drill"><div class="body-label" style="margin:0">Drill down</div>';
+    html += '<div class="arch-drill-btns">';
+    if (hopId) {
+      html += '<button type="button" data-view="trace" data-keep-select="' + esc(hopId) + '">Open in Trace</button>';
+      html += '<button type="button" data-view="chains" data-keep-select="' + esc(hopId) + '">Open in Chains</button>';
+      html += '<button type="button" data-view="waterfall" data-keep-select="' + esc(hopId) + '">Open in Waterfall</button>';
+    }
+    html += '<button type="button" data-view="map"' + (hopId ? ' data-keep-select="' + esc(hopId) + '"' : '') + '>Open in Map</button>';
+    html += '<button type="button" data-view="architecture">Back to Architecture</button>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function findHopParent(e) {
+    if (!e || !e.parentRequestId) return null;
+    return findByRequestId(e.parentRequestId);
+  }
+
+  function findHopChildren(e) {
+    if (!e || !e.requestId) return [];
+    return events.filter(function (c) {
+      return c.parentRequestId === e.requestId && c.id !== e.id;
+    }).sort(function (a, b) {
+      return new Date(a.timestamp) - new Date(b.timestamp);
+    }).slice(0, 12);
+  }
+
+  function renderHopNeighborhood(e) {
+    var parent = findHopParent(e);
+    var children = findHopChildren(e);
+    if (!parent && !children.length) return '';
+    var html = '<div class="body-label">Call neighborhood</div>';
+    if (parent) {
+      html += '<button type="button" class="arch-neighbor" data-select="' + esc(parent.id) + '">';
+      html += '<span class="role">Parent</span><span><strong>' + esc(parent.method) + '</strong> ' + esc(shortPathLabel(parent.path || parent.url));
+      html += ' <span class="badge">' + esc(KIND_META[hopKind(parent)].label) + '</span></span></button>';
+    }
+    children.forEach(function (c) {
+      html += '<button type="button" class="arch-neighbor" data-select="' + esc(c.id) + '">';
+      html += '<span class="role">Child</span><span><strong>' + esc(c.method) + '</strong> ' + esc(shortPathLabel(c.path || c.url));
+      html += ' <span class="badge">' + esc(KIND_META[hopKind(c)].label) + '</span></span></button>';
+    });
+    return html;
+  }
+
+  function renderLinkedGuiPanel(e) {
+    var nodes = e.linkedGuiNodes || [];
+    var us = usageList(e.usage);
+    var html = '';
+    if (nodes.length) {
+      html += '<div class="body-label">Linked GUI</div><ul class="arch-gui-list">';
+      nodes.forEach(function (n) {
+        html += '<li><button type="button" class="arch-gui-item" data-select-node="' + esc(n.pageId) + '" data-node-id="' + esc(n.nodeId) + '">';
+        html += '<strong>' + esc(n.label || n.type) + '</strong>';
+        html += '<div class="meta">' + esc(n.pageId) + ' / ' + esc(n.nodeId) + (n.type ? ' · ' + esc(n.type) : '') + '</div>';
+        html += '</button></li>';
+      });
+      html += '</ul>';
+    }
+    var screens = {};
+    us.forEach(function (u) {
+      if (u && u.screen) screens[u.screen] = true;
+    });
+    var screenKeys = Object.keys(screens);
+    if (screenKeys.length) {
+      html += '<div class="body-label">Screens</div><ul class="arch-gui-list">';
+      screenKeys.forEach(function (s) {
+        html += '<li><button type="button" class="arch-gui-item" data-select-screen="' + esc(s) + '">';
+        html += '<strong>' + esc(s) + '</strong><div class="meta">Open screen context</div></button></li>';
+      });
+      html += '</ul>';
+    }
+    return html;
+  }
+
+  function renderArchitectureHopDetail(e) {
+    var html = renderDrillDownBar(e.id);
+    html += renderHopNeighborhood(e);
+    html += renderLinkedGuiPanel(e);
+    html += renderHopSummary(e);
+    return html;
+  }
+
+  function renderArchitectureEmptyDetail() {
+    var html = '<h3>Architecture detail</h3>';
+    html += '<p class="arch-empty-hint empty">Click anything on the left to inspect without leaving Architecture:</p>';
+    html += '<ul class="arch-empty-hint meta">';
+    html += '<li><strong>Connection row</strong> — hop bodies, parent/child neighbors, GUI links</li>';
+    html += '<li><strong>Chain box</strong> — that hop plus neighborhood</li>';
+    html += '<li><strong>Screenshot</strong> — screen / page context and linked hops</li>';
+    html += '<li><strong>GUI binding</strong> — node props + datasource hop</li>';
+    html += '</ul>';
+    html += '<p class="meta">Use <em>Open in Trace / Chains</em> in the detail pane when you need the full session timeline.</p>';
+    return html;
+  }
+
   function renderDetail(el) {
     if (!el) return;
     if (selectedMap && selectedMap.type === 'page') {
       var page = (doc.pages || {})[selectedMap.id];
       if (!page) { el.innerHTML = '<p class="empty">Page not found</p>'; return; }
       var pageHops = hopsForPage(page);
-      var html = '<h3>' + esc(page.pageSlug || page.pageId) + '</h3>';
+      var html = view === 'architecture' ? renderDrillDownBar(pageHops[0] && pageHops[0].id) : '';
+      html += '<h3>' + esc(page.pageSlug || page.pageId) + '</h3>';
       html += '<p class="meta">pageId <code>' + esc(page.pageId) + '</code>';
       if (page.documentId) html += '<br/>documentId <code>' + esc(page.documentId) + '</code>';
       html += '<br/>lastSeenAt ' + esc(page.lastSeenAt || '') + '</p>';
@@ -1831,7 +2280,10 @@ function renderErrorPanelHtml(analysis, escFn) {
       var pg = (doc.pages || {})[selectedMap.pageId];
       var node = pg && pg.nodes ? pg.nodes[selectedMap.id] : null;
       if (!node) { el.innerHTML = '<p class="empty">Node not found</p>'; return; }
-      var htmlN = '<h3>' + esc(node.label || node.type) + '</h3>';
+      var firstHop = null;
+      (node.datasources || []).some(function (d) { firstHop = findByRequestId(d.lastRequestId); return !!firstHop; });
+      var htmlN = view === 'architecture' ? renderDrillDownBar(firstHop && firstHop.id) : '';
+      htmlN += '<h3>' + esc(node.label || node.type) + '</h3>';
       htmlN += '<p class="meta">type <code>' + esc(node.type) + '</code> · ' + esc(node.source);
       htmlN += '<br/>path <code>' + esc(node.path) + '</code></p>';
       if (node.editUrl) htmlN += '<p class="meta"><a href="' + esc(node.editUrl) + '" target="_blank" rel="noopener noreferrer">Edit in CMS ↗</a></p>';
@@ -1850,10 +2302,14 @@ function renderErrorPanelHtml(analysis, escFn) {
         htmlN += '<div class="body-label">Last sample</div>';
         htmlN += renderJsonPre(typeof node.propsSample === 'string' ? node.propsSample : JSON.stringify(node.propsSample));
       }
-      var firstHop = null;
-      (node.datasources || []).some(function (d) { firstHop = findByRequestId(d.lastRequestId); return !!firstHop; });
       if (firstHop) {
-        htmlN += '<div class="body-label">Linked hop</div>' + renderHopSummary(firstHop);
+        htmlN += '<div class="body-label">Linked hop</div>';
+        if (view === 'architecture') {
+          htmlN += renderHopNeighborhood(firstHop);
+          htmlN += renderHopSummary(firstHop);
+        } else {
+          htmlN += renderHopSummary(firstHop);
+        }
       } else {
         htmlN += '<p class="empty">No linked network hop for this node yet.</p>';
       }
@@ -1864,7 +2320,8 @@ function renderErrorPanelHtml(analysis, escFn) {
       var scDoc = (doc.screens || {})[selectedMap.id];
       if (!scDoc) { el.innerHTML = '<p class="empty">Screen not found</p>'; return; }
       var scHops = hopsForScreen(selectedMap.id, scDoc);
-      var htmlS = '<h3>' + esc(selectedMap.id) + '</h3>';
+      var htmlS = view === 'architecture' ? renderDrillDownBar(scHops[0] && scHops[0].id) : '';
+      htmlS += '<h3>' + esc(selectedMap.id) + '</h3>';
       htmlS += '<p class="meta">Route / flow screen (not a CMS page — see Pages for presentation tree).</p>';
       htmlS += '<div class="meta">components: ' + esc((scDoc.components || []).join(', ') || '—') + '</div>';
       htmlS += '<div class="meta">datasources: ' + esc((scDoc.datasourceIds || []).join(', ') || '—') + '</div>';
@@ -1890,7 +2347,8 @@ function renderErrorPanelHtml(analysis, escFn) {
       var pref = (doc.prefetches || {})[selectedMap.id];
       if (!pref) { el.innerHTML = '<p class="empty">Prefetch not found</p>'; return; }
       var hop = findHopForPrefetch(pref, selectedMap.id, matchPrefetchesToHops());
-      var htmlP = '<h3>' + esc(pref.datasourceId || selectedMap.id) + '</h3>';
+      var htmlP = view === 'architecture' ? renderDrillDownBar(hop && hop.id) : '';
+      htmlP += '<h3>' + esc(pref.datasourceId || selectedMap.id) + '</h3>';
       htmlP += '<p class="meta">';
       if (pref.kind) htmlP += 'kind <code>' + esc(pref.kind) + '</code><br/>';
       htmlP += 'phases: ' + esc((pref.phases || []).join(', ') || '—') + '<br/>';
@@ -1908,10 +2366,18 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
     var e = selectedId ? findEvent(selectedId) : null;
     if (!e) {
-      el.innerHTML = '<h3>Detail</h3><p class="empty">Select a page, prefetch, or hop to inspect.</p>';
+      if (view === 'architecture') {
+        el.innerHTML = renderArchitectureEmptyDetail();
+      } else {
+        el.innerHTML = '<h3>Detail</h3><p class="empty">Select a page, prefetch, or hop to inspect.</p>';
+      }
       return;
     }
-    el.innerHTML = renderHopSummary(e);
+    if (view === 'architecture') {
+      el.innerHTML = renderArchitectureHopDetail(e);
+    } else {
+      el.innerHTML = renderHopSummary(e);
+    }
   }
 
   function sortByTs(list) {
@@ -2580,6 +3046,589 @@ function renderErrorPanelHtml(analysis, escFn) {
       .sort(function (a, b) { return new Date(a.timestamp) - new Date(b.timestamp); });
   }
 
+  function mermaidSafeId(prefix, raw) {
+    return String(prefix) + '_' + String(raw || '').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 48);
+  }
+
+  function hopArchLabel(hop) {
+    var svc = serviceForHop(hop);
+    var path = shortPathLabel(hop.path || hop.url);
+    var op = '';
+    var us = usageList(hop.usage);
+    if (us.length && us[0] && us[0].label) op = us[0].label;
+    var line = svc.kindLabel + ' · ' + hop.method + ' ' + path;
+    if (op) line += ' · ' + op;
+    return line;
+  }
+
+  function collectArchitectureScreenshots() {
+    var shots = [];
+    var seen = {};
+    function add(path, label, capturedAt, meta) {
+      if (!path || seen[path]) return;
+      seen[path] = true;
+      shots.push({
+        path: path,
+        label: label || path,
+        capturedAt: capturedAt,
+        screen: meta && meta.screen,
+        pageId: meta && meta.pageId
+      });
+    }
+    Object.keys(doc.screens || {}).sort().forEach(function (s) {
+      var sc = doc.screens[s];
+      if (isOdenCollectionScreenArtifact(s, sc)) return;
+      if (sc && sc.screenshotPath) add(sc.screenshotPath, s, sc.screenshotCapturedAt, { screen: s });
+      (sc && sc.screenshots || []).forEach(function (ref) {
+        if (ref && ref.path) add(ref.path, s + (ref.phase ? ' · ' + ref.phase : ''), ref.capturedAt, { screen: s });
+      });
+    });
+    Object.keys(doc.pages || {}).sort().forEach(function (pid) {
+      var p = doc.pages[pid];
+      if (p && p.screenshotPath) add(p.screenshotPath, p.pageSlug || pid, p.screenshotCapturedAt, { pageId: pid });
+      (p && p.screenshots || []).forEach(function (ref) {
+        if (ref && ref.path) add(ref.path, (p.pageSlug || pid) + (ref.phase ? ' · ' + ref.phase : ''), ref.capturedAt, { pageId: pid });
+      });
+    });
+    return shots.slice(0, 8);
+  }
+
+  function buildArchitectureIntent(baseList, uniqueMeta, chains) {
+    var screens = Object.keys(doc.screens || {}).sort().filter(function (s) {
+      return !isOdenCollectionScreenArtifact(s, doc.screens[s]);
+    });
+    var pages = Object.keys(doc.pages || {}).sort();
+    var prefs = Object.keys(doc.prefetches || {}).sort();
+    var parts = [];
+    parts.push('Living architecture snapshot for scenario <code>' + esc(doc.scenario) + '</code>.');
+    if (screens.length) {
+      parts.push('Covers screen' + (screens.length === 1 ? '' : 's') + ' <strong>' + screens.slice(0, 5).map(esc).join('</strong>, <strong>') + '</strong>' + (screens.length > 5 ? ' …' : '') + '.');
+    } else if (pages.length) {
+      parts.push('CMS page' + (pages.length === 1 ? '' : 's') + ' <strong>' + pages.slice(0, 5).map(function (pid) {
+        var p = doc.pages[pid];
+        return esc(p.pageSlug || pid);
+      }).join('</strong>, <strong>') + '</strong>' + (pages.length > 5 ? ' …' : '') + '.');
+    } else {
+      parts.push('Network-only capture so far (no screen / CMS presentation annotations yet).');
+    }
+    parts.push(
+      'Shows <strong>' + uniqueMeta.uniqueCount + '</strong> unique endpoint' +
+      (uniqueMeta.uniqueCount === 1 ? '' : 's') +
+      ' from <strong>' + uniqueMeta.totalCount + '</strong> hop' +
+      (uniqueMeta.totalCount === 1 ? '' : 's') +
+      (chains.length ? ' across <strong>' + chains.length + '</strong> orchestration pattern' + (chains.length === 1 ? '' : 's') : '') +
+      '.'
+    );
+    if (prefs.length) {
+      parts.push('Prefetch datasource' + (prefs.length === 1 ? '' : 's') + ': ' + prefs.slice(0, 4).map(esc).join(', ') + (prefs.length > 4 ? ' …' : '') + '.');
+    }
+    parts.push('Repeat traffic is collapsed — open Trace / Waterfall for full timing.');
+    return parts.join(' ');
+  }
+
+  function buildMermaidFromChains(chains) {
+    var lines = ['flowchart TD'];
+    var nodeIds = {};
+    var edgeSeen = {};
+    var nodeCount = 0;
+    function ensureNode(hop) {
+      var key = buildHopDedupKey(hop, chainRequestKeyMode(), 'global', usageList);
+      if (nodeIds[key]) return nodeIds[key];
+      nodeCount += 1;
+      var id = mermaidSafeId('n', String(nodeCount));
+      nodeIds[key] = id;
+      var label = hopArchLabel(hop).replace(/"/g, "'");
+      lines.push('  ' + id + '["' + label + '"]');
+      return id;
+    }
+    function walkGroups(parentId, groups) {
+      (groups || []).forEach(function (g) {
+        var hop = pickRepresentativeHop(g.hops, uniqueKeep) || g.hops[0];
+        var childId = ensureNode(hop);
+        var ek = parentId + '->' + childId;
+        if (!edgeSeen[ek]) {
+          edgeSeen[ek] = true;
+          var edgeLabel = g.hops.length > 1 ? '|×' + g.hops.length + '|' : '';
+          lines.push('  ' + parentId + ' -->' + edgeLabel + ' ' + childId);
+        }
+        if (g.node && g.node.children.length) {
+          walkGroups(childId, groupDownstreamCalls(g.node.children));
+        }
+      });
+    }
+    chains.slice(0, 6).forEach(function (ch) {
+      var rootHop = pickRepresentativeHop([ch.tree.root.hop], uniqueKeep) || ch.tree.root.hop;
+      var rootId = ensureNode(rootHop);
+      walkGroups(rootId, ch.tree.level1 || []);
+    });
+    if (nodeCount === 0) {
+      lines.push('  empty["No nested call chains yet"]');
+    }
+    return lines.join('\\n');
+  }
+
+  function collectConnectionRows(baseList, chains) {
+    var rows = [];
+    var seen = {};
+    function pushRow(row) {
+      var key = [row.from, row.to, row.kind, row.hopId].join('|');
+      if (seen[key]) return;
+      seen[key] = true;
+      rows.push(row);
+    }
+    chains.forEach(function (ch) {
+      function walk(parentHop, groups, depth) {
+        (groups || []).forEach(function (g) {
+          var child = pickRepresentativeHop(g.hops, uniqueKeep) || g.hops[0];
+          pushRow({
+            kind: 'parent→child',
+            from: hopArchLabel(parentHop),
+            to: hopArchLabel(child),
+            note: (g.hops.length > 1 ? g.hops.length + ' identical calls · ' : '') +
+              'level ' + depth + ' via parentRequestId' +
+              (ch.context ? ' · screen ' + ch.context : ''),
+            hopId: child.id
+          });
+          if (g.node && g.node.children.length) {
+            walk(child, groupDownstreamCalls(g.node.children), depth + 1);
+          }
+        });
+      }
+      walk(ch.tree.root.hop, ch.tree.level1 || [], 1);
+    });
+    baseList.forEach(function (e) {
+      usageList(e.usage).forEach(function (u) {
+        if (!u) return;
+        if (u.screen) {
+          pushRow({
+            kind: 'screen→hop',
+            from: u.screen,
+            to: hopArchLabel(e),
+            note: (u.component ? 'component ' + u.component : formatUsage(u)) +
+              (e.guiAttribution === 'gui-linked' ? ' · GUI-linked' : e.guiAttribution === 'screen-only' ? ' · screen-only' : ''),
+            hopId: e.id
+          });
+        }
+        if (u.cms && (u.cms.pageId || u.cms.nodeId)) {
+          pushRow({
+            kind: 'cms→hop',
+            from: (u.cms.pageId || '') + (u.cms.nodeId ? '/' + u.cms.nodeId : ''),
+            to: hopArchLabel(e),
+            note: (u.cms.type ? 'type ' + u.cms.type : 'CMS node') +
+              (u.datasourceId ? ' · ds ' + u.datasourceId : ''),
+            hopId: e.id
+          });
+        }
+      });
+    });
+    Object.keys(doc.pages || {}).forEach(function (pid) {
+      var page = doc.pages[pid];
+      Object.keys(page.nodes || {}).forEach(function (nid) {
+        var node = page.nodes[nid];
+        (node.datasources || []).forEach(function (d) {
+          var hop = findByRequestId(d.lastRequestId);
+          if (!hop) return;
+          pushRow({
+            kind: 'gui→datasource',
+            from: (node.label || node.type) + ' (' + pid + ')',
+            to: hopArchLabel(hop),
+            note: 'datasource ' + d.datasourceId +
+              (d.dataRoot ? ' · root ' + d.dataRoot : '') +
+              ((d.operations || []).length ? ' · ops ' + d.operations.join(', ') : ''),
+            hopId: hop.id
+          });
+        });
+      });
+    });
+    return rows.slice(0, 80);
+  }
+
+  function collectGuiBindingNotes() {
+    var notes = [];
+    Object.keys(doc.pages || {}).sort().forEach(function (pid) {
+      var page = doc.pages[pid];
+      Object.keys(page.nodes || {}).sort().forEach(function (nid) {
+        var node = page.nodes[nid];
+        var ds = (node.datasources || []).map(function (d) {
+          return d.datasourceId + (d.dataRoot ? ' @ ' + d.dataRoot : '');
+        });
+        if (!ds.length && !node.propsSample) return;
+        notes.push({
+          title: (node.label || node.type) + ' · ' + (page.pageSlug || pid),
+          detail: (ds.length ? 'reads ' + ds.join('; ') : 'no datasource yet') +
+            (node.propsSample != null ? ' · has props sample' : ''),
+          pageId: pid,
+          nodeId: nid
+        });
+      });
+    });
+    return notes.slice(0, 24);
+  }
+
+  function renderArchitecture(el) {
+    var base = applyKindFilter(filterEvents());
+    var uniqueMeta = applyUniqueFilter(base, { mode: uniqueMode === 'off' ? 'endpoint' : uniqueMode, scope: uniqueScope, keep: uniqueKeep }, usageList);
+    var archList = uniqueMeta.list;
+    var chains = buildUniqueChains(base);
+    var shots = collectArchitectureScreenshots();
+    var connections = collectConnectionRows(archList, chains);
+    var guiNotes = collectGuiBindingNotes();
+    var html = '';
+    html += '<div class="arch-hero">';
+    html += '<h2>Architecture</h2>';
+    html += '<p class="arch-intent">' + buildArchitectureIntent(base, uniqueMeta, chains) + '</p>';
+    html += '<p class="meta">updatedAt ' + esc(doc.updatedAt || '') + ' · Unique filter defaults to endpoints (repeats collapsed)</p>';
+    html += '<div class="arch-stats">';
+    html += '<span class="arch-stat"><strong>' + uniqueMeta.uniqueCount + '</strong> unique</span>';
+    html += '<span class="arch-stat"><strong>' + uniqueMeta.totalCount + '</strong> hops</span>';
+    html += '<span class="arch-stat"><strong>' + chains.length + '</strong> chain pattern' + (chains.length === 1 ? '' : 's') + '</span>';
+    html += '<span class="arch-stat"><strong>' + Object.keys(doc.screens || {}).length + '</strong> screens</span>';
+    html += '<span class="arch-stat"><strong>' + Object.keys(doc.pages || {}).length + '</strong> pages</span>';
+    html += '<span class="arch-stat"><strong>' + Object.keys(doc.prefetches || {}).length + '</strong> prefetches</span>';
+    html += '</div></div>';
+
+    html += renderUniqueFilters(base, uniqueMeta);
+
+    if (shots.length) {
+      html += '<div class="arch-section"><h2>Screenshots</h2>';
+      html += '<p class="meta">Click a capture to open screen / page context in the detail pane.</p>';
+      html += '<div class="arch-shot-strip">';
+      shots.forEach(function (s) {
+        var src = atlasAssetUrl(s.path);
+        var shotSelected = (s.screen && selectedMap && selectedMap.type === 'screen' && selectedMap.id === s.screen)
+          || (s.pageId && selectedMap && selectedMap.type === 'page' && selectedMap.id === s.pageId);
+        html += '<button type="button" class="arch-shot' + (shotSelected ? ' selected' : '') + '"';
+        if (s.screen) html += ' data-select-screen="' + esc(s.screen) + '"';
+        else if (s.pageId) html += ' data-select-page="' + esc(s.pageId) + '"';
+        html += '>';
+        html += '<img src="' + esc(src) + '" alt="' + esc(s.label) + '" loading="lazy" data-atlas-img />';
+        html += '<span class="meta">' + esc(s.label);
+        if (s.capturedAt) html += '<br/>' + esc(formatWhen(s.capturedAt));
+        html += '</span></button>';
+      });
+      html += '</div></div>';
+    }
+
+    html += '<div class="arch-section"><h2>Unique call graph</h2>';
+    html += '<p class="meta">Illustrative flowchart of unique parent→child connections (Mermaid source — paste into docs). Click any chain box for hop detail.</p>';
+    html += '<pre class="arch-mermaid">' + esc(buildMermaidFromChains(chains)) + '</pre>';
+    if (!chains.length) {
+      html += '<p class="empty">No nested chains yet — enable includeTraceHeader / parentRequestId to link hops. Unique endpoints still appear under Connections.</p>';
+    } else {
+      chains.slice(0, 4).forEach(function (ch) {
+        html += '<div class="chain-card">';
+        html += '<div class="chain-h"><span><strong>' + esc(ch.title) + '</strong></span>';
+        if (ch.context) html += ' <span class="meta">· ' + esc(ch.context) + '</span>';
+        if (ch.count > 1) html += ' <span class="badge repeat">×' + ch.count + '</span>';
+        html += '</div>';
+        html += renderChainTree(ch.tree);
+        html += '</div>';
+      });
+      if (chains.length > 4) {
+        html += '<p class="meta">+' + (chains.length - 4) + ' more pattern(s) — open the <button type="button" data-view="chains">Chains</button> tab.</p>';
+      }
+    }
+    html += '</div>';
+
+    html += '<div class="arch-section"><h2>Connections</h2>';
+    html += '<p class="meta">Unique links between screens, CMS nodes, and network hops — click a row to inspect (not every timed call).</p>';
+    if (!connections.length) {
+      html += '<p class="empty">No connections yet. Browse with screen session + CMS presentation capture, or traffic with parentRequestId nesting.</p>';
+    } else {
+      html += '<table class="arch-conn-table"><thead><tr><th>Kind</th><th>From</th><th>To</th><th>Explanation</th></tr></thead><tbody>';
+      connections.forEach(function (row) {
+        var sel = selectedId && row.hopId === selectedId ? ' selected' : '';
+        html += '<tr class="arch-conn-row' + sel + '"';
+        if (row.hopId) html += ' data-select="' + esc(row.hopId) + '"';
+        else if (row.kind === 'screen→hop' && row.from) html += ' data-select-screen="' + esc(row.from) + '"';
+        html += '>';
+        html += '<td><span class="badge">' + esc(row.kind) + '</span></td>';
+        html += '<td>' + esc(row.from) + '</td>';
+        html += '<td>' + esc(row.to) + '</td>';
+        html += '<td class="meta">' + esc(row.note) + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+
+    if (guiNotes.length) {
+      html += '<div class="arch-section"><h2>GUI bindings</h2>';
+      html += '<p class="meta">Click a component to open props + datasource hop in the detail pane.</p>';
+      html += '<ul class="arch-gui-list">';
+      guiNotes.forEach(function (n) {
+        var guiSelected = selectedMap && selectedMap.type === 'node' && selectedMap.pageId === n.pageId && selectedMap.id === n.nodeId;
+        html += '<li><button type="button" class="arch-gui-item' + (guiSelected ? ' selected' : '') + '" data-select-node="' + esc(n.pageId) + '" data-node-id="' + esc(n.nodeId) + '">';
+        html += '<strong>' + esc(n.title) + '</strong><div class="meta">' + esc(n.detail) + '</div>';
+        html += '</button></li>';
+      });
+      html += '</ul></div>';
+    }
+
+    html += '<p class="arch-nav-hint">Session forensics: <button type="button" data-view="trace">Trace</button> · <button type="button" data-view="waterfall">Waterfall</button> · <button type="button" data-view="map">Map</button> · <button type="button" data-view="requests">Requests</button> · <button type="button" data-view="fields">Fields</button></p>';
+    el.innerHTML = html;
+  }
+
+  function buildPageTreeRows() {
+    var pages = doc.pages || {};
+    var byTreePath = {};
+    var placementCountByPage = {};
+    Object.keys(pages).forEach(function (pid) {
+      var p = pages[pid];
+      var placements = p.placements || [];
+      placementCountByPage[pid] = placements.length;
+      placements.forEach(function (pl) {
+        if (!pl || !pl.treePath) return;
+        byTreePath[pl.treePath] = {
+          treePath: pl.treePath,
+          parentTreePath: pl.parentTreePath == null ? null : pl.parentTreePath,
+          parentPageId: pl.parentPageId == null ? null : pl.parentPageId,
+          depth: typeof pl.depth === 'number' ? pl.depth : 0,
+          pageId: pid,
+          page: p,
+          lastSeenAt: pl.lastSeenAt
+        };
+      });
+    });
+    // Fallback: pages with no placements still appear as roots (flat capture).
+    Object.keys(pages).forEach(function (pid) {
+      var p = pages[pid];
+      if ((p.placements || []).length) return;
+      if (byTreePath[pid]) return;
+      byTreePath[pid] = {
+        treePath: pid,
+        parentTreePath: null,
+        parentPageId: null,
+        depth: 0,
+        pageId: pid,
+        page: p,
+        lastSeenAt: p.lastSeenAt
+      };
+    });
+
+    var childrenOf = {};
+    var roots = [];
+    Object.keys(byTreePath).forEach(function (tp) {
+      var node = byTreePath[tp];
+      var parent = node.parentTreePath;
+      if (parent && byTreePath[parent]) {
+        if (!childrenOf[parent]) childrenOf[parent] = [];
+        childrenOf[parent].push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    Object.keys(childrenOf).forEach(function (k) {
+      childrenOf[k].sort(function (a, b) {
+        return (a.treePath || '').localeCompare(b.treePath || '');
+      });
+    });
+    roots.sort(function (a, b) {
+      return (a.treePath || '').localeCompare(b.treePath || '');
+    });
+
+    var rows = [];
+    function walkWithFlags(node, ancestorsLast, isLast) {
+      var kids = childrenOf[node.treePath] || [];
+      rows.push({ node: node, ancestorsLast: ancestorsLast.slice(), isLast: isLast, childCount: kids.length });
+      kids.forEach(function (child, idx) {
+        walkWithFlags(child, ancestorsLast.concat([isLast]), idx === kids.length - 1);
+      });
+    }
+    roots.forEach(function (r, idx) {
+      walkWithFlags(r, [], idx === roots.length - 1);
+    });
+    return { rows: rows, placementCountByPage: placementCountByPage, totalPlacements: Object.keys(byTreePath).length };
+  }
+
+  function treeGuide(ancestorsLast, isLast) {
+    var s = '';
+    for (var i = 0; i < ancestorsLast.length; i++) {
+      s += ancestorsLast[i] ? '   ' : '│  ';
+    }
+    s += isLast ? '└─ ' : '├─ ';
+    return s;
+  }
+
+  function renderPageTreeHtml() {
+    var built = buildPageTreeRows();
+    if (!built.rows.length) return '<p class="empty">No page tree yet — visit CMS pages to capture hierarchy</p>';
+    var html = '<div class="page-tree">';
+    built.rows.forEach(function (row) {
+      var node = row.node;
+      var p = node.page;
+      var pid = node.pageId;
+      var selected = selectedMap && selectedMap.type === 'page' && selectedMap.id === pid;
+      var nodeCount = Object.keys((p && p.nodes) || {}).length;
+      var isStub = nodeCount === 0;
+      var dups = built.placementCountByPage[pid] || 0;
+      html += '<div class="page-tree-item' + (selected ? ' selected' : '') + (isStub ? ' stub' : '') + '" data-select-page="' + esc(pid) + '">';
+      html += '<span class="page-tree-guide">' + esc(treeGuide(row.ancestorsLast, row.isLast)) + '</span>';
+      html += '<div class="page-tree-label">';
+      html += '<strong>' + esc((p && p.pageSlug) || pid) + '</strong>';
+      html += ' <span class="badge level">L' + node.depth + '</span>';
+      if (dups > 1) html += ' <span class="badge dup">×' + dups + ' in tree</span>';
+      if (isStub) html += ' <span class="badge">ancestor</span>';
+      else if (nodeCount) html += ' <span class="badge">' + nodeCount + ' nodes</span>';
+      if (node.treePath && node.treePath !== pid) {
+        html += '<div><code class="path">' + esc(node.treePath) + '</code></div>';
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+    html += '<p class="meta">' + built.totalPlacements + ' placement(s) · same page under multiple parents shows as duplicate rows</p>';
+    return html;
+  }
+
+  function isLayoutCmsType(type) {
+    var t = String(type || '').toLowerCase();
+    return t === 'container' || t === 'section' || t === 'flexbox' || t === 'gridcard' || t === 'carousel' || t.indexOf('container') >= 0;
+  }
+
+  function buildCmsNodeForest(nodes) {
+    var byId = {};
+    nodes.forEach(function (n) { byId[n.nodeId] = n; });
+    var childrenOf = {};
+    var roots = [];
+    nodes.forEach(function (n) {
+      var parentId = n.parentId;
+      if (parentId && byId[parentId] && parentId !== n.nodeId) {
+        if (!childrenOf[parentId]) childrenOf[parentId] = [];
+        childrenOf[parentId].push(n);
+      } else {
+        roots.push(n);
+      }
+    });
+    Object.keys(childrenOf).forEach(function (k) {
+      childrenOf[k].sort(function (a, b) {
+        return (a.path || '').localeCompare(b.path || '') || (a.nodeId || '').localeCompare(b.nodeId || '');
+      });
+    });
+    roots.sort(function (a, b) {
+      return (a.path || '').localeCompare(b.path || '') || (a.nodeId || '').localeCompare(b.nodeId || '');
+    });
+    return { roots: roots, childrenOf: childrenOf };
+  }
+
+  function stripOuterSlashes(s) {
+    s = String(s || '');
+    while (s.charAt(0) === '/') s = s.slice(1);
+    while (s.length && s.charAt(s.length - 1) === '/') s = s.slice(0, -1);
+    return s;
+  }
+
+  function resolveLinkedPageId(link) {
+    if (!link || !link.value) return null;
+    var pages = doc.pages || {};
+    if (link.type === 'id') {
+      for (var pid in pages) {
+        if (!Object.prototype.hasOwnProperty.call(pages, pid)) continue;
+        // document ids are not stored on pages today — match pageId / placement path loosely
+        if (pid === link.value) return pid;
+      }
+      return null;
+    }
+    var raw = stripOuterSlashes(link.value);
+    var candidates = [raw, link.value, '/' + raw];
+    for (var i = 0; i < candidates.length; i++) {
+      if (pages[candidates[i]]) return candidates[i];
+    }
+    for (var pageId in pages) {
+      if (!Object.prototype.hasOwnProperty.call(pages, pageId)) continue;
+      var p = pages[pageId];
+      if (pageId === raw || (p.pageSlug && stripOuterSlashes(p.pageSlug) === raw)) return pageId;
+      var placements = p.placements || [];
+      for (var j = 0; j < placements.length; j++) {
+        var tp = stripOuterSlashes(placements[j].treePath || '');
+        if (tp === raw || tp.endsWith('/' + raw) || raw.endsWith('/' + tp)) return pageId;
+      }
+    }
+    return null;
+  }
+
+  function renderCmsNodeLinksHtml(n, pageHops) {
+    var links = n.links || [];
+    if (!links.length) return '';
+    var open = !isCollapsed('links:' + n.nodeId);
+    var html = '<div class="cms-tree-links">';
+    html += '<div class="meta"><button type="button" class="chev" data-collapse="links:' + esc(n.nodeId) + '">' + (open ? '▼' : '▶') + '</button> ';
+    html += '<span class="badge link">' + links.length + ' page link' + (links.length === 1 ? '' : 's') + '</span></div>';
+    if (open) {
+      links.forEach(function (link) {
+        var targetPid = resolveLinkedPageId(link);
+        html += '<div class="link-row">';
+        html += '<span class="badge">' + esc(link.type) + '</span> ';
+        if (targetPid) {
+          html += '<button type="button" class="link-page" data-select-page="' + esc(targetPid) + '" title="Open linked page in Map">' + esc(link.value) + '</button>';
+          var tp = doc.pages[targetPid];
+          if (tp && tp.pageSlug && tp.pageSlug !== targetPid) {
+            html += ' <span class="meta">' + esc(tp.pageSlug) + '</span>';
+          }
+        } else {
+          html += '<code>' + esc(link.value) + '</code> <span class="meta">not captured yet</span>';
+        }
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renderCmsNodeTreeHtml(pid, pageHops, nodes) {
+    var forest = buildCmsNodeForest(nodes);
+    function renderNode(n, depth) {
+      var kids = forest.childrenOf[n.nodeId] || [];
+      var collapseKey = 'cmsnode:' + pid + ':' + n.nodeId;
+      var open = !isCollapsed(collapseKey);
+      var nodeHop = null;
+      (n.datasources || []).some(function (d) {
+        nodeHop = findByRequestId(d.lastRequestId);
+        return !!nodeHop;
+      });
+      if (!nodeHop && pageHops.length === 1) nodeHop = pageHops[0];
+      var nodeSelected = (selectedMap && selectedMap.type === 'node' && selectedMap.pageId === pid && selectedMap.id === n.nodeId)
+        || (nodeHop && !selectedMap && selectedId === nodeHop.id);
+      var isWrap = kids.length > 0 || isLayoutCmsType(n.type);
+      var html = '<div class="cms-tree-node">';
+      html += '<div class="cms-tree-row map-selectable' + (nodeSelected ? ' selected' : '') + (isWrap ? ' container-node' : '') + '" data-select-node="' + esc(pid) + '" data-node-id="' + esc(n.nodeId) + '">';
+      if (kids.length || (n.links && n.links.length)) {
+        html += '<button type="button" class="chev" data-collapse="' + esc(collapseKey) + '">' + (open ? '▼' : '▶') + '</button>';
+      } else {
+        html += '<span class="chev">·</span>';
+      }
+      html += '<div style="flex:1;min-width:0">';
+      html += '<strong>' + esc(n.label || n.type) + '</strong> <span class="badge">' + esc(n.type) + '</span>';
+      if (isWrap) html += ' <span class="badge wrap">wraps ' + kids.length + '</span>';
+      if (n.links && n.links.length) html += ' <span class="badge link">' + n.links.length + ' link' + (n.links.length === 1 ? '' : 's') + '</span>';
+      if (n.parentId) html += ' <span class="meta">under ' + esc(n.parentId) + '</span>';
+      html += '<div class="meta">' + esc(n.path) + '</div>';
+      if (n.datasources && n.datasources.length) {
+        html += '<div class="used-by">' + n.datasources.map(function (d) {
+          return esc(d.datasourceId) + (d.dataRoot ? ' · ' + esc(d.dataRoot) : '');
+        }).join('; ') + '</div>';
+      }
+      html += '</div>';
+      html += '<div class="col-side">' + (nodeHop ? esc(formatWhen(nodeHop.timestamp)) : '') + '</div>';
+      html += '</div>';
+      if (open) {
+        html += renderCmsNodeLinksHtml(n, pageHops);
+        if (kids.length) {
+          html += '<div class="cms-tree-children">';
+          kids.forEach(function (child) {
+            html += renderNode(child, depth + 1);
+          });
+          html += '</div>';
+        }
+      }
+      html += '</div>';
+      return html;
+    }
+    var html = '<div class="cms-tree">';
+    forest.roots.forEach(function (r) { html += renderNode(r, 0); });
+    html += '</div>';
+    return html;
+  }
+
   function renderMap(el) {
     var base = applyKindFilter(filterEvents());
     var uniqueMeta = applyUniqueFilter(base, { mode: uniqueMode, scope: uniqueScope, keep: uniqueKeep }, usageList);
@@ -2587,6 +3636,8 @@ function renderErrorPanelHtml(analysis, escFn) {
     var html = renderUniqueFilters(base, uniqueMeta);
     html += '<p class="meta">scenario <code>' + esc(doc.scenario) + '</code> · updatedAt ' + esc(doc.updatedAt) + '</p>';
     html += '<p class="meta">' + events.length + ' hop(s) · click a row to inspect request / response in the detail pane</p>';
+    html += '<h2>Page tree</h2>';
+    html += renderPageTreeHtml();
     html += '<h2>Pages</h2>';
     if (!pages.length) html += '<p class="empty">No pages yet</p>';
     pages.forEach(function (pid) {
@@ -2600,51 +3651,27 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '<div class="tree-row map-selectable' + (pageSelected ? ' selected' : '') + '" data-select-page="' + esc(pid) + '">';
       html += '<button type="button" class="chev" data-collapse="page:' + esc(pid) + '">' + (open ? '▼' : '▶') + '</button>';
       html += '<div><strong>' + esc(p.pageSlug || p.pageId) + '</strong> <span class="badge">' + nodes.length + ' nodes</span>';
+      if ((p.placements || []).length) {
+        html += ' <span class="badge level">' + p.placements.length + ' tree path' + (p.placements.length === 1 ? '' : 's') + '</span>';
+        if (p.placements.length > 1) html += ' <span class="badge dup">duplicated</span>';
+      }
       if (pageHops.length) html += ' <span class="badge">' + esc(hopCountLabel(pageHops)) + '</span>';
       if (p.editUrl) html += ' <a href="' + esc(p.editUrl) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Edit in CMS ↗</a>';
       html += ' <a href="pages/' + esc(pid.replace(/[^a-zA-Z0-9._-]+/g, '_')) + '.html" onclick="event.stopPropagation()">static page →</a></div></div>';
       if (open) {
-        if (nodes.length) {
-          html += '<div class="meta" style="padding:0.25rem 0.65rem">Nodes</div>';
-          nodes.forEach(function (n) {
-            var nodeHop = null;
-            (n.datasources || []).some(function (d) {
-              nodeHop = findByRequestId(d.lastRequestId);
-              return !!nodeHop;
-            });
-            if (!nodeHop && pageHops.length === 1) nodeHop = pageHops[0];
-            var nodeSelected = (selectedMap && selectedMap.type === 'node' && selectedMap.pageId === pid && selectedMap.id === n.nodeId)
-              || (nodeHop && !selectedMap && selectedId === nodeHop.id);
-            html += '<div class="map-row' + (nodeSelected ? ' selected' : '') + '" data-select-node="' + esc(pid) + '" data-node-id="' + esc(n.nodeId) + '"';
-            html += '><div class="col">';
-            html += '<strong>' + esc(n.label || n.type) + '</strong> <span class="badge">' + esc(n.source) + '</span>';
-            if (n.editUrl) html += ' <a href="' + esc(n.editUrl) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">edit ↗</a>';
-            html += '<div class="meta">' + esc(n.path) + '</div>';
-            if (n.datasources && n.datasources.length) {
-              html += '<div class="used-by">' + n.datasources.map(function (d) {
-                return esc(d.datasourceId) + (d.dataRoot ? ' · ' + esc(d.dataRoot) : '');
-              }).join('; ') + '</div>';
-            } else if (!nodeHop) {
-              html += '<div class="meta empty">No linked hop yet</div>';
-            }
-            html += '</div>';
-            html += '<div class="col-side">' + (nodeHop ? esc(formatWhen(nodeHop.timestamp)) : '') + (nodeHop && nodeHop.responseBodyPreview ? '<div class="badge">body</div>' : '') + '</div>';
-            html += '</div>';
-            if ((n.datasources || []).length > 1) {
-              html += '<div class="map-sub">';
-              n.datasources.forEach(function (d) {
-                var hop = findByRequestId(d.lastRequestId);
-                html += '<div class="map-row' + (hop && selectedId === hop.id ? ' selected' : '') + '"';
-                if (hop) html += ' data-select="' + esc(hop.id) + '"';
-                html += '><div class="col"><code>' + esc(d.datasourceId) + '</code>';
-                if (d.dataRoot) html += ' <span class="meta">' + esc(d.dataRoot) + '</span>';
-                if (!hop) html += '<div class="meta empty">No hop for lastRequestId</div>';
-                else html += '<div class="meta">' + esc(hop.method) + ' ' + esc(hop.path || hop.url) + '</div>';
-                html += '</div><div class="col-side">' + (hop ? esc(formatWhen(hop.timestamp)) : '') + '</div></div>';
-              });
-              html += '</div>';
-            }
+        if ((p.placements || []).length) {
+          html += '<div class="meta" style="padding:0.25rem 0.65rem">Tree placements</div>';
+          p.placements.forEach(function (pl) {
+            html += '<div class="map-row"><div class="col">';
+            html += '<span class="badge level">L' + pl.depth + '</span> <code>' + esc(pl.treePath) + '</code>';
+            if (pl.parentTreePath) html += '<div class="meta">under ' + esc(pl.parentTreePath) + '</div>';
+            else html += '<div class="meta">root</div>';
+            html += '</div></div>';
           });
+        }
+        if (nodes.length) {
+          html += '<div class="meta" style="padding:0.25rem 0.65rem">Component tree <span class="meta">(containers wrap children · page links nest under nodes)</span></div>';
+          html += renderCmsNodeTreeHtml(pid, pageHops, nodes);
         }
         if (pageHops.length) {
           html += '<div class="meta" style="padding:0.35rem 0.65rem 0.15rem">Linked hops · click for request / response</div>';
@@ -2652,6 +3679,7 @@ function renderErrorPanelHtml(analysis, escFn) {
             html += '<div class="map-row' + (selectedId === hop.id ? ' selected' : '') + '" data-select="' + esc(hop.id) + '">';
             html += '<div class="col"><strong>' + esc(hop.method) + '</strong> ' + esc(hop.path || hop.url);
             html += ' <span class="badge">' + esc(hopKind(hop)) + '</span>';
+
             html += hopStatusBadgesHtml(hop);
             html += hopDurationBadgeHtml(hop, slowThresholdMs);
             html += hopGuiAttributionBadgeHtml(hop);
@@ -3218,6 +4246,234 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
   }
 
+  function fieldHopKind(e) {
+    var k = hopKind(e);
+    if (k === 'cms') return 'cms';
+    var usages = usageList(e.usage);
+    for (var i = 0; i < usages.length; i++) {
+      var ds = String((usages[i] && usages[i].datasourceId) || '');
+      if (ds.indexOf('oden:') === 0 || ds.indexOf('deliveryapi') >= 0) return 'cms';
+    }
+    var path = String((e && e.path) || (e && e.url) || '').toLowerCase();
+    if (path.indexOf('oden') >= 0) return 'cms';
+    return k;
+  }
+
+  function buildGuiUsedFieldRows(list) {
+    var byPath = {};
+    list.forEach(function (e) {
+      var paths = e.usedResponsePaths || [];
+      if (!paths.length) return;
+      var kind = fieldHopKind(e);
+      if (fieldsCmsOnly && kind !== 'cms') return;
+      var summary = (e.method || '?') + ' ' + (e.path || e.url || e.id);
+      paths.forEach(function (p) {
+        if (!byPath[p]) {
+          byPath[p] = { path: p, hops: {}, nodes: {}, kinds: {} };
+        }
+        byPath[p].hops[e.id] = { id: e.id, summary: summary, kind: kind };
+        byPath[p].kinds[kind] = true;
+        (e.linkedGuiNodes || []).forEach(function (n) {
+          var nk = (n.pageId || '') + '::' + (n.nodeId || '');
+          byPath[p].nodes[nk] = n;
+        });
+      });
+    });
+    var rows = Object.keys(byPath).map(function (p) { return byPath[p]; });
+    rows.sort(function (a, b) { return a.path.localeCompare(b.path); });
+    return rows;
+  }
+
+  function filterFieldRows(rows) {
+    var q = (fieldsSearch || '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(function (row) {
+      if (String(row.path).toLowerCase().indexOf(q) >= 0) return true;
+      var hops = Object.keys(row.hops).map(function (id) { return row.hops[id]; });
+      for (var i = 0; i < hops.length; i++) {
+        if (String(hops[i].summary).toLowerCase().indexOf(q) >= 0) return true;
+        if (String(hops[i].kind).toLowerCase().indexOf(q) >= 0) return true;
+      }
+      var nodes = Object.keys(row.nodes).map(function (k) { return row.nodes[k]; });
+      for (var j = 0; j < nodes.length; j++) {
+        var n = nodes[j];
+        var blob = [n.pageId, n.nodeId, n.type, n.label].join(' ').toLowerCase();
+        if (blob.indexOf(q) >= 0) return true;
+      }
+      return false;
+    });
+  }
+
+  function renderFields(el, uniqueMeta) {
+    var base = applyKindFilter(filterEvents());
+    var list = uniqueMeta.list;
+    var hopsWithPaths = list.filter(function (e) {
+      return e.usedResponsePaths && e.usedResponsePaths.length;
+    });
+    var cmsHopsWithPaths = hopsWithPaths.filter(function (e) { return fieldHopKind(e) === 'cms'; });
+    var guiLinkedNoPaths = list.filter(function (e) {
+      return e.guiAttribution === 'gui-linked' && !(e.usedResponsePaths && e.usedResponsePaths.length);
+    });
+    var rows = filterFieldRows(buildGuiUsedFieldRows(list));
+    var html = renderListFilters(base, uniqueMeta);
+    html += '<h2>GUI-used response fields</h2>';
+    html += '<p class="meta">Paths in hop response bodies that match captured CMS/GUI props (value or key). Includes CMS (Oden/deliveryapi) and GraphQL/BFF when linked.</p>';
+    html += '<div class="fields-toolbar">';
+    html += '<input type="search" data-fields-search placeholder="Filter path, hop, or GUI node…" value="' + esc(fieldsSearch) + '">';
+    html += '<div class="seg"><span class="meta">Group</span>';
+    html += '<button type="button" class="' + (fieldsGroupBy === 'path' ? 'on' : '') + '" data-fields-group="path">By field</button>';
+    html += '<button type="button" class="' + (fieldsGroupBy === 'hop' ? 'on' : '') + '" data-fields-group="hop">By hop</button>';
+    html += '<button type="button" class="' + (fieldsGroupBy === 'node' ? 'on' : '') + '" data-fields-group="node">By GUI node</button>';
+    html += '</div>';
+    html += '<div class="seg">';
+    html += '<button type="button" class="' + (fieldsCmsOnly ? 'on' : '') + '" data-fields-cms-only title="Only CMS / deliveryapi hops">CMS only</button>';
+    html += '</div></div>';
+    html += '<p class="meta">' + hopsWithPaths.length + ' hop(s) with used fields';
+    html += ' · ' + cmsHopsWithPaths.length + ' CMS';
+    html += ' · ' + rows.length + ' path' + (rows.length === 1 ? '' : 's') + ' shown';
+    if (guiLinkedNoPaths.length) {
+      html += ' · <span class="badge">' + guiLinkedNoPaths.length + ' GUI-linked without props match</span>';
+    }
+    html += '</p>';
+
+    if (!rows.length) {
+      html += '<p class="empty">No GUI-used fields yet. Capture presentation with shown props, and ensure hops are linked (requestId / oden datasource).</p>';
+      el.innerHTML = html;
+      focusFieldsSearch(el);
+      return;
+    }
+
+    if (fieldsGroupBy === 'hop') {
+      html += renderFieldsByHop(rows);
+    } else if (fieldsGroupBy === 'node') {
+      html += renderFieldsByNode(rows);
+    } else {
+      html += renderFieldsByPath(rows);
+    }
+    el.innerHTML = html;
+    focusFieldsSearch(el);
+  }
+
+  function focusFieldsSearch(el) {
+    if (!fieldsFocus) return;
+    var inp = el.querySelector('[data-fields-search]');
+    if (inp) {
+      inp.focus();
+      try { inp.selectionStart = inp.selectionEnd = inp.value.length; } catch (err) { /* ignore */ }
+    }
+    fieldsFocus = false;
+  }
+
+  function renderFieldsByPath(rows) {
+    var html = '<table class="fields-table"><thead><tr>';
+    html += '<th>Response path</th><th>Kind</th><th>Hop(s)</th><th>GUI node(s)</th>';
+    html += '</tr></thead><tbody>';
+    rows.forEach(function (row) {
+      var hops = Object.keys(row.hops).map(function (id) { return row.hops[id]; });
+      var nodes = Object.keys(row.nodes).map(function (k) { return row.nodes[k]; });
+      var kinds = Object.keys(row.kinds).sort();
+      var selected = hops.some(function (h) { return h.id === selectedId; });
+      html += '<tr class="fields-row' + (selected ? ' selected' : '') + '"' + (hops[0] ? ' data-select="' + esc(hops[0].id) + '"' : '') + '>';
+      html += '<td><code class="path">' + esc(row.path) + '</code></td>';
+      html += '<td>' + kinds.map(function (k) {
+        return '<span class="badge">' + esc((KIND_META[k] && KIND_META[k].label) || k) + '</span>';
+      }).join(' ') + '</td>';
+      html += '<td><div class="fields-hop-list">' + hops.map(function (h) {
+        return '<button type="button" data-select="' + esc(h.id) + '" title="' + esc(h.summary) + '">' + esc(h.summary) + '</button>';
+      }).join('') + '</div></td>';
+      html += '<td><div class="fields-node-list">' + (nodes.length ? nodes.map(function (n) {
+        return '<button type="button" data-select-node="' + esc(n.pageId) + '" data-node-id="' + esc(n.nodeId) + '">' +
+          esc(n.label || n.type || n.nodeId) + ' · ' + esc(n.pageId) + '</button>';
+      }).join('') : '<span class="meta empty">—</span>') + '</div></td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+  }
+
+  function renderFieldsByHop(rows) {
+    var byHop = {};
+    rows.forEach(function (row) {
+      Object.keys(row.hops).forEach(function (hid) {
+        var h = row.hops[hid];
+        if (!byHop[hid]) byHop[hid] = { hop: h, paths: [], nodes: {} };
+        byHop[hid].paths.push(row.path);
+        Object.keys(row.nodes).forEach(function (nk) {
+          byHop[hid].nodes[nk] = row.nodes[nk];
+        });
+      });
+    });
+    var groups = Object.keys(byHop).map(function (id) { return byHop[id]; });
+    groups.sort(function (a, b) { return a.hop.summary.localeCompare(b.hop.summary); });
+    var html = '';
+    groups.forEach(function (g) {
+      var selected = selectedId === g.hop.id;
+      html += '<div class="card">';
+      html += '<div class="tree-row map-selectable' + (selected ? ' selected' : '') + '" data-select="' + esc(g.hop.id) + '">';
+      html += '<div><strong>' + esc(g.hop.summary) + '</strong> ';
+      html += '<span class="badge">' + esc((KIND_META[g.hop.kind] && KIND_META[g.hop.kind].label) || g.hop.kind) + '</span> ';
+      html += '<span class="badge">' + g.paths.length + ' field' + (g.paths.length === 1 ? '' : 's') + '</span></div></div>';
+      html += '<ul style="margin:0.35rem 0.75rem 0.65rem;padding-left:1.1rem;font-size:0.8rem">';
+      g.paths.sort().forEach(function (p) {
+        html += '<li><code class="path">' + esc(p) + '</code></li>';
+      });
+      html += '</ul></div>';
+    });
+    return html;
+  }
+
+  function renderFieldsByNode(rows) {
+    var byNode = {};
+    rows.forEach(function (row) {
+      var nodeKeys = Object.keys(row.nodes);
+      if (!nodeKeys.length) {
+        var orphan = '__none__';
+        if (!byNode[orphan]) byNode[orphan] = { node: null, paths: {}, hops: {} };
+        byNode[orphan].paths[row.path] = true;
+        Object.keys(row.hops).forEach(function (hid) { byNode[orphan].hops[hid] = row.hops[hid]; });
+        return;
+      }
+      nodeKeys.forEach(function (nk) {
+        var n = row.nodes[nk];
+        if (!byNode[nk]) byNode[nk] = { node: n, paths: {}, hops: {} };
+        byNode[nk].paths[row.path] = true;
+        Object.keys(row.hops).forEach(function (hid) { byNode[nk].hops[hid] = row.hops[hid]; });
+      });
+    });
+    var groups = Object.keys(byNode).map(function (k) { return byNode[k]; });
+    groups.sort(function (a, b) {
+      var al = a.node ? ((a.node.label || a.node.type || '') + a.node.pageId) : '~~~';
+      var bl = b.node ? ((b.node.label || b.node.type || '') + b.node.pageId) : '~~~';
+      return al.localeCompare(bl);
+    });
+    var html = '';
+    groups.forEach(function (g) {
+      var paths = Object.keys(g.paths).sort();
+      var hops = Object.keys(g.hops).map(function (id) { return g.hops[id]; });
+      html += '<div class="card">';
+      if (g.node) {
+        html += '<div class="tree-row map-selectable" data-select-node="' + esc(g.node.pageId) + '" data-node-id="' + esc(g.node.nodeId) + '">';
+        html += '<div><strong>' + esc(g.node.label || g.node.type || g.node.nodeId) + '</strong> ';
+        html += '<span class="badge">' + esc(g.node.pageId) + '</span> ';
+        html += '<span class="badge">' + paths.length + ' field' + (paths.length === 1 ? '' : 's') + '</span></div></div>';
+      } else {
+        html += '<div class="tree-row"><div><strong>Unlinked props match</strong> <span class="badge">' + paths.length + ' fields</span></div></div>';
+      }
+      html += '<ul style="margin:0.35rem 0.75rem 0.35rem;padding-left:1.1rem;font-size:0.8rem">';
+      paths.forEach(function (p) {
+        html += '<li><code class="path">' + esc(p) + '</code></li>';
+      });
+      html += '</ul>';
+      if (hops.length) {
+        html += '<div class="fields-hop-list" style="padding:0 0.75rem 0.65rem">' + hops.map(function (h) {
+          return '<button type="button" data-select="' + esc(h.id) + '">' + esc(h.summary) + '</button>';
+        }).join('') + '</div>';
+      }
+      html += '</div>';
+    });
+    return html;
+  }
+
   function renderRequests(el, uniqueMeta) {
     var base = applyKindFilter(filterEvents());
     var list = sortRequests(uniqueMeta.list, requestSortKey, requestSortDir);
@@ -3238,7 +4494,9 @@ function renderErrorPanelHtml(analysis, escFn) {
     prefetchByHopId = null;
     var uniqueMeta = buildViewList();
     var list = uniqueMeta.list;
-    if (!selectedId && !selectedMap && list.length && view !== 'map') selectedId = list[list.length - 1].id;
+    if (!selectedId && !selectedMap && list.length && view !== 'map' && view !== 'architecture' && view !== 'fields') {
+      selectedId = list[list.length - 1].id;
+    }
     var mapEl = document.getElementById('view-map');
     var traceEl = document.getElementById('view-trace');
     var chainsEl = document.getElementById('view-chains');
@@ -3247,9 +4505,15 @@ function renderErrorPanelHtml(analysis, escFn) {
     var journeyEl = document.getElementById('view-journey');
     var scrubEl = document.getElementById('view-scrub');
     var requestsEl = document.getElementById('view-requests');
+    var fieldsEl = document.getElementById('view-fields');
     var detailEl = document.getElementById('hop-detail');
     var layoutEl = document.querySelector('#atlas-app .layout');
-    if (layoutEl) layoutEl.classList.toggle('layout-journey', view === 'journey');
+    if (layoutEl) {
+      layoutEl.classList.toggle('layout-journey', view === 'journey');
+      layoutEl.classList.toggle('layout-architecture', view === 'architecture');
+    }
+    var archEl = document.getElementById('view-architecture');
+    if (view === 'architecture') renderArchitecture(archEl);
     if (view === 'map') renderMap(mapEl);
     if (view === 'trace') renderTrace(traceEl, list, uniqueMeta);
     if (view === 'chains') renderChains(chainsEl, applyKindFilter(filterEvents()), uniqueMeta);
@@ -3258,6 +4522,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (view === 'journey') renderJourney(journeyEl, uniqueMeta);
     if (view === 'scrub') renderScrub(scrubEl, uniqueMeta);
     if (view === 'requests') renderRequests(requestsEl, uniqueMeta);
+    if (view === 'fields') renderFields(fieldsEl, uniqueMeta);
     renderDetail(detailEl);
     document.querySelectorAll('.tabs button').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-view') === view);
@@ -3282,6 +4547,28 @@ function renderErrorPanelHtml(analysis, escFn) {
 
   document.getElementById('atlas-app').addEventListener('click', function (ev) {
     var t = ev.target;
+    var copyBtn = t && t.closest && t.closest('[data-copy-body]');
+    if (copyBtn) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var block = copyBtn.closest('.body-block');
+      var pre = block && block.querySelector('pre');
+      var copyText = pre ? (pre.textContent || '') : '';
+      function markCopied() {
+        copyBtn.classList.add('copied');
+        copyBtn.textContent = 'Copied';
+        setTimeout(function () {
+          copyBtn.classList.remove('copied');
+          copyBtn.textContent = 'Copy';
+        }, 1200);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(copyText).then(markCopied).catch(function () {
+          /* ignore */
+        });
+      }
+      return;
+    }
     // Let Edit / static page links navigate; keep in-app data-select anchors.
     var link = t && t.closest && t.closest('a[href]');
     if (link && !link.getAttribute('data-select') && !link.getAttribute('data-select-page')
@@ -3304,6 +4591,8 @@ function renderErrorPanelHtml(analysis, escFn) {
       t.hasAttribute('data-gui-filter') ||
       t.getAttribute('data-req-sort') ||
       t.getAttribute('data-req-clear') ||
+      t.getAttribute('data-fields-group') ||
+      t.hasAttribute('data-fields-cms-only') ||
       t.getAttribute('data-unique-mode') ||
       t.getAttribute('data-unique-scope') ||
       t.getAttribute('data-unique-keep') ||
@@ -3327,6 +4616,10 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
     if (t.getAttribute('data-view')) {
       view = t.getAttribute('data-view');
+      if (t.getAttribute('data-keep-select')) {
+        selectedId = t.getAttribute('data-keep-select');
+        selectedMap = null;
+      }
       if (view !== 'scrub') stopScrubPlayback();
       render();
       return;
@@ -3378,6 +4671,16 @@ function renderErrorPanelHtml(analysis, escFn) {
       requestSearch = '';
       requestDateFrom = '';
       requestDateTo = '';
+      render();
+      return;
+    }
+    if (t.getAttribute('data-fields-group')) {
+      fieldsGroupBy = t.getAttribute('data-fields-group') || 'path';
+      render();
+      return;
+    }
+    if (t.hasAttribute('data-fields-cms-only')) {
+      fieldsCmsOnly = !fieldsCmsOnly;
       render();
       return;
     }
@@ -3494,6 +4797,12 @@ function renderErrorPanelHtml(analysis, escFn) {
       render();
       return;
     }
+    if (t.getAttribute('data-fields-search') != null) {
+      fieldsSearch = t.value || '';
+      fieldsFocus = true;
+      render();
+      return;
+    }
     if (t.getAttribute('data-scrub-ms') != null) {
       var v = Number(t.value);
       scrubPlayheadMs = isFinite(v) ? v : 0;
@@ -3563,7 +4872,7 @@ export function buildCrashIncidentHtml(map: AtlasDocMap, input: CrashIncidentHtm
   <p class="meta"><strong>Error:</strong> ${escapeHtml(input.errorMessage)}</p>
   <p class="meta">Incident ${escapeHtml(input.incidentId)} · ${input.hops.length} hop${input.hops.length === 1 ? '' : 's'} in window</p>
   ${suspectLine}
-  <p class="meta">Open Trace / Waterfall / Journey tabs below — click hops for request &amp; response bodies.</p>
+  <p class="meta">Open Architecture / Trace / Waterfall / Journey / Fields tabs below — click hops for request &amp; response bodies.</p>
 </div>`;
   const body = `${banner}\n${buildInteractiveAtlasBody(map, input.hops, {
     mode: 'crash',
@@ -3641,9 +4950,10 @@ function buildInteractiveAtlasBody(
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-<p class="meta">Interactive Atlas — Map / Trace / Chains / Waterfall / Gantt / Journey / Scrub / Requests. Click a hop or chain box to inspect request &amp; response bodies (when captureBodies is on).</p>
+  <p class="meta">Living architecture doc (unique connections, screenshots, explanations). Session forensics: Map / Trace / Chains / Waterfall / Gantt / Journey / Scrub / Requests / Fields. Click a hop or chain box for bodies (when captureBodies is on).</p>
   <div class="tabs">
-    <button type="button" class="active" data-view="map">Map</button>
+    <button type="button" class="active" data-view="architecture">Architecture</button>
+    <button type="button" data-view="map">Map</button>
     <button type="button" data-view="trace">Trace</button>
     <button type="button" data-view="chains">Chains</button>
     <button type="button" data-view="waterfall">Waterfall</button>
@@ -3651,10 +4961,12 @@ function buildInteractiveAtlasBody(
     <button type="button" data-view="journey">Journey</button>
     <button type="button" data-view="scrub">Scrub</button>
     <button type="button" data-view="requests">Requests</button>
+    <button type="button" data-view="fields">Fields</button>
   </div>
-  <div class="layout">
+  <div class="layout layout-architecture">
     <div>
-      <div id="view-map" class="panel active"></div>
+      <div id="view-architecture" class="panel active"></div>
+      <div id="view-map" class="panel"></div>
       <div id="view-trace" class="panel"></div>
       <div id="view-chains" class="panel"></div>
       <div id="view-waterfall" class="panel"></div>
@@ -3662,6 +4974,7 @@ function buildInteractiveAtlasBody(
       <div id="view-journey" class="panel"></div>
       <div id="view-scrub" class="panel"></div>
       <div id="view-requests" class="panel"></div>
+      <div id="view-fields" class="panel"></div>
     </div>
     <aside id="hop-detail" class="detail"></aside>
   </div>
@@ -3675,15 +4988,46 @@ ${interactiveClientScript()}
 }
 
 /**
- * Build relative path → HTML content map (`index.html`, `pages/<id>.html`).
+ * Build relative path → content map (`index.html`, `pages/<id>.html`, `atlas.har`,
+ * `atlas-events.json`, `bodies-search.json`).
  */
 export function buildAtlasDocHtmlFiles(
   map: AtlasDocMap,
-  networkEvents: readonly NetworkEvent[] = []
+  networkEvents: readonly NetworkEvent[] = [],
+  options?: {
+    /** atlas-html root — when set, spilled body files are read into bodies-search.json. */
+    bodiesRoot?: string;
+  }
 ): Record<string, string> {
   const pages = Object.values(map.pages).sort((a, b) => a.pageId.localeCompare(b.pageId));
+  const events = [...networkEvents];
+  const creatorVersion =
+    typeof process !== 'undefined' ? process.env.npm_package_version?.trim() : undefined;
+
+  const bodiesRoot = options?.bodiesRoot?.trim();
+  const corpus = buildAtlasBodiesSearchCorpus(events, {
+    readSpillText:
+      bodiesRoot && fs && pathMod
+        ? (rel) => {
+            try {
+              const abs = pathMod!.join(bodiesRoot, rel);
+              if (!fs!.existsSync(abs)) return undefined;
+              return fs!.readFileSync(abs, 'utf8');
+            } catch {
+              return undefined;
+            }
+          }
+        : undefined,
+  });
+
   const files: Record<string, string> = {
-    'index.html': buildInteractiveIndex(map, [...networkEvents]),
+    'index.html': buildInteractiveIndex(map, events),
+    'atlas.har': buildAtlasHarJson(events, {
+      scenario: map.scenario,
+      creatorVersion: creatorVersion || undefined,
+    }),
+    'atlas-events.json': `${JSON.stringify(events, null, 2)}\n`,
+    'bodies-search.json': `${JSON.stringify(corpus)}\n`,
   };
 
   for (const page of pages) {
@@ -3714,7 +5058,7 @@ export function writeAtlasDocHtml(
 
   try {
     const events = networkEvents ?? htmlNetworkEvents;
-    const files = buildAtlasDocHtmlFiles(map, events);
+    const files = buildAtlasDocHtmlFiles(map, events, { bodiesRoot: root });
     const pagesDir = pathMod.join(root, 'pages');
     fs.mkdirSync(pagesDir, { recursive: true });
 

@@ -29,6 +29,7 @@ import {
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
   createServeTimePoolResponseLoader,
+  isMockifyerDashboardPlumbingApiUrl,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -303,8 +304,8 @@ router.post('/', async (req: Request, res: Response) => {
     if (
       effectiveRecord &&
       typeof url === 'string' &&
-      proxyRecordingExclusions.length > 0 &&
-      shouldExcludeRecording(url, proxyRecordingExclusions)
+      (isMockifyerDashboardPlumbingApiUrl(url) ||
+        (proxyRecordingExclusions.length > 0 && shouldExcludeRecording(url, proxyRecordingExclusions)))
     ) {
       effectiveRecord = false;
     }
@@ -559,8 +560,8 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, inboundCorrelation);
-        await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
-        if (redisDisk.mirrorWrites) {
+        const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
+        if (wrote && redisDisk.mirrorWrites) {
           try {
             mirrorRecordedMockToDisk({
               mockDataPath,
@@ -571,6 +572,9 @@ router.post('/', async (req: Request, res: Response) => {
           } catch (mirrorErr: any) {
             console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
           }
+        }
+        if (!wrote) {
+          storedMockForClient = null;
         }
       }
     }
@@ -600,11 +604,9 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response: clientResponse,
-      recordedToStore: effectiveRecord === true,
+      recordedToStore: storedMockForClient != null,
       ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
-      ...(effectiveRecord === true && storedMockForClient
-        ? { storedMock: storedMockForClient }
-        : {}),
+      ...(storedMockForClient ? { storedMock: storedMockForClient } : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),
     });
   } catch (error: any) {

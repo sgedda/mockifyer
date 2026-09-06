@@ -237,6 +237,11 @@ export interface MockifyerConfig {
     dashboardBaseUrl?: string;
     /** When true, include truncated request/response body previews in events. */
     captureBodies?: boolean;
+    /**
+     * When true (default) and {@link captureBodies} is on, oversized bodies are written
+     * async to `atlas-html/bodies/` (Node or Metro) so Atlas can offer “Download full”.
+     */
+    spillBodies?: boolean;
     /** In-process ring buffer for crash forensics (works without dashboard URL). */
     flightRecorder?: {
       enabled?: boolean;
@@ -436,6 +441,22 @@ export const ENV_VARS = {
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',
+  /**
+   * Positive integer — max mock files / Redis mock hashes per scenario.
+   * Applies to filesystem {@link checkRequestLimit} and Redis mock writes.
+   * Unset = no scenario cap.
+   */
+  MOCK_MAX_REQUESTS_PER_SCENARIO: 'MOCKIFYER_MAX_REQUESTS_PER_SCENARIO',
+  /**
+   * Positive integer — max distinct Redis mock hashes per METHOD+host+pathname
+   * (default **200**). Set `0` / `off` / `false` / `no` to disable. Guards high-cardinality POSTs.
+   */
+  MOCK_MAX_MOCKS_PER_PATH: 'MOCKIFYER_MAX_MOCKS_PER_PATH',
+  /**
+   * Positive seconds — Redis TTL for mocks under the ephemeral `_scratch` scenario
+   * (unset / unscoped traffic). Default **86400** (24h). Named scenarios (including `default`) stay durable.
+   */
+  MOCK_SCRATCH_SCENARIO_TTL_SEC: 'MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC',
   MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',

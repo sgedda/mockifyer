@@ -73,6 +73,17 @@ export interface NetworkEvent {
   responseHeaders?: Record<string, string>;
   requestBodyPreview?: string;
   responseBodyPreview?: string;
+  /**
+   * Relative path under atlas-html for the full request body spill
+   * (e.g. `bodies/<id>-req.json`) when the hop only keeps a truncated preview.
+   */
+  requestBodyRef?: string;
+  /** Relative path under atlas-html for the full response body spill. */
+  responseBodyRef?: string;
+  /** True when {@link requestBodyPreview} is truncated vs the spilled full body. */
+  requestBodyTruncated?: boolean;
+  /** True when {@link responseBodyPreview} is truncated vs the spilled full body. */
+  responseBodyTruncated?: boolean;
   errorMessage?: string;
   stackPreview?: string;
   componentStackPreview?: string;

@@ -31,7 +31,7 @@ describe('axios live response date overrides', () => {
       trialEndsAt: '2000-01-01T00:00:00.000Z',
     });
 
-    const scenarioPath = path.join(mockDataPath, 'default');
+    const scenarioPath = path.join(mockDataPath, '_scratch');
     fs.mkdirSync(scenarioPath, { recursive: true });
 
     const passthroughMock: MockData = {

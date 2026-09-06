@@ -204,6 +204,7 @@ class MockifyerClass {
       scenario: this.config.proxy?.scenario?.trim() || getCurrentScenario(this.config.mockDataPath),
       clientId: this.config.clientId,
       sessionId: this.getRuntimeSessionId(),
+      requestBody,
       responseBody: businessResponseBody,
       event: {
         ...eventPartial,

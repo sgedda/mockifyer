@@ -235,12 +235,11 @@ describe("Mockifyer Fetch Integration", () => {
       expect(recordedResponse.status).toBe(200);
       expect(recordedResponse.data).toEqual(testResponseData);
 
-      // Verify mock file was created
-      // Mock files are saved in scenario subdirectories (default/ by default)
-      const defaultScenarioPath = path.join(testMockDataPath, "default");
-      expect(fs.existsSync(defaultScenarioPath)).toBe(true);
+      // Verify mock file was created under the unscoped scratch scenario
+      const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
+      expect(fs.existsSync(scratchScenarioPath)).toBe(true);
 
-      const files = fs.readdirSync(defaultScenarioPath);
+      const files = fs.readdirSync(scratchScenarioPath);
       expect(files.length).toBeGreaterThan(0);
 
       // Find the mock file for this URL (filename format: YYYY-MM-DDTHH-MM-SS-MSSZ_METHOD_url.json)
@@ -253,7 +252,7 @@ describe("Mockifyer Fetch Integration", () => {
       );
       expect(mockFile).toBeDefined();
 
-      const mockFilePath = path.join(defaultScenarioPath, mockFile!);
+      const mockFilePath = path.join(scratchScenarioPath, mockFile!);
 
       // Verify the content of the saved mock
       const savedMock = JSON.parse(fs.readFileSync(mockFilePath, "utf-8"));

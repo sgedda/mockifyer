@@ -1,5 +1,6 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { POOL_DIR_NAME } from '../types/fixture-pool';
+import { getMaxRequestsPerScenarioFromEnv } from './redis-mock-write-limits';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -15,16 +16,65 @@ try {
 }
 
 let currentConfig: MockifyerConfig | null = null;
-const DEFAULT_SCENARIO = 'default';
+
+/** Durable seed scenario users can select explicitly (not the unset fallback). */
+export const DEFAULT_SCENARIO = 'default';
+
+/**
+ * Ephemeral bucket used when no scenario is configured (env, config, file, Redis lane/global).
+ * Distinct from {@link DEFAULT_SCENARIO} so intentional long-lived `default` mocks stay durable.
+ */
+export const SCRATCH_SCENARIO = '_scratch';
+
+/** Default Redis TTL for mocks written under {@link SCRATCH_SCENARIO} (24h). */
+export const SCRATCH_SCENARIO_DEFAULT_TTL_SEC = 60 * 60 * 24;
+
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
 
 /**
  * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
+ * @param options.allowScratch - when true, `_scratch` is allowed (view/select temporary traffic).
  */
-export function assertNotReservedScenarioName(scenarioName: string): void {
-  if (scenarioName.trim() === POOL_DIR_NAME) {
+export function assertNotReservedScenarioName(
+  scenarioName: string,
+  options?: { allowScratch?: boolean }
+): void {
+  const trimmed = scenarioName.trim();
+  if (trimmed === POOL_DIR_NAME) {
     throw new Error(`Invalid scenario name: "${scenarioName}" is reserved for the fixture pool.`);
   }
+  if (!options?.allowScratch && trimmed === SCRATCH_SCENARIO) {
+    throw new Error(
+      `Invalid scenario name: "${scenarioName}" is reserved for temporary unscoped traffic. ` +
+        `Create or select a named scenario (e.g. "${DEFAULT_SCENARIO}") to keep mocks.`
+    );
+  }
+}
+
+/** True when the scenario is the ephemeral unscoped bucket. */
+export function isScratchScenario(scenarioName: string | null | undefined): boolean {
+  return typeof scenarioName === 'string' && scenarioName.trim() === SCRATCH_SCENARIO;
+}
+
+/**
+ * Redis TTL (seconds) for mocks under {@link SCRATCH_SCENARIO}.
+ * Override with `MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC` (positive integer).
+ */
+export function getScratchScenarioTtlSec(): number {
+  const raw =
+    typeof process !== 'undefined'
+      ? process.env?.[ENV_VARS.MOCK_SCRATCH_SCENARIO_TTL_SEC]
+      : undefined;
+  if (raw == null || String(raw).trim() === '') {
+    return SCRATCH_SCENARIO_DEFAULT_TTL_SEC;
+  }
+  const n = Number.parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : SCRATCH_SCENARIO_DEFAULT_TTL_SEC;
+}
+
+/** UI-oriented label; keeps the storage id (`_scratch`) in tooltips / monospace elsewhere. */
+export function scratchScenarioDisplayName(): string {
+  return 'Temporary (unscoped)';
 }
 
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
@@ -142,11 +192,14 @@ function configDefaultScenarioName(): string | undefined {
  * | 2 | **`MOCKIFYER_SCENARIO`** env |
  * | 3 | **`config.defaultScenario`** or **`config.scenarios.default`** (**`defaultScenario`** wins when both set) |
  * | 4 | **`scenario-config.json`** (**`scenario-config.{clientId}.json`** preferred when **`clientId`** is set and that file exists) |
- * | 5 | **`'default'`** literal seed name |
+ * | 5 | **`_scratch`** ephemeral unscoped bucket (not durable {@link DEFAULT_SCENARIO}) |
  *
  * **Dashboard Redis proxy**: per-request **`scenario`** body / proxy envelope overrides **`client_scenario:{clientId}`**,
  * then global **`active_scenario`**, then this filesystem-derived fallback (unless strict lane-only mode disables global for mapped lanes —
  * see dashboard **`MOCKIFYER_STRICT_LANE_SCENARIO`**). Documented fully in README (Scenario precedence).
+ *
+ * Unset traffic lands in **`_scratch`** (Redis mocks expire after {@link getScratchScenarioTtlSec}).
+ * Select or set a named scenario (including **`default`**) for long-lived mocks.
  */
 export function getCurrentScenario(mockDataPath?: string, clientId?: string): string {
   if (scenarioLaunchOverride) {
@@ -169,7 +222,7 @@ export function getCurrentScenario(mockDataPath?: string, clientId?: string): st
     return fileConfig.currentScenario;
   }
 
-  return DEFAULT_SCENARIO;
+  return SCRATCH_SCENARIO;
 }
 
 /**
@@ -215,11 +268,11 @@ export function listScenarios(mockDataPath: string): string[] {
   // Not available in React Native (fs is stubbed)
   // In React Native, scenarios are managed by the provider
   if (!fs || !fs.existsSync || !fs.readdirSync) {
-    return [DEFAULT_SCENARIO];
+    return [DEFAULT_SCENARIO, SCRATCH_SCENARIO];
   }
 
   if (!fs.existsSync(mockDataPath)) {
-    return [DEFAULT_SCENARIO];
+    return [DEFAULT_SCENARIO, SCRATCH_SCENARIO];
   }
 
   const items = fs.readdirSync(mockDataPath, { withFileTypes: true });
@@ -239,9 +292,12 @@ export function listScenarios(mockDataPath: string): string[] {
     }
   }
 
-  // Always include 'default' if it doesn't exist yet
+  // Always offer durable seed + temporary unscoped bucket in the picker.
   if (!scenarios.includes(DEFAULT_SCENARIO)) {
     scenarios.push(DEFAULT_SCENARIO);
+  }
+  if (!scenarios.includes(SCRATCH_SCENARIO)) {
+    scenarios.push(SCRATCH_SCENARIO);
   }
 
   return scenarios.sort();
@@ -316,7 +372,8 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
     return;
   }
 
-  assertNotReservedScenarioName(scenario);
+  // Allow selecting `_scratch` to inspect temporary traffic; block other reserved names.
+  assertNotReservedScenarioName(scenario, { allowScratch: true });
 
   const configPath = joinPath(mockDataPath, 'scenario-config.json');
   const config = {
@@ -347,9 +404,7 @@ export function checkRequestLimit(mockDataPath: string): {
     currentScenario: string;
   };
 } {
-  const MAX_REQUESTS_PER_SCENARIO = process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO 
-    ? parseInt(process.env.MOCKIFYER_MAX_REQUESTS_PER_SCENARIO, 10) 
-    : undefined;
+  const MAX_REQUESTS_PER_SCENARIO = getMaxRequestsPerScenarioFromEnv();
   
   if (MAX_REQUESTS_PER_SCENARIO === undefined) {
     return { limitReached: false };

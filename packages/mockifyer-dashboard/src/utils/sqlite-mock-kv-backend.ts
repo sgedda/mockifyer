@@ -178,6 +178,20 @@ export class SqliteMockKvBackend implements MockKvBackend {
     run();
   }
 
+  async scard(key: string): Promise<number> {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM set_members WHERE set_key = ?`)
+      .get(key) as { c: number } | undefined;
+    return typeof row?.c === 'number' ? row.c : 0;
+  }
+
+  async sismember(key: string, member: string): Promise<boolean> {
+    const row = this.db
+      .prepare(`SELECT 1 AS ok FROM set_members WHERE set_key = ? AND member = ? LIMIT 1`)
+      .get(key, member) as { ok: number } | undefined;
+    return row != null;
+  }
+
   async hget(key: string, field: string): Promise<string | null> {
     const row = this.db
       .prepare(`SELECT value FROM hash_fields WHERE hash_key = ? AND field = ?`)

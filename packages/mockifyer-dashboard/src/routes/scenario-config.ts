@@ -1,5 +1,14 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario, listScenarios, createScenario, saveScenarioConfig } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  listScenarios,
+  createScenario,
+  saveScenarioConfig,
+  SCRATCH_SCENARIO,
+  isScratchScenario,
+  getScratchScenarioTtlSec,
+  scratchScenarioDisplayName,
+} from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
   isScenarioLockedFs,
@@ -63,6 +72,15 @@ function copyDirectoryRecursive(
   }
 }
 
+function scratchScenarioPayload(currentScenario: string) {
+  return {
+    scratchScenario: SCRATCH_SCENARIO,
+    scratchScenarioLabel: scratchScenarioDisplayName(),
+    isScratchScenario: isScratchScenario(currentScenario),
+    scratchTtlSec: getScratchScenarioTtlSec(),
+  };
+}
+
 // Get current scenario config
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -84,6 +102,7 @@ router.get('/', async (req: Request, res: Response) => {
           currentScenario,
           scenarios,
           scenarioLocks,
+          ...scratchScenarioPayload(currentScenario),
           success: true,
         });
       } finally {
@@ -101,6 +120,7 @@ router.get('/', async (req: Request, res: Response) => {
       currentScenario,
       scenarios,
       scenarioLocks,
+      ...scratchScenarioPayload(currentScenario),
       success: true,
     });
   } catch (error: any) {
@@ -174,6 +194,14 @@ router.post('/create', async (req: Request, res: Response) => {
     const parsedScenario = sanitizeScenarioName(scenario);
     if (!parsedScenario.ok) return res.status(400).json({ error: parsedScenario.error });
     const sanitized = parsedScenario.value;
+
+    if (isScratchScenario(sanitized)) {
+      return res.status(400).json({
+        error:
+          `"${sanitized}" is reserved for temporary unscoped traffic. ` +
+          `Create a named scenario (e.g. "default") to keep mocks long-term.`,
+      });
+    }
 
     const parsedDerive =
       deriveFrom === undefined || deriveFrom === null || deriveFrom === ''

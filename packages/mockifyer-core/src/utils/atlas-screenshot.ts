@@ -6,8 +6,9 @@
 
 import { ENV_VARS } from '../types';
 import { getAtlasSessionId, isAtlasEnabled } from './atlas';
-import { setAtlasDocScreenshot } from './atlas-doc';
+import { resolveAtlasDocWriteScenario, setAtlasDocScreenshot } from './atlas-doc';
 import { getAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 
 let fs: typeof import('fs') | undefined;
 let pathMod: typeof import('path') | undefined;
@@ -336,17 +337,19 @@ async function uploadScreenshotViaMetro(
     capturedAt: string;
   }
 ): Promise<boolean> {
-  if (typeof fetch !== 'function') return false;
+  if (typeof fetch !== 'function' && !resolveUnpatchedFetch()) return false;
   const base64 = encodeBytesToBase64(bytes);
   if (!base64) return false;
 
   const metroPort = resolveMetroPort();
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return false;
   try {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
     const timeout = controller
       ? setTimeout(() => controller.abort(), METRO_UPLOAD_TIMEOUT_MS)
       : undefined;
-    const res = await fetch(`http://localhost:${metroPort}/mockifyer-atlas-screenshot`, {
+    const res = await fetchFn(`http://localhost:${metroPort}/mockifyer-atlas-screenshot`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ relativePath: relPath, base64, ...metadata }),
@@ -420,12 +423,13 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
           const bytes = await readCaptureBytes(result);
           if (!bytes?.length) continue;
 
+          const scenario = resolveAtlasDocWriteScenario(input.scenario);
           const relPath = relativeScreenshotPath(sessionId, screen, phase, result.format);
           const capturedAt = input.timestamp ?? new Date().toISOString();
           const meta = {
             sessionId,
             screen,
-            scenario: input.scenario,
+            scenario,
             pageId: input.pageId,
             capturedAt,
           };
@@ -439,7 +443,7 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
 
           capturedKeys.add(key);
           setAtlasDocScreenshot({
-            scenario: input.scenario,
+            scenario,
             screen,
             sessionId,
             screenshotPath: relPath,

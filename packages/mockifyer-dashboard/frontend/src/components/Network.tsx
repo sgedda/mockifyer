@@ -20,6 +20,8 @@ import {
   Network as NetworkIcon,
   GanttChart,
   Route,
+  Copy,
+  Check,
 } from 'lucide-react'
 import {
   buildJourneySteps,
@@ -687,10 +689,35 @@ function HeaderBlock({ title, headers }: { title: string; headers: Record<string
 }
 
 function PreviewBlock({ title, text }: { title: string; text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <div>
-      <div className="text-xs font-medium mb-1">{title}</div>
-      <pre className="text-[11px] bg-muted p-2 rounded overflow-auto max-h-48 font-mono whitespace-pre-wrap">
+      <div className="text-xs font-medium mb-1 flex items-center justify-between gap-2">
+        <span>{title}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 px-1.5 text-[10px] text-muted-foreground"
+          onClick={() => void handleCopy()}
+          title="Copy to clipboard"
+        >
+          {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+      <pre className="text-[11px] bg-muted p-2 rounded overflow-auto max-h-96 font-mono whitespace-pre-wrap">
         {text}
       </pre>
     </div>
