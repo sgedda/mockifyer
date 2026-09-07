@@ -39,6 +39,8 @@ import {
   setAtlasDocScreenshot,
   isAtlasScreenshotCaptureEnabled,
   flushAtlasScreenshotsAsync,
+  getAtlasScreenshotBufferCount,
+  getPendingAtlasScreenshotFlushCount,
   requestAtlasScreenshotCapture,
   pushAtlasUsageContext,
   popAtlasUsageContext,
@@ -812,16 +814,52 @@ describe('atlas-screenshot', () => {
 
       const pngPath = path.join(dir, map.pages.home!.screenshotPath!);
       expect(fs.existsSync(pngPath)).toBe(false);
+      expect(getPendingAtlasScreenshotFlushCount()).toBe(1);
+      expect(getAtlasScreenshotBufferCount()).toBe(1);
 
       const flush = await flushAtlasScreenshotsAsync();
       expect(flush.flushed).toBe(1);
       expect(fs.existsSync(pngPath)).toBe(true);
       expect(fs.readFileSync(pngPath).subarray(0, 8)).toEqual(PNG_BYTES.subarray(0, 8));
+      expect(getPendingAtlasScreenshotFlushCount()).toBe(0);
+      expect(getAtlasScreenshotBufferCount()).toBe(0);
 
       flushAtlasDocHtmlRewrite();
       const index = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
       expect(index).toContain(map.pages.home!.screenshotPath!);
       expect(index).toContain('screenshot-preview');
+    } finally {
+      resetAtlasScreenshotRuntime();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('drops in-memory screenshot bytes after a successful persist', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-shot-mem-'));
+    try {
+      registerAtlasScreenshotCapturer(async () => ({ data: PNG_BYTES, platform: 'web' }));
+      configureAtlas({
+        mockDataPath: './mock-data',
+        atlas: {
+          mode: 'live',
+          captureScreenshots: true,
+          screenshotSettleMs: 0,
+          screenshotPersist: 'immediate',
+          htmlOutputPath: dir,
+        },
+      });
+
+      requestAtlasScreenshotCapture({
+        screen: 'Home',
+        sessionId: 'sess-mem',
+      });
+      await new Promise((r) => setTimeout(r, 150));
+
+      const map = getAtlasDocMap('default');
+      const pngPath = path.join(dir, map.screens.Home!.screenshotPath!);
+      expect(fs.existsSync(pngPath)).toBe(true);
+      expect(getPendingAtlasScreenshotFlushCount()).toBe(0);
+      expect(getAtlasScreenshotBufferCount()).toBe(0);
     } finally {
       resetAtlasScreenshotRuntime();
       fs.rmSync(dir, { recursive: true, force: true });

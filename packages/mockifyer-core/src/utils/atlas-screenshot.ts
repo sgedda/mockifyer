@@ -66,7 +66,7 @@ interface BufferedScreenshot {
   flushed: boolean;
 }
 
-/** In-memory PNGs — flushed on Dev Menu render / crash export. */
+/** In-memory PNGs — flushed on Dev Menu render / crash export, then dropped. */
 const screenshotBuffer = new Map<string, BufferedScreenshot>();
 
 /**
@@ -159,6 +159,11 @@ export function getPendingAtlasScreenshotFlushCount(): number {
     if (!entry.flushed) n += 1;
   }
   return n;
+}
+
+/** Screenshot buffer entries still held in memory. After a successful persist this is 0. */
+export function getAtlasScreenshotBufferCount(): number {
+  return screenshotBuffer.size;
 }
 
 function safeSegment(value: string): string {
@@ -459,7 +464,11 @@ export function scheduleAtlasScreenshotCapture(input: ScheduleAtlasScreenshotInp
 
 async function persistBufferedScreenshot(relPath: string): Promise<boolean> {
   const entry = screenshotBuffer.get(relPath);
-  if (!entry || entry.flushed) return entry?.flushed === true;
+  if (!entry) return false;
+  if (entry.flushed) {
+    screenshotBuffer.delete(relPath);
+    return true;
+  }
 
   const htmlRoot = getAtlasDocHtmlOutputPath()?.trim();
   let persisted = false;
@@ -476,7 +485,7 @@ async function persistBufferedScreenshot(relPath: string): Promise<boolean> {
     });
   }
   if (persisted) {
-    entry.flushed = true;
+    screenshotBuffer.delete(relPath);
   }
   return persisted;
 }
@@ -489,7 +498,10 @@ export async function flushAtlasScreenshotsAsync(): Promise<{ flushed: number; f
   let flushed = 0;
   let failed = 0;
   for (const [relPath, entry] of screenshotBuffer) {
-    if (entry.flushed) continue;
+    if (entry.flushed) {
+      screenshotBuffer.delete(relPath);
+      continue;
+    }
     const ok = await persistBufferedScreenshot(relPath);
     if (ok) flushed += 1;
     else failed += 1;
