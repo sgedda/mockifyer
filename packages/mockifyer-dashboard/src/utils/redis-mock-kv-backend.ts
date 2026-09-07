@@ -81,6 +81,16 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.holder.run((redis) => redis.srem(key, ...members));
   }
 
+  async scard(key: string): Promise<number> {
+    const n = await this.holder.run((redis) => redis.scard(key));
+    return typeof n === 'number' ? n : 0;
+  }
+
+  async sismember(key: string, member: string): Promise<boolean> {
+    const n = await this.holder.run((redis) => redis.sismember(key, member));
+    return n === 1 || n === true;
+  }
+
   async hget(key: string, field: string): Promise<string | null> {
     return this.holder.run((redis) => redis.hget(key, field));
   }

@@ -164,6 +164,14 @@ export interface ScenarioConfig {
   availableScenarios: string[]
   /** When true, mock/date edits for that scenario are blocked server-side. */
   scenarioLocks?: Record<string, boolean>
+  /** Storage id for the ephemeral unscoped bucket (`_scratch`). */
+  scratchScenario?: string
+  /** Human label for the scratch scenario. */
+  scratchScenarioLabel?: string
+  /** True when {@link currentScenario} is the temporary unscoped bucket. */
+  isScratchScenario?: boolean
+  /** Redis TTL seconds for scratch mocks (default 86400). */
+  scratchTtlSec?: number
 }
 
 /** Scenario backup JSON (`formatVersion` 1) from Settings export or GET /api/scenario-config/export */

@@ -32,6 +32,14 @@ function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig
       data.scenarioLocks && typeof data.scenarioLocks === 'object' && data.scenarioLocks !== null
         ? (data.scenarioLocks as Record<string, boolean>)
         : {},
+    scratchScenario: typeof data.scratchScenario === 'string' ? data.scratchScenario : undefined,
+    scratchScenarioLabel:
+      typeof data.scratchScenarioLabel === 'string' ? data.scratchScenarioLabel : undefined,
+    isScratchScenario: data.isScratchScenario === true,
+    scratchTtlSec:
+      typeof data.scratchTtlSec === 'number' && Number.isFinite(data.scratchTtlSec)
+        ? data.scratchTtlSec
+        : undefined,
   }
 }
 

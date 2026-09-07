@@ -24,6 +24,20 @@ import type { NetworkEvent, NetworkEventTransport } from './network-event-types'
 import { resolveUsageForNetworkEmit } from './atlas-usage';
 import { getAtlasUsageDashboardBaseUrl } from './atlas-usage';
 import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import {
+  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES,
+  scheduleNetworkBodySpill,
+  serializeBodyForSpill,
+  setNetworkBodySpillEnabled,
+} from './network-body-spill';
+import { prettyPrintJsonText } from './json-pretty';
+import {
+  formatGraphqlRequestBodyObject,
+  isGraphqlRequestBodyObject,
+} from './graphql-body-display';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
+
+export { prettyPrintJsonText, softPrettyJsonText } from './json-pretty';
 
 export interface NetworkLogEmitterOptions {
   /** Dashboard origin + optional path prefix (same as `proxy.baseUrl`). */
@@ -130,10 +144,14 @@ function truncatePreview(value: unknown, maxBytes: number): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
   if (typeof value === 'string') {
-    text = value;
+    text = prettyPrintJsonText(value);
   } else {
     try {
-      text = JSON.stringify(value);
+      if (isGraphqlRequestBodyObject(value)) {
+        text = formatGraphqlRequestBodyObject(value);
+      } else {
+        text = JSON.stringify(value, null, 2);
+      }
     } catch {
       text = String(value);
     }
@@ -155,6 +173,7 @@ export function sanitizeNetworkEvent(
 ): NetworkEvent {
   const maxBytes = options.maxEventBytes ?? NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES;
   const captureBodies = options.captureBodies === true;
+  const inlineBodyBytes = Math.min(NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES, maxBytes);
 
   let host: string | undefined;
   let path: string | undefined;
@@ -178,21 +197,42 @@ export function sanitizeNetworkEvent(
     query: input.query !== undefined ? sanitizeQueryString(input.query) : query,
     requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
     responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
-    requestBodyPreview: captureBodies ? truncatePreview(input.requestBodyPreview, maxBytes) : undefined,
-    responseBodyPreview: captureBodies ? truncatePreview(input.responseBodyPreview, maxBytes) : undefined,
+    requestBodyPreview: captureBodies
+      ? truncatePreview(input.requestBodyPreview, inlineBodyBytes)
+      : undefined,
+    responseBodyPreview: captureBodies
+      ? truncatePreview(input.responseBodyPreview, inlineBodyBytes)
+      : undefined,
+    // Refs survive even when previews shrink — download uses disk/Metro spill.
+    requestBodyRef: captureBodies ? input.requestBodyRef : undefined,
+    responseBodyRef: captureBodies ? input.responseBodyRef : undefined,
+    requestBodyTruncated: captureBodies ? input.requestBodyTruncated : undefined,
+    responseBodyTruncated: captureBodies ? input.responseBodyTruncated : undefined,
   };
 
-  const serialized = JSON.stringify(event);
-  if (utf8ByteLength(serialized) <= maxBytes) {
+  if (utf8ByteLength(JSON.stringify(event)) <= maxBytes) {
     return event;
   }
 
-  return {
+  // Prefer keeping short body previews + refs; drop bulky headers first.
+  const withoutHeaders: NetworkEvent = {
     ...event,
-    requestBodyPreview: undefined,
-    responseBodyPreview: undefined,
     requestHeaders: undefined,
     responseHeaders: undefined,
+  };
+  if (utf8ByteLength(JSON.stringify(withoutHeaders)) <= maxBytes) {
+    return withoutHeaders;
+  }
+
+  const tiny = Math.min(512, inlineBodyBytes);
+  return {
+    ...withoutHeaders,
+    requestBodyPreview: captureBodies
+      ? truncatePreview(input.requestBodyPreview, tiny)
+      : undefined,
+    responseBodyPreview: captureBodies
+      ? truncatePreview(input.responseBodyPreview, tiny)
+      : undefined,
   };
 }
 
@@ -241,9 +281,11 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<
   const body = JSON.stringify({ event });
 
   const post = async (): Promise<void> => {
-    if (typeof fetch !== 'function') return;
+    // Prefer unpatched fetch so POSTs never enter Mockifyer interceptors / proxy / recording.
+    const fetchFn = resolveUnpatchedFetch();
+    if (!fetchFn) return;
     try {
-      await fetch(url, {
+      await fetchFn(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,
@@ -297,15 +339,23 @@ export function resolveNetworkLogCaptureBodies(config: Pick<MockifyerConfig, 'ne
   return config.networkLog?.captureBodies === true;
 }
 
+export function resolveNetworkLogSpillBodies(config: Pick<MockifyerConfig, 'networkLog'>): boolean {
+  if (config.networkLog?.spillBodies === false) return false;
+  return resolveNetworkLogCaptureBodies(config);
+}
+
 export interface EmitMockifyerNetworkEventParams {
   config: Pick<MockifyerConfig, 'networkLog' | 'proxy'>;
   scenario?: string;
   clientId?: string;
   sessionId?: string;
   event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario' | 'transport'> & {
+    id?: string;
     transport?: NetworkEventTransport;
   };
-  /** Raw response body for shape / anomaly detection (not persisted unless captureBodies). */
+  /** Raw request body for spill / preview (not kept in full on the hop). */
+  requestBody?: unknown;
+  /** Raw response body for shape / anomaly detection / spill. */
   responseBody?: unknown;
 }
 
@@ -315,6 +365,8 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
   configureFlightRecorder(recorderConfig);
 
   const captureBodies = resolveNetworkLogCaptureBodies(params.config);
+  const spillBodies = resolveNetworkLogSpillBodies(params.config);
+  setNetworkBodySpillEnabled(spillBodies);
   const dashboardBaseUrl = resolveNetworkLogDashboardUrl(params.config);
 
   const responseShape =
@@ -329,9 +381,34 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       responseBody: params.responseBody,
     });
 
+  const eventId = params.event.id?.trim() || newEventId();
+  const requestBodyText = captureBodies
+    ? serializeBodyForSpill(params.requestBody) ??
+      (typeof params.event.requestBodyPreview === 'string'
+        ? serializeBodyForSpill(params.event.requestBodyPreview)
+        : undefined)
+    : undefined;
+  const responseBodyText = captureBodies
+    ? serializeBodyForSpill(params.responseBody) ??
+      (typeof params.event.responseBodyPreview === 'string'
+        ? serializeBodyForSpill(params.event.responseBodyPreview)
+        : undefined)
+    : undefined;
+
+  const spillRefs =
+    spillBodies && captureBodies
+      ? scheduleNetworkBodySpill({
+          eventId,
+          requestId: params.event.requestId,
+          requestBodyText,
+          responseBodyText,
+        })
+      : {};
+
   const built = buildNetworkEvent(
     {
       ...params.event,
+      id: eventId,
       kind: params.event.kind ?? 'network',
       scenario: params.scenario ?? 'default',
       transport: params.event.transport ?? 'fetch',
@@ -340,6 +417,12 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
       usage: params.event.usage ?? resolveUsageForNetworkEmit(),
+      requestBodyPreview: requestBodyText ?? params.event.requestBodyPreview,
+      responseBodyPreview: responseBodyText ?? params.event.responseBodyPreview,
+      requestBodyRef: spillRefs.requestBodyRef ?? params.event.requestBodyRef,
+      responseBodyRef: spillRefs.responseBodyRef ?? params.event.responseBodyRef,
+      requestBodyTruncated: spillRefs.requestBodyTruncated ?? params.event.requestBodyTruncated,
+      responseBodyTruncated: spillRefs.responseBodyTruncated ?? params.event.responseBodyTruncated,
     },
     { captureBodies }
   );

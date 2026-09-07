@@ -1,6 +1,6 @@
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
-import { isMockifyerDashboardProxyApiUrl } from './join-proxy-dashboard-api-url';
+import { isMockifyerDashboardPlumbingApiUrl } from './join-proxy-dashboard-api-url';
 import { toNetworkLogBodyPreview } from './network-log';
 import type { NetworkEventSource, NetworkEventTransport } from './network-log';
 import {
@@ -156,7 +156,7 @@ export function recordInlineTraceHop(input: RecordInlineTraceHopInput): void {
     return;
   }
   // Never surface the internal POST to dashboard `/api/proxy` as a user-visible hop.
-  if (isMockifyerDashboardProxyApiUrl(input.url)) {
+  if (isMockifyerDashboardPlumbingApiUrl(input.url)) {
     return;
   }
 
@@ -268,7 +268,7 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
   for (const hop of childHops) {
     if (!hop || typeof hop !== 'object') continue;
     const url = typeof hop.url === 'string' ? hop.url : '';
-    if (isMockifyerDashboardProxyApiUrl(url)) {
+    if (isMockifyerDashboardPlumbingApiUrl(url)) {
       continue;
     }
     recordInlineTraceHop({

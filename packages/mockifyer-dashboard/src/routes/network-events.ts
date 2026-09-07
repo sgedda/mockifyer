@@ -7,6 +7,7 @@ import {
   rememberAtlasHtmlNetworkEvent,
   scheduleAtlasDocHtmlRewrite,
   getAtlasDocHtmlOutputPath,
+  prettyPrintJsonText,
 } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
@@ -15,6 +16,17 @@ import { getAtlasStore, mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-
 
 const router = express.Router();
 
+/** Re-format stored GraphQL JSON bodies so query text is readable (real newlines). */
+function polishNetworkEventBodies(event: NetworkEvent): NetworkEvent {
+  const next = { ...event };
+  if (typeof next.requestBodyPreview === 'string' && next.requestBodyPreview) {
+    next.requestBodyPreview = prettyPrintJsonText(next.requestBodyPreview);
+  }
+  if (typeof next.responseBodyPreview === 'string' && next.responseBodyPreview) {
+    next.responseBodyPreview = prettyPrintJsonText(next.responseBodyPreview);
+  }
+  return next;
+}
 function parseLimit(raw: unknown, fallback = 200): number {
   const n = Number.parseInt(String(raw ?? ''), 10);
   if (!Number.isFinite(n) || n < 1) return fallback;
@@ -184,7 +196,7 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
-    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, events);
+    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, events).map(polishNetworkEventBodies);
     return res.json({
       scenario,
       provider: config.provider,

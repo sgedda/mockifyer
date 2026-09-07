@@ -10,6 +10,7 @@ import {
   writeCrashIncidentHtmlFile,
 } from './atlas-doc-html';
 import type { NetworkEvent } from './network-event-types';
+import { flushAtlasScreenshotsAsync } from './atlas-screenshot';
 
 const DEFAULT_MOCK_DATA_PATH = 'mock-data';
 const DEFAULT_METRO_PORT = 8081;
@@ -69,6 +70,9 @@ function buildSuspectSummaries(crashContext: ExportCrashContextHtmlOptions['cras
 export async function exportCrashContextHtmlLocal(
   options: ExportCrashContextHtmlOptions
 ): Promise<LocalCrashTraceLinks | null> {
+  // Same “save later” path as Dev Menu render — land buffered screen PNGs first.
+  await flushAtlasScreenshotsAsync();
+
   const mockDataPath = options.mockDataPath?.trim() || DEFAULT_MOCK_DATA_PATH;
   const scenario = options.crashContext.incident.scenario?.trim() || 'default';
   const atlasMap = options.atlasMap ?? getAtlasDocMap(scenario);

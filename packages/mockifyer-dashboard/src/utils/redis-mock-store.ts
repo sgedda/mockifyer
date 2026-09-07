@@ -4,6 +4,14 @@ import {
   assertNotReservedScenarioName,
   generateRequestKey,
   getCurrentScenario,
+  getScratchScenarioTtlSec,
+  isScratchScenario,
+  buildMockPathCardinalitySegment,
+  decideRedisMockWriteLimits,
+  formatRedisMockWriteSkipMessage,
+  getMaxMocksPerPathFromEnv,
+  getMaxRequestsPerScenarioFromEnv,
+  redisPathIndexKey,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -209,7 +217,7 @@ export class RedisMockStore {
   }
 
   async setActiveScenario(scenario: string): Promise<void> {
-    assertNotReservedScenarioName(scenario);
+    assertNotReservedScenarioName(scenario, { allowScratch: true });
     await this.kv.set(this.activeScenarioKey, scenario);
     // Best-effort registry so scenarios appear even with no mocks yet.
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
@@ -266,31 +274,124 @@ export class RedisMockStore {
     return sha256Hex(requestKey);
   }
 
-  async setByHash(hash: string, mockData: MockData, scenario?: string, clientId?: string): Promise<void> {
-    const key = await this.dataKey(hash, scenario, clientId);
-    const indexKey = await this.indexKey(scenario, clientId);
-    await this.kv.set(key, JSON.stringify(mockData));
-    await this.kv.sadd(indexKey, hash);
-    // Best-effort registry so scenarios appear even if index scanning misses them.
-    if (scenario) {
-      await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
-    }
+  /**
+   * Persist a mock hash. When {@link options.enforceWriteLimits} is true (default for
+   * {@link setByHashInScenario}), new hashes respect scenario + per-path Redis caps.
+   * @returns whether the mock was written (false when skipped by limits)
+   */
+  async setByHash(
+    hash: string,
+    mockData: MockData,
+    scenario?: string,
+    clientId?: string,
+    options?: { enforceWriteLimits?: boolean }
+  ): Promise<boolean> {
+    const scenarioName = scenario?.trim() || (await this.scenarioKey(undefined, clientId));
+    return this.writeMockInScenario(hash, mockData, scenarioName, {
+      enforceWriteLimits: options?.enforceWriteLimits === true,
+    });
   }
 
-  /** Write mock into a known resolved scenario segment (dashboard proxy — avoids recomputing {@link scenarioKey}). */
-  async setByHashInScenario(hash: string, mockData: MockData, scenarioName: string): Promise<void> {
+  /**
+   * Write mock into a known resolved scenario segment (dashboard proxy — avoids recomputing {@link scenarioKey}).
+   * Enforces Redis write limits by default (record-on-miss flood protection).
+   */
+  async setByHashInScenario(
+    hash: string,
+    mockData: MockData,
+    scenarioName: string,
+    options?: { enforceWriteLimits?: boolean }
+  ): Promise<boolean> {
     const id = scenarioName.trim();
     if (!id) throw new Error('scenarioName is required');
-    const key = `${this.keyPrefix}:mock:${id}:${hash}`;
-    const indexKey = `${this.keyPrefix}:index:${id}`;
-    await this.kv.set(key, JSON.stringify(mockData));
+    return this.writeMockInScenario(hash, mockData, id, {
+      enforceWriteLimits: options?.enforceWriteLimits !== false,
+    });
+  }
+
+  private async writeMockInScenario(
+    hash: string,
+    mockData: MockData,
+    scenarioName: string,
+    options: { enforceWriteLimits: boolean }
+  ): Promise<boolean> {
+    const key = `${this.keyPrefix}:mock:${scenarioName}:${hash}`;
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const existing = await this.kv.get(key);
+    const hashAlreadyStored = existing != null && existing !== '';
+
+    const pathSegment = buildMockPathCardinalitySegment(
+      mockData.request?.method,
+      mockData.request?.url
+    );
+    const pathIndexKey =
+      pathSegment != null ? redisPathIndexKey(this.keyPrefix, scenarioName, pathSegment) : null;
+
+    if (options.enforceWriteLimits && !hashAlreadyStored) {
+      const maxScenario = getMaxRequestsPerScenarioFromEnv();
+      const maxPath = getMaxMocksPerPathFromEnv();
+      let scenarioMockCount = 0;
+      let pathMockCount = 0;
+      let hashAlreadyOnPath = false;
+      if (maxScenario != null) {
+        scenarioMockCount = await this.kv.scard(indexKey);
+      }
+      if (maxPath != null && pathIndexKey) {
+        pathMockCount = await this.kv.scard(pathIndexKey);
+        hashAlreadyOnPath = await this.kv.sismember(pathIndexKey, hash);
+      }
+      const decision = decideRedisMockWriteLimits({
+        hashAlreadyStored,
+        scenarioMockCount,
+        pathMockCount,
+        hashAlreadyOnPath,
+        maxScenario,
+        maxPath: pathIndexKey ? maxPath : undefined,
+      });
+      if (!decision.allow) {
+        console.warn(
+          `[RedisMockStore] ${formatRedisMockWriteSkipMessage(decision, {
+            scenario: scenarioName,
+            method: mockData.request?.method,
+            url: mockData.request?.url,
+          })}`
+        );
+        return false;
+      }
+    }
+
+    if (isScratchScenario(scenarioName)) {
+      await this.kv.set(key, JSON.stringify(mockData), 'EX', getScratchScenarioTtlSec());
+    } else {
+      await this.kv.set(key, JSON.stringify(mockData));
+    }
     await this.kv.sadd(indexKey, hash);
-    await this.kv.sadd(this.scenarioRegistrySetKey, id).catch(() => undefined);
+    if (pathIndexKey) {
+      await this.kv.sadd(pathIndexKey, hash);
+    }
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    return true;
   }
 
   async deleteByHash(hash: string, scenario?: string, clientId?: string): Promise<void> {
-    const dataKey = await this.dataKey(hash, scenario, clientId);
-    const indexKey = await this.indexKey(scenario, clientId);
+    const scenarioName = scenario?.trim() || (await this.scenarioKey(undefined, clientId));
+    const dataKey = `${this.keyPrefix}:mock:${scenarioName}:${hash}`;
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const raw = await this.kv.get(dataKey);
+    if (raw) {
+      try {
+        const mockData = JSON.parse(raw) as MockData;
+        const pathSegment = buildMockPathCardinalitySegment(
+          mockData.request?.method,
+          mockData.request?.url
+        );
+        if (pathSegment) {
+          await this.kv.srem(redisPathIndexKey(this.keyPrefix, scenarioName, pathSegment), hash);
+        }
+      } catch {
+        // ignore parse errors on delete
+      }
+    }
     await this.kv.del(dataKey);
     await this.kv.srem(indexKey, hash);
   }
@@ -568,6 +669,7 @@ export class RedisMockStore {
       await this.kv.srem(this.clientLaneIdsSetKey, id);
       return;
     }
+    assertNotReservedScenarioName(scenario, { allowScratch: true });
     await this.kv.set(key, scenario);
     await this.kv.sadd(this.clientLaneIdsSetKey, id);
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);

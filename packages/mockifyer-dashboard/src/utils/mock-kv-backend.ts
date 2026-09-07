@@ -16,6 +16,10 @@ export interface MockKvBackend {
   sadd(key: string, ...members: string[]): Promise<void>;
   smembers(key: string): Promise<string[]>;
   srem(key: string, ...members: string[]): Promise<void>;
+  /** Number of members in a set (Redis SCARD). */
+  scard(key: string): Promise<number>;
+  /** True when member is in the set (Redis SISMEMBER). */
+  sismember(key: string, member: string): Promise<boolean>;
   hget(key: string, field: string): Promise<string | null>;
   hset(key: string, field: string, value: string): Promise<void>;
   hdel(key: string, ...fields: string[]): Promise<void>;

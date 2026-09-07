@@ -25,6 +25,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, Lock } from 'lucide-react'
+import {
+  formatScratchTtlHours,
+  isScratchScenario,
+  scenarioDisplayName,
+} from '@/lib/scenario-display'
 
 interface DashboardProps {
   scenario: string
@@ -36,6 +41,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const navigate = useNavigate()
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [scenarioLocks, setScenarioLocks] = useState<Record<string, boolean>>({})
+  const [scratchTtlSec, setScratchTtlSec] = useState<number | undefined>(undefined)
   const [switchingScenario, setSwitchingScenario] = useState(false)
   const [scenarioFilter, setScenarioFilter] = useState('')
   const [proxyRecordOnMiss, setProxyRecordOnMiss] = useState<boolean | null>(null)
@@ -69,12 +75,14 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const refreshScenarioConfig = useCallback(async () => {
     try {
       const cfg = await getScenarioConfig()
-      const next = cfg.availableScenarios?.length ? cfg.availableScenarios : ['default']
+      const next = cfg.availableScenarios?.length ? cfg.availableScenarios : ['default', '_scratch']
       setAvailableScenarios(next)
       setScenarioLocks(cfg.scenarioLocks ?? {})
+      setScratchTtlSec(cfg.scratchTtlSec)
     } catch {
-      setAvailableScenarios(['default'])
+      setAvailableScenarios(['default', '_scratch'])
       setScenarioLocks({})
+      setScratchTtlSec(undefined)
     }
   }, [])
 
@@ -264,6 +272,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     })
 
   const scenarioLocked = scenarioLocks[scenario] === true
+  const viewingScratch = isScratchScenario(scenario)
+  const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -374,13 +384,22 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   size="sm"
                   className="h-9 gap-2"
                   disabled={switchingScenario}
-                  title={scenarioLocked ? 'Scenario is locked (read-only mocks)' : 'Change scenario'}
+                  title={
+                    viewingScratch
+                      ? `Temporary unscoped traffic (expires in ~${scratchTtlLabel}). Select a named scenario to keep mocks.`
+                      : scenarioLocked
+                        ? 'Scenario is locked (read-only mocks)'
+                        : 'Change scenario'
+                  }
                 >
                   {scenarioLocked ? (
                     <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                   ) : null}
-                  <Badge variant="outline" className="font-mono">
-                    {scenario}
+                  {viewingScratch ? (
+                    <Badge variant="secondary">Temporary</Badge>
+                  ) : null}
+                  <Badge variant="outline" className="font-mono" title={scenario}>
+                    {scenarioDisplayName(scenario)}
                   </Badge>
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
@@ -404,9 +423,17 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                         key={s}
                         onClick={() => handleHeaderScenarioChange(s)}
                         disabled={s === scenario || switchingScenario}
-                        className={`font-mono ${s === scenario ? 'bg-primary/10' : ''}`}
+                        className={`${s === scenario ? 'bg-primary/10' : ''}`}
+                        title={s}
                       >
-                        {s}
+                        <span className={isScratchScenario(s) ? '' : 'font-mono'}>
+                          {scenarioDisplayName(s)}
+                        </span>
+                        {isScratchScenario(s) ? (
+                          <Badge variant="secondary" className="ml-2 text-[10px]">
+                            expires
+                          </Badge>
+                        ) : null}
                         {s === scenario ? ' ✓' : ''}
                       </DropdownMenuItem>
                     ))
@@ -416,6 +443,25 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </DropdownMenu>
           </div>
         </header>
+        {viewingScratch ? (
+          <div className="border-b border-amber-500/40 bg-amber-500/10 px-6 py-2.5 text-sm text-amber-950 dark:text-amber-100 flex flex-wrap items-center justify-between gap-2">
+            <p>
+              Unscoped traffic is stored temporarily (~{scratchTtlLabel}) and expires automatically.
+              Select a named scenario (for example <span className="font-mono">default</span>) to keep
+              mocks long-term.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-amber-600/50 bg-background/80"
+              disabled={switchingScenario || scenario === 'default'}
+              onClick={() => handleHeaderScenarioChange('default')}
+            >
+              Switch to default
+            </Button>
+          </div>
+        ) : null}
         <ClientConnectionsPanel />
         <main className="flex-1 overflow-auto p-6">
           <Routes>

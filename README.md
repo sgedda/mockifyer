@@ -135,6 +135,8 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-based fallback matching |
 | `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | Verify response when similar-matching |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` — when interceptors run (overrides `activationMode` in config) |
+| `MOCKIFYER_MAX_REQUESTS_PER_SCENARIO` | Max mocks per scenario (filesystem **and** Redis). Unset = no scenario cap |
+| `MOCKIFYER_MAX_MOCKS_PER_PATH` | Max distinct Redis mocks per METHOD+host+pathname (default **200**). Set `0`/`off` to disable. Stops high-cardinality POST floods |
 | `MOCKIFYER_ECHO_TRACE_ID` | When `false`/`0`/`off`/`no`, skip echoing `X-Mockifyer-Request-Id` on HTTP responses from Node inbound capture (default on) |
 | `MOCKIFYER_AUTO_INBOUND_CORRELATION` | When `false`/`0`/`off`/`no`, skip installing Node inbound hop capture on `setupMockifyer` (default on) |
 
@@ -150,7 +152,9 @@ See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
 | 1 | **`MOCKIFYER_SCENARIO`** env |
 | 2 | **`MockifyerConfig.defaultScenario`** or **`scenarios.default`** ( **`defaultScenario`** wins when both are set ) |
 | 3 | **`scenario-config.json`** (preferred: **`scenario-config.{clientId}.json`** when that file exists ) |
-| 4 | **`default`** folder name |
+| 4 | **`_scratch`** — temporary unscoped bucket (not the named **`default`** scenario) |
+
+When nothing is set, traffic uses **`_scratch`**. Redis mocks under `_scratch` expire after **24h** (override with **`MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC`**). Select or set a **named** scenario (including **`default`**) for durable mocks. The dashboard labels `_scratch` as **Temporary (unscoped)**.
 
 ### Dashboard Redis **`/api/proxy`** (effective scenario used for mocks and recordings )
 

@@ -7,6 +7,13 @@ import {
   upsertAtlasDocFromPresentation,
 } from './atlas-doc';
 import { setAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { resetAtlasScreenshotRuntime } from './atlas-screenshot';
+import {
+  configureAtlasScreenshotCapture,
+  resolveAtlasCaptureScreenshots,
+} from './atlas-screenshot';
+import { setNetworkBodySpillEnabled } from './network-body-spill';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 /** Atlas capture mode — `off` by default. */
 export type AtlasMode = 'off' | 'live' | 'session';
 
@@ -39,6 +46,9 @@ export interface AtlasCmsNode {
   parentId?: string | null;
   source: AtlasSurfaceSource;
   label?: string;
+  /** CMS/site tree path (e.g. umbracoUrlAlias). Same page may appear under multiple paths. */
+  treePath?: string;
+  parentPageId?: string | null;
 }
 
 export interface AtlasPrefetchEvent {
@@ -83,6 +93,22 @@ export interface AtlasConfig {
    * Default when atlas is on: `{mockDataPath}/atlas-html`.
    */
   htmlOutputPath?: string;
+  /**
+   * When true (and {@link registerAtlasScreenshotCapturer} is wired), capture one PNG per
+   * sessionId+screen when the app calls {@link requestAtlasScreenshotCapture} / presentation
+   * settle (not on raw screen mount). Default false. Env `MOCKIFYER_ATLAS_SCREENSHOTS` can force on/off.
+   */
+  captureScreenshots?: boolean;
+  /**
+   * Ms to wait after layout paint before taking a screenshot (lets skeletons finish).
+   * Default 600. Set `0` for tests.
+   */
+  screenshotSettleMs?: number;
+  /**
+   * When to write PNG files. Default `on-flush` (Dev Menu render / crash export).
+   * Use `immediate` to write as soon as each screen is captured.
+   */
+  screenshotPersist?: 'immediate' | 'on-flush';
 }
 
 export interface AtlasRuntimeState {
@@ -148,6 +174,11 @@ export function getAtlasMode(): AtlasMode {
 
 export function getAtlasSessionId(): string | null {
   return runtime.sessionId;
+}
+
+/** Active Atlas capture scenario (set via {@link configureAtlas}; often `_scratch` when unset). */
+export function getAtlasRuntimeScenario(): string {
+  return runtime.scenario;
 }
 
 export function getAtlasEvents(): readonly AtlasEvent[] {
@@ -237,6 +268,20 @@ export function configureAtlas(
 
   setAtlasUsageDashboardBaseUrl(runtime.dashboardBaseUrl);
   setAtlasDocHtmlOutputPath(htmlOutputPath);
+  const networkLog = (config as MockifyerConfig | undefined)?.networkLog;
+  setNetworkBodySpillEnabled(networkLog?.spillBodies !== false && networkLog?.captureBodies === true);
+  configureAtlasScreenshotCapture({
+    enabled: resolveAtlasCaptureScreenshots(atlasCfg ?? null),
+    htmlOutputPath,
+    settleMs:
+      atlasCfg && 'screenshotSettleMs' in atlasCfg && typeof atlasCfg.screenshotSettleMs === 'number'
+        ? atlasCfg.screenshotSettleMs
+        : undefined,
+    persistMode:
+      atlasCfg && 'screenshotPersist' in atlasCfg
+        ? atlasCfg.screenshotPersist
+        : undefined,
+  });
 
   if (mode !== 'off' && !runtime.sessionId) {
     startAtlasSession();
@@ -285,6 +330,7 @@ export function resetAtlasRuntime(): void {
   setAtlasUsageSessionId(null);
   resetAtlasUsageRuntime();
   resetAtlasDocRuntime();
+  resetAtlasScreenshotRuntime();
 }
 
 function pushEvent(event: AtlasEvent): void {
@@ -300,10 +346,12 @@ function pushEvent(event: AtlasEvent): void {
 
 async function postAtlasEvent(event: AtlasEvent): Promise<void> {
   const base = runtime.dashboardBaseUrl?.trim();
-  if (!base || typeof fetch !== 'function') return;
+  if (!base) return;
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return;
   const url = `${base.replace(/\/+$/, '')}/api/atlas/events`;
   try {
-    await fetch(url, {
+    await fetchFn(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ event }),

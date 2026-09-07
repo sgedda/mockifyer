@@ -3,6 +3,8 @@ import { randomEventId } from './crypto-digest';
 import { resolveNetworkLogDashboardUrl } from './network-log';
 import type { NetworkEventUsage } from './network-event-types';
 import { upsertAtlasDocFromUsage } from './atlas-doc';
+import { scheduleAtlasScreenshotCapture } from './atlas-screenshot';
+import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 
 export type { NetworkEventUsage };
 
@@ -22,6 +24,8 @@ export interface AtlasUsageContext {
   label?: string;
   cms?: NetworkEventUsage['cms'];
   datasourceId?: string;
+  /** Screen-scoped session id for screenshot dedupe (e.g. useMockifyerScreenSession). */
+  sessionId?: string;
 }
 
 let usageContext: AtlasUsageContext = {};
@@ -56,10 +60,25 @@ export function setAtlasUsageContext(ctx: AtlasUsageContext): void {
 
 /**
  * Push ambient usage (nested screens). Pair with {@link popAtlasUsageContext} on unmount.
+ * Does **not** take a screenshot by default (mount is often still skeleton).
+ * Pass `{ captureScreenshot: true }` or call {@link requestAtlasScreenshotCapture} when ready.
  */
-export function pushAtlasUsageContext(ctx: AtlasUsageContext): void {
+export function pushAtlasUsageContext(
+  ctx: AtlasUsageContext,
+  options?: { captureScreenshot?: boolean }
+): void {
   usageContextStack.push({ ...usageContext });
   usageContext = { ...ctx };
+
+  if (options?.captureScreenshot) {
+    const screen = ctx.screen?.trim();
+    if (screen) {
+      scheduleAtlasScreenshotCapture({
+        screen,
+        sessionId: ctx.sessionId ?? usageSessionId,
+      });
+    }
+  }
 }
 
 /** Restore previous ambient usage after {@link pushAtlasUsageContext}. */
@@ -183,7 +202,8 @@ async function postUsageAnnotation(
   annotation: AtlasUsageAnnotation,
   config?: Pick<MockifyerConfig, 'atlas' | 'networkLog' | 'proxy'>
 ): Promise<void> {
-  if (typeof fetch !== 'function') return;
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return;
   const fromEnv =
     typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_DASHBOARD_URL]?.trim() : undefined;
   const fromAtlasConfig =
@@ -197,7 +217,7 @@ async function postUsageAnnotation(
     fromEnv;
   if (!base) return;
   try {
-    await fetch(`${base.replace(/\/+$/, '')}/api/atlas/usage`, {
+    await fetchFn(`${base.replace(/\/+$/, '')}/api/atlas/usage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ annotation }),
