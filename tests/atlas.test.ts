@@ -637,8 +637,10 @@ describe('atlas-doc-html', () => {
     expect(files['index.html']).toContain('data-view="scrub"');
     expect(files['index.html']).toContain('req-table');
     expect(files['index.html']).toContain('data-req-search');
-    expect(files['index.html']).toContain('FlexSearch');
-    expect(files['index.html']).toContain('ensureHopFlexIndex');
+    expect(files['index.html']).toContain('hopMatchesSearchQuery');
+    expect(files['index.html']).toContain('hopSearchHaystack');
+    expect(files['index.html']).not.toContain('FlexSearch');
+    expect(files['index.html']).not.toContain('ensureHopFlexIndex');
     expect(files['index.html']).toContain('hop-detail');
     expect(files['index.html']).toContain('atlas-data');
     expect(files['index.html']).toContain('Contact & Home');
