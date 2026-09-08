@@ -64,7 +64,24 @@ export interface DashboardContext {
   config: DashboardContextConfig;
 }
 
+interface RequestWithDashboardContext extends Request {
+  mockifyerDashboard?: DashboardContext;
+}
+
+/**
+ * Attach mock-data path + provider config to the request.
+ * Required when {@link createServer} is mounted on a parent app (`app.use('/mockifyer', …)`):
+ * `req.app.locals` then refers to the host, not the dashboard sub-app.
+ */
+export function attachDashboardContext(req: Request, context: DashboardContext): void {
+  (req as RequestWithDashboardContext).mockifyerDashboard = context;
+}
+
 export function getDashboardContext(req: Request): DashboardContext {
+  const bound = (req as RequestWithDashboardContext).mockifyerDashboard;
+  if (bound?.mockDataPath) {
+    return bound;
+  }
   const mockDataPath = (req.app.locals.mockDataPath as string | undefined) ?? process.cwd();
   const config = (req.app.locals.dashboardConfig as DashboardContextConfig | undefined) ?? {
     provider: 'filesystem',
