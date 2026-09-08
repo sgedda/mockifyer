@@ -190,7 +190,9 @@ export default function Network({ scenario }: NetworkProps) {
     filtered.find((e) => e.id === selectedId) ??
     (viewMode === 'trace' ? traceRows[0]?.event : filtered[0]) ??
     null
-  const selectedChain = selected ? getNetworkEventChain(selected, chainMaps.byRequestId) : []
+  const selectedChain = selected
+    ? getNetworkEventChain(selected, chainMaps.byRequestId, chainMaps.childrenByParent)
+    : []
 
   useEffect(() => {
     if (selected && selected.id !== selectedId) {

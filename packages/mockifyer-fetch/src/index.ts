@@ -1759,7 +1759,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
           headersObj[key] = value;
         });
       } else {
-        headersObj = headers as Record<string, string>;
+        headersObj = { ...(headers as Record<string, string>) };
       }
       
       try {
