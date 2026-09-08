@@ -720,10 +720,19 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           // If file hasn't changed, return cached result
           if (currentMtime === cachedMtime) {
-            return cached.content;
+            // Re-validate that the mock should still be included (group config might have changed)
+            if (mockShouldBeIncludedInRequestMatch(cached.content.mockData, {
+              includePassthroughMocks,
+              filename: cached.content.filename,
+            })) {
+              return cached.content;
+            }
+            // Mock no longer matches (e.g. due to group change), clear cache and re-read
+            this.fileCache.delete(requestKey);
+          } else {
+            // File has been modified, clear cache entry and re-read
+            this.fileCache.delete(requestKey);
           }
-          // File has been modified, clear cache entry and re-read
-          this.fileCache.delete(requestKey);
         } else {
           // File no longer exists, clear cache
           this.fileCache.delete(requestKey);
