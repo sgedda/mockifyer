@@ -144,15 +144,13 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath: string
 }
 
 /**
- * Hydrate when the scenario folder changed (or force). No-op when already hydrated for path.
+ * Hydrate (or re-hydrate) override groups for a scenario folder.
+ * Always reloads from disk so dashboard/MCP active-group edits apply without a process restart.
  */
 export function ensureOverrideGroupRuntimeForScenarioPath(
   scenarioPath: string,
-  options?: { force?: boolean }
+  _options?: { force?: boolean }
 ): void {
-  if (!options?.force && getOverrideGroupRuntimeScenarioPath() === scenarioPath) {
-    return;
-  }
   hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
 }
 
