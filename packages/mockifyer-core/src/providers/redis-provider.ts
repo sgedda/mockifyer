@@ -7,7 +7,7 @@ import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './typ
 import { getCurrentScenario, getScratchScenarioTtlSec, isScratchScenario } from '../utils/scenario';
 import {
   buildMockPathCardinalitySegment,
-  decideRedisMockWriteLimits,
+  evaluateRedisMockWriteLimits,
   formatRedisMockWriteSkipMessage,
   getMaxMocksPerPathFromEnv,
   getMaxRequestsPerScenarioFromEnv,
@@ -151,13 +151,31 @@ export class RedisProvider implements DatabaseProvider {
         pathMockCount = await client.scard(pathIndexKey);
         hashAlreadyOnPath = (await client.sismember(pathIndexKey, h)) === 1;
       }
-      const decision = decideRedisMockWriteLimits({
+      const decision = await evaluateRedisMockWriteLimits({
         hashAlreadyStored,
         scenarioMockCount,
         pathMockCount,
         hashAlreadyOnPath,
         maxScenario,
         maxPath: pathIndexKey ? maxPath : undefined,
+        loadScenarioMembers:
+          maxScenario != null ? () => client.smembers(scenarioIndex) : undefined,
+        loadPathMembers:
+          maxPath != null && pathIndexKey ? () => client.smembers(pathIndexKey) : undefined,
+        membersAreLive: async (hashes: string[]) => {
+          if (hashes.length === 0) return [];
+          const keys = hashes.map((member: string) => `${this.keyPrefix}:mock:${scenario}:${member}`);
+          const values = await redisMget(client, keys);
+          return values.map((raw) => raw != null && raw !== '');
+        },
+        dropStale: async (kind, hashes) => {
+          if (hashes.length === 0) return;
+          if (kind === 'scenario') {
+            await client.srem(scenarioIndex, ...hashes);
+          } else if (pathIndexKey) {
+            await client.srem(pathIndexKey, ...hashes);
+          }
+        },
       });
       if (!decision.allow) {
         logger.warn(

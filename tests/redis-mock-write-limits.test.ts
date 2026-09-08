@@ -3,8 +3,10 @@ import {
   ENV_VARS,
   buildMockPathCardinalitySegment,
   decideRedisMockWriteLimits,
+  evaluateRedisMockWriteLimits,
   getMaxMocksPerPathFromEnv,
   getMaxRequestsPerScenarioFromEnv,
+  partitionLiveRedisIndexMembers,
 } from '@sgedda/mockifyer-core';
 
 describe('redis mock write limits', () => {
@@ -86,5 +88,45 @@ describe('redis mock write limits', () => {
         maxPath: 200,
       })
     ).toMatchObject({ allow: false, reason: 'path_limit' });
+  });
+
+  it('partitions stale index members from expired/cleared payloads', () => {
+    expect(partitionLiveRedisIndexMembers(['a', 'b', 'c'], [true, false, true])).toEqual({
+      liveCount: 2,
+      staleHashes: ['b'],
+    });
+  });
+
+  it('allows a new hash after pruning ghost path-index members', async () => {
+    const stale = ['dead-1', 'dead-2'];
+    const dropped: string[] = [];
+    const decision = await evaluateRedisMockWriteLimits({
+      hashAlreadyStored: false,
+      scenarioMockCount: 0,
+      pathMockCount: 200,
+      hashAlreadyOnPath: false,
+      maxPath: 200,
+      loadPathMembers: async () => [...stale, ...Array.from({ length: 198 }, (_, i) => `live-${i}`)],
+      membersAreLive: async (hashes) => hashes.map((h) => !h.startsWith('dead-')),
+      dropStale: async (_kind, hashes) => {
+        dropped.push(...hashes);
+      },
+    });
+    expect(decision.allow).toBe(true);
+    expect(dropped).toEqual(stale);
+  });
+
+  it('still blocks when live path members remain at the cap', async () => {
+    const live = Array.from({ length: 200 }, (_, i) => `live-${i}`);
+    const decision = await evaluateRedisMockWriteLimits({
+      hashAlreadyStored: false,
+      scenarioMockCount: 0,
+      pathMockCount: 200,
+      hashAlreadyOnPath: false,
+      maxPath: 200,
+      loadPathMembers: async () => live,
+      membersAreLive: async (hashes) => hashes.map(() => true),
+    });
+    expect(decision).toMatchObject({ allow: false, reason: 'path_limit' });
   });
 });
