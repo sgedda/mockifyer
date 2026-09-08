@@ -272,6 +272,30 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_get_field_overrides',
+    {
+      description:
+        'Get replay-time field overrides for a mock (path/value pairs only). Prefer this over mockifyer_get_mock when editing overlays.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename'),
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getFieldOverrides({
+            filename: args.filename,
+            scenario: args.scenario,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_set_field_overrides',
     {
       description:

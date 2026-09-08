@@ -399,6 +399,15 @@ export class DashboardApiClient {
     return this.request(`/stats${qs}`);
   }
 
+  async getFieldOverrides(params: {
+    filename: string;
+    scenario?: string;
+  }): Promise<SetFieldOverridesResponse> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    const encoded = encodeMockFilename(params.filename);
+    return this.request(`/mocks/${encoded}/field-overrides${qs}`);
+  }
+
   async setFieldOverrides(params: {
     filename: string;
     scenario?: string;

@@ -195,7 +195,7 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
       })
       toast({
         title: 'Promoted',
-        description: `Saved ${result.response?.responseItemId ?? (promoteId || promoteFilename)}`,
+        description: `Saved ${result.response?.id ?? (promoteId || promoteFilename)}`,
       })
       await load()
     } catch (error) {

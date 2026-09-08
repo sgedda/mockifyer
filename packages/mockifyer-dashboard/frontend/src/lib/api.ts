@@ -4,6 +4,7 @@ import type {
   MockAiContext,
   AiContextMode,
   MockResponseDateOverride,
+  MockResponseFieldOverride,
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
@@ -156,6 +157,55 @@ export async function updateMock(
     const message = await readErrorMessage(response, 'Failed to update mock')
     throw new Error(message)
   }
+}
+
+export async function getMockFieldOverrides(
+  filename: string,
+  scenario?: string
+): Promise<{
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
+  const encoded = filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load field overrides'))
+  }
+  return response.json()
+}
+
+export async function setMockFieldOverrides(
+  filename: string,
+  responseFieldOverrides: MockResponseFieldOverride[] | null,
+  options?: { scenario?: string; merge?: boolean }
+): Promise<{
+  success: boolean
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
+  const encoded = filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  const q = options?.scenario ? `?scenario=${encodeURIComponent(options.scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      responseFieldOverrides,
+      merge: options?.merge === true,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to save field overrides'))
+  }
+  return response.json()
 }
 
 export async function refreshMockFromLive(

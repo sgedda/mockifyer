@@ -240,7 +240,10 @@ function MockListContent({
   const overrideMocks = useMemo(() => {
     const source = searchQuery.trim() ? mocks : allMocks
     return [...source]
-      .filter((m) => m.hasResponseDateOverrides === true)
+      .filter(
+        (m) =>
+          m.hasResponseDateOverrides === true || m.hasResponseFieldOverrides === true
+      )
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
   }, [allMocks, mocks, searchQuery])
 
