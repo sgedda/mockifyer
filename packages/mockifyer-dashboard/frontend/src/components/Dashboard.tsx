@@ -11,6 +11,7 @@ import Atlas from './Atlas'
 import Network from './Network'
 import DateConfig from './DateConfig'
 import FixturePool from './FixturePool'
+import OverridesView from './OverridesView'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
@@ -52,6 +53,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const getActiveTabFromPath = () => {
     const path = location.pathname
     if (path === '/mocks') return 'mocks'
+    if (path === '/overrides') return 'overrides'
     if (path === '/timeline') return 'timeline'
     if (path === '/atlas') return 'atlas'
     if (path === '/network') return 'network'
@@ -525,6 +527,24 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route
+              path="/overrides"
+              element={
+                <OverridesView
+                  scenario={scenario}
+                  mocks={allMocks}
+                  loading={loading}
+                  onRefresh={loadMocks}
+                  onOpenMock={(filename) => {
+                    const file = allMocks.find((m) => m.filename === filename)
+                    if (file) {
+                      void handleSelectMock(file)
+                    }
+                    navigate('/mocks')
+                  }}
+                />
+              }
+            />
             <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />

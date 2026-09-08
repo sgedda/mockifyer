@@ -399,6 +399,15 @@ export class DashboardApiClient {
     return this.request(`/stats${qs}`);
   }
 
+  async getFieldOverrides(params: {
+    filename: string;
+    scenario?: string;
+  }): Promise<SetFieldOverridesResponse> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    const encoded = encodeMockFilename(params.filename);
+    return this.request(`/mocks/${encoded}/field-overrides${qs}`);
+  }
+
   async setFieldOverrides(params: {
     filename: string;
     scenario?: string;
@@ -412,6 +421,99 @@ export class DashboardApiClient {
       body: JSON.stringify({
         responseFieldOverrides: params.responseFieldOverrides,
         merge: params.merge === true,
+      }),
+    });
+  }
+
+  async listOverrideGroups(params?: {
+    scenario?: string;
+    clientId?: string;
+  }): Promise<{
+    scenario: string;
+    clientId?: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
+    currentGroup: string | null;
+    source?: string;
+    groups: Array<{ id: string; label: string; updatedAt: string; entryCount: number }>;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups${q}`);
+  }
+
+  async getOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+  }): Promise<{ scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`);
+  }
+
+  async putOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+    label: string;
+    entries?: unknown[];
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        id: params.id,
+        label: params.label,
+        entries: params.entries ?? [],
+      }),
+    });
+  }
+
+  async setActiveOverrideGroup(params: {
+    currentGroup: string | null;
+    scenario?: string;
+    clientId?: string;
+    scope?: 'lane' | 'default';
+  }): Promise<{
+    success: boolean;
+    scenario: string;
+    clientId?: string | null;
+    currentGroup: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
+    source?: string;
+  }> {
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups/config${q}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        currentGroup: params.currentGroup,
+        scenario: params.scenario,
+        clientId: params.clientId,
+        scope: params.scope ?? (params.clientId ? 'lane' : 'default'),
+      }),
+    });
+  }
+
+  async patchOverrideGroupEntry(params: {
+    groupId: string;
+    scenario?: string;
+    filename: string;
+    responseFieldOverrides?: MockFieldOverride[] | null;
+    clear?: boolean;
+    ensure?: boolean;
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.groupId)}/entries${qs}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        filename: params.filename,
+        responseFieldOverrides: params.responseFieldOverrides,
+        clear: params.clear === true,
+        ensure: params.ensure === true,
       }),
     });
   }

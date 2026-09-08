@@ -4,6 +4,7 @@ import type {
   MockAiContext,
   AiContextMode,
   MockResponseDateOverride,
+  MockResponseFieldOverride,
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
@@ -156,6 +157,212 @@ export async function updateMock(
     const message = await readErrorMessage(response, 'Failed to update mock')
     throw new Error(message)
   }
+}
+
+export async function getMockFieldOverrides(
+  filename: string,
+  scenario?: string
+): Promise<{
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
+  const encoded = filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load field overrides'))
+  }
+  return response.json()
+}
+
+export async function setMockFieldOverrides(
+  filename: string,
+  responseFieldOverrides: MockResponseFieldOverride[] | null,
+  options?: { scenario?: string; merge?: boolean }
+): Promise<{
+  success: boolean
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
+  const encoded = filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+  const q = options?.scenario ? `?scenario=${encodeURIComponent(options.scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      responseFieldOverrides,
+      merge: options?.merge === true,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to save field overrides'))
+  }
+  return response.json()
+}
+
+export interface OverrideGroupSummary {
+  id: string
+  label: string
+  updatedAt: string
+  entryCount: number
+}
+
+export interface OverrideGroupEntry {
+  filename: string
+  responseFieldOverrides?: MockResponseFieldOverride[]
+  responseDateOverrides?: MockResponseDateOverride[]
+}
+
+export interface OverrideGroup {
+  id: string
+  label: string
+  updatedAt: string
+  entries: OverrideGroupEntry[]
+}
+
+export async function listOverrideGroups(
+  scenario?: string,
+  clientId?: string
+): Promise<{
+  scenario: string
+  clientId: string | null
+  defaultGroup: string | null
+  laneGroup: string | null
+  currentGroup: string | null
+  source: 'explicit' | 'env' | 'lane' | 'default' | 'none'
+  updatedAt: string | null
+  groups: OverrideGroupSummary[]
+}> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  if (clientId) qs.set('clientId', clientId)
+  const q = qs.toString() ? `?${qs}` : ''
+  const response = await fetch(`${API_BASE}/override-groups${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to list override groups'))
+  }
+  return response.json()
+}
+
+export async function getOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load override group'))
+  }
+  return response.json()
+}
+
+export async function putOverrideGroup(
+  group: OverrideGroup,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(group.id)}${q}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(group),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to save override group'))
+  }
+  return response.json()
+}
+
+export async function setActiveOverrideGroup(
+  currentGroup: string | null,
+  options?: {
+    scenario?: string
+    clientId?: string | null
+    /** `lane` = per-client selection; `default` = scenario-wide default */
+    scope?: 'lane' | 'default'
+  }
+): Promise<{
+  success: boolean
+  scenario: string
+  clientId?: string | null
+  scope?: string
+  defaultGroup?: string | null
+  laneGroup?: string | null
+  currentGroup: string | null
+  source?: string
+}> {
+  const qs = new URLSearchParams()
+  if (options?.scenario) qs.set('scenario', options.scenario)
+  if (options?.clientId) qs.set('clientId', options.clientId)
+  const q = qs.toString() ? `?${qs}` : ''
+  const response = await fetch(`${API_BASE}/override-groups/config${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      currentGroup,
+      scenario: options?.scenario,
+      clientId: options?.clientId,
+      scope: options?.scope,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set active override group'))
+  }
+  return response.json()
+}
+
+export async function patchOverrideGroupEntry(
+  groupId: string,
+  payload: {
+    filename: string
+    responseFieldOverrides?: MockResponseFieldOverride[] | null
+    responseDateOverrides?: MockResponseDateOverride[] | null
+    clear?: boolean
+    ensure?: boolean
+  },
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(groupId)}/entries${q}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to update override group entry'))
+  }
+  return response.json()
+}
+
+export async function deleteOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; deleted: string }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    { method: 'DELETE' }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to delete override group'))
+  }
+  return response.json()
 }
 
 export async function refreshMockFromLive(

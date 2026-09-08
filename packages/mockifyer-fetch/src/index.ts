@@ -58,6 +58,7 @@ import {
   resolveExplicitClientIdOnly,
   resolveProxyStrictLaneScenario,
   registerMockifyerInstance,
+  ensureOverrideGroupRuntimeForScenarioPath,
   logMockifyerInitSummary,
   tryGetClientIdFromLaunchArguments,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
@@ -227,7 +228,7 @@ class MockifyerClass {
    * Always passes `loadPoolResponse` — including React Native where Node `fs`/`path` are
    * missing or Metro-stubbed — so `$pool` refs resolve via disk and/or {@link poolResponseCache}.
    */
-  private prepareStoredResponseBody(mockData: MockData): unknown {
+  private prepareStoredResponseBody(mockData: MockData, filename?: string, scenarioPath?: string): unknown {
     const joinPath =
       path && typeof path.join === 'function' ? path.join.bind(path) : null;
     return prepareMockResponseBody(mockData, getCurrentDate, {
@@ -237,6 +238,8 @@ class MockifyerClass {
         joinPath,
         cache: this.poolResponseCache,
       }),
+      filename,
+      scenarioPath,
     });
   }
 
@@ -573,6 +576,7 @@ class MockifyerClass {
 
     const currentScenario = getCurrentScenario(resolvedMockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(resolvedMockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.config.clientId });
     
     if (!fs.existsSync(scenarioPath)) {
       logger.warn('[Mockifyer-Fetch] ⚠️ Scenario path does not exist:', scenarioPath);
@@ -599,7 +603,13 @@ class MockifyerClass {
         const mockKey = this.generateRequestKey(mockData.request);
         
         if (mockKey === requestKey) {
-          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+          if (
+            mockShouldBeIncludedInRequestMatch(mockData, {
+              includePassthroughMocks,
+              filename: file,
+              scenarioPath,
+            })
+          ) {
             exactMatch = { mockData, filename: file, filePath };
             break;
           }
@@ -795,7 +805,16 @@ class MockifyerClass {
             `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
               (filePath ? ` (${filePath})` : '')
           );
-          const mockResponseBody = this.prepareStoredResponseBody(mockData);
+          const hitScenarioPath = path
+            ? getScenarioFolderPath(
+                path.resolve(this.config.mockDataPath),
+                getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
+              )
+            : undefined;
+          if (hitScenarioPath) {
+            ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+          }
+          const mockResponseBody = this.prepareStoredResponseBody(mockData, filename, hitScenarioPath);
           this.logNetworkEvent(
             {
               method: (request.method || 'GET').toUpperCase(),
@@ -1035,10 +1054,20 @@ class MockifyerClass {
             await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
           }
 
+          const liveScenarioPath = path
+            ? getScenarioFolderPath(
+                path.resolve(this.config.mockDataPath),
+                getCurrentScenario(path.resolve(this.config.mockDataPath), this.config.clientId)
+              )
+            : undefined;
+          if (liveScenarioPath) {
+            ensureOverrideGroupRuntimeForScenarioPath(liveScenarioPath, { clientId: this.config.clientId });
+          }
           const clientResponse = buildClientResponseFromLiveCapture(
             matchedMock.mockData,
             capturedResponse,
-            getCurrentDate
+            getCurrentDate,
+            { filename: matchedMock.filename, scenarioPath: liveScenarioPath }
           );
           response.data = clientResponse.data;
           response.status = clientResponse.status;

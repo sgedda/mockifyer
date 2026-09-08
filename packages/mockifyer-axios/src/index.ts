@@ -64,6 +64,7 @@ import {
   logger,
   setLogLevel,
   stripMockifyerTraceFromBody,
+  ensureOverrideGroupRuntimeForScenarioPath,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -133,13 +134,15 @@ class MockifyerClass {
   }
 
   /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
-  private prepareStoredResponseBody(mockData: MockData): unknown {
+  private prepareStoredResponseBody(mockData: MockData, filename?: string, scenarioPath?: string): unknown {
     return prepareMockResponseBody(mockData, getCurrentDate, {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: fs,
         joinPath: path.join.bind(path),
       }),
+      filename,
+      scenarioPath,
     });
   }
 
@@ -503,6 +506,7 @@ class MockifyerClass {
 
     const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.config.clientId });
     
     if (!fs.existsSync(scenarioPath)) {
       logger.debug(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
@@ -599,7 +603,13 @@ class MockifyerClass {
         
         // Check for exact match (skip passthrough files unless checking for duplicate save)
         if (mockKey === requestKey) {
-          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+          if (
+            mockShouldBeIncludedInRequestMatch(mockData, {
+              includePassthroughMocks,
+              filename: file,
+              scenarioPath,
+            })
+          ) {
             exactMatch = {
               mockData,
               filename: file,
@@ -883,7 +893,12 @@ class MockifyerClass {
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
         } else {
-        const mockResponseBody = this.prepareStoredResponseBody(mockData);
+        const hitScenarioPath = getScenarioFolderPath(
+          this.config.mockDataPath,
+          getCurrentScenario(this.config.mockDataPath, this.config.clientId)
+        );
+        ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+        const mockResponseBody = this.prepareStoredResponseBody(mockData, filename, hitScenarioPath);
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
@@ -1234,7 +1249,14 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: this.prepareStoredResponseBody(mockData),
+            data: this.prepareStoredResponseBody(
+              mockData,
+              filename,
+              getScenarioFolderPath(
+                this.config.mockDataPath,
+                getCurrentScenario(this.config.mockDataPath, this.config.clientId)
+              )
+            ),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -1796,10 +1818,16 @@ class MockifyerClass {
       await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
     }
 
+    const liveScenarioPath = getScenarioFolderPath(
+      this.config.mockDataPath,
+      getCurrentScenario(this.config.mockDataPath, this.config.clientId)
+    );
+    ensureOverrideGroupRuntimeForScenarioPath(liveScenarioPath, { clientId: this.config.clientId });
     const clientResponse = buildClientResponseFromLiveCapture(
       matchedMock.mockData,
       capturedResponse,
-      getCurrentDate
+      getCurrentDate,
+      { filename: matchedMock.filename, scenarioPath: liveScenarioPath }
     );
     response.data = clientResponse.data;
     response.status = clientResponse.status;

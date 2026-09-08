@@ -3,7 +3,11 @@ import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/das
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { supportsDashboardProxy } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
-import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
+import {
+  findMockOnDiskByRequestHash,
+  mirrorRecordedMockToDisk,
+  mirroredMockRelativePath,
+} from '../utils/redis-disk-mirror';
 import {
   generateRequestKey,
   getCurrentDate,
@@ -30,6 +34,10 @@ import {
   resolveProxyUpstreamTlsInsecureForRequest,
   createServeTimePoolResponseLoader,
   isMockifyerDashboardPlumbingApiUrl,
+  ensureOverrideGroupRuntimeForScenarioPath,
+  resolveOverrideGroupIdForServe,
+  MOCKIFYER_OVERRIDE_GROUP_HEADER,
+  getScenarioFolderPath,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -117,6 +125,7 @@ router.post('/', async (req: Request, res: Response) => {
     deviceId: deviceIdFromBody,
     strictLaneScenario: strictLaneScenarioFromBody,
     upstreamTlsInsecure: upstreamTlsInsecureFromBody,
+    overrideGroup: overrideGroupFromBody,
   } = req.body || {};
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
@@ -126,6 +135,14 @@ router.post('/', async (req: Request, res: Response) => {
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
     ? clientIdFromBody.trim()
     : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
+  const overrideGroupFromHeader =
+    typeof req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER) === 'string'
+      ? String(req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER)).trim()
+      : '';
+  const explicitOverrideGroup =
+    typeof overrideGroupFromBody === 'string' && overrideGroupFromBody.trim()
+      ? overrideGroupFromBody.trim()
+      : overrideGroupFromHeader || null;
   const deviceIdFromHeader =
     typeof req.header('x-mockifyer-device-id') === 'string' ? String(req.header('x-mockifyer-device-id')) : undefined;
   const deviceId =
@@ -322,11 +339,28 @@ router.post('/', async (req: Request, res: Response) => {
 
     let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
     let mockSource: 'redis' | 'disk' = 'redis';
+    let mockFilename = mirroredMockRelativePath(hash);
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
+    const laneOverrideGroup = clientId
+      ? await store.getLaneOverrideGroup(clientId).catch(() => null)
+      : null;
+    const overrideGroupId = resolveOverrideGroupIdForServe(scenarioPath, {
+      clientId,
+      explicitGroupId: explicitOverrideGroup,
+      laneGroupId: laneOverrideGroup,
+    });
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, {
+      clientId,
+      explicitGroupId: explicitOverrideGroup,
+      laneGroupId: laneOverrideGroup,
+    });
 
     if (!mock && redisDisk.readFallback) {
-      const diskMock: any = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
-      if (diskMock) {
-        mock = diskMock;
+      const diskHit = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
+      if (diskHit) {
+        mock = diskHit.mockData;
+        mockFilename = diskHit.filename;
         mockSource = 'disk';
       }
     }
@@ -357,6 +391,9 @@ router.post('/', async (req: Request, res: Response) => {
             nodeFs: fs,
             joinPath: path.join.bind(path),
           }),
+          filename: mockFilename,
+          scenarioPath,
+          overrideGroupId,
         }),
       };
       if (debugProxy) {
@@ -512,7 +549,11 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const clientResponse = mock
-      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
+      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
+          filename: mockFilename,
+          scenarioPath,
+          overrideGroupId,
+        })
       : response;
 
     let storedMockForClient: MockData | null = null;

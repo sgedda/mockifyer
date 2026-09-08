@@ -266,7 +266,12 @@ export function findBestMatchingMock(
   // Try exact match first
   const exactMatch = mockCache.get(requestKey);
   if (exactMatch) {
-    if (mockShouldBeIncludedInRequestMatch(exactMatch.mockData, { includePassthroughMocks })) {
+    if (
+      mockShouldBeIncludedInRequestMatch(exactMatch.mockData, {
+        includePassthroughMocks,
+        filename: exactMatch.filename,
+      })
+    ) {
       return exactMatch;
     }
   }
