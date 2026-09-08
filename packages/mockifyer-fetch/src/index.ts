@@ -966,11 +966,11 @@ class MockifyerClass {
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
         const isLimitReached = response.headers && (response.headers as any)['x-mockifyer-limit-reached'] === 'true';
         const atlasApplied = response.headers && (response.headers as any)['x-mockifyer-atlas-applied'] === 'true';
-        if (isMocked || isLimitReached || atlasApplied) {
+        if (isMocked || isLimitReached) {
           // Local mock hits are logged in the request interceptor; proxy mock hits must
           // be recorded here before early return (otherwise flight recorder stays empty).
           const shouldLogMockOrLimit =
-            isLimitReached || atlasApplied || (isMocked && this.usesDashboardProxy());
+            isLimitReached || (isMocked && this.usesDashboardProxy());
           if (shouldLogMockOrLimit) {
             const reqUrl = response.config?.url || url;
             const reqMethod = (response.config?.method || 'GET').toUpperCase();
@@ -1005,6 +1005,27 @@ class MockifyerClass {
 
         if (this.config.proxy?.baseUrl && this.config.proxy?.mirrorRecordedMocksToClient) {
           await this.maybeMirrorProxyRecordingToClient(response);
+        }
+
+        if (atlasApplied) {
+          const reqUrl = response.config?.url || url;
+          const reqMethod = (response.config?.method || 'GET').toUpperCase();
+          const startTime = (response.config as any).__mockifyer_startTime;
+          const durationMs = startTime ? Date.now() - startTime : undefined;
+          this.logNetworkEvent(
+            {
+              method: reqMethod,
+              url: reqUrl,
+              source: 'upstream',
+              status: response.status,
+              durationMs,
+              transport: this.usesDashboardProxy() ? 'proxy' : 'fetch',
+              requestBody: response.config?.data,
+              responseBody: response.data,
+            },
+            this.readRequestCorrelation(response.config)
+          );
+          return response;
         }
 
         const matchedMock = (response.config as any).__mockifyer_matchedMock as CachedMockData | undefined;

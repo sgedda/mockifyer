@@ -530,7 +530,7 @@ router.post('/', async (req: Request, res: Response) => {
         ...clientResponse,
         data: packResult.data,
       };
-      atlasPackAppliedByProxy = true;
+      atlasPackAppliedByProxy = packResult.appliedOverlayCount > 0;
       if (packResult.pack) {
         try {
           writeAtlasPackToDisk(mockDataPath, packResult.pack);
