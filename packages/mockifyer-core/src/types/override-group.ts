@@ -26,8 +26,17 @@ export interface MockOverrideGroup {
   entries: MockOverrideGroupEntry[];
 }
 
-/** Which override group is active for a scenario. */
+/** Which override group is selected (scenario default or per-client lane pointer). */
 export interface MockOverrideGroupConfig {
   currentGroup: string | null;
   updatedAt?: string;
+}
+
+/**
+ * Filename for a per-client active-group pointer under a scenario folder.
+ * Example: `override-group-config.my-lane.json`
+ */
+export function overrideGroupConfigFilenameForClient(clientId: string): string {
+  const safe = clientId.trim().replace(/[^a-zA-Z0-9_.-]/g, '_');
+  return `override-group-config.${safe}.json`;
 }

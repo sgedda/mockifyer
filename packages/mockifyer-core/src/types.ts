@@ -458,6 +458,8 @@ export const ENV_VARS = {
    */
   MOCK_SCRATCH_SCENARIO_TTL_SEC: 'MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC',
   MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
+  /** Active override group id for this process (wins over scenario default; below explicit header/body). */
+  MOCK_OVERRIDE_GROUP: 'MOCKIFYER_OVERRIDE_GROUP',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',

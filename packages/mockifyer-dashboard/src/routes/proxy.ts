@@ -35,6 +35,8 @@ import {
   createServeTimePoolResponseLoader,
   isMockifyerDashboardPlumbingApiUrl,
   ensureOverrideGroupRuntimeForScenarioPath,
+  resolveOverrideGroupIdForServe,
+  MOCKIFYER_OVERRIDE_GROUP_HEADER,
   getScenarioFolderPath,
   type MockData,
 } from '@sgedda/mockifyer-core';
@@ -123,6 +125,7 @@ router.post('/', async (req: Request, res: Response) => {
     deviceId: deviceIdFromBody,
     strictLaneScenario: strictLaneScenarioFromBody,
     upstreamTlsInsecure: upstreamTlsInsecureFromBody,
+    overrideGroup: overrideGroupFromBody,
   } = req.body || {};
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
@@ -132,6 +135,14 @@ router.post('/', async (req: Request, res: Response) => {
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
     ? clientIdFromBody.trim()
     : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
+  const overrideGroupFromHeader =
+    typeof req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER) === 'string'
+      ? String(req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER)).trim()
+      : '';
+  const explicitOverrideGroup =
+    typeof overrideGroupFromBody === 'string' && overrideGroupFromBody.trim()
+      ? overrideGroupFromBody.trim()
+      : overrideGroupFromHeader || null;
   const deviceIdFromHeader =
     typeof req.header('x-mockifyer-device-id') === 'string' ? String(req.header('x-mockifyer-device-id')) : undefined;
   const deviceId =
@@ -331,7 +342,19 @@ router.post('/', async (req: Request, res: Response) => {
     let mockFilename = mirroredMockRelativePath(hash);
 
     const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
-    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath);
+    const laneOverrideGroup = clientId
+      ? await store.getLaneOverrideGroup(clientId).catch(() => null)
+      : null;
+    const overrideGroupId = resolveOverrideGroupIdForServe(scenarioPath, {
+      clientId,
+      explicitGroupId: explicitOverrideGroup,
+      laneGroupId: laneOverrideGroup,
+    });
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, {
+      clientId,
+      explicitGroupId: explicitOverrideGroup,
+      laneGroupId: laneOverrideGroup,
+    });
 
     if (!mock && redisDisk.readFallback) {
       const diskHit = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
@@ -370,6 +393,7 @@ router.post('/', async (req: Request, res: Response) => {
           }),
           filename: mockFilename,
           scenarioPath,
+          overrideGroupId,
         }),
       };
       if (debugProxy) {
@@ -528,6 +552,7 @@ router.post('/', async (req: Request, res: Response) => {
       ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
           filename: mockFilename,
           scenarioPath,
+          overrideGroupId,
         })
       : response;
 

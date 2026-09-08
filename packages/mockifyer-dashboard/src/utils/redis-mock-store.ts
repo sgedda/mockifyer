@@ -698,6 +698,26 @@ export class RedisMockStore {
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
   }
 
+  async getLaneOverrideGroup(clientId: string): Promise<string | null> {
+    const id = clientId.trim();
+    if (!id) return null;
+    const key = `${this.keyPrefix}:client_override_group:${id}`;
+    const v = await this.kv.get(key);
+    return typeof v === 'string' && v.trim() ? v.trim() : null;
+  }
+
+  async setLaneOverrideGroup(clientId: string, groupId: string | null): Promise<void> {
+    const id = clientId.trim();
+    if (!id) throw new Error('clientId is required');
+    const key = `${this.keyPrefix}:client_override_group:${id}`;
+    if (groupId === null || !String(groupId).trim()) {
+      await this.kv.del(key);
+      return;
+    }
+    await this.kv.set(key, String(groupId).trim());
+    await this.kv.sadd(this.clientLaneIdsSetKey, id);
+  }
+
   async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
     const scenarioKeyPrefix = `${this.keyPrefix}:client_scenario:`;
     const registryIds = await this.kv.smembers(this.clientLaneIdsSetKey).catch(() => [] as string[]);
@@ -746,6 +766,7 @@ export class RedisMockStore {
     const id = clientId.trim();
     if (!id) throw new Error('clientId is required');
     await this.setLaneScenario(id, null);
+    await this.setLaneOverrideGroup(id, null);
     await this.setLaneNote(id, null);
     await this.kv.zrem(this.laneLastSeenZSetKey, id).catch(() => undefined);
     await this.kv.del(this.laneDevicesZSetKey(id)).catch(() => undefined);

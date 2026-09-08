@@ -228,13 +228,23 @@ export interface OverrideGroup {
   entries: OverrideGroupEntry[]
 }
 
-export async function listOverrideGroups(scenario?: string): Promise<{
+export async function listOverrideGroups(
+  scenario?: string,
+  clientId?: string
+): Promise<{
   scenario: string
+  clientId: string | null
+  defaultGroup: string | null
+  laneGroup: string | null
   currentGroup: string | null
+  source: 'explicit' | 'env' | 'lane' | 'default' | 'none'
   updatedAt: string | null
   groups: OverrideGroupSummary[]
 }> {
-  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  if (clientId) qs.set('clientId', clientId)
+  const q = qs.toString() ? `?${qs}` : ''
   const response = await fetch(`${API_BASE}/override-groups${q}`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to list override groups'))
@@ -278,13 +288,35 @@ export async function putOverrideGroup(
 
 export async function setActiveOverrideGroup(
   currentGroup: string | null,
-  scenario?: string
-): Promise<{ success: boolean; scenario: string; currentGroup: string | null }> {
-  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  options?: {
+    scenario?: string
+    clientId?: string | null
+    /** `lane` = per-client selection; `default` = scenario-wide default */
+    scope?: 'lane' | 'default'
+  }
+): Promise<{
+  success: boolean
+  scenario: string
+  clientId?: string | null
+  scope?: string
+  defaultGroup?: string | null
+  laneGroup?: string | null
+  currentGroup: string | null
+  source?: string
+}> {
+  const qs = new URLSearchParams()
+  if (options?.scenario) qs.set('scenario', options.scenario)
+  if (options?.clientId) qs.set('clientId', options.clientId)
+  const q = qs.toString() ? `?${qs}` : ''
   const response = await fetch(`${API_BASE}/override-groups/config${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ currentGroup, scenario }),
+    body: JSON.stringify({
+      currentGroup,
+      scenario: options?.scenario,
+      clientId: options?.clientId,
+      scope: options?.scope,
+    }),
   })
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to set active override group'))

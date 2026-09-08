@@ -1,6 +1,9 @@
 /**
  * Filesystem helpers for scenario override groups.
- * Layout: `{scenarioPath}/override-groups/{id}.json` + `override-group-config.json`
+ * Layout:
+ * - `{scenarioPath}/override-groups/{id}.json` — shared group definitions
+ * - `{scenarioPath}/override-group-config.json` — scenario default active group
+ * - `{scenarioPath}/override-group-config.{clientId}.json` — per-lane active group
  */
 
 import fs from 'fs';
@@ -9,6 +12,7 @@ import type { MockOverrideGroup, MockOverrideGroupConfig } from '../types/overri
 import {
   OVERRIDE_GROUP_CONFIG_FILENAME,
   OVERRIDE_GROUPS_DIR_NAME,
+  overrideGroupConfigFilenameForClient,
 } from '../types/override-group';
 import {
   normalizeMockOverrideGroup,
@@ -23,6 +27,11 @@ import {
   getActiveOverrideGroupId,
   upsertRegisteredOverrideGroup,
 } from './override-group-runtime';
+import {
+  readOverrideGroupIdFromEnv,
+  resolveActiveOverrideGroupId,
+  sanitizeOverrideGroupClientId,
+} from './override-group-resolve';
 
 export function getOverrideGroupsDir(scenarioPath: string): string {
   return path.join(scenarioPath, OVERRIDE_GROUPS_DIR_NAME);
@@ -32,12 +41,20 @@ export function getOverrideGroupConfigPath(scenarioPath: string): string {
   return path.join(scenarioPath, OVERRIDE_GROUP_CONFIG_FILENAME);
 }
 
+export function getClientOverrideGroupConfigPath(
+  scenarioPath: string,
+  clientId: string
+): string | null {
+  const safe = sanitizeOverrideGroupClientId(clientId);
+  if (!safe) return null;
+  return path.join(scenarioPath, overrideGroupConfigFilenameForClient(safe));
+}
+
 function groupFilePath(scenarioPath: string, groupId: string): string {
   return path.join(getOverrideGroupsDir(scenarioPath), `${groupId}.json`);
 }
 
-export function readOverrideGroupConfig(scenarioPath: string): MockOverrideGroupConfig {
-  const filePath = getOverrideGroupConfigPath(scenarioPath);
+function parseConfigFile(filePath: string): MockOverrideGroupConfig {
   if (!fs.existsSync(filePath)) return emptyOverrideGroupConfig();
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as MockOverrideGroupConfig;
@@ -51,6 +68,24 @@ export function readOverrideGroupConfig(scenarioPath: string): MockOverrideGroup
   }
 }
 
+/** Scenario-default active group pointer. */
+export function readOverrideGroupConfig(scenarioPath: string): MockOverrideGroupConfig {
+  return parseConfigFile(getOverrideGroupConfigPath(scenarioPath));
+}
+
+/**
+ * Per-lane active group pointer. Returns null when no lane file exists
+ * (distinct from `{ currentGroup: null }` which means "explicitly none").
+ */
+export function readClientOverrideGroupConfig(
+  scenarioPath: string,
+  clientId: string
+): MockOverrideGroupConfig | null {
+  const filePath = getClientOverrideGroupConfigPath(scenarioPath, clientId);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  return parseConfigFile(filePath);
+}
+
 export function writeOverrideGroupConfig(
   scenarioPath: string,
   config: MockOverrideGroupConfig
@@ -62,6 +97,31 @@ export function writeOverrideGroupConfig(
   };
   fs.writeFileSync(getOverrideGroupConfigPath(scenarioPath), JSON.stringify(next, null, 2), 'utf8');
   return next;
+}
+
+export function writeClientOverrideGroupConfig(
+  scenarioPath: string,
+  clientId: string,
+  config: MockOverrideGroupConfig
+): MockOverrideGroupConfig {
+  const filePath = getClientOverrideGroupConfigPath(scenarioPath, clientId);
+  if (!filePath) {
+    throw new Error('Invalid clientId for override group config');
+  }
+  fs.mkdirSync(scenarioPath, { recursive: true });
+  const next: MockOverrideGroupConfig = {
+    currentGroup: config.currentGroup?.trim() || null,
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(filePath, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+export function deleteClientOverrideGroupConfig(scenarioPath: string, clientId: string): boolean {
+  const filePath = getClientOverrideGroupConfigPath(scenarioPath, clientId);
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  fs.unlinkSync(filePath);
+  return true;
 }
 
 export function listOverrideGroupsFromDisk(scenarioPath: string): MockOverrideGroup[] {
@@ -124,37 +184,120 @@ export function deleteOverrideGroupFromDisk(scenarioPath: string, groupId: strin
   return true;
 }
 
-/**
- * Load groups for a scenario folder into memory and activate config.currentGroup.
- */
-export function hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath: string): {
+export interface HydrateOverrideGroupRuntimeOptions {
+  clientId?: string | null;
+  /** Header / body override for this hydrate. */
+  explicitGroupId?: string | null;
+  /** Redis (or other) lane selection when not using FS lane files. */
+  laneGroupId?: string | null;
+}
+
+export interface HydrateOverrideGroupRuntimeResult {
   groups: MockOverrideGroup[];
+  /** Scenario default from override-group-config.json */
+  defaultGroup: string | null;
+  /** Lane file / redis value when present */
+  laneGroup: string | null;
+  /** Resolved effective group after precedence */
   currentGroup: string | null;
-} {
-  const groups = listOverrideGroupsFromDisk(scenarioPath);
-  const config = readOverrideGroupConfig(scenarioPath);
-  setOverrideGroupRuntimeScenarioPath(scenarioPath);
-  replaceRegisteredOverrideGroups(groups, scenarioPath);
-  const current =
-    config.currentGroup && groups.some((g) => g.id === config.currentGroup)
-      ? config.currentGroup
-      : null;
-  setActiveOverrideGroup(current, scenarioPath);
-  return { groups, currentGroup: current };
+  /** How currentGroup was chosen */
+  source: 'explicit' | 'env' | 'lane' | 'default' | 'none';
+}
+
+function classifySource(
+  resolved: string | null,
+  params: {
+    explicit: string | null;
+    env: string | null;
+    lane: string | null;
+    defaultGroup: string | null;
+  }
+): HydrateOverrideGroupRuntimeResult['source'] {
+  if (!resolved) return 'none';
+  if (params.explicit && resolved === params.explicit) return 'explicit';
+  if (params.env && resolved === params.env) return 'env';
+  if (params.lane && resolved === params.lane) return 'lane';
+  if (params.defaultGroup && resolved === params.defaultGroup) return 'default';
+  return 'none';
 }
 
 /**
- * Hydrate (or re-hydrate) override groups for a scenario folder.
- * Always reloads from disk so dashboard/MCP active-group edits apply without a process restart.
+ * Load group definitions and resolve the effective active group for a client/process.
+ */
+export function hydrateOverrideGroupRuntimeFromScenarioPath(
+  scenarioPath: string,
+  options?: HydrateOverrideGroupRuntimeOptions
+): HydrateOverrideGroupRuntimeResult {
+  const groups = listOverrideGroupsFromDisk(scenarioPath);
+  const defaultConfig = readOverrideGroupConfig(scenarioPath);
+  const clientId =
+    typeof options?.clientId === 'string' && options.clientId.trim()
+      ? options.clientId.trim()
+      : null;
+
+  let laneGroup: string | null = null;
+  if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
+    laneGroup =
+      options.laneGroupId == null || options.laneGroupId === ''
+        ? null
+        : String(options.laneGroupId).trim() || null;
+  } else if (clientId) {
+    const laneConfig = readClientOverrideGroupConfig(scenarioPath, clientId);
+    laneGroup = laneConfig?.currentGroup ?? null;
+  }
+
+  const explicit = options?.explicitGroupId ?? null;
+  const envGroup = readOverrideGroupIdFromEnv();
+  const knownIds = groups.map((g) => g.id);
+  const currentGroup = resolveActiveOverrideGroupId({
+    explicitGroupId: explicit,
+    envGroupId: envGroup,
+    laneGroupId: laneGroup,
+    defaultGroupId: defaultConfig.currentGroup,
+    knownGroupIds: knownIds,
+  });
+
+  setOverrideGroupRuntimeScenarioPath(scenarioPath);
+  replaceRegisteredOverrideGroups(groups, scenarioPath);
+  setActiveOverrideGroup(currentGroup, scenarioPath);
+
+  return {
+    groups,
+    defaultGroup: defaultConfig.currentGroup,
+    laneGroup,
+    currentGroup,
+    source: classifySource(currentGroup, {
+      explicit: resolveActiveOverrideGroupId({
+        explicitGroupId: explicit,
+        knownGroupIds: knownIds,
+      }),
+      env: resolveActiveOverrideGroupId({
+        envGroupId: envGroup,
+        knownGroupIds: knownIds,
+      }),
+      lane: resolveActiveOverrideGroupId({
+        laneGroupId: laneGroup,
+        knownGroupIds: knownIds,
+      }),
+      defaultGroup: resolveActiveOverrideGroupId({
+        defaultGroupId: defaultConfig.currentGroup,
+        knownGroupIds: knownIds,
+      }),
+    }),
+  };
+}
+
+/**
+ * Load definitions + resolve active group for this scenario/client.
  */
 export function ensureOverrideGroupRuntimeForScenarioPath(
   scenarioPath: string,
-  _options?: { force?: boolean }
-): void {
-  hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+  options?: HydrateOverrideGroupRuntimeOptions & { force?: boolean }
+): HydrateOverrideGroupRuntimeResult {
+  return hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, options);
 }
 
-/** Re-read active group from disk when scenarioPath is known (after dashboard writes). */
+/** Re-read active group document from disk when scenarioPath is known. */
 export function refreshActiveOverrideGroupFromDisk(scenarioPath?: string): void {
   const effectiveScenarioPath = scenarioPath ?? getOverrideGroupRuntimeScenarioPath();
   const activeId = getActiveOverrideGroupId(effectiveScenarioPath ?? undefined);
@@ -165,4 +308,39 @@ export function refreshActiveOverrideGroupFromDisk(scenarioPath?: string): void 
     return;
   }
   upsertRegisteredOverrideGroup(fresh, effectiveScenarioPath);
+}
+
+/**
+ * Resolve effective group id for a serve/match without mutating runtime active pointer
+ * when `laneGroupId` / explicit are provided for a concurrent request.
+ */
+export function resolveOverrideGroupIdForServe(
+  scenarioPath: string,
+  options?: HydrateOverrideGroupRuntimeOptions
+): string | null {
+  const groups = listOverrideGroupsFromDisk(scenarioPath);
+  const defaultConfig = readOverrideGroupConfig(scenarioPath);
+  const clientId =
+    typeof options?.clientId === 'string' && options.clientId.trim()
+      ? options.clientId.trim()
+      : null;
+
+  let laneGroup: string | null = null;
+  if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
+    laneGroup =
+      options.laneGroupId == null || options.laneGroupId === ''
+        ? null
+        : String(options.laneGroupId).trim() || null;
+  } else if (clientId) {
+    const laneConfig = readClientOverrideGroupConfig(scenarioPath, clientId);
+    laneGroup = laneConfig?.currentGroup ?? null;
+  }
+
+  return resolveActiveOverrideGroupId({
+    explicitGroupId: options?.explicitGroupId ?? null,
+    envGroupId: readOverrideGroupIdFromEnv(),
+    laneGroupId: laneGroup,
+    defaultGroupId: defaultConfig.currentGroup,
+    knownGroupIds: groups.map((g) => g.id),
+  });
 }
