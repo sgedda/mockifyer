@@ -21,6 +21,11 @@ export interface PrepareMockResponseOptions {
    * after mock-level field/date overrides.
    */
   filename?: string;
+  /**
+   * Absolute scenario path. When set with `filename`, applies override-group overlays
+   * scoped to this scenario (prevents race conditions with concurrent multi-scenario requests).
+   */
+  scenarioPath?: string;
 }
 
 /**
@@ -57,5 +62,5 @@ export function prepareMockResponseBody(
     data = applyResponseDateOverridesToData(data, dateOverrides, getNow);
   }
 
-  return applyActiveOverrideGroupOverlays(data, options?.filename, getNow);
+  return applyActiveOverrideGroupOverlays(data, options?.filename, getNow, options?.scenarioPath);
 }

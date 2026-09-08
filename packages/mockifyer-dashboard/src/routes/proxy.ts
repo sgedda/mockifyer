@@ -369,6 +369,7 @@ router.post('/', async (req: Request, res: Response) => {
             joinPath: path.join.bind(path),
           }),
           filename: mockFilename,
+          scenarioPath,
         }),
       };
       if (debugProxy) {
@@ -526,6 +527,7 @@ router.post('/', async (req: Request, res: Response) => {
     const clientResponse = mock
       ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
           filename: mockFilename,
+          scenarioPath,
         })
       : response;
 

@@ -41,7 +41,7 @@ export class MemoryProvider implements DatabaseProvider {
       return undefined;
     }
 
-    const filename = `memory_${requestKey.substring(0, 50)}.json`;
+    const filename = `memory/${requestKey.substring(0, 64)}.json`;
     if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks, filename })) {
       return undefined;
     }
@@ -71,7 +71,7 @@ export class MemoryProvider implements DatabaseProvider {
             if (!mockPassesThroughToRealApi(mockData)) {
               results.push({
                 mockData,
-                filename: `memory_${key.substring(0, 50)}.json`,
+                filename: `memory/${key.substring(0, 64)}.json`,
                 filePath: 'memory://'
               });
             }

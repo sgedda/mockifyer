@@ -197,7 +197,7 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    const filename = `redis_${h.slice(0, 16)}.json`;
+    const filename = `redis/${h}.json`;
     if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks, filename })) {
       return undefined;
     }
@@ -240,7 +240,7 @@ export class RedisProvider implements DatabaseProvider {
             const h = members[i];
             results.push({
               mockData,
-              filename: `redis_${h.slice(0, 16)}.json`,
+              filename: `redis/${h}.json`,
               filePath: `redis://${keys[i]}`,
             });
           }

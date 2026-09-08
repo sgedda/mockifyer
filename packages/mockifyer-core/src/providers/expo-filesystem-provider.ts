@@ -620,12 +620,92 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
   }
 
+  /**
+   * Load override groups for the current scenario using expo-file-system.
+   * This is the Expo equivalent of `ensureOverrideGroupRuntimeForScenarioPath`.
+   */
+  private async loadOverrideGroupsForScenario(): Promise<void> {
+    const scenarioPath = this.getScenarioPath();
+    try {
+      const { 
+        replaceRegisteredOverrideGroups, 
+        setActiveOverrideGroup,
+        setOverrideGroupRuntimeScenarioPath 
+      } = await import('../utils/override-group-runtime');
+      const {
+        validateMockOverrideGroup,
+        normalizeMockOverrideGroup,
+        emptyOverrideGroupConfig,
+      } = await import('../utils/override-group');
+      const { OVERRIDE_GROUPS_DIR_NAME, OVERRIDE_GROUP_CONFIG_FILENAME } = await import('../types/override-group');
+
+      setOverrideGroupRuntimeScenarioPath(scenarioPath);
+
+      // Read override-group-config.json
+      const configPath = this.joinFsUri(scenarioPath, OVERRIDE_GROUP_CONFIG_FILENAME);
+      let currentGroup: string | null = null;
+      try {
+        const configInfo = await this.fsGetInfo(configPath);
+        if (configInfo.exists) {
+          const configText = await this.fsReadText(configPath);
+          const config = JSON.parse(configText);
+          currentGroup = typeof config.currentGroup === 'string' && config.currentGroup.trim()
+            ? config.currentGroup.trim()
+            : null;
+        }
+      } catch {
+        // Config file doesn't exist or is invalid
+      }
+
+      // Read all override group files from override-groups/
+      const groupsDir = this.joinFsUri(scenarioPath, OVERRIDE_GROUPS_DIR_NAME);
+      const groups: any[] = [];
+      try {
+        const groupsDirInfo = await this.fsGetInfo(groupsDir);
+        if (groupsDirInfo.exists && groupsDirInfo.isDirectory) {
+          const files = this.useLegacyExpoFileSystem
+            ? await this.FileSystem.readDirectoryAsync(groupsDir)
+            : this.newDirectory(groupsDir).list().map((item: any) => item.name);
+
+          for (const name of files) {
+            if (!name.endsWith('.json')) continue;
+            try {
+              const filePath = this.joinFsUri(groupsDir, name);
+              const raw = await this.fsReadText(filePath);
+              const parsed = JSON.parse(raw);
+              const err = validateMockOverrideGroup(parsed);
+              if (!err) {
+                groups.push(normalizeMockOverrideGroup(parsed));
+              }
+            } catch {
+              // Skip invalid group files
+            }
+          }
+        }
+      } catch {
+        // Groups directory doesn't exist
+      }
+
+      replaceRegisteredOverrideGroups(groups, scenarioPath);
+      
+      // Set active group if it exists
+      const activeExists = currentGroup && groups.some((g: any) => g.id === currentGroup);
+      setActiveOverrideGroup(activeExists ? currentGroup : null, scenarioPath);
+    } catch {
+      // Override group modules not available or error loading - continue without groups
+    }
+  }
+
   async findExactMatch(
     request: StoredRequest,
     requestKey: string,
     options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
