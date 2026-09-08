@@ -59,6 +59,7 @@ function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
+/** SADD in chunks so a large member list never hits `sadd(...members)` stack overflow. */
 async function saddChunked(kv: MockKvBackend, key: string, members: string[]): Promise<void> {
   if (members.length === 0) return;
   for (const chunk of chunkArray(members)) {
