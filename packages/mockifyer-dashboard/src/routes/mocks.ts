@@ -151,6 +151,69 @@ function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: Ov
   return { hasOverrides: preview.length > 0, preview };
 }
 
+function summarizeFieldOverrideValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  const t = typeof value;
+  if (t === 'string') {
+    const s = value as string;
+    return s.length > 40 ? `${JSON.stringify(s.slice(0, 37))}…` : JSON.stringify(s);
+  }
+  if (t === 'number' || t === 'boolean') return String(value);
+  try {
+    const raw = JSON.stringify(value);
+    if (raw == null) return t;
+    return raw.length > 48 ? `${raw.slice(0, 45)}…` : raw;
+  } catch {
+    return t;
+  }
+}
+
+function getFieldOverridePreview(mockData: any): {
+  hasOverrides: boolean;
+  preview: OverridePreview[];
+  count: number;
+} {
+  const overrides = mockData?.responseFieldOverrides;
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    return { hasOverrides: false, preview: [], count: 0 };
+  }
+  const preview: OverridePreview[] = [];
+  let count = 0;
+  for (const o of overrides) {
+    if (!o || typeof o !== 'object') continue;
+    const pathVal = (o as { path?: unknown }).path;
+    if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
+    count += 1;
+    if (preview.length < 3) {
+      preview.push({
+        path: pathVal.trim(),
+        summary: summarizeFieldOverrideValue((o as { value?: unknown }).value),
+      });
+    }
+  }
+  return { hasOverrides: count > 0, preview, count };
+}
+
+/** Date + field override list metadata for mock listings. */
+function getMockOverrideListFields(mockData: any): {
+  hasResponseDateOverrides: boolean;
+  responseDateOverridesPreview: OverridePreview[];
+  hasResponseFieldOverrides: boolean;
+  responseFieldOverridesPreview: OverridePreview[];
+  responseFieldOverridesCount: number;
+} {
+  const dateInfo = getOverridePreview(mockData);
+  const fieldInfo = getFieldOverridePreview(mockData);
+  return {
+    hasResponseDateOverrides: dateInfo.hasOverrides,
+    responseDateOverridesPreview: dateInfo.preview,
+    hasResponseFieldOverrides: fieldInfo.hasOverrides,
+    responseFieldOverridesPreview: fieldInfo.preview,
+    responseFieldOverridesCount: fieldInfo.count,
+  };
+}
+
 function normalizeSearchQuery(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   return raw.trim().toLowerCase();
@@ -302,7 +365,6 @@ router.get('/', async (req: Request, res: Response) => {
             let method: string | null = null;
             let sessionId: string | null = null;
             let activation = extractMockActivationFlags({});
-            const { hasOverrides, preview } = getOverridePreview(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
               if (mockData.request?.method) {
@@ -365,8 +427,7 @@ router.get('/', async (req: Request, res: Response) => {
               requestId: correlation.requestId,
               parentRequestId: correlation.parentRequestId,
               ...activation,
-              hasResponseDateOverrides: hasOverrides,
-              responseDateOverridesPreview: preview,
+              ...getMockOverrideListFields(mockData),
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
@@ -397,8 +458,7 @@ router.get('/', async (req: Request, res: Response) => {
         let method: string | null = null;
         let sessionId = null;
         let activation = extractMockActivationFlags({});
-        let hasResponseDateOverrides = false;
-        let responseDateOverridesPreview: OverridePreview[] = [];
+        let overrideFields = getMockOverrideListFields({});
         let requestId: string | null = null;
         let parentRequestId: string | null = null;
         try {
@@ -416,9 +476,7 @@ router.get('/', async (req: Request, res: Response) => {
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
-          const overrideInfo = getOverridePreview(mockData);
-          hasResponseDateOverrides = overrideInfo.hasOverrides;
-          responseDateOverridesPreview = overrideInfo.preview;
+          overrideFields = getMockOverrideListFields(mockData);
 
           if (mockData.request?.data) {
             let bodyData = mockData.request.data;
@@ -462,8 +520,7 @@ router.get('/', async (req: Request, res: Response) => {
           requestId,
           parentRequestId,
           ...activation,
-          hasResponseDateOverrides,
-          responseDateOverridesPreview,
+          ...overrideFields,
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -508,7 +565,6 @@ router.get('/search', async (req: Request, res: Response) => {
           let sessionId: string | null = null;
           let method: string | null = null;
           let alwaysUseRealApi = false;
-          const { hasOverrides, preview } = getOverridePreview(mockData);
 
           try {
             if (mockData.request?.url) endpoint = mockData.request.url;
@@ -564,8 +620,7 @@ router.get('/search', async (req: Request, res: Response) => {
             requestId: correlation.requestId,
             parentRequestId: correlation.parentRequestId,
             alwaysUseRealApi,
-            hasResponseDateOverrides: hasOverrides,
-            responseDateOverridesPreview: preview,
+            ...getMockOverrideListFields(mockData),
           });
 
           if (files.length >= limit) {
@@ -610,8 +665,7 @@ router.get('/search', async (req: Request, res: Response) => {
       let sessionId: string | null = null;
       let method: string | null = null;
       let alwaysUseRealApi = false;
-      let hasResponseDateOverrides = false;
-      let responseDateOverridesPreview: OverridePreview[] = [];
+      let overrideFields = getMockOverrideListFields({});
       let requestId: string | null = null;
       let parentRequestId: string | null = null;
 
@@ -626,9 +680,7 @@ router.get('/search', async (req: Request, res: Response) => {
         if (mockData.sessionId) sessionId = mockData.sessionId;
         else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
-        const overrideInfo = getOverridePreview(mockData);
-        hasResponseDateOverrides = overrideInfo.hasOverrides;
-        responseDateOverridesPreview = overrideInfo.preview;
+        overrideFields = getMockOverrideListFields(mockData);
 
         if (mockData.request?.data) {
           let bodyData = mockData.request.data;
@@ -669,8 +721,7 @@ router.get('/search', async (req: Request, res: Response) => {
         requestId,
         parentRequestId,
         alwaysUseRealApi,
-        hasResponseDateOverrides,
-        responseDateOverridesPreview,
+        ...overrideFields,
       });
     }
 
@@ -841,6 +892,50 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
 });
 
 // Replay-time field overrides (no full responseData required)
+router.get('/*/field-overrides', async (req: Request, res: Response) => {
+  try {
+    const relativeName = req.params[0];
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const scenario = await resolveRedisScenario(req, store);
+        const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
+        if (!existingData) return res.status(404).json({ error: 'Mock not found' });
+        return res.json({
+          filename: relativeName,
+          scenario,
+          responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    const filePath = resolveFilePath(scenarioPath, relativeName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Mock file not found' });
+    }
+
+    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    return res.json({
+      filename: relativeName,
+      scenario,
+      responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+    });
+  } catch (error: unknown) {
+    console.error('[MocksRoute] field-overrides GET - Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: 'Failed to get field overrides', details: message });
+  }
+});
+
 router.patch('/*/field-overrides', async (req: Request, res: Response) => {
   try {
     const relativeName = req.params[0];
