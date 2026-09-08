@@ -104,7 +104,11 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
           current && names.includes(current) ? current : names[0] ?? ''
         )
       } catch {
-        if (!cancelled) setMockFilenames([])
+        if (!cancelled) {
+          setMockFilenames([])
+          setExtractFilename('')
+          setPromoteFilename('')
+        }
       }
     })()
     return () => {
@@ -191,7 +195,7 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
       })
       toast({
         title: 'Promoted',
-        description: `Saved ${result.response?.id ?? (promoteId || promoteFilename)}`,
+        description: `Saved ${result.response?.responseItemId ?? (promoteId || promoteFilename)}`,
       })
       await load()
     } catch (error) {
