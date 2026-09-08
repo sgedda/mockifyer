@@ -7,7 +7,7 @@ import {
   getScratchScenarioTtlSec,
   isScratchScenario,
   buildMockPathCardinalitySegment,
-  decideRedisMockWriteLimits,
+  evaluateRedisMockWriteLimits,
   formatRedisMockWriteSkipMessage,
   getMaxMocksPerPathFromEnv,
   getMaxRequestsPerScenarioFromEnv,
@@ -340,13 +340,31 @@ export class RedisMockStore {
         pathMockCount = await this.kv.scard(pathIndexKey);
         hashAlreadyOnPath = await this.kv.sismember(pathIndexKey, hash);
       }
-      const decision = decideRedisMockWriteLimits({
+      const decision = await evaluateRedisMockWriteLimits({
         hashAlreadyStored,
         scenarioMockCount,
         pathMockCount,
         hashAlreadyOnPath,
         maxScenario,
         maxPath: pathIndexKey ? maxPath : undefined,
+        loadScenarioMembers:
+          maxScenario != null ? () => this.kv.smembers(indexKey) : undefined,
+        loadPathMembers:
+          maxPath != null && pathIndexKey ? () => this.kv.smembers(pathIndexKey) : undefined,
+        membersAreLive: async (hashes) => {
+          if (hashes.length === 0) return [];
+          const keys = hashes.map((member) => `${this.keyPrefix}:mock:${scenarioName}:${member}`);
+          const values = await this.kv.mget(...keys);
+          return values.map((raw) => raw != null && raw !== '');
+        },
+        dropStale: async (kind, hashes) => {
+          if (hashes.length === 0) return;
+          if (kind === 'scenario') {
+            await this.kv.srem(indexKey, ...hashes);
+          } else if (pathIndexKey) {
+            await this.kv.srem(pathIndexKey, ...hashes);
+          }
+        },
       });
       if (!decision.allow) {
         console.warn(

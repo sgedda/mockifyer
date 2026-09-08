@@ -118,6 +118,109 @@ export function decideRedisMockWriteLimits(input: {
   };
 }
 
+export interface RedisIndexLivePartition {
+  liveCount: number;
+  staleHashes: string[];
+}
+
+/**
+ * Split an index set into hashes whose mock payload still exists vs ghosts
+ * (TTL expiry, clearAll that only deleted data keys, etc.).
+ */
+export function partitionLiveRedisIndexMembers(
+  members: string[],
+  liveFlags: ReadonlyArray<boolean>
+): RedisIndexLivePartition {
+  const staleHashes: string[] = [];
+  let liveCount = 0;
+  const n = Math.min(members.length, liveFlags.length);
+  for (let i = 0; i < n; i++) {
+    const hash = members[i];
+    if (!hash) continue;
+    if (liveFlags[i]) {
+      liveCount += 1;
+    } else {
+      staleHashes.push(hash);
+    }
+  }
+  return { liveCount, staleHashes };
+}
+
+export interface EvaluateRedisMockWriteLimitsInput {
+  hashAlreadyStored: boolean;
+  scenarioMockCount: number;
+  pathMockCount: number;
+  hashAlreadyOnPath: boolean;
+  maxScenario?: number;
+  maxPath?: number;
+  /** Load scenario index members when a deny must be rechecked against live keys. */
+  loadScenarioMembers?: () => Promise<string[]>;
+  /** Load path index members when a deny must be rechecked against live keys. */
+  loadPathMembers?: () => Promise<string[]>;
+  /** Parallel liveness flags for the given hashes (same order). */
+  membersAreLive?: (hashes: string[]) => Promise<boolean[]>;
+  dropStale?: (kind: 'scenario' | 'path', hashes: string[]) => Promise<void>;
+}
+
+/**
+ * Enforce write limits, but do not treat expired/cleared mock keys as occupying
+ * a slot. Index sets are not TTLed with scratch payloads and `clearAll` may
+ * delete only data keys, so SCARD alone can permanently block new hashes.
+ */
+export async function evaluateRedisMockWriteLimits(
+  input: EvaluateRedisMockWriteLimitsInput
+): Promise<RedisMockWriteLimitDecision> {
+  const decide = (
+    scenarioMockCount: number,
+    pathMockCount: number,
+    hashAlreadyOnPath: boolean
+  ): RedisMockWriteLimitDecision =>
+    decideRedisMockWriteLimits({
+      hashAlreadyStored: input.hashAlreadyStored,
+      scenarioMockCount,
+      pathMockCount,
+      hashAlreadyOnPath,
+      maxScenario: input.maxScenario,
+      maxPath: input.maxPath,
+    });
+
+  let scenarioMockCount = input.scenarioMockCount;
+  let pathMockCount = input.pathMockCount;
+  const hashAlreadyOnPath = input.hashAlreadyOnPath;
+
+  let decision = decide(scenarioMockCount, pathMockCount, hashAlreadyOnPath);
+  if (decision.allow || input.hashAlreadyStored) {
+    return decision;
+  }
+
+  const membersAreLive = input.membersAreLive;
+  if (!membersAreLive) {
+    return decision;
+  }
+
+  if (typeof input.maxScenario === 'number' && input.loadScenarioMembers) {
+    const members = await input.loadScenarioMembers();
+    const liveFlags = await membersAreLive(members);
+    const { liveCount, staleHashes } = partitionLiveRedisIndexMembers(members, liveFlags);
+    if (staleHashes.length > 0) {
+      await input.dropStale?.('scenario', staleHashes);
+    }
+    scenarioMockCount = liveCount;
+  }
+
+  if (typeof input.maxPath === 'number' && input.loadPathMembers) {
+    const members = await input.loadPathMembers();
+    const liveFlags = await membersAreLive(members);
+    const { liveCount, staleHashes } = partitionLiveRedisIndexMembers(members, liveFlags);
+    if (staleHashes.length > 0) {
+      await input.dropStale?.('path', staleHashes);
+    }
+    pathMockCount = liveCount;
+  }
+
+  return decide(scenarioMockCount, pathMockCount, hashAlreadyOnPath);
+}
+
 export function formatRedisMockWriteSkipMessage(
   decision: RedisMockWriteLimitDecision,
   context: { scenario: string; method?: string; url?: string }
