@@ -332,7 +332,6 @@ async function clearRedisScenarioMocks(
     for (const filePath of getAllJsonFiles(redisFolder)) {
       try {
         fs.unlinkSync(filePath);
-        removed += 1;
       } catch {
         // best-effort
       }
