@@ -222,7 +222,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       try {
         const grouped = await getMocks(scenario, { similarGroups: true, signal })
         if (signal.aborted) return
-        setMocks(grouped.files)
+        // Only update mocks if no search is active (clustering should not overwrite search results)
+        if (!searchQuery.trim()) {
+          setMocks(grouped.files)
+        }
         setAllMocks(grouped.files)
         setSimilarBodyGroups(grouped.similarBodyGroups ?? [])
       } catch (error) {
