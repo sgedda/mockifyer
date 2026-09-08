@@ -229,7 +229,14 @@ export class RedisMockStore {
     assertNotReservedScenarioName(scenario, { allowScratch: true });
     await this.kv.set(this.activeScenarioKey, scenario);
     // Best-effort registry so scenarios appear even with no mocks yet.
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.ensureScenarioRegistered(scenario);
+  }
+
+  /** Keep an empty scenario in the picker after mocks are deleted. */
+  async ensureScenarioRegistered(scenario: string): Promise<void> {
+    const name = scenario.trim();
+    if (!name) return;
+    await this.kv.sadd(this.scenarioRegistrySetKey, name).catch(() => undefined);
   }
 
   async ping(): Promise<void> {

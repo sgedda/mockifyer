@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { getScenarioConfig, setScenario, createScenario, setScenarioLock, exportScenarioBundle, importScenarioBundle } from '@/lib/api'
+import { getScenarioConfig, setScenario, createScenario, setScenarioLock, exportScenarioBundle, importScenarioBundle, clearScenarioMocks } from '@/lib/api'
 import type { ScenarioExportBundle } from '@/types'
-import { Save, Download, Upload } from 'lucide-react'
+import { Save, Download, Upload, Trash2 } from 'lucide-react'
 import ClientLanes from './ClientLanes'
 
 interface SettingsProps {
@@ -13,6 +13,8 @@ interface SettingsProps {
   onScenarioChange: (scenario: string) => void
   scenarioLocks: Record<string, boolean>
   onScenarioConfigRefresh?: () => void | Promise<void>
+  /** Reload mock list after clearing or other mock-store changes. */
+  onMocksChanged?: () => void | Promise<void>
 }
 
 export default function Settings({
@@ -20,6 +22,7 @@ export default function Settings({
   onScenarioChange,
   scenarioLocks,
   onScenarioConfigRefresh,
+  onMocksChanged,
 }: SettingsProps) {
   const [availableScenarios, setAvailableScenarios] = useState<string[]>(['default'])
   const [newScenario, setNewScenario] = useState('')
@@ -30,6 +33,7 @@ export default function Settings({
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [clearingMocks, setClearingMocks] = useState(false)
   const [exportScenarioName, setExportScenarioName] = useState(scenario)
   const [importTarget, setImportTarget] = useState('')
   const [importReplace, setImportReplace] = useState(false)
@@ -232,6 +236,37 @@ export default function Settings({
     }
   }
 
+  async function handleClearScenarioMocks() {
+    const locked = scenarioLocks[scenario] === true
+    if (locked) {
+      toast({
+        title: 'Scenario locked',
+        description: `Unlock "${scenario}" before clearing mocks.`,
+        variant: 'destructive',
+      })
+      return
+    }
+    const confirmed = window.confirm(
+      `Clear mocks in "${scenario}"? The scenario stays. Date settings, lock, and domain rules are kept. This cannot be undone.`
+    )
+    if (!confirmed) return
+    try {
+      setClearingMocks(true)
+      const result = await clearScenarioMocks(scenario)
+      await onScenarioConfigRefresh?.()
+      await onMocksChanged?.()
+      toast({
+        title: 'Mocks cleared',
+        description: result.message,
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to clear mocks'
+      toast({ title: 'Clear failed', description: message, variant: 'destructive' })
+    } finally {
+      setClearingMocks(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -266,8 +301,8 @@ export default function Settings({
                     Lock current scenario (read-only mocks &amp; date config)
                   </label>
                   <p className="text-xs text-muted-foreground basis-full">
-                    While locked, the dashboard cannot save mock bodies, delete mocks, duplicate files, or change date
-                    manipulation; Redis proxy recording is also skipped for this scenario.
+                    While locked, the dashboard cannot save mock bodies, delete mocks, clear all mocks, duplicate files,
+                    or change date manipulation; Redis proxy recording is also skipped for this scenario.
                   </p>
                 </div>
               </div>
@@ -286,6 +321,25 @@ export default function Settings({
                     disabled={scenario === 'default' || saving}
                   >
                     Reset to Default
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Clear mocks</label>
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 px-3 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    Remove recorded mocks from the current scenario. The scenario name stays in the list (empty). Date
+                    settings, lock, domain-path rules, and proxy settings are kept.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => void handleClearScenarioMocks()}
+                    disabled={loading || saving || clearingMocks || scenarioLocks[scenario] === true}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {clearingMocks ? 'Clearing…' : 'Clear mocks'}
                   </Button>
                 </div>
               </div>

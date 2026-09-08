@@ -540,6 +540,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                     setSelectedMock(null)
                   }}
                   onScenarioConfigRefresh={refreshScenarioConfig}
+                  onMocksChanged={async () => {
+                    setSelectedMock(null)
+                    await loadMocks()
+                  }}
                 />
               }
             />

@@ -23,6 +23,7 @@ import {
   applyScenarioImport,
   buildFilesystemScenarioBundle,
   buildRedisScenarioBundle,
+  clearScenarioMocks,
   parseScenarioImportRequest,
 } from '../utils/scenario-bundle';
 import fs from 'fs';
@@ -468,6 +469,58 @@ router.post('/import', async (req: Request, res: Response) => {
     console.error('[ScenarioConfigRoute] Import - Error:', error);
     const status = /must|required|Unsupported|Invalid/i.test(error.message) ? 400 : 500;
     res.status(status).json({ error: 'Failed to import scenario', details: error.message });
+  }
+});
+
+const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
+
+/**
+ * Empty recorded mocks for a scenario. Keeps the scenario, date config, lock, and domain-path rules.
+ * POST /api/scenario-config/clear-mocks  { scenario }
+ */
+router.post('/clear-mocks', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const parsed = sanitizeScenarioName(req.body?.scenario);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const sanitized = parsed.value;
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(sanitized)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, sanitized)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+
+    const result = await clearScenarioMocks({
+      mockDataPath,
+      scenario: sanitized,
+      provider: config.provider,
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+
+    return res.json({
+      success: true,
+      scenario: sanitized,
+      mocksRemoved: result.mocksRemoved,
+      message:
+        result.mocksRemoved === 1
+          ? `Removed 1 mock from "${sanitized}". The scenario is still available (empty).`
+          : `Removed ${result.mocksRemoved} mocks from "${sanitized}". The scenario is still available (empty).`,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Clear mocks - Error:', error);
+    res.status(500).json({ error: 'Failed to clear scenario mocks', details: error.message });
   }
 });
 
