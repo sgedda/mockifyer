@@ -134,12 +134,12 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath: string
   const groups = listOverrideGroupsFromDisk(scenarioPath);
   const config = readOverrideGroupConfig(scenarioPath);
   setOverrideGroupRuntimeScenarioPath(scenarioPath);
-  replaceRegisteredOverrideGroups(groups);
+  replaceRegisteredOverrideGroups(groups, scenarioPath);
   const current =
     config.currentGroup && groups.some((g) => g.id === config.currentGroup)
       ? config.currentGroup
       : null;
-  setActiveOverrideGroup(current);
+  setActiveOverrideGroup(current, scenarioPath);
   return { groups, currentGroup: current };
 }
 
@@ -155,14 +155,14 @@ export function ensureOverrideGroupRuntimeForScenarioPath(
 }
 
 /** Re-read active group from disk when scenarioPath is known (after dashboard writes). */
-export function refreshActiveOverrideGroupFromDisk(): void {
-  const scenarioPath = getOverrideGroupRuntimeScenarioPath();
-  const activeId = getActiveOverrideGroupId();
-  if (!scenarioPath || !activeId) return;
-  const fresh = readOverrideGroupFromDisk(scenarioPath, activeId);
+export function refreshActiveOverrideGroupFromDisk(scenarioPath?: string): void {
+  const effectiveScenarioPath = scenarioPath ?? getOverrideGroupRuntimeScenarioPath();
+  const activeId = getActiveOverrideGroupId(effectiveScenarioPath ?? undefined);
+  if (!effectiveScenarioPath || !activeId) return;
+  const fresh = readOverrideGroupFromDisk(effectiveScenarioPath, activeId);
   if (!fresh) {
-    setActiveOverrideGroup(null);
+    setActiveOverrideGroup(null, effectiveScenarioPath);
     return;
   }
-  upsertRegisteredOverrideGroup(fresh);
+  upsertRegisteredOverrideGroup(fresh, effectiveScenarioPath);
 }

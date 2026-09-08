@@ -120,7 +120,7 @@ export function buildClientResponseFromLiveCapture(
   mockData: MockData,
   capturedResponse: MockData['response'],
   getNow: () => Date,
-  options?: { filename?: string }
+  options?: { filename?: string; scenarioPath?: string }
 ): MockData['response'] {
   const filename = options?.filename;
   const hasDate = mockHasResponseDateOverrides(mockData);
@@ -128,7 +128,7 @@ export function buildClientResponseFromLiveCapture(
   const hasGroup =
     typeof filename === 'string' &&
     filename.trim().length > 0 &&
-    activeOverrideGroupHasEntry(filename);
+    activeOverrideGroupHasEntry(filename, options?.scenarioPath);
 
   if (!hasDate && !hasField && !hasGroup) {
     return capturedResponse;
@@ -141,7 +141,7 @@ export function buildClientResponseFromLiveCapture(
   if (hasDate) {
     data = applyResponseDateOverridesToData(data, mockData.responseDateOverrides ?? [], getNow);
   }
-  data = applyActiveOverrideGroupOverlays(data, filename, getNow);
+  data = applyActiveOverrideGroupOverlays(data, filename, getNow, options?.scenarioPath);
 
   return {
     ...capturedResponse,

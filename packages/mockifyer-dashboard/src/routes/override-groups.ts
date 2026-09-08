@@ -225,10 +225,12 @@ router.patch('/:id/entries', async (req: Request, res: Response) => {
 
     let next: MockOverrideGroup;
     if (req.body?.clear === true) {
+      // Clear only field overrides, preserve date overlays
+      const existing = group.entries.find((e) => e.filename === filename);
       next = upsertOverrideGroupEntry(group, {
         filename,
         responseFieldOverrides: [],
-        responseDateOverrides: [],
+        responseDateOverrides: existing?.responseDateOverrides ?? [],
       });
     } else if (req.body?.ensure === true) {
       next = ensureOverrideGroupEntry(group, filename);
