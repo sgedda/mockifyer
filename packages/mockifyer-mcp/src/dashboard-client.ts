@@ -649,4 +649,36 @@ export class DashboardApiClient {
       body: JSON.stringify({ pool: body.pool, path: body.path ?? null }),
     });
   }
+
+  async listAtlasPacks(): Promise<{
+    currentPack: string | null;
+    count: number;
+    packs: Array<{ id: string; label: string; updatedAt: string; overlayCount: number }>;
+  }> {
+    return this.request('/atlas/packs');
+  }
+
+  async getAtlasPack(packId: string): Promise<{ pack: unknown }> {
+    return this.request(`/atlas/packs/${encodeURIComponent(packId)}`);
+  }
+
+  async upsertAtlasPack(packId: string, pack: unknown): Promise<{ ok: boolean; pack: unknown }> {
+    return this.request(`/atlas/packs/${encodeURIComponent(packId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(pack),
+    });
+  }
+
+  async setAtlasPack(pack: string | null): Promise<{ ok: boolean; currentPack: string | null }> {
+    return this.request('/atlas/packs/set', {
+      method: 'POST',
+      body: JSON.stringify({ pack }),
+    });
+  }
+
+  async deleteAtlasPack(packId: string): Promise<{ ok: boolean; removed: string }> {
+    return this.request(`/atlas/packs/${encodeURIComponent(packId)}`, {
+      method: 'DELETE',
+    });
+  }
 }

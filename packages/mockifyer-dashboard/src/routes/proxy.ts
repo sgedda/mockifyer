@@ -21,6 +21,8 @@ import {
   resolveRecordNewMocksAsPassthrough,
   resolveRefreshPassthroughRecordings,
   applyRecordingPassthroughFlag,
+  applyActiveAtlasPackToData,
+  isAtlasPackReplayActive,
   buildRequestOnlyMockData,
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
@@ -511,9 +513,21 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const clientResponse = mock
-      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
+    let clientResponse = mock
+      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
+          requestBody: normalizedRequestBody,
+        })
       : response;
+
+    if (!mock && isAtlasPackReplayActive()) {
+      clientResponse = {
+        ...clientResponse,
+        data: applyActiveAtlasPackToData(clientResponse.data, {
+          requestBody: normalizedRequestBody,
+          getNow,
+        }).data,
+      };
+    }
 
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true) {

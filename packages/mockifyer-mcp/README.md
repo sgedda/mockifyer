@@ -84,8 +84,13 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_promote_response` / `mockifyer_list_response_fixtures` | Full-response fixtures |
 | `mockifyer_preview_pool_ref` | Preview `$pool` resolve (path + field/index select) |
 | `mockifyer_set_pool_ref` | Embed `$pool` into a scenario mock response |
+| `mockifyer_list_atlas_packs` | List Atlas packs (live overlay+pin sets) + active pack |
+| `mockifyer_get_atlas_pack` | Full pack (overlays, select, pins) |
+| `mockifyer_upsert_atlas_pack` | Create/replace a pack |
+| `mockifyer_set_atlas_pack` | Activate a pack (`null` clears) |
+| `mockifyer_delete_atlas_pack` | Delete a pack |
 
-Endpoint **slots** are deferred. **`$pool` refs** activate promoted response fixtures at serve time (see `packages/mockifyer-core/docs/POOL_REFS.md`). Entities remain a shared catalog for extract/browse.
+Endpoint **slots** are deferred. **`$pool` refs** activate promoted response fixtures at serve time (see `packages/mockifyer-core/docs/POOL_REFS.md`). **Atlas packs** shape live responses with select-by-id + field/date overlays + entity pins (see `packages/mockifyer-core/docs/ATLAS_PACKS.md`). Entities remain a shared catalog for extract/browse.
 
 ## Example (IDE chat)
 

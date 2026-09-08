@@ -737,6 +737,127 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     }
   );
 
+  server.registerTool(
+    'mockifyer_list_atlas_packs',
+    {
+      description:
+        'List Atlas packs (named overlay+pin sets for live API shaping) and the active pack id. Prefer packs over mock scenarios when only trip/booking selection and date/field overrides are needed.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await client.listAtlasPacks());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_atlas_pack',
+    {
+      description: 'Get one Atlas pack (overlays, select-by-id, field/date overrides, entity pins).',
+      inputSchema: {
+        packId: z.string().describe('Pack id (e.g. check-in-open)'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.getAtlasPack(args.packId));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_upsert_atlas_pack',
+    {
+      description:
+        'Create or replace an Atlas pack. Overlay select keeps/orders items by id; missing live items use pins; fieldOverrides are relative to each selected item.',
+      inputSchema: {
+        packId: z.string(),
+        label: z.string(),
+        overlays: z.array(
+          z.object({
+            datasourceId: z.string().optional(),
+            operation: z.string().optional().describe('GraphQL operationName fallback'),
+            path: z.string().optional().describe('Dot path to array, e.g. trips'),
+            select: z
+              .object({
+                field: z.string(),
+                values: z.array(z.union([z.string(), z.number(), z.boolean()])),
+              })
+              .optional(),
+            fieldOverrides: z
+              .array(z.object({ path: z.string(), value: z.any() }))
+              .optional(),
+            dateOverrides: z.array(z.record(z.unknown())).optional(),
+            pins: z
+              .array(
+                z.object({
+                  id: z.union([z.string(), z.number(), z.boolean()]),
+                  data: z.unknown(),
+                  updatedAt: z.string().optional(),
+                })
+              )
+              .optional(),
+          })
+        ),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.upsertAtlasPack(args.packId, {
+            id: args.packId,
+            label: args.label,
+            updatedAt: new Date().toISOString(),
+            overlays: args.overlays,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_atlas_pack',
+    {
+      description:
+        'Activate an Atlas pack for live/stored response overlays (null clears). Persists to mock-data/_atlas/pack-config.json on the dashboard.',
+      inputSchema: {
+        pack: z
+          .string()
+          .nullable()
+          .describe('Pack id to activate, or null to clear'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.setAtlasPack(args.pack));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_delete_atlas_pack',
+    {
+      description: 'Delete an Atlas pack from the dashboard store.',
+      inputSchema: { packId: z.string() },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.deleteAtlasPack(args.packId));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
   return server;
 }
 

@@ -80,6 +80,8 @@ import {
   resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
+  applyActiveAtlasPackToData,
+  isAtlasPackReplayActive,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
@@ -995,6 +997,12 @@ class MockifyerClass {
         this.readRequestCorrelation(response.config)
       );
       response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      if (isAtlasPackReplayActive()) {
+        response.data = applyActiveAtlasPackToData(response.data, {
+          requestBody: response.config?.data,
+          getNow: getCurrentDate,
+        }).data;
+      }
 
       return response;
     });
@@ -1600,6 +1608,12 @@ class MockifyerClass {
           this.readRequestCorrelation(response.config)
         );
         response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+        if (isAtlasPackReplayActive()) {
+          response.data = applyActiveAtlasPackToData(response.data, {
+            requestBody: response.config?.data,
+            getNow: getCurrentDate,
+          }).data;
+        }
 
         this.saveResponse(response as HTTPResponse);
         return response;
@@ -1799,7 +1813,8 @@ class MockifyerClass {
     const clientResponse = buildClientResponseFromLiveCapture(
       matchedMock.mockData,
       capturedResponse,
-      getCurrentDate
+      getCurrentDate,
+      { requestBody: response.config?.data }
     );
     response.data = clientResponse.data;
     response.status = clientResponse.status;

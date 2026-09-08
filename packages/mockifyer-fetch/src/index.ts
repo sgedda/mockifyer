@@ -53,6 +53,8 @@ import {
   buildMockDataAfterLiveCapture,
   resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
+  applyActiveAtlasPackToData,
+  isAtlasPackReplayActive,
   applyRecordingPassthroughFlag,
   resolveClientId,
   resolveExplicitClientIdOnly,
@@ -1038,7 +1040,8 @@ class MockifyerClass {
           const clientResponse = buildClientResponseFromLiveCapture(
             matchedMock.mockData,
             capturedResponse,
-            getCurrentDate
+            getCurrentDate,
+            { requestBody: response.config?.data }
           );
           response.data = clientResponse.data;
           response.status = clientResponse.status;
@@ -1065,6 +1068,13 @@ class MockifyerClass {
           this.readRequestCorrelation(response.config)
         );
         response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+
+        if (isAtlasPackReplayActive()) {
+          response.data = applyActiveAtlasPackToData(response.data, {
+            requestBody: response.config?.data,
+            getNow: getCurrentDate,
+          }).data;
+        }
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
         // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).

@@ -7,6 +7,7 @@ import {
   mockHasResponseFieldOverrides,
 } from './mock-response-field-overrides';
 import { resolveRefreshPassthroughRecordings } from './record-passthrough-config';
+import { applyActiveAtlasPackToData } from './atlas-pack-runtime';
 
 /** How a matched mock is served on the next outbound request. */
 export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'passthrough';
@@ -101,17 +102,23 @@ export function applyLiveFetchMockUpdates(
   }
 }
 
-/** Clones upstream response and applies configured date overrides for the client. */
+export interface BuildClientResponseFromLiveCaptureOptions {
+  /** Request body for Atlas pack GraphQL operation matching. */
+  requestBody?: unknown;
+  datasourceId?: string | null;
+  skipAtlasPack?: boolean;
+}
+
+/** Clones upstream response and applies configured date/field overrides + active Atlas pack. */
 export function buildClientResponseFromLiveCapture(
   mockData: MockData,
   capturedResponse: MockData['response'],
-  getNow: () => Date
+  getNow: () => Date,
+  options?: BuildClientResponseFromLiveCaptureOptions
 ): MockData['response'] {
   const hasDate = mockHasResponseDateOverrides(mockData);
   const hasField = mockHasResponseFieldOverrides(mockData);
-  if (!hasDate && !hasField) {
-    return capturedResponse;
-  }
+  const skipPack = options?.skipAtlasPack === true;
 
   let data = capturedResponse.data;
   if (hasField) {
@@ -119,6 +126,18 @@ export function buildClientResponseFromLiveCapture(
   }
   if (hasDate) {
     data = applyResponseDateOverridesToData(data, mockData.responseDateOverrides ?? [], getNow);
+  }
+
+  if (!skipPack) {
+    data = applyActiveAtlasPackToData(data, {
+      requestBody: options?.requestBody ?? mockData.request?.data,
+      datasourceId: options?.datasourceId,
+      getNow,
+    }).data;
+  }
+
+  if (data === capturedResponse.data) {
+    return capturedResponse;
   }
 
   return {

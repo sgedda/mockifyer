@@ -497,6 +497,11 @@ export const ENV_VARS = {
   MOCK_ATLAS_HTML_PATH: 'MOCKIFYER_ATLAS_HTML_PATH',
   /** When `false`, disables atlas screenshot capture even if config enables it. */
   MOCK_ATLAS_SCREENSHOTS: 'MOCKIFYER_ATLAS_SCREENSHOTS',
+  /**
+   * Active Atlas pack id (overlays + pins on live/stored responses).
+   * See {@link AtlasPack} / `setActiveAtlasPack`. Wins only when runtime active pack is unset.
+   */
+  MOCK_ATLAS_PACK: 'MOCKIFYER_ATLAS_PACK',
   /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */

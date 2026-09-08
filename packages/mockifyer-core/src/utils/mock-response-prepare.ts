@@ -8,6 +8,7 @@ import {
   resolvePoolRefsInData,
   type LoadPoolResponseFn,
 } from './fixture-pool/resolve-pool-refs';
+import { applyActiveAtlasPackToData } from './atlas-pack-runtime';
 
 export interface PrepareMockResponseOptions {
   /**
@@ -15,6 +16,12 @@ export interface PrepareMockResponseOptions {
    * refs and pool refs are enabled (`MOCKIFYER_POOL_REFS` not `false`).
    */
   loadPoolResponse?: LoadPoolResponseFn;
+  /** Request body for Atlas pack operation matching (GraphQL operationName). */
+  requestBody?: unknown;
+  /** Atlas datasource id for pack overlay matching. */
+  datasourceId?: string | null;
+  /** Skip active Atlas pack overlays (default false). */
+  skipAtlasPack?: boolean;
 }
 
 /**
@@ -22,6 +29,7 @@ export interface PrepareMockResponseOptions {
  * 1. Resolve `$pool` refs (when enabled)
  * 2. Field overrides
  * 3. Date overrides
+ * 4. Active Atlas pack overlays (select + pins + field/date)
  *
  * Stored `response.data` is never mutated.
  */
@@ -46,9 +54,17 @@ export function prepareMockResponseBody(
   }
 
   const dateOverrides = mockData.responseDateOverrides;
-  if (!dateOverrides?.length) {
+  if (dateOverrides?.length) {
+    data = applyResponseDateOverridesToData(data, dateOverrides, getNow);
+  }
+
+  if (options?.skipAtlasPack === true) {
     return data;
   }
 
-  return applyResponseDateOverridesToData(data, dateOverrides, getNow);
+  return applyActiveAtlasPackToData(data, {
+    requestBody: options?.requestBody ?? mockData.request?.data,
+    datasourceId: options?.datasourceId,
+    getNow,
+  }).data;
 }
