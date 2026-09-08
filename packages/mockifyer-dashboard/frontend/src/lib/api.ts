@@ -389,6 +389,24 @@ export async function importScenarioBundle(payload: {
   return response.json()
 }
 
+export async function clearScenarioMocks(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  mocksRemoved: number
+  message: string
+}> {
+  const response = await fetch(`${API_BASE}/scenario-config/clear-mocks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to clear scenario mocks')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
 export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean

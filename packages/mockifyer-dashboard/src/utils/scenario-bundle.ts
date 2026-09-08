@@ -1,13 +1,33 @@
 import fs from 'fs';
 import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
-import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import {
+  DOMAIN_PATH_RULES_FILENAME,
+  getScenarioFolderPath,
+  SCENARIO_META_FILENAME,
+} from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
+
+/** Scenario-folder JSON that is not recorded request/response traffic. */
+const PRESERVED_SCENARIO_JSON = new Set([
+  DATE_CONFIG_BASENAME,
+  SCENARIO_META_FILENAME,
+  DOMAIN_PATH_RULES_FILENAME,
+]);
+
+function isRecordedMockJson(raw: string): boolean {
+  try {
+    const data = JSON.parse(raw) as { request?: unknown; response?: unknown };
+    return Boolean(data && typeof data === 'object' && data.request && data.response);
+  } catch {
+    return false;
+  }
+}
 
 /** JSON bundle written by GET /api/scenario-config/export and consumed by POST /api/scenario-config/import */
 export const SCENARIO_BUNDLE_FORMAT_VERSION = 1 as const;
@@ -266,24 +286,80 @@ export function assertValidImportBundle(body: unknown): ScenarioExportBundle {
   };
 }
 
-function clearFilesystemScenarioMocks(scenarioPath: string): void {
-  if (!fs.existsSync(scenarioPath)) return;
+function clearFilesystemScenarioMocks(scenarioPath: string): number {
+  if (!fs.existsSync(scenarioPath)) return 0;
+  let removed = 0;
   for (const filePath of getAllJsonFiles(scenarioPath)) {
-    const rel = path.relative(scenarioPath, filePath);
-    if (rel === DATE_CONFIG_BASENAME) continue;
+    const rel = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+    const base = path.basename(filePath);
+    if (PRESERVED_SCENARIO_JSON.has(base) || PRESERVED_SCENARIO_JSON.has(rel)) {
+      continue;
+    }
+    let raw: string;
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (!isRecordedMockJson(raw)) {
+      continue;
+    }
     try {
       fs.unlinkSync(filePath);
+      removed += 1;
     } catch {
       // best-effort
     }
   }
+  return removed;
 }
 
-async function clearRedisScenarioMocks(store: RedisMockStore, scenario: string): Promise<void> {
+async function clearRedisScenarioMocks(store: RedisMockStore, scenario: string): Promise<number> {
   const items = await store.list(scenario);
   for (const { hash } of items) {
     await store.deleteByHash(hash, scenario);
   }
+  await store.ensureScenarioRegistered(scenario);
+  return items.length;
+}
+
+export interface ClearScenarioMocksOptions {
+  mockDataPath: string;
+  scenario: string;
+  provider: 'filesystem' | 'sqlite' | 'redis';
+  redisUrl?: string;
+  keyPrefix?: string;
+  redisCluster?: boolean;
+}
+
+/**
+ * Deletes recorded mocks for a scenario. The scenario itself stays (empty folder /
+ * Redis index). Date config, lock metadata, domain-path rules, and proxy settings
+ * are left in place.
+ */
+export async function clearScenarioMocks(
+  opts: ClearScenarioMocksOptions
+): Promise<{ mocksRemoved: number }> {
+  const { mockDataPath, scenario, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const mocksRemoved = await clearRedisScenarioMocks(store, scenario);
+      return { mocksRemoved };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
+  return { mocksRemoved: clearFilesystemScenarioMocks(scenarioFolder) };
 }
 
 function writeDateConfigFilesystem(scenarioFolder: string, dateManipulation: Record<string, unknown> | null): void {
