@@ -314,13 +314,31 @@ function clearFilesystemScenarioMocks(scenarioPath: string): number {
   return removed;
 }
 
-async function clearRedisScenarioMocks(store: RedisMockStore, scenario: string): Promise<number> {
+async function clearRedisScenarioMocks(
+  store: RedisMockStore,
+  scenario: string,
+  mockDataPath: string
+): Promise<number> {
   const items = await store.list(scenario);
   for (const { hash } of items) {
     await store.deleteByHash(hash, scenario);
   }
   await store.ensureScenarioRegistered(scenario);
-  return items.length;
+  let removed = items.length;
+
+  const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+  const redisFolder = path.join(scenarioPath, 'redis');
+  if (fs.existsSync(redisFolder)) {
+    for (const filePath of getAllJsonFiles(redisFolder)) {
+      try {
+        fs.unlinkSync(filePath);
+        removed += 1;
+      } catch {
+        // best-effort
+      }
+    }
+  }
+  return removed;
 }
 
 export interface ClearScenarioMocksOptions {
@@ -351,7 +369,7 @@ export async function clearScenarioMocks(
       mockDataPath
     );
     try {
-      const mocksRemoved = await clearRedisScenarioMocks(store, scenario);
+      const mocksRemoved = await clearRedisScenarioMocks(store, scenario, mockDataPath);
       return { mocksRemoved };
     } finally {
       await store.close().catch(() => undefined);
@@ -490,7 +508,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     );
     try {
       if (replaceExistingMocks) {
-        await clearRedisScenarioMocks(store, targetScenario);
+        await clearRedisScenarioMocks(store, targetScenario, mockDataPath);
       }
       for (const { relativePath, data } of bundle.mocks) {
         const copy = { ...data, scenario: targetScenario } as MockData;
