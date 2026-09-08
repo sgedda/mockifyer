@@ -139,7 +139,7 @@ export class SqliteMockKvBackend implements MockKvBackend {
     run();
   }
 
-  async mget(...keys: string[]): Promise<Array<string | null>> {
+  async mget(keys: string[]): Promise<Array<string | null>> {
     this.purgeExpired();
     if (keys.length === 0) return [];
     const stmt = this.db.prepare(`SELECT value FROM kv WHERE key = ?`);
