@@ -152,7 +152,10 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
-    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, {
+      includePassthroughMocks,
+      filename: `sqlite_${row.id}.json`,
+    })) {
       return undefined;
     }
 

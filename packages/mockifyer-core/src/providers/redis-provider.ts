@@ -197,12 +197,13 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+    const filename = `redis_${h.slice(0, 16)}.json`;
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks, filename })) {
       return undefined;
     }
     return {
       mockData,
-      filename: `redis_${h.slice(0, 16)}.json`,
+      filename,
       filePath: `redis://${dataKey}`,
     };
   }

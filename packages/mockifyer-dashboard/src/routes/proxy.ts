@@ -3,7 +3,11 @@ import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/das
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { supportsDashboardProxy } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
-import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
+import {
+  findMockOnDiskByRequestHash,
+  mirrorRecordedMockToDisk,
+  mirroredMockRelativePath,
+} from '../utils/redis-disk-mirror';
 import {
   generateRequestKey,
   getCurrentDate,
@@ -30,6 +34,8 @@ import {
   resolveProxyUpstreamTlsInsecureForRequest,
   createServeTimePoolResponseLoader,
   isMockifyerDashboardPlumbingApiUrl,
+  ensureOverrideGroupRuntimeForScenarioPath,
+  getScenarioFolderPath,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -322,11 +328,16 @@ router.post('/', async (req: Request, res: Response) => {
 
     let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
     let mockSource: 'redis' | 'disk' = 'redis';
+    let mockFilename = mirroredMockRelativePath(hash);
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath);
 
     if (!mock && redisDisk.readFallback) {
-      const diskMock: any = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
-      if (diskMock) {
-        mock = diskMock;
+      const diskHit = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
+      if (diskHit) {
+        mock = diskHit.mockData;
+        mockFilename = diskHit.filename;
         mockSource = 'disk';
       }
     }
@@ -357,6 +368,7 @@ router.post('/', async (req: Request, res: Response) => {
             nodeFs: fs,
             joinPath: path.join.bind(path),
           }),
+          filename: mockFilename,
         }),
       };
       if (debugProxy) {
@@ -512,7 +524,9 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const clientResponse = mock
-      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
+      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
+          filename: mockFilename,
+        })
       : response;
 
     let storedMockForClient: MockData | null = null;

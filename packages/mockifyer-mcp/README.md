@@ -64,6 +64,10 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_get_mock_ai_context` | **Lightweight** mock projection for AI (fields, schema, state hints) |
 | `mockifyer_set_field_overrides` | Replay-time path/value overlays (no full body) |
 | `mockifyer_get_field_overrides` | Read field overrides for a mock |
+| `mockifyer_list_override_groups` | List scenario override groups + active id |
+| `mockifyer_set_active_override_group` | Activate or clear an override group |
+| `mockifyer_put_override_group` | Create/replace an override group |
+| `mockifyer_upsert_override_group_entry` | Set/clear field overlays for one mock in a group |
 | `mockifyer_copy_array_item` | Clone array item + optional overrides (persisted) |
 | `mockifyer_list_mocks` | List recordings in a scenario |
 | `mockifyer_search_mocks` | Search by filename / endpoint / method |

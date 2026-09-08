@@ -9,6 +9,7 @@ import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkR
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
+import { ensureOverrideGroupRuntimeForScenarioPath } from '../utils/override-group-fs';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -53,7 +54,9 @@ export class FilesystemProvider implements DatabaseProvider {
    */
   private getScenarioPath(): string {
     const currentScenario = getCurrentScenario(this.mockDataPath);
-    return getScenarioFolderPath(this.mockDataPath, currentScenario);
+    const scenarioPath = getScenarioFolderPath(this.mockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath);
+    return scenarioPath;
   }
 
   save(mockData: MockData, options?: SaveMockOptions): void {
@@ -143,8 +146,14 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
-            return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
+          const filename = path.relative(scenarioPath, filePath);
+          if (
+            mockShouldBeIncludedInRequestMatch(mockData, {
+              includePassthroughMocks,
+              filename,
+            })
+          ) {
+            return { mockData, filename, filePath };
           }
           continue;
         }

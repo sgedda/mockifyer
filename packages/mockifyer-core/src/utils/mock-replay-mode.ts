@@ -6,6 +6,10 @@ import {
   applyResponseFieldOverridesToData,
   mockHasResponseFieldOverrides,
 } from './mock-response-field-overrides';
+import {
+  activeOverrideGroupHasEntry,
+  applyActiveOverrideGroupOverlays,
+} from './override-group-runtime';
 import { resolveRefreshPassthroughRecordings } from './record-passthrough-config';
 
 /** How a matched mock is served on the next outbound request. */
@@ -51,17 +55,24 @@ export function mockHasResponseDateOverrides(mockData: MockData): boolean {
  * Whether a mock should participate in request matching (exact / similar).
  *
  * Passthrough mocks are normally skipped so traffic hits upstream anonymously; they are included when
- * passthrough mocks carry overrides (live response patching) or when callers set `includePassthroughMocks`.
+ * passthrough mocks carry overrides (live response patching), the active override group has an entry
+ * for `filename`, or when callers set `includePassthroughMocks`.
  */
 export function mockShouldBeIncludedInRequestMatch(
   mockData: MockData,
-  options?: { includePassthroughMocks?: boolean }
+  options?: { includePassthroughMocks?: boolean; filename?: string }
 ): boolean {
   if (options?.includePassthroughMocks === true) {
     return true;
   }
   if (mockPassesThroughToRealApi(mockData)) {
-    return mockHasResponseDateOverrides(mockData) || mockHasResponseFieldOverrides(mockData);
+    return (
+      mockHasResponseDateOverrides(mockData) ||
+      mockHasResponseFieldOverrides(mockData) ||
+      (typeof options?.filename === 'string' &&
+        options.filename.trim().length > 0 &&
+        activeOverrideGroupHasEntry(options.filename))
+    );
   }
   return true;
 }
@@ -101,15 +112,25 @@ export function applyLiveFetchMockUpdates(
   }
 }
 
-/** Clones upstream response and applies configured date overrides for the client. */
+/**
+ * Clones upstream response and applies mock-level + active override-group overlays for the client.
+ * Pass `filename` so group overlays apply (including when the mock itself has none).
+ */
 export function buildClientResponseFromLiveCapture(
   mockData: MockData,
   capturedResponse: MockData['response'],
-  getNow: () => Date
+  getNow: () => Date,
+  options?: { filename?: string }
 ): MockData['response'] {
+  const filename = options?.filename;
   const hasDate = mockHasResponseDateOverrides(mockData);
   const hasField = mockHasResponseFieldOverrides(mockData);
-  if (!hasDate && !hasField) {
+  const hasGroup =
+    typeof filename === 'string' &&
+    filename.trim().length > 0 &&
+    activeOverrideGroupHasEntry(filename);
+
+  if (!hasDate && !hasField && !hasGroup) {
     return capturedResponse;
   }
 
@@ -120,6 +141,7 @@ export function buildClientResponseFromLiveCapture(
   if (hasDate) {
     data = applyResponseDateOverridesToData(data, mockData.responseDateOverrides ?? [], getNow);
   }
+  data = applyActiveOverrideGroupOverlays(data, filename, getNow);
 
   return {
     ...capturedResponse,
