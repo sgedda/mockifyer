@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   deleteOverrideGroup,
@@ -95,13 +95,19 @@ export default function OverridesView({
   const [laneGroup, setLaneGroup] = useState<string | null>(null)
   const [selectionSource, setSelectionSource] = useState<string>('none')
   const [laneClientId, setLaneClientId] = useState('')
+  const laneClientIdRef = useRef(laneClientId)
+  laneClientIdRef.current = laneClientId
   const [editTarget, setEditTarget] = useState<string>(EDIT_MOCK_LEVEL)
   const [editGroup, setEditGroup] = useState<OverrideGroup | null>(null)
   const [newGroupLabel, setNewGroupLabel] = useState('')
   const [addMockFilename, setAddMockFilename] = useState('')
 
+  /**
+   * Reads `laneClientId` via ref so Reload/Refresh/post-activate always send the typed
+   * client without putting it in the callback deps (which would refetch on every keystroke).
+   */
   const loadGroups = useCallback(async () => {
-    const res = await listOverrideGroups(scenario, laneClientId.trim() || undefined)
+    const res = await listOverrideGroups(scenario, laneClientIdRef.current.trim() || undefined)
     setGroups(res.groups)
     setCurrentGroup(res.currentGroup)
     setDefaultGroup(res.defaultGroup ?? null)
