@@ -23,6 +23,7 @@ import {
   applyRecordingPassthroughFlag,
   applyActiveAtlasPackToData,
   isAtlasPackReplayActive,
+  writeAtlasPackToDisk,
   buildRequestOnlyMockData,
   applyCapturedResponse,
   resolveRecordResponsesForRequest,
@@ -519,14 +520,24 @@ router.post('/', async (req: Request, res: Response) => {
         })
       : response;
 
+    let atlasPackAppliedByProxy = false;
     if (!mock && isAtlasPackReplayActive()) {
+      const packResult = applyActiveAtlasPackToData(clientResponse.data, {
+        requestBody: normalizedRequestBody,
+        getNow,
+      });
       clientResponse = {
         ...clientResponse,
-        data: applyActiveAtlasPackToData(clientResponse.data, {
-          requestBody: normalizedRequestBody,
-          getNow,
-        }).data,
+        data: packResult.data,
       };
+      atlasPackAppliedByProxy = true;
+      if (packResult.pack) {
+        try {
+          writeAtlasPackToDisk(mockDataPath, packResult.pack);
+        } catch (err: unknown) {
+          console.error('[ProxyRoute] Failed to persist refreshed pack:', err);
+        }
+      }
     }
 
     let storedMockForClient: MockData | null = null;
@@ -619,6 +630,7 @@ router.post('/', async (req: Request, res: Response) => {
       scenarioResolution: resolution,
       response: clientResponse,
       recordedToStore: storedMockForClient != null,
+      atlasPackAppliedByProxy,
       ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
       ...(storedMockForClient ? { storedMock: storedMockForClient } : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),

@@ -82,6 +82,7 @@ import {
   applyRecordingPassthroughFlag,
   applyActiveAtlasPackToData,
   isAtlasPackReplayActive,
+  writeAtlasPackToDisk,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
@@ -1020,7 +1021,8 @@ class MockifyerClass {
     if (typeof headers.get === 'function') {
       return (
         headers.get('x-mockifyer') === 'true' ||
-        headers.get('x-mockifyer-limit-reached') === 'true'
+        headers.get('x-mockifyer-limit-reached') === 'true' ||
+        headers.get('x-mockifyer-atlas-applied') === 'true'
       );
     }
     const plain = headers as Record<string, unknown>;
@@ -1030,7 +1032,11 @@ class MockifyerClass {
       return true;
     }
     const limitKey = keys.find((key) => key.toLowerCase() === 'x-mockifyer-limit-reached');
-    return Boolean(limitKey && plain[limitKey] === 'true');
+    if (limitKey && plain[limitKey] === 'true') {
+      return true;
+    }
+    const atlasKey = keys.find((key) => key.toLowerCase() === 'x-mockifyer-atlas-applied');
+    return Boolean(atlasKey && plain[atlasKey] === 'true');
   }
 
   private setupDashboardProxyResponseInterceptor(): void {
@@ -1608,11 +1614,20 @@ class MockifyerClass {
           this.readRequestCorrelation(response.config)
         );
         response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+        (response.config as any).__mockifyer_rawResponseData = stripMockifyerTraceFromBody(response.data);
         if (isAtlasPackReplayActive()) {
-          response.data = applyActiveAtlasPackToData(response.data, {
+          const packResult = applyActiveAtlasPackToData(response.data, {
             requestBody: response.config?.data,
             getNow: getCurrentDate,
-          }).data;
+          });
+          response.data = packResult.data;
+          if (packResult.pack && this.config.mockDataPath && fs) {
+            try {
+              writeAtlasPackToDisk(this.config.mockDataPath, packResult.pack);
+            } catch (err: unknown) {
+              logger.warn('[Mockifyer-Axios] Failed to persist refreshed pack:', err);
+            }
+          }
         }
 
         this.saveResponse(response as HTTPResponse);
@@ -2038,7 +2053,7 @@ class MockifyerClass {
 
       const storedResponse: StoredResponse = {
         status: response.status,
-        data: stripMockifyerTraceFromBody(response.data),
+        data: (response.config as any).__mockifyer_rawResponseData ?? stripMockifyerTraceFromBody(response.data),
         headers: response.headers as Record<string, string>
       };
 

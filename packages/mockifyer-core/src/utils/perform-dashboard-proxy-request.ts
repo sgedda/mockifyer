@@ -157,6 +157,9 @@ export async function performDashboardProxyRequest(
   if (networkSource === 'mock-hit') {
     responseHeaders['x-mockifyer'] = 'true';
   }
+  if (payload?.atlasPackAppliedByProxy === true) {
+    responseHeaders['x-mockifyer-atlas-applied'] = 'true';
+  }
 
   const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
     payload,

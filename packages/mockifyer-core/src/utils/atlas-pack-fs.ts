@@ -8,6 +8,7 @@ import path from 'path';
 import type { AtlasPack, AtlasPackConfig } from '../types/atlas-pack';
 import {
   ATLAS_PACK_CONFIG_FILENAME,
+  ATLAS_PACK_ID_PATTERN,
   ATLAS_PACKS_DIR_NAME,
   ATLAS_PACKS_SUBDIR,
 } from '../types/atlas-pack';
@@ -90,6 +91,7 @@ export function listAtlasPacksFromDisk(mockDataPath: string): AtlasPack[] {
 /** Read one pack from disk. */
 export function readAtlasPackFromDisk(mockDataPath: string, packId: string): AtlasPack | null {
   const id = packId.trim();
+  if (!ATLAS_PACK_ID_PATTERN.test(id)) return null;
   const filePath = packFilePath(mockDataPath, id);
   if (!fs.existsSync(filePath)) return null;
   try {
@@ -117,7 +119,9 @@ export function writeAtlasPackToDisk(mockDataPath: string, pack: AtlasPack): Atl
 
 /** Delete a pack file. Returns true when removed. */
 export function deleteAtlasPackFromDisk(mockDataPath: string, packId: string): boolean {
-  const filePath = packFilePath(mockDataPath, packId.trim());
+  const id = packId.trim();
+  if (!ATLAS_PACK_ID_PATTERN.test(id)) return false;
+  const filePath = packFilePath(mockDataPath, id);
   if (!fs.existsSync(filePath)) return false;
   fs.unlinkSync(filePath);
   return true;

@@ -55,6 +55,7 @@ import {
   resolveMockRecordingSaveDecision,
   applyActiveAtlasPackToData,
   isAtlasPackReplayActive,
+  writeAtlasPackToDisk,
   applyRecordingPassthroughFlag,
   resolveClientId,
   resolveExplicitClientIdOnly,
@@ -964,11 +965,12 @@ class MockifyerClass {
         
         const isMocked = response.headers && (response.headers as any)['x-mockifyer'] === 'true';
         const isLimitReached = response.headers && (response.headers as any)['x-mockifyer-limit-reached'] === 'true';
-        if (isMocked || isLimitReached) {
+        const atlasApplied = response.headers && (response.headers as any)['x-mockifyer-atlas-applied'] === 'true';
+        if (isMocked || isLimitReached || atlasApplied) {
           // Local mock hits are logged in the request interceptor; proxy mock hits must
           // be recorded here before early return (otherwise flight recorder stays empty).
           const shouldLogMockOrLimit =
-            isLimitReached || (isMocked && this.usesDashboardProxy());
+            isLimitReached || atlasApplied || (isMocked && this.usesDashboardProxy());
           if (shouldLogMockOrLimit) {
             const reqUrl = response.config?.url || url;
             const reqMethod = (response.config?.method || 'GET').toUpperCase();
@@ -1068,12 +1070,21 @@ class MockifyerClass {
           this.readRequestCorrelation(response.config)
         );
         response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+        (response.config as any).__mockifyer_rawResponseData = stripMockifyerTraceFromBody(response.data);
 
         if (isAtlasPackReplayActive()) {
-          response.data = applyActiveAtlasPackToData(response.data, {
+          const packResult = applyActiveAtlasPackToData(response.data, {
             requestBody: response.config?.data,
             getNow: getCurrentDate,
-          }).data;
+          });
+          response.data = packResult.data;
+          if (packResult.pack && this.config.mockDataPath && fs) {
+            try {
+              writeAtlasPackToDisk(this.config.mockDataPath, packResult.pack);
+            } catch (err: unknown) {
+              logger.warn('[Mockifyer-Fetch] Failed to persist refreshed pack:', err);
+            }
+          }
         }
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
@@ -1320,7 +1331,7 @@ class MockifyerClass {
         },
         response: {
           status: response.status,
-          data: stripMockifyerTraceFromBody(response.data),
+          data: (response.config as any).__mockifyer_rawResponseData ?? stripMockifyerTraceFromBody(response.data),
           headers: response.headers || {},
         },
         timestamp: new Date().toISOString(),
