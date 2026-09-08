@@ -41,13 +41,14 @@ export class MemoryProvider implements DatabaseProvider {
       return undefined;
     }
 
-    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+    const filename = `memory_${requestKey.substring(0, 50)}.json`;
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks, filename })) {
       return undefined;
     }
 
     return {
       mockData,
-      filename: `memory_${requestKey.substring(0, 50)}.json`,
+      filename,
       filePath: 'memory://' // Virtual path for compatibility
     };
   }

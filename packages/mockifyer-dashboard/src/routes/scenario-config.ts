@@ -8,6 +8,8 @@ import {
   isScratchScenario,
   getScratchScenarioTtlSec,
   scratchScenarioDisplayName,
+  getScenarioFolderPath,
+  hydrateOverrideGroupRuntimeFromScenarioPath,
 } from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
@@ -173,6 +175,12 @@ router.post('/set', async (req: Request, res: Response) => {
       saveScenarioConfig(mockDataPath, sanitized);
     }
     
+    try {
+      hydrateOverrideGroupRuntimeFromScenarioPath(getScenarioFolderPath(mockDataPath, sanitized));
+    } catch {
+      // Override groups are optional at scenario switch.
+    }
+
     console.log(`[ScenarioConfigRoute] Set scenario to: ${sanitized}`);
     res.json({
       success: true,

@@ -64,6 +64,7 @@ import {
   logger,
   setLogLevel,
   stripMockifyerTraceFromBody,
+  ensureOverrideGroupRuntimeForScenarioPath,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -133,13 +134,14 @@ class MockifyerClass {
   }
 
   /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
-  private prepareStoredResponseBody(mockData: MockData): unknown {
+  private prepareStoredResponseBody(mockData: MockData, filename?: string): unknown {
     return prepareMockResponseBody(mockData, getCurrentDate, {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: fs,
         joinPath: path.join.bind(path),
       }),
+      filename,
     });
   }
 
@@ -503,6 +505,7 @@ class MockifyerClass {
 
     const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
     const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath);
     
     if (!fs.existsSync(scenarioPath)) {
       logger.debug(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
@@ -599,7 +602,12 @@ class MockifyerClass {
         
         // Check for exact match (skip passthrough files unless checking for duplicate save)
         if (mockKey === requestKey) {
-          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+          if (
+            mockShouldBeIncludedInRequestMatch(mockData, {
+              includePassthroughMocks,
+              filename: file,
+            })
+          ) {
             exactMatch = {
               mockData,
               filename: file,
@@ -883,7 +891,7 @@ class MockifyerClass {
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
         } else {
-        const mockResponseBody = this.prepareStoredResponseBody(mockData);
+        const mockResponseBody = this.prepareStoredResponseBody(mockData, filename);
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
@@ -1234,7 +1242,7 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: this.prepareStoredResponseBody(mockData),
+            data: this.prepareStoredResponseBody(mockData, filename),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -1799,7 +1807,8 @@ class MockifyerClass {
     const clientResponse = buildClientResponseFromLiveCapture(
       matchedMock.mockData,
       capturedResponse,
-      getCurrentDate
+      getCurrentDate,
+      { filename: matchedMock.filename }
     );
     response.data = clientResponse.data;
     response.status = clientResponse.status;

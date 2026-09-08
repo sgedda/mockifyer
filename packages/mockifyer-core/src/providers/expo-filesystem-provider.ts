@@ -706,7 +706,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const mockKey = generateRequestKey(mockData.request);
         if (
           mockKey === requestKey &&
-          mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })
+          mockShouldBeIncludedInRequestMatch(mockData, {
+            includePassthroughMocks,
+            filename: file,
+          })
         ) {
           // Get file modification time
           let fileMtime = Date.now();

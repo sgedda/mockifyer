@@ -208,6 +208,131 @@ export async function setMockFieldOverrides(
   return response.json()
 }
 
+export interface OverrideGroupSummary {
+  id: string
+  label: string
+  updatedAt: string
+  entryCount: number
+}
+
+export interface OverrideGroupEntry {
+  filename: string
+  responseFieldOverrides?: MockResponseFieldOverride[]
+  responseDateOverrides?: MockResponseDateOverride[]
+}
+
+export interface OverrideGroup {
+  id: string
+  label: string
+  updatedAt: string
+  entries: OverrideGroupEntry[]
+}
+
+export async function listOverrideGroups(scenario?: string): Promise<{
+  scenario: string
+  currentGroup: string | null
+  updatedAt: string | null
+  groups: OverrideGroupSummary[]
+}> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/override-groups${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to list override groups'))
+  }
+  return response.json()
+}
+
+export async function getOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load override group'))
+  }
+  return response.json()
+}
+
+export async function putOverrideGroup(
+  group: OverrideGroup,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(group.id)}${q}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(group),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to save override group'))
+  }
+  return response.json()
+}
+
+export async function setActiveOverrideGroup(
+  currentGroup: string | null,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; currentGroup: string | null }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/override-groups/config${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentGroup, scenario }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set active override group'))
+  }
+  return response.json()
+}
+
+export async function patchOverrideGroupEntry(
+  groupId: string,
+  payload: {
+    filename: string
+    responseFieldOverrides?: MockResponseFieldOverride[] | null
+    responseDateOverrides?: MockResponseDateOverride[] | null
+    clear?: boolean
+    ensure?: boolean
+  },
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(groupId)}/entries${q}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to update override group entry'))
+  }
+  return response.json()
+}
+
+export async function deleteOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; deleted: string }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    { method: 'DELETE' }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to delete override group'))
+  }
+  return response.json()
+}
+
 export async function refreshMockFromLive(
   filename: string,
   scenario?: string,

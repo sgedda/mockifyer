@@ -425,6 +425,71 @@ export class DashboardApiClient {
     });
   }
 
+  async listOverrideGroups(scenario?: string): Promise<{
+    scenario: string;
+    currentGroup: string | null;
+    groups: Array<{ id: string; label: string; updatedAt: string; entryCount: number }>;
+  }> {
+    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
+    return this.request(`/override-groups${qs}`);
+  }
+
+  async getOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+  }): Promise<{ scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`);
+  }
+
+  async putOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+    label: string;
+    entries?: unknown[];
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        id: params.id,
+        label: params.label,
+        entries: params.entries ?? [],
+      }),
+    });
+  }
+
+  async setActiveOverrideGroup(params: {
+    currentGroup: string | null;
+    scenario?: string;
+  }): Promise<{ success: boolean; scenario: string; currentGroup: string | null }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/config${qs}`, {
+      method: 'PUT',
+      body: JSON.stringify({ currentGroup: params.currentGroup, scenario: params.scenario }),
+    });
+  }
+
+  async patchOverrideGroupEntry(params: {
+    groupId: string;
+    scenario?: string;
+    filename: string;
+    responseFieldOverrides?: MockFieldOverride[] | null;
+    clear?: boolean;
+    ensure?: boolean;
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.groupId)}/entries${qs}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        filename: params.filename,
+        responseFieldOverrides: params.responseFieldOverrides,
+        clear: params.clear === true,
+        ensure: params.ensure === true,
+      }),
+    });
+  }
+
   async copyArrayItem(params: {
     filename: string;
     scenario?: string;
