@@ -56,7 +56,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number }
+  opts?: { similarGroups?: boolean; similarThreshold?: number; signal?: AbortSignal }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -72,7 +72,7 @@ export async function getMocks(
     }
   }
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks${suffix}`, noStore)
+  const response = await fetch(`${API_BASE}/mocks${suffix}`, { ...noStore, signal: opts?.signal })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }

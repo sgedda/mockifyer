@@ -83,7 +83,11 @@ export class RedisMockKvBackend implements MockKvBackend {
 
   async srem(key: string, ...members: string[]): Promise<void> {
     if (members.length === 0) return;
-    await this.holder.run((redis) => redis.srem(key, ...members));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(members)) {
+        await redis.srem(key, ...chunk);
+      }
+    });
   }
 
   async scard(key: string): Promise<number> {

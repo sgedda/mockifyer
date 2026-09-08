@@ -67,6 +67,21 @@ async function saddChunked(kv: MockKvBackend, key: string, members: string[]): P
   }
 }
 
+/** Drop index members whose mock values are gone (expired TTL, partial clear). */
+async function pruneMissingIndexHashes(
+  kv: MockKvBackend,
+  indexKey: string,
+  hashes: string[]
+): Promise<void> {
+  try {
+    for (const chunk of chunkArray(hashes)) {
+      await kv.srem(indexKey, ...chunk);
+    }
+  } catch {
+    // best-effort; next list() will retry
+  }
+}
+
 export class RedisMockStore {
   private readonly kv: MockKvBackend;
   private readonly mockDataPath: string;
@@ -247,19 +262,26 @@ export class RedisMockStore {
    * Load every mock in a scenario index.
    * Fetches values via {@link MockKvBackend.mget} with an array (never `mget(...keys)`),
    * so large Redis indexes do not throw `RangeError: Maximum call stack size exceeded`.
+   * Missing values (expired/deleted bodies) are dropped from the index in the background
+   * so a "cleared" scenario does not keep MGET-ing ghost hashes on every list.
    */
   async list(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
     const indexKey = await this.indexKey(scenario, clientId);
     const hashes: string[] = await this.kv.smembers(indexKey);
     if (hashes.length === 0) return [];
 
-    const keys = await Promise.all(hashes.map((h) => this.dataKey(h, scenario, clientId)));
+    const scenarioName = (scenario?.trim() || (await this.scenarioKey(undefined, clientId))).trim();
+    const keys = hashes.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
     const values: Array<string | null> = await this.kv.mget(keys);
 
     const out: RedisMockListItem[] = [];
+    const missingHashes: string[] = [];
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
-      if (!raw) continue;
+      if (!raw) {
+        missingHashes.push(hashes[i]);
+        continue;
+      }
       try {
         const mockData = JSON.parse(raw) as MockData;
         out.push({ hash: hashes[i], mockData, redisKey: keys[i] });
@@ -267,7 +289,31 @@ export class RedisMockStore {
         continue;
       }
     }
+    if (missingHashes.length > 0) {
+      void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
+    }
     return out;
+  }
+
+  /**
+   * Delete every mock in a scenario, including index members whose values are already gone.
+   * Drops the scenario index set and per-path cardinality sets so a later list() is not
+   * an MGET of ghost hashes. Date/proxy/lock keys are left in place.
+   */
+  async clearAllMocksInScenario(scenario: string): Promise<number> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) return 0;
+
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const hashes: string[] = await this.kv.smembers(indexKey);
+    const mockKeys = hashes.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+    const pathIndexKeys = await this.kv.scanKeys(`${this.keyPrefix}:path_index:${scenarioName}:*`);
+    const toDelete = [...mockKeys, indexKey, ...pathIndexKeys];
+    for (const chunk of chunkArray(toDelete)) {
+      await this.kv.del(...chunk);
+    }
+    await this.ensureScenarioRegistered(scenarioName);
+    return hashes.length;
   }
 
   async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {

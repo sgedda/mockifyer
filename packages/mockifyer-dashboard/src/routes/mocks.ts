@@ -253,6 +253,12 @@ async function loadRelatedMocksForEndpoint(params: {
  */
 function maybeAttachSimilarBodyGroups(files: any[], req: Request): { similarBodyGroups?: unknown[] } {
   if (!parseSimilarGroupsQuery(req.query.similarGroups)) return {};
+  let graphqlCount = 0;
+  for (const f of files) {
+    if (f?.graphqlInfo?.query) graphqlCount += 1;
+    if (graphqlCount >= 2) break;
+  }
+  if (graphqlCount < 2) return { similarBodyGroups: [] };
   const threshold = parseSimilarThresholdQuery(req.query.similarThreshold);
   const entries: MockListEntryForSimilarity[] = files.map((f) => ({
     filename: String(f.filename),
