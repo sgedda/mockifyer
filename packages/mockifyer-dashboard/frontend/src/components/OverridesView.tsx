@@ -108,7 +108,7 @@ export default function OverridesView({
     setLaneGroup(res.laneGroup ?? null)
     setSelectionSource(res.source ?? 'none')
     return res
-  }, [scenario, laneClientId])
+  }, [scenario])
 
   useEffect(() => {
     void loadGroups().catch((error) => {

@@ -228,7 +228,7 @@ router.put('/config', async (req: Request, res: Response) => {
       const redisLane = await resolveLaneOverrideGroup(req, mockDataPath, clientId);
       const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
         clientId,
-        laneGroupId: redisLane,
+        ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
       });
       return res.json({
         success: true,
