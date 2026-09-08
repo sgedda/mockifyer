@@ -425,13 +425,23 @@ export class DashboardApiClient {
     });
   }
 
-  async listOverrideGroups(scenario?: string): Promise<{
+  async listOverrideGroups(params?: {
+    scenario?: string;
+    clientId?: string;
+  }): Promise<{
     scenario: string;
+    clientId?: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
     currentGroup: string | null;
+    source?: string;
     groups: Array<{ id: string; label: string; updatedAt: string; entryCount: number }>;
   }> {
-    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
-    return this.request(`/override-groups${qs}`);
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups${q}`);
   }
 
   async getOverrideGroup(params: {
@@ -462,11 +472,29 @@ export class DashboardApiClient {
   async setActiveOverrideGroup(params: {
     currentGroup: string | null;
     scenario?: string;
-  }): Promise<{ success: boolean; scenario: string; currentGroup: string | null }> {
-    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
-    return this.request(`/override-groups/config${qs}`, {
+    clientId?: string;
+    scope?: 'lane' | 'default';
+  }): Promise<{
+    success: boolean;
+    scenario: string;
+    clientId?: string | null;
+    currentGroup: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
+    source?: string;
+  }> {
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups/config${q}`, {
       method: 'PUT',
-      body: JSON.stringify({ currentGroup: params.currentGroup, scenario: params.scenario }),
+      body: JSON.stringify({
+        currentGroup: params.currentGroup,
+        scenario: params.scenario,
+        clientId: params.clientId,
+        scope: params.scope ?? (params.clientId ? 'lane' : 'default'),
+      }),
     });
   }
 

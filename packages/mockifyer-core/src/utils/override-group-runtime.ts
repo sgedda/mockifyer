@@ -146,33 +146,54 @@ export function setActiveOverrideGroup(groupId: string | null, scenarioPath: str
   state.activeGroup = group;
 }
 
-/** Overlays from the active group for a mock filename (empty when none). */
-export function getActiveOverrideGroupOverlays(filename: string, scenarioPath?: string): ActiveGroupOverlays {
-  const group = getActiveOverrideGroup(scenarioPath);
+function resolveGroupForOverlays(
+  scenarioPath: string | undefined,
+  groupId: string | null | undefined
+): MockOverrideGroup | null {
+  if (groupId != null && String(groupId).trim() && scenarioPath) {
+    const state = runtimeByScenario.get(scenarioPath);
+    return state?.groups.get(String(groupId).trim()) ?? null;
+  }
+  return getActiveOverrideGroup(scenarioPath);
+}
+
+/** Overlays for a mock filename from an explicit or active group. */
+export function getActiveOverrideGroupOverlays(
+  filename: string,
+  scenarioPath?: string,
+  groupId?: string | null
+): ActiveGroupOverlays {
+  const group = resolveGroupForOverlays(scenarioPath, groupId);
   if (!group || !filename?.trim()) {
     return { responseFieldOverrides: [], responseDateOverrides: [] };
   }
   return overlaysFromGroupEntry(findOverrideGroupEntry(group, filename));
 }
 
-export function activeOverrideGroupHasEntry(filename: string, scenarioPath?: string): boolean {
-  const overlays = getActiveOverrideGroupOverlays(filename, scenarioPath);
+export function activeOverrideGroupHasEntry(
+  filename: string,
+  scenarioPath?: string,
+  groupId?: string | null
+): boolean {
+  const overlays = getActiveOverrideGroupOverlays(filename, scenarioPath, groupId);
   return (
     overlays.responseFieldOverrides.length > 0 || overlays.responseDateOverrides.length > 0
   );
 }
 
 /**
- * Apply active override-group field/date overlays for `filename` (no-op when none).
+ * Apply override-group field/date overlays for `filename` (no-op when none).
+ * Prefer passing `groupId` for concurrent multi-lane serves on the same scenario.
  */
 export function applyActiveOverrideGroupOverlays(
   data: unknown,
   filename: string | undefined,
   getNow: () => Date,
-  scenarioPath?: string
+  scenarioPath?: string,
+  groupId?: string | null
 ): unknown {
   if (!filename?.trim()) return data;
-  const overlays = getActiveOverrideGroupOverlays(filename, scenarioPath);
+  const overlays = getActiveOverrideGroupOverlays(filename, scenarioPath, groupId);
   let result = data;
   if (overlays.responseFieldOverrides.length > 0) {
     result = applyResponseFieldOverridesToData(result, overlays.responseFieldOverrides);

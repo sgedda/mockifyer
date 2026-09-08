@@ -53,6 +53,7 @@ export * from './types/override-group';
 export * from './utils/override-group';
 export * from './utils/override-group-runtime';
 export * from './utils/override-group-fs';
+export * from './utils/override-group-resolve';
 export * from './utils/network-log';
 export * from './utils/graphql-body-display';
 export * from './utils/network-body-spill';

@@ -26,6 +26,11 @@ export interface PrepareMockResponseOptions {
    * scoped to this scenario (prevents race conditions with concurrent multi-scenario requests).
    */
   scenarioPath?: string;
+  /**
+   * Explicit override group id for this serve (per-lane / header). When omitted, uses the
+   * runtime active group for `scenarioPath`.
+   */
+  overrideGroupId?: string | null;
 }
 
 /**
@@ -62,5 +67,11 @@ export function prepareMockResponseBody(
     data = applyResponseDateOverridesToData(data, dateOverrides, getNow);
   }
 
-  return applyActiveOverrideGroupOverlays(data, options?.filename, getNow, options?.scenarioPath);
+  return applyActiveOverrideGroupOverlays(
+    data,
+    options?.filename,
+    getNow,
+    options?.scenarioPath,
+    options?.overrideGroupId
+  );
 }

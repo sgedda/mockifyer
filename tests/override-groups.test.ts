@@ -11,6 +11,7 @@ import {
   prepareMockResponseBody,
   resetOverrideGroupRuntime,
   setActiveOverrideGroup,
+  writeClientOverrideGroupConfig,
   writeOverrideGroupConfig,
   writeOverrideGroupToDisk,
   type MockData,
@@ -32,6 +33,7 @@ describe('override groups', () => {
 
   beforeEach(() => {
     resetOverrideGroupRuntime();
+    delete process.env.MOCKIFYER_OVERRIDE_GROUP;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-og-'));
     scenarioPath = path.join(dir, 'default');
     fs.mkdirSync(scenarioPath, { recursive: true });
@@ -39,6 +41,7 @@ describe('override groups', () => {
 
   afterEach(() => {
     resetOverrideGroupRuntime();
+    delete process.env.MOCKIFYER_OVERRIDE_GROUP;
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -67,9 +70,75 @@ describe('override groups', () => {
 
     const body = prepareMockResponseBody(mockData, () => new Date('2026-01-01T00:00:00.000Z'), {
       filename: 'bookings.json',
+      scenarioPath,
     }) as { status: string; code: string };
 
     expect(body).toEqual({ status: 'OPEN', code: 'Y' });
+  });
+
+  it('prefers per-lane selection over scenario default', () => {
+    const openGroup: MockOverrideGroup = {
+      id: 'check-in-open',
+      label: 'Open',
+      updatedAt: new Date().toISOString(),
+      entries: [
+        {
+          filename: 'bookings.json',
+          responseFieldOverrides: [{ path: 'status', value: 'OPEN' }],
+        },
+      ],
+    };
+    const awardGroup: MockOverrideGroup = {
+      id: 'award-trip',
+      label: 'Award',
+      updatedAt: new Date().toISOString(),
+      entries: [
+        {
+          filename: 'bookings.json',
+          responseFieldOverrides: [{ path: 'status', value: 'AWARD' }],
+        },
+      ],
+    };
+    writeOverrideGroupToDisk(scenarioPath, openGroup);
+    writeOverrideGroupToDisk(scenarioPath, awardGroup);
+    writeOverrideGroupConfig(scenarioPath, { currentGroup: 'check-in-open' });
+    writeClientOverrideGroupConfig(scenarioPath, 'dev-alice', { currentGroup: 'award-trip' });
+
+    const alice = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+      clientId: 'dev-alice',
+    });
+    expect(alice.source).toBe('lane');
+    expect(alice.currentGroup).toBe('award-trip');
+    expect(alice.defaultGroup).toBe('check-in-open');
+
+    const bob = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+      clientId: 'dev-bob',
+    });
+    expect(bob.source).toBe('default');
+    expect(bob.currentGroup).toBe('check-in-open');
+
+    const mockData: MockData = {
+      request: { method: 'GET', url: 'https://api.example.com/bookings', headers: {} },
+      response: { status: 200, data: { status: 'CLOSED' }, headers: {} },
+      timestamp: new Date().toISOString(),
+    };
+
+    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, { clientId: 'dev-alice' });
+    expect(
+      prepareMockResponseBody(mockData, () => new Date(), {
+        filename: 'bookings.json',
+        scenarioPath,
+        overrideGroupId: 'award-trip',
+      })
+    ).toEqual({ status: 'AWARD' });
+
+    expect(
+      prepareMockResponseBody(mockData, () => new Date(), {
+        filename: 'bookings.json',
+        scenarioPath,
+        overrideGroupId: 'check-in-open',
+      })
+    ).toEqual({ status: 'OPEN' });
   });
 
   it('includes passthrough mocks when only the active group has overlays', () => {
@@ -91,9 +160,12 @@ describe('override groups', () => {
     const passthrough = makePassthroughMock({ eligible: false });
     expect(mockShouldBeIncludedInRequestMatch(passthrough)).toBe(false);
     expect(
-      mockShouldBeIncludedInRequestMatch(passthrough, { filename: 'trip.json' })
+      mockShouldBeIncludedInRequestMatch(passthrough, {
+        filename: 'trip.json',
+        scenarioPath,
+      })
     ).toBe(true);
-    expect(activeOverrideGroupHasEntry('trip.json')).toBe(true);
+    expect(activeOverrideGroupHasEntry('trip.json', scenarioPath)).toBe(true);
   });
 
   it('applies group overlays on live capture when mock has none', () => {
@@ -117,7 +189,7 @@ describe('override groups', () => {
       mockData,
       { status: 200, data: { flag: 0 }, headers: {} },
       () => new Date(),
-      { filename: 'live.json' }
+      { filename: 'live.json', scenarioPath }
     );
     expect(client.data).toEqual({ flag: 1 });
   });
@@ -134,11 +206,11 @@ describe('override groups', () => {
     writeOverrideGroupToDisk(scenarioPath, group);
     writeOverrideGroupConfig(scenarioPath, { currentGroup: 'g1' });
     hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
-    expect(activeOverrideGroupHasEntry('a.json')).toBe(false);
+    expect(activeOverrideGroupHasEntry('a.json', scenarioPath)).toBe(false);
 
-    setActiveOverrideGroup(null);
+    setActiveOverrideGroup(null, scenarioPath);
     expect(
-      applyActiveOverrideGroupOverlays({ x: 1 }, 'a.json', () => new Date())
+      applyActiveOverrideGroupOverlays({ x: 1 }, 'a.json', () => new Date(), scenarioPath)
     ).toEqual({ x: 1 });
   });
 });

@@ -91,17 +91,24 @@ export default function OverridesView({
 
   const [groups, setGroups] = useState<OverrideGroupSummary[]>([])
   const [currentGroup, setCurrentGroup] = useState<string | null>(null)
+  const [defaultGroup, setDefaultGroup] = useState<string | null>(null)
+  const [laneGroup, setLaneGroup] = useState<string | null>(null)
+  const [selectionSource, setSelectionSource] = useState<string>('none')
+  const [laneClientId, setLaneClientId] = useState('')
   const [editTarget, setEditTarget] = useState<string>(EDIT_MOCK_LEVEL)
   const [editGroup, setEditGroup] = useState<OverrideGroup | null>(null)
   const [newGroupLabel, setNewGroupLabel] = useState('')
   const [addMockFilename, setAddMockFilename] = useState('')
 
   const loadGroups = useCallback(async () => {
-    const res = await listOverrideGroups(scenario)
+    const res = await listOverrideGroups(scenario, laneClientId.trim() || undefined)
     setGroups(res.groups)
     setCurrentGroup(res.currentGroup)
+    setDefaultGroup(res.defaultGroup ?? null)
+    setLaneGroup(res.laneGroup ?? null)
+    setSelectionSource(res.source ?? 'none')
     return res
-  }, [scenario])
+  }, [scenario, laneClientId])
 
   useEffect(() => {
     void loadGroups().catch((error) => {
@@ -350,14 +357,37 @@ export default function OverridesView({
     }
   }
 
-  const handleActivate = async (groupId: string | null) => {
+  const handleActivate = async (groupId: string | null, scope: 'lane' | 'default') => {
+    if (scope === 'lane' && !laneClientId.trim()) {
+      toast({
+        title: 'Client lane required',
+        description: 'Enter a clientId (MOCKIFYER_CLIENT_ID) to set a per-lane group.',
+        variant: 'destructive',
+      })
+      return
+    }
     setSaving(true)
     try {
-      const res = await setActiveOverrideGroup(groupId, scenario)
-      setCurrentGroup(res.currentGroup)
-      toast({
-        title: groupId ? `Active group: ${groupId}` : 'No active override group',
+      const res = await setActiveOverrideGroup(groupId, {
+        scenario,
+        clientId: scope === 'lane' ? laneClientId.trim() : undefined,
+        scope,
       })
+      setCurrentGroup(res.currentGroup)
+      setDefaultGroup(res.defaultGroup ?? null)
+      setLaneGroup(res.laneGroup ?? null)
+      setSelectionSource(res.source ?? scope)
+      toast({
+        title:
+          scope === 'lane'
+            ? groupId
+              ? `Lane ${laneClientId.trim()} → ${groupId}`
+              : `Cleared lane group for ${laneClientId.trim()}`
+            : groupId
+              ? `Scenario default → ${groupId}`
+              : 'Cleared scenario default group',
+      })
+      await loadGroups()
     } catch (error) {
       toast({
         title: 'Activate failed',
@@ -421,8 +451,9 @@ export default function OverridesView({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Overrides</h1>
           <p className="text-sm text-muted-foreground">
-            Mock-level overlays always apply. An active override group adds a switchable story
-            layer for scenario <code>{scenario}</code>.
+            Field and date overlays for mocks, plus switchable override groups. Use “Set for
+            lane” with your <code>clientId</code> so teammates sharing the scenario keep their own
+            selection.
           </p>
         </div>
         <Button
@@ -445,15 +476,47 @@ export default function OverridesView({
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Override groups</CardTitle>
           <CardDescription>
-            Active:{' '}
+            Effective:{' '}
             {currentGroup ? (
               <Badge variant="secondary">{currentGroup}</Badge>
+            ) : (
+              <span className="text-muted-foreground">none</span>
+            )}{' '}
+            <span className="text-muted-foreground">({selectionSource})</span>
+            {' · '}
+            default:{' '}
+            {defaultGroup ? (
+              <code className="text-xs">{defaultGroup}</code>
+            ) : (
+              <span className="text-muted-foreground">none</span>
+            )}
+            {' · '}
+            lane:{' '}
+            {laneGroup ? (
+              <code className="text-xs">{laneGroup}</code>
             ) : (
               <span className="text-muted-foreground">none</span>
             )}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <Input
+              placeholder="Client lane id (MOCKIFYER_CLIENT_ID)"
+              value={laneClientId}
+              onChange={(e) => setLaneClientId(e.target.value)}
+              className="max-w-sm"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={saving}
+              onClick={() => void loadGroups()}
+            >
+              Reload for lane
+            </Button>
+          </div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-sm">
               <span className="text-muted-foreground">Edit target</span>
@@ -469,7 +532,7 @@ export default function OverridesView({
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.label} ({g.id}) · {g.entryCount} entries
-                    {g.id === currentGroup ? ' · active' : ''}
+                    {g.id === currentGroup ? ' · effective' : ''}
                   </option>
                 ))}
               </select>
@@ -478,19 +541,47 @@ export default function OverridesView({
               type="button"
               size="sm"
               variant="secondary"
-              disabled={saving || editTarget === EDIT_MOCK_LEVEL}
-              onClick={() => void handleActivate(editTarget === EDIT_MOCK_LEVEL ? null : editTarget)}
+              disabled={saving || editTarget === EDIT_MOCK_LEVEL || !laneClientId.trim()}
+              onClick={() =>
+                void handleActivate(
+                  editTarget === EDIT_MOCK_LEVEL ? null : editTarget,
+                  'lane'
+                )
+              }
             >
-              Set as active
+              Set for lane
             </Button>
             <Button
               type="button"
               size="sm"
               variant="outline"
-              disabled={saving || currentGroup == null}
-              onClick={() => void handleActivate(null)}
+              disabled={saving || !laneClientId.trim()}
+              onClick={() => void handleActivate(null, 'lane')}
             >
-              Clear active
+              Clear lane
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={saving || editTarget === EDIT_MOCK_LEVEL}
+              onClick={() =>
+                void handleActivate(
+                  editTarget === EDIT_MOCK_LEVEL ? null : editTarget,
+                  'default'
+                )
+              }
+            >
+              Set scenario default
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => void handleActivate(null, 'default')}
+            >
+              Clear default
             </Button>
             <Button
               type="button"

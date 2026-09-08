@@ -299,14 +299,20 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_list_override_groups',
     {
       description:
-        'List scenario override groups (switchable story layers) and which group is active.',
+        'List scenario override groups and effective selection (default vs per-client lane). Pass clientId to see that lane’s choice.',
       inputSchema: {
         scenario: z.string().optional(),
+        clientId: z.string().optional().describe('MOCKIFYER_CLIENT_ID / lane id'),
       },
     },
     async (args) => {
       try {
-        return jsonResult(await client.listOverrideGroups(args.scenario));
+        return jsonResult(
+          await client.listOverrideGroups({
+            scenario: args.scenario,
+            clientId: args.clientId,
+          })
+        );
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }
@@ -317,9 +323,14 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_set_active_override_group',
     {
       description:
-        'Set or clear the active override group for a scenario (null clears). Active group overlays apply at serve time after mock-level overrides.',
+        'Set or clear an override group. With clientId, sets per-lane selection (does not change teammates). Without clientId, sets the scenario default only. Prefer lane scope for shared scenarios.',
       inputSchema: {
         scenario: z.string().optional(),
+        clientId: z.string().optional().describe('Lane id — preferred for shared scenarios'),
+        scope: z
+          .enum(['lane', 'default'])
+          .optional()
+          .describe('lane = per clientId; default = scenario-wide fallback'),
         groupId: z
           .string()
           .nullable()
@@ -332,6 +343,8 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           await client.setActiveOverrideGroup({
             currentGroup: args.groupId,
             scenario: args.scenario,
+            clientId: args.clientId,
+            scope: args.scope ?? (args.clientId ? 'lane' : 'default'),
           })
         );
       } catch (error) {

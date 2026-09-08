@@ -2,17 +2,20 @@ import express, { Request, Response } from 'express';
 import {
   OVERRIDE_GROUP_ID_PATTERN,
   deleteOverrideGroupFromDisk,
+  deleteClientOverrideGroupConfig,
   getCurrentScenario,
   getScenarioFolderPath,
   hydrateOverrideGroupRuntimeFromScenarioPath,
   listOverrideGroupsFromDisk,
   listScenarios,
   normalizeMockOverrideGroup,
+  readClientOverrideGroupConfig,
   readOverrideGroupConfig,
   readOverrideGroupFromDisk,
   upsertOverrideGroupEntry,
   ensureOverrideGroupEntry,
   validateMockOverrideGroup,
+  writeClientOverrideGroupConfig,
   writeOverrideGroupConfig,
   writeOverrideGroupToDisk,
   type MockOverrideGroup,
@@ -61,25 +64,77 @@ function scenarioPathFor(mockDataPath: string, scenario: string): string {
   return getScenarioFolderPath(mockDataPath, scenario);
 }
 
-function syncRuntime(scenarioPath: string): void {
-  hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+
+function readClientId(req: Request): string | null {
+  const raw =
+    (typeof req.query.clientId === 'string' && req.query.clientId) ||
+    (typeof req.body?.clientId === 'string' && req.body.clientId) ||
+    '';
+  const trimmed = raw.trim();
+  return trimmed || null;
 }
 
-/** GET /api/override-groups — list groups + active config for scenario */
+async function resolveLaneOverrideGroup(
+  req: Request,
+  mockDataPath: string,
+  clientId: string | null
+): Promise<string | null> {
+  if (!clientId) return null;
+  const { config } = getDashboardContext(req);
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      return await store.getLaneOverrideGroup(clientId);
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+  return null;
+}
+
+async function writeLaneOverrideGroup(
+  req: Request,
+  mockDataPath: string,
+  clientId: string,
+  groupId: string | null
+): Promise<void> {
+  const { config } = getDashboardContext(req);
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.setLaneOverrideGroup(clientId, groupId);
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+}
+
+/** GET /api/override-groups — list groups + default/lane/effective selection */
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const scenario = await resolveScenario(req, mockDataPath);
     const scenarioPath = scenarioPathFor(mockDataPath, scenario);
     if (!scenarioPath) return;
-    const groups = listOverrideGroupsFromDisk(scenarioPath);
-    const config = readOverrideGroupConfig(scenarioPath);
-    syncRuntime(scenarioPath);
+    const clientId = readClientId(req);
+    const { config } = getDashboardContext(req);
+    const redisLane = isCentralizedDashboardProvider(config.provider)
+      ? await resolveLaneOverrideGroup(req, mockDataPath, clientId)
+      : undefined;
+    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+      clientId,
+      ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
+    });
+    const laneGroup = hydrated.laneGroup;
     res.json({
       scenario,
-      currentGroup: config.currentGroup,
-      updatedAt: config.updatedAt ?? null,
-      groups: groups.map((g) => ({
+      clientId,
+      defaultGroup: hydrated.defaultGroup,
+      laneGroup,
+      currentGroup: hydrated.currentGroup,
+      source: hydrated.source,
+      updatedAt: readOverrideGroupConfig(scenarioPath).updatedAt ?? null,
+      groups: hydrated.groups.map((g) => ({
         id: g.id,
         label: g.label,
         updatedAt: g.updatedAt,
@@ -93,15 +148,29 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /api/override-groups/config */
+/** GET /api/override-groups/config?clientId= */
 router.get('/config', async (req: Request, res: Response) => {
   try {
     const { mockDataPath } = getDashboardContext(req);
     const scenario = await resolveScenario(req, mockDataPath);
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
-    const config = readOverrideGroupConfig(scenarioPath);
-    syncRuntime(scenarioPath);
-    res.json({ scenario, ...config });
+    const clientId = readClientId(req);
+    const { config } = getDashboardContext(req);
+    const redisLane = isCentralizedDashboardProvider(config.provider)
+      ? await resolveLaneOverrideGroup(req, mockDataPath, clientId)
+      : undefined;
+    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+      clientId,
+      ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
+    });
+    res.json({
+      scenario,
+      clientId,
+      defaultGroup: hydrated.defaultGroup,
+      laneGroup: hydrated.laneGroup,
+      currentGroup: hydrated.currentGroup,
+      source: hydrated.source,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[OverrideGroups] get config - Error:', error);
@@ -109,12 +178,26 @@ router.get('/config', async (req: Request, res: Response) => {
   }
 });
 
-/** PUT /api/override-groups/config — set active group (`currentGroup: null` clears) */
+/**
+ * PUT /api/override-groups/config
+ * Body: { currentGroup, clientId?, scope?: 'default' | 'lane' }
+ * - With clientId (or scope=lane): sets per-lane selection (does not change scenario default)
+ * - Without clientId: sets scenario default only
+ */
 router.put('/config', async (req: Request, res: Response) => {
   try {
-    const { mockDataPath } = getDashboardContext(req);
+    const { mockDataPath, config: dashConfig } = getDashboardContext(req);
     const scenario = await resolveScenario(req, mockDataPath);
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    const clientId = readClientId(req);
+    const scopeRaw = typeof req.body?.scope === 'string' ? req.body.scope.trim() : '';
+    const scope =
+      scopeRaw === 'lane' || scopeRaw === 'default'
+        ? scopeRaw
+        : clientId
+          ? 'lane'
+          : 'default';
+
     const raw = req.body?.currentGroup;
     const currentGroup =
       raw === null || raw === undefined || raw === ''
@@ -131,9 +214,47 @@ router.put('/config', async (req: Request, res: Response) => {
       }
     }
 
+    if (scope === 'lane') {
+      if (!clientId) {
+        return res.status(400).json({ error: 'clientId is required when setting a lane override group' });
+      }
+      if (isCentralizedDashboardProvider(dashConfig.provider)) {
+        await writeLaneOverrideGroup(req, mockDataPath, clientId, currentGroup);
+      } else if (currentGroup == null) {
+        deleteClientOverrideGroupConfig(scenarioPath, clientId);
+      } else {
+        writeClientOverrideGroupConfig(scenarioPath, clientId, { currentGroup });
+      }
+      const redisLane = await resolveLaneOverrideGroup(req, mockDataPath, clientId);
+      const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+        clientId,
+        laneGroupId: redisLane,
+      });
+      return res.json({
+        success: true,
+        scenario,
+        clientId,
+        scope: 'lane',
+        defaultGroup: hydrated.defaultGroup,
+        laneGroup: hydrated.laneGroup,
+        currentGroup: hydrated.currentGroup,
+        source: hydrated.source,
+      });
+    }
+
     const config = writeOverrideGroupConfig(scenarioPath, { currentGroup });
-    syncRuntime(scenarioPath);
-    res.json({ success: true, scenario, ...config });
+    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, { clientId });
+    res.json({
+      success: true,
+      scenario,
+      clientId,
+      scope: 'default',
+      defaultGroup: config.currentGroup,
+      laneGroup: hydrated.laneGroup,
+      currentGroup: hydrated.currentGroup,
+      source: hydrated.source,
+      updatedAt: config.updatedAt,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[OverrideGroups] put config - Error:', error);
@@ -155,7 +276,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (!group) {
       return res.status(404).json({ error: `Override group not found: ${id}` });
     }
-    syncRuntime(scenarioPath);
+    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
     res.json({ scenario, group });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -188,7 +309,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const saved = writeOverrideGroupToDisk(scenarioPath, normalizeMockOverrideGroup(candidate));
-    syncRuntime(scenarioPath);
+    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
     res.json({ success: true, scenario, group: saved });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -256,7 +377,7 @@ router.patch('/:id/entries', async (req: Request, res: Response) => {
     }
 
     const saved = writeOverrideGroupToDisk(scenarioPath, next);
-    syncRuntime(scenarioPath);
+    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
     res.json({ success: true, scenario, group: saved });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -285,7 +406,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     if (config.currentGroup === id) {
       writeOverrideGroupConfig(scenarioPath, { currentGroup: null });
     }
-    syncRuntime(scenarioPath);
+    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
     res.json({ success: true, scenario, deleted: id });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

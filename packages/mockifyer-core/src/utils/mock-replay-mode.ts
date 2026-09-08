@@ -60,7 +60,12 @@ export function mockHasResponseDateOverrides(mockData: MockData): boolean {
  */
 export function mockShouldBeIncludedInRequestMatch(
   mockData: MockData,
-  options?: { includePassthroughMocks?: boolean; filename?: string }
+  options?: {
+    includePassthroughMocks?: boolean;
+    filename?: string;
+    scenarioPath?: string;
+    overrideGroupId?: string | null;
+  }
 ): boolean {
   if (options?.includePassthroughMocks === true) {
     return true;
@@ -71,7 +76,11 @@ export function mockShouldBeIncludedInRequestMatch(
       mockHasResponseFieldOverrides(mockData) ||
       (typeof options?.filename === 'string' &&
         options.filename.trim().length > 0 &&
-        activeOverrideGroupHasEntry(options.filename))
+        activeOverrideGroupHasEntry(
+          options.filename,
+          options.scenarioPath,
+          options.overrideGroupId
+        ))
     );
   }
   return true;
@@ -120,7 +129,7 @@ export function buildClientResponseFromLiveCapture(
   mockData: MockData,
   capturedResponse: MockData['response'],
   getNow: () => Date,
-  options?: { filename?: string; scenarioPath?: string }
+  options?: { filename?: string; scenarioPath?: string; overrideGroupId?: string | null }
 ): MockData['response'] {
   const filename = options?.filename;
   const hasDate = mockHasResponseDateOverrides(mockData);
@@ -128,7 +137,7 @@ export function buildClientResponseFromLiveCapture(
   const hasGroup =
     typeof filename === 'string' &&
     filename.trim().length > 0 &&
-    activeOverrideGroupHasEntry(filename, options?.scenarioPath);
+    activeOverrideGroupHasEntry(filename, options?.scenarioPath, options?.overrideGroupId);
 
   if (!hasDate && !hasField && !hasGroup) {
     return capturedResponse;
@@ -141,7 +150,13 @@ export function buildClientResponseFromLiveCapture(
   if (hasDate) {
     data = applyResponseDateOverridesToData(data, mockData.responseDateOverrides ?? [], getNow);
   }
-  data = applyActiveOverrideGroupOverlays(data, filename, getNow, options?.scenarioPath);
+  data = applyActiveOverrideGroupOverlays(
+    data,
+    filename,
+    getNow,
+    options?.scenarioPath,
+    options?.overrideGroupId
+  );
 
   return {
     ...capturedResponse,

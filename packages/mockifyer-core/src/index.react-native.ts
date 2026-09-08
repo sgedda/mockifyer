@@ -54,6 +54,7 @@ export * from './utils/mock-response-prepare';
 export * from './types/override-group';
 export * from './utils/override-group';
 export * from './utils/override-group-runtime';
+export * from './utils/override-group-resolve';
 export * from './utils/network-log';
 export * from './utils/network-body-spill';
 export * from './utils/graphql-body-display';

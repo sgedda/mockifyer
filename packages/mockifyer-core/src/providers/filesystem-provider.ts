@@ -21,12 +21,16 @@ import { ensureOverrideGroupRuntimeForScenarioPath } from '../utils/override-gro
 export class FilesystemProvider implements DatabaseProvider {
   private mockDataPath: string;
   private fsAvailable: boolean;
+  private clientId?: string;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
       throw new Error('FilesystemProvider requires a path in config');
     }
     this.mockDataPath = config.path;
+    const rawClient =
+      typeof config.options?.clientId === 'string' ? config.options.clientId.trim() : '';
+    this.clientId = rawClient || undefined;
     // Check if fs is available (will be false in React Native where fs is stubbed)
     this.fsAvailable = typeof fs !== 'undefined' && typeof fs.existsSync === 'function';
     
@@ -53,9 +57,9 @@ export class FilesystemProvider implements DatabaseProvider {
    * Scenario folder path used for mock files (lookup still uses active scenario via getScenarioPath).
    */
   private getScenarioPath(): string {
-    const currentScenario = getCurrentScenario(this.mockDataPath);
+    const currentScenario = getCurrentScenario(this.mockDataPath, this.clientId);
     const scenarioPath = getScenarioFolderPath(this.mockDataPath, currentScenario);
-    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.clientId });
     return scenarioPath;
   }
 
@@ -151,6 +155,7 @@ export class FilesystemProvider implements DatabaseProvider {
             mockShouldBeIncludedInRequestMatch(mockData, {
               includePassthroughMocks,
               filename,
+              scenarioPath,
             })
           ) {
             return { mockData, filename, filePath };
