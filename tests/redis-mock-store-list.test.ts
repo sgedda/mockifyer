@@ -23,12 +23,16 @@ function listOnlyKv(input: {
   hashes: string[];
   values: Map<string, string>;
   onMget: (keys: string[]) => void;
+  onSrem?: (key: string, members: string[]) => void;
 }): MockKvBackend {
   return {
     smembers: async () => input.hashes,
     mget: async (keys: string[]) => {
       input.onMget(keys);
       return keys.map((key) => input.values.get(key) ?? null);
+    },
+    srem: async (key: string, ...members: string[]) => {
+      input.onSrem?.(key, members);
     },
   } as unknown as MockKvBackend;
 }
@@ -81,5 +85,60 @@ describe('RedisMockStore.list', () => {
     const items = await store.list(scenario);
     expect(items).toHaveLength(count);
     expect(items[count - 1].hash).toBe(`h${count - 1}`);
+  });
+
+  it('returns only live mocks and prunes missing index hashes', async () => {
+    const scenario = 'different-kind-of-trips';
+    const liveHash = 'a'.repeat(64);
+    const ghostHash = 'b'.repeat(64);
+    const values = new Map<string, string>([
+      [`mockifyer:v1:mock:${scenario}:${liveHash}`, MOCK_JSON],
+    ]);
+    const sremCalls: Array<{ key: string; members: string[] }> = [];
+    const store = new RedisMockStore({
+      kv: listOnlyKv({
+        hashes: [liveHash, ghostHash],
+        values,
+        onMget: () => undefined,
+        onSrem: (key, members) => sremCalls.push({ key, members }),
+      }),
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const items = await store.list(scenario);
+    expect(items).toHaveLength(1);
+    expect(items[0].hash).toBe(liveHash);
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sremCalls.length).toBeGreaterThan(0);
+    expect(sremCalls[0].key).toBe(`mockifyer:v1:index:${scenario}`);
+    expect(sremCalls[0].members).toEqual([ghostHash]);
+  });
+
+  it('clearAllMocksInScenario deletes mock keys, ghost index members, and path indexes', async () => {
+    const scenario = 'different-kind-of-trips';
+    const liveHash = 'c'.repeat(64);
+    const ghostHash = 'd'.repeat(64);
+    const deleted: string[] = [];
+    const pathIndexKey = `mockifyer:v1:path_index:${scenario}:abc`;
+    const store = new RedisMockStore({
+      kv: {
+        smembers: async () => [liveHash, ghostHash],
+        scanKeys: async () => [pathIndexKey],
+        del: async (...keys: string[]) => {
+          deleted.push(...keys);
+        },
+        sadd: async () => undefined,
+      } as unknown as MockKvBackend,
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const removed = await store.clearAllMocksInScenario(scenario);
+    expect(removed).toBe(2);
+    expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${liveHash}`);
+    expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${ghostHash}`);
+    expect(deleted).toContain(`mockifyer:v1:index:${scenario}`);
+    expect(deleted).toContain(pathIndexKey);
+    expect(deleted).not.toContain(`mockifyer:v1:date_config:${scenario}`);
   });
 });
