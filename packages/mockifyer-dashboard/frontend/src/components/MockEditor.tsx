@@ -390,7 +390,6 @@ export default function MockEditor({
             ? 'This mock will be served from Mockifyer.'
             : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
       })
-      onSave()
     } catch (error: any) {
       setReplayMode(resolveReplayModeFromMock(mock))
       toast({
