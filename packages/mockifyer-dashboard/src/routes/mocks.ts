@@ -23,7 +23,7 @@ import {
   setResponseDataValueAtPath,
   type PoolRef,
 } from '@sgedda/mockifyer-core';
-import { getDashboardContext } from '../utils/dashboard-context';
+import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import {
   createDashboardMockStore,
   toDashboardRedisStoreConfig,
@@ -39,6 +39,7 @@ import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../ut
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
+  tryMirrorDomainPathRulesToDisk,
   writeDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
 
@@ -764,7 +765,11 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, dataPath);
     try {
       rules = await store.setDomainPathRule(scenarioName, domainPath.trim(), normalizedRule);
-      writeDomainPathRulesFile(dataPath, scenarioName, rules);
+      // Redis/SQLite is the source of truth. Disk is optional (Hybrid / --redis-mirror-disk)
+      // and must not fail Record response when MOCKIFYER_PATH is not a writable folder.
+      tryMirrorDomainPathRulesToDisk(dataPath, scenarioName, rules, {
+        force: resolveRedisDiskMirrorOptions(config).mirrorWrites,
+      });
       return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
     } finally {
       await store.close().catch(() => undefined);
