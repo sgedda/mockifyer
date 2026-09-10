@@ -50,7 +50,39 @@ describe('hop-chain', () => {
     }
     const shape = describeHopChainShape(hops);
     expect(shape.maxDepth).toBe(1);
-    expect(shape.uniqueHosts).toBeGreaterThanOrEqual(3);
+    expect(shape.uniqueHosts).toBeGreaterThanOrEqual(2);
+    expect(isShallowClientSessionFanout(shape)).toBe(true);
+    expect(isNonsensicalServiceChain(shape)).toBe(true);
+  });
+
+  it('treats a two-host dashboard-proxy session as a nonsensical service chain', () => {
+    const hops: HopChainLink[] = [
+      hop({ id: 'root', method: 'POST', url: 'http://localhost:4000/graphql' }),
+    ];
+    const paths = [
+      ['GET', 'http://localhost:4000/rest/deliveryapi/attributeCollection?id=a'],
+      ['GET', 'http://localhost:4000/rest/deliveryapi/attributeCollection?id=b'],
+      ['POST', 'http://localhost:4000/rest/deliveryapi/collection'],
+      ['POST', 'https://tokenws.acctest.nl/TokenService.asmx'],
+      ['GET', 'http://localhost:4000/rest/booking/current'],
+      ['POST', 'http://localhost:4000/mobile/events/diagnostic'],
+      ['GET', 'http://localhost:4000/v-2/myaccount'],
+      ['GET', 'http://localhost:4000/weather/currentConditions'],
+    ];
+    for (let i = 0; i < 20; i += 1) {
+      const [method, url] = paths[i % paths.length];
+      hops.push(
+        hop({
+          id: `c${i}`,
+          parentId: 'root',
+          method,
+          url,
+        })
+      );
+    }
+    const shape = describeHopChainShape(hops);
+    expect(shape.uniqueHosts).toBe(2);
+    expect(shape.maxDepth).toBe(1);
     expect(isShallowClientSessionFanout(shape)).toBe(true);
     expect(isNonsensicalServiceChain(shape)).toBe(true);
   });

@@ -36,13 +36,20 @@ const INFERRED_HOP_PATH_ORDER: Array<{ test: (url: string) => boolean }> = [
 ]
 
 const INFER_CLUSTER_MS = 15_000
-/** Wider window when attaching entry hops (e.g. `/aggregate`) to an id-linked chain. */
+/** Wider window when attaching known gateway hops (e.g. `/aggregate`) to an id-linked chain. */
 const ENRICH_CHAIN_CLUSTER_MS = 120_000
+/** Sort key for URLs that are not in {@link INFERRED_HOP_PATH_ORDER}. */
+const UNKNOWN_HOP_SORT_KEY = 100
+/** Gateway `/aggregate`-style prepends only — never a whole client session. */
+const MAX_ENRICHED_CATALOG_HOPS = 3
+/** Real missing parents are a short gateway prefix, not a 70-hop walk. */
+const MAX_ENRICHED_ANCESTORS = 4
 
 /** Keep in sync with `packages/mockifyer-core/src/utils/hop-chain.ts`. */
 const SESSION_FANOUT_MIN_HOPS = 16
 const SESSION_FANOUT_MIN_UNIQUE_ENDPOINTS = 8
-const SESSION_FANOUT_MIN_UNIQUE_HOSTS = 3
+/** 2 covers dashboard-proxy recordings where most APIs share one host. */
+const SESSION_FANOUT_MIN_UNIQUE_HOSTS = 2
 const SESSION_FANOUT_MAX_NESTING = 1
 const DAISY_CHAIN_MIN_HOPS = 16
 
@@ -126,7 +133,11 @@ function inferHopSortKey(mock: MockFile): number {
   for (let i = 0; i < INFERRED_HOP_PATH_ORDER.length; i++) {
     if (INFERRED_HOP_PATH_ORDER[i].test(url)) return i
   }
-  return 100 + new Date(mock.modified).getTime() / 1e12
+  return UNKNOWN_HOP_SORT_KEY
+}
+
+function isKnownInferredEntryHop(mock: MockFile): boolean {
+  return inferHopSortKey(mock) < UNKNOWN_HOP_SORT_KEY
 }
 
 function clusterMocksByModifiedTime(mocks: MockFile[], windowMs: number): MockFile[][] {
@@ -400,21 +411,35 @@ function walkUpAncestorsByRequestId(
   seen: Set<string>
 ): MockFile[] {
   const prefix: MockFile[] = []
+  const walked = new Set(seen)
   let current: MockFile | undefined = head
   while (current?.parentRequestId?.trim()) {
+    if (prefix.length >= MAX_ENRICHED_ANCESTORS) {
+      return []
+    }
     const parent = maps.byRequestId.get(current.parentRequestId.trim())
-    if (!parent || seen.has(parent.filename)) {
+    if (!parent || walked.has(parent.filename)) {
       break
     }
+    if (parent.requestId) {
+      const siblingCount = maps.childrenByParent.get(parent.requestId)?.length ?? 0
+      if (siblingCount >= SESSION_FANOUT_MIN_HOPS) {
+        return []
+      }
+    }
     prefix.unshift(parent)
-    seen.add(parent.filename)
+    walked.add(parent.filename)
     current = parent
+  }
+  for (const hop of prefix) {
+    seen.add(hop.filename)
   }
   return prefix
 }
 
 /**
- * Prepends missing entry hops (e.g. gateway `/aggregate`) onto id-linked chains.
+ * Prepends missing gateway entry hops (e.g. `/aggregate`) onto id-linked chains.
+ * Does not attach unrelated client calls recorded in the same session.
  */
 export function enrichChainHopsForDisplay(
   hops: MockFile[],
@@ -433,35 +458,35 @@ export function enrichChainHopsForDisplay(
     enrichedFilenames.push(hop.filename)
   }
 
-  let result = [...ancestorPrefix, ...hops]
+  const linked = [...ancestorPrefix, ...hops]
+  const requestIds = new Set(
+    linked.map((hop) => hop.requestId?.trim()).filter((id): id is string => Boolean(id))
+  )
 
-  const times = result.map((h) => new Date(h.modified).getTime())
+  const times = linked.map((h) => new Date(h.modified).getTime())
   const minT = Math.min(...times)
   const maxT = Math.max(...times)
-  const windowMs = Math.max(ENRICH_CHAIN_CLUSTER_MS, maxT - minT + 30_000)
-  const minSortKey = inferHopSortKey(result[0])
+  const minSortKey = inferHopSortKey(linked[0])
 
   const pathPrepend = catalog
     .filter((mock) => {
       if (seen.has(mock.filename)) return false
+      if (!isKnownInferredEntryHop(mock)) return false
       if (inferHopSortKey(mock) >= minSortKey) return false
+      const parentId = mock.parentRequestId?.trim()
+      if (parentId && !requestIds.has(parentId)) return false
       const t = new Date(mock.modified).getTime()
-      return t >= minT - windowMs && t <= maxT + 5_000
+      return t >= minT - ENRICH_CHAIN_CLUSTER_MS && t <= maxT + 5_000
     })
     .sort((a, b) => inferHopSortKey(a) - inferHopSortKey(b))
+    .slice(0, MAX_ENRICHED_CATALOG_HOPS)
 
   for (const hop of pathPrepend) {
     seen.add(hop.filename)
     enrichedFilenames.push(hop.filename)
   }
 
-  result = [...pathPrepend, ...result]
-  result.sort((a, b) => {
-    const keyDiff = inferHopSortKey(a) - inferHopSortKey(b)
-    if (keyDiff !== 0) return keyDiff
-    return new Date(a.modified).getTime() - new Date(b.modified).getTime()
-  })
-
+  const result = [...pathPrepend, ...linked]
   const deduped: MockFile[] = []
   const dedupeSeen = new Set<string>()
   for (const hop of result) {
@@ -482,19 +507,24 @@ export function buildMockServiceChainsForDisplay(mocks: MockFile[]): MockService
   const linked = buildMockServiceChains(mocks)
 
   if (linked.length > 0) {
-    return linked.map((chain) => {
-      const { hops, enrichedHopFilenames } = enrichChainHopsForDisplay(chain.hops, mocks, maps)
+    return linked.flatMap((chain) => {
+      const enriched = enrichChainHopsForDisplay(chain.hops, mocks, maps)
+      const hops = isNonsensicalMockServiceChain(enriched.hops) ? chain.hops : enriched.hops
+      const enrichedHopFilenames = hops === chain.hops ? [] : enriched.enrichedHopFilenames
+      if (isNonsensicalMockServiceChain(hops)) return []
       const latestModified = hops.reduce(
         (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
         hops[0].modified
       )
-      return {
-        ...chain,
-        hops,
-        latestModified,
-        inferred: chain.inferred === true || enrichedHopFilenames.length > 0,
-        enrichedHopFilenames,
-      }
+      return [
+        {
+          ...chain,
+          hops,
+          latestModified,
+          inferred: chain.inferred === true || enrichedHopFilenames.length > 0,
+          enrichedHopFilenames,
+        },
+      ]
     })
   }
 
@@ -592,7 +622,14 @@ export function describeHopParentLink(chain: MockFile[], hopIndex: number): stri
 }
 
 export function chainHasRequestCorrelation(chain: MockFile[]): boolean {
-  return chain.some((hop, index) => index > 0 && Boolean(hop.parentRequestId?.trim()))
+  const requestIds = new Set(
+    chain.map((hop) => hop.requestId?.trim()).filter((id): id is string => Boolean(id))
+  )
+  return chain.some((hop, index) => {
+    if (index === 0) return false
+    const parentId = hop.parentRequestId?.trim()
+    return Boolean(parentId && requestIds.has(parentId))
+  })
 }
 
 export function getChainRootRequestId(chain: MockFile[]): string | null {
