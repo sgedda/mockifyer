@@ -691,7 +691,7 @@ class MockifyerClass {
               
                 if (
                   mockShouldBeIncludedInRequestMatch(mockData, {
-                    includePassthroughMocks: false,
+                    includePassthroughMocks,
                     filename: file,
                     scenarioPath,
                   })
