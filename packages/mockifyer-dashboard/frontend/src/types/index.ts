@@ -90,6 +90,7 @@ export interface MockData {
     alwaysUseRealApi?: boolean
     refreshOnNextRequest?: boolean
     alwaysRefreshFromLive?: boolean
+    responsePending?: boolean
   }
   metadata: {
     size: number

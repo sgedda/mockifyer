@@ -35,7 +35,7 @@ import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
 } from '../utils/bulk-domain-mocks';
-import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
+import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
@@ -98,6 +98,18 @@ function parseRedisHashFromFilename(relativeName: string): string | null {
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
   return hash;
 }
+
+function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefined): boolean {
+  if (!body) return false;
+  return (
+    Object.prototype.hasOwnProperty.call(body, 'responseData') ||
+    Object.prototype.hasOwnProperty.call(body, 'responseDateOverrides') ||
+    bodyHasReplayModeFields(body)
+  );
+}
+
+const PUT_BODY_MISSING_FIELDS_ERROR =
+  'Request body must contain responseData, replayMode, or responseDateOverrides';
 
 /** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
 async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
@@ -1173,8 +1185,8 @@ router.put('/*', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
-      if (!req.body || req.body.responseData === undefined) {
-        return res.status(400).json({ error: 'Request body must contain responseData field' });
+      if (!putBodyHasUpdatableFields(req.body)) {
+        return res.status(400).json({ error: PUT_BODY_MISSING_FIELDS_ERROR });
       }
 
     const store = createDashboardMockStore(config, mockDataPath);
@@ -1186,18 +1198,20 @@ router.put('/*', async (req: Request, res: Response) => {
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
-        let parsedResponseData: any;
-        try {
-          parsedResponseData =
-            typeof req.body.responseData === 'string'
-              ? JSON.parse(req.body.responseData)
-              : req.body.responseData;
-        } catch (e: any) {
-          return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-        }
+        if (Object.prototype.hasOwnProperty.call(req.body, 'responseData')) {
+          let parsedResponseData: any;
+          try {
+            parsedResponseData =
+              typeof req.body.responseData === 'string'
+                ? JSON.parse(req.body.responseData)
+                : req.body.responseData;
+          } catch (e: any) {
+            return res.status(400).json({ error: 'Invalid JSON', details: e.message });
+          }
 
-        if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
-        (existingData as any).response.data = parsedResponseData;
+          if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
+          (existingData as any).response.data = parsedResponseData;
+        }
 
         // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
         // Update it on every save so recent edits are reflected in the UI ordering.
@@ -1235,10 +1249,7 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
-        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+        if (bodyHasReplayModeFields(req.body)) {
           const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
           if (replayErr) {
             return res.status(400).json({ error: replayErr });
@@ -1268,24 +1279,26 @@ router.put('/*', async (req: Request, res: Response) => {
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
-    if (!req.body || req.body.responseData === undefined) {
-      return res.status(400).json({ error: 'Request body must contain responseData field' });
+    if (!putBodyHasUpdatableFields(req.body)) {
+      return res.status(400).json({ error: PUT_BODY_MISSING_FIELDS_ERROR });
     }
 
     let existingData: any;
     try { existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')); }
     catch { return res.status(400).json({ error: 'Existing file is not valid JSON' }); }
 
-    let parsedResponseData;
-    try {
-      parsedResponseData = typeof req.body.responseData === 'string'
-        ? JSON.parse(req.body.responseData) : req.body.responseData;
-    } catch (e: any) {
-      return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'responseData')) {
+      let parsedResponseData;
+      try {
+        parsedResponseData = typeof req.body.responseData === 'string'
+          ? JSON.parse(req.body.responseData) : req.body.responseData;
+      } catch (e: any) {
+        return res.status(400).json({ error: 'Invalid JSON', details: e.message });
+      }
 
-    if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
-    existingData.response.data = parsedResponseData;
+      if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
+      existingData.response.data = parsedResponseData;
+    }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
       const raw = req.body.responseDateOverrides;
@@ -1314,10 +1327,7 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+    if (bodyHasReplayModeFields(req.body)) {
       const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
       if (replayErr) {
         return res.status(400).json({ error: replayErr });

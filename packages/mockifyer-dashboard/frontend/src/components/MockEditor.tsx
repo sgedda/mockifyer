@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { updateMock, refreshMockFromLive } from '@/lib/api'
+import { updateMock, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData, MockFile, MockReplayMode, MockResponseDateOverride } from '@/types'
 import {
@@ -37,12 +37,14 @@ interface MockEditorProps {
   onSelectRelatedMock?: (file: MockFile) => void
   onClose: () => void
   onSave: () => void
+  /** Called after replay mode changes to refresh the list without reloading selectedMock. */
+  onListRefresh?: () => Promise<void>
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
   variant?: 'default' | 'modal'
 }
 
 function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
-  if (mock.data.alwaysUseRealApi === true) return 'passthrough'
+  if (mock.data.alwaysUseRealApi === true || mock.data.responsePending === true) return 'passthrough'
   if (mock.data.alwaysRefreshFromLive === true) return 'always-refresh'
   if (mock.data.refreshOnNextRequest === true) return 'refresh-next'
   return 'stored'
@@ -180,6 +182,7 @@ export default function MockEditor({
   scenario,
   onClose,
   onSave,
+  onListRefresh,
   variant = 'default',
   scenarioLocked = false,
   allMocks = [],
@@ -382,7 +385,7 @@ export default function MockEditor({
       setSaving(true)
       // Intentionally preserve the current on-disk/Redis mock body and overrides.
       // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
-      await updateMock(mock.filename, mock.data.response?.data, undefined, next, scenario)
+      await updateMockReplayMode(mock.filename, next, scenario)
       toast({
         title: 'Saved',
         description:
@@ -390,7 +393,9 @@ export default function MockEditor({
             ? 'This mock will be served from Mockifyer.'
             : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
       })
-      onSave()
+      if (onListRefresh) {
+        await onListRefresh()
+      }
     } catch (error: any) {
       setReplayMode(resolveReplayModeFromMock(mock))
       toast({
