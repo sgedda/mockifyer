@@ -325,6 +325,20 @@ async function clearRedisScenarioMocks(
   const redisFolder = path.join(scenarioPath, 'redis');
   if (fs.existsSync(redisFolder)) {
     for (const filePath of getAllJsonFiles(redisFolder)) {
+      const rel = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+      const base = path.basename(filePath);
+      if (PRESERVED_SCENARIO_JSON.has(base) || PRESERVED_SCENARIO_JSON.has(rel)) {
+        continue;
+      }
+      let raw: string;
+      try {
+        raw = fs.readFileSync(filePath, 'utf-8');
+      } catch {
+        continue;
+      }
+      if (!isRecordedMockJson(raw)) {
+        continue;
+      }
       try {
         fs.unlinkSync(filePath);
       } catch {
