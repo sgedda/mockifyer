@@ -55,6 +55,7 @@ export * from './utils/network-log';
 export * from './utils/network-body-spill';
 export * from './utils/graphql-body-display';
 export * from './utils/network-trace';
+export * from './utils/hop-chain';
 export * from './utils/atlas';
 export * from './utils/atlas-cache';
 export * from './utils/atlas-cms-renderer';

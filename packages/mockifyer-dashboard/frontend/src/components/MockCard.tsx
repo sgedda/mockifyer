@@ -86,9 +86,14 @@ export function MockCard({
   const canShowActions = showActions && onDelete && onDuplicate
 
   const inServiceChain = chainMaps ? mockIsInServiceChain(mock, chainMaps) : false
-  const hopDepth = chainMaps && inServiceChain ? mockChainDepth(mock, chainMaps.byRequestId) : 0
+  const hopDepth =
+    chainMaps && inServiceChain
+      ? mockChainDepth(mock, chainMaps.byRequestId, chainMaps.childrenByParent)
+      : 0
   const chainLength =
-    chainMaps && inServiceChain ? getMockChain(mock, chainMaps.byRequestId).length : 0
+    chainMaps && inServiceChain
+      ? getMockChain(mock, chainMaps.byRequestId, chainMaps.childrenByParent).length
+      : 0
   const isRoot = chainMaps ? isMockChainRoot(mock, chainMaps.byRequestId) : false
   const hasChildren = chainMaps ? mockHasChainChildren(mock, chainMaps.childrenByParent) : false
 

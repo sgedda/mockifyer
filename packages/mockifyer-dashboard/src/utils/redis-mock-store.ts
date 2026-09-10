@@ -270,8 +270,7 @@ export class RedisMockStore {
     const hashes: string[] = await this.kv.smembers(indexKey);
     if (hashes.length === 0) return [];
 
-    const scenarioName = (scenario?.trim() || (await this.scenarioKey(undefined, clientId))).trim();
-    const keys = hashes.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+    const keys = await Promise.all(hashes.map((hash) => this.dataKey(hash, scenario, clientId)));
     const values: Array<string | null> = await this.kv.mget(keys);
 
     const out: RedisMockListItem[] = [];
@@ -1019,4 +1018,3 @@ export class RedisMockStore {
     await this.kv.close();
   }
 }
-

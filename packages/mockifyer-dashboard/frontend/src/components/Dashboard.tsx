@@ -71,7 +71,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [searchQuery, setSearchQuery] = useState('')
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const mocksLoadAbortRef = useRef<AbortController | null>(null)
+  const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
 
   function isAbortError(error: unknown): boolean {
     return (
@@ -202,6 +207,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const ac = new AbortController()
     mocksLoadAbortRef.current = ac
     const { signal } = ac
+    const requestedSearchQuery = searchQuery.trim()
     try {
       setLoading(true)
       setSimilarBodyGroups([])
@@ -209,6 +215,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       // by GraphQL clustering (or by a previous scenario's in-flight cluster).
       const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
+      if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
       setAllMocks(data.files)
       setLoading(false)
@@ -222,8 +229,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       try {
         const grouped = await getMocks(scenario, { similarGroups: true, signal })
         if (signal.aborted) return
+        if (searchQueryRef.current.trim() !== requestedSearchQuery) return
         // Only update mocks if no search is active (clustering should not overwrite search results)
-        if (!searchQuery.trim()) {
+        if (!requestedSearchQuery) {
           setMocks(grouped.files)
         }
         setAllMocks(grouped.files)
@@ -592,4 +600,3 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     </div>
   )
 }
-

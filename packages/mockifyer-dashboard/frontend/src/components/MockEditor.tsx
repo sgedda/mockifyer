@@ -237,7 +237,7 @@ export default function MockEditor({
       requestId: mock.data.requestId ?? null,
       parentRequestId: mock.data.parentRequestId ?? null,
     }
-    const chain = getMockChain(hop, maps.byRequestId)
+    const chain = getMockChain(hop, maps.byRequestId, maps.childrenByParent)
     return chain.length >= 2 ? chain : []
   }, [allMocks, mock])
 
