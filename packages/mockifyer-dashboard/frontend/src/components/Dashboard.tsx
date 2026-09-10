@@ -575,6 +575,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                             scenarioLocked={scenarioLocked}
                             onClose={() => setSelectedMock(null)}
                             onSave={handleMockSaved}
+                            onListRefresh={loadMocks}
                           />
                         </>
                       ) : null}

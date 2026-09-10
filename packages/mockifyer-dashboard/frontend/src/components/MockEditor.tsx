@@ -37,6 +37,8 @@ interface MockEditorProps {
   onSelectRelatedMock?: (file: MockFile) => void
   onClose: () => void
   onSave: () => void
+  /** Called after replay mode changes to refresh the list without reloading selectedMock. */
+  onListRefresh?: () => Promise<void>
   /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
   variant?: 'default' | 'modal'
 }
@@ -180,6 +182,7 @@ export default function MockEditor({
   scenario,
   onClose,
   onSave,
+  onListRefresh,
   variant = 'default',
   scenarioLocked = false,
   allMocks = [],
@@ -390,6 +393,9 @@ export default function MockEditor({
             ? 'This mock will be served from Mockifyer.'
             : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
       })
+      if (onListRefresh) {
+        await onListRefresh()
+      }
     } catch (error: any) {
       setReplayMode(resolveReplayModeFromMock(mock))
       toast({
