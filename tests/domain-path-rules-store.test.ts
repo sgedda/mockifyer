@@ -70,14 +70,19 @@ describe('domain-path-rules-store', () => {
   it('does not throw when mockDataPath is a file so mkdir of the scenario folder would fail', () => {
     const notADir = path.join(tmpRoot, 'mock-data-file');
     fs.writeFileSync(notADir, 'not a directory');
-    expect(() => {
-      tryMirrorDomainPathRulesToDisk(
-        notADir,
-        'different-kind-of-trips',
-        { 'api.example.com': { recordResponses: true } },
-        { force: true }
-      );
-    }).not.toThrow();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(
+        tryMirrorDomainPathRulesToDisk(
+          notADir,
+          'different-kind-of-trips',
+          { 'api.example.com': { recordResponses: true } },
+          { force: true }
+        )
+      ).toBe(false);
+    } finally {
+      warn.mockRestore();
+    }
     expect(fs.statSync(notADir).isFile()).toBe(true);
   });
 });
