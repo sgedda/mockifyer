@@ -287,6 +287,18 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     return () => window.clearTimeout(t)
   }, [activeTab, scenario, searchQuery])
 
+  async function handleMockSaved() {
+    await loadMocks()
+    const filename = selectedMock?.filename
+    if (!filename) return
+    try {
+      const mockData = await getMock(filename, scenario)
+      setSelectedMock(mockData)
+    } catch {
+      // Keep the editor open with the last loaded mock if refresh fails.
+    }
+  }
+
   async function handleSelectMock(file: MockFile) {
     try {
       setLoadingMock(true)
@@ -562,7 +574,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                             scenario={scenario}
                             scenarioLocked={scenarioLocked}
                             onClose={() => setSelectedMock(null)}
-                            onSave={loadMocks}
+                            onSave={handleMockSaved}
                           />
                         </>
                       ) : null}
