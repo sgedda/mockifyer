@@ -689,7 +689,13 @@ class MockifyerClass {
                   }
                 }
               
-                if (!mockPassesThroughToRealApi(mockData)) {
+                if (
+                  mockShouldBeIncludedInRequestMatch(mockData, {
+                    includePassthroughMocks: false,
+                    filename: file,
+                    scenarioPath,
+                  })
+                ) {
                   similarMatch = { mockData, filename: file, filePath };
                 }
               }

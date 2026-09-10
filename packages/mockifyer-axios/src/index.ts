@@ -687,7 +687,13 @@ class MockifyerClass {
                   logger.debug('[Mockifyer] ✅ No query param restrictions (default), using similar match (path and method only, all query params ignored)');
                 }
                 
-                if (includePassthroughMocks || !mockPassesThroughToRealApi(mockData)) {
+                if (
+                  mockShouldBeIncludedInRequestMatch(mockData, {
+                    includePassthroughMocks,
+                    filename: file,
+                    scenarioPath,
+                  })
+                ) {
                   similarMatch = {
                     mockData,
                     filename: file,

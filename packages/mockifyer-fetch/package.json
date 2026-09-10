@@ -52,8 +52,8 @@
     "@sgedda/mockifyer-core": "file:../mockifyer-core"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
-    "typescript": "^5.3.3"
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "@sgedda/mockifyer-axios": "*",

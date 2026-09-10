@@ -624,7 +624,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
    * Load override groups for the current scenario using expo-file-system.
    * This is the Expo equivalent of `ensureOverrideGroupRuntimeForScenarioPath`.
    */
-  private async loadOverrideGroupsForScenario(): Promise<void> {
+  private async loadOverrideGroupsForScenario(options?: {
+    clientId?: string | null;
+    explicitGroupId?: string | null;
+    laneGroupId?: string | null;
+  }): Promise<void> {
     const scenarioPath = this.getScenarioPath();
     try {
       const { 
@@ -635,26 +639,60 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       const {
         validateMockOverrideGroup,
         normalizeMockOverrideGroup,
-        emptyOverrideGroupConfig,
       } = await import('../utils/override-group');
-      const { OVERRIDE_GROUPS_DIR_NAME, OVERRIDE_GROUP_CONFIG_FILENAME } = await import('../types/override-group');
+      const { 
+        OVERRIDE_GROUPS_DIR_NAME, 
+        OVERRIDE_GROUP_CONFIG_FILENAME,
+        overrideGroupConfigFilenameForClient 
+      } = await import('../types/override-group');
+      const { 
+        resolveActiveOverrideGroupId,
+        readOverrideGroupIdFromEnv 
+      } = await import('../utils/override-group-resolve');
 
       setOverrideGroupRuntimeScenarioPath(scenarioPath);
 
-      // Read override-group-config.json
+      // Read default override-group-config.json
       const configPath = this.joinFsUri(scenarioPath, OVERRIDE_GROUP_CONFIG_FILENAME);
-      let currentGroup: string | null = null;
+      let defaultGroup: string | null = null;
       try {
         const configInfo = await this.fsGetInfo(configPath);
         if (configInfo.exists) {
           const configText = await this.fsReadText(configPath);
           const config = JSON.parse(configText);
-          currentGroup = typeof config.currentGroup === 'string' && config.currentGroup.trim()
+          defaultGroup = typeof config.currentGroup === 'string' && config.currentGroup.trim()
             ? config.currentGroup.trim()
             : null;
         }
       } catch {
         // Config file doesn't exist or is invalid
+      }
+
+      // Read per-lane/client config if clientId provided
+      let laneGroup: string | null = null;
+      const clientId = typeof options?.clientId === 'string' && options.clientId.trim()
+        ? options.clientId.trim()
+        : null;
+      
+      if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
+        laneGroup = options.laneGroupId == null || options.laneGroupId === ''
+          ? null
+          : String(options.laneGroupId).trim() || null;
+      } else if (clientId) {
+        const laneConfigFilename = overrideGroupConfigFilenameForClient(clientId);
+        const laneConfigPath = this.joinFsUri(scenarioPath, laneConfigFilename);
+        try {
+          const laneInfo = await this.fsGetInfo(laneConfigPath);
+          if (laneInfo.exists) {
+            const laneText = await this.fsReadText(laneConfigPath);
+            const laneConfig = JSON.parse(laneText);
+            laneGroup = typeof laneConfig.currentGroup === 'string' && laneConfig.currentGroup.trim()
+              ? laneConfig.currentGroup.trim()
+              : null;
+          }
+        } catch {
+          // Lane config doesn't exist or is invalid
+        }
       }
 
       // Read all override group files from override-groups/
@@ -688,9 +726,19 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       replaceRegisteredOverrideGroups(groups, scenarioPath);
       
-      // Set active group if it exists
-      const activeExists = currentGroup && groups.some((g: any) => g.id === currentGroup);
-      setActiveOverrideGroup(activeExists ? currentGroup : null, scenarioPath);
+      // Resolve active group using precedence: explicit → env → lane → default
+      const explicit = options?.explicitGroupId ?? null;
+      const envGroup = readOverrideGroupIdFromEnv();
+      const knownIds = groups.map((g: any) => g.id);
+      const currentGroup = resolveActiveOverrideGroupId({
+        explicitGroupId: explicit,
+        envGroupId: envGroup,
+        laneGroupId: laneGroup,
+        defaultGroupId: defaultGroup,
+        knownGroupIds: knownIds,
+      });
+
+      setActiveOverrideGroup(currentGroup, scenarioPath);
     } catch {
       // Override group modules not available or error loading - continue without groups
     }
@@ -702,6 +750,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
+    const scenarioPath = this.getScenarioPath();
     
     // Hydrate override groups for this scenario before matching
     await this.loadOverrideGroupsForScenario();
@@ -724,6 +773,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
             if (mockShouldBeIncludedInRequestMatch(cached.content.mockData, {
               includePassthroughMocks,
               filename: cached.content.filename,
+              scenarioPath,
             })) {
               return cached.content;
             }
@@ -759,7 +809,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
 
     const files = await this.listMockFiles();
-    const scenarioPath = this.getScenarioPath();
 
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
@@ -798,6 +847,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
           mockShouldBeIncludedInRequestMatch(mockData, {
             includePassthroughMocks,
             filename: file,
+            scenarioPath,
           })
         ) {
           // Get file modification time
@@ -862,6 +912,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     const files = await this.listMockFiles();
     const scenarioPath = this.getScenarioPath();
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     const results: CachedMockData[] = [];
 
     for (const file of files) {
@@ -902,7 +956,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           if (mockPath === requestPath &&
               (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            if (!mockPassesThroughToRealApi(mockData)) {
+            if (mockShouldBeIncludedInRequestMatch(mockData, { 
+              includePassthroughMocks: false,
+              filename: file,
+              scenarioPath 
+            })) {
               results.push({
                 mockData,
                 filename: file,

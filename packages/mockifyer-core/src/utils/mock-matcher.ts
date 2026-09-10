@@ -297,7 +297,12 @@ export function findBestMatchingMock(
     for (const [, cachedMock] of mockCache.entries()) {
       const mockData = cachedMock.mockData;
 
-      if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+      if (
+        !mockShouldBeIncludedInRequestMatch(mockData, {
+          includePassthroughMocks,
+          filename: cachedMock.filename,
+        })
+      ) {
         continue;
       }
       
