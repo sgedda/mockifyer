@@ -70,6 +70,58 @@ describe('mock service chain display', () => {
     expect(chains[0].enrichedHopFilenames ?? []).toEqual([])
   })
 
+  it('does not promote a LaunchDarkly diagnostic burst into a 71-hop entry chain', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'a6ac4e1a-cccc-4000-8000-000000000002',
+      modified: '2026-09-10T16:36:01.000Z',
+    })
+    const nested = mock({
+      filename: 'cms.json',
+      method: 'GET',
+      endpoint: 'http://localhost:4000/cms/page',
+      requestId: 'gql-child',
+      parentRequestId: graphql.requestId,
+      modified: '2026-09-10T16:36:02.000Z',
+    })
+    const diagnostic = mock({
+      filename: 'diagnostic.json',
+      method: 'POST',
+      endpoint: 'https://events.launchdarkly.com/mobile/events/diagnostic',
+      requestId: 'e9bfa145-cccc-4000-8000-000000000001',
+      modified: '2026-09-10T16:36:00.000Z',
+    })
+
+    const sessionNoise: MockFile[] = [diagnostic]
+    const paths = [
+      ['GET', 'http://localhost:4000/rest/deliveryapi/attributeCollection?talas=app-bottom-tabs-6.0.3'],
+      ['POST', 'http://localhost:4000/graphql'],
+      ['GET', 'http://localhost:4000/rest/deliveryapi/attributeCollection?talas=prefetch-specification'],
+      ['GET', 'http://localhost:4000/rest/deliveryapi/attributeCollection?talas=app-localization-master'],
+      ['POST', 'http://localhost:4000/rest/deliveryapi/collection'],
+    ]
+    for (let i = 0; i < 68; i += 1) {
+      const [method, endpoint] = paths[i % paths.length]
+      sessionNoise.push(
+        mock({
+          filename: `session-${i}.json`,
+          method,
+          endpoint,
+          requestId: `session-${i}`,
+          modified: new Date(Date.parse('2026-09-10T16:36:00.000Z') + (i + 1) * 150).toISOString(),
+        })
+      )
+    }
+
+    const chains = buildMockServiceChainsForDisplay([graphql, nested, ...sessionNoise])
+    expect(chains).toHaveLength(1)
+    expect(chains[0].hops.map((hop) => hop.filename)).toEqual(['graphql.json', 'cms.json'])
+    expect(chains[0].hops.some((hop) => hop.filename === 'diagnostic.json')).toBe(false)
+    expect(chains[0].enrichedHopFilenames ?? []).toEqual([])
+  })
+
   it('still prepends a nearby gateway /aggregate hop onto an id-linked chain', () => {
     const aggregate = mock({
       filename: 'aggregate.json',

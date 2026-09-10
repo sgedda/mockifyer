@@ -42,6 +42,8 @@ const ENRICH_CHAIN_CLUSTER_MS = 120_000
 const UNKNOWN_HOP_SORT_KEY = 100
 /** Gateway `/aggregate`-style prepends only — never a whole client session. */
 const MAX_ENRICHED_CATALOG_HOPS = 3
+/** Real missing parents are a short gateway prefix, not a 70-hop walk. */
+const MAX_ENRICHED_ANCESTORS = 4
 
 /** Keep in sync with `packages/mockifyer-core/src/utils/hop-chain.ts`. */
 const SESSION_FANOUT_MIN_HOPS = 16
@@ -409,15 +411,28 @@ function walkUpAncestorsByRequestId(
   seen: Set<string>
 ): MockFile[] {
   const prefix: MockFile[] = []
+  const walked = new Set(seen)
   let current: MockFile | undefined = head
   while (current?.parentRequestId?.trim()) {
+    if (prefix.length >= MAX_ENRICHED_ANCESTORS) {
+      return []
+    }
     const parent = maps.byRequestId.get(current.parentRequestId.trim())
-    if (!parent || seen.has(parent.filename)) {
+    if (!parent || walked.has(parent.filename)) {
       break
     }
+    if (parent.requestId) {
+      const siblingCount = maps.childrenByParent.get(parent.requestId)?.length ?? 0
+      if (siblingCount >= SESSION_FANOUT_MIN_HOPS) {
+        return []
+      }
+    }
     prefix.unshift(parent)
-    seen.add(parent.filename)
+    walked.add(parent.filename)
     current = parent
+  }
+  for (const hop of prefix) {
+    seen.add(hop.filename)
   }
   return prefix
 }
