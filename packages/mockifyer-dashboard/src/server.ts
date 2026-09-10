@@ -13,10 +13,11 @@ import { proxyConfigRouter } from './routes/proxy-config';
 import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
 import { atlasRouter } from './routes/atlas';
-import type {
-  DashboardContextConfig,
-  RedisDiskMirrorConfigInput,
-  RedisDiskMirrorResolved,
+import {
+  attachDashboardContext,
+  type DashboardContextConfig,
+  type RedisDiskMirrorConfigInput,
+  type RedisDiskMirrorResolved,
 } from './utils/dashboard-context';
 
 export type { DashboardContextConfig, RedisDiskMirrorConfigInput, RedisDiskMirrorResolved };
@@ -47,8 +48,9 @@ export function createServer(
   config: DashboardContextConfig = { provider: 'filesystem' }
 ): express.Application {
   const app = express();
+  const dashboardConfig = { ...config, mockDataPath };
   app.locals.mockDataPath = mockDataPath;
-  app.locals.dashboardConfig = { ...config, mockDataPath };
+  app.locals.dashboardConfig = dashboardConfig;
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });
@@ -64,6 +66,10 @@ export function createServer(
   const jsonBodyLimit = getDashboardJsonBodyLimit();
   app.use(express.json({ limit: jsonBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: jsonBodyLimit }));
+  app.use((req, _res, next) => {
+    attachDashboardContext(req, { mockDataPath, config: dashboardConfig });
+    next();
+  });
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
   app.use('/api', (_req, res, next) => {
@@ -99,7 +105,7 @@ export function createServer(
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas'
   );
 
   // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html

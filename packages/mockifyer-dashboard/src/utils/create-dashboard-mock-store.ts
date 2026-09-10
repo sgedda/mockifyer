@@ -42,14 +42,31 @@ export function resolveDashboardSqlitePath(mockDataPath: string, config: Dashboa
   return path.resolve(mockDataPath, 'mockifyer-dashboard.db');
 }
 
-export function createDashboardMockStore(
+interface CachedDashboardMockStore {
+  store: RedisMockStore;
+  dispose: () => Promise<void>;
+}
+
+const dashboardMockStoreCache = new Map<string, CachedDashboardMockStore>();
+
+/** Stable cache key so /api/mocks does not open a new Redis/SQLite client per request. */
+export function dashboardMockStoreCacheKey(
+  config: DashboardContextConfig,
+  mockDataPath: string
+): string {
+  if (config.provider === 'sqlite') {
+    return `sqlite:${resolveDashboardSqlitePath(mockDataPath, config)}:${config.keyPrefix || ''}`;
+  }
+  const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
+  const cluster =
+    config.redisCluster === true ? '1' : config.redisCluster === false ? '0' : 'auto';
+  return `redis:${redisUrl}:${cluster}:${config.keyPrefix || ''}:${path.resolve(mockDataPath)}`;
+}
+
+function instantiateDashboardMockStore(
   config: DashboardContextConfig,
   mockDataPath: string
 ): RedisMockStore {
-  if (!isCentralizedDashboardProvider(config.provider)) {
-    throw new Error(`createDashboardMockStore requires redis or sqlite provider, got: ${config.provider}`);
-  }
-
   const base: RedisMockStoreConfig = {
     mockDataPath,
     keyPrefix: config.keyPrefix,
@@ -69,4 +86,36 @@ export function createDashboardMockStore(
     redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
     ...(redisOptions ? { redisOptions } : {}),
   });
+}
+
+/**
+ * Process-wide mock store. Route `close()` is a no-op so request handlers can keep
+ * calling it without tearing down the shared Redis/SQLite connection.
+ */
+export function createDashboardMockStore(
+  config: DashboardContextConfig,
+  mockDataPath: string
+): RedisMockStore {
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    throw new Error(`createDashboardMockStore requires redis or sqlite provider, got: ${config.provider}`);
+  }
+
+  const key = dashboardMockStoreCacheKey(config, mockDataPath);
+  const cached = dashboardMockStoreCache.get(key);
+  if (cached) return cached.store;
+
+  const store = instantiateDashboardMockStore(config, mockDataPath);
+  const dispose = store.close.bind(store);
+  store.close = async () => undefined;
+  dashboardMockStoreCache.set(key, { store, dispose });
+  return store;
+}
+
+/** Close cached stores (tests / process shutdown). */
+export async function closeCachedDashboardMockStores(): Promise<void> {
+  const entries = [...dashboardMockStoreCache.values()];
+  dashboardMockStoreCache.clear();
+  for (const entry of entries) {
+    await entry.dispose().catch(() => undefined);
+  }
 }

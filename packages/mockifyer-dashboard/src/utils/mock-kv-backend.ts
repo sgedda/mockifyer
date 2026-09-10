@@ -12,7 +12,8 @@ export interface MockKvBackend {
   get(key: string): Promise<string | null>;
   set(key: string, value: string, expiryMode?: 'EX', ttlSec?: number): Promise<void>;
   del(...keys: string[]): Promise<void>;
-  mget(...keys: string[]): Promise<Array<string | null>>;
+  /** Pass keys as an array — do not spread a large list (`mget(...keys)` overflows the call stack). */
+  mget(keys: string[]): Promise<Array<string | null>>;
   sadd(key: string, ...members: string[]): Promise<void>;
   smembers(key: string): Promise<string[]>;
   srem(key: string, ...members: string[]): Promise<void>;

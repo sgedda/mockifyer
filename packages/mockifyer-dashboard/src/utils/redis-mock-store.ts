@@ -12,6 +12,7 @@ import {
   getMaxMocksPerPathFromEnv,
   getMaxRequestsPerScenarioFromEnv,
   redisPathIndexKey,
+  chunkArray,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -56,6 +57,29 @@ export interface LaneEffectiveObservation {
 
 function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
+}
+
+/** SADD in chunks so a large member list never hits `sadd(...members)` stack overflow. */
+async function saddChunked(kv: MockKvBackend, key: string, members: string[]): Promise<void> {
+  if (members.length === 0) return;
+  for (const chunk of chunkArray(members)) {
+    await kv.sadd(key, ...chunk);
+  }
+}
+
+/** Drop index members whose mock values are gone (expired TTL, partial clear). */
+async function pruneMissingIndexHashes(
+  kv: MockKvBackend,
+  indexKey: string,
+  hashes: string[]
+): Promise<void> {
+  try {
+    for (const chunk of chunkArray(hashes)) {
+      await kv.srem(indexKey, ...chunk);
+    }
+  } catch {
+    // best-effort; next list() will retry
+  }
 }
 
 export class RedisMockStore {
@@ -220,25 +244,44 @@ export class RedisMockStore {
     assertNotReservedScenarioName(scenario, { allowScratch: true });
     await this.kv.set(this.activeScenarioKey, scenario);
     // Best-effort registry so scenarios appear even with no mocks yet.
-    await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
+    await this.ensureScenarioRegistered(scenario);
+  }
+
+  /** Keep an empty scenario in the picker after mocks are deleted. */
+  async ensureScenarioRegistered(scenario: string): Promise<void> {
+    const name = scenario.trim();
+    if (!name) return;
+    await this.kv.sadd(this.scenarioRegistrySetKey, name).catch(() => undefined);
   }
 
   async ping(): Promise<void> {
     await this.kv.ping();
   }
 
+  /**
+   * Load every mock in a scenario index.
+   * Fetches values via {@link MockKvBackend.mget} with an array (never `mget(...keys)`),
+   * so large Redis indexes do not throw `RangeError: Maximum call stack size exceeded`.
+   * Missing values (expired/deleted bodies) are dropped from the index in the background
+   * so a "cleared" scenario does not keep MGET-ing ghost hashes on every list.
+   */
   async list(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
     const indexKey = await this.indexKey(scenario, clientId);
     const hashes: string[] = await this.kv.smembers(indexKey);
     if (hashes.length === 0) return [];
 
-    const keys = await Promise.all(hashes.map((h) => this.dataKey(h, scenario, clientId)));
-    const values: Array<string | null> = await this.kv.mget(...keys);
+    const scenarioName = (scenario?.trim() || (await this.scenarioKey(undefined, clientId))).trim();
+    const keys = hashes.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+    const values: Array<string | null> = await this.kv.mget(keys);
 
     const out: RedisMockListItem[] = [];
+    const missingHashes: string[] = [];
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
-      if (!raw) continue;
+      if (!raw) {
+        missingHashes.push(hashes[i]);
+        continue;
+      }
       try {
         const mockData = JSON.parse(raw) as MockData;
         out.push({ hash: hashes[i], mockData, redisKey: keys[i] });
@@ -246,7 +289,31 @@ export class RedisMockStore {
         continue;
       }
     }
+    if (missingHashes.length > 0) {
+      void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
+    }
     return out;
+  }
+
+  /**
+   * Delete every mock in a scenario, including index members whose values are already gone.
+   * Drops the scenario index set and per-path cardinality sets so a later list() is not
+   * an MGET of ghost hashes. Date/proxy/lock keys are left in place.
+   */
+  async clearAllMocksInScenario(scenario: string): Promise<number> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) return 0;
+
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const hashes: string[] = await this.kv.smembers(indexKey);
+    const mockKeys = hashes.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+    const pathIndexKeys = await this.kv.scanKeys(`${this.keyPrefix}:path_index:${scenarioName}:*`);
+    const toDelete = [...mockKeys, indexKey, ...pathIndexKeys];
+    for (const chunk of chunkArray(toDelete)) {
+      await this.kv.del(...chunk);
+    }
+    await this.ensureScenarioRegistered(scenarioName);
+    return hashes.length;
   }
 
   async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {
@@ -585,7 +652,7 @@ export class RedisMockStore {
     }
 
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
-    const values: Array<string | null> = await this.kv.mget(...fromKeys);
+    const values: Array<string | null> = await this.kv.mget(fromKeys);
 
     const multi = this.kv.multi();
     let copied = 0;
@@ -599,7 +666,9 @@ export class RedisMockStore {
     }
     if (copied > 0) {
       const toIndexKey = await this.indexKey(to);
-      multi.sadd(toIndexKey, ...hashes);
+      for (const chunk of chunkArray(hashes)) {
+        multi.sadd(toIndexKey, ...chunk);
+      }
     }
     // Registry + best-effort: ensures scenarios appear even if empty.
     multi.sadd(this.scenarioRegistrySetKey, to);
@@ -687,14 +756,14 @@ export class RedisMockStore {
 
     const missingFromRegistry = scannedIds.filter((id) => !registryIds.includes(id));
     if (missingFromRegistry.length > 0) {
-      await this.kv.sadd(this.clientLaneIdsSetKey, ...missingFromRegistry).catch(() => undefined);
+      await saddChunked(this.kv, this.clientLaneIdsSetKey, missingFromRegistry).catch(() => undefined);
     }
 
     const allIds = [...new Set([...registryIds, ...scannedIds])].sort((a, b) => a.localeCompare(b));
     if (allIds.length === 0) return [];
 
     const keys = allIds.map((clientId) => `${scenarioKeyPrefix}${clientId}`);
-    const values: Array<string | null> = await this.kv.mget(...keys);
+    const values: Array<string | null> = await this.kv.mget(keys);
     const out: Array<{ clientId: string; scenario: string; note: string | null }> = [];
     for (let i = 0; i < allIds.length; i++) {
       const val = values[i];

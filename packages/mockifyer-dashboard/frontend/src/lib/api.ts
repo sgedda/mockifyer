@@ -56,7 +56,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number }
+  opts?: { similarGroups?: boolean; similarThreshold?: number; signal?: AbortSignal }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -72,7 +72,7 @@ export async function getMocks(
     }
   }
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks${suffix}`, noStore)
+  const response = await fetch(`${API_BASE}/mocks${suffix}`, { ...noStore, signal: opts?.signal })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }
@@ -389,6 +389,24 @@ export async function importScenarioBundle(payload: {
   return response.json()
 }
 
+export async function clearScenarioMocks(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  mocksRemoved: number
+  message: string
+}> {
+  const response = await fetch(`${API_BASE}/scenario-config/clear-mocks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to clear scenario mocks')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
 export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean
@@ -646,6 +664,102 @@ export async function updateDateConfig(config: {
   if (!response.ok) {
     const message = await readErrorMessage(response, 'Failed to update date config')
     throw new Error(message)
+  }
+  return response.json()
+}
+
+export interface FixturePoolEntityRow {
+  id: string
+  label: string
+  entityType: string
+  tags?: string[]
+}
+
+export interface FixturePoolResponseRow {
+  id: string
+  label: string
+  tags?: string[]
+}
+
+export async function getFixturePoolEntities(): Promise<{
+  entities: FixturePoolEntityRow[]
+  updatedAt?: string
+  warning?: string
+}> {
+  const response = await fetch(`${API_BASE}/fixture-pool/entities`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load entities'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolResponses(): Promise<{
+  responses: FixturePoolResponseRow[]
+  updatedAt?: string
+  warning?: string
+}> {
+  const response = await fetch(`${API_BASE}/fixture-pool/responses`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load responses'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolEntity(id: string): Promise<unknown> {
+  const response = await fetch(
+    `${API_BASE}/fixture-pool/entities/${encodeURIComponent(id)}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load entity'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolResponse(id: string): Promise<unknown> {
+  const response = await fetch(
+    `${API_BASE}/fixture-pool/responses/${encodeURIComponent(id)}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load response fixture'))
+  }
+  return response.json()
+}
+
+export async function extractFixturePoolEntity(body: {
+  scenario: string
+  filename: string
+  jsonPath: string
+  entityType: string
+  id?: string
+  extractAllArrayItems?: boolean
+  label?: string
+}): Promise<{ entities: FixturePoolEntityRow[] }> {
+  const response = await fetch(`${API_BASE}/fixture-pool/entities/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to extract entity'))
+  }
+  return response.json()
+}
+
+export async function promoteFixturePoolResponse(body: {
+  scenario: string
+  filename: string
+  id?: string
+  label?: string
+}): Promise<{ response: FixturePoolResponseRow }> {
+  const response = await fetch(`${API_BASE}/fixture-pool/responses/promote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to promote response'))
   }
   return response.json()
 }

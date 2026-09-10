@@ -94,6 +94,37 @@ Control fields (optional unless noted):
 
 Date and proxy behavior follow the `applyDateConfig` / `applyProxyConfig` flags and whether the corresponding keys exist in the JSON.
 
+## Clear mocks (keep the empty scenario)
+
+Use this when you want the scenario name to stay in the picker with no recorded traffic. Date settings, lock metadata, domain-path rules, and Redis proxy settings are left in place.
+
+### UI
+
+**Settings → Scenarios → Clear mocks** (current scenario). Confirm the dialog. Locked scenarios must be unlocked first.
+
+### API
+
+`POST /api/scenario-config/clear-mocks`
+
+```json
+{ "scenario": "staging" }
+```
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "scenario": "staging",
+  "mocksRemoved": 42,
+  "message": "Removed 42 mocks from \"staging\". The scenario is still available (empty)."
+}
+```
+
+**Errors:** `400` invalid scenario name; `423` if the scenario is locked; `500` unexpected server errors.
+
+This does **not** delete the scenario folder or Redis registry entry. Create an empty scenario from **Settings → Create New Scenario** (leave “Derive from” as None) if you want a new empty name instead of clearing an existing one.
+
 ## Paths and Redis
 
 - **Filesystem:** `relativePath` is relative to the scenario directory (POSIX slashes). Paths are validated so imports cannot escape outside the scenario folder.

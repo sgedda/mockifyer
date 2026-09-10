@@ -1,4 +1,4 @@
-import { redisDel, redisMget, ResilientIoRedisClient } from '@sgedda/mockifyer-core';
+import { chunkArray, redisDel, redisMget, ResilientIoRedisClient } from '@sgedda/mockifyer-core';
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
 
 /** Buffers MULTI commands until exec(), when the cluster-aware client is ready. */
@@ -13,8 +13,9 @@ class BufferedRedisKvMulti implements MockKvMulti {
   }
 
   sadd(key: string, ...members: string[]): MockKvMulti {
-    if (members.length > 0) {
-      this.ops.push((multi) => multi.sadd(key, ...members));
+    if (members.length === 0) return this;
+    for (const chunk of chunkArray(members)) {
+      this.ops.push((multi) => multi.sadd(key, ...chunk));
     }
     return this;
   }
@@ -63,13 +64,17 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.holder.run((redis) => redisDel(redis, keys));
   }
 
-  async mget(...keys: string[]): Promise<Array<string | null>> {
+  async mget(keys: string[]): Promise<Array<string | null>> {
     return this.holder.run((redis) => redisMget(redis, keys));
   }
 
   async sadd(key: string, ...members: string[]): Promise<void> {
     if (members.length === 0) return;
-    await this.holder.run((redis) => redis.sadd(key, ...members));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(members)) {
+        await redis.sadd(key, ...chunk);
+      }
+    });
   }
 
   async smembers(key: string): Promise<string[]> {
@@ -78,7 +83,11 @@ export class RedisMockKvBackend implements MockKvBackend {
 
   async srem(key: string, ...members: string[]): Promise<void> {
     if (members.length === 0) return;
-    await this.holder.run((redis) => redis.srem(key, ...members));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(members)) {
+        await redis.srem(key, ...chunk);
+      }
+    });
   }
 
   async scard(key: string): Promise<number> {
