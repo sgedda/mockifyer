@@ -14,6 +14,7 @@ import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
 import { atlasRouter } from './routes/atlas';
 import overrideGroupsRouter from './routes/override-groups';
+import { dashboardApiNoCache } from './utils/api-no-cache';
 import {
   attachDashboardContext,
   type DashboardContextConfig,
@@ -52,6 +53,8 @@ export function createServer(
   const dashboardConfig = { ...config, mockDataPath };
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = dashboardConfig;
+  // Live JSON must not 304: fetch() treats 304 as !ok with an empty body.
+  app.set('etag', false);
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });
@@ -73,17 +76,12 @@ export function createServer(
   });
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
-  app.use('/api', (_req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    next();
-  });
+  app.use('/api', dashboardApiNoCache);
   
   // CORS for local development
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -136,6 +134,24 @@ export function createServer(
       next();
     }
   });
+
+  /**
+   * Vite `base: './'` + a trailing-slash deep link (`/mockifyer/overrides/`)
+   * requests `/overrides/assets/*.js`. If we SPA-fallback that to index.html,
+   * the browser never boots React and `/api/override-groups` is never called.
+   */
+  const spaPageAssetPrefix =
+    /^\/(mocks|overrides|timeline|atlas|network|fixture-pool|date-config|settings)\/assets\//;
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    if (!spaPageAssetPrefix.test(req.path)) {
+      return next();
+    }
+    req.url = req.url.replace(spaPageAssetPrefix, '/assets/');
+    return express.static(publicDir)(req, res, next);
+  });
   
   app.use((req, res, next) => {
     // Only serve static files for GET/HEAD requests that aren't API routes
@@ -152,7 +168,7 @@ export function createServer(
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found', path: req.path });
     }
-    if (req.path.startsWith('/assets/')) {
+    if (req.path.startsWith('/assets/') || req.path.includes('/assets/')) {
       return res.status(404).send('Asset not found');
     }
     if (req.path.startsWith('/atlas-html/')) {

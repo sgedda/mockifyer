@@ -82,7 +82,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
       <Separator />
       <SidebarFooter className="px-4 py-4">
             <div className="text-xs text-muted-foreground">
-              Version 1.2.0
+              Version {import.meta.env.VITE_MOCKIFYER_DASHBOARD_VERSION || 'dev'}
             </div>
       </SidebarFooter>
     </Sidebar>

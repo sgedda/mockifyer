@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -37,6 +37,11 @@ interface DashboardProps {
   onScenarioChange: (scenario: string) => void
 }
 
+/** Tabs that render the full mock catalog. Overrides uses GET /mocks/with-overrides instead. */
+function tabNeedsMockCatalog(tab: string): boolean {
+  return tab === 'mocks'
+}
+
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -49,18 +54,18 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
   const [proxySaving, setProxySaving] = useState(false)
   
-  // Get active tab from URL path
+  // Get active tab from URL path (basename-relative or full embed path)
   const getActiveTabFromPath = () => {
-    const path = location.pathname
-    if (path === '/mocks') return 'mocks'
-    if (path === '/overrides') return 'overrides'
-    if (path === '/timeline') return 'timeline'
-    if (path === '/atlas') return 'atlas'
-    if (path === '/network') return 'network'
-    if (path === '/fixture-pool') return 'fixture-pool'
-    if (path === '/date-config') return 'date-config'
-    if (path === '/settings') return 'settings'
-    return 'stats' // default to stats (root path)
+    const path = (location.pathname || '/').replace(/\/+$/, '') || '/'
+    if (path === '/mocks' || path.endsWith('/mocks')) return 'mocks'
+    if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
+    if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
+    if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
+    if (path === '/network' || path.endsWith('/network')) return 'network'
+    if (path === '/fixture-pool' || path.endsWith('/fixture-pool')) return 'fixture-pool'
+    if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
+    if (path === '/settings' || path.endsWith('/settings')) return 'settings'
+    return 'stats'
   }
   
   const [activeTab, setActiveTab] = useState(getActiveTabFromPath())
@@ -69,10 +74,23 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [allMocks, setAllMocks] = useState<MockFile[]>([])
   const [selectedMock, setSelectedMock] = useState<MockData | null>(null)
   const [loadingMock, setLoadingMock] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
+  const mocksLoadAbortRef = useRef<AbortController | null>(null)
+  const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
+
+  function isAbortError(error: unknown): boolean {
+    return (
+      (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    )
+  }
 
   const refreshScenarioConfig = useCallback(async () => {
     try {
@@ -158,9 +176,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }, [location.pathname])
 
   useEffect(() => {
+    if (!tabNeedsMockCatalog(activeTab)) {
+      mocksLoadAbortRef.current?.abort()
+      return
+    }
+    loadMocks()
     if (activeTab === 'mocks') {
-      loadMocks()
-      // Check for endpoint query parameter
       const params = new URLSearchParams(location.search)
       const qParam = params.get('q')
       const endpointParam = params.get('endpoint')
@@ -170,6 +191,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
         setSearchQuery(endpointParam)
       }
     }
+    return () => {
+      mocksLoadAbortRef.current?.abort()
+    }
   }, [scenario, activeTab, location.search])
 
   // Handle tab change - update URL
@@ -178,6 +202,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
       'network': '/network',
@@ -190,20 +215,53 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }
 
   async function loadMocks() {
+    mocksLoadAbortRef.current?.abort()
+    const ac = new AbortController()
+    mocksLoadAbortRef.current = ac
+    const { signal } = ac
+    const requestedSearchQuery = searchQuery.trim()
+    const wantSimilarGroups = activeTab === 'mocks'
+    const hasCatalog = allMocks.length > 0
     try {
-      setLoading(true)
-      const data = await getMocks(scenario, { similarGroups: true })
+      if (!hasCatalog) setLoading(true)
+      setSimilarBodyGroups([])
+      const data = await getMocks(scenario, { signal })
+      if (signal.aborted) return
+      if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
       setAllMocks(data.files)
-      setSimilarBodyGroups(data.similarBodyGroups ?? [])
+      setLoading(false)
+
+      if (!wantSimilarGroups) return
+
+      const graphqlCount = data.files.reduce(
+        (n, file) => (file.graphqlInfo?.query ? n + 1 : n),
+        0
+      )
+      if (graphqlCount < 2) return
+
+      try {
+        const grouped = await getMocks(scenario, { similarGroups: true, signal })
+        if (signal.aborted) return
+        if (searchQueryRef.current.trim() !== requestedSearchQuery) return
+        if (!requestedSearchQuery) {
+          setMocks(grouped.files)
+        }
+        setAllMocks(grouped.files)
+        setSimilarBodyGroups(grouped.similarBodyGroups ?? [])
+      } catch (error) {
+        if (isAbortError(error)) return
+        // List already rendered; similar clusters are optional.
+      }
     } catch (error) {
+      if (isAbortError(error)) return
       toast({
         title: 'Error',
         description: 'Failed to load mocks',
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }
 
@@ -276,6 +334,18 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const scenarioLocked = scenarioLocks[scenario] === true
   const viewingScratch = isScratchScenario(scenario)
   const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
+
+  const openMockFromOverrides = (filename: string) => {
+    const file = allMocks.find((m) => m.filename === filename)
+    if (file) {
+      void handleSelectMock(file)
+    }
+    navigate('/mocks')
+  }
+
+  const overridesPage = (
+    <OverridesView scenario={scenario} mocks={allMocks} onOpenMock={openMockFromOverrides} />
+  )
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -527,24 +597,8 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
-            <Route
-              path="/overrides"
-              element={
-                <OverridesView
-                  scenario={scenario}
-                  mocks={allMocks}
-                  loading={loading}
-                  onRefresh={loadMocks}
-                  onOpenMock={(filename) => {
-                    const file = allMocks.find((m) => m.filename === filename)
-                    if (file) {
-                      void handleSelectMock(file)
-                    }
-                    navigate('/mocks')
-                  }}
-                />
-              }
-            />
+            <Route path="/overrides" element={overridesPage} />
+            <Route path="/:mountPrefix/overrides" element={overridesPage} />
             <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
             <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />

@@ -21,6 +21,21 @@ const API_BASE = getApiBase()
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
 
+/**
+ * Express can still 304 GET /api/* when If-None-Match matches. A 304 is not
+ * `response.ok` and has an empty body, so JSON parse / `ok` checks fail and the
+ * Overrides page stays on "Loading…". Retry once with a cache-busting query.
+ */
+async function fetchApi(input: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const isGetLike = method === 'GET' || method === 'HEAD'
+  const merged: RequestInit = isGetLike ? { ...noStore, ...init } : { ...init }
+  const response = await fetch(input, merged)
+  if (response.status !== 304 || !isGetLike) return response
+  const joiner = input.includes('?') ? '&' : '?'
+  return fetch(`${input}${joiner}_=${Date.now()}`, { ...merged, cache: 'reload' })
+}
+
 function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig {
   return {
     currentScenario: String(data.currentScenario ?? ''),
@@ -55,9 +70,31 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   return fallback
 }
 
+/** Redis UI names are `redis/<hash>.json`; encode each segment so Express matches field-overrides. */
+function encodeMockFilename(filename: string): string {
+  return filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
+const OVERRIDES_LIST_TIMEOUT_MS = 25_000
+
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number }
+  opts?: {
+    similarGroups?: boolean
+    similarThreshold?: number
+    signal?: AbortSignal
+    compact?: boolean
+  }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -66,6 +103,7 @@ export async function getMocks(
 }> {
   const qs = new URLSearchParams()
   if (scenario) qs.set('scenario', scenario)
+  if (opts?.compact) qs.set('compact', '1')
   if (opts?.similarGroups) {
     qs.set('similarGroups', '1')
     if (typeof opts.similarThreshold === 'number' && Number.isFinite(opts.similarThreshold)) {
@@ -73,9 +111,46 @@ export async function getMocks(
     }
   }
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks${suffix}`, {
+    ...noStore,
+    signal: opts?.signal,
+  })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
+}
+
+/**
+ * Overrides sidebar: only mocks that already have field/date overlays.
+ * Does not wait on GET /api/mocks of the full Redis catalog.
+ */
+export async function getMocksWithOverrides(
+  scenario?: string,
+  opts?: { signal?: AbortSignal }
+): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const timeout = new AbortController()
+  const timer = globalThis.setTimeout(() => timeout.abort(), OVERRIDES_LIST_TIMEOUT_MS)
+  const onParentAbort = () => timeout.abort()
+  opts?.signal?.addEventListener('abort', onParentAbort)
+  try {
+    const response = await fetchApi(`${API_BASE}/mocks/with-overrides${suffix}`, {
+      ...noStore,
+      signal: timeout.signal,
+    })
+    if (!response.ok) throw new Error('Failed to fetch mocks with overrides')
+    return response.json()
+  } catch (error) {
+    if (opts?.signal?.aborted) throw error
+    if (isAbortError(error)) {
+      throw new Error('Timed out loading mocks with overrides')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timer)
+    opts?.signal?.removeEventListener('abort', onParentAbort)
+  }
 }
 
 export async function searchMocks(params: {
@@ -91,14 +166,14 @@ export async function searchMocks(params: {
   if (scenario) qs.set('scenario', scenario)
   if (typeof limit === 'number' && Number.isFinite(limit)) qs.set('limit', String(limit))
 
-  const response = await fetch(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
   if (!response.ok) throw new Error('Failed to search mocks')
   return response.json()
 }
 
 export async function getMock(filename: string, scenario?: string): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -125,7 +200,7 @@ export async function getMockAiContext(
   if (opts?.includeRelated === false) qs.set('includeRelated', '0')
 
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/ai-context${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/ai-context${suffix}`, noStore)
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error(error.error || error.details || 'Failed to fetch AI context')
@@ -148,7 +223,7 @@ export async function updateMock(
     body.replayMode = replayMode
   }
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -167,12 +242,8 @@ export async function getMockFieldOverrides(
   scenario: string
   responseFieldOverrides: MockResponseFieldOverride[]
 }> {
-  const encoded = filename
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to load field overrides'))
   }
@@ -189,12 +260,8 @@ export async function setMockFieldOverrides(
   scenario: string
   responseFieldOverrides: MockResponseFieldOverride[]
 }> {
-  const encoded = filename
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
   const q = options?.scenario ? `?scenario=${encodeURIComponent(options.scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -245,7 +312,7 @@ export async function listOverrideGroups(
   if (scenario) qs.set('scenario', scenario)
   if (clientId) qs.set('clientId', clientId)
   const q = qs.toString() ? `?${qs}` : ''
-  const response = await fetch(`${API_BASE}/override-groups${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/override-groups${q}`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to list override groups'))
   }
@@ -257,7 +324,7 @@ export async function getOverrideGroup(
   scenario?: string
 ): Promise<{ scenario: string; group: OverrideGroup }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
     noStore
   )
@@ -272,7 +339,7 @@ export async function putOverrideGroup(
   scenario?: string
 ): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/override-groups/${encodeURIComponent(group.id)}${q}`,
     {
       method: 'PUT',
@@ -308,7 +375,7 @@ export async function setActiveOverrideGroup(
   if (options?.scenario) qs.set('scenario', options.scenario)
   if (options?.clientId) qs.set('clientId', options.clientId)
   const q = qs.toString() ? `?${qs}` : ''
-  const response = await fetch(`${API_BASE}/override-groups/config${q}`, {
+  const response = await fetchApi(`${API_BASE}/override-groups/config${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -336,7 +403,7 @@ export async function patchOverrideGroupEntry(
   scenario?: string
 ): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/override-groups/${encodeURIComponent(groupId)}/entries${q}`,
     {
       method: 'PATCH',
@@ -355,7 +422,7 @@ export async function deleteOverrideGroup(
   scenario?: string
 ): Promise<{ success: boolean; scenario: string; deleted: string }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
     { method: 'DELETE' }
   )
@@ -371,7 +438,7 @@ export async function refreshMockFromLive(
   clientId?: string
 ): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/refresh-from-live${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/refresh-from-live${q}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(clientId ? { clientId } : {}),
@@ -386,7 +453,7 @@ export async function refreshMockFromLive(
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -397,7 +464,7 @@ export async function deleteMock(filename: string, scenario?: string): Promise<v
 
 export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/duplicate${q}`, {
     method: 'POST',
   })
   if (!response.ok) {
@@ -411,20 +478,25 @@ export async function getStats(scenario?: string): Promise<Stats> {
   const url = scenario
     ? `${API_BASE}/stats?scenario=${encodeURIComponent(scenario)}`
     : `${API_BASE}/stats`
-  const response = await fetch(url, noStore)
+  const response = await fetchApi(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch stats')
   return response.json()
 }
 
+const SCENARIO_CONFIG_TIMEOUT_MS = 10_000
+
 export async function getScenarioConfig(): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config`, noStore)
+  const response = await fetchApi(`${API_BASE}/scenario-config`, {
+    ...noStore,
+    signal: AbortSignal.timeout(SCENARIO_CONFIG_TIMEOUT_MS),
+  })
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
   return mapScenarioConfigPayload(data)
 }
 
 export async function setScenarioLock(scenario: string, locked: boolean): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config/lock`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/lock`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, locked }),
@@ -438,7 +510,7 @@ export async function setScenarioLock(scenario: string, locked: boolean): Promis
 }
 
 export async function setScenario(scenario: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/scenario-config/set`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/set`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario }),
@@ -492,13 +564,13 @@ export async function getClientLanes(): Promise<{
   connections?: ClientConnectionRow[]
   globalScenario: string | null
 }> {
-  const response = await fetch(`${API_BASE}/client-lanes`, noStore)
+  const response = await fetchApi(`${API_BASE}/client-lanes`, noStore)
   if (!response.ok) throw new Error('Failed to fetch client lanes')
   return response.json()
 }
 
 export async function setClientLaneScenario(clientId: string, scenario: string | null): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario }),
@@ -510,7 +582,7 @@ export async function setClientLaneScenario(clientId: string, scenario: string |
 }
 
 export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ note }),
@@ -522,7 +594,7 @@ export async function setClientLaneNote(clientId: string, note: string | null): 
 }
 
 export async function deleteClientLane(clientId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -532,7 +604,7 @@ export async function deleteClientLane(clientId: string): Promise<void> {
 }
 
 export async function createScenario(scenario: string, deriveFrom?: string | null): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config/create`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
@@ -550,7 +622,7 @@ export async function exportScenarioBundle(scenario?: string): Promise<ScenarioE
     scenario !== undefined && scenario !== ''
       ? `?scenario=${encodeURIComponent(scenario)}`
       : ''
-  const response = await fetch(`${API_BASE}/scenario-config/export${qs}`, noStore)
+  const response = await fetchApi(`${API_BASE}/scenario-config/export${qs}`, noStore)
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || 'Failed to export scenario')
@@ -580,7 +652,7 @@ export async function importScenarioBundle(payload: {
     applyDateConfig: payload.applyDateConfig !== false,
     applyProxyConfig: payload.applyProxyConfig !== false,
   }
-  const response = await fetch(`${API_BASE}/scenario-config/import`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/import`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -602,7 +674,7 @@ export async function clearScenarioMocks(scenario: string): Promise<{
   mocksRemoved: number
   message: string
 }> {
-  const response = await fetch(`${API_BASE}/scenario-config/clear-mocks`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/clear-mocks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario }),
@@ -623,7 +695,7 @@ export interface ProxyConfig {
 
 export async function getProxyConfig(scenario: string): Promise<ProxyConfig> {
   const q = `?scenario=${encodeURIComponent(scenario)}`
-  const response = await fetch(`${API_BASE}/proxy-config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/proxy-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch proxy config')
   return response.json()
 }
@@ -633,7 +705,7 @@ export async function updateProxyConfig(payload: {
   recordOnMiss: boolean
   allowUpstream: boolean
 }): Promise<void> {
-  const response = await fetch(`${API_BASE}/proxy-config`, {
+  const response = await fetchApi(`${API_BASE}/proxy-config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -668,7 +740,7 @@ export async function getDateConfig(scenario?: string): Promise<DateConfig> {
     scenario !== undefined && scenario !== ''
       ? `?scenario=${encodeURIComponent(scenario)}`
       : ''
-  const response = await fetch(`${API_BASE}/date-config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/date-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
 }
@@ -708,7 +780,7 @@ export async function getNetworkEventTrace(params: {
   if (params.requestId) qs.set('requestId', params.requestId)
   if (params.eventId) qs.set('eventId', params.eventId)
   if (params.clientId) qs.set('clientId', params.clientId)
-  const response = await fetch(`${API_BASE}/network-events/trace?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events/trace?${qs.toString()}`, noStore)
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error((error as { error?: string }).error || 'Failed to fetch network trace')
@@ -727,7 +799,7 @@ export async function getNetworkEvents(params: {
   if (params.clientId) qs.set('clientId', params.clientId)
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.since) qs.set('since', params.since)
-  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events?${qs.toString()}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch network events')
   return response.json()
 }
@@ -735,13 +807,13 @@ export async function getNetworkEvents(params: {
 export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<void> {
   const qs = new URLSearchParams({ scenario })
   if (clientId) qs.set('clientId', clientId)
-  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
+  const response = await fetchApi(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
   if (!response.ok) throw new Error('Failed to clear network events')
 }
 
 export async function getNetworkLogConfig(scenario: string): Promise<NetworkLogConfig & { scenario: string }> {
   const q = `?scenario=${encodeURIComponent(scenario)}`
-  const response = await fetch(`${API_BASE}/network-events/config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events/config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch network log config')
   return response.json()
 }
@@ -750,7 +822,7 @@ export async function updateNetworkLogConfig(
   scenario: string,
   patch: Partial<Pick<NetworkLogConfig, 'enabled' | 'captureBodies'>>
 ): Promise<NetworkLogConfig & { scenario: string }> {
-  const response = await fetch(`${API_BASE}/network-events/config`, {
+  const response = await fetchApi(`${API_BASE}/network-events/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, ...patch }),
@@ -772,7 +844,7 @@ export async function bulkSetLiveApiForDomain(payload: {
   skippedPending: number
   domainPath: string
 }> {
-  const response = await fetch(`${API_BASE}/mocks/bulk-live-api`, {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-live-api`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -796,7 +868,7 @@ export async function bulkCaptureResponsesForDomain(payload: {
   errors: Array<{ endpoint: string | null; message: string }>
   domainPath: string
 }> {
-  const response = await fetch(`${API_BASE}/mocks/bulk-capture-responses`, {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-capture-responses`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -818,7 +890,7 @@ export type DomainPathRulesMap = Record<string, DomainPathRule>
 
 export async function fetchDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
   const params = new URLSearchParams({ scenario })
-  const response = await fetch(`${API_BASE}/mocks/domain-path-rules?${params}`)
+  const response = await fetchApi(`${API_BASE}/mocks/domain-path-rules?${params}`)
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || 'Failed to load domain path rules')
@@ -832,7 +904,7 @@ export async function setDomainPathRule(payload: {
   domainPath: string
   rule: { recordResponses: boolean; autoMock?: boolean } | null
 }): Promise<DomainPathRulesMap> {
-  const response = await fetch(`${API_BASE}/mocks/domain-path-rules`, {
+  const response = await fetchApi(`${API_BASE}/mocks/domain-path-rules`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -849,7 +921,7 @@ export async function appendNetworkEvent(
   scenario: string,
   event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'>
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/network-events`, {
+  const response = await fetchApi(`${API_BASE}/network-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, event }),
@@ -863,7 +935,7 @@ export async function updateDateConfig(config: {
   timezone?: string | null
   scenario?: string | null
 }): Promise<DateConfig> {
-  const response = await fetch(`${API_BASE}/date-config`, {
+  const response = await fetchApi(`${API_BASE}/date-config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -893,7 +965,7 @@ export async function getFixturePoolEntities(): Promise<{
   updatedAt?: string
   warning?: string
 }> {
-  const response = await fetch(`${API_BASE}/fixture-pool/entities`, noStore)
+  const response = await fetchApi(`${API_BASE}/fixture-pool/entities`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to load entities'))
   }
@@ -905,7 +977,7 @@ export async function getFixturePoolResponses(): Promise<{
   updatedAt?: string
   warning?: string
 }> {
-  const response = await fetch(`${API_BASE}/fixture-pool/responses`, noStore)
+  const response = await fetchApi(`${API_BASE}/fixture-pool/responses`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to load responses'))
   }
@@ -913,7 +985,7 @@ export async function getFixturePoolResponses(): Promise<{
 }
 
 export async function getFixturePoolEntity(id: string): Promise<unknown> {
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/fixture-pool/entities/${encodeURIComponent(id)}`,
     noStore
   )
@@ -924,7 +996,7 @@ export async function getFixturePoolEntity(id: string): Promise<unknown> {
 }
 
 export async function getFixturePoolResponse(id: string): Promise<unknown> {
-  const response = await fetch(
+  const response = await fetchApi(
     `${API_BASE}/fixture-pool/responses/${encodeURIComponent(id)}`,
     noStore
   )
@@ -943,7 +1015,7 @@ export async function extractFixturePoolEntity(body: {
   extractAllArrayItems?: boolean
   label?: string
 }): Promise<{ entities: FixturePoolEntityRow[] }> {
-  const response = await fetch(`${API_BASE}/fixture-pool/entities/extract`, {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/entities/extract`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -960,7 +1032,7 @@ export async function promoteFixturePoolResponse(body: {
   id?: string
   label?: string
 }): Promise<{ response: FixturePoolResponseRow }> {
-  const response = await fetch(`${API_BASE}/fixture-pool/responses/promote`, {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/responses/promote`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

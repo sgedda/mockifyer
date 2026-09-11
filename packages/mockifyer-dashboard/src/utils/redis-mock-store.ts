@@ -13,6 +13,8 @@ import {
   getMaxRequestsPerScenarioFromEnv,
   redisPathIndexKey,
   chunkArray,
+  mockHasResponseFieldOverrides,
+  mockHasResponseDateOverrides,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -66,6 +68,26 @@ async function saddChunked(kv: MockKvBackend, key: string, members: string[]): P
     await kv.sadd(key, ...chunk);
   }
 }
+
+/** JSON keys written at the mock root by field/date override PATCH. */
+export const RESPONSE_OVERRIDE_JSON_NEEDLES = ['"responseFieldOverrides"', '"responseDateOverrides"'] as const;
+
+/** Cheap string probe so Overrides can skip JSON.parse of huge GraphQL bodies. */
+export function rawJsonMightContainResponseOverrides(raw: string): boolean {
+  return (
+    raw.includes(RESPONSE_OVERRIDE_JSON_NEEDLES[0]) || raw.includes(RESPONSE_OVERRIDE_JSON_NEEDLES[1])
+  );
+}
+
+export function mockHasListedResponseOverrides(mockData: MockData): boolean {
+  return mockHasResponseFieldOverrides(mockData) || mockHasResponseDateOverrides(mockData);
+}
+
+/** Probe head+tail instead of pulling multi-MB values for mocks with no overlays. */
+const OVERRIDE_PROBE_TAIL_BYTES = 16_384;
+const OVERRIDE_PROBE_HEAD_BYTES = 4_096;
+/** Small MGET/GETRANGE batches so a large scenario cannot pin the event loop. */
+const OVERRIDE_SCAN_CHUNK_SIZE = 32;
 
 export class RedisMockStore {
   private readonly kv: MockKvBackend;
@@ -270,6 +292,124 @@ export class RedisMockStore {
     return out;
   }
 
+  private overrideIndexKey(scenarioName: string): string {
+    return `${this.keyPrefix}:override_index:${scenarioName}`;
+  }
+
+  private overrideIndexReadyKey(scenarioName: string): string {
+    return `${this.keyPrefix}:override_index_ready:${scenarioName}`;
+  }
+
+  private async syncOverrideIndexMembership(
+    scenarioName: string,
+    hash: string,
+    mockData: MockData
+  ): Promise<void> {
+    const indexKey = this.overrideIndexKey(scenarioName);
+    try {
+      if (mockHasListedResponseOverrides(mockData)) {
+        await this.kv.sadd(indexKey, hash);
+      } else {
+        await this.kv.srem(indexKey, hash);
+      }
+    } catch (error) {
+      console.warn('[RedisMockStore] override index update failed:', error);
+    }
+  }
+
+  private async loadHashesAsListItems(
+    hashes: string[],
+    scenarioName: string
+  ): Promise<RedisMockListItem[]> {
+    if (hashes.length === 0) return [];
+    const out: RedisMockListItem[] = [];
+    for (const chunk of chunkArray(hashes, OVERRIDE_SCAN_CHUNK_SIZE)) {
+      const keys = chunk.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+      const values: Array<string | null> = await this.kv.mget(keys);
+      for (let i = 0; i < chunk.length; i++) {
+        const raw = values[i];
+        if (!raw) continue;
+        try {
+          const mockData = JSON.parse(raw) as MockData;
+          if (!mockHasListedResponseOverrides(mockData)) continue;
+          out.push({ hash: chunk[i], mockData, redisKey: keys[i] });
+        } catch {
+          continue;
+        }
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    return out;
+  }
+
+  /**
+   * Read head/tail of a Redis string without transferring the full GraphQL body.
+   * Falls back to GET when {@link MockKvBackend.getrange} is unavailable.
+   */
+  private async probeMockRawForOverrides(key: string): Promise<string | null> {
+    const getrange = this.kv.getrange?.bind(this.kv);
+    if (!getrange) {
+      const raw = await this.kv.get(key);
+      if (!raw || !rawJsonMightContainResponseOverrides(raw)) return null;
+      return raw;
+    }
+    const tail = await getrange(key, -OVERRIDE_PROBE_TAIL_BYTES, -1);
+    if (tail && rawJsonMightContainResponseOverrides(tail)) {
+      return this.kv.get(key);
+    }
+    if (!tail || tail.length < OVERRIDE_PROBE_TAIL_BYTES) {
+      return null;
+    }
+    const head = await getrange(key, 0, OVERRIDE_PROBE_HEAD_BYTES - 1);
+    if (head && rawJsonMightContainResponseOverrides(head)) {
+      return this.kv.get(key);
+    }
+    return null;
+  }
+
+  private async backfillOverrideIndex(scenarioName: string): Promise<RedisMockListItem[]> {
+    const indexKey = await this.indexKey(scenarioName);
+    const hashes: string[] = await this.kv.smembers(indexKey);
+    const matches: RedisMockListItem[] = [];
+    const matchHashes: string[] = [];
+    for (const chunk of chunkArray(hashes, OVERRIDE_SCAN_CHUNK_SIZE)) {
+      const keys = chunk.map((h) => `${this.keyPrefix}:mock:${scenarioName}:${h}`);
+      const values = await Promise.all(keys.map((key) => this.probeMockRawForOverrides(key)));
+      for (let i = 0; i < chunk.length; i++) {
+        const raw = values[i];
+        if (!raw) continue;
+        try {
+          const mockData = JSON.parse(raw) as MockData;
+          if (!mockHasListedResponseOverrides(mockData)) continue;
+          matches.push({ hash: chunk[i], mockData, redisKey: keys[i] });
+          matchHashes.push(chunk[i]);
+        } catch {
+          continue;
+        }
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    if (matchHashes.length > 0) {
+      await saddChunked(this.kv, this.overrideIndexKey(scenarioName), matchHashes);
+    }
+    await this.kv.set(this.overrideIndexReadyKey(scenarioName), '1');
+    return matches;
+  }
+
+  /**
+   * Mocks that have field or date overlays. Uses a Redis SET index when available;
+   * otherwise probes head/tail of each value so Overrides does not JSON.parse every recording.
+   */
+  async listWithOverrides(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
+    const scenarioName = scenario?.trim() || (await this.scenarioKey(undefined, clientId));
+    const ready = await this.kv.get(this.overrideIndexReadyKey(scenarioName));
+    if (ready) {
+      const hashes: string[] = await this.kv.smembers(this.overrideIndexKey(scenarioName));
+      return this.loadHashesAsListItems(hashes, scenarioName);
+    }
+    return this.backfillOverrideIndex(scenarioName);
+  }
+
   async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {
     const dataKey = await this.dataKey(hash, scenario, clientId);
     const raw: string | null = await this.kv.get(dataKey);
@@ -391,6 +531,7 @@ export class RedisMockStore {
       await this.kv.sadd(pathIndexKey, hash);
     }
     await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    await this.syncOverrideIndexMembership(scenarioName, hash, mockData);
     return true;
   }
 
@@ -415,6 +556,7 @@ export class RedisMockStore {
     }
     await this.kv.del(dataKey);
     await this.kv.srem(indexKey, hash);
+    await this.kv.srem(this.overrideIndexKey(scenarioName), hash).catch(() => undefined);
   }
 
   /** Redis key for JSON `{ dateManipulation, updatedAt }` per scenario (dashboard Date Config + proxy). */

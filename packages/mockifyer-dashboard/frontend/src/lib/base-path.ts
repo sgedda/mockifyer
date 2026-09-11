@@ -1,3 +1,10 @@
+import {
+  inferMountPrefixFromPathname,
+  resolveApiBase,
+  resolveRouterBasename,
+  resolveScriptSrcToMountPrefix,
+} from './dashboard-mount'
+
 /**
  * Infer Express mount prefix (e.g. `/dashboard`) from this module's emitted chunk URL.
  * Vite/Rollup sets `import.meta.url` to the real file URL (e.g. `.../dashboard/assets/main-xxx.js`).
@@ -20,66 +27,59 @@ function inferAppMountPrefixFromImportMeta(): string {
  * (e.g. some test runners) or does not contain `/assets/`.
  */
 function inferAppMountPrefixFromDom(): string {
-  if (typeof document === 'undefined') {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
     return '';
   }
+  const pageUrl = window.location.href;
   const scripts = document.getElementsByTagName('script');
   for (let i = 0; i < scripts.length; i++) {
     const src = scripts[i].getAttribute('src');
-    if (!src || !src.includes('/assets/')) {
+    if (!src) {
       continue;
     }
-    try {
-      const u = new URL(src, window.location.origin);
-      const idx = u.pathname.indexOf('/assets/');
-      if (idx > 0) {
-        return u.pathname.slice(0, idx);
-      }
-    } catch {
-      continue;
+    const mount = resolveScriptSrcToMountPrefix(src, pageUrl);
+    if (mount) {
+      return mount;
     }
   }
   return '';
 }
 
+function inferAppMountPrefixFromLocation(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return inferMountPrefixFromPathname(window.location.pathname);
+}
+
 /** Mount prefix before `/assets/` (e.g. `/dashboard`), or `''` when served from site root. */
 export function inferAppMountPrefix(): string {
-  return inferAppMountPrefixFromImportMeta() || inferAppMountPrefixFromDom();
+  if (typeof window !== 'undefined') {
+    const fromPath = inferMountPrefixFromPathname(window.location.pathname);
+    if (fromPath) {
+      return fromPath;
+    }
+  }
+  return (
+    inferAppMountPrefixFromImportMeta() ||
+    inferAppMountPrefixFromDom() ||
+    inferAppMountPrefixFromLocation()
+  );
 }
 
 /**
  * Vite sets `import.meta.env.BASE_URL` from `base` in `vite.config.ts`
- * (e.g. `/`, `./`, or `/dashboard/`).
+ * (e.g. `/`, `./`, or `/dashboard/`). Location mount always wins so a host
+ * that built with `base: '/'` still calls `/mockifyer/api` under an embed.
  */
 export function getDashboardRouterBasename(): string | undefined {
-  const base = import.meta.env.BASE_URL;
-  if (base === '/' || base === './') {
-    if (base === './') {
-      const mount = inferAppMountPrefix();
-      return mount === '' ? undefined : mount;
-    }
-    return undefined;
-  }
-  const withoutTrailing = base.replace(/\/+$/, '');
-  return withoutTrailing === '' ? undefined : withoutTrailing;
+  return resolveRouterBasename(import.meta.env.BASE_URL, inferAppMountPrefix());
 }
 
 /**
- * Origin path prefix for API calls (e.g. `/api` or `/dashboard/api`).
- * With portable `base: './'`, mount is taken from the bundle URL so `/api` is never used incorrectly under a subpath.
+ * Origin path prefix for API calls (e.g. `/api` or `/mockifyer/api`).
+ * With portable `base: './'` (or a mistaken `/`), mount is taken from the page URL.
  */
 export function getApiBase(): string {
-  const base = import.meta.env.BASE_URL;
-  if (base === '/') {
-    return '/api';
-  }
-  if (base === './') {
-    const mount = inferAppMountPrefix();
-    if (mount === '') {
-      return '/api';
-    }
-    return `${mount}/api`.replace(/\/{2,}/g, '/');
-  }
-  const root = base.endsWith('/') ? base : `${base}/`;
-  return `${root}api`.replace(/\/{2,}/g, '/');
+  return resolveApiBase(import.meta.env.BASE_URL, inferAppMountPrefix());
 }

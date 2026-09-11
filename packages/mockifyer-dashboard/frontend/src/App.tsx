@@ -8,34 +8,27 @@ import { getDashboardRouterBasename } from './lib/base-path'
 
 function App() {
   const [scenario, setScenario] = useState<string>('default')
-  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
+  // Do not gate the router on scenario-config: a refresh of /overrides used to
+  // sit on a full-page "Loading..." until that GET finished (or hung on Redis).
   useEffect(() => {
-    loadScenario()
+    void loadScenario()
   }, [])
 
   async function loadScenario() {
     try {
       const config = await getScenarioConfig()
-      setScenario(config.currentScenario)
-    } catch (error) {
+      if (config.currentScenario) {
+        setScenario(config.currentScenario)
+      }
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to load scenario configuration',
         variant: 'destructive',
       })
-    } finally {
-      setLoading(false)
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    )
   }
 
   return (
