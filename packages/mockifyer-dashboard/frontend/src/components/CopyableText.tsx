@@ -60,14 +60,15 @@ export function CopyableText({
       </span>
       <Button
         type="button"
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+        variant="outline"
+        size="sm"
+        className="h-6 shrink-0 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
         onClick={(event) => void handleCopy(event)}
         title={copied ? 'Copied' : copyLabel}
         aria-label={copied ? 'Copied' : copyLabel}
       >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
+        {copied ? 'Copied' : 'Copy'}
       </Button>
     </div>
   )
