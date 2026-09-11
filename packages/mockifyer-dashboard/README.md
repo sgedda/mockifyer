@@ -64,7 +64,19 @@ npx mockifyer-dashboard --base /dashboard
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
-The default UI build uses a **portable** Vite base (`./`): the same `public/` works at **`/`** or when mounted under **`/dashboard`** (no extra build for that path). The app infers the mount for React Router and `/api` from the main bundle script URL.
+The default UI build uses a **portable** Vite base (`./`): the same `public/` works at **`/`** or when mounted under **`/dashboard`** (no extra build for that path). The built `index.html` loads JS/CSS from **`/<mount>/assets/*`** (not `./assets/*` on the current page), so a host SPA fallback cannot serve `index.html` as JavaScript on `/mockifyer/overrides/`. The app infers the mount for React Router and `/api` from the page URL.
+
+**Host `package.json`:** look for `@sgedda/mockifyer-dashboard`. A published copy older than this package’s `version` will not include the Overrides embed fix. Point at the published version, a `file:` path to `packages/mockifyer-dashboard`, or reinstall after publishing — then **restart** the host process. The sidebar footer shows the real dashboard version (not a hardcoded `1.2.0`).
+
+```json
+{
+  "dependencies": {
+    "@sgedda/mockifyer-dashboard": "1.5.36"
+  }
+}
+```
+
+Prefer `app.use('/mockifyer', createServer(publicDir, mockDataPath, config))` rather than `express.static` + a catch-all `sendFile(index.html)` for `/mockifyer/*`. If the host must SPA-fallback, keep **`/mockifyer/assets/`** and **`/mockifyer/api/`** out of that catch-all.
 
 **Optional:** root-absolute assets — `VITE_MOCKIFYER_DASHBOARD_BASE=/ npm run build`. Fixed subpath in the bundle — e.g. `VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build` (mount Express at the same path).
 
