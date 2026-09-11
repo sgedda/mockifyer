@@ -44,7 +44,14 @@ export function CopyableText({
   }
 
   return (
-    <div className={cn('flex items-start gap-1 min-w-0', className)}>
+    <div
+      className={cn('flex items-start gap-1 min-w-0', className)}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <span
         className={cn('break-all select-text min-w-0', textClassName)}
         title={title ?? value}
