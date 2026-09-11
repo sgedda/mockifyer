@@ -24,10 +24,9 @@ interface MockListProps {
   /** When true, delete/duplicate actions are hidden (scenario locked server-side). */
   scenarioLocked?: boolean
   loading: boolean
-  loadingMock?: boolean
   searchQuery: string
   onSearchChange: (query: string) => void
-  selectedMock: MockData | null
+  selectedMock?: MockData | null
   onSelectMock: (file: MockFile) => void
   onRefresh: () => void
 }
@@ -47,10 +46,9 @@ function MockListContent({
   scenario,
   scenarioLocked = false,
   loading,
-  loadingMock = false,
   searchQuery,
   onSearchChange,
-  selectedMock,
+  selectedMock = null,
   onSelectMock,
   onRefresh,
 }: MockListProps) {
@@ -557,9 +555,9 @@ function MockListContent({
         </Card>
       ) : groupBy === 'chains' ? (
         <div className="relative space-y-4">
-          {(loading || loadingMock) && (
+          {loading && (
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
-              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
+              Refreshing mocks…
             </div>
           )}
           <p className="text-sm text-muted-foreground">
@@ -577,9 +575,9 @@ function MockListContent({
         </div>
       ) : (
         <div className="relative space-y-4">
-          {(loading || loadingMock) && (
+          {loading && (
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
-              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
+              Refreshing mocks…
             </div>
           )}
           <MockFolderTree
