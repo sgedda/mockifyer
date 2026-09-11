@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { CopyableText } from '@/components/CopyableText'
 
 interface StatsViewProps {
   scenario: string
@@ -242,9 +243,12 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
                     onClick={() => handleEndpointClick(item.endpoint)}
                     title={`Click to view mocks for ${item.endpoint}`}
                   >
-                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary transition-colors">
-                      {item.endpoint}
-                    </span>
+                    <CopyableText
+                      value={item.endpoint}
+                      copyLabel="Copy endpoint URL"
+                      className="flex-1 mr-2"
+                      textClassName="font-mono text-xs group-hover:text-primary transition-colors"
+                    />
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">{item.count}</span>
                       <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
