@@ -30,7 +30,7 @@ import {
   type DashboardRedisConfig,
 } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { RedisMockStore, rawJsonMightContainResponseOverrides } from '../utils/redis-mock-store';
 import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
@@ -214,6 +214,61 @@ function getMockOverrideListFields(mockData: any): {
   };
 }
 
+function mockListHasOverrides(mockData: unknown): boolean {
+  const fields = getMockOverrideListFields(mockData);
+  return fields.hasResponseFieldOverrides || fields.hasResponseDateOverrides;
+}
+
+function toMockListRow(params: {
+  filename: string;
+  filePath: string;
+  mockData: MockData;
+  compact: boolean;
+  size: number;
+}): Record<string, unknown> {
+  const { filename, filePath, mockData, compact, size } = params;
+  const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
+  let endpoint: string | null = null;
+  let method: string | null = null;
+  let sessionId: string | null = null;
+  let activation = extractMockActivationFlags({});
+  try {
+    if (mockData.request?.url) endpoint = mockData.request.url;
+    if (mockData.request?.method) {
+      method = String(mockData.request.method).toUpperCase();
+    }
+    if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+      const search = new URLSearchParams();
+      Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
+        if (value != null) search.append(key, String(value));
+      });
+      const qs = search.toString();
+      if (qs && endpoint) endpoint += '?' + qs;
+    }
+    sessionId = (mockData as { sessionId?: string }).sessionId || null;
+    activation = extractMockActivationFlags(mockData);
+  } catch {
+    // ignore malformed request metadata
+  }
+  const graphqlInfo = extractGraphqlListInfo(mockData, compact);
+  const correlation = extractMockCorrelationIds(mockData);
+  return {
+    filename,
+    filePath,
+    size,
+    created: ts.toISOString(),
+    modified: ts.toISOString(),
+    endpoint,
+    method,
+    graphqlInfo,
+    sessionId,
+    requestId: correlation.requestId,
+    parentRequestId: correlation.parentRequestId,
+    ...activation,
+    ...getMockOverrideListFields(mockData),
+  };
+}
+
 function normalizeSearchQuery(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   return raw.trim().toLowerCase();
@@ -392,54 +447,16 @@ router.get('/', async (req: Request, res: Response) => {
         const compact = parseCompactListQuery(req.query.compact);
         const items = await store.list(scenario);
         const files = items
-          .map(({ hash, mockData, redisKey }) => {
-            const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
-
-            let endpoint: string | null = null;
-            let method: string | null = null;
-            let sessionId: string | null = null;
-            let activation = extractMockActivationFlags({});
-            try {
-              if (mockData.request?.url) endpoint = mockData.request.url;
-              if (mockData.request?.method) {
-                method = String(mockData.request.method).toUpperCase();
-              }
-              // Best-effort query params formatting, matching filesystem route behavior.
-              if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-                const params = new URLSearchParams();
-                Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-                  if (value != null) params.append(key, String(value));
-                });
-                const qs = params.toString();
-                if (qs && endpoint) endpoint += '?' + qs;
-              }
-              sessionId = (mockData as any).sessionId || null;
-              activation = extractMockActivationFlags(mockData);
-            } catch {
-              // ignore
-            }
-            const graphqlInfo = extractGraphqlListInfo(mockData, compact);
-            const correlation = extractMockCorrelationIds(mockData);
-
-            // Use a stable pseudo-filename for UI routing. Must end with .json.
-            const filename = `redis/${hash}.json`;
-            return {
-              filename,
+          .map(({ hash, mockData, redisKey }) =>
+            toMockListRow({
+              filename: `redis/${hash}.json`,
               filePath: `redis://${redisKey}`,
+              mockData,
+              compact,
               size: compact ? 0 : Buffer.byteLength(JSON.stringify(mockData)),
-              created: ts.toISOString(),
-              modified: ts.toISOString(),
-              endpoint,
-              method,
-              graphqlInfo,
-              sessionId,
-              requestId: correlation.requestId,
-              parentRequestId: correlation.parentRequestId,
-              ...activation,
-              ...getMockOverrideListFields(mockData),
-            };
-          })
-          .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+            })
+          )
+          .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());
         const similarExtras = compact ? {} : maybeAttachSimilarBodyGroups(files, req);
         return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
@@ -524,6 +541,86 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
     res.status(500).json({ error: 'Failed to list mock files', details: error.message });
+  }
+});
+
+/**
+ * Overrides page listing: only mocks that already have field/date overlays.
+ * Does not JSON.parse every Redis recording (that hung GET /api/mocks on large scenarios).
+ */
+router.get('/with-overrides', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const requestedScenario = req.query.scenario as string | undefined;
+    const scenario = requestedScenario || getCurrentScenario(mockDataPath);
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const items = await store.listWithOverrides(scenario);
+        const files = items
+          .map(({ hash, mockData, redisKey }) =>
+            toMockListRow({
+              filename: `redis/${hash}.json`,
+              filePath: `redis://${redisKey}`,
+              mockData,
+              compact: true,
+              size: 0,
+            })
+          )
+          .sort(
+            (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
+          );
+        return res.json({ files, mockDataPath, scenario });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[MocksRoute] with-overrides Redis - Error:', error);
+        return res.status(500).json({ error: 'Failed to list mocks with overrides', details: message });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    if (!fs.existsSync(mockDataPath) || !fs.existsSync(scenarioPath)) {
+      return res.json({ files: [], mockDataPath, scenario });
+    }
+
+    const files = getAllJsonFiles(scenarioPath)
+      .map((filePath) => {
+        const relativeName = path.relative(scenarioPath, filePath);
+        let raw: string;
+        try {
+          raw = fs.readFileSync(filePath, 'utf-8');
+        } catch {
+          return null;
+        }
+        if (!rawJsonMightContainResponseOverrides(raw)) return null;
+        try {
+          const mockData = JSON.parse(raw) as MockData;
+          if (!mockListHasOverrides(mockData)) return null;
+          const stats = fs.statSync(filePath);
+          return toMockListRow({
+            filename: relativeName,
+            filePath,
+            mockData,
+            compact: true,
+            size: stats.size,
+          });
+        } catch {
+          return null;
+        }
+      })
+      .filter((row): row is Record<string, unknown> => row != null)
+      .sort(
+        (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
+      );
+
+    return res.json({ files, mockDataPath, scenario });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[MocksRoute] with-overrides - Error:', error);
+    return res.status(500).json({ error: 'Failed to list mocks with overrides', details: message });
   }
 });
 

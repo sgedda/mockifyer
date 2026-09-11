@@ -10,6 +10,11 @@ export interface MockKvMulti {
 
 export interface MockKvBackend {
   get(key: string): Promise<string | null>;
+  /**
+   * Redis GETRANGE. Optional: SQLite backends may omit this; callers fall back to {@link get}/{@link mget}.
+   * Negative indexes count from the end (Redis semantics).
+   */
+  getrange?(key: string, start: number, end: number): Promise<string | null>;
   set(key: string, value: string, expiryMode?: 'EX', ttlSec?: number): Promise<void>;
   del(...keys: string[]): Promise<void>;
   /** Pass keys as an array — do not spread a large list (`mget(...keys)` overflows the call stack). */

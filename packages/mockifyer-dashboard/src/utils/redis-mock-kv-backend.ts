@@ -50,6 +50,11 @@ export class RedisMockKvBackend implements MockKvBackend {
     return this.holder.run((redis) => redis.get(key));
   }
 
+  async getrange(key: string, start: number, end: number): Promise<string | null> {
+    const value = await this.holder.run((redis) => redis.getrange(key, start, end));
+    return typeof value === 'string' ? value : null;
+  }
+
   async set(key: string, value: string, expiryMode?: 'EX', ttlSec?: number): Promise<void> {
     await this.holder.run(async (redis) => {
       if (expiryMode === 'EX' && ttlSec != null) {

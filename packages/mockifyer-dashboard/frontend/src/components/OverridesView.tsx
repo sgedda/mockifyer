@@ -4,6 +4,8 @@ import {
   deleteOverrideGroup,
   getMock,
   getMockFieldOverrides,
+  getMocks,
+  getMocksWithOverrides,
   getOverrideGroup,
   listOverrideGroups,
   patchOverrideGroupEntry,
@@ -24,8 +26,6 @@ import { Textarea } from '@/components/ui/textarea'
 interface OverridesViewProps {
   scenario: string
   mocks: MockFile[]
-  loading?: boolean
-  onRefresh?: () => void | Promise<void>
   /** Open full mock editor (dates live there today). */
   onOpenMock?: (filename: string) => void
 }
@@ -75,8 +75,6 @@ function slugifyGroupId(label: string): string {
 export default function OverridesView({
   scenario,
   mocks,
-  loading,
-  onRefresh,
   onOpenMock,
 }: OverridesViewProps) {
   const { toast } = useToast()
@@ -85,6 +83,11 @@ export default function OverridesView({
   const [drafts, setDrafts] = useState<FieldOverrideDraft[]>([])
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [overrideMocks, setOverrideMocks] = useState<MockFile[]>([])
+  const [listLoading, setListLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
+  const [pickerMocks, setPickerMocks] = useState<MockFile[]>([])
+  const [pickerLoading, setPickerLoading] = useState(false)
   const [datePreview, setDatePreview] = useState<
     Array<{ path: string; summary?: string }>
   >([])
@@ -98,6 +101,7 @@ export default function OverridesView({
   const laneClientIdRef = useRef(laneClientId)
   laneClientIdRef.current = laneClientId
   const [editTarget, setEditTarget] = useState<string>(EDIT_MOCK_LEVEL)
+  const editingGroup = editTarget !== EDIT_MOCK_LEVEL
   const [editGroup, setEditGroup] = useState<OverrideGroup | null>(null)
   const [newGroupLabel, setNewGroupLabel] = useState('')
   const [addMockFilename, setAddMockFilename] = useState('')
@@ -115,6 +119,61 @@ export default function OverridesView({
     setSelectionSource(res.source ?? 'none')
     return res
   }, [scenario])
+
+  const loadOverrideList = useCallback(async () => {
+    setListLoading(true)
+    setListError(null)
+    try {
+      const data = await getMocksWithOverrides(scenario)
+      setOverrideMocks(data.files)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load mocks with overrides'
+      setListError(message)
+      setOverrideMocks([])
+      toast({
+        title: 'Failed to load overrides',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setListLoading(false)
+    }
+  }, [scenario, toast])
+
+  useEffect(() => {
+    void loadOverrideList()
+  }, [loadOverrideList])
+
+  useEffect(() => {
+    if (mocks.length > 0) {
+      setPickerMocks(mocks)
+    }
+  }, [mocks])
+
+  useEffect(() => {
+    if (!editingGroup) return
+    if (pickerMocks.length > 0) return
+    let cancelled = false
+    setPickerLoading(true)
+    void getMocks(scenario, { compact: true })
+      .then((data) => {
+        if (!cancelled) setPickerMocks(data.files)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        toast({
+          title: 'Failed to load mock list',
+          description: error instanceof Error ? error.message : String(error),
+          variant: 'destructive',
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setPickerLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editingGroup, pickerMocks.length, scenario, toast])
 
   useEffect(() => {
     void loadGroups().catch((error) => {
@@ -143,12 +202,11 @@ export default function OverridesView({
       })
   }, [editTarget, scenario, toast])
 
-  const editingGroup = editTarget !== EDIT_MOCK_LEVEL
-
   const listItems = useMemo(() => {
     const q = filter.trim().toLowerCase()
+    const catalog = pickerMocks.length > 0 ? pickerMocks : mocks
     if (editingGroup && editGroup) {
-      const byName = new Map(mocks.map((m) => [m.filename, m]))
+      const byName = new Map(catalog.map((m) => [m.filename, m]))
       return editGroup.entries
         .map((entry) => {
           const mock = byName.get(entry.filename)
@@ -172,11 +230,7 @@ export default function OverridesView({
         .sort((a, b) => a.filename.localeCompare(b.filename))
     }
 
-    return mocks
-      .filter(
-        (m) =>
-          m.hasResponseFieldOverrides === true || m.hasResponseDateOverrides === true
-      )
+    return overrideMocks
       .filter((m) => {
         if (!q) return true
         return (
@@ -194,7 +248,7 @@ export default function OverridesView({
         hasDates: m.hasResponseDateOverrides === true,
         preview: (m.responseFieldOverridesPreview ?? []).map((p) => p.path),
       }))
-  }, [editingGroup, editGroup, mocks, filter])
+  }, [editingGroup, editGroup, mocks, pickerMocks, overrideMocks, filter])
 
   const selectedMeta = useMemo(
     () => listItems.find((m) => m.filename === selectedFilename) ?? null,
@@ -293,7 +347,7 @@ export default function OverridesView({
         })
         toast({ title: 'Field overrides saved' })
       }
-      await onRefresh?.()
+      await loadOverrideList()
       await loadGroups()
       await loadSelected(selectedFilename)
     } catch (error) {
@@ -325,7 +379,7 @@ export default function OverridesView({
         setDrafts([])
         toast({ title: 'Field overrides cleared' })
       }
-      await onRefresh?.()
+      await loadOverrideList()
       await loadGroups()
     } catch (error) {
       toast({
@@ -467,9 +521,9 @@ export default function OverridesView({
           variant="outline"
           size="sm"
           className="gap-1.5"
-          disabled={loading}
+          disabled={listLoading}
           onClick={() => {
-            void onRefresh?.()
+            void loadOverrideList()
             void loadGroups()
           }}
         >
@@ -635,8 +689,10 @@ export default function OverridesView({
               value={addMockFilename}
               onChange={(e) => setAddMockFilename(e.target.value)}
             >
-              <option value="">Select mock…</option>
-              {mocks.map((m) => (
+              <option value="">
+                {pickerLoading ? 'Loading mocks…' : 'Select mock…'}
+              </option>
+              {pickerMocks.map((m) => (
                 <option key={m.filename} value={m.filename}>
                   {m.filename}
                 </option>
@@ -661,11 +717,13 @@ export default function OverridesView({
               {editingGroup ? 'Group entries' : 'Mocks with overrides'}
             </CardTitle>
             <CardDescription>
-              {loading ? 'Loading…' : `${listItems.length} item(s)`}
+              {listLoading ? 'Loading…' : listError ? listError : `${listItems.length} item(s)`}
             </CardDescription>
           </CardHeader>
           <CardContent className="max-h-[70vh] space-y-2 overflow-y-auto">
-            {listItems.length === 0 && !loading ? (
+            {listError && !listLoading ? (
+              <p className="text-sm text-destructive">{listError}</p>
+            ) : listItems.length === 0 && !listLoading ? (
               <p className="text-sm text-muted-foreground">
                 {editingGroup
                   ? 'No entries yet. Add a mock above, then edit field overrides.'
