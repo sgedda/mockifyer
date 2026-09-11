@@ -14,6 +14,7 @@ import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
 import { atlasRouter } from './routes/atlas';
 import overrideGroupsRouter from './routes/override-groups';
+import { dashboardApiNoCache } from './utils/api-no-cache';
 import {
   attachDashboardContext,
   type DashboardContextConfig,
@@ -73,17 +74,12 @@ export function createServer(
   });
 
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
-  app.use('/api', (_req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    next();
-  });
+  app.use('/api', dashboardApiNoCache);
   
   // CORS for local development
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
