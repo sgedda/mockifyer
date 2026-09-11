@@ -55,18 +55,20 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
   const [proxySaving, setProxySaving] = useState(false)
   
-  // Get active tab from URL path
+  // Get active tab from URL path (basename-relative or full embed path)
   const getActiveTabFromPath = () => {
-    const path = location.pathname
-    if (path === '/mocks' || path === '/mock') return 'mocks'
-    if (path === '/overrides') return 'overrides'
-    if (path === '/timeline') return 'timeline'
-    if (path === '/atlas') return 'atlas'
-    if (path === '/network') return 'network'
-    if (path === '/fixture-pool') return 'fixture-pool'
-    if (path === '/date-config') return 'date-config'
-    if (path === '/settings') return 'settings'
-    return 'stats' // default to stats (root path)
+    const path = (location.pathname || '/').replace(/\/+$/, '') || '/'
+    if (path === '/mocks' || path === '/mock' || path.endsWith('/mocks') || path.endsWith('/mock')) {
+      return 'mocks'
+    }
+    if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
+    if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
+    if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
+    if (path === '/network' || path.endsWith('/network')) return 'network'
+    if (path === '/fixture-pool' || path.endsWith('/fixture-pool')) return 'fixture-pool'
+    if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
+    if (path === '/settings' || path.endsWith('/settings')) return 'settings'
+    return 'stats'
   }
   
   const [activeTab, setActiveTab] = useState(getActiveTabFromPath())
@@ -380,6 +382,18 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const viewingScratch = isScratchScenario(scenario)
   const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
 
+  const openMockFromOverrides = (filename: string) => {
+    const file = allMocks.find((m) => m.filename === filename)
+    if (file) {
+      void handleSelectMock(file)
+    }
+    navigate('/mocks')
+  }
+
+  const overridesPage = (
+    <OverridesView scenario={scenario} mocks={allMocks} onOpenMock={openMockFromOverrides} />
+  )
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile sidebar overlay */}
@@ -620,12 +634,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"
-              element={
-                <OverridesView
-                  scenario={scenario}
-                  mocks={allMocks}
-                />
-              }
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+            />
+            <Route
+              path="/:mountPrefix/overrides"
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
             />
             <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />

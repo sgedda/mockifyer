@@ -3,6 +3,29 @@
 
 <head>
     <meta charset="UTF-8" />
+    <script>
+      (function () {
+        var suffixes = ['/mocks','/overrides','/timeline','/atlas','/network','/fixture-pool','/date-config','/settings'];
+        var p = (location.pathname || '/').split('?')[0].replace(/\/+$/, '') || '/';
+        var prefix = '';
+        for (var i = 0; i < suffixes.length; i++) {
+          var s = suffixes[i];
+          if (p === s) {
+            prefix = '';
+            break;
+          }
+          if (p.length > s.length && p.slice(p.length - s.length) === s) {
+            prefix = p.slice(0, p.length - s.length);
+            break;
+          }
+        }
+        if (prefix) {
+          var b = document.createElement('base');
+          b.href = prefix + '/';
+          document.head.insertBefore(b, document.head.firstChild);
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mockifyer Dashboard</title>
