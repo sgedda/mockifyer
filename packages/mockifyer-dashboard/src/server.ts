@@ -53,6 +53,8 @@ export function createServer(
   const dashboardConfig = { ...config, mockDataPath };
   app.locals.mockDataPath = mockDataPath;
   app.locals.dashboardConfig = dashboardConfig;
+  // Live JSON must not 304: fetch() treats 304 as !ok with an empty body.
+  app.set('etag', false);
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });

@@ -125,15 +125,12 @@ describe('dashboard API cache / 304', () => {
       expect(first.status).toBe(200);
       const firstJson = JSON.parse(first.body) as { responseFieldOverrides: unknown[] };
       expect(firstJson.responseFieldOverrides).toEqual([{ path: 'status', value: 'CLOSED' }]);
-      expect(first.etag).toBeTruthy();
 
       const second = await httpGet(server, pathWithQuery, {
-        'If-None-Match': first.etag,
+        'If-None-Match': first.etag || 'W/"stale"',
       });
       expect(second.status).toBe(200);
-      expect(second.body).toBe(first.body);
-      const secondJson = JSON.parse(second.body) as { responseFieldOverrides: unknown[] };
-      expect(secondJson.responseFieldOverrides).toEqual([{ path: 'status', value: 'CLOSED' }]);
+      expect(JSON.parse(second.body)).toEqual(firstJson);
     });
 
     it('returns 200 for override-groups list after a matching If-None-Match', async () => {
@@ -141,11 +138,77 @@ describe('dashboard API cache / 304', () => {
       const first = await httpGet(server, listPath);
       expect(first.status).toBe(200);
       JSON.parse(first.body);
-      expect(first.etag).toBeTruthy();
 
-      const second = await httpGet(server, listPath, { 'If-None-Match': first.etag });
+      const second = await httpGet(server, listPath, {
+        'If-None-Match': first.etag || 'W/"stale"',
+      });
       expect(second.status).toBe(200);
       expect(JSON.parse(second.body)).toEqual(JSON.parse(first.body));
+    });
+  });
+
+  describe('embedded at /mockifyer', () => {
+    let tmp: string;
+    let server: http.Server;
+
+    beforeEach(async () => {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-embed-'));
+      const publicDir = path.join(tmp, 'public');
+      const mockDataPath = path.join(tmp, 'mock-data');
+      fs.mkdirSync(publicDir, { recursive: true });
+      fs.mkdirSync(path.join(mockDataPath, 'default'), { recursive: true });
+      fs.writeFileSync(
+        path.join(publicDir, 'index.html'),
+        '<!doctype html><div id="root"></div><script type="module" src="./assets/index.js"></script>'
+      );
+      fs.writeFileSync(
+        path.join(mockDataPath, 'scenario-config.json'),
+        JSON.stringify({ currentScenario: 'default' })
+      );
+      fs.writeFileSync(
+        path.join(mockDataPath, 'default', 'bookings.json'),
+        JSON.stringify(makeMockFile(), null, 2)
+      );
+
+      const inner = createServer(publicDir, mockDataPath, { provider: 'filesystem' });
+      server = await new Promise<http.Server>((resolve) => {
+        const s = http.createServer((req, res) => {
+          const url = req.url ?? '/';
+          if (!url.startsWith('/mockifyer')) {
+            res.statusCode = 404;
+            res.end('host miss');
+            return;
+          }
+          req.url = url.slice('/mockifyer'.length) || '/';
+          inner(req, res);
+        });
+        s.listen(0, '127.0.0.1', () => resolve(s));
+      });
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+      fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('serves Overrides SPA and APIs under /mockifyer', async () => {
+      const page = await httpGet(server, '/mockifyer/overrides');
+      expect(page.status).toBe(200);
+      expect(page.body).toContain('id="root"');
+
+      const cfg = await httpGet(server, '/mockifyer/api/scenario-config');
+      expect(cfg.status).toBe(200);
+      const cfgJson = JSON.parse(cfg.body) as { currentScenario: string };
+      expect(cfgJson.currentScenario).toBe('default');
+
+      const mocks = await httpGet(server, '/mockifyer/api/mocks?scenario=default');
+      expect(mocks.status).toBe(200);
+      const mocksJson = JSON.parse(mocks.body) as {
+        files: Array<{ hasResponseFieldOverrides?: boolean }>;
+      };
+      expect(mocksJson.files[0]?.hasResponseFieldOverrides).toBe(true);
     });
   });
 });

@@ -72,7 +72,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
 
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number }
+  opts?: { similarGroups?: boolean; similarThreshold?: number; signal?: AbortSignal }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -88,7 +88,10 @@ export async function getMocks(
     }
   }
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks${suffix}`, {
+    ...noStore,
+    signal: opts?.signal,
+  })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
 }
@@ -431,8 +434,13 @@ export async function getStats(scenario?: string): Promise<Stats> {
   return response.json()
 }
 
+const SCENARIO_CONFIG_TIMEOUT_MS = 10_000
+
 export async function getScenarioConfig(): Promise<ScenarioConfig> {
-  const response = await fetchApi(`${API_BASE}/scenario-config`, noStore)
+  const response = await fetchApi(`${API_BASE}/scenario-config`, {
+    ...noStore,
+    signal: AbortSignal.timeout(SCENARIO_CONFIG_TIMEOUT_MS),
+  })
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
   return mapScenarioConfigPayload(data)

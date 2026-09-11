@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -77,7 +77,20 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
+  const mocksLoadAbortRef = useRef<AbortController | null>(null)
+  const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
+
+  function isAbortError(error: unknown): boolean {
+    return (
+      (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    )
+  }
 
   const refreshScenarioConfig = useCallback(async () => {
     try {
@@ -163,7 +176,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }, [location.pathname])
 
   useEffect(() => {
-    if (!tabNeedsMockCatalog(activeTab)) return
+    if (!tabNeedsMockCatalog(activeTab)) {
+      mocksLoadAbortRef.current?.abort()
+      return
+    }
     loadMocks()
     if (activeTab !== 'mocks') return
     // Check for endpoint query parameter
@@ -196,20 +212,54 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }
 
   async function loadMocks() {
+    mocksLoadAbortRef.current?.abort()
+    const ac = new AbortController()
+    mocksLoadAbortRef.current = ac
+    const { signal } = ac
+    const requestedSearchQuery = searchQuery.trim()
+    const wantSimilarGroups = activeTab === 'mocks'
     try {
       setLoading(true)
-      const data = await getMocks(scenario, { similarGroups: true })
+      setSimilarBodyGroups([])
+      // List first without similarGroups so Overrides (and empty scenarios) are not
+      // blocked by GraphQL clustering of a large Redis catalog.
+      const data = await getMocks(scenario, { signal })
+      if (signal.aborted) return
+      if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
       setAllMocks(data.files)
-      setSimilarBodyGroups(data.similarBodyGroups ?? [])
+      setLoading(false)
+
+      if (!wantSimilarGroups) return
+
+      const graphqlCount = data.files.reduce(
+        (n, file) => (file.graphqlInfo?.query ? n + 1 : n),
+        0
+      )
+      if (graphqlCount < 2) return
+
+      try {
+        const grouped = await getMocks(scenario, { similarGroups: true, signal })
+        if (signal.aborted) return
+        if (searchQueryRef.current.trim() !== requestedSearchQuery) return
+        if (!requestedSearchQuery) {
+          setMocks(grouped.files)
+        }
+        setAllMocks(grouped.files)
+        setSimilarBodyGroups(grouped.similarBodyGroups ?? [])
+      } catch (error) {
+        if (isAbortError(error)) return
+        // List already rendered; similar clusters are optional.
+      }
     } catch (error) {
+      if (isAbortError(error)) return
       toast({
         title: 'Error',
         description: 'Failed to load mocks',
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }
 
