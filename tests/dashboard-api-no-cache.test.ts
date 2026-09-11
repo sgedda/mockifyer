@@ -292,6 +292,24 @@ describe('dashboard compact mock list and nested override paths', () => {
       path.join(mockDataPath, 'default', 'redis', redisName),
       JSON.stringify(makeMockFile(), null, 2)
     );
+    fs.writeFileSync(
+      path.join(mockDataPath, 'default', 'plain.json'),
+      JSON.stringify(
+        {
+          request: {
+            method: 'GET',
+            url: 'https://api.example.com/health',
+            headers: {},
+            queryParams: {},
+          },
+          response: { status: 200, data: { ok: true }, headers: {} },
+          timestamp: MOCK_TIMESTAMP,
+          scenario: 'default',
+        },
+        null,
+        2
+      )
+    );
 
     const app = createServer(publicDir, mockDataPath, { provider: 'filesystem' });
     server = await new Promise<http.Server>((resolve) => {
@@ -347,5 +365,21 @@ describe('dashboard compact mock list and nested override paths', () => {
     expect(JSON.parse(patched.body).responseFieldOverrides).toEqual([
       { path: 'data.myAccount.bookings.7.booking.startDate', value: '2027-01-02T11:35:00' },
     ]);
+  });
+
+  it('GET /api/mocks/with-overrides returns only mocks that have overlays', async () => {
+    const listed = await httpGet(server, '/api/mocks?scenario=default');
+    const all = JSON.parse(listed.body) as { files: unknown[] };
+    expect(all.files.length).toBeGreaterThanOrEqual(3);
+
+    const res = await httpGet(server, '/api/mocks/with-overrides?scenario=default');
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body) as {
+      files: Array<{ filename: string; hasResponseFieldOverrides?: boolean }>;
+    };
+    expect(json.files.every((f) => f.hasResponseFieldOverrides === true)).toBe(true);
+    expect(json.files.some((f) => f.filename.includes('graphql.json'))).toBe(true);
+    expect(json.files.some((f) => f.filename.includes('plain.json'))).toBe(false);
+    expect(json.files).toHaveLength(2);
   });
 });

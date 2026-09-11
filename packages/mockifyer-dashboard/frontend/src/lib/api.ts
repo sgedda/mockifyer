@@ -78,6 +78,15 @@ function encodeMockFilename(filename: string): string {
     .join('/')
 }
 
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
+const OVERRIDES_LIST_TIMEOUT_MS = 25_000
+
 export async function getMocks(
   scenario?: string,
   opts?: {
@@ -108,6 +117,40 @@ export async function getMocks(
   })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
+}
+
+/**
+ * Overrides sidebar: only mocks that already have field/date overlays.
+ * Does not wait on GET /api/mocks of the full Redis catalog.
+ */
+export async function getMocksWithOverrides(
+  scenario?: string,
+  opts?: { signal?: AbortSignal }
+): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const timeout = new AbortController()
+  const timer = globalThis.setTimeout(() => timeout.abort(), OVERRIDES_LIST_TIMEOUT_MS)
+  const onParentAbort = () => timeout.abort()
+  opts?.signal?.addEventListener('abort', onParentAbort)
+  try {
+    const response = await fetchApi(`${API_BASE}/mocks/with-overrides${suffix}`, {
+      ...noStore,
+      signal: timeout.signal,
+    })
+    if (!response.ok) throw new Error('Failed to fetch mocks with overrides')
+    return response.json()
+  } catch (error) {
+    if (opts?.signal?.aborted) throw error
+    if (isAbortError(error)) {
+      throw new Error('Timed out loading mocks with overrides')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timer)
+    opts?.signal?.removeEventListener('abort', onParentAbort)
+  }
 }
 
 export async function searchMocks(params: {

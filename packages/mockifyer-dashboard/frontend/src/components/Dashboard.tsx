@@ -37,9 +37,9 @@ interface DashboardProps {
   onScenarioChange: (scenario: string) => void
 }
 
-/** Tabs that render mock catalog data (Overrides filters allMocks for overlay rows). */
+/** Tabs that render the full mock catalog. Overrides uses GET /mocks/with-overrides instead. */
 function tabNeedsMockCatalog(tab: string): boolean {
-  return tab === 'mocks' || tab === 'overrides'
+  return tab === 'mocks'
 }
 
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
@@ -73,7 +73,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mocks, setMocks] = useState<MockFile[]>([])
   const [allMocks, setAllMocks] = useState<MockFile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const searchQuery = searchParams.get(DASHBOARD_Q.q) ?? searchParams.get(DASHBOARD_Q.endpoint) ?? ''
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const mocksLoadAbortRef = useRef<AbortController | null>(null)
@@ -276,12 +276,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     try {
       if (!hasCatalog) setLoading(true)
       setSimilarBodyGroups([])
-      // List first without similarGroups so Overrides (and empty scenarios) are not
-      // blocked by GraphQL clustering of a large Redis catalog.
-      const data = await getMocks(scenario, {
-        signal,
-        compact: activeTab === 'overrides',
-      })
+      const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
@@ -629,8 +624,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 <OverridesView
                   scenario={scenario}
                   mocks={allMocks}
-                  loading={loading}
-                  onRefresh={loadMocks}
                 />
               }
             />
