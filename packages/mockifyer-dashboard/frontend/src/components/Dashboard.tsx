@@ -37,6 +37,11 @@ interface DashboardProps {
   onScenarioChange: (scenario: string) => void
 }
 
+/** Tabs that render mock catalog data (Overrides filters allMocks for overlay rows). */
+function tabNeedsMockCatalog(tab: string): boolean {
+  return tab === 'mocks' || tab === 'overrides'
+}
+
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -216,11 +221,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }, [urlScenario, scenario, switchingScenario])
 
   useEffect(() => {
-    if (activeTab === 'mocks' && location.pathname === '/mocks') {
-      loadMocks()
-    } else if (activeTab !== 'mocks') {
+    if (!tabNeedsMockCatalog(activeTab)) {
       mocksLoadAbortRef.current?.abort()
+      return
     }
+    loadMocks()
   }, [scenario, activeTab, location.pathname])
 
   function setSearchQuery(nextQuery: string) {
@@ -242,6 +247,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
       'network': '/network',
