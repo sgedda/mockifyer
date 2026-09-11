@@ -37,6 +37,11 @@ interface DashboardProps {
   onScenarioChange: (scenario: string) => void
 }
 
+/** Tabs that render mock catalog data (Overrides filters allMocks for overlay rows). */
+function tabNeedsMockCatalog(tab: string): boolean {
+  return tab === 'mocks' || tab === 'overrides'
+}
+
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -158,17 +163,17 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }, [location.pathname])
 
   useEffect(() => {
-    if (activeTab === 'mocks') {
-      loadMocks()
-      // Check for endpoint query parameter
-      const params = new URLSearchParams(location.search)
-      const qParam = params.get('q')
-      const endpointParam = params.get('endpoint')
-      if (qParam) {
-        setSearchQuery(qParam)
-      } else if (endpointParam) {
-        setSearchQuery(endpointParam)
-      }
+    if (!tabNeedsMockCatalog(activeTab)) return
+    loadMocks()
+    if (activeTab !== 'mocks') return
+    // Check for endpoint query parameter
+    const params = new URLSearchParams(location.search)
+    const qParam = params.get('q')
+    const endpointParam = params.get('endpoint')
+    if (qParam) {
+      setSearchQuery(qParam)
+    } else if (endpointParam) {
+      setSearchQuery(endpointParam)
     }
   }, [scenario, activeTab, location.search])
 
@@ -178,6 +183,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
       'network': '/network',
