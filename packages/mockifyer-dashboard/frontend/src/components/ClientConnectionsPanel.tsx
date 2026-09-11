@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { getClientLanes, type ClientConnectionRow, type ClientConnectionStatus } from '@/lib/api'
 import { ChevronDown, ChevronRight, Radio, Settings2 } from 'lucide-react'
+import { buildSearch } from '@/lib/dashboard-urls'
 
 const POLL_MS = 5000
 
@@ -152,7 +153,7 @@ export default function ClientConnectionsPanel() {
                 variant="outline"
                 size="sm"
                 className="h-8 gap-1.5 text-xs"
-                onClick={() => navigate('/settings')}
+                onClick={() => navigate({ pathname: '/settings', search: buildSearch({ scenario: globalScenario ?? undefined }) })}
               >
                 <Settings2 className="h-3.5 w-3.5" />
                 Manage lanes

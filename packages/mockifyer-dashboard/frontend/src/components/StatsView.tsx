@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { DASHBOARD_Q, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
@@ -33,18 +34,34 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [switching, setSwitching] = useState(false)
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   function handleEndpointClick(endpoint: string) {
-    navigate(`/mocks?endpoint=${encodeURIComponent(endpoint)}`)
+    navigate(
+      mocksListPath({
+        scenario,
+        [DASHBOARD_Q.q]: endpoint,
+      })
+    )
   }
 
   function handleRecentFileClick(filename: string) {
-    navigate(`/mocks?q=${encodeURIComponent(filename)}`)
+    navigate(
+      mockEditorPath(filename, {
+        scenario,
+        q: searchParams.get(DASHBOARD_Q.q) ?? undefined,
+      })
+    )
   }
 
   function handleFolderFilter(folderLabel: string) {
     if (folderLabel === '(scenario root)') return
-    navigate(`/mocks?q=${encodeURIComponent(`${folderLabel}/`)}`)
+    navigate(
+      mocksListPath({
+        scenario,
+        [DASHBOARD_Q.q]: `${folderLabel}/`,
+      })
+    )
   }
 
   useEffect(() => {
