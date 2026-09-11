@@ -181,15 +181,18 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       return
     }
     loadMocks()
-    if (activeTab !== 'mocks') return
-    // Check for endpoint query parameter
-    const params = new URLSearchParams(location.search)
-    const qParam = params.get('q')
-    const endpointParam = params.get('endpoint')
-    if (qParam) {
-      setSearchQuery(qParam)
-    } else if (endpointParam) {
-      setSearchQuery(endpointParam)
+    if (activeTab === 'mocks') {
+      const params = new URLSearchParams(location.search)
+      const qParam = params.get('q')
+      const endpointParam = params.get('endpoint')
+      if (qParam) {
+        setSearchQuery(qParam)
+      } else if (endpointParam) {
+        setSearchQuery(endpointParam)
+      }
+    }
+    return () => {
+      mocksLoadAbortRef.current?.abort()
     }
   }, [scenario, activeTab, location.search])
 
@@ -218,12 +221,16 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     const { signal } = ac
     const requestedSearchQuery = searchQuery.trim()
     const wantSimilarGroups = activeTab === 'mocks'
+    const hasCatalog = allMocks.length > 0
     try {
-      setLoading(true)
+      if (!hasCatalog) setLoading(true)
       setSimilarBodyGroups([])
       // List first without similarGroups so Overrides (and empty scenarios) are not
       // blocked by GraphQL clustering of a large Redis catalog.
-      const data = await getMocks(scenario, { signal })
+      const data = await getMocks(scenario, {
+        signal,
+        compact: activeTab === 'overrides',
+      })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)

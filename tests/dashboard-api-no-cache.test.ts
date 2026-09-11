@@ -212,3 +212,140 @@ describe('dashboard API cache / 304', () => {
     });
   });
 });
+
+function httpPatch(
+  server: http.Server,
+  urlPath: string,
+  body: unknown
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const { port } = server.address() as AddressInfo;
+    const payload = JSON.stringify(body);
+    const req = http.request(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path: urlPath,
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(chunk as Buffer));
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString('utf8'),
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+describe('dashboard compact mock list and nested override paths', () => {
+  let tmp: string;
+  let server: http.Server;
+
+  beforeEach(async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-compact-'));
+    const publicDir = path.join(tmp, 'public');
+    const mockDataPath = path.join(tmp, 'mock-data');
+    fs.mkdirSync(publicDir, { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'default', 'redis'), { recursive: true });
+    fs.writeFileSync(
+      path.join(mockDataPath, 'scenario-config.json'),
+      JSON.stringify({ currentScenario: 'default' })
+    );
+    const graphqlQuery = 'query Bookings { '.padEnd(8000, 'x') + ' }';
+    fs.writeFileSync(
+      path.join(mockDataPath, 'default', 'graphql.json'),
+      JSON.stringify({
+        request: {
+          method: 'POST',
+          url: 'https://api.example.com/graphql',
+          headers: {},
+          queryParams: {},
+          data: {
+            query: graphqlQuery,
+            operationName: 'Bookings',
+            variables: { huge: graphqlQuery },
+          },
+        },
+        response: { status: 200, data: { bookings: [] }, headers: {} },
+        timestamp: MOCK_TIMESTAMP,
+        scenario: 'default',
+        responseFieldOverrides: [
+          { path: 'data.myAccount.bookings.7.booking.startDate', value: '2027-01-02T11:35:00' },
+        ],
+      })
+    );
+    const redisName =
+      '97db31e9128bd9d74eb4004a8eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json';
+    fs.writeFileSync(
+      path.join(mockDataPath, 'default', 'redis', redisName),
+      JSON.stringify(makeMockFile(), null, 2)
+    );
+
+    const app = createServer(publicDir, mockDataPath, { provider: 'filesystem' });
+    server = await new Promise<http.Server>((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('omits GraphQL query text when compact=1', async () => {
+    const full = await httpGet(server, '/api/mocks?scenario=default');
+    const fullJson = JSON.parse(full.body) as {
+      files: Array<{ graphqlInfo?: { query?: string | null; operationName?: string | null } }>;
+    };
+    const gql = fullJson.files.find((f) => f.graphqlInfo?.operationName === 'Bookings');
+    expect(gql?.graphqlInfo?.query?.length).toBeGreaterThan(1000);
+
+    const compact = await httpGet(server, '/api/mocks?scenario=default&compact=1');
+    expect(compact.status).toBe(200);
+    const compactJson = JSON.parse(compact.body) as {
+      files: Array<{
+        hasResponseFieldOverrides?: boolean;
+        graphqlInfo?: { query?: string | null; operationName?: string | null };
+      }>;
+    };
+    const compactGql = compactJson.files.find((f) => f.graphqlInfo?.operationName === 'Bookings');
+    expect(compactGql?.graphqlInfo?.query).toBeNull();
+    expect(compactGql?.hasResponseFieldOverrides).toBe(true);
+    expect(compact.body.length).toBeLessThan(full.body.length);
+  });
+
+  it('GET/PATCH field-overrides for redis/<hash>.json nested filenames', async () => {
+    const nested =
+      '/api/mocks/redis/97db31e9128bd9d74eb4004a8eaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json/field-overrides?scenario=default';
+    const first = await httpGet(server, nested);
+    expect(first.status).toBe(200);
+    expect(JSON.parse(first.body).responseFieldOverrides).toEqual([
+      { path: 'status', value: 'CLOSED' },
+    ]);
+
+    const patched = await httpPatch(server, nested, {
+      responseFieldOverrides: [
+        { path: 'data.myAccount.bookings.7.booking.startDate', value: '2027-01-02T11:35:00' },
+      ],
+      merge: false,
+    });
+    expect(patched.status).toBe(200);
+    expect(JSON.parse(patched.body).responseFieldOverrides).toEqual([
+      { path: 'data.myAccount.bookings.7.booking.startDate', value: '2027-01-02T11:35:00' },
+    ]);
+  });
+});

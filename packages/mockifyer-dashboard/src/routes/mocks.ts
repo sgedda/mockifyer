@@ -232,6 +232,41 @@ function parseSimilarGroupsQuery(raw: unknown): boolean {
   return s === '1' || s === 'true' || s === 'yes';
 }
 
+/** Compact list omits GraphQL query/variables so Overrides can load without a multi-MB JSON body. */
+function parseCompactListQuery(raw: unknown): boolean {
+  return parseSimilarGroupsQuery(raw);
+}
+
+function extractGraphqlListInfo(
+  mockData: any,
+  compact: boolean
+): { query: string | null; variables: unknown; operationName: string | null } | null {
+  const body = mockData?.request?.data;
+  const parsedBody =
+    typeof body === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(body);
+          } catch {
+            return body;
+          }
+        })()
+      : body;
+  if (!parsedBody || typeof parsedBody !== 'object' || typeof parsedBody.query !== 'string') {
+    return null;
+  }
+  const operationName =
+    typeof parsedBody.operationName === 'string' ? parsedBody.operationName : null;
+  if (compact) {
+    return { query: null, variables: null, operationName };
+  }
+  return {
+    query: parsedBody.query,
+    variables: parsedBody.variables || null,
+    operationName,
+  };
+}
+
 function parseSimilarThresholdQuery(raw: unknown): number | undefined {
   if (typeof raw !== 'string' || !raw.trim()) return undefined;
   const n = Number(raw);
@@ -354,14 +389,13 @@ router.get('/', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
+        const compact = parseCompactListQuery(req.query.compact);
         const items = await store.list(scenario);
         const files = items
           .map(({ hash, mockData, redisKey }) => {
-            const payload = JSON.stringify(mockData);
             const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
 
             let endpoint: string | null = null;
-            let graphqlInfo: any = null;
             let method: string | null = null;
             let sessionId: string | null = null;
             let activation = extractMockActivationFlags({});
@@ -379,37 +413,12 @@ router.get('/', async (req: Request, res: Response) => {
                 const qs = params.toString();
                 if (qs && endpoint) endpoint += '?' + qs;
               }
-              // GraphQL heuristic
-              const body = (mockData.request as any)?.data;
-              const parsedBody =
-                typeof body === 'string'
-                  ? (() => {
-                      try {
-                        return JSON.parse(body);
-                      } catch {
-                        return body;
-                      }
-                    })()
-                  : body;
-              if (
-                parsedBody &&
-                typeof parsedBody === 'object' &&
-                typeof (parsedBody as any).query === 'string'
-              ) {
-                graphqlInfo = {
-                  query: (parsedBody as any).query,
-                  variables: (parsedBody as any).variables || null,
-                  operationName:
-                    typeof (parsedBody as any).operationName === 'string'
-                      ? (parsedBody as any).operationName
-                      : null,
-                };
-              }
               sessionId = (mockData as any).sessionId || null;
               activation = extractMockActivationFlags(mockData);
             } catch {
               // ignore
             }
+            const graphqlInfo = extractGraphqlListInfo(mockData, compact);
             const correlation = extractMockCorrelationIds(mockData);
 
             // Use a stable pseudo-filename for UI routing. Must end with .json.
@@ -417,7 +426,7 @@ router.get('/', async (req: Request, res: Response) => {
             return {
               filename,
               filePath: `redis://${redisKey}`,
-              size: Buffer.byteLength(payload),
+              size: compact ? 0 : Buffer.byteLength(JSON.stringify(mockData)),
               created: ts.toISOString(),
               modified: ts.toISOString(),
               endpoint,
@@ -431,7 +440,7 @@ router.get('/', async (req: Request, res: Response) => {
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-        const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+        const similarExtras = compact ? {} : maybeAttachSimilarBodyGroups(files, req);
         return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
         console.error('[MocksRoute] Redis List - Error:', error);
@@ -448,6 +457,7 @@ router.get('/', async (req: Request, res: Response) => {
       return res.json({ files: emptyFiles, mockDataPath, scenario, ...maybeAttachSimilarBodyGroups(emptyFiles, req) });
     }
 
+    const compact = parseCompactListQuery(req.query.compact);
     const files = getAllJsonFiles(scenarioPath)
       .map(filePath => {
         const relativeName = path.relative(scenarioPath, filePath);
@@ -477,23 +487,7 @@ router.get('/', async (req: Request, res: Response) => {
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
           overrideFields = getMockOverrideListFields(mockData);
-
-          if (mockData.request?.data) {
-            let bodyData = mockData.request.data;
-            if (typeof bodyData === 'string') {
-              try { bodyData = JSON.parse(bodyData); } catch { /* not JSON */ }
-            }
-            if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-              graphqlInfo = {
-                query: bodyData.query,
-                variables: bodyData.variables || null,
-                operationName:
-                  typeof (bodyData as any).operationName === 'string'
-                    ? (bodyData as any).operationName
-                    : null,
-              };
-            }
-          }
+          graphqlInfo = extractGraphqlListInfo(mockData, compact);
 
           if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
             const params = new URLSearchParams();
@@ -525,7 +519,7 @@ router.get('/', async (req: Request, res: Response) => {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-    const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+    const similarExtras = compact ? {} : maybeAttachSimilarBodyGroups(files, req);
     res.json({ files, mockDataPath, scenario, ...similarExtras });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);

@@ -70,9 +70,22 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   return fallback
 }
 
+/** Redis UI names are `redis/<hash>.json`; encode each segment so Express matches field-overrides. */
+function encodeMockFilename(filename: string): string {
+  return filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number; signal?: AbortSignal }
+  opts?: {
+    similarGroups?: boolean
+    similarThreshold?: number
+    signal?: AbortSignal
+    compact?: boolean
+  }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -81,6 +94,7 @@ export async function getMocks(
 }> {
   const qs = new URLSearchParams()
   if (scenario) qs.set('scenario', scenario)
+  if (opts?.compact) qs.set('compact', '1')
   if (opts?.similarGroups) {
     qs.set('similarGroups', '1')
     if (typeof opts.similarThreshold === 'number' && Number.isFinite(opts.similarThreshold)) {
@@ -116,7 +130,7 @@ export async function searchMocks(params: {
 
 export async function getMock(filename: string, scenario?: string): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -143,7 +157,7 @@ export async function getMockAiContext(
   if (opts?.includeRelated === false) qs.set('includeRelated', '0')
 
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}/ai-context${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/ai-context${suffix}`, noStore)
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error(error.error || error.details || 'Failed to fetch AI context')
@@ -166,7 +180,7 @@ export async function updateMock(
     body.replayMode = replayMode
   }
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -185,12 +199,8 @@ export async function getMockFieldOverrides(
   scenario: string
   responseFieldOverrides: MockResponseFieldOverride[]
 }> {
-  const encoded = filename
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, noStore)
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to load field overrides'))
   }
@@ -207,12 +217,8 @@ export async function setMockFieldOverrides(
   scenario: string
   responseFieldOverrides: MockResponseFieldOverride[]
 }> {
-  const encoded = filename
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/')
   const q = options?.scenario ? `?scenario=${encodeURIComponent(options.scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${encoded}/field-overrides${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -389,7 +395,7 @@ export async function refreshMockFromLive(
   clientId?: string
 ): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}/refresh-from-live${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/refresh-from-live${q}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(clientId ? { clientId } : {}),
@@ -404,7 +410,7 @@ export async function refreshMockFromLive(
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -415,7 +421,7 @@ export async function deleteMock(filename: string, scenario?: string): Promise<v
 
 export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetchApi(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/duplicate${q}`, {
     method: 'POST',
   })
   if (!response.ok) {
