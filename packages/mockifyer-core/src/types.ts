@@ -371,7 +371,13 @@ export interface MockResponseDateOverride {
   offsetDays?: number;
   offsetHours?: number;
   offsetMinutes?: number;
-  /** How to encode the value. If omitted, inferred from the existing value (ISO string vs unix s/ms). */
+  /**
+   * How to encode the value. If omitted, inferred from the existing value (ISO-like string vs unix s/ms).
+   *
+   * - `unix-ms` / `unix-s` always write a number (explicit encoding wins over a string original).
+   * - `iso` writes a string. When the original field is an ISO-like string, the original shape is
+   *   preserved (date-only, naive, offset, or `Z`) instead of rewriting via `Date#toISOString()`.
+   */
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }
 
