@@ -268,17 +268,20 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     mocksLoadAbortRef.current = ac
     const { signal } = ac
     const requestedSearchQuery = searchQuery.trim()
+    const wantSimilarGroups = activeTab === 'mocks'
     try {
       setLoading(true)
       setSimilarBodyGroups([])
-      // List first without similarGroups so an empty/cleared scenario is not blocked
-      // by GraphQL clustering (or by a previous scenario's in-flight cluster).
+      // List first without similarGroups so Overrides (and empty scenarios) are not
+      // blocked by GraphQL clustering of a large Redis catalog.
       const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
       setAllMocks(data.files)
       setLoading(false)
+
+      if (!wantSimilarGroups) return
 
       const graphqlCount = data.files.reduce(
         (n, file) => (file.graphqlInfo?.query ? n + 1 : n),

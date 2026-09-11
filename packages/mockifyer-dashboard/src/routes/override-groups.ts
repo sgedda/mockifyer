@@ -115,7 +115,9 @@ router.get('/', async (req: Request, res: Response) => {
     const { mockDataPath } = getDashboardContext(req);
     const scenario = await resolveScenario(req, mockDataPath);
     const scenarioPath = scenarioPathFor(mockDataPath, scenario);
-    if (!scenarioPath) return;
+    if (!scenarioPath) {
+      return res.status(400).json({ error: 'Missing scenario path' });
+    }
     const clientId = readClientId(req);
     const { config } = getDashboardContext(req);
     const redisLane = isCentralizedDashboardProvider(config.provider)

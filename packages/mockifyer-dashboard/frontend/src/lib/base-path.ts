@@ -1,3 +1,8 @@
+import {
+  inferMountPrefixFromPathname,
+  resolveScriptSrcToMountPrefix,
+} from './dashboard-mount'
+
 /**
  * Infer Express mount prefix (e.g. `/dashboard`) from this module's emitted chunk URL.
  * Vite/Rollup sets `import.meta.url` to the real file URL (e.g. `.../dashboard/assets/main-xxx.js`).
@@ -20,31 +25,38 @@ function inferAppMountPrefixFromImportMeta(): string {
  * (e.g. some test runners) or does not contain `/assets/`.
  */
 function inferAppMountPrefixFromDom(): string {
-  if (typeof document === 'undefined') {
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
     return '';
   }
+  const pageUrl = window.location.href;
   const scripts = document.getElementsByTagName('script');
   for (let i = 0; i < scripts.length; i++) {
     const src = scripts[i].getAttribute('src');
-    if (!src || !src.includes('/assets/')) {
+    if (!src) {
       continue;
     }
-    try {
-      const u = new URL(src, window.location.origin);
-      const idx = u.pathname.indexOf('/assets/');
-      if (idx > 0) {
-        return u.pathname.slice(0, idx);
-      }
-    } catch {
-      continue;
+    const mount = resolveScriptSrcToMountPrefix(src, pageUrl);
+    if (mount) {
+      return mount;
     }
   }
   return '';
 }
 
+function inferAppMountPrefixFromLocation(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+  return inferMountPrefixFromPathname(window.location.pathname);
+}
+
 /** Mount prefix before `/assets/` (e.g. `/dashboard`), or `''` when served from site root. */
 export function inferAppMountPrefix(): string {
-  return inferAppMountPrefixFromImportMeta() || inferAppMountPrefixFromDom();
+  return (
+    inferAppMountPrefixFromImportMeta() ||
+    inferAppMountPrefixFromDom() ||
+    inferAppMountPrefixFromLocation()
+  );
 }
 
 /**
