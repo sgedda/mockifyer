@@ -6,6 +6,9 @@ import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { CopyableText, CopyPageLinkButton } from '@/components/CopyableText'
+import { useLocationQuery } from '@/lib/use-location-query'
+import { DASHBOARD_Q } from '@/lib/dashboard-urls'
 import type { NetworkEvent } from '@/types'
 import {
   buildJourneySteps,
@@ -223,25 +226,39 @@ function DocNodeRow({
   )
 }
 
+function findTreeNode(nodes: AtlasTreeNode[], nodeId: string | null): AtlasTreeNode | null {
+  if (!nodeId) return null
+  for (const node of nodes) {
+    if (node.nodeId === nodeId) return node
+    const nested = findTreeNode(node.children, nodeId)
+    if (nested) return nested
+  }
+  return null
+}
+
 /**
  * Atlas — auto-doc map (upserted) + optional session event log.
  */
 export default function Atlas({ scenario }: AtlasProps) {
   const { toast } = useToast()
-  const [tab, setTab] = useState<AtlasTab>('doc')
-  const [docView, setDocView] = useState<DocViewMode>('map')
+  const { searchParams, patch } = useLocationQuery()
+  const tab: AtlasTab = searchParams.get(DASHBOARD_Q.tab) === 'session' ? 'session' : 'doc'
+  const docViewParam = searchParams.get(DASHBOARD_Q.view)
+  const docView: DocViewMode =
+    docViewParam && DOC_VIEW_MODES.some((m) => m.id === docViewParam)
+      ? (docViewParam as DocViewMode)
+      : 'map'
   const [doc, setDoc] = useState<AtlasDocMap | null>(null)
   const [networkEvents, setNetworkEvents] = useState<NetworkEvent[]>([])
-  const [selectedHopId, setSelectedHopId] = useState<string | null>(null)
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [selectedScreen, setSelectedScreen] = useState<string | null>(null)
+  const selectedHopId = searchParams.get(DASHBOARD_Q.hop)
+  const selectedPageId = searchParams.get(DASHBOARD_Q.page)
+  const selectedNodeId = searchParams.get(DASHBOARD_Q.node)
+  const selectedScreen = searchParams.get(DASHBOARD_Q.screen)
+  const sessionId = searchParams.get(DASHBOARD_Q.session) ?? ''
 
   const [sessions, setSessions] = useState<string[]>([])
-  const [sessionId, setSessionId] = useState<string>('')
   const [tree, setTree] = useState<AtlasTreeNode[]>([])
   const [prefetches, setPrefetches] = useState<AtlasPrefetch[]>([])
-  const [selected, setSelected] = useState<AtlasTreeNode | null>(null)
   const [loading, setLoading] = useState(true)
 
   const loadDoc = useCallback(async () => {
@@ -271,7 +288,6 @@ export default function Atlas({ scenario }: AtlasProps) {
       if (!sid) {
         setTree([])
         setPrefetches([])
-        setSelected(null)
         return
       }
       const res = await fetch(
@@ -285,7 +301,6 @@ export default function Atlas({ scenario }: AtlasProps) {
       }
       setTree(json.tree ?? [])
       setPrefetches(json.prefetches ?? [])
-      setSelected(null)
     },
     [scenario]
   )
@@ -302,7 +317,7 @@ export default function Atlas({ scenario }: AtlasProps) {
       const nextDoc = await loadDoc()
       const pages = Object.keys(nextDoc.pages)
       if (pages.length && (!selectedPageId || !nextDoc.pages[selectedPageId])) {
-        setSelectedPageId(pages.sort()[0])
+        patch({ [DASHBOARD_Q.page]: pages.sort()[0] })
       }
       if (tab === 'doc') {
         await loadNetwork()
@@ -310,8 +325,15 @@ export default function Atlas({ scenario }: AtlasProps) {
       if (tab === 'session') {
         const nextSessions = await loadSessions()
         const sid = sessionId && nextSessions.includes(sessionId) ? sessionId : nextSessions[0] ?? ''
-        setSessionId(sid)
-        await loadTree(sid)
+        if (!sid) {
+          patch({ [DASHBOARD_Q.session]: null })
+          setTree([])
+          setPrefetches([])
+        } else if (sid !== sessionId) {
+          patch({ [DASHBOARD_Q.session]: sid })
+        } else {
+          await loadTree(sid)
+        }
       }
     } catch (error) {
       toast({
@@ -322,7 +344,7 @@ export default function Atlas({ scenario }: AtlasProps) {
     } finally {
       setLoading(false)
     }
-  }, [loadDoc, loadNetwork, loadSessions, loadTree, selectedPageId, sessionId, tab, toast])
+  }, [loadDoc, loadNetwork, loadSessions, loadTree, selectedPageId, sessionId, tab, toast, patch])
 
   useEffect(() => {
     void refresh()
@@ -341,9 +363,11 @@ export default function Atlas({ scenario }: AtlasProps) {
       )
       if (!res.ok) throw new Error('Failed to clear doc')
       toast({ title: 'Cleared', description: 'Atlas auto-doc map reset' })
-      setSelectedPageId(null)
-      setSelectedNodeId(null)
-      setSelectedScreen(null)
+      patch({
+        [DASHBOARD_Q.page]: null,
+        [DASHBOARD_Q.node]: null,
+        [DASHBOARD_Q.screen]: null,
+      })
       await refresh()
     } catch (error) {
       toast({
@@ -412,6 +436,7 @@ export default function Atlas({ scenario }: AtlasProps) {
   )
   const selectedHop =
     docNetworkEvents.find((e) => e.id === selectedHopId) ?? docNetworkEvents[0] ?? null
+  const selected = findTreeNode(tree, selectedNodeId)
 
   return (
     <div className="space-y-4 p-4">
@@ -427,11 +452,12 @@ export default function Atlas({ scenario }: AtlasProps) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <CopyPageLinkButton />
           <Button
             size="sm"
             variant={tab === 'doc' ? 'default' : 'outline'}
             onClick={() => {
-              setTab('doc')
+              patch({ [DASHBOARD_Q.tab]: null })
               void refresh()
             }}
           >
@@ -441,7 +467,7 @@ export default function Atlas({ scenario }: AtlasProps) {
             size="sm"
             variant={tab === 'session' ? 'default' : 'outline'}
             onClick={() => {
-              setTab('session')
+              patch({ [DASHBOARD_Q.tab]: 'session' })
               void refresh()
             }}
           >
@@ -461,7 +487,7 @@ export default function Atlas({ scenario }: AtlasProps) {
               <select
                 className="h-9 rounded-md border bg-background px-2 text-sm"
                 value={sessionId}
-                onChange={(e) => setSessionId(e.target.value)}
+                onChange={(e) => patch({ [DASHBOARD_Q.session]: e.target.value || null })}
                 disabled={sessions.length === 0}
               >
                 {sessions.length === 0 && <option value="">No sessions</option>}
@@ -494,7 +520,7 @@ export default function Atlas({ scenario }: AtlasProps) {
                 type="button"
                 size="sm"
                 variant={docView === id ? 'default' : 'outline'}
-                onClick={() => setDocView(id)}
+                onClick={() => patch({ [DASHBOARD_Q.view]: id === 'map' ? null : id })}
               >
                 <Icon className="mr-1 h-4 w-4" />
                 {label}
@@ -528,19 +554,19 @@ export default function Atlas({ scenario }: AtlasProps) {
                       events={docNetworkEvents}
                       depthById={docDepthById}
                       selectedId={selectedHop?.id ?? null}
-                      onSelect={setSelectedHopId}
+                      onSelect={(id) => patch({ [DASHBOARD_Q.hop]: id }, { replace: false })}
                     />
                   ) : docView === 'gantt' ? (
                     <NetworkGanttView
                       steps={docJourneySteps}
                       selectedId={selectedHop?.id ?? null}
-                      onSelect={setSelectedHopId}
+                      onSelect={(id) => patch({ [DASHBOARD_Q.hop]: id }, { replace: false })}
                     />
                   ) : (
                     <NetworkJourneyView
                       steps={docJourneySteps}
                       selectedId={selectedHop?.id ?? null}
-                      onSelect={setSelectedHopId}
+                      onSelect={(id) => patch({ [DASHBOARD_Q.hop]: id }, { replace: false })}
                     />
                   )}
                 </CardContent>
@@ -567,7 +593,11 @@ export default function Atlas({ scenario }: AtlasProps) {
                       {selectedHop.requestId && (
                         <div>
                           <div className="text-xs text-muted-foreground">Request id</div>
-                          <div className="font-mono text-xs break-all">{selectedHop.requestId}</div>
+                          <CopyableText
+                            value={selectedHop.requestId}
+                            copyLabel="Copy request id"
+                            textClassName="font-mono text-xs"
+                          />
                         </div>
                       )}
                       {selectedHop.durationMs != null && (
@@ -622,9 +652,11 @@ export default function Atlas({ scenario }: AtlasProps) {
                       selectedPageId === p.pageId ? 'bg-muted' : ''
                     }`}
                     onClick={() => {
-                      setSelectedPageId(p.pageId)
-                      setSelectedNodeId(null)
-                      setSelectedScreen(null)
+                      patch({
+                        [DASHBOARD_Q.page]: p.pageId,
+                        [DASHBOARD_Q.node]: null,
+                        [DASHBOARD_Q.screen]: null,
+                      })
                     }}
                   >
                     <div className="font-medium">{p.pageSlug || p.pageId}</div>
@@ -649,9 +681,11 @@ export default function Atlas({ scenario }: AtlasProps) {
                       selectedScreen === s.screen ? 'bg-muted' : ''
                     }`}
                     onClick={() => {
-                      setSelectedScreen(s.screen)
-                      setSelectedPageId(null)
-                      setSelectedNodeId(null)
+                      patch({
+                        [DASHBOARD_Q.screen]: s.screen,
+                        [DASHBOARD_Q.page]: null,
+                        [DASHBOARD_Q.node]: null,
+                      })
                     }}
                   >
                     <div className="font-medium">{s.screen}</div>
@@ -720,7 +754,7 @@ export default function Atlas({ scenario }: AtlasProps) {
                     key={n.nodeId}
                     node={n}
                     selected={selectedNodeId === n.nodeId}
-                    onSelect={() => setSelectedNodeId(n.nodeId)}
+                    onSelect={() => patch({ [DASHBOARD_Q.node]: n.nodeId }, { replace: false })}
                   />
                 ))}
             </CardContent>
@@ -809,7 +843,7 @@ export default function Atlas({ scenario }: AtlasProps) {
                   node={node}
                   depth={0}
                   selectedId={selected?.nodeId ?? null}
-                  onSelect={setSelected}
+                  onSelect={(node) => patch({ [DASHBOARD_Q.node]: node.nodeId }, { replace: false })}
                 />
               ))}
             </CardContent>

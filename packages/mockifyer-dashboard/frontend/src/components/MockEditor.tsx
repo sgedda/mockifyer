@@ -19,6 +19,7 @@ import {
 import { MockCallChainPanel } from '@/components/MockCallChainPanel'
 import { Input } from '@/components/ui/input'
 import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft, RefreshCw } from 'lucide-react'
+import { CopyableText } from '@/components/CopyableText'
 import {
   detectDateLikeFields,
   getValueAtResponsePath,
@@ -39,8 +40,8 @@ interface MockEditorProps {
   onSave: () => void
   /** Called after replay mode changes to refresh the list without reloading selectedMock. */
   onListRefresh?: () => Promise<void>
-  /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
-  variant?: 'default' | 'modal'
+  /** `page`: dedicated editor route. `default` is the inline card layout. */
+  variant?: 'default' | 'page'
 }
 
 function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
@@ -112,18 +113,18 @@ function useCodeMirrorVscodeTheme(): Extension {
 interface JsonResponseCodeMirrorProps {
   value: string
   onChange: (text: string) => void
-  isModal: boolean
+  isPage: boolean
   readOnly?: boolean
 }
 
-function JsonResponseCodeMirror({ value, onChange, isModal, readOnly = false }: JsonResponseCodeMirrorProps) {
+function JsonResponseCodeMirror({ value, onChange, isPage, readOnly = false }: JsonResponseCodeMirrorProps) {
   const vscodeTheme = useCodeMirrorVscodeTheme()
   return (
     <div className="w-full overflow-hidden rounded-md border border-input focus-within:ring-2 focus-within:ring-ring">
       <CodeMirror
         value={value}
-        height={isModal ? 'min(32rem, 50vh)' : '24rem'}
-        minHeight={isModal ? 'min(280px, 35vh)' : undefined}
+        height={isPage ? 'min(32rem, 50vh)' : '24rem'}
+        minHeight={isPage ? 'min(280px, 35vh)' : undefined}
         theme={vscodeTheme}
         extensions={jsonLanguageExtensions}
         onChange={onChange}
@@ -535,15 +536,16 @@ export default function MockEditor({
     }
   }
 
-  const isModal = variant === 'modal'
+  const isPage = variant === 'page'
 
   const header = (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 pr-8 sm:pr-10">
-        <CardTitle className="text-xl">
-          Edit Mock: <span className="text-primary font-mono">{mock.filename}</span>
+      <div className="flex items-center justify-between gap-2">
+        <CardTitle className="text-xl min-w-0">
+          Edit Mock:{' '}
+          <span className="text-primary font-mono break-all">{mock.filename}</span>
         </CardTitle>
-        {!isModal && (
+        {!isPage && (
           <Button
             variant="ghost"
             size="icon"
@@ -640,8 +642,12 @@ export default function MockEditor({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium">URL</div>
-              <div className="font-mono text-sm bg-muted p-2 rounded break-all">
-                {mock.data.request.url}
+              <div className="font-mono text-sm bg-muted p-2 rounded">
+                <CopyableText
+                  value={mock.data.request.url}
+                  copyLabel="Copy request URL"
+                  textClassName="font-mono text-sm"
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -814,7 +820,7 @@ export default function MockEditor({
                     setResponseData(text)
                     validateJSON(text)
                   }}
-                  isModal={isModal}
+                  isPage={isPage}
                   readOnly={readOnly}
                 />
               )}
@@ -1139,12 +1145,12 @@ export default function MockEditor({
         </Tabs>
   )
 
-  if (isModal) {
+  if (isPage) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border px-6 pb-4 pt-1">{header}</div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{editorTabs}</div>
-      </div>
+      <Card>
+        <CardHeader>{header}</CardHeader>
+        <CardContent>{editorTabs}</CardContent>
+      </Card>
     )
   }
 

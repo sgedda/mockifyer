@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Layers, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Layers, RefreshCw } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CopyPageLinkButton } from '@/components/CopyableText'
+import { useLocationQuery } from '@/lib/use-location-query'
+import { DASHBOARD_Q } from '@/lib/dashboard-urls'
 import {
   extractFixturePoolEntity,
   getFixturePoolEntities,
@@ -45,6 +48,10 @@ function Field({
  */
 export default function FixturePool({ scenario }: FixturePoolProps) {
   const { toast } = useToast()
+  const { searchParams, patch } = useLocationQuery()
+  const tab = searchParams.get(DASHBOARD_Q.tab) === 'responses' ? 'responses' : 'entities'
+  const selectedEntityId = searchParams.get(DASHBOARD_Q.entity)
+  const selectedResponseId = searchParams.get(DASHBOARD_Q.response)
   const [entities, setEntities] = useState<FixturePoolEntityRow[]>([])
   const [responses, setResponses] = useState<FixturePoolResponseRow[]>([])
   const [warning, setWarning] = useState<string | null>(null)
@@ -117,28 +124,53 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
   }, [scenario])
 
   async function openEntity(id: string) {
-    try {
-      setSelected(await getFixturePoolEntity(id))
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to load entity',
-        variant: 'destructive',
-      })
-    }
+    patch(
+      { [DASHBOARD_Q.entity]: id, [DASHBOARD_Q.response]: null, [DASHBOARD_Q.tab]: null },
+      { replace: false }
+    )
   }
 
   async function openResponse(id: string) {
-    try {
-      setSelected(await getFixturePoolResponse(id))
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to load response fixture',
-        variant: 'destructive',
-      })
-    }
+    patch(
+      {
+        [DASHBOARD_Q.response]: id,
+        [DASHBOARD_Q.entity]: null,
+        [DASHBOARD_Q.tab]: 'responses',
+      },
+      { replace: false }
+    )
   }
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadSelected() {
+      try {
+        if (selectedEntityId) {
+          const data = await getFixturePoolEntity(selectedEntityId)
+          if (!cancelled) setSelected(data)
+          return
+        }
+        if (selectedResponseId) {
+          const data = await getFixturePoolResponse(selectedResponseId)
+          if (!cancelled) setSelected(data)
+          return
+        }
+        if (!cancelled) setSelected(null)
+      } catch (error) {
+        if (cancelled) return
+        setSelected(null)
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to load fixture',
+          variant: 'destructive',
+        })
+      }
+    }
+    void loadSelected()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedEntityId, selectedResponseId, toast])
 
   async function handleExtract() {
     if (!extractFilename || !jsonPath.trim() || !entityType.trim()) {
@@ -238,10 +270,13 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
             serve normal mock files (plus optional <code>$pool</code> refs).
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <CopyPageLinkButton />
+          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {warning ? (
@@ -250,7 +285,12 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
         </p>
       ) : null}
 
-      <Tabs defaultValue="entities">
+      <Tabs
+        value={tab}
+        onValueChange={(value) =>
+          patch({ [DASHBOARD_Q.tab]: value === 'responses' ? 'responses' : null })
+        }
+      >
         <TabsList>
           <TabsTrigger value="entities">Entities ({entities.length})</TabsTrigger>
           <TabsTrigger value="responses">Responses ({responses.length})</TabsTrigger>
@@ -414,13 +454,25 @@ export default function FixturePool({ scenario }: FixturePoolProps) {
       {selected ? (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Detail</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
-              Close
-            </Button>
+            <CardTitle className="text-base">
+              {selectedEntityId ? `Entity ${selectedEntityId}` : `Response ${selectedResponseId}`}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <CopyPageLinkButton />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  patch({ [DASHBOARD_Q.entity]: null, [DASHBOARD_Q.response]: null })
+                }
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <pre className="max-h-[420px] overflow-auto rounded-md bg-muted p-3 text-xs">
+            <pre className="max-h-[420px] overflow-auto rounded-md bg-muted p-3 text-xs select-text">
               {JSON.stringify(selected, null, 2)}
             </pre>
           </CardContent>

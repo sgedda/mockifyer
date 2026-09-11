@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { DASHBOARD_Q, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
@@ -20,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { CopyableText } from '@/components/CopyableText'
 
 interface StatsViewProps {
   scenario: string
@@ -33,18 +35,34 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [switching, setSwitching] = useState(false)
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   function handleEndpointClick(endpoint: string) {
-    navigate(`/mocks?endpoint=${encodeURIComponent(endpoint)}`)
+    navigate(
+      mocksListPath({
+        scenario,
+        [DASHBOARD_Q.q]: endpoint,
+      })
+    )
   }
 
   function handleRecentFileClick(filename: string) {
-    navigate(`/mocks?q=${encodeURIComponent(filename)}`)
+    navigate(
+      mockEditorPath(filename, {
+        scenario,
+        q: searchParams.get(DASHBOARD_Q.q) ?? undefined,
+      })
+    )
   }
 
   function handleFolderFilter(folderLabel: string) {
     if (folderLabel === '(scenario root)') return
-    navigate(`/mocks?q=${encodeURIComponent(`${folderLabel}/`)}`)
+    navigate(
+      mocksListPath({
+        scenario,
+        [DASHBOARD_Q.q]: `${folderLabel}/`,
+      })
+    )
   }
 
   useEffect(() => {
@@ -225,9 +243,12 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
                     onClick={() => handleEndpointClick(item.endpoint)}
                     title={`Click to view mocks for ${item.endpoint}`}
                   >
-                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary transition-colors">
-                      {item.endpoint}
-                    </span>
+                    <CopyableText
+                      value={item.endpoint}
+                      copyLabel="Copy endpoint URL"
+                      className="flex-1 mr-2"
+                      textClassName="font-mono text-xs group-hover:text-primary transition-colors"
+                    />
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">{item.count}</span>
                       <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

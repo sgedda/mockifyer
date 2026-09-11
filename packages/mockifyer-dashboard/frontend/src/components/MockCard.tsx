@@ -11,6 +11,7 @@ import {
   type MockChainMaps,
 } from '@/lib/mock-correlation-chains'
 import { Copy, ExternalLink, Trash2, GitBranch } from 'lucide-react'
+import { CopyableText } from '@/components/CopyableText'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -68,7 +69,7 @@ export function MockCard({
   chainMaps,
 }: {
   mock: MockFile
-  selectedMock: MockData | null
+  selectedMock?: MockData | null
   onSelectMock: (file: MockFile) => void
   onDelete?: (filename: string, e: React.MouseEvent) => void
   onDuplicate?: (filename: string, e: React.MouseEvent) => void
@@ -198,7 +199,12 @@ export function MockCard({
           {mock.endpoint && (
             <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
               <ExternalLink className="h-3 w-3 shrink-0" />
-              <span className="break-all">{mock.endpoint}</span>
+              <CopyableText
+                value={mock.endpoint}
+                copyLabel="Copy request URL"
+                className="flex-1"
+                textClassName="font-mono text-sm text-muted-foreground"
+              />
             </div>
           )}
           {mock.graphqlInfo?.query ? (

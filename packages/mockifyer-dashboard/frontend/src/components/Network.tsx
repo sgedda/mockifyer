@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
+import { CopyableText, CopyPageLinkButton } from '@/components/CopyableText'
+import { useLocationQuery } from '@/lib/use-location-query'
+import { DASHBOARD_Q } from '@/lib/dashboard-urls'
 import {
   clearNetworkEvents,
   getNetworkEvents,
@@ -79,19 +82,24 @@ interface NetworkProps {
 
 export default function Network({ scenario }: NetworkProps) {
   const { toast } = useToast()
+  const { searchParams, patch } = useLocationQuery()
   const [events, setEvents] = useState<NetworkEvent[]>([])
   const [ephemeral, setEphemeral] = useState(false)
   const [loading, setLoading] = useState(true)
   const [logEnabled, setLogEnabled] = useState(true)
   const [captureBodies, setCaptureBodies] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [methodFilter, setMethodFilter] = useState('')
-  const [sourceFilter, setSourceFilter] = useState<NetworkEventSource | ''>('')
-  const [laneFilter, setLaneFilter] = useState('')
-  const [chainOnly, setChainOnly] = useState(false)
-  const [viewMode, setViewMode] = useState<NetworkViewMode>('trace')
+  const search = searchParams.get(DASHBOARD_Q.q) ?? ''
+  const methodFilter = searchParams.get(DASHBOARD_Q.method) ?? ''
+  const sourceFilter = (searchParams.get(DASHBOARD_Q.source) ?? '') as NetworkEventSource | ''
+  const laneFilter = searchParams.get(DASHBOARD_Q.clientId) ?? ''
+  const chainOnly = searchParams.get(DASHBOARD_Q.chains) === '1'
+  const viewParam = searchParams.get(DASHBOARD_Q.view)
+  const viewMode: NetworkViewMode =
+    viewParam && VIEW_MODES.some((m) => m.id === viewParam) ? (viewParam as NetworkViewMode) : 'trace'
+  const urlEventId = searchParams.get(DASHBOARD_Q.eventId)
+  const urlRequestId = searchParams.get(DASHBOARD_Q.requestId)
+  const urlIncidentId = searchParams.get(DASHBOARD_Q.incidentId)
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
   const sinceRef = useRef<string | undefined>(undefined)
   const [live, setLive] = useState(true)
@@ -187,18 +195,25 @@ export default function Network({ scenario }: NetworkProps) {
   const journeySteps = useMemo(() => buildJourneySteps(filtered), [filtered])
 
   const selected =
-    filtered.find((e) => e.id === selectedId) ??
+    filtered.find((e) => urlEventId && e.id === urlEventId) ??
+    filtered.find((e) => urlIncidentId && e.id === urlIncidentId) ??
+    filtered.find((e) => urlRequestId && e.requestId === urlRequestId) ??
     (viewMode === 'trace' ? traceRows[0]?.event : filtered[0]) ??
     null
   const selectedChain = selected
     ? getNetworkEventChain(selected, chainMaps.byRequestId, chainMaps.childrenByParent)
     : []
 
-  useEffect(() => {
-    if (selected && selected.id !== selectedId) {
-      setSelectedId(selected.id)
-    }
-  }, [selected, selectedId])
+  function selectEvent(eventId: string) {
+    patch(
+      {
+        [DASHBOARD_Q.eventId]: eventId,
+        [DASHBOARD_Q.incidentId]: null,
+        [DASHBOARD_Q.requestId]: null,
+      },
+      { replace: false }
+    )
+  }
 
   function toggleCollapse(eventId: string) {
     setCollapsedIds((prev) => {
@@ -337,19 +352,19 @@ export default function Network({ scenario }: NetworkProps) {
         <Input
           placeholder="Filter URL, path, lane, used by…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => patch({ [DASHBOARD_Q.q]: e.target.value || null })}
           className="max-w-md h-9"
         />
         <Input
           placeholder="Client lane (clientId)"
           value={laneFilter}
-          onChange={(e) => setLaneFilter(e.target.value)}
+          onChange={(e) => patch({ [DASHBOARD_Q.clientId]: e.target.value || null })}
           className="max-w-xs h-9 font-mono text-sm"
         />
         <select
           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
           value={methodFilter}
-          onChange={(e) => setMethodFilter(e.target.value)}
+          onChange={(e) => patch({ [DASHBOARD_Q.method]: e.target.value || null })}
         >
           <option value="">All methods</option>
           {methods.map((m) => (
@@ -361,7 +376,7 @@ export default function Network({ scenario }: NetworkProps) {
         <select
           className="h-9 rounded-md border border-input bg-background px-2 text-sm"
           value={sourceFilter}
-          onChange={(e) => setSourceFilter(e.target.value as NetworkEventSource | '')}
+          onChange={(e) => patch({ [DASHBOARD_Q.source]: e.target.value || null })}
         >
           <option value="">All sources</option>
           {(Object.keys(SOURCE_LABELS) as NetworkEventSource[]).map((s) => (
@@ -374,7 +389,7 @@ export default function Network({ scenario }: NetworkProps) {
           type="button"
           size="sm"
           variant={chainOnly ? 'default' : 'outline'}
-          onClick={() => setChainOnly((v) => !v)}
+          onClick={() => patch({ [DASHBOARD_Q.chains]: chainOnly ? null : '1' })}
         >
           <GitBranch className="h-4 w-4 mr-1" />
           Chains only
@@ -388,7 +403,7 @@ export default function Network({ scenario }: NetworkProps) {
             type="button"
             size="sm"
             variant={viewMode === id ? 'default' : 'outline'}
-            onClick={() => setViewMode(id)}
+            onClick={() => patch({ [DASHBOARD_Q.view]: id === 'trace' ? null : id })}
           >
             <Icon className="h-4 w-4 mr-1" />
             {label}
@@ -463,7 +478,7 @@ export default function Network({ scenario }: NetworkProps) {
                         selected?.id === ev.id ? 'bg-accent' : ''
                       } ${isIncident ? 'border-l-2 border-destructive' : ''}`}
                       style={{ paddingLeft: `${12 + Math.min(depth, 4) * 12}px` }}
-                      onClick={() => setSelectedId(ev.id)}
+                      onClick={() => selectEvent(ev.id)}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-xs font-semibold w-12">
@@ -524,26 +539,26 @@ export default function Network({ scenario }: NetworkProps) {
                 selectedId={selected?.id ?? null}
                 collapsedIds={collapsedIds}
                 onToggleCollapse={toggleCollapse}
-                onSelect={setSelectedId}
+                onSelect={selectEvent}
               />
             ) : viewMode === 'waterfall' ? (
               <NetworkWaterfallView
                 events={filtered}
                 depthById={depthById}
                 selectedId={selected?.id ?? null}
-                onSelect={setSelectedId}
+                onSelect={selectEvent}
               />
             ) : viewMode === 'gantt' ? (
               <NetworkGanttView
                 steps={journeySteps}
                 selectedId={selected?.id ?? null}
-                onSelect={setSelectedId}
+                onSelect={selectEvent}
               />
             ) : (
               <NetworkJourneyView
                 steps={journeySteps}
                 selectedId={selected?.id ?? null}
-                onSelect={setSelectedId}
+                onSelect={selectEvent}
               />
             )}
           </CardContent>
@@ -551,7 +566,10 @@ export default function Network({ scenario }: NetworkProps) {
 
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-sm font-medium">Details</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-medium">Details</CardTitle>
+              {selected ? <CopyPageLinkButton className="h-7 text-xs" /> : null}
+            </div>
           </CardHeader>
           <CardContent className="text-sm space-y-3 max-h-[36rem] overflow-auto">
             {!selected ? (
@@ -562,7 +580,7 @@ export default function Network({ scenario }: NetworkProps) {
                   <CallChainPanel
                     chain={selectedChain}
                     selectedId={selected.id}
-                    onSelectHop={setSelectedId}
+                    onSelectHop={selectEvent}
                   />
                 )}
                 <DetailRow label="Time" value={new Date(selected.timestamp).toLocaleString()} />
@@ -597,7 +615,7 @@ export default function Network({ scenario }: NetworkProps) {
                       className="h-auto p-0 text-sm font-mono"
                       onClick={() => {
                         const parent = chainMaps.byRequestId.get(selected.parentRequestId!)
-                        if (parent) setSelectedId(parent.id)
+                        if (parent) selectEvent(parent.id)
                       }}
                     >
                       {selected.parentRequestId}
@@ -672,7 +690,11 @@ function DetailRow({
   return (
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-sm break-all ${mono ? 'font-mono' : ''}`}>{value}</div>
+      {mono ? (
+        <CopyableText value={value} copyLabel={`Copy ${label}`} textClassName="text-sm font-mono" />
+      ) : (
+        <div className="text-sm break-all select-text">{value}</div>
+      )}
     </div>
   )
 }

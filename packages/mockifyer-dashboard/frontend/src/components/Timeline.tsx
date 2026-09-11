@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { getMocks, getMock } from '@/lib/api'
 import type { MockFile } from '@/types'
 import { Clock, List, Network, GitBranch } from 'lucide-react'
+import { CopyableText, CopyPageLinkButton } from '@/components/CopyableText'
+import { useLocationQuery } from '@/lib/use-location-query'
+import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 
 interface FlowRequest extends Omit<MockFile, 'sessionId'> {
   sessionId?: string | null
@@ -19,8 +23,16 @@ interface FlowRequest extends Omit<MockFile, 'sessionId'> {
 export default function Timeline({ scenario }: { scenario: string }) {
   const [mocks, setMocks] = useState<FlowRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<'timeline' | 'graph' | 'list'>('timeline')
+  const { searchParams, patch } = useLocationQuery()
+  const viewParam = searchParams.get(DASHBOARD_Q.view)
+  const viewMode: 'timeline' | 'graph' | 'list' =
+    viewParam === 'graph' || viewParam === 'list' ? viewParam : 'timeline'
+  const navigate = useNavigate()
   const { toast } = useToast()
+
+  function openMock(filename: string) {
+    navigate(mockEditorPath(filename, { scenario: searchParams.get(DASHBOARD_Q.scenario) ?? scenario }))
+  }
 
   useEffect(() => {
     loadFlowData()
@@ -172,11 +184,13 @@ export default function Timeline({ scenario }: { scenario: string }) {
             Visualize API request sequences and dependencies
           </p>
         </div>
-        <div className="flex gap-2 border rounded-md p-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <CopyPageLinkButton />
+          <div className="flex gap-2 border rounded-md p-1">
           <Button
             variant={viewMode === 'timeline' ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => setViewMode('timeline')}
+            onClick={() => patch({ [DASHBOARD_Q.view]: null })}
             className="h-8 px-3 text-sm"
           >
             <Clock className="h-4 w-4 mr-2" />
@@ -185,7 +199,7 @@ export default function Timeline({ scenario }: { scenario: string }) {
           <Button
             variant={viewMode === 'graph' ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => setViewMode('graph')}
+            onClick={() => patch({ [DASHBOARD_Q.view]: 'graph' })}
             className="h-8 px-3 text-sm"
           >
             <Network className="h-4 w-4 mr-2" />
@@ -194,12 +208,13 @@ export default function Timeline({ scenario }: { scenario: string }) {
           <Button
             variant={viewMode === 'list' ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => setViewMode('list')}
+            onClick={() => patch({ [DASHBOARD_Q.view]: 'list' })}
             className="h-8 px-3 text-sm"
           >
             <List className="h-4 w-4 mr-2" />
             List
           </Button>
+          </div>
         </div>
       </div>
 
@@ -227,10 +242,13 @@ export default function Timeline({ scenario }: { scenario: string }) {
               {sessionRequests.map((req, reqIndex) => (
                 <div key={req.filename} className="relative pl-8 mb-4">
                   <div className="absolute -left-2 top-2 w-3 h-3 rounded-full bg-primary/50 border-2 border-background"></div>
-                  <Card className="ml-4 hover:border-primary/50 transition-colors">
+                  <Card
+                    className="ml-4 hover:border-primary/50 transition-colors cursor-pointer"
+                    onClick={() => openMock(req.filename)}
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="px-2 py-0.5 rounded text-xs font-mono bg-muted">
                               #{req.sequence || reqIndex + 1}
@@ -238,9 +256,12 @@ export default function Timeline({ scenario }: { scenario: string }) {
                             <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getMethodColor(extractMethod(req.endpoint))}`}>
                               {extractMethod(req.endpoint)}
                             </span>
-                            <span className="text-sm font-mono text-foreground truncate flex-1">
-                              {extractUrl(req.endpoint) || req.filename}
-                            </span>
+                            <CopyableText
+                              value={extractUrl(req.endpoint) || req.filename}
+                              copyLabel="Copy URL"
+                              className="flex-1"
+                              textClassName="text-sm font-mono text-foreground"
+                            />
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                             {req.parentRequestId ? (
@@ -279,7 +300,8 @@ export default function Timeline({ scenario }: { scenario: string }) {
             return (
               <Card 
                 key={req.filename} 
-                className="hover:border-primary/50 transition-all hover:shadow-md"
+                className="hover:border-primary/50 transition-all hover:shadow-md cursor-pointer"
+                onClick={() => openMock(req.filename)}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
@@ -299,9 +321,12 @@ export default function Timeline({ scenario }: { scenario: string }) {
                       {/* Content */}
                       <div className="flex-1 min-w-0 space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-mono text-foreground truncate" title={url}>
-                            {url}
-                          </span>
+                          <CopyableText
+                            value={url}
+                            copyLabel="Copy URL"
+                            className="flex-1"
+                            textClassName="text-sm font-mono text-foreground"
+                          />
                           {isRoot && (
                             <span className="px-1.5 py-0.5 rounded text-xs bg-green-500/20 text-green-400 border border-green-500/30 flex-shrink-0">
                               🌱 Root
@@ -354,6 +379,7 @@ export default function Timeline({ scenario }: { scenario: string }) {
           extractMethod={extractMethod}
           extractUrl={extractUrl}
           getMethodBadgeColor={getMethodBadgeColor}
+          onOpenMock={openMock}
         />
       )}
     </div>
@@ -366,11 +392,12 @@ interface GraphViewProps {
   extractMethod: (endpoint: string | null) => string
   extractUrl: (endpoint: string | null) => string
   getMethodBadgeColor: (method: string) => { bg: string; text: string; border: string }
+  onOpenMock: (filename: string) => void
 }
 
-function GraphView({ sessions, extractMethod, extractUrl, getMethodBadgeColor }: GraphViewProps) {
+function GraphView({ sessions, extractMethod, extractUrl, getMethodBadgeColor, onOpenMock }: GraphViewProps) {
   const svgRef = useRef<SVGSVGElement>(null)
-  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const selectedNode = null
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 })
 
   // Get computed CSS values for SVG - convert HSL to RGB
@@ -694,7 +721,7 @@ function GraphView({ sessions, extractMethod, extractUrl, getMethodBadgeColor }:
                   key={node.id}
                   transform={`translate(${node.x}, ${node.y})`}
                   className="cursor-pointer"
-                  onClick={() => setSelectedNode(isSelected ? null : node.id)}
+                  onClick={() => onOpenMock(node.request.filename)}
                 >
                   {/* Node background */}
                   <rect
