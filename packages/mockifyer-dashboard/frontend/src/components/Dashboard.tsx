@@ -70,6 +70,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const searchQuery = searchParams.get(DASHBOARD_Q.q) ?? searchParams.get(DASHBOARD_Q.endpoint) ?? ''
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const mocksLoadAbortRef = useRef<AbortController | null>(null)
+  const rejectedUrlScenarioRef = useRef<string | null>(null)
   const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
 
@@ -142,6 +143,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     try {
       setSwitchingScenario(true)
       await setScenario(nextScenario)
+      rejectedUrlScenarioRef.current = null
       onScenarioChange(nextScenario)
       setSearchParams(
         (prev) => {
@@ -157,10 +159,20 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
           description: `Switched to "${nextScenario}"`,
         })
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      rejectedUrlScenarioRef.current = nextScenario
+      setSearchParams(
+        (prev) => {
+          if (prev.get(DASHBOARD_Q.scenario) === scenario) return prev
+          const next = new URLSearchParams(prev)
+          next.set(DASHBOARD_Q.scenario, scenario)
+          return next
+        },
+        { replace: true }
+      )
       toast({
         title: 'Error',
-        description: error?.message || 'Failed to change scenario',
+        description: error instanceof Error ? error.message : 'Failed to change scenario',
         variant: 'destructive',
       })
     } finally {
@@ -180,6 +192,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
 
   useEffect(() => {
     if (!urlScenario) {
+      rejectedUrlScenarioRef.current = null
       setSearchParams(
         (prev) => {
           if (prev.get(DASHBOARD_Q.scenario) === scenario) return prev
@@ -191,9 +204,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       )
       return
     }
-    if (urlScenario !== scenario && !switchingScenario) {
-      void handleHeaderScenarioChange(urlScenario, { silent: true })
+    if (urlScenario === scenario) {
+      rejectedUrlScenarioRef.current = null
+      return
     }
+    if (switchingScenario || rejectedUrlScenarioRef.current === urlScenario) return
+    void handleHeaderScenarioChange(urlScenario, { silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlScenario, scenario, switchingScenario])
 
@@ -581,7 +597,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             <Route
               path="/mock"
               element={
-                <MockEditorPage scenario={scenario} scenarioLocked={scenarioLocked} />
+                <MockEditorPage
+                  scenario={scenario}
+                  scenarioLocked={scenarioLocked}
+                  scenarioReady={!urlScenario || urlScenario === scenario}
+                />
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />

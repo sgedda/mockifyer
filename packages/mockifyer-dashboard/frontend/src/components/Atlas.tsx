@@ -325,8 +325,14 @@ export default function Atlas({ scenario }: AtlasProps) {
       if (tab === 'session') {
         const nextSessions = await loadSessions()
         const sid = sessionId && nextSessions.includes(sessionId) ? sessionId : nextSessions[0] ?? ''
-        if (sid && sid !== sessionId) {
+        if (!sid) {
+          patch({ [DASHBOARD_Q.session]: null })
+          setTree([])
+          setPrefetches([])
+        } else if (sid !== sessionId) {
           patch({ [DASHBOARD_Q.session]: sid })
+        } else {
+          await loadTree(sid)
         }
       }
     } catch (error) {
@@ -338,7 +344,7 @@ export default function Atlas({ scenario }: AtlasProps) {
     } finally {
       setLoading(false)
     }
-  }, [loadDoc, loadNetwork, loadSessions, selectedPageId, sessionId, tab, toast, patch])
+  }, [loadDoc, loadNetwork, loadSessions, loadTree, selectedPageId, sessionId, tab, toast, patch])
 
   useEffect(() => {
     void refresh()

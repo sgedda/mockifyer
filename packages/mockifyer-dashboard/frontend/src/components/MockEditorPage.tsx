@@ -12,13 +12,19 @@ import type { MockData, MockFile } from '@/types'
 interface MockEditorPageProps {
   scenario: string
   scenarioLocked: boolean
+  /** False while Dashboard is still applying `?scenario=` from a pasted URL. */
+  scenarioReady: boolean
 }
 
 /**
  * Full-page mock editor. Identity is `?file=` so the URL is copyable and
  * reloads without nested path segments (portable Vite `./` assets).
  */
-export default function MockEditorPage({ scenario, scenarioLocked }: MockEditorPageProps) {
+export default function MockEditorPage({
+  scenario,
+  scenarioLocked,
+  scenarioReady,
+}: MockEditorPageProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -42,6 +48,12 @@ export default function MockEditorPage({ scenario, scenarioLocked }: MockEditorP
 
   useEffect(() => {
     if (!filename) return
+    if (!scenarioReady) {
+      setLoading(true)
+      setNotFound(false)
+      setMock(null)
+      return
+    }
     let cancelled = false
 
     const file = filename
@@ -74,7 +86,7 @@ export default function MockEditorPage({ scenario, scenarioLocked }: MockEditorP
     return () => {
       cancelled = true
     }
-  }, [filename, scenario, toast])
+  }, [filename, scenario, scenarioReady, toast])
 
   function goToList() {
     navigate(mocksListPath(listExtras))
@@ -102,23 +114,22 @@ export default function MockEditorPage({ scenario, scenarioLocked }: MockEditorP
     return null
   }
 
-  if (loading && !mock) {
+  if (!scenarioReady || loading || !mock) {
+    if (notFound && scenarioReady && !loading) {
+      return (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Mock <span className="font-mono">{filename}</span> was not found in scenario{' '}
+            <span className="font-mono">{scenario}</span>.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={goToList}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to mocks
+          </Button>
+        </div>
+      )
+    }
     return <div className="text-muted-foreground">Loading mock…</div>
-  }
-
-  if (notFound || !mock) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Mock <span className="font-mono">{filename}</span> was not found in scenario{' '}
-          <span className="font-mono">{scenario}</span>.
-        </p>
-        <Button type="button" variant="outline" size="sm" onClick={goToList}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to mocks
-        </Button>
-      </div>
-    )
   }
 
   return (
