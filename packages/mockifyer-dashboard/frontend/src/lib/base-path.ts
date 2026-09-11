@@ -52,6 +52,12 @@ function inferAppMountPrefixFromLocation(): string {
 
 /** Mount prefix before `/assets/` (e.g. `/dashboard`), or `''` when served from site root. */
 export function inferAppMountPrefix(): string {
+  if (typeof window !== 'undefined') {
+    const fromPath = inferMountPrefixFromPathname(window.location.pathname);
+    if (fromPath) {
+      return fromPath;
+    }
+  }
   return (
     inferAppMountPrefixFromImportMeta() ||
     inferAppMountPrefixFromDom() ||

@@ -209,6 +209,16 @@ describe('dashboard API cache / 304', () => {
         files: Array<{ hasResponseFieldOverrides?: boolean }>;
       };
       expect(mocksJson.files[0]?.hasResponseFieldOverrides).toBe(true);
+
+      const groups = await httpGet(server, '/mockifyer/api/override-groups?scenario=default');
+      expect(groups.status).toBe(200);
+      JSON.parse(groups.body);
+    });
+
+    it('does not serve index.html for nested /overrides/assets/*.js', async () => {
+      const nested = await httpGet(server, '/mockifyer/overrides/assets/missing-bundle.js');
+      expect(nested.status).toBe(404);
+      expect(nested.body).not.toContain('id="root"');
     });
   });
 });

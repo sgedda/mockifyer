@@ -22,6 +22,12 @@ describe('dashboard mount inference (embedded /mockifyer)', () => {
       )
     ).toBe('/mockifyer');
     expect(
+      resolveScriptSrcToMountPrefix(
+        './assets/index-abc.js',
+        'http://localhost:4000/mockifyer/overrides/'
+      )
+    ).toBe('/mockifyer/overrides');
+    expect(
       resolveScriptSrcToMountPrefix('./assets/index-abc.js', 'http://localhost:4000/overrides')
     ).toBe('');
     expect(

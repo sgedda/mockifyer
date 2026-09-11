@@ -134,6 +134,24 @@ export function createServer(
       next();
     }
   });
+
+  /**
+   * Vite `base: './'` + a trailing-slash deep link (`/mockifyer/overrides/`)
+   * requests `/overrides/assets/*.js`. If we SPA-fallback that to index.html,
+   * the browser never boots React and `/api/override-groups` is never called.
+   */
+  const spaPageAssetPrefix =
+    /^\/(mocks|overrides|timeline|atlas|network|fixture-pool|date-config|settings)\/assets\//;
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    if (!spaPageAssetPrefix.test(req.path)) {
+      return next();
+    }
+    req.url = req.url.replace(spaPageAssetPrefix, '/assets/');
+    return express.static(publicDir)(req, res, next);
+  });
   
   app.use((req, res, next) => {
     // Only serve static files for GET/HEAD requests that aren't API routes
@@ -150,7 +168,7 @@ export function createServer(
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found', path: req.path });
     }
-    if (req.path.startsWith('/assets/')) {
+    if (req.path.startsWith('/assets/') || req.path.includes('/assets/')) {
       return res.status(404).send('Asset not found');
     }
     if (req.path.startsWith('/atlas-html/')) {
