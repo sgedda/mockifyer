@@ -1,5 +1,7 @@
 import {
   inferMountPrefixFromPathname,
+  resolveApiBase,
+  resolveRouterBasename,
   resolveScriptSrcToMountPrefix,
 } from './dashboard-mount'
 
@@ -67,37 +69,17 @@ export function inferAppMountPrefix(): string {
 
 /**
  * Vite sets `import.meta.env.BASE_URL` from `base` in `vite.config.ts`
- * (e.g. `/`, `./`, or `/dashboard/`).
+ * (e.g. `/`, `./`, or `/dashboard/`). Location mount always wins so a host
+ * that built with `base: '/'` still calls `/mockifyer/api` under an embed.
  */
 export function getDashboardRouterBasename(): string | undefined {
-  const base = import.meta.env.BASE_URL;
-  if (base === '/' || base === './') {
-    if (base === './') {
-      const mount = inferAppMountPrefix();
-      return mount === '' ? undefined : mount;
-    }
-    return undefined;
-  }
-  const withoutTrailing = base.replace(/\/+$/, '');
-  return withoutTrailing === '' ? undefined : withoutTrailing;
+  return resolveRouterBasename(import.meta.env.BASE_URL, inferAppMountPrefix());
 }
 
 /**
- * Origin path prefix for API calls (e.g. `/api` or `/dashboard/api`).
- * With portable `base: './'`, mount is taken from the bundle URL so `/api` is never used incorrectly under a subpath.
+ * Origin path prefix for API calls (e.g. `/api` or `/mockifyer/api`).
+ * With portable `base: './'` (or a mistaken `/`), mount is taken from the page URL.
  */
 export function getApiBase(): string {
-  const base = import.meta.env.BASE_URL;
-  if (base === '/') {
-    return '/api';
-  }
-  if (base === './') {
-    const mount = inferAppMountPrefix();
-    if (mount === '') {
-      return '/api';
-    }
-    return `${mount}/api`.replace(/\/{2,}/g, '/');
-  }
-  const root = base.endsWith('/') ? base : `${base}/`;
-  return `${root}api`.replace(/\/{2,}/g, '/');
+  return resolveApiBase(import.meta.env.BASE_URL, inferAppMountPrefix());
 }

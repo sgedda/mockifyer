@@ -8,16 +8,22 @@
         var suffixes = ['/mocks','/overrides','/timeline','/atlas','/network','/fixture-pool','/date-config','/settings'];
         var p = (location.pathname || '/').split('?')[0].replace(/\/+$/, '') || '/';
         var prefix = '';
+        var matched = false;
         for (var i = 0; i < suffixes.length; i++) {
           var s = suffixes[i];
           if (p === s) {
+            matched = true;
             prefix = '';
             break;
           }
           if (p.length > s.length && p.slice(p.length - s.length) === s) {
+            matched = true;
             prefix = p.slice(0, p.length - s.length);
             break;
           }
+        }
+        if (!matched && p !== '/') {
+          prefix = p;
         }
         if (prefix) {
           var b = document.createElement('base');

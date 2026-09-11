@@ -32,7 +32,8 @@ export function resolveScriptSrcToMountPrefix(src: string, pageUrl: string): str
 
 /**
  * Infer the Express mount from a deep-link pathname such as `/mockifyer/overrides`.
- * Root routes (`/overrides`, `/`) have no prefix.
+ * Root routes (`/overrides`, `/`) have no prefix. The dashboard home (Stats) is the
+ * mount itself (`/mockifyer`).
  */
 export function inferMountPrefixFromPathname(pathname: string): string {
   const trimmed = (pathname.split('?')[0] || '').replace(/\/+$/, '') || '/';
@@ -48,5 +49,38 @@ export function inferMountPrefixFromPathname(pathname: string): string {
       return prefix.startsWith('/') ? prefix : '';
     }
   }
-  return '';
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
+/**
+ * React Router basename: location mount wins so a Vite `base` of `/` still works
+ * when the host embeds the UI under `/mockifyer`.
+ */
+export function resolveRouterBasename(
+  viteBase: string,
+  mountPrefix: string
+): string | undefined {
+  if (mountPrefix) {
+    return mountPrefix;
+  }
+  if (viteBase === '/' || viteBase === './') {
+    return undefined;
+  }
+  const withoutTrailing = viteBase.replace(/\/+$/, '');
+  return withoutTrailing === '' ? undefined : withoutTrailing;
+}
+
+/**
+ * Origin path for `/api` calls. Prefer the Express mount from the page URL so a
+ * root-absolute Vite build still talks to `/mockifyer/api` instead of `/api`.
+ */
+export function resolveApiBase(viteBase: string, mountPrefix: string): string {
+  if (mountPrefix) {
+    return `${mountPrefix}/api`.replace(/\/{2,}/g, '/');
+  }
+  if (viteBase === '/' || viteBase === './') {
+    return '/api';
+  }
+  const root = viteBase.endsWith('/') ? viteBase : `${viteBase}/`;
+  return `${root}api`.replace(/\/{2,}/g, '/');
 }
