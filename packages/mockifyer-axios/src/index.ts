@@ -76,6 +76,7 @@ import {
   mockShouldServeStoredBody,
   mockShouldBeIncludedInRequestMatch,
   buildClientResponseFromLiveCapture,
+  applyDeviceFieldOverlaysToData,
   buildMockDataAfterLiveCapture,
   resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
@@ -133,13 +134,14 @@ class MockifyerClass {
   }
 
   /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
-  private prepareStoredResponseBody(mockData: MockData): unknown {
+  private prepareStoredResponseBody(mockData: MockData, requestKey?: string): unknown {
     return prepareMockResponseBody(mockData, getCurrentDate, {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: fs,
         joinPath: path.join.bind(path),
       }),
+      deviceOverlayLookup: requestKey ? { requestKey } : undefined,
     });
   }
 
@@ -883,7 +885,7 @@ class MockifyerClass {
           (config as any).__mockifyer_requestKey = requestKey;
           (config as any).__mockifyer_startTime = Date.now();
         } else {
-        const mockResponseBody = this.prepareStoredResponseBody(mockData);
+        const mockResponseBody = this.prepareStoredResponseBody(mockData, requestKey);
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
@@ -1234,7 +1236,7 @@ class MockifyerClass {
           
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
-            data: this.prepareStoredResponseBody(mockData),
+            data: this.prepareStoredResponseBody(mockData, requestKey),
             status: mockData.response.status,
             statusText: 'OK',
             headers: axiosHeaders,
@@ -1801,7 +1803,10 @@ class MockifyerClass {
       capturedResponse,
       getCurrentDate
     );
-    response.data = clientResponse.data;
+    const liveRequestKey = (response.config as any).__mockifyer_requestKey as string | undefined;
+    response.data = applyDeviceFieldOverlaysToData(clientResponse.data, {
+      requestKey: liveRequestKey,
+    });
     response.status = clientResponse.status;
     delete (response.config as any).__mockifyer_matchedMock;
 
