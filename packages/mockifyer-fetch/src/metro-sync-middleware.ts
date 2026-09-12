@@ -13,6 +13,12 @@
  * 9. POST /mockifyer-atlas-screenshot — write screen image (png/jpg/webp) under mock-data/atlas-html/screenshots/
  * 10. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
  * 11. POST /mockifyer-atlas-body-spill — write full hop body text under mock-data/atlas-html/bodies/
+ * 12. POST/GET /mockifyer-network-events — live hop ring buffer for `mockifyer-atlas` CLI
+ * 13. GET /mockifyer-network-events/stream — SSE hop stream
+ * 14. GET /mockifyer-network-events/analyze — hop summary JSON
+ * 15. POST /mockifyer-network-events/snapshot — write hops JSON/NDJSON under atlas-html/
+ * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
+ * 17. POST /mockifyer-network-events/clear — clear ring buffer
  * 
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -44,6 +50,10 @@ import {
   setAtlasDocMap,
   type AtlasDocMap,
   type NetworkEvent,
+  getMetroNetworkEventBuffer,
+  analyzeMetroNetworkEvents,
+  createEmptyAtlasDocMap,
+  buildAtlasHarJson,
 } from '@sgedda/mockifyer-core';
 
 export interface MetroSyncMiddlewareOptions {
@@ -974,6 +984,67 @@ function serveAtlasHtmlStatic(
   return true;
 }
 
+const NETWORK_STREAM_NDJSON_REL = path.join('atlas-html', 'atlas.ndjson');
+
+function appendNetworkEventNdjson(mockDataPath: string, event: NetworkEvent): void {
+  try {
+    const filePath = path.join(mockDataPath, NETWORK_STREAM_NDJSON_REL);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, `${JSON.stringify(event)}\n`, 'utf8');
+  } catch {
+    // disk append is best-effort
+  }
+}
+
+function writeNetworkEventsSnapshot(
+  mockDataPath: string,
+  events: NetworkEvent[]
+): { dir: string; jsonPath: string; ndjsonPath: string; harPath: string; count: number } {
+  const dir = path.join(mockDataPath, 'atlas-html');
+  fs.mkdirSync(dir, { recursive: true });
+  const jsonPath = path.join(dir, 'atlas-events.json');
+  const ndjsonPath = path.join(dir, 'atlas.ndjson');
+  const harPath = path.join(dir, 'atlas.har');
+  fs.writeFileSync(jsonPath, `${JSON.stringify(events, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(
+    ndjsonPath,
+    `${events.map((e) => JSON.stringify(e)).join('\n')}${events.length ? '\n' : ''}`,
+    'utf8'
+  );
+  fs.writeFileSync(harPath, buildAtlasHarJson(events), 'utf8');
+  return { dir, jsonPath, ndjsonPath, harPath, count: events.length };
+}
+
+function renderNetworkEventsAtlasHtml(
+  projectRoot: string,
+  mockDataPath: string,
+  events: NetworkEvent[],
+  scenario?: string
+): {
+  success: boolean;
+  written: number;
+  outputDir: string;
+  browseUrl: string;
+  hopCount: number;
+  error?: string;
+} {
+  const outDir = path.join(mockDataPath, 'atlas-html');
+  const doc = createEmptyAtlasDocMap(scenario?.trim() || events[0]?.scenario || 'default');
+  setAtlasDocMap(doc);
+  setAtlasDocHtmlOutputPath(outDir);
+  const written = writeAtlasDocHtml(outDir, doc, events);
+  writeNetworkEventsSnapshot(mockDataPath, events);
+  const relativeFromRoot = path.relative(projectRoot, outDir).split(path.sep).join('/');
+  return {
+    success: written > 0,
+    written,
+    outputDir: relativeFromRoot,
+    browseUrl: '/mockifyer-atlas-html/',
+    hopCount: events.length,
+    error: written > 0 ? undefined : 'writeAtlasDocHtml wrote 0 files',
+  };
+}
+
 /**
  * Metro middleware function
  */
@@ -993,6 +1064,183 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const result = clearMockFiles(mockDataPath);
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    // Live hop ring buffer for `mockifyer-atlas` interactive CLI
+    if (url === '/mockifyer-network-events' && req.method === 'POST') {
+      collectRequestBodyUtf8(req, (err, body) => {
+        if (err) {
+          res.statusCode = 413;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: err.message }));
+          return;
+        }
+        try {
+          const parsed = JSON.parse(body) as { event?: NetworkEvent; events?: NetworkEvent[] };
+          const incoming: NetworkEvent[] = [];
+          if (parsed.event && typeof parsed.event === 'object') {
+            incoming.push(parsed.event);
+          }
+          if (Array.isArray(parsed.events)) {
+            for (const e of parsed.events) {
+              if (e && typeof e === 'object') incoming.push(e);
+            }
+          }
+          if (incoming.length === 0) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'event or events required' }));
+            return;
+          }
+          const buffer = getMetroNetworkEventBuffer();
+          const saved = incoming.map((e) => {
+            const stored = buffer.append(e);
+            appendNetworkEventNdjson(mockDataPath, stored);
+            return stored;
+          });
+          res.statusCode = 201;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, count: saved.length, size: buffer.size }));
+        } catch (error) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    if (url === '/mockifyer-network-events' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const params = new URLSearchParams(qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '');
+      const limitRaw = params.get('limit');
+      const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
+      const buffer = getMetroNetworkEventBuffer();
+      const events = buffer.list(Number.isFinite(limit as number) ? (limit as number) : undefined);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, size: buffer.size, events }));
+      return;
+    }
+
+    if (url === '/mockifyer-network-events/stream' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const params = new URLSearchParams(qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '');
+      const backlog = params.get('backlog') !== '0';
+      const buffer = getMetroNetworkEventBuffer();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      if (typeof res.flushHeaders === 'function') {
+        res.flushHeaders();
+      }
+      res.write(`event: hello\ndata: ${JSON.stringify({ size: buffer.size })}\n\n`);
+      if (backlog) {
+        const past = [...buffer.list()].reverse();
+        for (const event of past) {
+          res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
+        }
+      }
+      const unsubscribe = buffer.subscribe((event) => {
+        try {
+          res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
+        } catch {
+          unsubscribe();
+        }
+      });
+      const keepAlive = setInterval(() => {
+        try {
+          res.write(': ping\n\n');
+        } catch {
+          clearInterval(keepAlive);
+          unsubscribe();
+        }
+      }, 15_000);
+      const onClose = () => {
+        clearInterval(keepAlive);
+        unsubscribe();
+      };
+      req.on('close', onClose);
+      req.on('aborted', onClose);
+      return;
+    }
+
+    if (url === '/mockifyer-network-events/analyze' && req.method === 'GET') {
+      const fullUrl = req.url || '';
+      const qIndex = fullUrl.indexOf('?');
+      const params = new URLSearchParams(qIndex >= 0 ? fullUrl.slice(qIndex + 1) : '');
+      const slowRaw = params.get('slowMs');
+      const slowMs = slowRaw ? Number.parseInt(slowRaw, 10) : undefined;
+      const buffer = getMetroNetworkEventBuffer();
+      const analysis = analyzeMetroNetworkEvents(buffer.list(), {
+        slowMs: Number.isFinite(slowMs as number) ? (slowMs as number) : undefined,
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, analysis }));
+      return;
+    }
+
+    if (url === '/mockifyer-network-events/snapshot' && req.method === 'POST') {
+      const buffer = getMetroNetworkEventBuffer();
+      const events = [...buffer.list()].reverse();
+      const result = writeNetworkEventsSnapshot(mockDataPath, events);
+      res.statusCode = 201;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(
+        JSON.stringify({
+          success: true,
+          count: result.count,
+          dir: path.relative(projectRoot, result.dir).split(path.sep).join('/'),
+          jsonPath: path.relative(projectRoot, result.jsonPath).split(path.sep).join('/'),
+          ndjsonPath: path.relative(projectRoot, result.ndjsonPath).split(path.sep).join('/'),
+          harPath: path.relative(projectRoot, result.harPath).split(path.sep).join('/'),
+        })
+      );
+      return;
+    }
+
+    if (url === '/mockifyer-network-events/render' && req.method === 'POST') {
+      collectRequestBodyUtf8(req, (err, body) => {
+        if (err) {
+          res.statusCode = 413;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: err.message }));
+          return;
+        }
+        let scenario: string | undefined;
+        if (body.trim()) {
+          try {
+            const parsed = JSON.parse(body) as { scenario?: string };
+            if (typeof parsed.scenario === 'string') scenario = parsed.scenario;
+          } catch {
+            // empty / ignore
+          }
+        }
+        const buffer = getMetroNetworkEventBuffer();
+        const events = [...buffer.list()].reverse();
+        const result = renderNetworkEventsAtlasHtml(projectRoot, mockDataPath, events, scenario);
+        res.statusCode = result.success ? 201 : 500;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(result));
+      });
+      return;
+    }
+
+    if (url === '/mockifyer-network-events/clear' && req.method === 'POST') {
+      const buffer = getMetroNetworkEventBuffer();
+      buffer.clear();
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, size: 0 }));
       return;
     }
     
