@@ -27,6 +27,32 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   (cur as Record<string | number, unknown>)[last as string | number] = value;
 }
 
+/**
+ * Deletes the value at `segments` (array splice or object key delete). Soft no-op when missing/invalid.
+ */
+export function removeAtPath(root: unknown, segments: (string | number)[]): void {
+  if (segments.length === 0 || root === null || typeof root !== 'object') return;
+
+  let parent: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (parent === null || typeof parent !== 'object') return;
+    parent = (parent as Record<string | number, unknown>)[segments[i]! as string | number];
+  }
+
+  if (parent === null || typeof parent !== 'object') return;
+
+  const last = segments[segments.length - 1]!;
+  if (Array.isArray(parent)) {
+    if (typeof last !== 'number' || !Number.isInteger(last) || last < 0 || last >= parent.length) {
+      return;
+    }
+    parent.splice(last, 1);
+    return;
+  }
+
+  delete (parent as Record<string | number, unknown>)[last as string | number];
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -119,6 +145,11 @@ export function applyResponseFieldOverridesToData<T>(
     if (!override?.path?.trim()) continue;
     const segments = parseResponseDataPath(override.path.trim());
     if (segments.length === 0) continue;
+
+    if (override.mode === 'remove') {
+      removeAtPath(clone, segments);
+      continue;
+    }
 
     const nextValue =
       override.mode === 'extend'
@@ -222,7 +253,7 @@ export function copyArrayItemInResponseData(
   };
 }
 
-const VALID_FIELD_OVERRIDE_MODES = new Set(['replace', 'extend']);
+const VALID_FIELD_OVERRIDE_MODES = new Set(['replace', 'extend', 'remove']);
 
 /** Validates field override entries for dashboard/API persistence. */
 export function validateResponseFieldOverrides(raw: unknown): string | null {
@@ -237,11 +268,11 @@ export function validateResponseFieldOverrides(raw: unknown): string | null {
     if (typeof path !== 'string' || !path.trim()) {
       return 'Each responseFieldOverrides entry must have a non-empty path string';
     }
-    if (!Object.prototype.hasOwnProperty.call(item, 'value')) {
-      return 'Each responseFieldOverrides entry must include a value';
-    }
     if (entry.mode !== undefined && !VALID_FIELD_OVERRIDE_MODES.has(entry.mode)) {
-      return 'Each responseFieldOverrides entry mode must be "replace" or "extend"';
+      return 'Each responseFieldOverrides entry mode must be "replace", "extend", or "remove"';
+    }
+    if (entry.mode !== 'remove' && !Object.prototype.hasOwnProperty.call(item, 'value')) {
+      return 'Each responseFieldOverrides entry must include a value (unless mode is "remove")';
     }
   }
   return null;
