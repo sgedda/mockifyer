@@ -275,7 +275,7 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_set_field_overrides',
     {
       description:
-        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response.',
+        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response. Use mode "extend" to append to arrays or merge into objects.',
       inputSchema: {
         filename: z.string().describe('Mock filename'),
         scenario: z.string().optional(),
@@ -284,6 +284,12 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
             z.object({
               path: z.string().describe('Dot path from response.data root, e.g. bookings.0.status'),
               value: z.any().describe('Value to serve at replay time'),
+              mode: z
+                .enum(['replace', 'extend'])
+                .optional()
+                .describe(
+                  'replace (default) sets the value; extend appends to arrays or shallow-merges objects'
+                ),
             })
           )
           .describe('Field overrides to apply when the mock is served'),
@@ -301,6 +307,7 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           : (args.overrides ?? []).map((entry) => ({
               path: entry.path,
               value: entry.value,
+              ...(entry.mode ? { mode: entry.mode } : {}),
             }));
         const result = await client.setFieldOverrides({
           filename: args.filename,

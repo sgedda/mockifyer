@@ -376,6 +376,13 @@ export interface MockResponseDateOverride {
 }
 
 /**
+ * How a field override combines with the existing value at `path`.
+ * - **`replace`** (default) — set `value` at the path.
+ * - **`extend`** — if existing is an array, append item(s); if an object, shallow-merge keys; otherwise replace.
+ */
+export type MockResponseFieldOverrideMode = 'replace' | 'extend';
+
+/**
  * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
  * Applied at replay before {@link MockResponseDateOverride}.
  */
@@ -383,6 +390,8 @@ export interface MockResponseFieldOverride {
   /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
   path: string;
   value: unknown;
+  /** Default `replace`. Use `extend` to append to arrays or merge into objects. */
+  mode?: MockResponseFieldOverrideMode;
 }
 
 export interface CopyArrayItemParams {
