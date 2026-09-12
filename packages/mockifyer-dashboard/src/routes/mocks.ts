@@ -24,6 +24,7 @@ import {
   type PoolRef,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
+import { writeMockOverridesToOverrideSet } from '../utils/override-set-write';
 import {
   createDashboardMockStore,
   toDashboardRedisStoreConfig,
@@ -901,12 +902,26 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
         existingData.timestamp = new Date().toISOString();
         await store.setByHash(hash, existingData, scenario);
+        const overrideSetId =
+          typeof req.body?.overrideSetId === 'string' ? req.body.overrideSetId : undefined;
+        await writeMockOverridesToOverrideSet({
+          mockDataPath,
+          scenario,
+          mockData: existingData,
+          filename: relativeName,
+          overrideSetId,
+          store,
+          fieldOverrides: existingData.responseFieldOverrides ?? [],
+          dateOverrides: existingData.responseDateOverrides,
+          clearIfEmpty: true,
+        });
 
         return res.json({
           success: true,
           filename: relativeName,
           scenario,
           responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+          overrideSetId: overrideSetId || 'default',
         });
       } finally {
         await store.close().catch(() => undefined);
@@ -931,12 +946,26 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
     existingData.timestamp = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
+    const fsScenario = resolveFilesystemScenario(req, mockDataPath);
+    const overrideSetId =
+      typeof req.body?.overrideSetId === 'string' ? req.body.overrideSetId : undefined;
+    await writeMockOverridesToOverrideSet({
+      mockDataPath,
+      scenario: fsScenario,
+      mockData: existingData,
+      filename: relativeName,
+      overrideSetId,
+      fieldOverrides: existingData.responseFieldOverrides ?? [],
+      dateOverrides: existingData.responseDateOverrides,
+      clearIfEmpty: true,
+    });
 
     return res.json({
       success: true,
       filename: relativeName,
-      scenario: resolveFilesystemScenario(req, mockDataPath),
+      scenario: fsScenario,
       responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+      overrideSetId: overrideSetId || 'default',
     });
   } catch (error: unknown) {
     console.error('[MocksRoute] field-overrides PATCH - Error:', error);
@@ -1257,6 +1286,22 @@ router.put('/*', async (req: Request, res: Response) => {
         }
 
         await store.setByHash(hash, existingData as any, scenario);
+        if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'responseDateOverrides') ||
+            Object.prototype.hasOwnProperty.call(req.body ?? {}, 'responseFieldOverrides')) {
+          const overrideSetId =
+            typeof req.body?.overrideSetId === 'string' ? req.body.overrideSetId : undefined;
+          await writeMockOverridesToOverrideSet({
+            mockDataPath,
+            scenario,
+            mockData: existingData as MockData,
+            filename: relativeName,
+            overrideSetId,
+            store,
+            fieldOverrides: (existingData as MockData).responseFieldOverrides,
+            dateOverrides: (existingData as MockData).responseDateOverrides,
+            clearIfEmpty: true,
+          });
+        }
         const payload = JSON.stringify(existingData);
         const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
         return res.json({
@@ -1335,6 +1380,22 @@ router.put('/*', async (req: Request, res: Response) => {
     }
 
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'responseDateOverrides') ||
+        Object.prototype.hasOwnProperty.call(req.body ?? {}, 'responseFieldOverrides')) {
+      const putScenario = resolveFilesystemScenario(req, mockDataPath);
+      const overrideSetId =
+        typeof req.body?.overrideSetId === 'string' ? req.body.overrideSetId : undefined;
+      await writeMockOverridesToOverrideSet({
+        mockDataPath,
+        scenario: putScenario,
+        mockData: existingData as MockData,
+        filename: relativeName,
+        overrideSetId,
+        fieldOverrides: (existingData as MockData).responseFieldOverrides,
+        dateOverrides: (existingData as MockData).responseDateOverrides,
+        clearIfEmpty: true,
+      });
+    }
 
     const stats = fs.statSync(filePath);
     console.log(`[MocksRoute] Updated mock file: ${relativeName}`);

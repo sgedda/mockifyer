@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import type { MockData, DomainPathRulesMap } from '@sgedda/mockifyer-core';
+import type { MockData, DomainPathRulesMap, OverrideSetDocument, OverrideSetSummary } from '@sgedda/mockifyer-core';
 import {
   assertNotReservedScenarioName,
   generateRequestKey,
@@ -13,6 +13,11 @@ import {
   getMaxRequestsPerScenarioFromEnv,
   redisPathIndexKey,
   chunkArray,
+  DEFAULT_OVERRIDE_SET_ID,
+  createEmptyOverrideSetDocument,
+  normalizeOverrideSetId,
+  parseOverrideSetDocument,
+  summarizeOverrideSetDocument,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -743,7 +748,7 @@ export class RedisMockStore {
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario.trim()).catch(() => undefined);
   }
 
-  async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null }>> {
+  async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null; overrideSetId: string }>> {
     const scenarioKeyPrefix = `${this.keyPrefix}:client_scenario:`;
     const registryIds = await this.kv.smembers(this.clientLaneIdsSetKey).catch(() => [] as string[]);
 
@@ -763,13 +768,19 @@ export class RedisMockStore {
 
     const keys = allIds.map((clientId) => `${scenarioKeyPrefix}${clientId}`);
     const values: Array<string | null> = await this.kv.mget(keys);
-    const out: Array<{ clientId: string; scenario: string; note: string | null }> = [];
+    const out: Array<{ clientId: string; scenario: string; note: string | null; overrideSetId: string }> = [];
     for (let i = 0; i < allIds.length; i++) {
       const val = values[i];
       if (!val || !val.trim()) continue;
       const clientId = allIds[i];
       const note: string | null = await this.kv.hget(this.laneNoteHashKey, clientId);
-      out.push({ clientId, scenario: val.trim(), note: note && note.trim() ? note.trim() : null });
+      const overrideSetId = (await this.getLaneOverrideSetId(clientId)) ?? DEFAULT_OVERRIDE_SET_ID;
+      out.push({
+        clientId,
+        scenario: val.trim(),
+        note: note && note.trim() ? note.trim() : null,
+        overrideSetId,
+      });
     }
     return out;
   }
@@ -792,10 +803,111 @@ export class RedisMockStore {
     if (!id) throw new Error('clientId is required');
     await this.setLaneScenario(id, null);
     await this.setLaneNote(id, null);
+    await this.setLaneOverrideSetId(id, null);
     await this.kv.zrem(this.laneLastSeenZSetKey, id).catch(() => undefined);
     await this.kv.del(this.laneDevicesZSetKey(id)).catch(() => undefined);
     const laneSeg = this.sanitizeObservationSegment(id, 120);
     await this.kv.del(`${this.keyPrefix}:lane_last_resolved:${laneSeg}`).catch(() => undefined);
+  }
+
+
+  // --- Override sets (per scenario) + lane attachment ---
+
+  private overrideSetRedisKey(scenario: string, setId: string): string {
+    return `${this.keyPrefix}:override_set:${scenario.trim()}:${normalizeOverrideSetId(setId)}`;
+  }
+
+  private overrideSetIdsRedisKey(scenario: string): string {
+    return `${this.keyPrefix}:override_sets:${scenario.trim()}`;
+  }
+
+  private clientOverrideSetRedisKey(clientId: string): string {
+    return `${this.keyPrefix}:client_override_set:${clientId.trim()}`;
+  }
+
+  async getLaneOverrideSetId(clientId: string): Promise<string | null> {
+    const id = clientId.trim();
+    if (!id) return null;
+    const v = await this.kv.get(this.clientOverrideSetRedisKey(id));
+    return typeof v === 'string' && v.trim() ? normalizeOverrideSetId(v) : null;
+  }
+
+  /**
+   * Attach an override set to a client lane. `null` clears the key (runtime falls back to `default`).
+   */
+  async setLaneOverrideSetId(clientId: string, overrideSetId: string | null): Promise<void> {
+    const id = clientId.trim();
+    if (!id) throw new Error('clientId is required');
+    const key = this.clientOverrideSetRedisKey(id);
+    if (overrideSetId === null) {
+      await this.kv.del(key);
+      return;
+    }
+    const normalized = normalizeOverrideSetId(overrideSetId);
+    await this.kv.set(key, normalized);
+    await this.kv.sadd(this.clientLaneIdsSetKey, id);
+  }
+
+  async listOverrideSets(scenario: string): Promise<OverrideSetSummary[]> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const ids = await this.kv.smembers(this.overrideSetIdsRedisKey(scenarioName)).catch(() => [] as string[]);
+    const byId = new Map<string, OverrideSetSummary>();
+    byId.set(DEFAULT_OVERRIDE_SET_ID, { id: DEFAULT_OVERRIDE_SET_ID, entryCount: 0 });
+    const allIds = [...new Set([DEFAULT_OVERRIDE_SET_ID, ...ids.map((x) => String(x))])];
+    for (const rawId of allIds) {
+      try {
+        const id = normalizeOverrideSetId(rawId);
+        const doc = await this.getOverrideSet(scenarioName, id);
+        byId.set(id, summarizeOverrideSetDocument(doc));
+      } catch {
+        // skip invalid
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async getOverrideSet(scenario: string, setId?: string | null): Promise<OverrideSetDocument> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const id = normalizeOverrideSetId(setId);
+    const raw = await this.kv.get(this.overrideSetRedisKey(scenarioName, id));
+    if (!raw) {
+      return createEmptyOverrideSetDocument(id);
+    }
+    try {
+      return parseOverrideSetDocument(JSON.parse(raw), id);
+    } catch {
+      return createEmptyOverrideSetDocument(id);
+    }
+  }
+
+  async putOverrideSet(scenario: string, document: OverrideSetDocument): Promise<OverrideSetDocument> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const id = normalizeOverrideSetId(document.id);
+    const next: OverrideSetDocument = {
+      ...document,
+      id,
+      updatedAt: new Date().toISOString(),
+      entries: document.entries ?? {},
+    };
+    await this.kv.set(this.overrideSetRedisKey(scenarioName, id), JSON.stringify(next));
+    await this.kv.sadd(this.overrideSetIdsRedisKey(scenarioName), id);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    return next;
+  }
+
+  async deleteOverrideSet(scenario: string, setId: string): Promise<void> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const id = normalizeOverrideSetId(setId);
+    if (id === DEFAULT_OVERRIDE_SET_ID) {
+      await this.putOverrideSet(scenarioName, createEmptyOverrideSetDocument(id));
+      return;
+    }
+    await this.kv.del(this.overrideSetRedisKey(scenarioName, id));
+    await this.kv.srem(this.overrideSetIdsRedisKey(scenarioName), id);
   }
 
   private sanitizeObservationSegment(segment: string, maxLen: number): string {
