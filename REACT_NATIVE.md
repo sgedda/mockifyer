@@ -64,6 +64,36 @@ To force a scenario **above** `MOCKIFYER_SCENARIO`, `config.scenarios.default`, 
 
 Clear with `setScenarioLaunchOverride(null)`.
 
+Clear with `setScenarioLaunchOverride(null)`.
+
+### On-device field overlays (no Redis write)
+
+Patch response fields **in memory on the device** while still loading the shared scenario from Redis/dashboard. Overlays never call `setByHash` / persist into mock documents.
+
+```typescript
+import {
+  setDeviceFieldOverrides,
+  clearDeviceFieldOverrides,
+  exportDeviceFieldOverlays,
+  importDeviceFieldOverlays,
+} from '@sgedda/mockifyer-core';
+
+// By request key (same string `generateRequestKey` produces), or full Redis request hash:
+setDeviceFieldOverrides('GET:https://api.example.com/bookings', [
+  { path: 'bookings.0.status', value: 'CANCELLED' },
+]);
+
+// Share with another tester (JSON file / QR / Slack), then on their device:
+const payload = exportDeviceFieldOverlays();
+// ...send payload...
+importDeviceFieldOverlays(payload);
+
+clearDeviceFieldOverrides(); // or clearDeviceFieldOverrides(hashOrKey)
+```
+
+Works for local mock hits and for dashboard `/api/proxy` responses (applied on-device after the proxy returns).
+
+
 ### Preset: **`initMockifyerForReactNativeDashboard`**
 
 When using **mockifyer-dashboard** with **`--provider redis`**, you can resolve **`proxyBaseUrl`** from code or env with a single entrypoint (order: **`proxyBaseUrl`** → **`dashboardBaseUrl`** → **`MOCKIFYER_PROXY_URL`**):

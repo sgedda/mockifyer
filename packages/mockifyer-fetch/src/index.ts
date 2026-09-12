@@ -50,6 +50,7 @@ import {
   mockShouldServeStoredBody,
   mockShouldBeIncludedInRequestMatch,
   buildClientResponseFromLiveCapture,
+  applyDeviceFieldOverlaysToData,
   buildMockDataAfterLiveCapture,
   resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
@@ -227,7 +228,7 @@ class MockifyerClass {
    * Always passes `loadPoolResponse` — including React Native where Node `fs`/`path` are
    * missing or Metro-stubbed — so `$pool` refs resolve via disk and/or {@link poolResponseCache}.
    */
-  private prepareStoredResponseBody(mockData: MockData): unknown {
+  private prepareStoredResponseBody(mockData: MockData, requestKey?: string): unknown {
     const joinPath =
       path && typeof path.join === 'function' ? path.join.bind(path) : null;
     return prepareMockResponseBody(mockData, getCurrentDate, {
@@ -237,6 +238,7 @@ class MockifyerClass {
         joinPath,
         cache: this.poolResponseCache,
       }),
+      deviceOverlayLookup: requestKey ? { requestKey } : undefined,
     });
   }
 
@@ -795,7 +797,7 @@ class MockifyerClass {
             `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
               (filePath ? ` (${filePath})` : '')
           );
-          const mockResponseBody = this.prepareStoredResponseBody(mockData);
+          const mockResponseBody = this.prepareStoredResponseBody(mockData, requestKey);
           this.logNetworkEvent(
             {
               method: (request.method || 'GET').toUpperCase(),
@@ -1040,7 +1042,10 @@ class MockifyerClass {
             capturedResponse,
             getCurrentDate
           );
-          response.data = clientResponse.data;
+          const liveRequestKey = (response.config as any).__mockifyer_requestKey as string | undefined;
+          response.data = applyDeviceFieldOverlaysToData(clientResponse.data, {
+            requestKey: liveRequestKey,
+          });
           response.status = clientResponse.status;
           delete (response.config as any).__mockifyer_matchedMock;
 

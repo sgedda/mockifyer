@@ -50,6 +50,7 @@ export * from './utils/recording-default-always-live';
 export * from './utils/mockifyer-init-log';
 export * from './utils/mock-response-date-overrides';
 export * from './utils/mock-response-field-overrides';
+export * from './utils/device-field-overlays';
 export * from './utils/mock-response-prepare';
 export * from './utils/network-log';
 export * from './utils/network-body-spill';

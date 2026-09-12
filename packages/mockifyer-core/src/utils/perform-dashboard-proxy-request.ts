@@ -21,6 +21,7 @@ import {
   stripMockifyerTraceFromBody,
 } from './mockifyer-trace';
 import { logger } from './logger';
+import { applyDeviceFieldOverlaysToData } from './device-field-overlays';
 
 const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
 
@@ -199,6 +200,12 @@ export async function performDashboardProxyRequest(
   }
   data = unwrapAndMergeInlineTraceEnvelope(data);
   data = stripMockifyerTraceFromBody(data);
+
+  // On-device overlays: apply locally after Redis/dashboard serve — never persisted.
+  const proxyHash = typeof payload?.hash === 'string' ? payload.hash.trim() : '';
+  if (proxyHash) {
+    data = applyDeviceFieldOverlaysToData(data, { requestHash: proxyHash });
+  }
 
   return {
     data,
