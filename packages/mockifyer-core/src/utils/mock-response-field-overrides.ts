@@ -27,6 +27,58 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   (cur as Record<string | number, unknown>)[last as string | number] = value;
 }
 
+/**
+ * Deletes the value at `segments` (array splice or object key delete). Soft no-op when missing/invalid.
+ */
+export function removeAtPath(root: unknown, segments: (string | number)[]): void {
+  if (segments.length === 0 || root === null || typeof root !== 'object') return;
+
+  let parent: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (parent === null || typeof parent !== 'object') return;
+    parent = (parent as Record<string | number, unknown>)[segments[i]! as string | number];
+  }
+
+  if (parent === null || typeof parent !== 'object') return;
+
+  const last = segments[segments.length - 1]!;
+  if (Array.isArray(parent)) {
+    if (typeof last !== 'number' || !Number.isInteger(last) || last < 0 || last >= parent.length) {
+      return;
+    }
+    parent.splice(last, 1);
+    return;
+  }
+
+  delete (parent as Record<string | number, unknown>)[last as string | number];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Combine an existing path value with an override under `extend` mode.
+ * Arrays append (concat when `value` is an array); plain objects shallow-merge; otherwise replace.
+ */
+export function extendResponseFieldValue(existing: unknown, value: unknown): unknown {
+  if (Array.isArray(existing)) {
+    const cloned = deepCloneJson(existing);
+    if (Array.isArray(value)) {
+      cloned.push(...deepCloneJson(value));
+    } else {
+      cloned.push(deepCloneJson(value));
+    }
+    return cloned;
+  }
+
+  if (isPlainObject(existing) && isPlainObject(value)) {
+    return { ...deepCloneJson(existing), ...deepCloneJson(value) };
+  }
+
+  return deepCloneJson(value);
+}
+
 function deepCloneJson<T>(data: T): T {
   if (data === undefined) return data;
   if (typeof structuredClone === 'function') {
@@ -93,7 +145,17 @@ export function applyResponseFieldOverridesToData<T>(
     if (!override?.path?.trim()) continue;
     const segments = parseResponseDataPath(override.path.trim());
     if (segments.length === 0) continue;
-    setAtPath(clone, segments, deepCloneJson(override.value));
+
+    if (override.mode === 'remove') {
+      removeAtPath(clone, segments);
+      continue;
+    }
+
+    const nextValue =
+      override.mode === 'extend'
+        ? extendResponseFieldValue(getAtPath(clone, segments), override.value)
+        : deepCloneJson(override.value);
+    setAtPath(clone, segments, nextValue);
   }
 
   if (typeof data === 'string') {
@@ -191,6 +253,8 @@ export function copyArrayItemInResponseData(
   };
 }
 
+const VALID_FIELD_OVERRIDE_MODES = new Set(['replace', 'extend', 'remove']);
+
 /** Validates field override entries for dashboard/API persistence. */
 export function validateResponseFieldOverrides(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
@@ -199,12 +263,16 @@ export function validateResponseFieldOverrides(raw: unknown): string | null {
     if (!item || typeof item !== 'object') {
       return 'Each responseFieldOverrides entry must be an object';
     }
-    const path = (item as MockResponseFieldOverride).path;
+    const entry = item as MockResponseFieldOverride;
+    const path = entry.path;
     if (typeof path !== 'string' || !path.trim()) {
       return 'Each responseFieldOverrides entry must have a non-empty path string';
     }
-    if (!Object.prototype.hasOwnProperty.call(item, 'value')) {
-      return 'Each responseFieldOverrides entry must include a value';
+    if (entry.mode !== undefined && !VALID_FIELD_OVERRIDE_MODES.has(entry.mode)) {
+      return 'Each responseFieldOverrides entry mode must be "replace", "extend", or "remove"';
+    }
+    if (entry.mode !== 'remove' && !Object.prototype.hasOwnProperty.call(item, 'value')) {
+      return 'Each responseFieldOverrides entry must include a value (unless mode is "remove")';
     }
   }
   return null;

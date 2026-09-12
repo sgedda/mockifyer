@@ -275,7 +275,7 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_set_field_overrides',
     {
       description:
-        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response.',
+        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response. Use mode "extend" to append/merge, or "remove" to delete an array index or object key.',
       inputSchema: {
         filename: z.string().describe('Mock filename'),
         scenario: z.string().optional(),
@@ -283,7 +283,16 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           .array(
             z.object({
               path: z.string().describe('Dot path from response.data root, e.g. bookings.0.status'),
-              value: z.any().describe('Value to serve at replay time'),
+              value: z
+                .any()
+                .optional()
+                .describe('Value to serve at replay time (ignored when mode is remove)'),
+              mode: z
+                .enum(['replace', 'extend', 'remove'])
+                .optional()
+                .describe(
+                  'replace (default) sets the value; extend appends to arrays or shallow-merges objects; remove deletes the path'
+                ),
             })
           )
           .describe('Field overrides to apply when the mock is served'),
@@ -300,7 +309,12 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           ? null
           : (args.overrides ?? []).map((entry) => ({
               path: entry.path,
-              value: entry.value,
+              ...(entry.mode === 'remove'
+                ? { mode: entry.mode as 'remove' }
+                : {
+                    value: entry.value,
+                    ...(entry.mode ? { mode: entry.mode } : {}),
+                  }),
             }));
         const result = await client.setFieldOverrides({
           filename: args.filename,
