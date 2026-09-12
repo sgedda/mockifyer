@@ -376,6 +376,13 @@ export interface MockResponseDateOverride {
 }
 
 /**
+ * How a field override combines with the existing value at `path`.
+ * - **`replace`** (default) — set `value` at the path.
+ * - **`extend`** — if existing is an array, append item(s); if an object, shallow-merge keys; otherwise replace.
+ */
+export type MockResponseFieldOverrideMode = 'replace' | 'extend';
+
+/**
  * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
  * Applied at replay before {@link MockResponseDateOverride}.
  */
@@ -383,6 +390,8 @@ export interface MockResponseFieldOverride {
   /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
   path: string;
   value: unknown;
+  /** Default `replace`. Use `extend` to append to arrays or merge into objects. */
+  mode?: MockResponseFieldOverrideMode;
 }
 
 export interface CopyArrayItemParams {
@@ -488,6 +497,13 @@ export const ENV_VARS = {
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
+  /**
+   * Metro hop stream for `mockifyer-atlas`: `on` \| `off` (auto when unset —
+   * enabled if `METRO_PORT` is set or React Native is detected).
+   */
+  MOCK_METRO_STREAM: 'MOCKIFYER_METRO_STREAM',
+  /** Optional Metro origin override for hop stream (default `http://localhost:$METRO_PORT`). */
+  MOCK_METRO_URL: 'MOCKIFYER_METRO_URL',
   /** `off` \| `live` \| `session` — CMS/surface atlas capture (see {@link MockifyerConfig.atlas}). */
   MOCK_ATLAS: 'MOCKIFYER_ATLAS',
   /**

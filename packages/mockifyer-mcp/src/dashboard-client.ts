@@ -102,6 +102,7 @@ export interface StatsResponse {
 export interface MockFieldOverride {
   path: string;
   value: unknown;
+  mode?: 'replace' | 'extend';
 }
 
 export interface CopyArrayItemResponse {
@@ -123,6 +124,7 @@ export interface SetFieldOverridesResponse {
 export interface MockFieldOverrideEntry {
   path: string;
   value: unknown;
+  mode?: 'replace' | 'extend';
 }
 
 export interface SetFieldOverridesResponse {

@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.98",
+  "version": "1.10.100",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -62,6 +62,7 @@
     "mockifyer-sync-to-device": "./src/cli/sync-to-device.ts",
     "mockifyer-sync-from-device": "./src/cli/sync-from-device.ts",
     "mockifyer-atlas-har": "./src/cli/atlas-har.ts",
+    "mockifyer-atlas": "./src/cli/atlas.ts",
     "mockifyer-init-ai": "./bin/mockifyer-init-ai"
   },
   "scripts": {

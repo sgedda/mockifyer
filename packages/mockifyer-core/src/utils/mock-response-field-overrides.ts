@@ -27,6 +27,32 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   (cur as Record<string | number, unknown>)[last as string | number] = value;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Combine an existing path value with an override under `extend` mode.
+ * Arrays append (concat when `value` is an array); plain objects shallow-merge; otherwise replace.
+ */
+export function extendResponseFieldValue(existing: unknown, value: unknown): unknown {
+  if (Array.isArray(existing)) {
+    const cloned = deepCloneJson(existing);
+    if (Array.isArray(value)) {
+      cloned.push(...deepCloneJson(value));
+    } else {
+      cloned.push(deepCloneJson(value));
+    }
+    return cloned;
+  }
+
+  if (isPlainObject(existing) && isPlainObject(value)) {
+    return { ...deepCloneJson(existing), ...deepCloneJson(value) };
+  }
+
+  return deepCloneJson(value);
+}
+
 function deepCloneJson<T>(data: T): T {
   if (data === undefined) return data;
   if (typeof structuredClone === 'function') {
@@ -93,7 +119,12 @@ export function applyResponseFieldOverridesToData<T>(
     if (!override?.path?.trim()) continue;
     const segments = parseResponseDataPath(override.path.trim());
     if (segments.length === 0) continue;
-    setAtPath(clone, segments, deepCloneJson(override.value));
+
+    const nextValue =
+      override.mode === 'extend'
+        ? extendResponseFieldValue(getAtPath(clone, segments), override.value)
+        : deepCloneJson(override.value);
+    setAtPath(clone, segments, nextValue);
   }
 
   if (typeof data === 'string') {
@@ -191,6 +222,8 @@ export function copyArrayItemInResponseData(
   };
 }
 
+const VALID_FIELD_OVERRIDE_MODES = new Set(['replace', 'extend']);
+
 /** Validates field override entries for dashboard/API persistence. */
 export function validateResponseFieldOverrides(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
@@ -199,12 +232,16 @@ export function validateResponseFieldOverrides(raw: unknown): string | null {
     if (!item || typeof item !== 'object') {
       return 'Each responseFieldOverrides entry must be an object';
     }
-    const path = (item as MockResponseFieldOverride).path;
+    const entry = item as MockResponseFieldOverride;
+    const path = entry.path;
     if (typeof path !== 'string' || !path.trim()) {
       return 'Each responseFieldOverrides entry must have a non-empty path string';
     }
     if (!Object.prototype.hasOwnProperty.call(item, 'value')) {
       return 'Each responseFieldOverrides entry must include a value';
+    }
+    if (entry.mode !== undefined && !VALID_FIELD_OVERRIDE_MODES.has(entry.mode)) {
+      return 'Each responseFieldOverrides entry mode must be "replace" or "extend"';
     }
   }
   return null;

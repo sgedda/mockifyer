@@ -36,6 +36,10 @@ import {
   isGraphqlRequestBodyObject,
 } from './graphql-body-display';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
+import {
+  joinMetroNetworkEventsUrl,
+  resolveMetroNetworkStreamBaseUrl,
+} from './metro-network-stream';
 
 export { prettyPrintJsonText, softPrettyJsonText } from './json-pretty';
 
@@ -298,6 +302,33 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<
   return post();
 }
 
+/**
+ * Best-effort POST of a hop to Metro `/mockifyer-network-events` for the live CLI stream.
+ * Never throws. Enabled via {@link resolveMetroNetworkStreamBaseUrl}.
+ */
+export function emitMetroNetworkStreamEvent(event: NetworkEvent): Promise<void> {
+  const base = resolveMetroNetworkStreamBaseUrl();
+  if (!base) return Promise.resolve();
+
+  const fetchFn = resolveUnpatchedFetch();
+  if (!fetchFn) return Promise.resolve();
+
+  const url = joinMetroNetworkEventsUrl(base);
+  const body = JSON.stringify({ event });
+
+  return (async (): Promise<void> => {
+    try {
+      await fetchFn(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      });
+    } catch {
+      // ignore — Metro may be down; observability must not break app requests
+    }
+  })();
+}
+
 /** Stable hash prefix for correlating proxy rows (optional display). */
 export function networkEventHashFromRequestKey(requestKey: string): string {
   return sha256Hex(requestKey).slice(0, 16);
@@ -434,6 +465,8 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
   if (getAtlasDocHtmlOutputPath()) {
     rememberAtlasHtmlNetworkEvent(built);
   }
+
+  void emitMetroNetworkStreamEvent(built);
 
   if (!dashboardBaseUrl) return;
 
