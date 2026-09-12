@@ -36,6 +36,8 @@ export function getAllJsonFiles(dir: string): string[] {
         continue;
       }
       if (st.isDirectory()) {
+        // Sidecar dirs — not recorded mock traffic
+        if (name === 'override-sets' || name === 'pool') continue;
         walk(full);
       } else if (name.endsWith('.json')) {
         if (name === 'scenario-meta.json') continue;

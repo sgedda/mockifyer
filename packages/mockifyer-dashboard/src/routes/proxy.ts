@@ -10,6 +10,8 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   prepareMockResponseBody,
+  applyOverrideSetDocumentToMock,
+  DEFAULT_OVERRIDE_SET_ID,
   parseRecordingExclusionsEnv,
   shouldExcludeRecording,
   mockShouldServeStoredBody,
@@ -351,9 +353,16 @@ router.post('/', async (req: Request, res: Response) => {
               ),
             }
           : (mock as any);
+      const laneOverrideSetId =
+        (clientId ? await store.getLaneOverrideSetId(clientId) : null) ?? DEFAULT_OVERRIDE_SET_ID;
+      const overrideSetDocument = await store.getOverrideSet(resolvedScenarioName, laneOverrideSetId);
+      const mockWithOverrideSet = applyOverrideSetDocumentToMock(
+        sanitizedMock as MockData,
+        overrideSetDocument
+      );
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(sanitizedMock, getNow, {
+        data: prepareMockResponseBody(mockWithOverrideSet, getNow, {
           loadPoolResponse: createServeTimePoolResponseLoader({
             mockDataPath,
             nodeFs: fs,

@@ -269,6 +269,7 @@ export interface ClientLaneLastSeenResolved {
 export interface ClientLane {
   clientId: string
   scenario: string
+  overrideSetId?: string
   note: string | null
   lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
@@ -318,6 +319,54 @@ export async function setClientLaneScenario(clientId: string, scenario: string |
     throw new Error(error.error || error.message || 'Failed to set lane scenario')
   }
 }
+
+export async function setClientLaneOverrideSet(
+  clientId: string,
+  overrideSetId: string | null
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/override-set`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ overrideSetId }),
+  })
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to set lane override set')
+  }
+}
+
+export interface OverrideSetSummary {
+  id: string
+  label?: string
+  updatedAt?: string
+  entryCount: number
+}
+
+export async function listOverrideSets(scenario: string): Promise<OverrideSetSummary[]> {
+  const response = await fetch(
+    `${API_BASE}/override-sets?scenario=${encodeURIComponent(scenario)}`,
+    noStore
+  )
+  if (!response.ok) throw new Error('Failed to list override sets')
+  const data = await response.json()
+  return data.sets || []
+}
+
+export async function createOverrideSet(scenario: string, setId: string, label?: string): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/override-sets/${encodeURIComponent(setId)}?scenario=${encodeURIComponent(scenario)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: setId, label, entries: {} }),
+    }
+  )
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || error.message || 'Failed to create override set')
+  }
+}
+
 
 export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
   const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
