@@ -34,6 +34,7 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   }
   const last = segments[segments.length - 1]!;
   if (isUnsafePrototypeSegment(last)) return;
+  if (last === '__proto__' || last === 'prototype' || last === 'constructor') return;
   (cur as Record<string | number, unknown>)[last as string | number] = value;
 }
 
@@ -54,6 +55,7 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
 
   const last = segments[segments.length - 1]!;
   if (isUnsafePrototypeSegment(last)) return;
+  if (last === '__proto__' || last === 'prototype' || last === 'constructor') return;
   if (Array.isArray(parent)) {
     if (typeof last !== 'number' || !Number.isInteger(last) || last < 0 || last >= parent.length) {
       return;
@@ -164,10 +166,13 @@ export function applyResponseFieldOverridesToData<T>(
     }
 
     const existingValue = getAtPath(clone, segments);
+    const lastSegment = segments[segments.length - 1];
     const nextValue =
       override.mode === 'extend'
         ? existingValue === undefined
-          ? Array.isArray(override.value)
+          ? typeof lastSegment === 'number'
+            ? deepCloneJson(override.value)
+            : Array.isArray(override.value)
             ? deepCloneJson(override.value)
             : isPlainObject(override.value)
               ? deepCloneJson(override.value)

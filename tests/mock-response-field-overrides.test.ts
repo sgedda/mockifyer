@@ -80,6 +80,13 @@ describe('mock response field overrides', () => {
     expect(out.meta).toEqual({ page: 1 });
   });
 
+  it('extend mode writes value directly for missing numeric leaf segments', () => {
+    const out = applyResponseFieldOverridesToData({}, [
+      { path: 'bookings.0', mode: 'extend', value: 'item-a' },
+    ]) as { bookings: string[] };
+    expect(out.bookings).toEqual(['item-a']);
+  });
+
   it('extend mode falls back to replace for primitives', () => {
     const data = { status: 'PENDING' };
     const out = applyResponseFieldOverridesToData(data, [
