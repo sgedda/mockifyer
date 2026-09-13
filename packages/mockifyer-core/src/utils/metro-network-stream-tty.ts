@@ -242,11 +242,18 @@ export function truncateAtlasStreamLine(text: string, maxCols: number): string {
   let visible = 0;
   let out = "";
   let i = 0;
+  let hasOpenStyle = false;
   while (i < text.length) {
     if (text[i] === "\u001b" && text[i + 1] === "[") {
       const end = text.indexOf("m", i + 2);
       if (end !== -1) {
+        const code = text.slice(i + 2, end);
         out += text.slice(i, end + 1);
+        if (code === "0") {
+          hasOpenStyle = false;
+        } else if (code.length > 0) {
+          hasOpenStyle = true;
+        }
         i = end + 1;
         continue;
       }
@@ -256,7 +263,7 @@ export function truncateAtlasStreamLine(text: string, maxCols: number): string {
     visible += 1;
     i += 1;
   }
-  return `${out}…`;
+  return hasOpenStyle ? `${out}\u001b[0m…` : `${out}…`;
 }
 
 /** Footer under an expanded child list (click to collapse). */
