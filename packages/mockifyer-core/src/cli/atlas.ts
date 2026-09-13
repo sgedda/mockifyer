@@ -21,6 +21,7 @@
  *   e  expand/collapse all nested groups
  *   p / Space  pause/resume live hops
  *   wheel / ↑↓ / PgUp / PgDn  scroll history (pauses live stream)
+ *   m  toggle mouse (off = select/copy text; on = click + wheel)
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -97,6 +98,7 @@ Keys:
   ${theme.info("e")}  Expand/collapse all nested groups
   ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hops
   ${theme.info("wheel")}/${theme.info("↑↓")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
+  ${theme.info("m")}  Toggle mouse — off to select/copy text; on for click + wheel
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -205,7 +207,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ · wheel/↑↓/PgUp scroll · e all · p pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ · wheel/↑↓/PgUp scroll · m mouse · e all · p pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -324,11 +326,31 @@ function attachInputHandlers(
 
   let busy = false;
   let pending = "";
+  /** When false, mouse reporting is off so the terminal can select/copy text. */
+  let mouseEnabled = true;
   /** Lines above the live tip currently shown (in-app scrollback). */
   let scrollBack = 0;
   const WHEEL_LINES = 3;
 
   const screenRows = (): number => process.stdout.rows || 24;
+
+  const setMouseEnabled = (enabled: boolean, message?: string): void => {
+    mouseEnabled = enabled;
+    if (enabled) {
+      enableAtlasStreamMouseTracking();
+      console.log(
+        message ??
+          "[atlas] mouse on — click expand · wheel scroll · m off to select/copy",
+      );
+    } else {
+      disableAtlasStreamMouseTracking();
+      console.log(
+        message ??
+          "[atlas] mouse off — select/copy text · ↑↓/PgUp still scroll · m on for click/wheel",
+      );
+    }
+    view.invalidateRewrite();
+  };
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -437,6 +459,10 @@ function attachInputHandlers(
     }
     if (key === "p" || ch === " ") {
       setPaused(!view.paused);
+      return;
+    }
+    if (key === "m") {
+      setMouseEnabled(!mouseEnabled);
       return;
     }
     if (key === "g") {
