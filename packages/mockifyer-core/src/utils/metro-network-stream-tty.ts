@@ -127,6 +127,8 @@ export interface FormatAtlasStreamHopOptions {
    * hit GET /mockifyer-atlas-open so click generates Atlas HTML then redirects.
    */
   bodyLinksOpenBaseUrl?: string;
+  /** Receives visible-column zones for req/res/html (for mouse hit-testing). */
+  onBodyLinkZones?: (zones: AtlasStreamBodyLinkZone[]) => void;
 }
 
 function firstUsageScreen(usage: NetworkEvent["usage"]): string | undefined {
@@ -164,7 +166,10 @@ function treePrefix(
 
 /** OSC-8 hyperlink (iTerm / VS Code / Ghostty / Windows Terminal). */
 export function atlasStreamOsc8Link(url: string, label: string): string {
-  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
+  // Underline the label so Cursor/VS Code (which often hide OSC-8 chrome) still
+  // look clickable; Ctrl/Cmd-click opens when mouse tracking is off.
+  const underlined = `\u001b[4m${label}\u001b[24m`;
+  return `\u001b]8;;${url}\u0007${underlined}\u001b]8;;\u0007`;
 }
 
 /** Absolute file:// URL for a path under the atlas-html output dir. */
@@ -181,35 +186,72 @@ export function atlasStreamBodyFileUrl(
  * Uses captured body refs when present; otherwise predicts spill paths so links
  * exist on every row even before bodies are written.
  */
+export type AtlasStreamBodyLinkSide = "req" | "res" | "html";
+
+export interface AtlasStreamBodyLinkZone {
+  side: AtlasStreamBodyLinkSide;
+  /** 0-based visible-column start within the full hop line (not the suffix alone). */
+  startCol: number;
+  /** Exclusive visible-column end. */
+  endCol: number;
+  url: string;
+}
+
+export function atlasStreamOpenHref(
+  openBaseUrl: string | undefined,
+  atlasHtmlDir: string | undefined,
+  event: NetworkEvent,
+  side: AtlasStreamBodyLinkSide,
+): string {
+  const base = openBaseUrl?.trim().replace(/\/$/, "") || "";
+  if (base) {
+    return `${base}/mockifyer-atlas-open?id=${encodeURIComponent(event.id)}&side=${side}`;
+  }
+  const dir = atlasHtmlDir?.trim() || "";
+  if (!dir) return "";
+  if (side === "html") return atlasStreamBodyFileUrl(dir, "index.html");
+  const rels = resolveNetworkEventBodyRelPaths(event);
+  return atlasStreamBodyFileUrl(dir, side === "req" ? rels.req : rels.res);
+}
+
+/**
+ * OSC-8 req/res/html links + visible-column zones for in-app mouse clicks.
+ * Cursor/VS Code often render OSC-8 as plain text; zones enable click-to-open
+ * when mouse tracking is on (`m`).
+ */
 export function formatAtlasStreamHopBodyLinks(
   event: NetworkEvent,
   atlasHtmlDir: string,
   theme?: AtlasStreamColorTheme,
   openBaseUrl?: string,
-): string {
+  linePrefixVisibleWidth = 0,
+): { text: string; zones: AtlasStreamBodyLinkZone[] } {
   const dir = atlasHtmlDir.trim();
-  if (!dir && !openBaseUrl?.trim()) return "";
+  const base = openBaseUrl?.trim() || "";
+  if (!dir && !base) return { text: "", zones: [] };
   const t = theme ?? createAtlasStreamColorTheme(false);
-  const base = openBaseUrl?.trim().replace(/\/$/, "") || "";
-  const id = encodeURIComponent(event.id);
-  const linkFor = (side: "req" | "res" | "html", label: string): string => {
-    if (base) {
-      return atlasStreamOsc8Link(
-        `${base}/mockifyer-atlas-open?id=${id}&side=${side}`,
-        label,
-      );
+  const zones: AtlasStreamBodyLinkZone[] = [];
+  const parts: string[] = [];
+  let col = linePrefixVisibleWidth + 2; // leading two spaces before first label
+  parts.push("  ");
+  const sides: AtlasStreamBodyLinkSide[] = ["req", "res", "html"];
+  for (let i = 0; i < sides.length; i++) {
+    const side = sides[i]!;
+    const url = atlasStreamOpenHref(base || undefined, dir || undefined, event, side);
+    if (!url) continue;
+    if (i > 0) {
+      parts.push(" ");
+      col += 1;
     }
-    if (side === "html") {
-      return atlasStreamOsc8Link(
-        atlasStreamBodyFileUrl(dir, "index.html"),
-        label,
-      );
-    }
-    const rels = resolveNetworkEventBodyRelPaths(event);
-    const rel = side === "req" ? rels.req : rels.res;
-    return atlasStreamOsc8Link(atlasStreamBodyFileUrl(dir, rel), label);
-  };
-  return `  ${linkFor("req", t.muted("req"))} ${linkFor("res", t.muted("res"))} ${linkFor("html", t.muted("html"))}`;
+    const label = side;
+    const styled = t.info(label);
+    const startCol = col;
+    const endCol = col + atlasStreamVisibleWidth(label);
+    zones.push({ side, startCol, endCol, url });
+    parts.push(atlasStreamOsc8Link(url, styled));
+    col = endCol;
+  }
+  return { text: parts.join(""), zones };
 }
 
 
@@ -247,20 +289,44 @@ export function formatAtlasStreamHopLine(
 
   const badgeStr = badges.length ? `  ${badges.join(" ")}` : "";
   const prefix = treePrefix(depth, isLast, theme);
-  const bodyLinks =
+  const prefixText = `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}`;
+  const body =
     options?.bodyLinksDir || options?.bodyLinksOpenBaseUrl
       ? formatAtlasStreamHopBodyLinks(
           event,
           options.bodyLinksDir ?? "",
           theme,
           options.bodyLinksOpenBaseUrl,
+          atlasStreamVisibleWidth(prefixText),
         )
-      : "";
-
-  return `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}${bodyLinks}`;
+      : { text: "", zones: [] as AtlasStreamBodyLinkZone[] };
+  if (options?.onBodyLinkZones && body.zones.length) {
+    options.onBodyLinkZones(body.zones);
+  }
+  return `${prefixText}${body.text}`;
 }
 
 /** Collapsed nested-hops summary under a parent. */
+
+/** Format a hop line and matching mouse hit (zones for req/res/html). */
+export function formatAtlasStreamHopLineWithHit(
+  event: NetworkEvent,
+  options?: FormatAtlasStreamHopOptions,
+): { line: string; hit: AtlasStreamLineHit } {
+  let zones: AtlasStreamBodyLinkZone[] = [];
+  const line = formatAtlasStreamHopLine(event, {
+    ...options,
+    onBodyLinkZones: (z) => {
+      zones = z;
+    },
+  });
+  if (!zones.length) return { line, hit: { kind: "none" } };
+  return {
+    line,
+    hit: { kind: "hop-open", eventId: event.id, zones },
+  };
+}
+
 export function formatAtlasStreamCollapseSummary(
   parent: NetworkEvent,
   children: readonly NetworkEvent[],
@@ -430,7 +496,13 @@ export type AtlasStreamLineHit =
   | { kind: "none" }
   | { kind: "collapse"; parentId: string }
   /** Expanded toggle row under the parent (above children). */
-  | { kind: "expand-footer"; parentId: string };
+  | { kind: "expand-footer"; parentId: string }
+  /** Hop row with OSC-8 / mouse-open zones for req, res, html. */
+  | {
+      kind: "hop-open";
+      eventId: string;
+      zones: AtlasStreamBodyLinkZone[];
+    };
 
 export interface AtlasStreamPaint {
   /** Full lines to write (caller should print each with newline, except rewrite). */
@@ -657,30 +729,22 @@ export class MetroAtlasStreamView {
       if (canDedupe && duplicate) {
         duplicate.count += 1;
         duplicate.event = event;
-        const line = formatAtlasStreamHopLine(event, {
-          color: this.theme,
-          maxPathCols: this.maxPathCols,
-          bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
+        const painted = this.hopLineWithHit(event, {
           repeatSuffix: `×${duplicate.count}`,
         });
         // Replace the previous root-only line (no children were under it).
-        lines[lines.length - 1] = line;
-        lineHits[lineHits.length - 1] = { kind: "none" };
+        lines[lines.length - 1] = painted.line;
+        lineHits[lineHits.length - 1] = painted.hit;
         lastHadChildren = false;
         continue;
       }
 
       duplicate = { key, count: 1, event };
-      lines.push(
-        formatAtlasStreamHopLine(event, {
-          color: this.theme,
-          maxPathCols: this.maxPathCols,
-          bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
-        }),
-      );
-      lineHits.push({ kind: "none" });
+      {
+        const painted = this.hopLineWithHit(event);
+        lines.push(painted.line);
+        lineHits.push(painted.hit);
+      }
 
       if (children.length === 0) {
         lastHadChildren = false;
@@ -726,17 +790,14 @@ export class MetroAtlasStreamView {
     );
     lineHits.push({ kind: "expand-footer", parentId });
     for (let i = 0; i < visible.length; i++) {
-      lines.push(
-        formatAtlasStreamHopLine(visible[i]!, {
-          color: this.theme,
+      {
+        const painted = this.hopLineWithHit(visible[i]!, {
           depth: 1,
           isLast: i === visible.length - 1,
-          maxPathCols: this.maxPathCols,
-          bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
-        }),
-      );
-      lineHits.push({ kind: "none" });
+        });
+        lines.push(painted.line);
+        lineHits.push(painted.hit);
+      }
     }
     this.expandedBlocks.set(parentId, {
       childLines: visible.length,
@@ -770,36 +831,40 @@ export class MetroAtlasStreamView {
     ) {
       this.duplicate.count += 1;
       this.duplicate.event = event;
-      const line = formatAtlasStreamHopLine(event, {
-        color: this.theme,
-        maxPathCols: this.maxPathCols,
-        bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
+      const painted = this.hopLineWithHit(event, {
         repeatSuffix: `×${this.duplicate.count}`,
       });
       const erase = this.lastRewritable === "duplicate" ? 1 : 0;
       this.lastRewritable = "duplicate";
       // Keep lastCollapseParentId so interleaved roots do not detach child rewrites.
       return {
-        lines: [line],
+        lines: [painted.line],
         erasePreviousLines: erase,
-        lineHits: [{ kind: "none" }],
+        lineHits: [painted.hit],
       };
     }
 
     this.duplicate = { key, count: 1, event };
     this.lastRewritable = this.collapseDuplicates ? "duplicate" : null;
+    const painted = this.hopLineWithHit(event);
     return {
-      lines: [
-        formatAtlasStreamHopLine(event, {
-          color: this.theme,
-          maxPathCols: this.maxPathCols,
-          bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
-        }),
-      ],
-      lineHits: [{ kind: "none" }],
+      lines: [painted.line],
+      lineHits: [painted.hit],
     };
+  }
+
+  
+  private hopLineWithHit(
+    event: NetworkEvent,
+    opts?: Omit<FormatAtlasStreamHopOptions, "color" | "bodyLinksDir" | "bodyLinksOpenBaseUrl" | "onBodyLinkZones">,
+  ): { line: string; hit: AtlasStreamLineHit } {
+    return formatAtlasStreamHopLineWithHit(event, {
+      ...opts,
+      color: this.theme,
+      maxPathCols: this.maxPathCols,
+      bodyLinksDir: this.bodyLinksDir,
+      bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
+    });
   }
 
   private paintChild(
@@ -860,14 +925,10 @@ export class MetroAtlasStreamView {
       color: this.theme,
       hasChildrenBelow: visible.length > 0,
     });
-    const childLines = visible.map((child, i) =>
-      formatAtlasStreamHopLine(child, {
-        color: this.theme,
+    const paintedChildren = visible.map((child, i) =>
+      this.hopLineWithHit(child, {
         depth: 1,
         isLast: i === visible.length - 1,
-        maxPathCols: this.maxPathCols,
-        bodyLinksDir: this.bodyLinksDir,
-          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
       }),
     );
     this.expandedBlocks.set(parentId, {
@@ -878,11 +939,11 @@ export class MetroAtlasStreamView {
     this.lastRewritable = "expand-footer";
     this.lastCollapseParentId = parentId;
     return {
-      lines: [header, ...childLines],
+      lines: [header, ...paintedChildren.map((p) => p.line)],
       erasePreviousLines: eraseLines,
       lineHits: [
         { kind: "expand-footer", parentId },
-        ...childLines.map(() => ({ kind: "none" as const })),
+        ...paintedChildren.map((p) => p.hit),
       ],
     };
   }
@@ -921,6 +982,22 @@ export function writeAtlasStreamPaint(
 }
 
 /** Track painted line hits for mouse click → parent expand/collapse. */
+
+/** Resolve a hop-open click to a URL using the mouse column (1-based). */
+export function resolveAtlasStreamHopOpenUrl(
+  hit: AtlasStreamLineHit | null | undefined,
+  col: number,
+): string | undefined {
+  if (!hit || hit.kind !== "hop-open") return undefined;
+  if (!Number.isFinite(col) || col < 1) return hit.zones[hit.zones.length - 1]?.url;
+  const c = Math.floor(col) - 1; // zones use 0-based visible cols
+  for (const zone of hit.zones) {
+    if (c >= zone.startCol && c < zone.endCol) return zone.url;
+  }
+  // Click elsewhere on the hop row → open Atlas HTML for that hop.
+  return hit.zones.find((z) => z.side === "html")?.url ?? hit.zones[0]?.url;
+}
+
 export class AtlasStreamHitTracker {
   /** Full history (capped) — kept for debugging / future use. */
   private hits: AtlasStreamLineHit[] = [];

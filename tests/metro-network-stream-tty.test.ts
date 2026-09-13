@@ -4,6 +4,7 @@ import {
   formatAtlasStreamHopLine,
   formatAtlasStreamHopBodyLinks,
   atlasStreamOsc8Link,
+  resolveAtlasStreamHopOpenUrl,
   MetroAtlasStreamView,
   shouldUseAtlasStreamColor,
   writeAtlasStreamPaint,
@@ -718,10 +719,11 @@ describe('metro-network-stream-tty', () => {
       responseBodyRef: 'bodies/custom-res.json',
     });
     const links = formatAtlasStreamHopBodyLinks(event, '/tmp/atlas-html-test');
-    expect(links).toContain('bodies/custom-req.json');
-    expect(links).toContain('bodies/custom-res.json');
+    expect(links.text).toContain('bodies/custom-req.json');
+    expect(links.text).toContain('bodies/custom-res.json');
+    expect(links.zones.map((z) => z.side)).toEqual(['req', 'res', 'html']);
     expect(atlasStreamOsc8Link('file:///tmp/a', 'x')).toBe(
-      '\u001b]8;;file:///tmp/a\u0007x\u001b]8;;\u0007',
+      '\u001b]8;;file:///tmp/a\u0007\u001b[4mx\u001b[24m\u001b]8;;\u0007',
     );
   });
 
@@ -740,6 +742,24 @@ describe('metro-network-stream-tty', () => {
     expect(line).toContain('http://localhost:8081/mockifyer-atlas-open?id=hop-open&side=req');
     expect(line).toContain('side=res');
     expect(line).toContain('side=html');
+  });
+
+
+  it('resolveAtlasStreamHopOpenUrl picks zone by mouse column', () => {
+    const hit = {
+      kind: 'hop-open' as const,
+      eventId: 'e1',
+      zones: [
+        { side: 'req' as const, startCol: 10, endCol: 13, url: 'http://x/req' },
+        { side: 'res' as const, startCol: 14, endCol: 17, url: 'http://x/res' },
+        { side: 'html' as const, startCol: 18, endCol: 22, url: 'http://x/html' },
+      ],
+    };
+    // cols are 1-based in mouse reports
+    expect(resolveAtlasStreamHopOpenUrl(hit, 11)).toBe('http://x/req');
+    expect(resolveAtlasStreamHopOpenUrl(hit, 15)).toBe('http://x/res');
+    expect(resolveAtlasStreamHopOpenUrl(hit, 20)).toBe('http://x/html');
+    expect(resolveAtlasStreamHopOpenUrl(hit, 1)).toBe('http://x/html');
   });
 
 });

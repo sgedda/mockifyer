@@ -50,6 +50,7 @@ import {
   enableAtlasStreamMouseTracking,
   disableAtlasStreamMouseTracking,
   consumeAtlasStreamMouseInput,
+  resolveAtlasStreamHopOpenUrl,
 } from "../utils/metro-network-stream-tty";
 import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 import { createEmptyAtlasDocMap } from "../utils/atlas-doc";
@@ -104,7 +105,7 @@ Keys:
   ${theme.info("e")}  Expand/collapse all nested groups
   ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hops
   ${theme.info("wheel")}/${theme.info("↑↓")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
-  ${theme.info("m")}  Toggle mouse (starts off) — off = select/copy; on = click + wheel
+  ${theme.info("m")}  Toggle mouse (starts off; press m then click req/res/html — or Ctrl/Cmd-click) — off = select/copy; on = click + wheel
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -243,7 +244,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "mouse off · m on for click/wheel · ↑↓/PgUp scroll · e all · p pause · g/d/f · a/s/r/o · c · h · q",
+      "Ctrl/Cmd-click underlined req·res·html · m then click also works · ↑↓/PgUp scroll · e all · p pause · g/d/f · a/s/r/o · c · h · q",
     ),
     view.statusLine(),
     "",
@@ -638,6 +639,14 @@ function attachInputHandlers(
       if (hit?.kind === "collapse" || hit?.kind === "expand-footer") {
         scrollBack = 0;
         applyPaint(view.toggleParentExpanded(hit.parentId));
+        continue;
+      }
+      if (hit?.kind === "hop-open") {
+        const url = resolveAtlasStreamHopOpenUrl(hit, click.col);
+        if (url) {
+          console.log(`[atlas] opening ${url}`);
+          openUrl(url);
+        }
       }
     }
   };
@@ -840,6 +849,7 @@ async function main(): Promise<void> {
 
   attachInputHandlers(base, view, hits, applyPaint, quit);
 
+  let linkTipShown = false;
   sseReq = startSseStream(
     base,
     options.backlog !== false,
@@ -848,7 +858,15 @@ async function main(): Promise<void> {
         view.skippedWhilePaused += 1;
         return;
       }
-      applyPaint(view.push(event));
+      {
+        if (!linkTipShown && view.bodyLinksOpenBaseUrl) {
+          linkTipShown = true;
+          console.log(
+            "[atlas] tip: in a terminal, Ctrl/Cmd-click underlined req·res·html (plain click won't open OSC-8). Or press m, then click.",
+          );
+        }
+        applyPaint(view.push(event));
+      }
     },
     (err) => {
       console.error(`[atlas] stream: ${err.message}`);
