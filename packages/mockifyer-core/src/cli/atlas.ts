@@ -19,6 +19,7 @@
  *   r  render Atlas HTML from buffer + print browse URL
  *   o  open rendered Atlas HTML in browser
  *   e  expand/collapse all nested groups
+ *   p / Space  pause/resume live hop painting
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -95,6 +96,7 @@ Does not require the dashboard GUI.
 Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
   ${theme.info("e")}  Expand/collapse all nested groups
+  ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hop painting (inspect without scroll)
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -201,7 +203,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ nested to expand · e all · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ nested to expand · e all · p/Space pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -337,6 +339,23 @@ function attachInputHandlers(
     }
     if (key === "e") {
       applyPaint(view.toggleAllExpanded());
+      return;
+    }
+    if (key === "p" || ch === " ") {
+      view.paused = !view.paused;
+      if (view.paused) {
+        view.skippedWhilePaused = 0;
+        console.log(view.statusLine());
+      } else {
+        const skipped = view.skippedWhilePaused;
+        view.skippedWhilePaused = 0;
+        console.log(
+          skipped > 0
+            ? `[atlas] live · skipped ${skipped} while paused`
+            : view.statusLine(),
+        );
+      }
+      view.invalidateRewrite();
       return;
     }
     if (key === "g") {
@@ -596,6 +615,10 @@ async function main(): Promise<void> {
     base,
     options.backlog !== false,
     (event) => {
+      if (view.paused) {
+        view.skippedWhilePaused += 1;
+        return;
+      }
       applyPaint(view.push(event));
     },
     (err) => {

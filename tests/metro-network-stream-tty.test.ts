@@ -151,6 +151,19 @@ describe('metro-network-stream-tty', () => {
     expect(c2.erasePreviousLines).toBe(1);
   });
 
+  it('statusLine reflects pause and skipped hop count', () => {
+    const view = new MetroAtlasStreamView({ color: false });
+    expect(view.statusLine()).toContain('live');
+    expect(view.statusLine()).not.toContain('paused');
+
+    view.paused = true;
+    expect(view.statusLine()).toContain('paused');
+    expect(view.statusLine()).not.toContain('skipped');
+
+    view.skippedWhilePaused = 4;
+    expect(view.statusLine()).toContain('paused · 4 skipped');
+  });
+
   it('dedupes consecutive identical roots with ×N', () => {
     const view = new MetroAtlasStreamView({
       color: false,

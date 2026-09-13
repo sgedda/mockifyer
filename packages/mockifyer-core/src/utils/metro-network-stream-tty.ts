@@ -360,6 +360,10 @@ export class MetroAtlasStreamView {
   collapseChildren: boolean;
   collapseDuplicates: boolean;
   errorsOnly: boolean;
+  /** When true, the CLI skips painting newly streamed hops. */
+  paused: boolean;
+  /** Hops arrived over SSE while {@link paused} (reset on resume). */
+  skippedWhilePaused: number;
   maxPathCols: number;
   slowMs: number;
 
@@ -392,6 +396,8 @@ export class MetroAtlasStreamView {
     this.collapseChildren = options?.collapseChildren !== false;
     this.collapseDuplicates = options?.collapseDuplicates !== false;
     this.errorsOnly = options?.errorsOnly === true;
+    this.paused = false;
+    this.skippedWhilePaused = 0;
     this.maxPathCols = options?.maxPathCols ?? 72;
     this.slowMs = options?.slowMs ?? DEFAULT_METRO_NETWORK_STREAM_SLOW_MS;
   }
@@ -421,14 +427,20 @@ export class MetroAtlasStreamView {
   }
 
   statusLine(): string {
+    const pauseBit = this.paused
+      ? this.skippedWhilePaused > 0
+        ? `paused · ${this.skippedWhilePaused} skipped`
+        : "paused"
+      : "live";
     const bits = [
+      pauseBit,
       this.collapseChildren ? "collapse=on" : "collapse=off",
       this.collapseDuplicates ? "dedupe=on" : "dedupe=off",
       this.errorsOnly ? "errors-only" : "all",
       this.theme.enabled ? "color" : "plain",
     ];
     return this.theme.muted(
-      `[atlas] view · ${bits.join(" · ")}  (click ▸ · e all · g/d/f)`,
+      `[atlas] view · ${bits.join(" · ")}  (click ▸ · e all · p pause · g/d/f)`,
     );
   }
 
