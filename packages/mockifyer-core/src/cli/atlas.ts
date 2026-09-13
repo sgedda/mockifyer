@@ -45,8 +45,6 @@ import {
   enableAtlasStreamMouseTracking,
   disableAtlasStreamMouseTracking,
   consumeAtlasStreamMouseInput,
-  formatAtlasStreamHoverLine,
-  rewriteAtlasStreamScreenRow,
 } from "../utils/metro-network-stream-tty";
 import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 
@@ -205,7 +203,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ nested to expand · e all · p/Space pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ to expand · e all · p/Space pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -292,9 +290,6 @@ function attachInputHandlers(
   view: MetroAtlasStreamView,
   hits: AtlasStreamHitTracker,
   applyPaint: (paint: AtlasStreamPaint) => void,
-  clearHover: () => void,
-  setHover: (row: number, original: string) => void,
-  getHoverRow: () => number | null,
   onQuit: () => void,
 ): void {
   if (!process.stdin.isTTY) {
@@ -417,37 +412,12 @@ function attachInputHandlers(
   };
 
   const handleMoves = (
-    moves: ReturnType<typeof consumeAtlasStreamMouseInput>["moves"],
+    _moves: ReturnType<typeof consumeAtlasStreamMouseInput>["moves"],
   ): void => {
-    if (moves.length === 0) return;
-    const move = moves[moves.length - 1]!;
-    const rows = process.stdout.rows || 24;
-    const row = move.row;
-    if (getHoverRow() === row) return;
-
-    clearHover();
-
-    // Once the buffer has scrolled, mid-screen CUP hover rewrites are unsafe:
-    // they overwrite timestamp rows and leave the stream cursor mid-screen so
-    // later erase/write duplicates nested summaries. Click still expands.
-    if (hits.isScrolled(rows)) return;
-
-    const hit = hits.hitAtScreenRow(row, rows);
-    if (hit?.kind !== "collapse" && hit?.kind !== "expand-footer") return;
-
-    const original = hits.lineAtScreenRow(row, rows);
-    // Only rewrite rows that actually carry a click glyph — avoids clobbering
-    // a parent timestamp line when mapping was wrong.
-    if (original == null || (!original.includes("▸") && !original.includes("▾"))) {
-      return;
-    }
-    const hovered = formatAtlasStreamHoverLine(original);
-    const returnCursorRow = hits.cursorRow(rows);
-    rewriteAtlasStreamScreenRow(row, hovered, undefined, { returnCursorRow });
-    // Keep the viewport mirror in sync with the glyph we just painted, and
-    // remember the exact pre-hover text so restore cannot re-query a stale map.
-    hits.replaceViewportLine(row, hovered, rows);
-    setHover(row, original);
+    // Hover mid-screen rewrites are disabled. Cursor/VS Code terminals do not
+    // restore the stream cursor reliably after CUP, which overwrote timestamp
+    // rows (including older rows that looked fine until the screen filled).
+    // Click-to-expand still works via handleClicks.
   };
 
   process.stdin.on("data", (chunk: string) => {
@@ -536,25 +506,7 @@ async function main(): Promise<void> {
     Math.max(200, (process.stdout.rows || 24) * 4),
   );
 
-  let hoverRow: number | null = null;
-  let hoverOriginal: string | null = null;
-  const clearHover = (): void => {
-    if (hoverRow == null) return;
-    const rows = process.stdout.rows || 24;
-    const original = hoverOriginal ?? hits.lineAtScreenRow(hoverRow, rows);
-    if (original != null) {
-      rewriteAtlasStreamScreenRow(hoverRow, original, undefined, {
-        returnCursorRow: hits.cursorRow(rows),
-      });
-      hits.replaceViewportLine(hoverRow, original, rows);
-    }
-    hoverRow = null;
-    hoverOriginal = null;
-  };
-
   const applyPaint = (paint: AtlasStreamPaint): void => {
-    // Restore any hover glyph before paint so mid-screen rewrites stay aligned.
-    clearHover();
     hits.notePaint(paint, process.stdout.rows || 24);
     writeAtlasStreamPaint(paint);
   };
@@ -621,19 +573,7 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  attachInputHandlers(
-    base,
-    view,
-    hits,
-    applyPaint,
-    clearHover,
-    (row, original) => {
-      hoverRow = row;
-      hoverOriginal = original;
-    },
-    () => hoverRow,
-    quit,
-  );
+  attachInputHandlers(base, view, hits, applyPaint, quit);
 
   sseReq = startSseStream(
     base,

@@ -918,20 +918,22 @@ export class AtlasStreamHitTracker {
 }
 
 /**
- * Enable click + hover motion reporting (xterm any-event + SGR).
- * Also disables line wrap so mid-screen hover rewrites cannot clobber the next row.
+ * Enable click reporting (xterm normal tracking + SGR).
+ * Motion/hover reporting is intentionally off — mid-screen CUP rewrites are
+ * unsafe in Cursor/VS Code terminals and were wiping timestamp rows once the
+ * buffer filled the screen. Click-to-expand still works.
  */
 export function enableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  // 1003 = any-event (clicks + moves), 1006 = SGR, 7l = no autowrap
-  write(`${ESC}?1003h${ESC}?1006h${ESC}?7l`);
+  // 1000 = click press/release only (no motion), 1006 = SGR, 7l = no autowrap
+  write(`${ESC}?1000h${ESC}?1006h${ESC}?7l`);
 }
 
 export function disableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  write(`${ESC}?1003l${ESC}?1006l${ESC}?7h`);
+  write(`${ESC}?1000l${ESC}?1006l${ESC}?7h`);
 }
 
 export interface AtlasStreamMouseClick {
