@@ -9,7 +9,7 @@
  * 5. GET /mockifyer-pool-response?id= - Load a promoted pool response for RN `$pool` resolve
  * 6. GET /mockifyer-sync - Legacy: iOS simulator mock-data → project folder
  * 7. POST /mockifyer-atlas-html — write crash-scoped trace HTML to mock-data/atlas-html/incidents/
- * 8. GET /mockifyer-atlas-html[/…] — serve atlas-html static files (index, pages, incidents, screenshots)
+ * 8. GET /atlas-html[/…] (legacy: /mockifyer-atlas-html[/…]) — serve atlas-html static files (index.html, pages, incidents, screenshots)
  * 9. POST /mockifyer-atlas-screenshot — write screen image (png/jpg/webp) under mock-data/atlas-html/screenshots/
  * 10. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
  * 11. POST /mockifyer-atlas-body-spill — write full hop body text under mock-data/atlas-html/bodies/
@@ -1207,10 +1207,24 @@ function renderNetworkEventsAtlasHtml(
     success: written > 0,
     written,
     outputDir: relativeFromRoot,
-    browseUrl: "/mockifyer-atlas-html/",
+    browseUrl: "/atlas-html/",
     hopCount: events.length,
     error: written > 0 ? undefined : "writeAtlasDocHtml wrote 0 files",
   };
+}
+
+/** GET path under `/atlas-html/` or legacy `/mockifyer-atlas-html/` → file under mock-data/atlas-html/. */
+function atlasHtmlStaticSuffix(url: string): string | null {
+  const prefixes = ["/atlas-html", "/mockifyer-atlas-html"] as const;
+  for (const prefix of prefixes) {
+    if (url === prefix || url === `${prefix}/`) {
+      return "index.html";
+    }
+    if (url.startsWith(`${prefix}/`)) {
+      return url.slice(prefix.length + 1);
+    }
+  }
+  return null;
 }
 
 /**
@@ -1525,17 +1539,11 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
-    // Atlas HTML static files (index, pages, incidents, screenshots) — must not fall through to Expo web shell
-    if (
-      req.method === "GET" &&
-      (url === "/mockifyer-atlas-html" ||
-        url.startsWith("/mockifyer-atlas-html/"))
-    ) {
-      const suffix =
-        url === "/mockifyer-atlas-html" || url === "/mockifyer-atlas-html/"
-          ? "index.html"
-          : url.slice("/mockifyer-atlas-html/".length);
-      if (serveAtlasHtmlStatic(mockDataPath, suffix, res)) {
+    // Atlas HTML static files (index, pages, incidents, screenshots) — must not fall through to Expo web shell.
+    // Prefer /atlas-html/; keep /mockifyer-atlas-html/ as a legacy alias.
+    if (req.method === "GET") {
+      const atlasSuffix = atlasHtmlStaticSuffix(url);
+      if (atlasSuffix != null && serveAtlasHtmlStatic(mockDataPath, atlasSuffix, res)) {
         return;
       }
     }

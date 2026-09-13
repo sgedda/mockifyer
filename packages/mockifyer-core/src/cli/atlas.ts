@@ -268,7 +268,7 @@ async function runRender(
     view.invalidateRewrite();
     return undefined;
   }
-  const browse = `${base}${json.browseUrl ?? "/mockifyer-atlas-html/"}`;
+  const browse = `${base}${json.browseUrl ?? "/atlas-html/"}`;
   console.log("");
   console.log(
     `[atlas] rendered ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,

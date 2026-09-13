@@ -208,7 +208,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 201, {
       success: true,
       hopCount: buffer.size,
-      browseUrl: '/mockifyer-atlas-html/',
+      browseUrl: '/atlas-html/',
       outputDir: 'mock-data/atlas-html',
     });
   }

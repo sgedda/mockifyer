@@ -10,6 +10,8 @@ export const MOCKIFYER_SYNC_ENDPOINT_MARKERS = [
   '/mockifyer-clear',
   '/mockifyer-sync',
   '/mockifyer-atlas-html',
+  /** Short Metro browse path for atlas-html/index.html (alias of mockifyer-atlas-html). */
+  '/atlas-html',
   '/mockifyer-atlas-screenshot',
   '/mockifyer-atlas-render',
   /** Metro live hop stream (mockifyer-atlas CLI). */
