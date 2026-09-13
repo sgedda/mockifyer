@@ -3,7 +3,7 @@
  * Minimal Metro stand-in for trying `mockifyer-atlas` without a RN app.
  *
  * Terminal A:
- *   node scripts/demo-atlas-metro-server.mjs
+ *   node scripts/demo-atlas-metro-server.cjs
  *
  * Terminal B:
  *   node packages/mockifyer-core/dist/cli/atlas.js --port 8081
@@ -46,23 +46,111 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+function ensureBodiesDir() {
+  const dir = path.join(mockDataPath, 'atlas-html', 'bodies');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeDemoBody(rel, value) {
+  const abs = path.join(mockDataPath, 'atlas-html', rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `${JSON.stringify(value, null, 2)}\n`);
+  return rel;
+}
+
+function demoResponseBody(partial) {
+  const status = partial.status ?? 200;
+  const pth = partial.path ?? '/';
+  if (status >= 500) {
+    return {
+      error: 'Internal Server Error',
+      message: `Demo failure for ${pth}`,
+      status,
+      retryable: true,
+    };
+  }
+  if (pth.includes('/widgets/')) {
+    const id = pth.split('/').pop();
+    return {
+      widget: {
+        id,
+        title: `Widget ${id}`,
+        enabled: true,
+        items: [
+          { id: `${id}-a`, label: 'Alpha' },
+          { id: `${id}-b`, label: 'Beta' },
+        ],
+      },
+    };
+  }
+  if (pth.includes('/config')) {
+    return {
+      featureFlags: { atlasDemo: true, darkMode: false },
+      apiVersion: '2026-09-13',
+      endpoints: ['/v1/home', '/v1/config'],
+    };
+  }
+  return {
+    user: { id: 'u-demo', name: 'Demo User' },
+    feed: [
+      { id: 'post-1', title: 'Hello Atlas' },
+      { id: 'post-2', title: 'Mock hop stream' },
+    ],
+    meta: { path: pth, source: partial.source ?? 'upstream' },
+  };
+}
+
+function demoRequestBody(partial) {
+  if ((partial.method ?? 'GET') === 'POST') {
+    return {
+      action: 'update',
+      payload: { widgetId: String(partial.path || '').split('/').pop(), liked: true },
+    };
+  }
+  return {
+    method: partial.method ?? 'GET',
+    url: partial.url ?? 'https://api.example.com/',
+  };
+}
+
 function makeHop(partial) {
   const id = partial.id ?? `hop-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const method = partial.method ?? 'GET';
+  const status = partial.status ?? 200;
+  const pathName = partial.path ?? '/';
+  const reqBody = demoRequestBody({ ...partial, method, path: pathName });
+  const resBody = demoResponseBody({ ...partial, status, path: pathName });
+  const reqRel = `bodies/${id}-req.json`;
+  const resRel = `bodies/${id}-res.json`;
+  ensureBodiesDir();
+  writeDemoBody(reqRel, reqBody);
+  writeDemoBody(resRel, resBody);
+  const reqPreview = JSON.stringify(reqBody);
+  const resPreview = JSON.stringify(resBody);
   return {
     id,
     timestamp: new Date().toISOString(),
     scenario: 'demo',
     transport: 'fetch',
-    method: partial.method ?? 'GET',
+    method,
     url: partial.url ?? 'https://api.example.com/',
     host: partial.host ?? 'api.example.com',
-    path: partial.path ?? '/',
-    status: partial.status ?? 200,
+    path: pathName,
+    status,
     durationMs: partial.durationMs ?? 42,
     source: partial.source ?? 'upstream',
     requestId: partial.requestId ?? id,
     parentRequestId: partial.parentRequestId,
     usage: partial.usage,
+    requestHeaders: { accept: 'application/json', 'content-type': 'application/json' },
+    responseHeaders: { 'content-type': 'application/json' },
+    requestBodyPreview: reqPreview.slice(0, 240),
+    responseBodyPreview: resPreview.slice(0, 240),
+    requestBodyTruncated: reqPreview.length > 240,
+    responseBodyTruncated: resPreview.length > 240,
+    requestBodyRef: reqRel,
+    responseBodyRef: resRel,
   };
 }
 
@@ -214,48 +302,10 @@ const server = http.createServer(async (req, res) => {
     const outDir = path.join(mockDataPath, 'atlas-html');
     fs.mkdirSync(outDir, { recursive: true });
     const events = [...buffer.list()].reverse();
-    // Seed spilled bodies so Atlas HTML + terminal `file://` links have targets
-    // (demo hops are synthetic and never went through scheduleNetworkBodySpill).
-    const bodiesDir = path.join(outDir, 'bodies');
-    fs.mkdirSync(bodiesDir, { recursive: true });
-    for (const ev of events.slice(0, 25)) {
-      const key = String(ev.id || ev.requestId || 'hop').replace(/[^a-zA-Z0-9._-]/g, '_');
-      const resRel = `bodies/${key}-res.json`;
-      const reqRel = `bodies/${key}-req.json`;
-      const resAbs = path.join(outDir, resRel);
-      const reqAbs = path.join(outDir, reqRel);
-      if (!fs.existsSync(resAbs)) {
-        fs.writeFileSync(
-          resAbs,
-          JSON.stringify(
-            {
-              ok: (ev.status ?? 200) < 400,
-              path: ev.path || ev.url,
-              status: ev.status ?? 200,
-              demo: true,
-              message: `Synthetic response body for ${ev.method || 'GET'} ${ev.path || ev.url}`,
-            },
-            null,
-            2,
-          ) + '\n',
-        );
-      }
-      if (!fs.existsSync(reqAbs)) {
-        fs.writeFileSync(
-          reqAbs,
-          JSON.stringify(
-            {
-              method: ev.method || 'GET',
-              url: ev.url,
-              demo: true,
-            },
-            null,
-            2,
-          ) + '\n',
-        );
-      }
-      ev.responseBodyRef = resRel;
-      ev.requestBodyRef = reqRel;
+    // Bodies are written when hops are emitted (makeHop). Re-assert refs for safety.
+    for (const ev of events) {
+      if (!ev.responseBodyRef && ev.id) ev.responseBodyRef = `bodies/${ev.id}-res.json`;
+      if (!ev.requestBodyRef && ev.id) ev.requestBodyRef = `bodies/${ev.id}-req.json`;
     }
     const doc = createEmptyAtlasDocMap(
       events[0]?.scenario?.trim() || 'demo',
