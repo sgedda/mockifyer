@@ -232,7 +232,7 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
-  if (pathname === '/mockifyer-network-events/clear && req.method === 'POST') {
+  if (pathname === '/mockifyer-network-events/clear' && req.method === 'POST') {
     buffer.clear();
     return sendJson(res, 200, { success: true, size: 0 });
   }
