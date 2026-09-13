@@ -4,6 +4,9 @@
  */
 
 import type { NetworkEvent } from "./network-event-types";
+import { pathToFileURL } from "url";
+import path from "path";
+import { resolveNetworkEventBodyRelPaths } from "./network-body-spill";
 import {
   DEFAULT_METRO_NETWORK_STREAM_SLOW_MS,
   formatMetroNetworkAnalysis,
@@ -114,6 +117,11 @@ export interface FormatAtlasStreamHopOptions {
   repeatSuffix?: string;
   /** Max path columns before truncate. */
   maxPathCols?: number;
+  /**
+   * Absolute atlas-html directory. When set, append OSC-8 `req`/`res` links to
+   * predicted body spill paths (clickable even before files exist).
+   */
+  bodyLinksDir?: string;
 }
 
 function firstUsageScreen(usage: NetworkEvent["usage"]): string | undefined {
@@ -148,6 +156,46 @@ function treePrefix(
  * Rich single-hop line (colors + optional tree indent).
  * Plain {@link formatMetroNetworkHopLine} remains for non-TTY / tests.
  */
+
+/** OSC-8 hyperlink (iTerm / VS Code / Ghostty / Windows Terminal). */
+export function atlasStreamOsc8Link(url: string, label: string): string {
+  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
+}
+
+/** Absolute file:// URL for a path under the atlas-html output dir. */
+export function atlasStreamBodyFileUrl(
+  atlasHtmlDir: string,
+  relativePath: string,
+): string {
+  const abs = path.resolve(atlasHtmlDir, relativePath);
+  return pathToFileURL(abs).href;
+}
+
+/**
+ * Short OSC-8 `req` / `res` links for a hop row.
+ * Uses captured body refs when present; otherwise predicts spill paths so links
+ * exist on every row even before bodies are written.
+ */
+export function formatAtlasStreamHopBodyLinks(
+  event: NetworkEvent,
+  atlasHtmlDir: string,
+  theme?: AtlasStreamColorTheme,
+): string {
+  const dir = atlasHtmlDir.trim();
+  if (!dir) return "";
+  const rels = resolveNetworkEventBodyRelPaths(event);
+  const t = theme ?? createAtlasStreamColorTheme(false);
+  const req = atlasStreamOsc8Link(
+    atlasStreamBodyFileUrl(dir, rels.req),
+    t.muted("req"),
+  );
+  const res = atlasStreamOsc8Link(
+    atlasStreamBodyFileUrl(dir, rels.res),
+    t.muted("res"),
+  );
+  return `  ${req} ${res}`;
+}
+
 export function formatAtlasStreamHopLine(
   event: NetworkEvent,
   options?: FormatAtlasStreamHopOptions,
@@ -182,8 +230,11 @@ export function formatAtlasStreamHopLine(
 
   const badgeStr = badges.length ? `  ${badges.join(" ")}` : "";
   const prefix = treePrefix(depth, isLast, theme);
+  const bodyLinks = options?.bodyLinksDir
+    ? formatAtlasStreamHopBodyLinks(event, options.bodyLinksDir, theme)
+    : "";
 
-  return `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}`;
+  return `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}${bodyLinks}`;
 }
 
 /** Collapsed nested-hops summary under a parent. */
@@ -226,10 +277,12 @@ export function formatAtlasStreamHoverLine(line: string): string {
 }
 
 const ANSI_SGR_RE = /\u001b\[[0-9;]*m/g;
+/** OSC-8 hyperlink wrappers: ESC ] 8 ; … BEL (or ST). */
+const ANSI_OSC8_RE = /\u001b\]8;[^\u0007\u001b]*(?:\u0007|\u001b\\)/g;
 
-/** Visible column width of a string, ignoring SGR color codes. */
+/** Visible column width of a string, ignoring SGR and OSC-8 hyperlink codes. */
 export function atlasStreamVisibleWidth(text: string): number {
-  return text.replace(ANSI_SGR_RE, "").length;
+  return text.replace(ANSI_OSC8_RE, "").replace(ANSI_SGR_RE, "").length;
 }
 
 /**
@@ -259,6 +312,24 @@ export function truncateAtlasStreamLine(text: string, maxCols: number): string {
         i = end + 1;
         continue;
       }
+    }
+    // Preserve OSC-8 hyperlinks intact (do not count toward visible width).
+    if (text[i] === "\u001b" && text[i + 1] === "]") {
+      let j = i + 2;
+      while (j < text.length) {
+        if (text[j] === "\u0007") {
+          j += 1;
+          break;
+        }
+        if (text[j] === "\u001b" && text[j + 1] === "\\") {
+          j += 2;
+          break;
+        }
+        j += 1;
+      }
+      out += text.slice(i, j);
+      i = j;
+      continue;
     }
     if (visible >= limit) break;
     out += text[i];
@@ -326,6 +397,8 @@ export interface AtlasStreamViewOptions {
   errorsOnly?: boolean;
   maxPathCols?: number;
   slowMs?: number;
+  /** Absolute atlas-html dir for per-row OSC-8 req/res body links. */
+  bodyLinksDir?: string;
 }
 
 export type AtlasStreamLineHit =
@@ -377,6 +450,8 @@ export class MetroAtlasStreamView {
   skippedWhilePaused: number;
   maxPathCols: number;
   slowMs: number;
+  /** Atlas-html dir for OSC-8 body links on each hop row. */
+  bodyLinksDir?: string;
 
   private readonly childrenByParent = new Map<string, NetworkEvent[]>();
   private readonly eventsByRequestId = new Map<string, NetworkEvent>();
@@ -411,6 +486,7 @@ export class MetroAtlasStreamView {
     this.skippedWhilePaused = 0;
     this.maxPathCols = options?.maxPathCols ?? 72;
     this.slowMs = options?.slowMs ?? DEFAULT_METRO_NETWORK_STREAM_SLOW_MS;
+    this.bodyLinksDir = options?.bodyLinksDir?.trim() || undefined;
   }
 
   get colorEnabled(): boolean {
@@ -556,6 +632,7 @@ export class MetroAtlasStreamView {
         const line = formatAtlasStreamHopLine(event, {
           color: this.theme,
           maxPathCols: this.maxPathCols,
+          bodyLinksDir: this.bodyLinksDir,
           repeatSuffix: `×${duplicate.count}`,
         });
         // Replace the previous root-only line (no children were under it).
@@ -570,6 +647,7 @@ export class MetroAtlasStreamView {
         formatAtlasStreamHopLine(event, {
           color: this.theme,
           maxPathCols: this.maxPathCols,
+          bodyLinksDir: this.bodyLinksDir,
         }),
       );
       lineHits.push({ kind: "none" });
@@ -624,6 +702,7 @@ export class MetroAtlasStreamView {
           depth: 1,
           isLast: i === visible.length - 1,
           maxPathCols: this.maxPathCols,
+          bodyLinksDir: this.bodyLinksDir,
         }),
       );
       lineHits.push({ kind: "none" });
@@ -663,6 +742,7 @@ export class MetroAtlasStreamView {
       const line = formatAtlasStreamHopLine(event, {
         color: this.theme,
         maxPathCols: this.maxPathCols,
+        bodyLinksDir: this.bodyLinksDir,
         repeatSuffix: `×${this.duplicate.count}`,
       });
       const erase = this.lastRewritable === "duplicate" ? 1 : 0;
@@ -682,6 +762,7 @@ export class MetroAtlasStreamView {
         formatAtlasStreamHopLine(event, {
           color: this.theme,
           maxPathCols: this.maxPathCols,
+          bodyLinksDir: this.bodyLinksDir,
         }),
       ],
       lineHits: [{ kind: "none" }],
@@ -752,6 +833,7 @@ export class MetroAtlasStreamView {
         depth: 1,
         isLast: i === visible.length - 1,
         maxPathCols: this.maxPathCols,
+        bodyLinksDir: this.bodyLinksDir,
       }),
     );
     this.expandedBlocks.set(parentId, {

@@ -111,7 +111,7 @@ Keys:
   ${theme.info("a")}  Analyze buffer (counts, slow, errors)
   ${theme.info("s")}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
   ${theme.info("r")}  Generate Atlas HTML from buffer hops → atlas-html/index.html
-  ${theme.info("o")}  Generate Atlas HTML + open index.html (prints clickable bodies/ links)
+  ${theme.info("o")}  Generate Atlas HTML + open index.html
   ${theme.info("c")}  Clear Metro hop buffer
   ${theme.info("h")}  Show this help
   ${theme.info("q")}  Quit
@@ -214,45 +214,6 @@ function toFileUrl(absPath: string): string {
   return pathToFileURL(absPath).href;
 }
 
-/**
- * Print clickable links to spilled request/response bodies under atlas-html/bodies/,
- * same on-disk layout the Atlas HTML "Open full … body" links use.
- */
-function logAtlasBodyLinks(indexPath: string): void {
-  const outDir = path.dirname(indexPath);
-  const bodiesDir = path.join(outDir, "bodies");
-  if (!fs.existsSync(bodiesDir) || !fs.statSync(bodiesDir).isDirectory()) {
-    console.log("[atlas] bodies: (none spilled yet — large req/res appear under bodies/)");
-    return;
-  }
-  const files = fs
-    .readdirSync(bodiesDir)
-    .filter((name) => /\.(json|txt)$/i.test(name))
-    .sort();
-  if (files.length === 0) {
-    console.log("[atlas] bodies: (empty)");
-    return;
-  }
-  const maxList = 40;
-  console.log(`[atlas] bodies (${files.length}) — click / open in browser:`);
-  for (const name of files.slice(0, maxList)) {
-    const abs = path.join(bodiesDir, name);
-    const url = toFileUrl(abs);
-    const side = name.includes("-res.")
-      ? "res"
-      : name.includes("-req.")
-        ? "req"
-        : "body";
-    // OSC-8 hyperlink when the terminal supports it; plain file:// still selectable.
-    const label = `${side} ${name}`;
-    const osc = `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
-    console.log(`  ${osc}`);
-    console.log(`    ${url}`);
-  }
-  if (files.length > maxList) {
-    console.log(`  … +${files.length - maxList} more in ${bodiesDir}`);
-  }
-}
 
 function resolveAtlasIndexPath(options: {
   indexPath?: string;
@@ -356,8 +317,11 @@ async function renderAtlasHtmlLocally(
   console.log(
     `[atlas] generated ${events.length} hop(s) locally → ${path.relative(process.cwd(), outDir) || outDir}`,
   );
-  console.log(`[atlas] open ${indexPath}`);
-  logAtlasBodyLinks(indexPath);
+  {
+    const url = toFileUrl(indexPath);
+    const osc = `\u001b]8;;${url}\u0007${indexPath}\u001b]8;;\u0007`;
+    console.log(`[atlas] open ${osc}`);
+  }
   view.invalidateRewrite();
   return indexPath;
 }
@@ -389,8 +353,11 @@ async function runRender(
         console.log(
           `[atlas] generated ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,
         );
-        console.log(`[atlas] open ${indexPath}`);
-        logAtlasBodyLinks(indexPath);
+        {
+          const url = toFileUrl(indexPath);
+          const osc = `\u001b]8;;${url}\u0007${indexPath}\u001b]8;;\u0007`;
+          console.log(`[atlas] open ${osc}`);
+        }
         view.invalidateRewrite();
         return indexPath;
       }
@@ -790,10 +757,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  const atlasHtmlDir = path.resolve(process.cwd(), "mock-data", "atlas-html");
   const view = new MetroAtlasStreamView({
     color,
     isTTY: process.stdout.isTTY === true,
     collapseChildren: options.expand !== true,
+    bodyLinksDir: atlasHtmlDir,
   });
 
   const base = metroBase(options);

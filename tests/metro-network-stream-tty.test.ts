@@ -2,6 +2,8 @@ import {
   createAtlasStreamColorTheme,
   formatAtlasStreamCollapseSummary,
   formatAtlasStreamHopLine,
+  formatAtlasStreamHopBodyLinks,
+  atlasStreamOsc8Link,
   MetroAtlasStreamView,
   shouldUseAtlasStreamColor,
   writeAtlasStreamPaint,
@@ -32,6 +34,8 @@ function hop(
     requestId: partial.requestId,
     parentRequestId: partial.parentRequestId,
     usage: partial.usage,
+    requestBodyRef: partial.requestBodyRef,
+    responseBodyRef: partial.responseBodyRef,
   };
 }
 
@@ -677,6 +681,47 @@ describe('metro-network-stream-tty', () => {
     expect(hits.hitAtScreenRow(2, screenRows)?.kind).toBe('none');
     expect(hits.lineAtScreenRow(3, screenRows)).toContain('▸');
     expect(hits.hitAtScreenRow(3, screenRows)?.kind).toBe('collapse');
+  });
+
+
+  it('adds OSC-8 req/res body links on hop rows even without body refs', () => {
+    const event = hop({
+      id: 'hop-abc',
+      requestId: 'req-abc',
+      method: 'GET',
+      url: 'https://api.example.com/v1/home',
+      path: '/v1/home',
+      source: 'upstream',
+      status: 200,
+      durationMs: 12,
+    });
+    const dir = '/tmp/atlas-html-test';
+    const line = formatAtlasStreamHopLine(event, { bodyLinksDir: dir });
+    expect(line).toContain('\u001b]8;;file://');
+    expect(line).toContain('bodies/req-abc-req.json');
+    expect(line).toContain('bodies/req-abc-res.json');
+    const plain = formatAtlasStreamHopLine(event);
+    expect(atlasStreamVisibleWidth(line)).toBe(
+      atlasStreamVisibleWidth(plain) + '  req res'.length,
+    );
+  });
+
+  it('prefers captured body refs for OSC-8 targets', () => {
+    const event = hop({
+      id: 'hop-xyz',
+      method: 'POST',
+      url: 'https://api.example.com/v1/x',
+      path: '/v1/x',
+      source: 'upstream',
+      requestBodyRef: 'bodies/custom-req.json',
+      responseBodyRef: 'bodies/custom-res.json',
+    });
+    const links = formatAtlasStreamHopBodyLinks(event, '/tmp/atlas-html-test');
+    expect(links).toContain('bodies/custom-req.json');
+    expect(links).toContain('bodies/custom-res.json');
+    expect(atlasStreamOsc8Link('file:///tmp/a', 'x')).toBe(
+      '\u001b]8;;file:///tmp/a\u0007x\u001b]8;;\u0007',
+    );
   });
 
 });

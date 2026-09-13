@@ -113,10 +113,37 @@ export function serializeBodyForSpill(value: unknown): string | undefined {
   return undefined;
 }
 
-function safeSpillKey(eventId: string, requestId?: string | null): string {
+export function safeSpillKey(eventId: string, requestId?: string | null): string {
   const raw = (requestId?.trim() || eventId || 'hop').slice(0, 80);
   const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
   return cleaned || 'hop';
+}
+
+/** Predicted relative spill path under atlas-html (even before the file exists). */
+export function networkBodySpillRelPath(
+  eventId: string,
+  requestId: string | null | undefined,
+  side: 'req' | 'res',
+): string {
+  return `bodies/${safeSpillKey(eventId, requestId)}-${side}.json`;
+}
+
+/**
+ * Resolve req/res body relative paths for a hop.
+ * Prefers captured refs; otherwise predicts the canonical spill names.
+ */
+export function resolveNetworkEventBodyRelPaths(event: {
+  id: string;
+  requestId?: string | null;
+  requestBodyRef?: string;
+  responseBodyRef?: string;
+}): { req: string; res: string } {
+  const req = event.requestBodyRef?.trim();
+  const res = event.responseBodyRef?.trim();
+  return {
+    req: req || networkBodySpillRelPath(event.id, event.requestId, 'req'),
+    res: res || networkBodySpillRelPath(event.id, event.requestId, 'res'),
+  };
 }
 
 function resolveMetroPort(explicit?: number): number {
