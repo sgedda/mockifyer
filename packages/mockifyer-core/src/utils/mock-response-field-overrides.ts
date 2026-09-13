@@ -166,17 +166,10 @@ export function applyResponseFieldOverridesToData<T>(
     }
 
     const existingValue = getAtPath(clone, segments);
-    const lastSegment = segments[segments.length - 1];
     const nextValue =
       override.mode === 'extend'
         ? existingValue === undefined
-          ? typeof lastSegment === 'number'
-            ? deepCloneJson(override.value)
-            : Array.isArray(override.value)
-            ? deepCloneJson(override.value)
-            : isPlainObject(override.value)
-              ? deepCloneJson(override.value)
-              : [deepCloneJson(override.value)]
+          ? deepCloneJson(override.value)
           : extendResponseFieldValue(existingValue, override.value)
         : deepCloneJson(override.value);
     setAtPath(clone, segments, nextValue);

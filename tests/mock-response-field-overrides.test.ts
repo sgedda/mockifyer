@@ -70,13 +70,13 @@ describe('mock response field overrides', () => {
     expect(out.tags).toEqual(['a', 'b', 'c']);
   });
 
-  it('extend mode initializes missing path using array/object containers', () => {
+  it('extend mode initializes missing path with provided value', () => {
     const data = {};
     const out = applyResponseFieldOverridesToData(data, [
       { path: 'tags', mode: 'extend', value: 'a' },
       { path: 'meta', mode: 'extend', value: { page: 1 } },
-    ]) as { tags: string[]; meta: { page: number } };
-    expect(out.tags).toEqual(['a']);
+    ]) as { tags: string; meta: { page: number } };
+    expect(out.tags).toBe('a');
     expect(out.meta).toEqual({ page: 1 });
   });
 
