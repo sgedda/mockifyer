@@ -416,4 +416,34 @@ describe('metro-network-stream-tty', () => {
     );
   });
 
+
+  it('hit tracker maps scrolled full-screen rows (cursor line is bottom)', () => {
+    const hits = new AtlasStreamHitTracker(100);
+    const screenRows = 5;
+    // 7 painted lines → scrolled; visible content is last 4 hits on rows 1-4.
+    for (let i = 0; i < 7; i++) {
+      const isCollapse = i === 5; // second-to-last content in visible window
+      hits.notePaint({
+        lines: [`line-${i}${isCollapse ? ' ▸ nested' : ''}`],
+        lineHits: [
+          isCollapse
+            ? { kind: 'collapse', parentId: 'p-mid' }
+            : { kind: 'none' },
+        ],
+      });
+    }
+    // Visible hits: 3,4,5,6 on rows 1-4. Row 5 = empty cursor.
+    expect(hits.lineAtScreenRow(1, screenRows)).toContain('line-3');
+    expect(hits.lineAtScreenRow(3, screenRows)).toContain('line-5');
+    expect(hits.hitAtScreenRow(3, screenRows)).toEqual({
+      kind: 'collapse',
+      parentId: 'p-mid',
+    });
+    expect(hits.hitAtScreenRow(4, screenRows)?.kind).toBe('none');
+    expect(hits.hitAtScreenRow(5, screenRows)).toBeNull();
+    // Off-by-one regression: row 2 must be line-4, not the collapse line.
+    expect(hits.lineAtScreenRow(2, screenRows)).toContain('line-4');
+    expect(hits.hitAtScreenRow(2, screenRows)?.kind).toBe('none');
+  });
+
 });

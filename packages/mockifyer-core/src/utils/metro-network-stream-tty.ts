@@ -795,20 +795,28 @@ export class AtlasStreamHitTracker {
     const r = Math.floor(row);
     if (r < 1 || r > screenRows || this.hits.length === 0) return null;
 
-    if (this.hits.length <= screenRows) {
-      const idx = r - 1;
-      if (idx >= this.hits.length) return null;
-      return idx;
+    // Each painted line ends with \n, so the cursor sits on an empty row
+    // below the last content line. Until the buffer fills the screen,
+    // content is top-anchored and the cursor row is blank.
+    if (this.hits.length < screenRows) {
+      if (r > this.hits.length) return null;
+      return r - 1;
     }
 
-    const idx = this.hits.length - screenRows + (r - 1);
+    // Once scrolled, the bottom screen row is the empty cursor line — only
+    // (screenRows - 1) content rows are visible. Using screenRows here was
+    // off-by-one and made hover rewrite the timestamp row above a ▸ line.
+    const contentRows = Math.max(1, screenRows - 1);
+    if (r > contentRows) return null;
+    const idx = this.hits.length - contentRows + (r - 1);
     if (idx < 0 || idx >= this.hits.length) return null;
     return idx;
   }
 
   /**
-   * Map a 1-based mouse row to a hit. Assumes stream content starts at the top
-   * of the screen (CLI clears on start) and then scrolls normally.
+   * Map a 1-based mouse row to a hit. Content is top-anchored until the
+   * buffer fills the screen; after scroll, the last (screenRows-1) hits sit
+   * on rows 1..(screenRows-1) with an empty cursor row at the bottom.
    */
   hitAtScreenRow(row: number, screenRows: number): AtlasStreamLineHit | null {
     const idx = this.indexAtScreenRow(row, screenRows);
