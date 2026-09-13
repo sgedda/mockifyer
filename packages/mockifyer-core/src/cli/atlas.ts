@@ -44,6 +44,8 @@ import {
   enableAtlasStreamMouseTracking,
   disableAtlasStreamMouseTracking,
   consumeAtlasStreamMouseInput,
+  formatAtlasStreamHoverLine,
+  rewriteAtlasStreamScreenRow,
 } from "../utils/metro-network-stream-tty";
 import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 
@@ -286,6 +288,9 @@ function attachInputHandlers(
   view: MetroAtlasStreamView,
   hits: AtlasStreamHitTracker,
   applyPaint: (paint: AtlasStreamPaint) => void,
+  clearHover: () => void,
+  setHoverRow: (row: number | null) => void,
+  getHoverRow: () => number | null,
   onQuit: () => void,
 ): void {
   if (!process.stdin.isTTY) {
@@ -397,9 +402,30 @@ function attachInputHandlers(
     }
   };
 
+  const handleMoves = (
+    moves: ReturnType<typeof consumeAtlasStreamMouseInput>["moves"],
+  ): void => {
+    if (moves.length === 0) return;
+    const move = moves[moves.length - 1]!;
+    const rows = process.stdout.rows || 24;
+    const row = move.row;
+    if (getHoverRow() === row) return;
+
+    clearHover();
+
+    const hit = hits.hitAtScreenRow(row, rows);
+    if (hit?.kind !== "collapse" && hit?.kind !== "expand-footer") return;
+
+    const original = hits.lineAtScreenRow(row, rows);
+    if (original == null) return;
+    rewriteAtlasStreamScreenRow(row, formatAtlasStreamHoverLine(original));
+    setHoverRow(row);
+  };
+
   process.stdin.on("data", (chunk: string) => {
     pending += chunk;
-    const { clicks, rest } = consumeAtlasStreamMouseInput(pending);
+    const { clicks, moves, rest } = consumeAtlasStreamMouseInput(pending);
+    handleMoves(moves);
     handleClicks(clicks);
     const incomplete = rest.match(/\u001b\[<?[\d;]*$/);
     if (incomplete) {
@@ -482,7 +508,20 @@ async function main(): Promise<void> {
     Math.max(200, (process.stdout.rows || 24) * 4),
   );
 
+  let hoverRow: number | null = null;
+  const clearHover = (): void => {
+    if (hoverRow == null) return;
+    const rows = process.stdout.rows || 24;
+    const original = hits.lineAtScreenRow(hoverRow, rows);
+    if (original != null) {
+      rewriteAtlasStreamScreenRow(hoverRow, original);
+    }
+    hoverRow = null;
+  };
+
   const applyPaint = (paint: AtlasStreamPaint): void => {
+    // Drop hover highlight before any paint — stream/redraw invalidates that row.
+    hoverRow = null;
     hits.notePaint(paint);
     writeAtlasStreamPaint(paint);
   };
@@ -543,7 +582,18 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  attachInputHandlers(base, view, hits, applyPaint, quit);
+  attachInputHandlers(
+    base,
+    view,
+    hits,
+    applyPaint,
+    clearHover,
+    (row) => {
+      hoverRow = row;
+    },
+    () => hoverRow,
+    quit,
+  );
 
   sseReq = startSseStream(
     base,

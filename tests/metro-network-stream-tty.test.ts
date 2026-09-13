@@ -7,6 +7,7 @@ import {
   writeAtlasStreamPaint,
   AtlasStreamHitTracker,
   consumeAtlasStreamMouseInput,
+  formatAtlasStreamHoverLine,
 } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 
@@ -352,10 +353,39 @@ describe('metro-network-stream-tty', () => {
   });
 
   it('consumeAtlasStreamMouseInput parses SGR click sequences', () => {
-    const { clicks, rest } = consumeAtlasStreamMouseInput('\u001b[<0;12;8M' + 'e');
+    const { clicks, moves: _moves, rest } = consumeAtlasStreamMouseInput('\u001b[<0;12;8M' + 'e');
     expect(clicks).toHaveLength(1);
     expect(clicks[0]).toMatchObject({ button: 0, col: 12, row: 8, release: false });
     expect(rest).toBe('e');
+  });
+
+
+  it('formatAtlasStreamHoverLine swaps ▸/▾ to filled icons', () => {
+    const line = '│  └─ ▸ 2 nested  · click/e expand';
+    const hovered = formatAtlasStreamHoverLine(line);
+    expect(hovered).toContain('▶');
+    expect(hovered).not.toContain('▸');
+    expect(formatAtlasStreamHoverLine('plain')).toBe('plain');
+  });
+
+  it('consumeAtlasStreamMouseInput separates clicks from hover moves', () => {
+    const { clicks, moves, rest } = consumeAtlasStreamMouseInput(
+      '\u001b[<35;10;5M' + '\u001b[<0;10;5M' + 'x'
+    );
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toMatchObject({ button: 35, row: 5, motion: true });
+    expect(clicks).toHaveLength(1);
+    expect(clicks[0]).toMatchObject({ button: 0, row: 5, motion: false });
+    expect(rest).toBe('x');
+  });
+
+  it('hit tracker stores line text for hover restore', () => {
+    const hits = new AtlasStreamHitTracker(50);
+    hits.notePaint({
+      lines: ['│  └─ ▸ 1 nested'],
+      lineHits: [{ kind: 'collapse', parentId: 'p1' }],
+    });
+    expect(hits.lineAtScreenRow(1, 24)).toContain('▸');
   });
 
 });

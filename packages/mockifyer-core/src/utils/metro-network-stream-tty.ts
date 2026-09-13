@@ -212,6 +212,16 @@ export function formatAtlasStreamCollapseSummary(
   return `${theme.muted("│  └─ ")}${glyph} ${parts.join(" · ")}${hint}`;
 }
 
+/**
+ * Hover affordance for a clickable collapse/expand row: filled triangle + bold.
+ * Safe no-op when the line has no ▸/▾ glyph.
+ */
+export function formatAtlasStreamHoverLine(line: string): string {
+  if (!line.includes("▸") && !line.includes("▾")) return line;
+  return line
+    .replace("▸", `${ESC}1m▶${ESC}22m`)
+    .replace("▾", `${ESC}1m▼${ESC}22m`);
+}
 
 /** Footer under an expanded child list (click to collapse). */
 export function formatAtlasStreamExpandFooter(
@@ -702,6 +712,7 @@ export function writeAtlasStreamPaint(
 /** Track painted line hits for mouse click → parent expand/collapse. */
 export class AtlasStreamHitTracker {
   private hits: AtlasStreamLineHit[] = [];
+  private lines: string[] = [];
   private maxLines: number;
 
   constructor(maxLines = 200) {
@@ -712,16 +723,19 @@ export class AtlasStreamHitTracker {
     this.maxLines = Math.max(20, n);
     if (this.hits.length > this.maxLines) {
       this.hits = this.hits.slice(-this.maxLines);
+      this.lines = this.lines.slice(-this.maxLines);
     }
   }
 
   notePaint(paint: AtlasStreamPaint): void {
     if (paint.clearScreen) {
       this.hits = [];
+      this.lines = [];
     } else {
       const erase = paint.erasePreviousLines ?? 0;
       if (erase > 0) {
         this.hits.splice(Math.max(0, this.hits.length - erase), erase);
+        this.lines.splice(Math.max(0, this.lines.length - erase), erase);
       }
     }
     const lineHits =
@@ -729,17 +743,15 @@ export class AtlasStreamHitTracker {
       paint.lines.map((): AtlasStreamLineHit => ({ kind: "none" }));
     for (let i = 0; i < paint.lines.length; i++) {
       this.hits.push(lineHits[i] ?? { kind: "none" });
+      this.lines.push(paint.lines[i] ?? "");
     }
     if (this.hits.length > this.maxLines) {
       this.hits = this.hits.slice(-this.maxLines);
+      this.lines = this.lines.slice(-this.maxLines);
     }
   }
 
-  /**
-   * Map a 1-based mouse row to a hit. Assumes stream content starts at the top
-   * of the screen (CLI clears on start) and then scrolls normally.
-   */
-  hitAtScreenRow(row: number, screenRows: number): AtlasStreamLineHit | null {
+  private indexAtScreenRow(row: number, screenRows: number): number | null {
     if (
       !Number.isFinite(row) ||
       !Number.isFinite(screenRows) ||
@@ -753,25 +765,46 @@ export class AtlasStreamHitTracker {
     if (this.hits.length <= screenRows) {
       const idx = r - 1;
       if (idx >= this.hits.length) return null;
-      return this.hits[idx] ?? null;
+      return idx;
     }
 
     const idx = this.hits.length - screenRows + (r - 1);
     if (idx < 0 || idx >= this.hits.length) return null;
+    return idx;
+  }
+
+  /**
+   * Map a 1-based mouse row to a hit. Assumes stream content starts at the top
+   * of the screen (CLI clears on start) and then scrolls normally.
+   */
+  hitAtScreenRow(row: number, screenRows: number): AtlasStreamLineHit | null {
+    const idx = this.indexAtScreenRow(row, screenRows);
+    if (idx == null) return null;
     return this.hits[idx] ?? null;
+  }
+
+  /** Painted text for a 1-based screen row (for hover restore). */
+  lineAtScreenRow(row: number, screenRows: number): string | null {
+    const idx = this.indexAtScreenRow(row, screenRows);
+    if (idx == null) return null;
+    return this.lines[idx] ?? null;
   }
 }
 
+/**
+ * Enable click + hover motion reporting (xterm any-event + SGR).
+ * 1003 includes clicks; 1006 uses CSI `<` encoding.
+ */
 export function enableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  write(`${ESC}?1000h${ESC}?1006h`);
+  write(`${ESC}?1003h${ESC}?1006h`);
 }
 
 export function disableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  write(`${ESC}?1000l${ESC}?1006l`);
+  write(`${ESC}?1003l${ESC}?1006l`);
 }
 
 export interface AtlasStreamMouseClick {
@@ -779,28 +812,49 @@ export interface AtlasStreamMouseClick {
   col: number;
   row: number;
   release: boolean;
+  /** True for mouse-move reports (button code ≥ 32). */
+  motion: boolean;
 }
 
-/** Parse xterm SGR mouse sequences; return clicks + leftover key text. */
+/** Rewrite one screen row in place (save/restore cursor). */
+export function rewriteAtlasStreamScreenRow(
+  row: number,
+  text: string,
+  write: (s: string) => void = (s) => process.stdout.write(s),
+): void {
+  if (!Number.isFinite(row) || row < 1) return;
+  // DECSC/DECRC are ESC 7 / ESC 8 (not CSI).
+  write(
+    `\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${text}\u001b8`,
+  );
+}
+
+/** Parse xterm SGR mouse sequences; return clicks/moves + leftover key text. */
 export function consumeAtlasStreamMouseInput(chunk: string): {
   clicks: AtlasStreamMouseClick[];
+  moves: AtlasStreamMouseClick[];
   rest: string;
 } {
   const clicks: AtlasStreamMouseClick[] = [];
+  const moves: AtlasStreamMouseClick[] = [];
   const re = /\u001b\[<(\d+);(\d+);(\d+)([Mm])/g;
   let match: RegExpExecArray | null;
   let cursor = 0;
   const kept: string[] = [];
   while ((match = re.exec(chunk)) != null) {
     if (match.index > cursor) kept.push(chunk.slice(cursor, match.index));
-    clicks.push({
-      button: Number.parseInt(match[1]!, 10),
+    const button = Number.parseInt(match[1]!, 10);
+    const event: AtlasStreamMouseClick = {
+      button,
       col: Number.parseInt(match[2]!, 10),
       row: Number.parseInt(match[3]!, 10),
       release: match[4] === "m",
-    });
+      motion: button >= 32,
+    };
+    if (event.motion) moves.push(event);
+    else clicks.push(event);
     cursor = match.index + match[0].length;
   }
   if (cursor < chunk.length) kept.push(chunk.slice(cursor));
-  return { clicks, rest: kept.join("") };
+  return { clicks, moves, rest: kept.join("") };
 }
