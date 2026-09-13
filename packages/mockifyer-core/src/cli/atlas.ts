@@ -13,11 +13,13 @@
  *   npx @sgedda/mockifyer-core mockifyer-atlas
  *
  * Keys (interactive session):
+ *   click  expand/collapse a ▸ nested row (mouse reporting)
  *   a  analyze buffer
  *   s  snapshot hops → mock-data/atlas-html/{atlas-events.json,atlas.ndjson,atlas.har}
  *   r  render Atlas HTML from buffer + print browse URL
  *   o  open rendered Atlas HTML in browser
- *   e  toggle collapse nested (child) hops
+ *   e  expand/collapse the last nested group
+ *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
  *   c  clear Metro ring buffer
@@ -27,7 +29,6 @@
 
 import http from "http";
 import { exec } from "child_process";
-import readline from "readline";
 import type { NetworkEvent } from "../utils/network-event-types";
 import {
   resolveMetroNetworkStreamPort,
@@ -39,7 +40,12 @@ import {
   createAtlasStreamColorTheme,
   shouldUseAtlasStreamColor,
   writeAtlasStreamPaint,
+  AtlasStreamHitTracker,
+  enableAtlasStreamMouseTracking,
+  disableAtlasStreamMouseTracking,
+  consumeAtlasStreamMouseInput,
 } from "../utils/metro-network-stream-tty";
+import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
 
 interface CliOptions {
   port?: number;
@@ -85,13 +91,15 @@ Streams raw traffic from Metro's in-memory hop buffer (POST /mockifyer-network-e
 Does not require the dashboard GUI.
 
 Keys:
+  ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
+  ${theme.info("e")}  Expand/collapse the last nested group
+  ${theme.info("g")}  Toggle default collapse for new nested hops
+  ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
+  ${theme.info("f")}  Toggle errors-only filter
   ${theme.info("a")}  Analyze buffer (counts, slow, errors)
   ${theme.info("s")}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
   ${theme.info("r")}  Render Atlas HTML from buffer hops
   ${theme.info("o")}  Open Atlas HTML in the default browser
-  ${theme.info("e")}  Toggle collapse nested child hops (▸ summary vs tree)
-  ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
-  ${theme.info("f")}  Toggle errors-only filter
   ${theme.info("c")}  Clear Metro hop buffer
   ${theme.info("h")}  Show this help
   ${theme.info("q")}  Quit
@@ -186,18 +194,20 @@ function openUrl(url: string): void {
   });
 }
 
-function printBanner(base: string, view: MetroAtlasStreamView): void {
+function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint {
   const theme = createAtlasStreamColorTheme(view.colorEnabled);
-  console.log(
+  const lines = [
     `${theme.bold("[atlas]")} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
-  );
-  console.log(
     theme.muted(
-      "keys: a analyze · s snapshot · r render · o open · e/d/f view · c clear · h help · q quit",
+      "click ▸ nested to expand · e last · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
-  );
-  console.log(view.statusLine());
-  console.log("");
+    view.statusLine(),
+    "",
+  ];
+  return {
+    lines,
+    lineHits: lines.map(() => ({ kind: "none" as const })),
+  };
 }
 
 async function runAnalyze(
@@ -271,94 +281,135 @@ async function runClear(
   view.invalidateRewrite();
 }
 
-function attachKeyHandlers(
+function attachInputHandlers(
   base: string,
   view: MetroAtlasStreamView,
+  hits: AtlasStreamHitTracker,
+  applyPaint: (paint: AtlasStreamPaint) => void,
   onQuit: () => void,
 ): void {
   if (!process.stdin.isTTY) {
     console.log(
-      "[atlas] stdin is not a TTY — streaming only (no interactive keys)",
+      "[atlas] stdin is not a TTY — streaming only (no click/keys)",
     );
     return;
   }
 
-  readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  enableAtlasStreamMouseTracking();
 
   let busy = false;
-  process.stdin.on("keypress", (_str, key) => {
-    if (!key) return;
-    if (key.ctrl && key.name === "c") {
-      onQuit();
-      return;
-    }
-    const ch = (key.name || "").toLowerCase();
+  let pending = "";
+
+  const run = async (fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
+    busy = true;
+    try {
+      await fn();
+    } catch (e) {
+      console.error(`[atlas] ${(e as Error).message}`);
+    } finally {
+      busy = false;
+    }
+  };
 
-    const run = async (fn: () => Promise<void>): Promise<void> => {
-      busy = true;
-      try {
-        await fn();
-      } catch (e) {
-        console.error(`[atlas] ${(e as Error).message}`);
-      } finally {
-        busy = false;
-      }
-    };
-
-    if (ch === "q" || key.name === "escape") {
+  const handleKey = (ch: string): void => {
+    if (ch === "\u0003") {
       onQuit();
       return;
     }
-    if (ch === "h") {
+    const key = ch.toLowerCase();
+    if (key === "q" || ch === "\u001b") {
+      onQuit();
+      return;
+    }
+    if (key === "h") {
       showHelp(createAtlasStreamColorTheme(view.colorEnabled));
       view.invalidateRewrite();
       return;
     }
-    if (ch === "e") {
+    if (key === "e") {
+      const parentId = view.getLastInteractiveParentId();
+      if (parentId) {
+        applyPaint(view.toggleParentExpanded(parentId));
+      } else {
+        view.collapseChildren = !view.collapseChildren;
+        console.log(view.statusLine());
+        view.invalidateRewrite();
+      }
+      return;
+    }
+    if (key === "g") {
       view.collapseChildren = !view.collapseChildren;
       console.log(view.statusLine());
       view.invalidateRewrite();
       return;
     }
-    if (ch === "d") {
+    if (key === "d") {
       view.collapseDuplicates = !view.collapseDuplicates;
       console.log(view.statusLine());
       view.invalidateRewrite();
       return;
     }
-    if (ch === "f") {
+    if (key === "f") {
       view.errorsOnly = !view.errorsOnly;
       console.log(view.statusLine());
       view.invalidateRewrite();
       return;
     }
-    if (ch === "a") {
+    if (key === "a") {
       void run(() => runAnalyze(base, view));
       return;
     }
-    if (ch === "s") {
+    if (key === "s") {
       void run(() => runSnapshot(base, view));
       return;
     }
-    if (ch === "r") {
+    if (key === "r") {
       void run(async () => {
         await runRender(base, view);
       });
       return;
     }
-    if (ch === "o") {
+    if (key === "o") {
       void run(async () => {
         const browse = await runRender(base, view);
         if (browse) openUrl(browse);
       });
       return;
     }
-    if (ch === "c") {
+    if (key === "c") {
       void run(() => runClear(base, view));
     }
+  };
+
+  const handleClicks = (
+    clicks: ReturnType<typeof consumeAtlasStreamMouseInput>["clicks"],
+  ): void => {
+    for (const click of clicks) {
+      if (click.release || click.button !== 0) continue;
+      const hit = hits.hitAtScreenRow(click.row, process.stdout.rows || 24);
+      if (hit?.kind === "collapse" || hit?.kind === "expand-footer") {
+        applyPaint(view.toggleParentExpanded(hit.parentId));
+      }
+    }
+  };
+
+  process.stdin.on("data", (chunk: string) => {
+    pending += chunk;
+    const { clicks, rest } = consumeAtlasStreamMouseInput(pending);
+    handleClicks(clicks);
+    const incomplete = rest.match(/\u001b\[<?[\d;]*$/);
+    if (incomplete) {
+      pending = incomplete[0]!;
+      const keys = rest.slice(0, rest.length - pending.length);
+      for (const ch of keys) handleKey(ch);
+      return;
+    }
+    pending = "";
+    for (const ch of rest) handleKey(ch);
   });
 }
 
@@ -427,7 +478,14 @@ async function main(): Promise<void> {
   });
 
   const base = metroBase(options);
-  printBanner(base, view);
+  const hits = new AtlasStreamHitTracker(
+    Math.max(200, (process.stdout.rows || 24) * 4),
+  );
+
+  const applyPaint = (paint: AtlasStreamPaint): void => {
+    hits.notePaint(paint);
+    writeAtlasStreamPaint(paint);
+  };
 
   try {
     await jsonGet(`${base}/mockifyer-network-events?limit=0`);
@@ -438,8 +496,37 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Clear so mouse row → hit mapping starts at the top of the screen.
+  if (process.stdout.isTTY) {
+    process.stdout.write("\u001b[2J\u001b[H");
+  }
+  applyPaint(bannerPaint(base, view));
+
+  // Keep hit rows aligned when key handlers print via console.log / error.
+  const origLog = console.log.bind(console);
+  const origErr = console.error.bind(console);
+  console.log = (...args: unknown[]): void => {
+    const rendered = args.map((a) => String(a)).join(" ");
+    const lines = rendered.length === 0 ? [""] : rendered.split("\n");
+    hits.notePaint({
+      lines,
+      lineHits: lines.map(() => ({ kind: "none" as const })),
+    });
+    origLog(...args);
+  };
+  console.error = (...args: unknown[]): void => {
+    const rendered = args.map((a) => String(a)).join(" ");
+    const lines = rendered.length === 0 ? [""] : rendered.split("\n");
+    hits.notePaint({
+      lines,
+      lineHits: lines.map(() => ({ kind: "none" as const })),
+    });
+    origErr(...args);
+  };
+
   let sseReq: http.ClientRequest | null = null;
   const quit = (): void => {
+    disableAtlasStreamMouseTracking();
     console.log("\n[atlas] bye");
     try {
       sseReq?.destroy();
@@ -456,13 +543,13 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  attachKeyHandlers(base, view, quit);
+  attachInputHandlers(base, view, hits, applyPaint, quit);
 
   sseReq = startSseStream(
     base,
     options.backlog !== false,
     (event) => {
-      writeAtlasStreamPaint(view.push(event));
+      applyPaint(view.push(event));
     },
     (err) => {
       console.error(`[atlas] stream: ${err.message}`);

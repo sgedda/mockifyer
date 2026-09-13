@@ -5,6 +5,8 @@ import {
   MetroAtlasStreamView,
   shouldUseAtlasStreamColor,
   writeAtlasStreamPaint,
+  AtlasStreamHitTracker,
+  consumeAtlasStreamMouseInput,
 } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 
@@ -214,4 +216,62 @@ describe('metro-network-stream-tty', () => {
     expect(child.lines[0]).toContain('└─');
     expect(child.lines[0]).toContain('/c');
   });
+
+  it('toggleParentExpanded expands and collapses a nested group', () => {
+    const view = new MetroAtlasStreamView({
+      color: false,
+      collapseChildren: true,
+      collapseDuplicates: false,
+    });
+    view.push(
+      hop({
+        requestId: 'root',
+        method: 'GET',
+        url: 'https://a.test/',
+        path: '/',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c1',
+        parentRequestId: 'root',
+        method: 'GET',
+        url: 'https://a.test/a',
+        path: '/a',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    const expanded = view.toggleParentExpanded('root');
+    expect(expanded.lines.some((l) => l.includes('/a'))).toBe(true);
+    expect(view.isParentExpanded('root')).toBe(true);
+    const collapsed = view.toggleParentExpanded('root');
+    expect(collapsed.lines[0]).toContain('nested');
+    expect(collapsed.lineHits?.[0]?.kind).toBe('collapse');
+    expect(view.isParentExpanded('root')).toBe(false);
+  });
+
+  it('hit tracker maps mouse rows from top before scroll', () => {
+    const hits = new AtlasStreamHitTracker(50);
+    hits.notePaint({
+      lines: ['a', 'b', '▸ nested'],
+      lineHits: [
+        { kind: 'none' },
+        { kind: 'none' },
+        { kind: 'collapse', parentId: 'p1' },
+      ],
+    });
+    expect(hits.hitAtScreenRow(3, 24)?.kind).toBe('collapse');
+    expect(hits.hitAtScreenRow(1, 24)?.kind).toBe('none');
+  });
+
+  it('consumeAtlasStreamMouseInput parses SGR click sequences', () => {
+    const { clicks, rest } = consumeAtlasStreamMouseInput('\u001b[<0;12;8M' + 'e');
+    expect(clicks).toHaveLength(1);
+    expect(clicks[0]).toMatchObject({ button: 0, col: 12, row: 8, release: false });
+    expect(rest).toBe('e');
+  });
+
 });

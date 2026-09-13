@@ -207,9 +207,22 @@ export function formatAtlasStreamCollapseSummary(
   if (slow) parts.push(theme.warn(`${slow} slow`));
   if (totalMs > 0) parts.push(theme.muted(`${Math.round(totalMs)}ms`));
   const hint =
-    options?.expandedHint === false ? "" : theme.muted("  · e expand");
+    options?.expandedHint === false ? "" : theme.muted("  · click/e expand");
   const glyph = theme.muted("▸");
   return `${theme.muted("│  └─ ")}${glyph} ${parts.join(" · ")}${hint}`;
+}
+
+
+/** Footer under an expanded child list (click to collapse). */
+export function formatAtlasStreamExpandFooter(
+  _parentId: string,
+  childCount: number,
+  options?: { color?: AtlasStreamColorTheme },
+): string {
+  const theme = options?.color ?? createAtlasStreamColorTheme(false);
+  return `${theme.muted("│  └─ ")}${theme.muted("▾")} ${theme.muted(
+    `${childCount} nested · click/e collapse`,
+  )}`;
 }
 
 export function formatAtlasStreamAnalysisRich(
@@ -245,7 +258,7 @@ export function formatAtlasStreamAnalysisRich(
 export interface AtlasStreamViewOptions {
   color?: boolean;
   isTTY?: boolean;
-  /** Collapse child hops under parent into a summary line (default true). */
+  /** Default collapse for parents that are not click-expanded (default true). */
   collapseChildren?: boolean;
   /** Collapse consecutive identical root hops into ×N (default true). */
   collapseDuplicates?: boolean;
@@ -255,6 +268,11 @@ export interface AtlasStreamViewOptions {
   slowMs?: number;
 }
 
+export type AtlasStreamLineHit =
+  | { kind: "none" }
+  | { kind: "collapse"; parentId: string }
+  | { kind: "expand-footer"; parentId: string };
+
 export interface AtlasStreamPaint {
   /** Full lines to write (caller should print each with newline, except rewrite). */
   lines: string[];
@@ -263,6 +281,8 @@ export interface AtlasStreamPaint {
    * (used to refresh a collapse / duplicate summary in place).
    */
   erasePreviousLines?: number;
+  /** Parallel to `lines` — mouse click targets. */
+  lineHits?: AtlasStreamLineHit[];
 }
 
 interface DuplicateStreak {
@@ -272,7 +292,7 @@ interface DuplicateStreak {
 }
 
 /**
- * Stateful stream presenter: colors, tree indent, child collapse, duplicate ×N.
+ * Stateful stream presenter with per-parent expand/collapse (click or `e` on last).
  */
 export class MetroAtlasStreamView {
   private theme: AtlasStreamColorTheme;
@@ -284,10 +304,19 @@ export class MetroAtlasStreamView {
 
   private readonly childrenByParent = new Map<string, NetworkEvent[]>();
   private readonly eventsByRequestId = new Map<string, NetworkEvent>();
+  /** Per-parent override; when unset, falls back to `!collapseChildren`. */
+  private readonly expandOverride = new Map<string, boolean>();
+  private readonly expandedBlocks = new Map<
+    string,
+    { childLines: number; hasFooter: boolean }
+  >();
   private duplicate: DuplicateStreak | null = null;
-  /** Last paint was a rewritable summary (collapse or duplicate). */
-  private lastRewritable: "collapse" | "duplicate" | null = null;
+  /** Last paint was a rewritable summary (collapse, duplicate, or expand footer). */
+  private lastRewritable: "collapse" | "duplicate" | "expand-footer" | null =
+    null;
   private lastCollapseParentId: string | null = null;
+  /** Most recent collapse/footer parent — keyboard `e` toggles this item. */
+  private lastInteractiveParentId: string | null = null;
 
   constructor(options?: AtlasStreamViewOptions) {
     this.theme = createAtlasStreamColorTheme(
@@ -311,9 +340,20 @@ export class MetroAtlasStreamView {
     this.theme = createAtlasStreamColorTheme(enabled);
   }
 
+  /** Call after printing unrelated console output so ANSI erase cannot wipe it. */
   invalidateRewrite(): void {
     this.lastRewritable = null;
     this.lastCollapseParentId = null;
+  }
+
+  getLastInteractiveParentId(): string | null {
+    return this.lastInteractiveParentId;
+  }
+
+  isParentExpanded(parentId: string): boolean {
+    const override = this.expandOverride.get(parentId);
+    if (override !== undefined) return override;
+    return this.collapseChildren === false;
   }
 
   statusLine(): string {
@@ -324,7 +364,7 @@ export class MetroAtlasStreamView {
       this.theme.enabled ? "color" : "plain",
     ];
     return this.theme.muted(
-      `[atlas] view · ${bits.join(" · ")}  (e/d/f toggle)`,
+      `[atlas] view · ${bits.join(" · ")}  (click ▸ · e last · g/d/f)`,
     );
   }
 
@@ -342,6 +382,94 @@ export class MetroAtlasStreamView {
     }
 
     return this.paintRoot(event);
+  }
+
+  /** Toggle one parent (mouse click / keyboard `e` on last interactive row). */
+  toggleParentExpanded(parentId: string): AtlasStreamPaint {
+    const children = this.childrenByParent.get(parentId) ?? [];
+    if (children.length === 0) return { lines: [] };
+    if (this.isParentExpanded(parentId)) {
+      return this.collapseParentBlock(parentId, children);
+    }
+    return this.expandParentBlock(parentId, children);
+  }
+
+  private expandParentBlock(
+    parentId: string,
+    children: NetworkEvent[],
+  ): AtlasStreamPaint {
+    this.expandOverride.set(parentId, true);
+    this.lastInteractiveParentId = parentId;
+    const visible = this.visibleChildren(children);
+    const lines = visible.map((c, i) =>
+      formatAtlasStreamHopLine(c, {
+        color: this.theme,
+        depth: 1,
+        isLast: i === visible.length - 1,
+        maxPathCols: this.maxPathCols,
+      }),
+    );
+    lines.push(
+      formatAtlasStreamExpandFooter(parentId, children.length, {
+        color: this.theme,
+      }),
+    );
+
+    const erase =
+      this.lastRewritable === "collapse" &&
+      this.lastCollapseParentId === parentId
+        ? 1
+        : 0;
+
+    this.expandedBlocks.set(parentId, {
+      childLines: visible.length,
+      hasFooter: true,
+    });
+    this.lastRewritable = "expand-footer";
+    this.lastCollapseParentId = parentId;
+    this.duplicate = null;
+
+    const lineHits: AtlasStreamLineHit[] = [
+      ...visible.map((): AtlasStreamLineHit => ({ kind: "none" })),
+      { kind: "expand-footer", parentId },
+    ];
+    return { lines, erasePreviousLines: erase, lineHits };
+  }
+
+  private collapseParentBlock(
+    parentId: string,
+    children: NetworkEvent[],
+  ): AtlasStreamPaint {
+    const block = this.expandedBlocks.get(parentId);
+    const erase = block
+      ? block.childLines + (block.hasFooter ? 1 : 0)
+      : this.lastRewritable === "collapse" &&
+          this.lastCollapseParentId === parentId
+        ? 1
+        : 0;
+    this.expandOverride.set(parentId, false);
+    this.expandedBlocks.delete(parentId);
+    this.lastInteractiveParentId = parentId;
+
+    const parent = this.eventsByRequestId.get(parentId);
+    const summary = formatAtlasStreamCollapseSummary(
+      parent ?? children[0]!,
+      children,
+      { color: this.theme },
+    );
+    this.lastRewritable = "collapse";
+    this.lastCollapseParentId = parentId;
+    this.duplicate = null;
+    return {
+      lines: [summary],
+      erasePreviousLines: erase,
+      lineHits: [{ kind: "collapse", parentId }],
+    };
+  }
+
+  private visibleChildren(children: NetworkEvent[]): NetworkEvent[] {
+    if (!this.errorsOnly) return children;
+    return children.filter((c) => isMetroNetworkErrorHop(c));
   }
 
   private paintRoot(event: NetworkEvent): AtlasStreamPaint {
@@ -364,10 +492,12 @@ export class MetroAtlasStreamView {
       });
       const erase = this.lastRewritable === "duplicate" ? 1 : 0;
       this.lastRewritable = "duplicate";
-      if (erase > 0) {
-        this.lastCollapseParentId = null;
-      }
-      return { lines: [line], erasePreviousLines: erase };
+      // Keep lastCollapseParentId so interleaved roots do not detach child rewrites.
+      return {
+        lines: [line],
+        erasePreviousLines: erase,
+        lineHits: [{ kind: "none" }],
+      };
     }
 
     this.duplicate = { key, count: 1, event };
@@ -379,6 +509,7 @@ export class MetroAtlasStreamView {
           maxPathCols: this.maxPathCols,
         }),
       ],
+      lineHits: [{ kind: "none" }],
     };
   }
 
@@ -393,8 +524,10 @@ export class MetroAtlasStreamView {
     }
 
     this.duplicate = null;
+    this.lastInteractiveParentId = parentId;
+    const expanded = this.isParentExpanded(parentId);
 
-    if (this.collapseChildren) {
+    if (!expanded) {
       const parent = this.eventsByRequestId.get(parentId);
       const summary = formatAtlasStreamCollapseSummary(
         parent ?? event,
@@ -408,23 +541,46 @@ export class MetroAtlasStreamView {
           : 0;
       this.lastRewritable = "collapse";
       this.lastCollapseParentId = parentId;
-      return { lines: [summary], erasePreviousLines: erase };
+      return {
+        lines: [summary],
+        erasePreviousLines: erase,
+        lineHits: [{ kind: "collapse", parentId }],
+      };
     }
 
-    this.lastRewritable = null;
-    this.lastCollapseParentId = null;
+    const block = this.expandedBlocks.get(parentId);
+    const eraseFooter =
+      this.lastRewritable === "expand-footer" &&
+      this.lastCollapseParentId === parentId &&
+      block?.hasFooter
+        ? 1
+        : 0;
+
+    const childLine = formatAtlasStreamHopLine(event, {
+      color: this.theme,
+      depth: 1,
+      isLast: true,
+      maxPathCols: this.maxPathCols,
+    });
+    const footer = formatAtlasStreamExpandFooter(parentId, children.length, {
+      color: this.theme,
+    });
+    this.expandedBlocks.set(parentId, {
+      childLines: (block?.childLines ?? 0) + 1,
+      hasFooter: true,
+    });
+    this.expandOverride.set(parentId, true);
+    this.lastRewritable = "expand-footer";
+    this.lastCollapseParentId = parentId;
     return {
-      lines: [
-        formatAtlasStreamHopLine(event, {
-          color: this.theme,
-          depth: 1,
-          isLast: true,
-          maxPathCols: this.maxPathCols,
-        }),
-      ],
+      lines: [childLine, footer],
+      erasePreviousLines: eraseFooter,
+      lineHits: [{ kind: "none" }, { kind: "expand-footer", parentId }],
     };
   }
 }
+
+
 
 function duplicateKey(event: NetworkEvent): string {
   const method = (event.method || "").toUpperCase();
@@ -434,7 +590,6 @@ function duplicateKey(event: NetworkEvent): string {
   return `${method}|${path}|${status}|${source}`;
 }
 
-/** Apply {@link AtlasStreamPaint} to stdout. */
 export function writeAtlasStreamPaint(
   paint: AtlasStreamPaint,
   write: (s: string) => void = (s) => {
@@ -449,4 +604,106 @@ export function writeAtlasStreamPaint(
   for (const line of paint.lines) {
     write(`${line}\n`);
   }
+}
+
+/** Track painted line hits for mouse click → parent expand/collapse. */
+export class AtlasStreamHitTracker {
+  private hits: AtlasStreamLineHit[] = [];
+  private maxLines: number;
+
+  constructor(maxLines = 200) {
+    this.maxLines = Math.max(20, maxLines);
+  }
+
+  setMaxLines(n: number): void {
+    this.maxLines = Math.max(20, n);
+    if (this.hits.length > this.maxLines) {
+      this.hits = this.hits.slice(-this.maxLines);
+    }
+  }
+
+  notePaint(paint: AtlasStreamPaint): void {
+    const erase = paint.erasePreviousLines ?? 0;
+    if (erase > 0) {
+      this.hits.splice(Math.max(0, this.hits.length - erase), erase);
+    }
+    const lineHits =
+      paint.lineHits ??
+      paint.lines.map((): AtlasStreamLineHit => ({ kind: "none" }));
+    for (let i = 0; i < paint.lines.length; i++) {
+      this.hits.push(lineHits[i] ?? { kind: "none" });
+    }
+    if (this.hits.length > this.maxLines) {
+      this.hits = this.hits.slice(-this.maxLines);
+    }
+  }
+
+  /**
+   * Map a 1-based mouse row to a hit. Assumes stream content starts at the top
+   * of the screen (CLI clears on start) and then scrolls normally.
+   */
+  hitAtScreenRow(row: number, screenRows: number): AtlasStreamLineHit | null {
+    if (
+      !Number.isFinite(row) ||
+      !Number.isFinite(screenRows) ||
+      screenRows < 1
+    ) {
+      return null;
+    }
+    const r = Math.floor(row);
+    if (r < 1 || r > screenRows || this.hits.length === 0) return null;
+
+    if (this.hits.length <= screenRows) {
+      const idx = r - 1;
+      if (idx >= this.hits.length) return null;
+      return this.hits[idx] ?? null;
+    }
+
+    const idx = this.hits.length - screenRows + (r - 1);
+    if (idx < 0 || idx >= this.hits.length) return null;
+    return this.hits[idx] ?? null;
+  }
+}
+
+export function enableAtlasStreamMouseTracking(
+  write: (s: string) => void = (s) => process.stdout.write(s),
+): void {
+  write(`${ESC}?1000h${ESC}?1006h`);
+}
+
+export function disableAtlasStreamMouseTracking(
+  write: (s: string) => void = (s) => process.stdout.write(s),
+): void {
+  write(`${ESC}?1000l${ESC}?1006l`);
+}
+
+export interface AtlasStreamMouseClick {
+  button: number;
+  col: number;
+  row: number;
+  release: boolean;
+}
+
+/** Parse xterm SGR mouse sequences; return clicks + leftover key text. */
+export function consumeAtlasStreamMouseInput(chunk: string): {
+  clicks: AtlasStreamMouseClick[];
+  rest: string;
+} {
+  const clicks: AtlasStreamMouseClick[] = [];
+  const re = /\u001b\[<(\d+);(\d+);(\d+)([Mm])/g;
+  let match: RegExpExecArray | null;
+  let cursor = 0;
+  const kept: string[] = [];
+  while ((match = re.exec(chunk)) != null) {
+    if (match.index > cursor) kept.push(chunk.slice(cursor, match.index));
+    clicks.push({
+      button: Number.parseInt(match[1]!, 10),
+      col: Number.parseInt(match[2]!, 10),
+      row: Number.parseInt(match[3]!, 10),
+      release: match[4] === "m",
+    });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < chunk.length) kept.push(chunk.slice(cursor));
+  return { clicks, rest: kept.join("") };
 }
