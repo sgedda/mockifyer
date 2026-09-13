@@ -1059,12 +1059,14 @@ export function consumeAtlasStreamMouseInput(chunk: string): {
   while ((match = re.exec(chunk)) != null) {
     if (match.index > cursor) kept.push(chunk.slice(cursor, match.index));
     const button = Number.parseInt(match[1]!, 10);
+    // xterm SGR: motion adds 32 (32–63). Wheel is 64/65 (+ modifiers).
+    // Treating button>=32 as motion incorrectly sent wheel to the move path.
     const event: AtlasStreamMouseClick = {
       button,
       col: Number.parseInt(match[2]!, 10),
       row: Number.parseInt(match[3]!, 10),
       release: match[4] === "m",
-      motion: button >= 32,
+      motion: button >= 32 && button < 64,
     };
     if (event.motion) moves.push(event);
     else clicks.push(event);

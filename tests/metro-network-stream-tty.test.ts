@@ -537,6 +537,16 @@ describe('metro-network-stream-tty', () => {
     expect(formatAtlasStreamHoverLine('plain')).toBe('plain');
   });
 
+  it('consumeAtlasStreamMouseInput treats wheel as clicks (not motion)', () => {
+    const { clicks, moves, rest } = consumeAtlasStreamMouseInput(
+      '\u001b[<64;8;4M' + '\u001b[<65;8;4M' + '\u001b[<68;8;4M'
+    );
+    expect(moves).toHaveLength(0);
+    expect(clicks).toHaveLength(3);
+    expect(clicks.map((c) => c.button)).toEqual([64, 65, 68]);
+    expect(rest).toBe('');
+  });
+
   it('consumeAtlasStreamMouseInput separates clicks from hover moves', () => {
     const { clicks, moves, rest } = consumeAtlasStreamMouseInput(
       '\u001b[<35;10;5M' + '\u001b[<0;10;5M' + 'x'

@@ -20,7 +20,7 @@
  *   o  open rendered Atlas HTML in browser
  *   e  expand/collapse all nested groups
  *   p / Space  pause/resume live hops
- *   wheel / PgUp / PgDn  scroll history (pauses live stream)
+ *   wheel / ↑↓ / PgUp / PgDn  scroll history (pauses live stream)
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -96,7 +96,7 @@ Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
   ${theme.info("e")}  Expand/collapse all nested groups
   ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hops
-  ${theme.info("wheel")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
+  ${theme.info("wheel")}/${theme.info("↑↓")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -205,7 +205,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ · wheel/PgUp scroll · e all · p pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ · wheel/↑↓/PgUp scroll · e all · p pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -287,13 +287,20 @@ async function runClear(
   view.invalidateRewrite();
 }
 
+function atlasMouseCoreButton(button: number): number {
+  // Strip shift/meta/ctrl modifier bits (4/8/16) from SGR button codes.
+  return button & ~0x1c;
+}
+
 function isAtlasWheelUp(button: number): boolean {
-  // xterm SGR 1000: 64 = wheel up; some terminals report button 4.
-  return button === 64 || button === 4;
+  // xterm SGR: 64 = wheel up (+ mods); some terminals report button 4.
+  const core = atlasMouseCoreButton(button);
+  return core === 64 || core === 4;
 }
 
 function isAtlasWheelDown(button: number): boolean {
-  return button === 65 || button === 5;
+  const core = atlasMouseCoreButton(button);
+  return core === 65 || core === 5;
 }
 
 function attachInputHandlers(
@@ -336,7 +343,23 @@ function attachInputHandlers(
   };
 
   const paintScrollWindow = (): void => {
-    applyPaint(hits.scrollWindow(scrollBack, screenRows()));
+    const rows = screenRows();
+    const paint = hits.scrollWindow(scrollBack, rows);
+    if (scrollBack > 0) {
+      const maxBack = hits.maxScrollBack(rows);
+      const status = `[atlas] scrolled up ${scrollBack}/${maxBack} · wheel/↑↓/PgUp/PgDn · p resume`;
+      // Replace last viewport row with a sticky status so scroll is obvious.
+      if (paint.lines.length > 0) {
+        paint.lines[paint.lines.length - 1] = status;
+        if (paint.lineHits && paint.lineHits.length > 0) {
+          paint.lineHits[paint.lineHits.length - 1] = { kind: "none" };
+        }
+      } else {
+        paint.lines = [status];
+        paint.lineHits = [{ kind: "none" }];
+      }
+    }
+    applyPaint(paint);
   };
 
   const scrollBy = (delta: number): void => {
@@ -358,7 +381,7 @@ function attachInputHandlers(
       view.paused = true;
       view.skippedWhilePaused = 0;
       console.log(
-        "[atlas] paused — wheel/PgUp/PgDn scroll history · p/Space resume",
+        "[atlas] paused — wheel/↑↓/PgUp/PgDn scroll history · p/Space resume",
       );
     }
     scrollBack = next;
@@ -375,7 +398,7 @@ function attachInputHandlers(
       // reporting, and disabling tracking leaves the user stuck.
       console.log(
         message ??
-          "[atlas] paused — wheel/PgUp/PgDn scroll history · p/Space to resume",
+          "[atlas] paused — wheel/↑↓/PgUp/PgDn scroll history · p/Space to resume",
       );
     } else {
       const skipped = view.skippedWhilePaused;
@@ -483,13 +506,16 @@ function attachInputHandlers(
     }
   };
 
-  const handleMoves = (
-    _moves: ReturnType<typeof consumeAtlasStreamMouseInput>["moves"],
+    const handleMoves = (
+    moves: ReturnType<typeof consumeAtlasStreamMouseInput>["moves"],
   ): void => {
-    // Hover mid-screen rewrites are disabled. Cursor/VS Code terminals do not
-    // restore the stream cursor reliably after CUP, which overwrote timestamp
-    // rows (including older rows that looked fine until the screen filled).
-    // Click-to-expand still works via handleClicks.
+    // Hover mid-screen rewrites are disabled (CUP is unsafe once the buffer
+    // fills). Still honor wheel reports if a terminal marks them as motion.
+    for (const move of moves) {
+      if (move.release) continue;
+      if (isAtlasWheelUp(move.button)) scrollBy(WHEEL_LINES);
+      else if (isAtlasWheelDown(move.button)) scrollBy(-WHEEL_LINES);
+    }
   };
 
   process.stdin.on("data", (chunk: string) => {
@@ -499,7 +525,21 @@ function attachInputHandlers(
     handleClicks(clicks);
 
     let keys = rest;
-    if (/\u001b\[5~/.test(keys) || /\u001b\[6~/.test(keys)) {
+    // Arrow up/down and PageUp/PageDown scroll hop history in-app.
+    if (
+      /\u001b\[A/.test(keys) ||
+      /\u001b\[B/.test(keys) ||
+      /\u001b\[5~/.test(keys) ||
+      /\u001b\[6~/.test(keys)
+    ) {
+      keys = keys.replace(/\u001b\[A/g, () => {
+        scrollBy(1);
+        return "";
+      });
+      keys = keys.replace(/\u001b\[B/g, () => {
+        scrollBy(-1);
+        return "";
+      });
       keys = keys.replace(/\u001b\[5~/g, () => {
         scrollBy(Math.max(1, screenRows() - 2));
         return "";
