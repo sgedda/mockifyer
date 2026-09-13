@@ -1,9 +1,17 @@
 import type { CopyArrayItemParams, MockData, MockResponseFieldOverride } from '../types';
 import { parseResponseDataPath } from './mock-response-date-overrides';
 
+function isUnsafePrototypeSegment(segment: string | number): boolean {
+  return (
+    typeof segment === 'string' &&
+    (segment === '__proto__' || segment === 'prototype' || segment === 'constructor')
+  );
+}
+
 function getAtPath(root: unknown, segments: (string | number)[]): unknown {
   let cur: unknown = root;
   for (const s of segments) {
+    if (isUnsafePrototypeSegment(s)) return undefined;
     if (cur === null || cur === undefined) return undefined;
     if (typeof cur !== 'object') return undefined;
     cur = (cur as Record<string | number, unknown>)[s as string | number];
@@ -16,6 +24,7 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   let cur: unknown = root;
   for (let i = 0; i < segments.length - 1; i++) {
     const key = segments[i]!;
+    if (isUnsafePrototypeSegment(key)) return;
     const next = segments[i + 1]!;
     const container = cur as Record<string | number, unknown>;
     if (container[key as string | number] === undefined || container[key as string | number] === null) {
@@ -24,6 +33,7 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
     cur = container[key as string | number];
   }
   const last = segments[segments.length - 1]!;
+  if (isUnsafePrototypeSegment(last)) return;
   (cur as Record<string | number, unknown>)[last as string | number] = value;
 }
 
@@ -35,6 +45,7 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
 
   let parent: unknown = root;
   for (let i = 0; i < segments.length - 1; i++) {
+    if (isUnsafePrototypeSegment(segments[i]!)) return;
     if (parent === null || typeof parent !== 'object') return;
     parent = (parent as Record<string | number, unknown>)[segments[i]! as string | number];
   }
@@ -42,6 +53,7 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
   if (parent === null || typeof parent !== 'object') return;
 
   const last = segments[segments.length - 1]!;
+  if (isUnsafePrototypeSegment(last)) return;
   if (Array.isArray(parent)) {
     if (typeof last !== 'number' || !Number.isInteger(last) || last < 0 || last >= parent.length) {
       return;
@@ -151,9 +163,16 @@ export function applyResponseFieldOverridesToData<T>(
       continue;
     }
 
+    const existingValue = getAtPath(clone, segments);
     const nextValue =
       override.mode === 'extend'
-        ? extendResponseFieldValue(getAtPath(clone, segments), override.value)
+        ? existingValue === undefined
+          ? Array.isArray(override.value)
+            ? deepCloneJson(override.value)
+            : isPlainObject(override.value)
+              ? deepCloneJson(override.value)
+              : [deepCloneJson(override.value)]
+          : extendResponseFieldValue(existingValue, override.value)
         : deepCloneJson(override.value);
     setAtPath(clone, segments, nextValue);
   }

@@ -70,6 +70,16 @@ describe('mock response field overrides', () => {
     expect(out.tags).toEqual(['a', 'b', 'c']);
   });
 
+  it('extend mode initializes missing path using array/object containers', () => {
+    const data = {};
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'tags', mode: 'extend', value: 'a' },
+      { path: 'meta', mode: 'extend', value: { page: 1 } },
+    ]) as { tags: string[]; meta: { page: number } };
+    expect(out.tags).toEqual(['a']);
+    expect(out.meta).toEqual({ page: 1 });
+  });
+
   it('extend mode falls back to replace for primitives', () => {
     const data = { status: 'PENDING' };
     const out = applyResponseFieldOverridesToData(data, [
@@ -105,6 +115,16 @@ describe('mock response field overrides', () => {
       { path: 'missing.key', mode: 'remove' },
     ]) as typeof data;
     expect(out).toEqual({ bookings: [{ id: '1' }] });
+  });
+
+  it('ignores unsafe prototype path segments', () => {
+    const out = applyResponseFieldOverridesToData(
+      {},
+      [{ path: '__proto__.polluted', mode: 'extend', value: true }]
+    ) as Record<string, unknown>;
+
+    expect(out).toEqual({});
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it('applyResponseFieldOverridesToData soft no-ops for non-JSON-container roots', () => {
