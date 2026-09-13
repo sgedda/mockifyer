@@ -25,21 +25,21 @@
  *   q  quit
  */
 
-import http from 'http';
-import { exec } from 'child_process';
-import readline from 'readline';
-import type { NetworkEvent } from '../utils/network-event-types';
+import http from "http";
+import { exec } from "child_process";
+import readline from "readline";
+import type { NetworkEvent } from "../utils/network-event-types";
 import {
   resolveMetroNetworkStreamPort,
   type MetroNetworkStreamAnalysis,
-} from '../utils/metro-network-stream';
+} from "../utils/metro-network-stream";
 import {
   formatAtlasStreamAnalysisRich,
   MetroAtlasStreamView,
   createAtlasStreamColorTheme,
   shouldUseAtlasStreamColor,
   writeAtlasStreamPaint,
-} from '../utils/metro-network-stream-tty';
+} from "../utils/metro-network-stream-tty";
 
 interface CliOptions {
   port?: number;
@@ -55,19 +55,19 @@ function parseArgs(): CliOptions {
   const options: CliOptions = { backlog: true };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--help' || arg === '-h') {
+    if (arg === "--help" || arg === "-h") {
       options.help = true;
-    } else if (arg === '--port' || arg === '-p') {
-      options.port = Number.parseInt(args[++i] ?? '', 10);
-    } else if (arg === '--host') {
+    } else if (arg === "--port" || arg === "-p") {
+      options.port = Number.parseInt(args[++i] ?? "", 10);
+    } else if (arg === "--host") {
       options.host = args[++i];
-    } else if (arg === '--no-backlog') {
+    } else if (arg === "--no-backlog") {
       options.backlog = false;
-    } else if (arg === '--no-color') {
+    } else if (arg === "--no-color") {
       options.color = false;
-    } else if (arg === '--color') {
+    } else if (arg === "--color") {
       options.color = true;
-    } else if (arg === '--expand') {
+    } else if (arg === "--expand") {
       options.expand = true;
     }
   }
@@ -76,7 +76,7 @@ function parseArgs(): CliOptions {
 
 function showHelp(theme = createAtlasStreamColorTheme(false)): void {
   console.log(`
-${theme.bold('Mockifyer Atlas')} — interactive Metro hop stream
+${theme.bold("Mockifyer Atlas")} — interactive Metro hop stream
 
 Usage:
   mockifyer-atlas [--port 8081] [--host localhost] [--no-backlog] [--no-color] [--expand]
@@ -85,16 +85,16 @@ Streams raw traffic from Metro's in-memory hop buffer (POST /mockifyer-network-e
 Does not require the dashboard GUI.
 
 Keys:
-  ${theme.info('a')}  Analyze buffer (counts, slow, errors)
-  ${theme.info('s')}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
-  ${theme.info('r')}  Render Atlas HTML from buffer hops
-  ${theme.info('o')}  Open Atlas HTML in the default browser
-  ${theme.info('e')}  Toggle collapse nested child hops (▸ summary vs tree)
-  ${theme.info('d')}  Toggle collapse duplicate consecutive roots (×N)
-  ${theme.info('f')}  Toggle errors-only filter
-  ${theme.info('c')}  Clear Metro hop buffer
-  ${theme.info('h')}  Show this help
-  ${theme.info('q')}  Quit
+  ${theme.info("a")}  Analyze buffer (counts, slow, errors)
+  ${theme.info("s")}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
+  ${theme.info("r")}  Render Atlas HTML from buffer hops
+  ${theme.info("o")}  Open Atlas HTML in the default browser
+  ${theme.info("e")}  Toggle collapse nested child hops (▸ summary vs tree)
+  ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
+  ${theme.info("f")}  Toggle errors-only filter
+  ${theme.info("c")}  Clear Metro hop buffer
+  ${theme.info("h")}  Show this help
+  ${theme.info("q")}  Quit
 
 Env:
   METRO_PORT                 Metro port (default 8081)
@@ -104,7 +104,7 @@ Env:
 }
 
 function metroBase(options: CliOptions): string {
-  const host = options.host?.trim() || 'localhost';
+  const host = options.host?.trim() || "localhost";
   const port = resolveMetroNetworkStreamPort(options.port);
   return `http://${host}:${port}`;
 }
@@ -114,9 +114,11 @@ function jsonGet<T>(url: string): Promise<T> {
     http
       .get(url, (res) => {
         const chunks: Buffer[] = [];
-        res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-        res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
+        res.on("data", (c) =>
+          chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)),
+        );
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
             reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 200)}`));
             return;
@@ -128,27 +130,29 @@ function jsonGet<T>(url: string): Promise<T> {
           }
         });
       })
-      .on('error', reject);
+      .on("error", reject);
   });
 }
 
 function jsonPost<T>(url: string, body?: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
-    const payload = body === undefined ? '' : JSON.stringify(body);
+    const payload = body === undefined ? "" : JSON.stringify(body);
     const req = http.request(
       url,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'content-type': 'application/json',
-          'content-length': Buffer.byteLength(payload),
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(payload),
         },
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-        res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8');
+        res.on("data", (c) =>
+          chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)),
+        );
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 500) >= 400) {
             reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 200)}`));
             return;
@@ -159,9 +163,9 @@ function jsonPost<T>(url: string, body?: unknown): Promise<T> {
             reject(e instanceof Error ? e : new Error(String(e)));
           }
         });
-      }
+      },
     );
-    req.on('error', reject);
+    req.on("error", reject);
     req.end(payload);
   });
 }
@@ -169,7 +173,11 @@ function jsonPost<T>(url: string, body?: unknown): Promise<T> {
 function openUrl(url: string): void {
   const platform = process.platform;
   const cmd =
-    platform === 'darwin' ? `open "${url}"` : platform === 'win32' ? `start "" "${url}"` : `xdg-open "${url}"`;
+    platform === "darwin"
+      ? `open "${url}"`
+      : platform === "win32"
+        ? `start "" "${url}"`
+        : `xdg-open "${url}"`;
   exec(cmd, (err) => {
     if (err) {
       console.error(`[atlas] could not open browser: ${err.message}`);
@@ -181,46 +189,57 @@ function openUrl(url: string): void {
 function printBanner(base: string, view: MetroAtlasStreamView): void {
   const theme = createAtlasStreamColorTheme(view.colorEnabled);
   console.log(
-    `${theme.bold('[atlas]')} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`
+    `${theme.bold("[atlas]")} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
   );
   console.log(
     theme.muted(
-      'keys: a analyze · s snapshot · r render · o open · e/d/f view · c clear · h help · q quit'
-    )
+      "keys: a analyze · s snapshot · r render · o open · e/d/f view · c clear · h help · q quit",
+    ),
   );
   console.log(view.statusLine());
-  console.log('');
+  console.log("");
 }
 
-async function runAnalyze(base: string, view: MetroAtlasStreamView): Promise<void> {
+async function runAnalyze(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<void> {
   const json = await jsonGet<{ analysis: MetroNetworkStreamAnalysis }>(
-    `${base}/mockifyer-network-events/analyze`
+    `${base}/mockifyer-network-events/analyze`,
   );
   const theme = createAtlasStreamColorTheme(view.colorEnabled);
-  console.log('');
-  console.log(theme.bold('── analyze ──'));
+  console.log("");
+  console.log(theme.bold("── analyze ──"));
   console.log(
     formatAtlasStreamAnalysisRich(json.analysis, {
       color: theme,
-    })
+    }),
   );
-  console.log(theme.muted('─────────────'));
+  console.log(theme.muted("─────────────"));
+  view.invalidateRewrite();
 }
 
-async function runSnapshot(base: string): Promise<void> {
+async function runSnapshot(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<void> {
   const json = await jsonPost<{
     count: number;
     jsonPath?: string;
     ndjsonPath?: string;
     harPath?: string;
   }>(`${base}/mockifyer-network-events/snapshot`);
-  console.log('');
+  console.log("");
   console.log(
-    `[atlas] snapshot ${json.count} hop(s) → ${json.jsonPath ?? 'atlas-events.json'} · ${json.harPath ?? 'atlas.har'}`
+    `[atlas] snapshot ${json.count} hop(s) → ${json.jsonPath ?? "atlas-events.json"} · ${json.harPath ?? "atlas.har"}`,
   );
+  view.invalidateRewrite();
 }
 
-async function runRender(base: string): Promise<string | undefined> {
+async function runRender(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<string | undefined> {
   const json = await jsonPost<{
     success: boolean;
     hopCount?: number;
@@ -229,28 +248,38 @@ async function runRender(base: string): Promise<string | undefined> {
     error?: string;
   }>(`${base}/mockifyer-network-events/render`, {});
   if (!json.success) {
-    console.error(`[atlas] render failed: ${json.error ?? 'unknown'}`);
+    console.error(`[atlas] render failed: ${json.error ?? "unknown"}`);
+    view.invalidateRewrite();
     return undefined;
   }
-  const browse = `${base}${json.browseUrl ?? '/mockifyer-atlas-html/'}`;
-  console.log('');
-  console.log(`[atlas] rendered ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? 'atlas-html'}`);
+  const browse = `${base}${json.browseUrl ?? "/mockifyer-atlas-html/"}`;
+  console.log("");
+  console.log(
+    `[atlas] rendered ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,
+  );
   console.log(`[atlas] browse ${browse}`);
+  view.invalidateRewrite();
   return browse;
 }
 
-async function runClear(base: string): Promise<void> {
+async function runClear(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<void> {
   await jsonPost(`${base}/mockifyer-network-events/clear`);
-  console.log('[atlas] buffer cleared');
+  console.log("[atlas] buffer cleared");
+  view.invalidateRewrite();
 }
 
 function attachKeyHandlers(
   base: string,
   view: MetroAtlasStreamView,
-  onQuit: () => void
+  onQuit: () => void,
 ): void {
   if (!process.stdin.isTTY) {
-    console.log('[atlas] stdin is not a TTY — streaming only (no interactive keys)');
+    console.log(
+      "[atlas] stdin is not a TTY — streaming only (no interactive keys)",
+    );
     return;
   }
 
@@ -259,13 +288,13 @@ function attachKeyHandlers(
   process.stdin.resume();
 
   let busy = false;
-  process.stdin.on('keypress', (_str, key) => {
+  process.stdin.on("keypress", (_str, key) => {
     if (!key) return;
-    if (key.ctrl && key.name === 'c') {
+    if (key.ctrl && key.name === "c") {
       onQuit();
       return;
     }
-    const ch = (key.name || '').toLowerCase();
+    const ch = (key.name || "").toLowerCase();
     if (busy) return;
 
     const run = async (fn: () => Promise<void>): Promise<void> => {
@@ -279,52 +308,56 @@ function attachKeyHandlers(
       }
     };
 
-    if (ch === 'q' || key.name === 'escape') {
+    if (ch === "q" || key.name === "escape") {
       onQuit();
       return;
     }
-    if (ch === 'h') {
+    if (ch === "h") {
       showHelp(createAtlasStreamColorTheme(view.colorEnabled));
+      view.invalidateRewrite();
       return;
     }
-    if (ch === 'e') {
+    if (ch === "e") {
       view.collapseChildren = !view.collapseChildren;
       console.log(view.statusLine());
+      view.invalidateRewrite();
       return;
     }
-    if (ch === 'd') {
+    if (ch === "d") {
       view.collapseDuplicates = !view.collapseDuplicates;
       console.log(view.statusLine());
+      view.invalidateRewrite();
       return;
     }
-    if (ch === 'f') {
+    if (ch === "f") {
       view.errorsOnly = !view.errorsOnly;
       console.log(view.statusLine());
+      view.invalidateRewrite();
       return;
     }
-    if (ch === 'a') {
+    if (ch === "a") {
       void run(() => runAnalyze(base, view));
       return;
     }
-    if (ch === 's') {
-      void run(() => runSnapshot(base));
+    if (ch === "s") {
+      void run(() => runSnapshot(base, view));
       return;
     }
-    if (ch === 'r') {
+    if (ch === "r") {
       void run(async () => {
-        await runRender(base);
+        await runRender(base, view);
       });
       return;
     }
-    if (ch === 'o') {
+    if (ch === "o") {
       void run(async () => {
-        const browse = await runRender(base);
+        const browse = await runRender(base, view);
         if (browse) openUrl(browse);
       });
       return;
     }
-    if (ch === 'c') {
-      void run(() => runClear(base));
+    if (ch === "c") {
+      void run(() => runClear(base, view));
     }
   });
 }
@@ -333,43 +366,45 @@ function startSseStream(
   base: string,
   backlog: boolean,
   onHop: (event: NetworkEvent) => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
 ): http.ClientRequest {
-  const url = `${base}/mockifyer-network-events/stream?backlog=${backlog ? '1' : '0'}`;
+  const url = `${base}/mockifyer-network-events/stream?backlog=${backlog ? "1" : "0"}`;
   const req = http.get(url, (res) => {
     if ((res.statusCode ?? 500) >= 400) {
       onError(new Error(`SSE HTTP ${res.statusCode}`));
       return;
     }
-    let buf = '';
-    res.setEncoding('utf8');
-    res.on('data', (chunk: string) => {
+    let buf = "";
+    res.setEncoding("utf8");
+    res.on("data", (chunk: string) => {
       buf += chunk;
-      const parts = buf.split('\n\n');
-      buf = parts.pop() ?? '';
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
       for (const block of parts) {
-        const lines = block.split('\n');
-        let eventName = 'message';
+        const lines = block.split("\n");
+        let eventName = "message";
         const dataLines: string[] = [];
         for (const line of lines) {
-          if (line.startsWith('event:')) {
+          if (line.startsWith("event:")) {
             eventName = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
+          } else if (line.startsWith("data:")) {
             dataLines.push(line.slice(5).trim());
           }
         }
-        if (eventName !== 'hop' || dataLines.length === 0) continue;
+        if (eventName !== "hop" || dataLines.length === 0) continue;
         try {
-          onHop(JSON.parse(dataLines.join('\n')) as NetworkEvent);
+          onHop(JSON.parse(dataLines.join("\n")) as NetworkEvent);
         } catch {
           // ignore malformed
         }
       }
     });
-    res.on('error', (e) => onError(e));
-    res.on('end', () => onError(new Error('SSE stream ended — is Metro still running?')));
+    res.on("error", (e) => onError(e));
+    res.on("end", () =>
+      onError(new Error("SSE stream ended — is Metro still running?")),
+    );
   });
-  req.on('error', onError);
+  req.on("error", onError);
   return req;
 }
 
@@ -398,14 +433,14 @@ async function main(): Promise<void> {
     await jsonGet(`${base}/mockifyer-network-events?limit=0`);
   } catch (e) {
     console.error(
-      `[atlas] cannot reach Metro at ${base} — start Metro with createMockSyncMiddleware.\n  ${(e as Error).message}`
+      `[atlas] cannot reach Metro at ${base} — start Metro with createMockSyncMiddleware.\n  ${(e as Error).message}`,
     );
     process.exit(1);
   }
 
   let sseReq: http.ClientRequest | null = null;
   const quit = (): void => {
-    console.log('\n[atlas] bye');
+    console.log("\n[atlas] bye");
     try {
       sseReq?.destroy();
     } catch {
@@ -432,7 +467,7 @@ async function main(): Promise<void> {
     (err) => {
       console.error(`[atlas] stream: ${err.message}`);
       quit();
-    }
+    },
   );
 }
 

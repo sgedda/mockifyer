@@ -3,8 +3,8 @@
  * Device POSTs hops → Metro middleware stores them → `mockifyer-atlas` tails over SSE.
  */
 
-import type { NetworkEvent } from './network-event-types';
-import { truncateUtf8, utf8ByteLength } from './crypto-digest';
+import type { NetworkEvent } from "./network-event-types";
+import { truncateUtf8, utf8ByteLength } from "./crypto-digest";
 
 export const DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS = 2_000;
 export const DEFAULT_METRO_NETWORK_STREAM_SLOW_MS = 3_000;
@@ -94,7 +94,7 @@ export class MetroNetworkEventBuffer {
 let sharedBuffer: MetroNetworkEventBuffer | null = null;
 
 export function getMetroNetworkEventBuffer(
-  maxEvents?: number
+  maxEvents?: number,
 ): MetroNetworkEventBuffer {
   if (!sharedBuffer) {
     sharedBuffer = new MetroNetworkEventBuffer(maxEvents);
@@ -112,10 +112,10 @@ export function resetMetroNetworkEventBuffer(): void {
  */
 export function slimNetworkEventForMetroStream(
   event: NetworkEvent,
-  maxPreviewBytes: number = DEFAULT_METRO_NETWORK_PREVIEW_BYTES
+  maxPreviewBytes: number = DEFAULT_METRO_NETWORK_PREVIEW_BYTES,
 ): NetworkEvent {
   const slimPreview = (text: string | undefined): string | undefined => {
-    if (text == null || text === '') return undefined;
+    if (text == null || text === "") return undefined;
     if (utf8ByteLength(text) <= maxPreviewBytes) return text;
     return truncateUtf8(text, maxPreviewBytes);
   };
@@ -130,26 +130,27 @@ export function slimNetworkEventForMetroStream(
 }
 
 function isErrorHop(event: NetworkEvent): boolean {
-  if (event.source === 'error' || event.source === 'blocked') return true;
-  if (event.kind === 'incident') return true;
+  if (event.source === "error" || event.source === "blocked") return true;
+  if (event.kind === "incident") return true;
   const status = event.status;
-  if (typeof status === 'number' && status >= 400) return true;
+  if (typeof status === "number" && status >= 400) return true;
   const flags = event.anomalyFlags ?? [];
   return flags.some(
     (f) =>
-      f === 'http_error_status' ||
-      f === 'network_error' ||
-      f === 'graphql_errors' ||
-      f.includes('error')
+      f === "http_error_status" ||
+      f === "network_error" ||
+      f === "graphql_errors" ||
+      f.includes("error"),
   );
 }
 
 function isSlowHop(
   event: NetworkEvent,
-  slowMs: number = DEFAULT_METRO_NETWORK_STREAM_SLOW_MS
+  slowMs: number = DEFAULT_METRO_NETWORK_STREAM_SLOW_MS,
 ): boolean {
-  if (typeof event.durationMs === 'number' && event.durationMs >= slowMs) return true;
-  return (event.anomalyFlags ?? []).includes('slow_response');
+  if (typeof event.durationMs === "number" && event.durationMs >= slowMs)
+    return true;
+  return (event.anomalyFlags ?? []).includes("slow_response");
 }
 
 /** @public error hop heuristic for stream TTY / analyze. */
@@ -160,7 +161,7 @@ export function isMetroNetworkErrorHop(event: NetworkEvent): boolean {
 /** @public slow hop heuristic for stream TTY / analyze. */
 export function isMetroNetworkSlowHop(
   event: NetworkEvent,
-  slowMs?: number
+  slowMs?: number,
 ): boolean {
   return isSlowHop(event, slowMs);
 }
@@ -169,7 +170,7 @@ function percentile(sortedAsc: number[], p: number): number | undefined {
   if (sortedAsc.length === 0) return undefined;
   const idx = Math.min(
     sortedAsc.length - 1,
-    Math.max(0, Math.ceil((p / 100) * sortedAsc.length) - 1)
+    Math.max(0, Math.ceil((p / 100) * sortedAsc.length) - 1),
   );
   return sortedAsc[idx];
 }
@@ -177,7 +178,7 @@ function percentile(sortedAsc: number[], p: number): number | undefined {
 /** Summarize hops for interactive `a` analyze. */
 export function analyzeMetroNetworkEvents(
   events: readonly NetworkEvent[],
-  options?: { slowMs?: number; topN?: number }
+  options?: { slowMs?: number; topN?: number },
 ): MetroNetworkStreamAnalysis {
   const slowMs = options?.slowMs ?? DEFAULT_METRO_NETWORK_STREAM_SLOW_MS;
   const topN = options?.topN ?? 8;
@@ -187,18 +188,18 @@ export function analyzeMetroNetworkEvents(
   const durations: number[] = [];
   let errorCount = 0;
   let slowCount = 0;
-  const slowHops: MetroNetworkStreamAnalysis['topSlow'] = [];
-  const recentErrors: MetroNetworkStreamAnalysis['recentErrors'] = [];
+  const slowHops: MetroNetworkStreamAnalysis["topSlow"] = [];
+  const recentErrors: MetroNetworkStreamAnalysis["recentErrors"] = [];
 
   for (const e of events) {
-    const host = e.host?.trim() || tryHostFromUrl(e.url) || '(unknown)';
+    const host = e.host?.trim() || tryHostFromUrl(e.url) || "(unknown)";
     byHost[host] = (byHost[host] ?? 0) + 1;
-    const source = e.source || 'unknown';
+    const source = e.source || "unknown";
     bySource[source] = (bySource[source] ?? 0) + 1;
-    const method = (e.method || '?').toUpperCase();
+    const method = (e.method || "?").toUpperCase();
     byMethod[method] = (byMethod[method] ?? 0) + 1;
 
-    if (typeof e.durationMs === 'number' && Number.isFinite(e.durationMs)) {
+    if (typeof e.durationMs === "number" && Number.isFinite(e.durationMs)) {
       durations.push(e.durationMs);
     }
     if (isErrorHop(e)) {
@@ -206,7 +207,7 @@ export function analyzeMetroNetworkEvents(
       if (recentErrors.length < topN) {
         recentErrors.push({
           method,
-          path: e.path || e.url || '/',
+          path: e.path || e.url || "/",
           status: e.status,
           source,
           timestamp: e.timestamp,
@@ -217,7 +218,7 @@ export function analyzeMetroNetworkEvents(
       slowCount += 1;
       slowHops.push({
         method,
-        path: e.path || e.url || '/',
+        path: e.path || e.url || "/",
         durationMs: e.durationMs ?? 0,
         status: e.status,
         source,
@@ -253,28 +254,30 @@ function tryHostFromUrl(url: string | undefined): string | undefined {
 
 /** One-line terminal log for a hop. */
 export function formatMetroNetworkHopLine(event: NetworkEvent): string {
-  const ts = event.timestamp ? event.timestamp.slice(11, 23) : '--:--:--.---';
-  const method = (event.method || '?').toUpperCase().padEnd(6);
+  const ts = event.timestamp ? event.timestamp.slice(11, 23) : "--:--:--.---";
+  const method = (event.method || "?").toUpperCase().padEnd(6);
   const status =
-    event.status != null ? String(event.status).padStart(3) : event.source === 'error' ? 'ERR' : '  -';
+    event.status != null
+      ? String(event.status).padStart(3)
+      : event.source === "error"
+        ? "ERR"
+        : "  -";
   const ms =
-    typeof event.durationMs === 'number' && Number.isFinite(event.durationMs)
+    typeof event.durationMs === "number" && Number.isFinite(event.durationMs)
       ? `${Math.round(event.durationMs)}ms`.padStart(7)
-      : '      -';
-  const source = (event.source || '').padEnd(10);
-  const path = event.path || event.url || '/';
+      : "      -";
+  const source = (event.source || "").padEnd(10);
+  const path = event.path || event.url || "/";
   const flags: string[] = [];
-  if (isErrorHop(event)) flags.push('ERR');
-  if (isSlowHop(event)) flags.push('SLOW');
+  if (isErrorHop(event)) flags.push("ERR");
+  if (isSlowHop(event)) flags.push("SLOW");
   const screen = firstUsageScreen(event.usage);
   if (screen) flags.push(`screen=${screen}`);
-  const flagStr = flags.length ? `  [${flags.join(' ')}]` : '';
+  const flagStr = flags.length ? `  [${flags.join(" ")}]` : "";
   return `${ts}  ${method} ${status}  ${ms}  ${source}  ${path}${flagStr}`;
 }
 
-function firstUsageScreen(
-  usage: NetworkEvent['usage']
-): string | undefined {
+function firstUsageScreen(usage: NetworkEvent["usage"]): string | undefined {
   if (!usage) return undefined;
   if (Array.isArray(usage)) {
     for (const u of usage) {
@@ -289,7 +292,7 @@ function firstUsageScreen(
 /** Pretty-print analysis for the interactive CLI. */
 export function formatMetroNetworkAnalysis(
   analysis: MetroNetworkStreamAnalysis,
-  options?: { slowMs?: number }
+  options?: { slowMs?: number },
 ): string {
   const slowMs = options?.slowMs ?? DEFAULT_METRO_NETWORK_STREAM_SLOW_MS;
   const lines: string[] = [
@@ -297,7 +300,7 @@ export function formatMetroNetworkAnalysis(
   ];
   if (analysis.p50DurationMs != null || analysis.p95DurationMs != null) {
     lines.push(
-      `duration  p50=${analysis.p50DurationMs ?? '-'}ms  p95=${analysis.p95DurationMs ?? '-'}ms`
+      `duration  p50=${analysis.p50DurationMs ?? "-"}ms  p95=${analysis.p95DurationMs ?? "-"}ms`,
     );
   }
   lines.push(`by source: ${formatCountMap(analysis.bySource)}`);
@@ -306,30 +309,30 @@ export function formatMetroNetworkAnalysis(
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([h, n]) => `${h}=${n}`)
-    .join('  ');
+    .join("  ");
   if (hosts) lines.push(`top hosts: ${hosts}`);
   if (analysis.topSlow.length > 0) {
-    lines.push('slowest:');
+    lines.push("slowest:");
     for (const s of analysis.topSlow) {
       lines.push(
-        `  ${s.durationMs}ms  ${s.method} ${s.status ?? '-'}  ${s.path}  (${s.source})`
+        `  ${s.durationMs}ms  ${s.method} ${s.status ?? "-"}  ${s.path}  (${s.source})`,
       );
     }
   }
   if (analysis.recentErrors.length > 0) {
-    lines.push('recent errors:');
+    lines.push("recent errors:");
     for (const e of analysis.recentErrors) {
-      lines.push(`  ${e.method} ${e.status ?? '-'}  ${e.path}  (${e.source})`);
+      lines.push(`  ${e.method} ${e.status ?? "-"}  ${e.path}  (${e.source})`);
     }
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function formatCountMap(map: Record<string, number>): string {
   return Object.entries(map)
     .sort((a, b) => b[1] - a[1])
     .map(([k, n]) => `${k}=${n}`)
-    .join('  ');
+    .join("  ");
 }
 
 const DEFAULT_METRO_PORT = 8081;
@@ -338,7 +341,7 @@ export function resolveMetroNetworkStreamPort(explicit?: number): number {
   if (explicit != null && Number.isFinite(explicit) && explicit > 0) {
     return explicit;
   }
-  if (typeof process !== 'undefined') {
+  if (typeof process !== "undefined") {
     const fromEnv = process.env.METRO_PORT?.trim();
     if (fromEnv) {
       const n = Number.parseInt(fromEnv, 10);
@@ -357,17 +360,21 @@ export function resolveMetroNetworkStreamPort(explicit?: number): number {
 export function resolveMetroNetworkStreamBaseUrl(options?: {
   metroPort?: number;
 }): string | undefined {
-  if (typeof process !== 'undefined') {
+  if (typeof process !== "undefined") {
     const raw = process.env.MOCKIFYER_METRO_STREAM?.trim().toLowerCase();
-    if (raw === 'off' || raw === 'false' || raw === '0' || raw === 'no') {
+    if (raw === "off" || raw === "false" || raw === "0" || raw === "no") {
       return undefined;
     }
-    if (raw === 'on' || raw === 'true' || raw === '1' || raw === 'yes') {
+    if (raw === "on" || raw === "true" || raw === "1" || raw === "yes") {
+      const explicitUrl = process.env.MOCKIFYER_METRO_URL?.trim();
+      if (explicitUrl) {
+        return explicitUrl.replace(/\/+$/, "");
+      }
       return `http://localhost:${resolveMetroNetworkStreamPort(options?.metroPort)}`;
     }
     const explicitUrl = process.env.MOCKIFYER_METRO_URL?.trim();
     if (explicitUrl) {
-      return explicitUrl.replace(/\/+$/, '');
+      return explicitUrl.replace(/\/+$/, "");
     }
     if (process.env.METRO_PORT?.trim()) {
       return `http://localhost:${resolveMetroNetworkStreamPort(options?.metroPort)}`;
@@ -384,8 +391,9 @@ export function resolveMetroNetworkStreamBaseUrl(options?: {
 function isLikelyReactNativeRuntime(): boolean {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nav = typeof navigator !== 'undefined' ? (navigator as any) : undefined;
-    if (nav?.product === 'ReactNative') return true;
+    const nav =
+      typeof navigator !== "undefined" ? (navigator as any) : undefined;
+    if (nav?.product === "ReactNative") return true;
   } catch {
     // ignore
   }
@@ -393,5 +401,5 @@ function isLikelyReactNativeRuntime(): boolean {
 }
 
 export function joinMetroNetworkEventsUrl(metroBaseUrl: string): string {
-  return `${metroBaseUrl.replace(/\/+$/, '')}/mockifyer-network-events`;
+  return `${metroBaseUrl.replace(/\/+$/, "")}/mockifyer-network-events`;
 }

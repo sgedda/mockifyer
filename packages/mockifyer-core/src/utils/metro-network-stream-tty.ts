@@ -3,16 +3,16 @@
  * Zero deps — raw ANSI (honors NO_COLOR / FORCE_COLOR).
  */
 
-import type { NetworkEvent } from './network-event-types';
+import type { NetworkEvent } from "./network-event-types";
 import {
   DEFAULT_METRO_NETWORK_STREAM_SLOW_MS,
   formatMetroNetworkAnalysis,
   isMetroNetworkErrorHop,
   isMetroNetworkSlowHop,
   type MetroNetworkStreamAnalysis,
-} from './metro-network-stream';
+} from "./metro-network-stream";
 
-const ESC = '\u001b[';
+const ESC = "\u001b[";
 
 export interface AtlasStreamColorTheme {
   enabled: boolean;
@@ -43,62 +43,64 @@ export function shouldUseAtlasStreamColor(options?: {
 }): boolean {
   if (options?.color === false) return false;
   if (options?.color === true) return true;
-  if (typeof process !== 'undefined') {
+  if (typeof process !== "undefined") {
     const noColor = process.env.NO_COLOR;
-    if (noColor != null && noColor !== '') return false;
+    if (noColor != null && noColor !== "") return false;
     const force = process.env.FORCE_COLOR;
-    if (force === '0') return false;
-    if (force && force !== '') return true;
+    if (force === "0") return false;
+    if (force && force !== "") return true;
   }
   return options?.isTTY ?? false;
 }
 
-export function createAtlasStreamColorTheme(enabled: boolean): AtlasStreamColorTheme {
+export function createAtlasStreamColorTheme(
+  enabled: boolean,
+): AtlasStreamColorTheme {
   const on = enabled;
   return {
     enabled: on,
-    dim: (s) => wrap(on, '2', s),
-    bold: (s) => wrap(on, '1', s),
-    reset: on ? `${ESC}0m` : '',
+    dim: (s) => wrap(on, "2", s),
+    bold: (s) => wrap(on, "1", s),
+    reset: on ? `${ESC}0m` : "",
     method: (method) => {
       const m = method.toUpperCase();
-      if (m === 'GET') return wrap(on, '36', m); // cyan
-      if (m === 'POST') return wrap(on, '33', m); // yellow
-      if (m === 'PUT' || m === 'PATCH') return wrap(on, '35', m); // magenta
-      if (m === 'DELETE') return wrap(on, '31', m); // red
-      return wrap(on, '37', m);
+      if (m === "GET") return wrap(on, "36", m); // cyan
+      if (m === "POST") return wrap(on, "33", m); // yellow
+      if (m === "PUT" || m === "PATCH") return wrap(on, "35", m); // magenta
+      if (m === "DELETE") return wrap(on, "31", m); // red
+      return wrap(on, "37", m);
     },
     status: (status, isError) => {
       if (status == null) {
-        return isError ? wrap(on, '31;1', 'ERR') : wrap(on, '2', '  -');
+        return isError ? wrap(on, "31;1", "ERR") : wrap(on, "2", "  -");
       }
       const text = String(status).padStart(3);
-      if (status >= 500 || isError) return wrap(on, '31;1', text);
-      if (status >= 400) return wrap(on, '33;1', text);
-      if (status >= 300) return wrap(on, '36', text);
-      return wrap(on, '32', text);
+      if (status >= 500 || isError) return wrap(on, "31;1", text);
+      if (status >= 400) return wrap(on, "33;1", text);
+      if (status >= 300) return wrap(on, "36", text);
+      return wrap(on, "32", text);
     },
     source: (source) => {
       const s = source.padEnd(10);
-      if (source === 'mock-hit') return wrap(on, '32', s);
-      if (source === 'upstream') return wrap(on, '37', s);
-      if (source === 'error' || source === 'blocked') return wrap(on, '31', s);
-      if (source === 'mock-miss') return wrap(on, '33', s);
-      return wrap(on, '2', s);
+      if (source === "mock-hit") return wrap(on, "32", s);
+      if (source === "upstream") return wrap(on, "37", s);
+      if (source === "error" || source === "blocked") return wrap(on, "31", s);
+      if (source === "mock-miss") return wrap(on, "33", s);
+      return wrap(on, "2", s);
     },
     duration: (ms, slow) => {
-      if (ms == null || !Number.isFinite(ms)) return wrap(on, '2', '      -');
+      if (ms == null || !Number.isFinite(ms)) return wrap(on, "2", "      -");
       const text = `${Math.round(ms)}ms`.padStart(7);
-      if (slow) return wrap(on, '33;1', text);
-      if (ms >= 1000) return wrap(on, '33', text);
-      return wrap(on, '2', text);
+      if (slow) return wrap(on, "33;1", text);
+      if (ms >= 1000) return wrap(on, "33", text);
+      return wrap(on, "2", text);
     },
-    path: (s, emphasize) => (emphasize ? wrap(on, '1', s) : s),
-    ok: (s) => wrap(on, '32', s),
-    warn: (s) => wrap(on, '33', s),
-    err: (s) => wrap(on, '31;1', s),
-    info: (s) => wrap(on, '36', s),
-    muted: (s) => wrap(on, '2', s),
+    path: (s, emphasize) => (emphasize ? wrap(on, "1", s) : s),
+    ok: (s) => wrap(on, "32", s),
+    warn: (s) => wrap(on, "33", s),
+    err: (s) => wrap(on, "31;1", s),
+    info: (s) => wrap(on, "36", s),
+    muted: (s) => wrap(on, "2", s),
   };
 }
 
@@ -114,7 +116,7 @@ export interface FormatAtlasStreamHopOptions {
   maxPathCols?: number;
 }
 
-function firstUsageScreen(usage: NetworkEvent['usage']): string | undefined {
+function firstUsageScreen(usage: NetworkEvent["usage"]): string | undefined {
   if (!usage) return undefined;
   if (Array.isArray(usage)) {
     for (const u of usage) {
@@ -131,10 +133,14 @@ function truncatePath(path: string, maxCols: number): string {
   return `…${path.slice(-(maxCols - 1))}`;
 }
 
-function treePrefix(depth: number, isLast: boolean, theme: AtlasStreamColorTheme): string {
-  if (depth <= 0) return '';
-  const indent = theme.muted('│  '.repeat(Math.max(0, depth - 1)));
-  const branch = theme.muted(isLast ? '└─ ' : '├─ ');
+function treePrefix(
+  depth: number,
+  isLast: boolean,
+  theme: AtlasStreamColorTheme,
+): string {
+  if (depth <= 0) return "";
+  const indent = theme.muted("│  ".repeat(Math.max(0, depth - 1)));
+  const branch = theme.muted(isLast ? "└─ " : "├─ ");
   return indent + branch;
 }
 
@@ -144,7 +150,7 @@ function treePrefix(depth: number, isLast: boolean, theme: AtlasStreamColorTheme
  */
 export function formatAtlasStreamHopLine(
   event: NetworkEvent,
-  options?: FormatAtlasStreamHopOptions
+  options?: FormatAtlasStreamHopOptions,
 ): string {
   const theme = options?.color ?? createAtlasStreamColorTheme(false);
   const depth = options?.depth ?? 0;
@@ -154,27 +160,27 @@ export function formatAtlasStreamHopLine(
   const slow = isMetroNetworkSlowHop(event);
 
   const ts = theme.muted(
-    event.timestamp ? event.timestamp.slice(11, 23) : '--:--:--.---'
+    event.timestamp ? event.timestamp.slice(11, 23) : "--:--:--.---",
   );
-  const methodRaw = (event.method || '?').toUpperCase();
+  const methodRaw = (event.method || "?").toUpperCase();
   const methodCol = theme.method(methodRaw.padEnd(6));
   const statusCol = theme.status(event.status, err);
   const msCol = theme.duration(
-    typeof event.durationMs === 'number' ? event.durationMs : undefined,
-    slow
+    typeof event.durationMs === "number" ? event.durationMs : undefined,
+    slow,
   );
-  const sourceCol = theme.source(event.source || '');
-  const pathRaw = truncatePath(event.path || event.url || '/', maxPathCols);
+  const sourceCol = theme.source(event.source || "");
+  const pathRaw = truncatePath(event.path || event.url || "/", maxPathCols);
   const pathCol = theme.path(pathRaw, err || slow);
 
   const badges: string[] = [];
-  if (err) badges.push(theme.err('ERR'));
-  if (slow) badges.push(theme.warn('SLOW'));
+  if (err) badges.push(theme.err("ERR"));
+  if (slow) badges.push(theme.warn("SLOW"));
   const screen = firstUsageScreen(event.usage);
   if (screen) badges.push(theme.info(screen));
   if (options?.repeatSuffix) badges.push(theme.bold(options.repeatSuffix));
 
-  const badgeStr = badges.length ? `  ${badges.join(' ')}` : '';
+  const badgeStr = badges.length ? `  ${badges.join(" ")}` : "";
   const prefix = treePrefix(depth, isLast, theme);
 
   return `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}`;
@@ -184,7 +190,7 @@ export function formatAtlasStreamHopLine(
 export function formatAtlasStreamCollapseSummary(
   parent: NetworkEvent,
   children: readonly NetworkEvent[],
-  options?: { color?: AtlasStreamColorTheme; expandedHint?: boolean }
+  options?: { color?: AtlasStreamColorTheme; expandedHint?: boolean },
 ): string {
   const theme = options?.color ?? createAtlasStreamColorTheme(false);
   const n = children.length;
@@ -194,45 +200,46 @@ export function formatAtlasStreamCollapseSummary(
   for (const c of children) {
     if (isMetroNetworkErrorHop(c)) errors += 1;
     if (isMetroNetworkSlowHop(c)) slow += 1;
-    if (typeof c.durationMs === 'number') totalMs += c.durationMs;
+    if (typeof c.durationMs === "number") totalMs += c.durationMs;
   }
   const parts = [`${n} nested`];
   if (errors) parts.push(theme.err(`${errors} err`));
   if (slow) parts.push(theme.warn(`${slow} slow`));
   if (totalMs > 0) parts.push(theme.muted(`${Math.round(totalMs)}ms`));
-  const hint = options?.expandedHint === false
-    ? ''
-    : theme.muted('  · e expand');
-  const glyph = theme.muted('▸');
-  return `${theme.muted('│  └─ ')}${glyph} ${parts.join(' · ')}${hint}`;
+  const hint =
+    options?.expandedHint === false ? "" : theme.muted("  · e expand");
+  const glyph = theme.muted("▸");
+  return `${theme.muted("│  └─ ")}${glyph} ${parts.join(" · ")}${hint}`;
 }
 
 export function formatAtlasStreamAnalysisRich(
   analysis: MetroNetworkStreamAnalysis,
-  options?: { color?: AtlasStreamColorTheme; slowMs?: number }
+  options?: { color?: AtlasStreamColorTheme; slowMs?: number },
 ): string {
   const theme = options?.color ?? createAtlasStreamColorTheme(false);
-  const plain = formatMetroNetworkAnalysis(analysis, { slowMs: options?.slowMs });
+  const plain = formatMetroNetworkAnalysis(analysis, {
+    slowMs: options?.slowMs,
+  });
   if (!theme.enabled) return plain;
 
-  const lines = plain.split('\n');
+  const lines = plain.split("\n");
   return lines
     .map((line, i) => {
       if (i === 0) {
         return line
           .replace(/errors=(\d+)/, (_, n) =>
-            Number(n) > 0 ? theme.err(`errors=${n}`) : theme.ok(`errors=${n}`)
+            Number(n) > 0 ? theme.err(`errors=${n}`) : theme.ok(`errors=${n}`),
           )
           .replace(/slow\([^)]+\)=(\d+)/, (m, n) =>
-            Number(n) > 0 ? theme.warn(m) : theme.muted(m)
+            Number(n) > 0 ? theme.warn(m) : theme.muted(m),
           );
       }
-      if (line.startsWith('slowest:') || line.startsWith('recent errors:')) {
+      if (line.startsWith("slowest:") || line.startsWith("recent errors:")) {
         return theme.bold(line);
       }
-      return theme.muted(line.startsWith('  ') ? line : line);
+      return theme.muted(line.startsWith("  ") ? line : line);
     })
-    .join('\n');
+    .join("\n");
 }
 
 export interface AtlasStreamViewOptions {
@@ -279,12 +286,15 @@ export class MetroAtlasStreamView {
   private readonly eventsByRequestId = new Map<string, NetworkEvent>();
   private duplicate: DuplicateStreak | null = null;
   /** Last paint was a rewritable summary (collapse or duplicate). */
-  private lastRewritable: 'collapse' | 'duplicate' | null = null;
+  private lastRewritable: "collapse" | "duplicate" | null = null;
   private lastCollapseParentId: string | null = null;
 
   constructor(options?: AtlasStreamViewOptions) {
     this.theme = createAtlasStreamColorTheme(
-      shouldUseAtlasStreamColor({ color: options?.color, isTTY: options?.isTTY })
+      shouldUseAtlasStreamColor({
+        color: options?.color,
+        isTTY: options?.isTTY,
+      }),
     );
     this.collapseChildren = options?.collapseChildren !== false;
     this.collapseDuplicates = options?.collapseDuplicates !== false;
@@ -301,14 +311,21 @@ export class MetroAtlasStreamView {
     this.theme = createAtlasStreamColorTheme(enabled);
   }
 
+  invalidateRewrite(): void {
+    this.lastRewritable = null;
+    this.lastCollapseParentId = null;
+  }
+
   statusLine(): string {
     const bits = [
-      this.collapseChildren ? 'collapse=on' : 'collapse=off',
-      this.collapseDuplicates ? 'dedupe=on' : 'dedupe=off',
-      this.errorsOnly ? 'errors-only' : 'all',
-      this.theme.enabled ? 'color' : 'plain',
+      this.collapseChildren ? "collapse=on" : "collapse=off",
+      this.collapseDuplicates ? "dedupe=on" : "dedupe=off",
+      this.errorsOnly ? "errors-only" : "all",
+      this.theme.enabled ? "color" : "plain",
     ];
-    return this.theme.muted(`[atlas] view · ${bits.join(' · ')}  (e/d/f toggle)`);
+    return this.theme.muted(
+      `[atlas] view · ${bits.join(" · ")}  (e/d/f toggle)`,
+    );
   }
 
   /** Ingest one hop; returns what to paint. */
@@ -316,7 +333,7 @@ export class MetroAtlasStreamView {
     const requestId = event.requestId?.trim() || event.id;
     this.eventsByRequestId.set(requestId, event);
 
-    const parentId = event.parentRequestId?.trim() || '';
+    const parentId = event.parentRequestId?.trim() || "";
     if (parentId) {
       const list = this.childrenByParent.get(parentId) ?? [];
       list.push(event);
@@ -333,7 +350,11 @@ export class MetroAtlasStreamView {
     }
 
     const key = duplicateKey(event);
-    if (this.collapseDuplicates && this.duplicate && this.duplicate.key === key) {
+    if (
+      this.collapseDuplicates &&
+      this.duplicate &&
+      this.duplicate.key === key
+    ) {
       this.duplicate.count += 1;
       this.duplicate.event = event;
       const line = formatAtlasStreamHopLine(event, {
@@ -341,15 +362,16 @@ export class MetroAtlasStreamView {
         maxPathCols: this.maxPathCols,
         repeatSuffix: `×${this.duplicate.count}`,
       });
-      const erase = this.lastRewritable === 'duplicate' ? 1 : 0;
-      this.lastRewritable = 'duplicate';
-      this.lastCollapseParentId = null;
+      const erase = this.lastRewritable === "duplicate" ? 1 : 0;
+      this.lastRewritable = "duplicate";
+      if (erase > 0) {
+        this.lastCollapseParentId = null;
+      }
       return { lines: [line], erasePreviousLines: erase };
     }
 
     this.duplicate = { key, count: 1, event };
-    this.lastRewritable = this.collapseDuplicates ? 'duplicate' : null;
-    this.lastCollapseParentId = null;
+    this.lastRewritable = this.collapseDuplicates ? "duplicate" : null;
     return {
       lines: [
         formatAtlasStreamHopLine(event, {
@@ -363,7 +385,7 @@ export class MetroAtlasStreamView {
   private paintChild(
     event: NetworkEvent,
     parentId: string,
-    children: NetworkEvent[]
+    children: NetworkEvent[],
   ): AtlasStreamPaint {
     if (this.errorsOnly && !isMetroNetworkErrorHop(event)) {
       // Still track in children map for when filter turns off — already stored
@@ -377,13 +399,14 @@ export class MetroAtlasStreamView {
       const summary = formatAtlasStreamCollapseSummary(
         parent ?? event,
         children,
-        { color: this.theme }
+        { color: this.theme },
       );
       const erase =
-        this.lastRewritable === 'collapse' && this.lastCollapseParentId === parentId
+        this.lastRewritable === "collapse" &&
+        this.lastCollapseParentId === parentId
           ? 1
           : 0;
-      this.lastRewritable = 'collapse';
+      this.lastRewritable = "collapse";
       this.lastCollapseParentId = parentId;
       return { lines: [summary], erasePreviousLines: erase };
     }
@@ -404,10 +427,10 @@ export class MetroAtlasStreamView {
 }
 
 function duplicateKey(event: NetworkEvent): string {
-  const method = (event.method || '').toUpperCase();
-  const path = event.path || event.url || '';
-  const status = event.status ?? '';
-  const source = event.source || '';
+  const method = (event.method || "").toUpperCase();
+  const path = event.path || event.url || "";
+  const status = event.status ?? "";
+  const source = event.source || "";
   return `${method}|${path}|${status}|${source}`;
 }
 
@@ -416,7 +439,7 @@ export function writeAtlasStreamPaint(
   paint: AtlasStreamPaint,
   write: (s: string) => void = (s) => {
     process.stdout.write(s);
-  }
+  },
 ): void {
   if (paint.lines.length === 0) return;
   const erase = paint.erasePreviousLines ?? 0;
