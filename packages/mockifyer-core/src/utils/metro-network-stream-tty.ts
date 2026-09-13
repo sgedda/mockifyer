@@ -349,6 +349,11 @@ export interface AtlasStreamPaint {
    * mid-screen row so children appear under the clicked parent (not at the cursor).
    */
   clearScreen?: boolean;
+  /**
+   * With `clearScreen`, refresh the terminal/viewport from retained history
+   * without wiping that history (in-app scrollback windows).
+   */
+  preserveHistory?: boolean;
 }
 
 interface DuplicateStreak {
@@ -848,9 +853,12 @@ export class AtlasStreamHitTracker {
     screenRows: number = process.stdout.rows || 24,
   ): void {
     const cols = Math.max(20, (process.stdout.columns || 80) - 1);
+    const preserveHistory = Boolean(paint.preserveHistory);
     if (paint.clearScreen) {
-      this.hits = [];
-      this.lines = [];
+      if (!preserveHistory) {
+        this.hits = [];
+        this.lines = [];
+      }
       this.viewportHits = [];
       this.viewportLines = [];
     } else {
@@ -874,16 +882,49 @@ export class AtlasStreamHitTracker {
     for (let i = 0; i < paint.lines.length; i++) {
       const hit = lineHits[i] ?? { kind: "none" };
       const line = truncateAtlasStreamLine(paint.lines[i] ?? "", cols);
-      this.hits.push(hit);
-      this.lines.push(line);
+      if (!preserveHistory) {
+        this.hits.push(hit);
+        this.lines.push(line);
+      }
       this.viewportHits.push(hit);
       this.viewportLines.push(line);
     }
-    if (this.hits.length > this.maxLines) {
+    if (!preserveHistory && this.hits.length > this.maxLines) {
       this.hits = this.hits.slice(-this.maxLines);
       this.lines = this.lines.slice(-this.maxLines);
     }
     this.trimViewport(screenRows);
+  }
+
+  /** Total retained painted lines (including scrolled-off history). */
+  historyLength(): number {
+    return this.lines.length;
+  }
+
+  /**
+   * How far the viewport can scroll back from the live tip for `screenRows`.
+   */
+  maxScrollBack(screenRows: number): number {
+    return Math.max(0, this.lines.length - this.maxViewportRows(screenRows));
+  }
+
+  /**
+   * Paint a clear-screen window over retained history. `scrollBack` is how many
+   * lines above the live tip the bottom of the window sits (0 = tip).
+   */
+  scrollWindow(scrollBack: number, screenRows: number): AtlasStreamPaint {
+    const maxRows = this.maxViewportRows(screenRows);
+    const total = this.lines.length;
+    const maxBack = Math.max(0, total - maxRows);
+    const back = Math.max(0, Math.min(Math.floor(scrollBack), maxBack));
+    const end = total - back;
+    const start = Math.max(0, end - maxRows);
+    return {
+      lines: this.lines.slice(start, end),
+      lineHits: this.hits.slice(start, end),
+      clearScreen: true,
+      preserveHistory: true,
+    };
   }
 
   /**

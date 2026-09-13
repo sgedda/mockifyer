@@ -487,6 +487,36 @@ describe('metro-network-stream-tty', () => {
     expect(hits.hitAtScreenRow(2, 24)).toEqual({ kind: 'collapse', parentId: 'p2' });
   });
 
+  it('scrollWindow paints older history without wiping retained lines', () => {
+    const hits = new AtlasStreamHitTracker(100);
+    const screenRows = 5; // maxViewportRows = 4
+    for (let i = 0; i < 10; i++) {
+      hits.notePaint(
+        {
+          lines: [`line-${i}`],
+          lineHits: [{ kind: 'none' }],
+        },
+        screenRows,
+      );
+    }
+    expect(hits.maxScrollBack(screenRows)).toBe(6);
+    expect(hits.historyLength()).toBe(10);
+
+    const window = hits.scrollWindow(3, screenRows);
+    expect(window.clearScreen).toBe(true);
+    expect(window.preserveHistory).toBe(true);
+    expect(window.lines).toEqual(['line-3', 'line-4', 'line-5', 'line-6']);
+
+    hits.notePaint(window, screenRows);
+    expect(hits.historyLength()).toBe(10);
+    expect(hits.hitAtScreenRow(1, screenRows)).toEqual({ kind: 'none' });
+    expect(hits.lineAtScreenRow(1, screenRows)).toBe('line-3');
+    expect(hits.lineAtScreenRow(4, screenRows)).toBe('line-6');
+
+    const tip = hits.scrollWindow(0, screenRows);
+    expect(tip.lines).toEqual(['line-6', 'line-7', 'line-8', 'line-9']);
+  });
+
   it('consumeAtlasStreamMouseInput parses SGR click sequences', () => {
     const { clicks, moves: _moves, rest } = consumeAtlasStreamMouseInput('\u001b[<0;12;8M' + 'e');
     expect(clicks).toHaveLength(1);

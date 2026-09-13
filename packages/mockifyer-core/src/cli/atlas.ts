@@ -19,7 +19,8 @@
  *   r  render Atlas HTML from buffer + print browse URL
  *   o  open rendered Atlas HTML in browser
  *   e  expand/collapse all nested groups
- *   p / Space  pause/resume (while paused: scroll with mouse wheel)
+ *   p / Space  pause/resume live hops
+ *   wheel / PgUp / PgDn  scroll history (pauses live stream)
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -94,7 +95,8 @@ Does not require the dashboard GUI.
 Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
   ${theme.info("e")}  Expand/collapse all nested groups
-  ${theme.info("p")}/${theme.info("Space")}  Pause/resume — while paused, scroll with the mouse wheel
+  ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hops
+  ${theme.info("wheel")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -203,7 +205,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ to expand · e all · p pause+scroll · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ · wheel/PgUp scroll · e all · p pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -285,6 +287,15 @@ async function runClear(
   view.invalidateRewrite();
 }
 
+function isAtlasWheelUp(button: number): boolean {
+  // xterm SGR 1000: 64 = wheel up; some terminals report button 4.
+  return button === 64 || button === 4;
+}
+
+function isAtlasWheelDown(button: number): boolean {
+  return button === 65 || button === 5;
+}
+
 function attachInputHandlers(
   base: string,
   view: MetroAtlasStreamView,
@@ -306,6 +317,11 @@ function attachInputHandlers(
 
   let busy = false;
   let pending = "";
+  /** Lines above the live tip currently shown (in-app scrollback). */
+  let scrollBack = 0;
+  const WHEEL_LINES = 3;
+
+  const screenRows = (): number => process.stdout.rows || 24;
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -319,22 +335,53 @@ function attachInputHandlers(
     }
   };
 
+  const paintScrollWindow = (): void => {
+    applyPaint(hits.scrollWindow(scrollBack, screenRows()));
+  };
+
+  const scrollBy = (delta: number): void => {
+    const maxBack = hits.maxScrollBack(screenRows());
+    if (maxBack <= 0 && delta > 0) {
+      if (!view.paused) {
+        view.paused = true;
+        view.skippedWhilePaused = 0;
+        console.log(
+          "[atlas] paused — more hops needed before history can scroll",
+        );
+        view.invalidateRewrite();
+      }
+      return;
+    }
+    const next = Math.max(0, Math.min(maxBack, scrollBack + delta));
+    if (next === scrollBack && view.paused && delta !== 0) return;
+    if (!view.paused) {
+      view.paused = true;
+      view.skippedWhilePaused = 0;
+      console.log(
+        "[atlas] paused — wheel/PgUp/PgDn scroll history · p/Space resume",
+      );
+    }
+    scrollBack = next;
+    paintScrollWindow();
+  };
+
   const setPaused = (paused: boolean, message?: string): void => {
     const wasPaused = view.paused;
     view.paused = paused;
     if (paused) {
       if (!wasPaused) view.skippedWhilePaused = 0;
-      // Mouse tracking eats wheel events — disable it so the terminal can
-      // scroll its scrollback while inspecting.
-      disableAtlasStreamMouseTracking();
+      // Keep mouse tracking on so wheel events drive in-app history scroll.
+      // Cursor/VS Code do not reliably scroll terminal scrollback under mouse
+      // reporting, and disabling tracking leaves the user stuck.
       console.log(
         message ??
-          "[atlas] paused — scroll with the mouse wheel · p/Space to resume (click disabled while paused)",
+          "[atlas] paused — wheel/PgUp/PgDn scroll history · p/Space to resume",
       );
     } else {
       const skipped = view.skippedWhilePaused;
       view.skippedWhilePaused = 0;
-      enableAtlasStreamMouseTracking();
+      scrollBack = 0;
+      paintScrollWindow();
       console.log(
         message ??
           (skipped > 0
@@ -361,6 +408,7 @@ function attachInputHandlers(
       return;
     }
     if (key === "e") {
+      scrollBack = 0;
       applyPaint(view.toggleAllExpanded());
       return;
     }
@@ -417,23 +465,19 @@ function attachInputHandlers(
   ): void => {
     for (const click of clicks) {
       if (click.release) continue;
-      // Wheel up (SGR button 64): pause + release mouse so further wheel
-      // ticks scroll the terminal scrollback instead of being eaten.
-      if (click.button === 64) {
-        if (!view.paused) {
-          setPaused(
-            true,
-            "[atlas] paused (scroll) — wheel to scroll · p/Space to resume",
-          );
-        }
+      if (isAtlasWheelUp(click.button)) {
+        scrollBy(WHEEL_LINES);
         continue;
       }
-      // Wheel down — ignore while live (stay pinned to the stream tip).
-      if (click.button === 65) continue;
+      if (isAtlasWheelDown(click.button)) {
+        scrollBy(-WHEEL_LINES);
+        continue;
+      }
       if (click.button !== 0) continue;
-      if (view.paused) continue;
-      const hit = hits.hitAtScreenRow(click.row, process.stdout.rows || 24);
+      if (view.paused && scrollBack === 0) continue;
+      const hit = hits.hitAtScreenRow(click.row, screenRows());
       if (hit?.kind === "collapse" || hit?.kind === "expand-footer") {
+        scrollBack = 0;
         applyPaint(view.toggleParentExpanded(hit.parentId));
       }
     }
@@ -453,17 +497,31 @@ function attachInputHandlers(
     const { clicks, moves, rest } = consumeAtlasStreamMouseInput(pending);
     handleMoves(moves);
     handleClicks(clicks);
-    const incomplete = rest.match(/\u001b\[<?[\d;]*$/);
+
+    let keys = rest;
+    if (/\u001b\[5~/.test(keys) || /\u001b\[6~/.test(keys)) {
+      keys = keys.replace(/\u001b\[5~/g, () => {
+        scrollBy(Math.max(1, screenRows() - 2));
+        return "";
+      });
+      keys = keys.replace(/\u001b\[6~/g, () => {
+        scrollBy(-Math.max(1, screenRows() - 2));
+        return "";
+      });
+    }
+
+    const incomplete = keys.match(/\u001b\[<?[\d;]*$/);
     if (incomplete) {
       pending = incomplete[0]!;
-      const keys = rest.slice(0, rest.length - pending.length);
-      for (const ch of keys) handleKey(ch);
+      const ready = keys.slice(0, keys.length - pending.length);
+      for (const ch of ready) handleKey(ch);
       return;
     }
     pending = "";
-    for (const ch of rest) handleKey(ch);
+    for (const ch of keys) handleKey(ch);
   });
 }
+
 
 function startSseStream(
   base: string,
