@@ -31,6 +31,8 @@
  */
 
 import http from "http";
+import path from "path";
+import fs from "fs";
 import { exec } from "child_process";
 import type { NetworkEvent } from "../utils/network-event-types";
 import {
@@ -104,8 +106,8 @@ Keys:
   ${theme.info("f")}  Toggle errors-only filter
   ${theme.info("a")}  Analyze buffer (counts, slow, errors)
   ${theme.info("s")}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
-  ${theme.info("r")}  Render Atlas HTML from buffer hops
-  ${theme.info("o")}  Open Atlas HTML in the default browser
+  ${theme.info("r")}  Render Atlas HTML from buffer hops (writes atlas-html/index.html)
+  ${theme.info("o")}  Open atlas-html/index.html from disk in the default browser
   ${theme.info("c")}  Clear Metro hop buffer
   ${theme.info("h")}  Show this help
   ${theme.info("q")}  Quit
@@ -184,20 +186,43 @@ function jsonPost<T>(url: string, body?: unknown): Promise<T> {
   });
 }
 
-function openUrl(url: string): void {
+function openUrl(target: string): void {
   const platform = process.platform;
+  // Prefer a real filesystem path so `open`/`xdg-open` load index.html from disk
+  // (Metro may not expose /atlas-html/ depending on how the server is wired).
   const cmd =
     platform === "darwin"
-      ? `open "${url}"`
+      ? `open ${JSON.stringify(target)}`
       : platform === "win32"
-        ? `start "" "${url}"`
-        : `xdg-open "${url}"`;
+        ? `start "" ${JSON.stringify(target)}`
+        : `xdg-open ${JSON.stringify(target)}`;
   exec(cmd, (err) => {
     if (err) {
-      console.error(`[atlas] could not open browser: ${err.message}`);
-      console.log(`[atlas] open manually: ${url}`);
+      console.error(`[atlas] could not open: ${err.message}`);
+      console.log(`[atlas] open manually: ${target}`);
     }
   });
+}
+
+function resolveAtlasIndexPath(options: {
+  indexPath?: string;
+  outputDir?: string;
+}): string | undefined {
+  const candidates: string[] = [];
+  if (options.indexPath?.trim()) {
+    candidates.push(path.resolve(options.indexPath.trim()));
+  }
+  if (options.outputDir?.trim()) {
+    const dir = path.resolve(options.outputDir.trim());
+    candidates.push(path.join(dir, "index.html"));
+    if (dir.endsWith(`${path.sep}index.html`) || dir.endsWith("index.html")) {
+      candidates.push(dir);
+    }
+  }
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
 }
 
 function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint {
@@ -263,6 +288,7 @@ async function runRender(
     hopCount?: number;
     browseUrl?: string;
     outputDir?: string;
+    indexPath?: string;
     error?: string;
   }>(`${base}/mockifyer-network-events/render`, {});
   if (!json.success) {
@@ -270,14 +296,21 @@ async function runRender(
     view.invalidateRewrite();
     return undefined;
   }
-  const browse = `${base}${json.browseUrl ?? "/atlas-html/"}`;
+  const indexPath = resolveAtlasIndexPath({
+    indexPath: json.indexPath,
+    outputDir: json.outputDir,
+  });
   console.log("");
   console.log(
     `[atlas] rendered ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,
   );
-  console.log(`[atlas] browse ${browse}`);
+  if (indexPath) {
+    console.log(`[atlas] open ${indexPath}`);
+  } else if (json.browseUrl) {
+    console.log(`[atlas] browse ${base}${json.browseUrl}`);
+  }
   view.invalidateRewrite();
-  return browse;
+  return indexPath ?? (json.browseUrl ? `${base}${json.browseUrl}` : undefined);
 }
 
 async function runClear(

@@ -1189,7 +1189,8 @@ function renderNetworkEventsAtlasHtml(
   success: boolean;
   written: number;
   outputDir: string;
-  browseUrl: string;
+  /** Absolute path to index.html on disk (open with the OS file handler). */
+  indexPath: string;
   hopCount: number;
   error?: string;
 } {
@@ -1203,11 +1204,12 @@ function renderNetworkEventsAtlasHtml(
     .relative(projectRoot, outDir)
     .split(path.sep)
     .join("/");
+  const indexPath = path.join(outDir, "index.html");
   return {
     success: written > 0,
     written,
     outputDir: relativeFromRoot,
-    browseUrl: "/atlas-html/",
+    indexPath,
     hopCount: events.length,
     error: written > 0 ? undefined : "writeAtlasDocHtml wrote 0 files",
   };
@@ -1750,6 +1752,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
               bodySpillsWritten: spillWritten,
               dir: outDir,
               outputDir: relativeFromRoot,
+              indexPath: path.join(outDir, "index.html"),
               hopCount: events.length,
               error:
                 written > 0 ? undefined : "writeAtlasDocHtml wrote 0 files",

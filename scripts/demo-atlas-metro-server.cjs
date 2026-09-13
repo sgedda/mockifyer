@@ -205,11 +205,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/mockifyer-network-events/render' && req.method === 'POST') {
+    const dir = path.join(mockDataPath, 'atlas-html');
+    fs.mkdirSync(dir, { recursive: true });
+    const indexPath = path.join(dir, 'index.html');
+    if (!fs.existsSync(indexPath)) {
+      fs.writeFileSync(
+        indexPath,
+        `<!doctype html><html><head><meta charset="utf-8"><title>Atlas</title></head><body><h1>Atlas demo</h1><p>${buffer.size} hop(s) in buffer. Run a full render via Metro middleware for the interactive report.</p></body></html>\n`,
+      );
+    }
     return sendJson(res, 201, {
       success: true,
       hopCount: buffer.size,
-      browseUrl: '/atlas-html/',
-      outputDir: 'mock-data/atlas-html',
+      outputDir: path.relative(process.cwd(), dir).split(path.sep).join('/'),
+      indexPath,
     });
   }
 
