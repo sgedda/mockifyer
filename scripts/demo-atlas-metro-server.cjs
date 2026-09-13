@@ -17,6 +17,12 @@ const {
   getMetroNetworkEventBuffer,
   analyzeMetroNetworkEvents,
 } = require('../packages/mockifyer-core/dist/utils/metro-network-stream.js');
+const {
+  createEmptyAtlasDocMap,
+} = require('../packages/mockifyer-core/dist/utils/atlas-doc.js');
+const {
+  writeAtlasDocHtml,
+} = require('../packages/mockifyer-core/dist/utils/atlas-doc-html.js');
 
 const PORT = Number(process.env.METRO_PORT || process.env.PORT || 8081);
 const buffer = getMetroNetworkEventBuffer();
@@ -205,29 +211,29 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/mockifyer-network-events/render' && req.method === 'POST') {
-    const dir = path.join(mockDataPath, 'atlas-html');
-    fs.mkdirSync(dir, { recursive: true });
-    const indexPath = path.join(dir, 'index.html');
+    const outDir = path.join(mockDataPath, 'atlas-html');
+    fs.mkdirSync(outDir, { recursive: true });
     const events = [...buffer.list()].reverse();
-    // Always regenerate so `o` / `r` refresh content.
-    const rows = events
-      .slice(0, 50)
-      .map((e) => `${e.method || 'GET'} ${e.path || e.url || ''} ${e.status ?? ''}`)
-      .join('\n')
-      .replace(/</g, '&lt;');
-    fs.writeFileSync(
-      indexPath,
-      `<!doctype html><html><head><meta charset="utf-8"><title>Atlas</title></head><body>
-<h1>Atlas demo</h1>
-<p>Generated ${new Date().toISOString()} · ${events.length} hop(s).</p>
-<pre>${rows}</pre>
-<p>Use Metro <code>createMockSyncMiddleware</code> for the full interactive Atlas report.</p>
-</body></html>\n`,
+    const doc = createEmptyAtlasDocMap(
+      events[0]?.scenario?.trim() || 'demo',
     );
+    // Same writer as Metro createMockSyncMiddleware / mockifyer-atlas `r`/`o`.
+    const written = writeAtlasDocHtml(outDir, doc, events);
+    const indexPath = path.join(outDir, 'index.html');
+    if (written <= 0 || !fs.existsSync(indexPath)) {
+      return sendJson(res, 500, {
+        success: false,
+        error: 'writeAtlasDocHtml wrote 0 files',
+        hopCount: events.length,
+        outputDir: path.relative(process.cwd(), outDir).split(path.sep).join('/'),
+        indexPath,
+      });
+    }
     return sendJson(res, 201, {
       success: true,
       hopCount: events.length,
-      outputDir: path.relative(process.cwd(), dir).split(path.sep).join('/'),
+      written,
+      outputDir: path.relative(process.cwd(), outDir).split(path.sep).join('/'),
       indexPath,
     });
   }
