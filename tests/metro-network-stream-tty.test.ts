@@ -432,11 +432,15 @@ describe('metro-network-stream-tty', () => {
   });
 
 
-  it('formatAtlasStreamHoverLine swaps ▸/▾ to filled icons', () => {
+  it('formatAtlasStreamHoverLine bolds ▸/▾ without changing glyph width', () => {
     const line = '│  └─ ▸ 2 nested  · click expand';
     const hovered = formatAtlasStreamHoverLine(line);
-    expect(hovered).toContain('▶');
-    expect(hovered).not.toContain('▸');
+    expect(hovered).toContain('▸');
+    expect(hovered).toContain('\u001b[1m▸\u001b[22m');
+    // ▶/▼ are often 2 display columns and would wrap onto the next row.
+    expect(hovered).not.toContain('▶');
+    expect(hovered).not.toContain('▼');
+    expect(atlasStreamVisibleWidth(hovered)).toBe(atlasStreamVisibleWidth(line));
     expect(formatAtlasStreamHoverLine('plain')).toBe('plain');
   });
 
@@ -481,8 +485,10 @@ describe('metro-network-stream-tty', () => {
     const body = afterClear.replace(/\u001b8$/, '');
     expect(body.includes('\n')).toBe(false);
     expect(atlasStreamVisibleWidth(body.replace(/\u001b\[[0-9;]*m/g, ''))).toBeLessThanOrEqual(
-      Math.max(20, (process.stdout.columns || 80) - 1)
+      Math.max(20, (process.stdout.columns || 80) - 2)
     );
+    // No-wrap is re-asserted so a wide hover cannot clobber the next row.
+    expect(out).toContain('\u001b[?7l');
   });
 
 

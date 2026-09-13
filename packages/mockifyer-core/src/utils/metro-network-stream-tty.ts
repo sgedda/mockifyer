@@ -213,14 +213,16 @@ export function formatAtlasStreamCollapseSummary(
 }
 
 /**
- * Hover affordance for a clickable collapse/expand row: filled triangle + bold.
- * Safe no-op when the line has no ▸/▾ glyph.
+ * Hover affordance for a clickable collapse/expand row: bold the existing
+ * ▸/▾ glyph. Do not swap to ▶/▼ — those are often 2 display columns and will
+ * push a near-full line into the auto-margin wrap, wiping the timestamp row
+ * below when the screen is full.
  */
 export function formatAtlasStreamHoverLine(line: string): string {
   if (!line.includes("▸") && !line.includes("▾")) return line;
   return line
-    .replace("▸", `${ESC}1m▶${ESC}22m`)
-    .replace("▾", `${ESC}1m▼${ESC}22m`);
+    .replace("▸", `${ESC}1m▸${ESC}22m`)
+    .replace("▾", `${ESC}1m▾${ESC}22m`);
 }
 
 const ANSI_SGR_RE = /\u001b\[[0-9;]*m/g;
@@ -887,11 +889,16 @@ export function rewriteAtlasStreamScreenRow(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
   if (!Number.isFinite(row) || row < 1) return;
-  const cols = Math.max(20, (process.stdout.columns || 80) - 1);
+  // Keep ≥2 columns of margin: writing exactly `columns` display cells trips
+  // the auto-right-margin wrap onto the next row (wiping a timestamp under a
+  // ▸ summary when the buffer is full).
+  const cols = Math.max(20, (process.stdout.columns || 80) - 2);
   const clipped = truncateAtlasStreamLine(text, cols);
-  // DECSC/DECRC are ESC 7 / ESC 8 (not CSI). Clear line, write clipped text
-  // (no newline) so we never wrap into the row below.
-  write(`\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${clipped}\u001b8`);
+  // Re-assert no-wrap, DECSC/DECRC (ESC 7 / ESC 8), clear line, write clipped
+  // text with no newline so we never wrap into the row below.
+  write(
+    `${ESC}?7l\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${clipped}\u001b8`,
+  );
 }
 
 /** Parse xterm SGR mouse sequences; return clicks/moves + leftover key text. */
