@@ -208,21 +208,31 @@ const server = http.createServer(async (req, res) => {
     const dir = path.join(mockDataPath, 'atlas-html');
     fs.mkdirSync(dir, { recursive: true });
     const indexPath = path.join(dir, 'index.html');
-    if (!fs.existsSync(indexPath)) {
-      fs.writeFileSync(
-        indexPath,
-        `<!doctype html><html><head><meta charset="utf-8"><title>Atlas</title></head><body><h1>Atlas demo</h1><p>${buffer.size} hop(s) in buffer. Run a full render via Metro middleware for the interactive report.</p></body></html>\n`,
-      );
-    }
+    const events = [...buffer.list()].reverse();
+    // Always regenerate so `o` / `r` refresh content.
+    const rows = events
+      .slice(0, 50)
+      .map((e) => `${e.method || 'GET'} ${e.path || e.url || ''} ${e.status ?? ''}`)
+      .join('\n')
+      .replace(/</g, '&lt;');
+    fs.writeFileSync(
+      indexPath,
+      `<!doctype html><html><head><meta charset="utf-8"><title>Atlas</title></head><body>
+<h1>Atlas demo</h1>
+<p>Generated ${new Date().toISOString()} · ${events.length} hop(s).</p>
+<pre>${rows}</pre>
+<p>Use Metro <code>createMockSyncMiddleware</code> for the full interactive Atlas report.</p>
+</body></html>\n`,
+    );
     return sendJson(res, 201, {
       success: true,
-      hopCount: buffer.size,
+      hopCount: events.length,
       outputDir: path.relative(process.cwd(), dir).split(path.sep).join('/'),
       indexPath,
     });
   }
 
-  if (pathname === '/mockifyer-network-events/clear' && req.method === 'POST') {
+  if (pathname === '/mockifyer-network-events/clear && req.method === 'POST') {
     buffer.clear();
     return sendJson(res, 200, { success: true, size: 0 });
   }

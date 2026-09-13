@@ -16,8 +16,8 @@
  *   click  expand/collapse a ▸ nested row (mouse reporting)
  *   a  analyze buffer
  *   s  snapshot hops → mock-data/atlas-html/{atlas-events.json,atlas.ndjson,atlas.har}
- *   r  render Atlas HTML from buffer + print browse URL
- *   o  open rendered Atlas HTML in browser
+ *   r  generate Atlas HTML → atlas-html/index.html
+ *   o  generate Atlas HTML, then open index.html from disk
  *   e  expand/collapse all nested groups
  *   p / Space  pause/resume live hops
  *   wheel / ↑↓ / PgUp / PgDn  scroll history (pauses live stream)
@@ -51,6 +51,8 @@ import {
   consumeAtlasStreamMouseInput,
 } from "../utils/metro-network-stream-tty";
 import type { AtlasStreamPaint } from "../utils/metro-network-stream-tty";
+import { createEmptyAtlasDocMap } from "../utils/atlas-doc";
+import { writeAtlasDocHtml } from "../utils/atlas-doc-html";
 
 interface CliOptions {
   port?: number;
@@ -106,8 +108,8 @@ Keys:
   ${theme.info("f")}  Toggle errors-only filter
   ${theme.info("a")}  Analyze buffer (counts, slow, errors)
   ${theme.info("s")}  Snapshot → atlas-html/atlas-events.json + .ndjson + .har
-  ${theme.info("r")}  Render Atlas HTML from buffer hops (writes atlas-html/index.html)
-  ${theme.info("o")}  Open atlas-html/index.html from disk in the default browser
+  ${theme.info("r")}  Generate Atlas HTML from buffer hops → atlas-html/index.html
+  ${theme.info("o")}  Generate Atlas HTML, then open atlas-html/index.html from disk
   ${theme.info("c")}  Clear Metro hop buffer
   ${theme.info("h")}  Show this help
   ${theme.info("q")}  Quit
@@ -279,38 +281,91 @@ async function runSnapshot(
   view.invalidateRewrite();
 }
 
+/** Fetch hops from Metro and write Atlas HTML under mock-data/atlas-html/. */
+async function renderAtlasHtmlLocally(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<string | undefined> {
+  const json = await jsonGet<{
+    success?: boolean;
+    events?: NetworkEvent[];
+    size?: number;
+  }>(`${base}/mockifyer-network-events?limit=2000`);
+  const events = Array.isArray(json.events) ? json.events : [];
+  const outDir = path.resolve(process.cwd(), "mock-data", "atlas-html");
+  const map = createEmptyAtlasDocMap(events[0]?.scenario?.trim() || "default");
+  const written = writeAtlasDocHtml(outDir, map, events);
+  const indexPath = path.join(outDir, "index.html");
+  if (written <= 0 || !fs.existsSync(indexPath)) {
+    console.error(
+      `[atlas] local HTML write failed (${written} file(s)) → ${outDir}`,
+    );
+    view.invalidateRewrite();
+    return undefined;
+  }
+  console.log("");
+  console.log(
+    `[atlas] generated ${events.length} hop(s) locally → ${path.relative(process.cwd(), outDir) || outDir}`,
+  );
+  console.log(`[atlas] open ${indexPath}`);
+  view.invalidateRewrite();
+  return indexPath;
+}
+
+/**
+ * Always regenerate Atlas HTML (Metro render, with local fallback), then
+ * return the on-disk index.html path.
+ */
 async function runRender(
   base: string,
   view: MetroAtlasStreamView,
 ): Promise<string | undefined> {
-  const json = await jsonPost<{
-    success: boolean;
-    hopCount?: number;
-    browseUrl?: string;
-    outputDir?: string;
-    indexPath?: string;
-    error?: string;
-  }>(`${base}/mockifyer-network-events/render`, {});
-  if (!json.success) {
-    console.error(`[atlas] render failed: ${json.error ?? "unknown"}`);
-    view.invalidateRewrite();
-    return undefined;
+  try {
+    const json = await jsonPost<{
+      success: boolean;
+      hopCount?: number;
+      browseUrl?: string;
+      outputDir?: string;
+      indexPath?: string;
+      error?: string;
+    }>(`${base}/mockifyer-network-events/render`, {});
+    if (json.success) {
+      const indexPath = resolveAtlasIndexPath({
+        indexPath: json.indexPath,
+        outputDir: json.outputDir,
+      });
+      if (indexPath && fs.existsSync(indexPath)) {
+        console.log("");
+        console.log(
+          `[atlas] generated ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,
+        );
+        console.log(`[atlas] open ${indexPath}`);
+        view.invalidateRewrite();
+        return indexPath;
+      }
+      console.warn(
+        "[atlas] Metro render returned success but index.html missing — trying local write",
+      );
+    } else {
+      console.warn(
+        `[atlas] Metro render failed (${json.error ?? "unknown"}) — trying local write`,
+      );
+    }
+  } catch (e) {
+    console.warn(
+      `[atlas] Metro render error (${(e as Error).message}) — trying local write`,
+    );
   }
-  const indexPath = resolveAtlasIndexPath({
-    indexPath: json.indexPath,
-    outputDir: json.outputDir,
-  });
-  console.log("");
-  console.log(
-    `[atlas] rendered ${json.hopCount ?? 0} hop(s) → ${json.outputDir ?? "atlas-html"}`,
-  );
-  if (indexPath) {
-    console.log(`[atlas] open ${indexPath}`);
-  } else if (json.browseUrl) {
-    console.log(`[atlas] browse ${base}${json.browseUrl}`);
-  }
-  view.invalidateRewrite();
-  return indexPath ?? (json.browseUrl ? `${base}${json.browseUrl}` : undefined);
+  return renderAtlasHtmlLocally(base, view);
+}
+
+/** Generate fresh HTML, then open it from disk. */
+async function runOpen(
+  base: string,
+  view: MetroAtlasStreamView,
+): Promise<void> {
+  const indexPath = await runRender(base, view);
+  if (indexPath) openUrl(indexPath);
 }
 
 async function runClear(
@@ -532,8 +587,7 @@ function attachInputHandlers(
     }
     if (key === "o") {
       void run(async () => {
-        const browse = await runRender(base, view);
-        if (browse) openUrl(browse);
+        await runOpen(base, view);
       });
       return;
     }
