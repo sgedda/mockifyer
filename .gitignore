@@ -43,3 +43,4 @@ test-mock-data/
 example-projects/capp-react-native/ 
 # Local Atlas HTML preview samples
 .atlas-html-preview/
+.local-private/

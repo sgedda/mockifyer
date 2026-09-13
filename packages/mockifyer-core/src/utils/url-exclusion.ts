@@ -12,6 +12,8 @@ export const MOCKIFYER_SYNC_ENDPOINT_MARKERS = [
   '/mockifyer-atlas-html',
   '/mockifyer-atlas-screenshot',
   '/mockifyer-atlas-render',
+  /** Metro live hop stream (mockifyer-atlas CLI). */
+  '/mockifyer-network-events',
   /** Metro domain-path rules discovery merge. */
   '/mockifyer-domain-path-rules',
 ] as const;
