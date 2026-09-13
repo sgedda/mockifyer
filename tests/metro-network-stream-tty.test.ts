@@ -203,7 +203,7 @@ describe('metro-network-stream-tty', () => {
     expect(chunks.join('')).toContain('hello\n');
   });
 
-  it('expand mode prints tree-prefixed children', () => {
+  it('expand mode prints toggle above tree-prefixed children', () => {
     const view = new MetroAtlasStreamView({
       color: false,
       collapseChildren: false,
@@ -230,8 +230,58 @@ describe('metro-network-stream-tty', () => {
         source: 'upstream',
       })
     );
-    expect(child.lines[0]).toContain('└─');
-    expect(child.lines[0]).toContain('/c');
+    expect(child.lines[0]).toContain('▾');
+    expect(child.lines[0]).toContain('1 nested · click collapse');
+    expect(child.lines[0]).toContain('├─');
+    expect(child.lineHits?.[0]?.kind).toBe('expand-footer');
+    expect(child.lines[1]).toContain('└─');
+    expect(child.lines[1]).toContain('/c');
+  });
+
+  it('toggleParentExpanded keeps collapse control above children', () => {
+    const view = new MetroAtlasStreamView({
+      color: false,
+      collapseChildren: true,
+      collapseDuplicates: false,
+    });
+    view.push(
+      hop({
+        requestId: 'root',
+        method: 'GET',
+        url: 'https://a.test/',
+        path: '/',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c1',
+        parentRequestId: 'root',
+        method: 'GET',
+        url: 'https://a.test/a',
+        path: '/a',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c2',
+        parentRequestId: 'root',
+        method: 'GET',
+        url: 'https://a.test/b',
+        path: '/b',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    const expanded = view.toggleParentExpanded('root');
+    const nestedIdx = expanded.lines.findIndex((l) => l.includes('nested · click collapse'));
+    const childIdx = expanded.lines.findIndex((l) => l.includes('/a'));
+    expect(nestedIdx).toBeGreaterThan(-1);
+    expect(childIdx).toBeGreaterThan(nestedIdx);
+    expect(expanded.lineHits?.[nestedIdx]?.kind).toBe('expand-footer');
   });
 
   it('toggleParentExpanded expands and collapses a nested group', () => {

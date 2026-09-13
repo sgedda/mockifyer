@@ -268,14 +268,19 @@ export function truncateAtlasStreamLine(text: string, maxCols: number): string {
   return hasOpenStyle ? `${out}\u001b[0m…` : `${out}…`;
 }
 
-/** Footer under an expanded child list (click to collapse). */
+/**
+ * Toggle row under an expanded parent (above children). Stays in the same
+ * place as the collapsed ▸ summary so expand/collapse does not jump.
+ */
 export function formatAtlasStreamExpandFooter(
   _parentId: string,
   childCount: number,
-  options?: { color?: AtlasStreamColorTheme },
+  options?: { color?: AtlasStreamColorTheme; hasChildrenBelow?: boolean },
 ): string {
   const theme = options?.color ?? createAtlasStreamColorTheme(false);
-  return `${theme.muted("│  └─ ")}${theme.muted("▾")} ${theme.muted(
+  const hasBelow = options?.hasChildrenBelow ?? childCount > 0;
+  const branch = hasBelow ? "│  ├─ " : "│  └─ ";
+  return `${theme.muted(branch)}${theme.muted("▾")} ${theme.muted(
     `${childCount} nested · click collapse`,
   )}`;
 }
@@ -326,6 +331,7 @@ export interface AtlasStreamViewOptions {
 export type AtlasStreamLineHit =
   | { kind: "none" }
   | { kind: "collapse"; parentId: string }
+  /** Expanded toggle row under the parent (above children). */
   | { kind: "expand-footer"; parentId: string };
 
 export interface AtlasStreamPaint {
@@ -599,6 +605,13 @@ export class MetroAtlasStreamView {
     }
 
     const visible = this.visibleChildren(children);
+    lines.push(
+      formatAtlasStreamExpandFooter(parentId, children.length, {
+        color: this.theme,
+        hasChildrenBelow: visible.length > 0,
+      }),
+    );
+    lineHits.push({ kind: "expand-footer", parentId });
     for (let i = 0; i < visible.length; i++) {
       lines.push(
         formatAtlasStreamHopLine(visible[i]!, {
@@ -610,12 +623,6 @@ export class MetroAtlasStreamView {
       );
       lineHits.push({ kind: "none" });
     }
-    lines.push(
-      formatAtlasStreamExpandFooter(parentId, children.length, {
-        color: this.theme,
-      }),
-    );
-    lineHits.push({ kind: "expand-footer", parentId });
     this.expandedBlocks.set(parentId, {
       childLines: visible.length,
       hasFooter: true,
@@ -712,33 +719,50 @@ export class MetroAtlasStreamView {
     }
 
     const block = this.expandedBlocks.get(parentId);
-    const eraseFooter =
+    const visible = this.visibleChildren(children);
+    const canRewriteInPlace =
       this.lastRewritable === "expand-footer" &&
       this.lastCollapseParentId === parentId &&
-      block?.hasFooter
-        ? 1
-        : 0;
+      Boolean(block?.hasFooter);
 
-    const childLine = formatAtlasStreamHopLine(event, {
+    // Mid-stream child under an expanded parent that is no longer at the
+    // cursor: full redraw so the top toggle stays under the parent.
+    if (block && !canRewriteInPlace) {
+      this.expandOverride.set(parentId, true);
+      this.expandedBlocks.set(parentId, {
+        childLines: visible.length,
+        hasFooter: true,
+      });
+      return this.rebuildView();
+    }
+
+    const eraseLines = canRewriteInPlace ? (block?.childLines ?? 0) + 1 : 0;
+    const header = formatAtlasStreamExpandFooter(parentId, children.length, {
       color: this.theme,
-      depth: 1,
-      isLast: true,
-      maxPathCols: this.maxPathCols,
+      hasChildrenBelow: visible.length > 0,
     });
-    const footer = formatAtlasStreamExpandFooter(parentId, children.length, {
-      color: this.theme,
-    });
+    const childLines = visible.map((child, i) =>
+      formatAtlasStreamHopLine(child, {
+        color: this.theme,
+        depth: 1,
+        isLast: i === visible.length - 1,
+        maxPathCols: this.maxPathCols,
+      }),
+    );
     this.expandedBlocks.set(parentId, {
-      childLines: (block?.childLines ?? 0) + 1,
+      childLines: visible.length,
       hasFooter: true,
     });
     this.expandOverride.set(parentId, true);
     this.lastRewritable = "expand-footer";
     this.lastCollapseParentId = parentId;
     return {
-      lines: [childLine, footer],
-      erasePreviousLines: eraseFooter,
-      lineHits: [{ kind: "none" }, { kind: "expand-footer", parentId }],
+      lines: [header, ...childLines],
+      erasePreviousLines: eraseLines,
+      lineHits: [
+        { kind: "expand-footer", parentId },
+        ...childLines.map(() => ({ kind: "none" as const })),
+      ],
     };
   }
 }
