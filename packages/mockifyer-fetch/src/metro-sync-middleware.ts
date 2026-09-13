@@ -50,6 +50,7 @@ import {
   setAtlasDocHtmlOutputPath,
   writeAtlasDocHtml,
   writeNetworkBodySpillMap,
+  flushNetworkBodySpillsToDir,
   prettyPrintJsonText,
   setAtlasDocMap,
   type AtlasDocMap,
@@ -1198,6 +1199,8 @@ function renderNetworkEventsAtlasHtml(
   const doc = createEmptyAtlasDocMap(
     scenario?.trim() || events[0]?.scenario || "default",
   );
+  // Flush any buffered large bodies so HTML "Open full …" links resolve on disk.
+  flushNetworkBodySpillsToDir(outDir);
   const written = writeAtlasDocHtml(outDir, doc, events);
   writeNetworkEventsSnapshot(mockDataPath, events);
   const relativeFromRoot = path

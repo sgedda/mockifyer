@@ -214,6 +214,49 @@ const server = http.createServer(async (req, res) => {
     const outDir = path.join(mockDataPath, 'atlas-html');
     fs.mkdirSync(outDir, { recursive: true });
     const events = [...buffer.list()].reverse();
+    // Seed spilled bodies so Atlas HTML + terminal `file://` links have targets
+    // (demo hops are synthetic and never went through scheduleNetworkBodySpill).
+    const bodiesDir = path.join(outDir, 'bodies');
+    fs.mkdirSync(bodiesDir, { recursive: true });
+    for (const ev of events.slice(0, 25)) {
+      const key = String(ev.id || ev.requestId || 'hop').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const resRel = `bodies/${key}-res.json`;
+      const reqRel = `bodies/${key}-req.json`;
+      const resAbs = path.join(outDir, resRel);
+      const reqAbs = path.join(outDir, reqRel);
+      if (!fs.existsSync(resAbs)) {
+        fs.writeFileSync(
+          resAbs,
+          JSON.stringify(
+            {
+              ok: (ev.status ?? 200) < 400,
+              path: ev.path || ev.url,
+              status: ev.status ?? 200,
+              demo: true,
+              message: `Synthetic response body for ${ev.method || 'GET'} ${ev.path || ev.url}`,
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+      }
+      if (!fs.existsSync(reqAbs)) {
+        fs.writeFileSync(
+          reqAbs,
+          JSON.stringify(
+            {
+              method: ev.method || 'GET',
+              url: ev.url,
+              demo: true,
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+      }
+      ev.responseBodyRef = resRel;
+      ev.requestBodyRef = reqRel;
+    }
     const doc = createEmptyAtlasDocMap(
       events[0]?.scenario?.trim() || 'demo',
     );
