@@ -494,16 +494,9 @@ export class MetroAtlasStreamView {
       this.appendChildrenBlock(rootId, children, lines, lineHits);
     }
 
-    // Keep incremental child updates working after a redraw.
     this.duplicate = null;
-    if (this.lastInteractiveParentId) {
-      const expanded = this.isParentExpanded(this.lastInteractiveParentId);
-      this.lastRewritable = expanded ? "expand-footer" : "collapse";
-      this.lastCollapseParentId = this.lastInteractiveParentId;
-    } else {
-      this.lastRewritable = null;
-      this.lastCollapseParentId = null;
-    }
+    this.lastRewritable = null;
+    this.lastCollapseParentId = null;
 
     return { lines, lineHits, clearScreen: true };
   }
@@ -556,6 +549,14 @@ export class MetroAtlasStreamView {
   }
 
   private paintRoot(event: NetworkEvent, requestId: string): AtlasStreamPaint {
+    this.rootOrder.push(requestId);
+    if (this.rootOrder.length > MetroAtlasStreamView.MAX_ROOTS) {
+      this.rootOrder.splice(
+        0,
+        this.rootOrder.length - MetroAtlasStreamView.MAX_ROOTS,
+      );
+    }
+
     if (this.errorsOnly && !isMetroNetworkErrorHop(event)) {
       return { lines: [] };
     }
@@ -568,14 +569,6 @@ export class MetroAtlasStreamView {
     ) {
       this.duplicate.count += 1;
       this.duplicate.event = event;
-      // Still track for redraw — consecutive identical roots share one display slot.
-      this.rootOrder.push(requestId);
-      if (this.rootOrder.length > MetroAtlasStreamView.MAX_ROOTS) {
-        this.rootOrder.splice(
-          0,
-          this.rootOrder.length - MetroAtlasStreamView.MAX_ROOTS,
-        );
-      }
       const line = formatAtlasStreamHopLine(event, {
         color: this.theme,
         maxPathCols: this.maxPathCols,
@@ -593,13 +586,6 @@ export class MetroAtlasStreamView {
 
     this.duplicate = { key, count: 1, event };
     this.lastRewritable = this.collapseDuplicates ? "duplicate" : null;
-    this.rootOrder.push(requestId);
-    if (this.rootOrder.length > MetroAtlasStreamView.MAX_ROOTS) {
-      this.rootOrder.splice(
-        0,
-        this.rootOrder.length - MetroAtlasStreamView.MAX_ROOTS,
-      );
-    }
     return {
       lines: [
         formatAtlasStreamHopLine(event, {

@@ -520,8 +520,7 @@ async function main(): Promise<void> {
   };
 
   const applyPaint = (paint: AtlasStreamPaint): void => {
-    // Drop hover highlight before any paint — stream/redraw invalidates that row.
-    hoverRow = null;
+    clearHover();
     hits.notePaint(paint);
     writeAtlasStreamPaint(paint);
   };
