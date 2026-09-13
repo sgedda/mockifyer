@@ -19,7 +19,7 @@
  *   r  render Atlas HTML from buffer + print browse URL
  *   o  open rendered Atlas HTML in browser
  *   e  expand/collapse all nested groups
- *   p / Space  pause/resume live hop painting
+ *   p / Space  pause/resume (while paused: scroll with mouse wheel)
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -94,7 +94,7 @@ Does not require the dashboard GUI.
 Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
   ${theme.info("e")}  Expand/collapse all nested groups
-  ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hop painting (inspect without scroll)
+  ${theme.info("p")}/${theme.info("Space")}  Pause/resume — while paused, scroll with the mouse wheel
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -203,7 +203,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ to expand · e all · p/Space pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ to expand · e all · p pause+scroll · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -319,6 +319,32 @@ function attachInputHandlers(
     }
   };
 
+  const setPaused = (paused: boolean, message?: string): void => {
+    const wasPaused = view.paused;
+    view.paused = paused;
+    if (paused) {
+      if (!wasPaused) view.skippedWhilePaused = 0;
+      // Mouse tracking eats wheel events — disable it so the terminal can
+      // scroll its scrollback while inspecting.
+      disableAtlasStreamMouseTracking();
+      console.log(
+        message ??
+          "[atlas] paused — scroll with the mouse wheel · p/Space to resume (click disabled while paused)",
+      );
+    } else {
+      const skipped = view.skippedWhilePaused;
+      view.skippedWhilePaused = 0;
+      enableAtlasStreamMouseTracking();
+      console.log(
+        message ??
+          (skipped > 0
+            ? `[atlas] live · skipped ${skipped} while paused`
+            : "[atlas] live"),
+      );
+    }
+    view.invalidateRewrite();
+  };
+
   const handleKey = (ch: string): void => {
     if (ch === "\u0003") {
       onQuit();
@@ -339,20 +365,7 @@ function attachInputHandlers(
       return;
     }
     if (key === "p" || ch === " ") {
-      view.paused = !view.paused;
-      if (view.paused) {
-        view.skippedWhilePaused = 0;
-        console.log(view.statusLine());
-      } else {
-        const skipped = view.skippedWhilePaused;
-        view.skippedWhilePaused = 0;
-        console.log(
-          skipped > 0
-            ? `[atlas] live · skipped ${skipped} while paused`
-            : view.statusLine(),
-        );
-      }
-      view.invalidateRewrite();
+      setPaused(!view.paused);
       return;
     }
     if (key === "g") {
@@ -403,7 +416,22 @@ function attachInputHandlers(
     clicks: ReturnType<typeof consumeAtlasStreamMouseInput>["clicks"],
   ): void => {
     for (const click of clicks) {
-      if (click.release || click.button !== 0) continue;
+      if (click.release) continue;
+      // Wheel up (SGR button 64): pause + release mouse so further wheel
+      // ticks scroll the terminal scrollback instead of being eaten.
+      if (click.button === 64) {
+        if (!view.paused) {
+          setPaused(
+            true,
+            "[atlas] paused (scroll) — wheel to scroll · p/Space to resume",
+          );
+        }
+        continue;
+      }
+      // Wheel down — ignore while live (stay pinned to the stream tip).
+      if (click.button === 65) continue;
+      if (click.button !== 0) continue;
+      if (view.paused) continue;
       const hit = hits.hitAtScreenRow(click.row, process.stdout.rows || 24);
       if (hit?.kind === "collapse" || hit?.kind === "expand-footer") {
         applyPaint(view.toggleParentExpanded(hit.parentId));
