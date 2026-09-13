@@ -283,6 +283,11 @@ export interface AtlasStreamPaint {
   erasePreviousLines?: number;
   /** Parallel to `lines` — mouse click targets. */
   lineHits?: AtlasStreamLineHit[];
+  /**
+   * Clear the terminal and paint from the top. Used when expanding/collapsing a
+   * mid-screen row so children appear under the clicked parent (not at the cursor).
+   */
+  clearScreen?: boolean;
 }
 
 interface DuplicateStreak {
@@ -304,6 +309,9 @@ export class MetroAtlasStreamView {
 
   private readonly childrenByParent = new Map<string, NetworkEvent[]>();
   private readonly eventsByRequestId = new Map<string, NetworkEvent>();
+  /** Root request ids in paint order (for full redraw on mid-screen toggle). */
+  private readonly rootOrder: string[] = [];
+  private static readonly MAX_ROOTS = 200;
   /** Per-parent override; when unset, falls back to `!collapseChildren`. */
   private readonly expandOverride = new Map<string, boolean>();
   private readonly expandedBlocks = new Map<
@@ -381,90 +389,155 @@ export class MetroAtlasStreamView {
       return this.paintChild(event, parentId, list);
     }
 
-    return this.paintRoot(event);
+    return this.paintRoot(event, requestId);
   }
 
-  /** Toggle one parent (mouse click / keyboard `e` on last interactive row). */
+  /**
+   * Toggle one parent (mouse click / keyboard `e` on last interactive row).
+   * Always redraws the full view so mid-screen clicks expand in place — not at
+   * the bottom cursor.
+   */
   toggleParentExpanded(parentId: string): AtlasStreamPaint {
     const children = this.childrenByParent.get(parentId) ?? [];
     if (children.length === 0) return { lines: [] };
-    if (this.isParentExpanded(parentId)) {
-      return this.collapseParentBlock(parentId, children);
+
+    const next = !this.isParentExpanded(parentId);
+    this.expandOverride.set(parentId, next);
+    this.lastInteractiveParentId = parentId;
+
+    if (next) {
+      const visible = this.visibleChildren(children);
+      this.expandedBlocks.set(parentId, {
+        childLines: visible.length,
+        hasFooter: true,
+      });
+    } else {
+      this.expandedBlocks.delete(parentId);
     }
-    return this.expandParentBlock(parentId, children);
+
+    return this.rebuildView();
   }
 
-  private expandParentBlock(
+  /**
+   * Rebuild the entire hop view from stored roots/children with current expand
+   * state. Clears the screen so click targets stay aligned with painted rows.
+   */
+  rebuildView(): AtlasStreamPaint {
+    const lines: string[] = [];
+    const lineHits: AtlasStreamLineHit[] = [];
+    lines.push(this.statusLine(), "");
+    lineHits.push({ kind: "none" }, { kind: "none" });
+
+    let duplicate: DuplicateStreak | null = null;
+    let lastHadChildren = false;
+    this.expandedBlocks.clear();
+
+    for (const rootId of this.rootOrder) {
+      const event = this.eventsByRequestId.get(rootId);
+      if (!event) continue;
+
+      const children = this.childrenByParent.get(rootId) ?? [];
+      if (this.errorsOnly) {
+        const rootErr = isMetroNetworkErrorHop(event);
+        const childErr = children.some((c) => isMetroNetworkErrorHop(c));
+        if (!rootErr && !childErr) continue;
+      }
+
+      const key = duplicateKey(event);
+      const canDedupe =
+        this.collapseDuplicates &&
+        !lastHadChildren &&
+        duplicate != null &&
+        duplicate.key === key;
+
+      if (canDedupe && duplicate) {
+        duplicate.count += 1;
+        duplicate.event = event;
+        const line = formatAtlasStreamHopLine(event, {
+          color: this.theme,
+          maxPathCols: this.maxPathCols,
+          repeatSuffix: `×${duplicate.count}`,
+        });
+        // Replace the previous root-only line (no children were under it).
+        lines[lines.length - 1] = line;
+        lineHits[lineHits.length - 1] = { kind: "none" };
+        lastHadChildren = false;
+        continue;
+      }
+
+      duplicate = { key, count: 1, event };
+      lines.push(
+        formatAtlasStreamHopLine(event, {
+          color: this.theme,
+          maxPathCols: this.maxPathCols,
+        }),
+      );
+      lineHits.push({ kind: "none" });
+
+      if (children.length === 0) {
+        lastHadChildren = false;
+        continue;
+      }
+
+      lastHadChildren = true;
+      duplicate = null;
+      this.appendChildrenBlock(rootId, children, lines, lineHits);
+    }
+
+    // Keep incremental child updates working after a redraw.
+    this.duplicate = null;
+    if (this.lastInteractiveParentId) {
+      const expanded = this.isParentExpanded(this.lastInteractiveParentId);
+      this.lastRewritable = expanded ? "expand-footer" : "collapse";
+      this.lastCollapseParentId = this.lastInteractiveParentId;
+    } else {
+      this.lastRewritable = null;
+      this.lastCollapseParentId = null;
+    }
+
+    return { lines, lineHits, clearScreen: true };
+  }
+
+  private appendChildrenBlock(
     parentId: string,
     children: NetworkEvent[],
-  ): AtlasStreamPaint {
-    this.expandOverride.set(parentId, true);
-    this.lastInteractiveParentId = parentId;
+    lines: string[],
+    lineHits: AtlasStreamLineHit[],
+  ): void {
+    const expanded = this.isParentExpanded(parentId);
+    if (!expanded) {
+      const parent = this.eventsByRequestId.get(parentId);
+      lines.push(
+        formatAtlasStreamCollapseSummary(parent ?? children[0]!, children, {
+          color: this.theme,
+        }),
+      );
+      lineHits.push({ kind: "collapse", parentId });
+      return;
+    }
+
     const visible = this.visibleChildren(children);
-    const lines = visible.map((c, i) =>
-      formatAtlasStreamHopLine(c, {
-        color: this.theme,
-        depth: 1,
-        isLast: i === visible.length - 1,
-        maxPathCols: this.maxPathCols,
-      }),
-    );
+    for (let i = 0; i < visible.length; i++) {
+      lines.push(
+        formatAtlasStreamHopLine(visible[i]!, {
+          color: this.theme,
+          depth: 1,
+          isLast: i === visible.length - 1,
+          maxPathCols: this.maxPathCols,
+        }),
+      );
+      lineHits.push({ kind: "none" });
+    }
     lines.push(
       formatAtlasStreamExpandFooter(parentId, children.length, {
         color: this.theme,
       }),
     );
-
-    const erase =
-      this.lastRewritable === "collapse" &&
-      this.lastCollapseParentId === parentId
-        ? 1
-        : 0;
-
+    lineHits.push({ kind: "expand-footer", parentId });
     this.expandedBlocks.set(parentId, {
       childLines: visible.length,
       hasFooter: true,
     });
-    this.lastRewritable = "expand-footer";
-    this.lastCollapseParentId = parentId;
-    this.duplicate = null;
-
-    const lineHits: AtlasStreamLineHit[] = [
-      ...visible.map((): AtlasStreamLineHit => ({ kind: "none" })),
-      { kind: "expand-footer", parentId },
-    ];
-    return { lines, erasePreviousLines: erase, lineHits };
-  }
-
-  private collapseParentBlock(
-    parentId: string,
-    children: NetworkEvent[],
-  ): AtlasStreamPaint {
-    const block = this.expandedBlocks.get(parentId);
-    const erase = block
-      ? block.childLines + (block.hasFooter ? 1 : 0)
-      : this.lastRewritable === "collapse" &&
-          this.lastCollapseParentId === parentId
-        ? 1
-        : 0;
-    this.expandOverride.set(parentId, false);
-    this.expandedBlocks.delete(parentId);
-    this.lastInteractiveParentId = parentId;
-
-    const parent = this.eventsByRequestId.get(parentId);
-    const summary = formatAtlasStreamCollapseSummary(
-      parent ?? children[0]!,
-      children,
-      { color: this.theme },
-    );
-    this.lastRewritable = "collapse";
-    this.lastCollapseParentId = parentId;
-    this.duplicate = null;
-    return {
-      lines: [summary],
-      erasePreviousLines: erase,
-      lineHits: [{ kind: "collapse", parentId }],
-    };
   }
 
   private visibleChildren(children: NetworkEvent[]): NetworkEvent[] {
@@ -472,7 +545,7 @@ export class MetroAtlasStreamView {
     return children.filter((c) => isMetroNetworkErrorHop(c));
   }
 
-  private paintRoot(event: NetworkEvent): AtlasStreamPaint {
+  private paintRoot(event: NetworkEvent, requestId: string): AtlasStreamPaint {
     if (this.errorsOnly && !isMetroNetworkErrorHop(event)) {
       return { lines: [] };
     }
@@ -485,6 +558,14 @@ export class MetroAtlasStreamView {
     ) {
       this.duplicate.count += 1;
       this.duplicate.event = event;
+      // Still track for redraw — consecutive identical roots share one display slot.
+      this.rootOrder.push(requestId);
+      if (this.rootOrder.length > MetroAtlasStreamView.MAX_ROOTS) {
+        this.rootOrder.splice(
+          0,
+          this.rootOrder.length - MetroAtlasStreamView.MAX_ROOTS,
+        );
+      }
       const line = formatAtlasStreamHopLine(event, {
         color: this.theme,
         maxPathCols: this.maxPathCols,
@@ -502,6 +583,13 @@ export class MetroAtlasStreamView {
 
     this.duplicate = { key, count: 1, event };
     this.lastRewritable = this.collapseDuplicates ? "duplicate" : null;
+    this.rootOrder.push(requestId);
+    if (this.rootOrder.length > MetroAtlasStreamView.MAX_ROOTS) {
+      this.rootOrder.splice(
+        0,
+        this.rootOrder.length - MetroAtlasStreamView.MAX_ROOTS,
+      );
+    }
     return {
       lines: [
         formatAtlasStreamHopLine(event, {
@@ -596,10 +684,15 @@ export function writeAtlasStreamPaint(
     process.stdout.write(s);
   },
 ): void {
-  if (paint.lines.length === 0) return;
-  const erase = paint.erasePreviousLines ?? 0;
-  for (let i = 0; i < erase; i++) {
-    write(`${ESC}1A${ESC}2K`);
+  if (paint.clearScreen) {
+    write(`${ESC}2J${ESC}H`);
+  } else if (paint.lines.length === 0) {
+    return;
+  } else {
+    const erase = paint.erasePreviousLines ?? 0;
+    for (let i = 0; i < erase; i++) {
+      write(`${ESC}1A${ESC}2K`);
+    }
   }
   for (const line of paint.lines) {
     write(`${line}\n`);
@@ -623,9 +716,13 @@ export class AtlasStreamHitTracker {
   }
 
   notePaint(paint: AtlasStreamPaint): void {
-    const erase = paint.erasePreviousLines ?? 0;
-    if (erase > 0) {
-      this.hits.splice(Math.max(0, this.hits.length - erase), erase);
+    if (paint.clearScreen) {
+      this.hits = [];
+    } else {
+      const erase = paint.erasePreviousLines ?? 0;
+      if (erase > 0) {
+        this.hits.splice(Math.max(0, this.hits.length - erase), erase);
+      }
     }
     const lineHits =
       paint.lineHits ??

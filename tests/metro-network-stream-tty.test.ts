@@ -245,12 +245,78 @@ describe('metro-network-stream-tty', () => {
       })
     );
     const expanded = view.toggleParentExpanded('root');
+    expect(expanded.clearScreen).toBe(true);
     expect(expanded.lines.some((l) => l.includes('/a'))).toBe(true);
     expect(view.isParentExpanded('root')).toBe(true);
     const collapsed = view.toggleParentExpanded('root');
-    expect(collapsed.lines[0]).toContain('nested');
-    expect(collapsed.lineHits?.[0]?.kind).toBe('collapse');
+    expect(collapsed.clearScreen).toBe(true);
+    expect(collapsed.lines.some((l) => l.includes('nested'))).toBe(true);
+    expect(collapsed.lineHits?.some((h) => h.kind === 'collapse')).toBe(true);
     expect(view.isParentExpanded('root')).toBe(false);
+  });
+
+  it('toggleParentExpanded redraws mid-list parent in place (not only at bottom)', () => {
+    const view = new MetroAtlasStreamView({
+      color: false,
+      collapseChildren: true,
+      collapseDuplicates: false,
+    });
+    view.push(
+      hop({
+        requestId: 'early',
+        method: 'GET',
+        url: 'https://a.test/early',
+        path: '/early',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c-early',
+        parentRequestId: 'early',
+        method: 'GET',
+        url: 'https://a.test/early/child',
+        path: '/early/child',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'late',
+        method: 'GET',
+        url: 'https://a.test/late',
+        path: '/late',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c-late',
+        parentRequestId: 'late',
+        method: 'GET',
+        url: 'https://a.test/late/child',
+        path: '/late/child',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+
+    const expanded = view.toggleParentExpanded('early');
+    expect(expanded.clearScreen).toBe(true);
+    const earlyIdx = expanded.lines.findIndex((l) => l.includes('/early') && !l.includes('child'));
+    const childIdx = expanded.lines.findIndex((l) => l.includes('/early/child'));
+    const lateIdx = expanded.lines.findIndex((l) => l.includes('/late') && !l.includes('child'));
+    expect(earlyIdx).toBeGreaterThanOrEqual(0);
+    expect(childIdx).toBeGreaterThan(earlyIdx);
+    expect(lateIdx).toBeGreaterThan(childIdx);
+    // Late group stays collapsed in the redraw.
+    expect(expanded.lines.some((l) => l.includes('/late/child'))).toBe(false);
+    expect(expanded.lineHits?.some((h) => h.kind === 'collapse' && h.parentId === 'late')).toBe(
+      true
+    );
   });
 
   it('hit tracker maps mouse rows from top before scroll', () => {
@@ -265,6 +331,24 @@ describe('metro-network-stream-tty', () => {
     });
     expect(hits.hitAtScreenRow(3, 24)?.kind).toBe('collapse');
     expect(hits.hitAtScreenRow(1, 24)?.kind).toBe('none');
+  });
+
+  it('hit tracker resets on clearScreen paints', () => {
+    const hits = new AtlasStreamHitTracker(50);
+    hits.notePaint({
+      lines: ['old'],
+      lineHits: [{ kind: 'collapse', parentId: 'old' }],
+    });
+    hits.notePaint({
+      lines: ['new', '▸ nested'],
+      lineHits: [
+        { kind: 'none' },
+        { kind: 'collapse', parentId: 'p2' },
+      ],
+      clearScreen: true,
+    });
+    expect(hits.hitAtScreenRow(1, 24)?.kind).toBe('none');
+    expect(hits.hitAtScreenRow(2, 24)).toEqual({ kind: 'collapse', parentId: 'p2' });
   });
 
   it('consumeAtlasStreamMouseInput parses SGR click sequences', () => {
