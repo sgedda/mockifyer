@@ -17,6 +17,19 @@ describe('mock response field overrides', () => {
   it('validateResponseFieldOverrides rejects invalid entries', () => {
     expect(validateResponseFieldOverrides({})).toContain('array');
     expect(validateResponseFieldOverrides([{ path: '' }])).toContain('path');
+    expect(
+      validateResponseFieldOverrides([{ path: 'x', value: 1, mode: 'append' } as never])
+    ).toContain('mode');
+  });
+
+  it('validateResponseFieldOverrides accepts extend mode', () => {
+    expect(
+      validateResponseFieldOverrides([{ path: 'bookings', value: { id: '2' }, mode: 'extend' }])
+    ).toBeNull();
+  });
+
+  it('validateResponseFieldOverrides accepts remove without value', () => {
+    expect(validateResponseFieldOverrides([{ path: 'bookings.0', mode: 'remove' }])).toBeNull();
   });
 
   it('applyResponseFieldOverridesToData overlays without mutating stored body', () => {
@@ -27,6 +40,71 @@ describe('mock response field overrides', () => {
 
     expect(out.bookings[0].status).toBe('CONFIRMED');
     expect(data.bookings[0].status).toBe('PENDING');
+  });
+
+  it('extend mode appends to arrays and merges objects', () => {
+    const data = {
+      bookings: [{ id: '1', status: 'PENDING' }],
+      meta: { page: 1, total: 1 },
+    };
+
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings', mode: 'extend', value: { id: '2', status: 'CONFIRMED' } },
+      { path: 'meta', mode: 'extend', value: { total: 2, next: true } },
+    ]) as typeof data & { meta: { page: number; total: number; next: boolean } };
+
+    expect(out.bookings).toEqual([
+      { id: '1', status: 'PENDING' },
+      { id: '2', status: 'CONFIRMED' },
+    ]);
+    expect(out.meta).toEqual({ page: 1, total: 2, next: true });
+    expect(data.bookings).toHaveLength(1);
+    expect(data.meta).toEqual({ page: 1, total: 1 });
+  });
+
+  it('extend mode concats when override value is an array', () => {
+    const data = { tags: ['a'] };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'tags', mode: 'extend', value: ['b', 'c'] },
+    ]) as typeof data;
+    expect(out.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('extend mode falls back to replace for primitives', () => {
+    const data = { status: 'PENDING' };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'status', mode: 'extend', value: 'CONFIRMED' },
+    ]) as typeof data;
+    expect(out.status).toBe('CONFIRMED');
+  });
+
+  it('remove mode deletes array indices and object keys', () => {
+    const data = {
+      bookings: [
+        { id: '1', status: 'PENDING' },
+        { id: '2', status: 'CONFIRMED' },
+      ],
+      meta: { page: 1, total: 2 },
+    };
+
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings.0', mode: 'remove' },
+      { path: 'meta.total', mode: 'remove' },
+    ]) as typeof data;
+
+    expect(out.bookings).toEqual([{ id: '2', status: 'CONFIRMED' }]);
+    expect(out.meta).toEqual({ page: 1 });
+    expect(data.bookings).toHaveLength(2);
+    expect(data.meta).toEqual({ page: 1, total: 2 });
+  });
+
+  it('remove mode soft no-ops for missing paths', () => {
+    const data = { bookings: [{ id: '1' }] };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings.9', mode: 'remove' },
+      { path: 'missing.key', mode: 'remove' },
+    ]) as typeof data;
+    expect(out).toEqual({ bookings: [{ id: '1' }] });
   });
 
   it('applyResponseFieldOverridesToData soft no-ops for non-JSON-container roots', () => {
