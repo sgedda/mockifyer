@@ -21,7 +21,7 @@
  *   e  expand/collapse all nested groups
  *   p / Space  pause/resume live hops
  *   wheel / ↑↓ / PgUp / PgDn  scroll history (pauses live stream)
- *   m  toggle mouse (starts off for select/copy; on = click + wheel)
+ *   m  toggle mouse (starts on for click + wheel; off = select/copy)
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -105,7 +105,7 @@ Keys:
   ${theme.info("e")}  Expand/collapse all nested groups
   ${theme.info("p")}/${theme.info("Space")}  Pause/resume live hops
   ${theme.info("wheel")}/${theme.info("↑↓")}/${theme.info("PgUp")}/${theme.info("PgDn")}  Scroll hop history (pauses live stream)
-  ${theme.info("m")}  Toggle mouse (starts off; press m then click req/res/html — or Ctrl/Cmd-click) — off = select/copy; on = click + wheel
+  ${theme.info("m")}  Toggle mouse (starts on) — on = click req/res/html + wheel; off = select/copy
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -244,7 +244,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "Ctrl/Cmd-click underlined req·res·html · m then click also works · ↑↓/PgUp scroll · e all · p pause · g/d/f · a/s/r/o · c · h · q",
+      "mouse on · click req·res·html · m off to select/copy · ↑↓/PgUp scroll · e all · p pause · g/d/f · a/s/r/o · c · h · q",
     ),
     view.statusLine(),
     "",
@@ -432,8 +432,8 @@ function attachInputHandlers(
 
   let busy = false;
   let pending = "";
-  /** Mouse reporting starts off so the terminal can select/copy. Press m for click + wheel. */
-  let mouseEnabled = false;
+  /** Mouse reporting starts on so click-to-open / expand works. Press m to select/copy. */
+  let mouseEnabled = true;
   /** Lines above the live tip currently shown (in-app scrollback). */
   let scrollBack = 0;
   const WHEEL_LINES = 3;
@@ -458,10 +458,10 @@ function attachInputHandlers(
     view.invalidateRewrite();
   };
 
-  // Default: mouse off so terminal select/copy works out of the box.
+  // Default: mouse on so click expand / req·res·html open work out of the box.
   setMouseEnabled(
-    false,
-    "[atlas] mouse off (default) — select/copy text · ↑↓/PgUp scroll · m on for click/wheel",
+    true,
+    "[atlas] mouse on (default) — click expand · req·res·html · wheel scroll · m off to select/copy",
   );
 
   const run = async (fn: () => Promise<void>): Promise<void> => {
@@ -862,7 +862,7 @@ async function main(): Promise<void> {
         if (!linkTipShown && view.bodyLinksOpenBaseUrl) {
           linkTipShown = true;
           console.log(
-            "[atlas] tip: in a terminal, Ctrl/Cmd-click underlined req·res·html (plain click won't open OSC-8). Or press m, then click.",
+            "[atlas] tip: click underlined req·res·html (mouse on). Press m to select/copy text.",
           );
         }
         applyPaint(view.push(event));
