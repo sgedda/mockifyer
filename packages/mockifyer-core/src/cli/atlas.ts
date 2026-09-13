@@ -417,7 +417,11 @@ function attachInputHandlers(
     if (hit?.kind !== "collapse" && hit?.kind !== "expand-footer") return;
 
     const original = hits.lineAtScreenRow(row, rows);
-    if (original == null) return;
+    // Only rewrite rows that actually carry a click glyph — avoids clobbering
+    // a mis-mapped parent timestamp line with an empty/partial hover paint.
+    if (original == null || (!original.includes("▸") && !original.includes("▾"))) {
+      return;
+    }
     rewriteAtlasStreamScreenRow(row, formatAtlasStreamHoverLine(original));
     setHoverRow(row);
   };
@@ -520,6 +524,7 @@ async function main(): Promise<void> {
   };
 
   const applyPaint = (paint: AtlasStreamPaint): void => {
+    // Restore any hover glyph before paint so mid-screen rewrites stay aligned.
     clearHover();
     hits.notePaint(paint);
     writeAtlasStreamPaint(paint);

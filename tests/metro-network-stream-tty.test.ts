@@ -8,6 +8,9 @@ import {
   AtlasStreamHitTracker,
   consumeAtlasStreamMouseInput,
   formatAtlasStreamHoverLine,
+  truncateAtlasStreamLine,
+  rewriteAtlasStreamScreenRow,
+  atlasStreamVisibleWidth,
 } from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 
@@ -386,6 +389,31 @@ describe('metro-network-stream-tty', () => {
       lineHits: [{ kind: 'collapse', parentId: 'p1' }],
     });
     expect(hits.lineAtScreenRow(1, 24)).toContain('▸');
+  });
+
+
+  it('truncateAtlasStreamLine clips visible width without breaking ANSI', () => {
+    const themed = '\u001b[2m' + 'x'.repeat(50) + '\u001b[0m';
+    const clipped = truncateAtlasStreamLine(themed, 20);
+    expect(atlasStreamVisibleWidth(clipped)).toBeLessThanOrEqual(20);
+    expect(clipped).toContain('…');
+    expect(truncateAtlasStreamLine('short', 20)).toBe('short');
+  });
+
+  it('rewriteAtlasStreamScreenRow never writes a wrapping line', () => {
+    const chunks: string[] = [];
+    const wide = 'y'.repeat(200);
+    rewriteAtlasStreamScreenRow(3, wide, (s) => chunks.push(s));
+    const out = chunks.join('');
+    expect(out).toContain('\u001b[3;1H');
+    expect(out).toContain('\u001b[2K');
+    // No newline in the rewritten payload (would push rows down).
+    const afterClear = out.split('\u001b[2K')[1] || '';
+    const body = afterClear.replace(/\u001b8$/, '');
+    expect(body.includes('\n')).toBe(false);
+    expect(atlasStreamVisibleWidth(body.replace(/\u001b\[[0-9;]*m/g, ''))).toBeLessThanOrEqual(
+      Math.max(20, (process.stdout.columns || 80) - 1)
+    );
   });
 
 });

@@ -223,6 +223,42 @@ export function formatAtlasStreamHoverLine(line: string): string {
     .replace("▾", `${ESC}1m▼${ESC}22m`);
 }
 
+const ANSI_SGR_RE = /\u001b\[[0-9;]*m/g;
+
+/** Visible column width of a string, ignoring SGR color codes. */
+export function atlasStreamVisibleWidth(text: string): number {
+  return text.replace(ANSI_SGR_RE, "").length;
+}
+
+/**
+ * Truncate a styled line to `maxCols` visible columns so it cannot wrap and
+ * overwrite the next screen row (e.g. a parent timestamp line under hover).
+ */
+export function truncateAtlasStreamLine(text: string, maxCols: number): string {
+  if (!Number.isFinite(maxCols) || maxCols < 8) return text;
+  if (atlasStreamVisibleWidth(text) <= maxCols) return text;
+
+  const limit = maxCols - 1;
+  let visible = 0;
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "\u001b" && text[i + 1] === "[") {
+      const end = text.indexOf("m", i + 2);
+      if (end !== -1) {
+        out += text.slice(i, end + 1);
+        i = end + 1;
+        continue;
+      }
+    }
+    if (visible >= limit) break;
+    out += text[i];
+    visible += 1;
+    i += 1;
+  }
+  return `${out}…`;
+}
+
 /** Footer under an expanded child list (click to collapse). */
 export function formatAtlasStreamExpandFooter(
   _parentId: string,
@@ -680,6 +716,7 @@ export function writeAtlasStreamPaint(
     process.stdout.write(s);
   },
 ): void {
+  const cols = Math.max(20, (process.stdout.columns || 80) - 1);
   if (paint.clearScreen) {
     write(`${ESC}2J${ESC}H`);
   } else if (paint.lines.length === 0) {
@@ -691,7 +728,7 @@ export function writeAtlasStreamPaint(
     }
   }
   for (const line of paint.lines) {
-    write(`${line}\n`);
+    write(`${truncateAtlasStreamLine(line, cols)}\n`);
   }
 }
 
@@ -714,6 +751,7 @@ export class AtlasStreamHitTracker {
   }
 
   notePaint(paint: AtlasStreamPaint): void {
+    const cols = Math.max(20, (process.stdout.columns || 80) - 1);
     if (paint.clearScreen) {
       this.hits = [];
       this.lines = [];
@@ -729,7 +767,9 @@ export class AtlasStreamHitTracker {
       paint.lines.map((): AtlasStreamLineHit => ({ kind: "none" }));
     for (let i = 0; i < paint.lines.length; i++) {
       this.hits.push(lineHits[i] ?? { kind: "none" });
-      this.lines.push(paint.lines[i] ?? "");
+      // Store the same truncated text the terminal shows so hover restore
+      // never wraps onto the next row.
+      this.lines.push(truncateAtlasStreamLine(paint.lines[i] ?? "", cols));
     }
     if (this.hits.length > this.maxLines) {
       this.hits = this.hits.slice(-this.maxLines);
@@ -779,18 +819,19 @@ export class AtlasStreamHitTracker {
 
 /**
  * Enable click + hover motion reporting (xterm any-event + SGR).
- * 1003 includes clicks; 1006 uses CSI `<` encoding.
+ * Also disables line wrap so mid-screen hover rewrites cannot clobber the next row.
  */
 export function enableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  write(`${ESC}?1003h${ESC}?1006h`);
+  // 1003 = any-event (clicks + moves), 1006 = SGR, 7l = no autowrap
+  write(`${ESC}?1003h${ESC}?1006h${ESC}?7l`);
 }
 
 export function disableAtlasStreamMouseTracking(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
-  write(`${ESC}?1003l${ESC}?1006l`);
+  write(`${ESC}?1003l${ESC}?1006l${ESC}?7h`);
 }
 
 export interface AtlasStreamMouseClick {
@@ -809,10 +850,11 @@ export function rewriteAtlasStreamScreenRow(
   write: (s: string) => void = (s) => process.stdout.write(s),
 ): void {
   if (!Number.isFinite(row) || row < 1) return;
-  // DECSC/DECRC are ESC 7 / ESC 8 (not CSI).
-  write(
-    `\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${text}\u001b8`,
-  );
+  const cols = Math.max(20, (process.stdout.columns || 80) - 1);
+  const clipped = truncateAtlasStreamLine(text, cols);
+  // DECSC/DECRC are ESC 7 / ESC 8 (not CSI). Clear line, write clipped text
+  // (no newline) so we never wrap into the row below.
+  write(`\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${clipped}\u001b8`);
 }
 
 /** Parse xterm SGR mouse sequences; return clicks/moves + leftover key text. */
