@@ -896,6 +896,25 @@ export class AtlasStreamHitTracker {
     const cols = Math.max(20, (process.stdout.columns || 80) - 2);
     this.viewportLines[r - 1] = truncateAtlasStreamLine(text, cols);
   }
+
+  /**
+   * True once content has filled the screen (viewport is trimmed to
+   * screenRows-1). Mid-screen hover CUP is unsafe in this state.
+   */
+  isScrolled(screenRows: number): boolean {
+    this.trimViewport(screenRows);
+    return this.viewportLines.length >= this.maxViewportRows(screenRows);
+  }
+
+  /**
+   * 1-based screen row where the streaming cursor should sit (blank line
+   * under the last visible content row, capped at screenRows).
+   */
+  cursorRow(screenRows: number): number {
+    this.trimViewport(screenRows);
+    const rows = Math.max(1, Math.floor(screenRows));
+    return Math.min(this.viewportLines.length + 1, rows);
+  }
 }
 
 /**
@@ -924,11 +943,17 @@ export interface AtlasStreamMouseClick {
   motion: boolean;
 }
 
-/** Rewrite one screen row in place (save/restore cursor). */
+/**
+ * Rewrite one screen row in place, then park the cursor on `returnCursorRow`.
+ * Avoids DECSC/DECRC — those are unreliable in some terminals (e.g. Cursor /
+ * VS Code) and leave the cursor mid-screen so the next erase/write paints over
+ * a timestamp row and duplicates nested summaries.
+ */
 export function rewriteAtlasStreamScreenRow(
   row: number,
   text: string,
   write: (s: string) => void = (s) => process.stdout.write(s),
+  options?: { returnCursorRow?: number },
 ): void {
   if (!Number.isFinite(row) || row < 1) return;
   // Keep ≥2 columns of margin: writing exactly `columns` display cells trips
@@ -936,11 +961,20 @@ export function rewriteAtlasStreamScreenRow(
   // ▸ summary when the buffer is full).
   const cols = Math.max(20, (process.stdout.columns || 80) - 2);
   const clipped = truncateAtlasStreamLine(text, cols);
-  // Re-assert no-wrap, DECSC/DECRC (ESC 7 / ESC 8), clear line, write clipped
-  // text with no newline so we never wrap into the row below.
-  write(
-    `${ESC}?7l\u001b7${ESC}${Math.floor(row)};1H${ESC}2K${clipped}\u001b8`,
-  );
+  const target = Math.floor(row);
+  const returnRow =
+    options?.returnCursorRow != null &&
+    Number.isFinite(options.returnCursorRow) &&
+    options.returnCursorRow >= 1
+      ? Math.floor(options.returnCursorRow)
+      : null;
+  // No-wrap + absolute CUP to the target row, clear, write (no newline), then
+  // absolute CUP back to the stream cursor row. Never rely on ESC 7 / ESC 8.
+  let out = `${ESC}?7l${ESC}${target};1H${ESC}2K${clipped}`;
+  if (returnRow != null) {
+    out += `${ESC}${returnRow};1H`;
+  }
+  write(out);
 }
 
 /** Parse xterm SGR mouse sequences; return clicks/moves + leftover key text. */

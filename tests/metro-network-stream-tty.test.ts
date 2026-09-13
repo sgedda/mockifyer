@@ -489,19 +489,37 @@ describe('metro-network-stream-tty', () => {
   it('rewriteAtlasStreamScreenRow never writes a wrapping line', () => {
     const chunks: string[] = [];
     const wide = 'y'.repeat(200);
-    rewriteAtlasStreamScreenRow(3, wide, (s) => chunks.push(s));
+    rewriteAtlasStreamScreenRow(3, wide, (s) => chunks.push(s), {
+      returnCursorRow: 10,
+    });
     const out = chunks.join('');
     expect(out).toContain('\u001b[3;1H');
     expect(out).toContain('\u001b[2K');
+    expect(out).toContain('\u001b[10;1H');
+    // No DECSC/DECRC — those leave the cursor mid-screen in some terminals.
+    expect(out).not.toContain('\u001b7');
+    expect(out).not.toMatch(/\u001b8$/);
     // No newline in the rewritten payload (would push rows down).
     const afterClear = out.split('\u001b[2K')[1] || '';
-    const body = afterClear.replace(/\u001b8$/, '');
+    const body = afterClear.replace(/\u001b\[\d+;1H$/, '');
     expect(body.includes('\n')).toBe(false);
     expect(atlasStreamVisibleWidth(body.replace(/\u001b\[[0-9;]*m/g, ''))).toBeLessThanOrEqual(
       Math.max(20, (process.stdout.columns || 80) - 2)
     );
     // No-wrap is re-asserted so a wide hover cannot clobber the next row.
     expect(out).toContain('\u001b[?7l');
+  });
+
+  it('isScrolled is true once the viewport fills the screen', () => {
+    const hits = new AtlasStreamHitTracker(100);
+    const screenRows = 5;
+    expect(hits.isScrolled(screenRows)).toBe(false);
+    for (let i = 0; i < 4; i++) {
+      hits.notePaint({ lines: [`line-${i}`], lineHits: [{ kind: 'none' }] }, screenRows);
+    }
+    // 4 content rows = screenRows-1 → full, treated as scrolled for hover safety.
+    expect(hits.isScrolled(screenRows)).toBe(true);
+    expect(hits.cursorRow(screenRows)).toBe(5);
   });
 
 

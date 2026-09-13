@@ -200,8 +200,10 @@ function openUrl(url: string): void {
 
 function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint {
   const theme = createAtlasStreamColorTheme(view.colorEnabled);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const coreVersion = require("../../package.json").version as string;
   const lines = [
-    `${theme.bold("[atlas]")} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
+    `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
       "click ▸ nested to expand · e all · p/Space pause · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
@@ -425,6 +427,11 @@ function attachInputHandlers(
 
     clearHover();
 
+    // Once the buffer has scrolled, mid-screen CUP hover rewrites are unsafe:
+    // they overwrite timestamp rows and leave the stream cursor mid-screen so
+    // later erase/write duplicates nested summaries. Click still expands.
+    if (hits.isScrolled(rows)) return;
+
     const hit = hits.hitAtScreenRow(row, rows);
     if (hit?.kind !== "collapse" && hit?.kind !== "expand-footer") return;
 
@@ -435,7 +442,8 @@ function attachInputHandlers(
       return;
     }
     const hovered = formatAtlasStreamHoverLine(original);
-    rewriteAtlasStreamScreenRow(row, hovered);
+    const returnCursorRow = hits.cursorRow(rows);
+    rewriteAtlasStreamScreenRow(row, hovered, undefined, { returnCursorRow });
     // Keep the viewport mirror in sync with the glyph we just painted, and
     // remember the exact pre-hover text so restore cannot re-query a stale map.
     hits.replaceViewportLine(row, hovered, rows);
@@ -535,7 +543,9 @@ async function main(): Promise<void> {
     const rows = process.stdout.rows || 24;
     const original = hoverOriginal ?? hits.lineAtScreenRow(hoverRow, rows);
     if (original != null) {
-      rewriteAtlasStreamScreenRow(hoverRow, original);
+      rewriteAtlasStreamScreenRow(hoverRow, original, undefined, {
+        returnCursorRow: hits.cursorRow(rows),
+      });
       hits.replaceViewportLine(hoverRow, original, rows);
     }
     hoverRow = null;
