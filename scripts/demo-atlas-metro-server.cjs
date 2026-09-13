@@ -331,6 +331,63 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+
+  if (pathname === '/mockifyer-atlas-open' && req.method === 'GET') {
+    const hopId = (url.searchParams.get('id') || '').trim();
+    const sideParam = (url.searchParams.get('side') || 'html').trim().toLowerCase();
+    const side = sideParam === 'req' || sideParam === 'res' ? sideParam : 'html';
+    const events = [...buffer.list()].reverse();
+    const outDir = path.join(mockDataPath, 'atlas-html');
+    fs.mkdirSync(outDir, { recursive: true });
+    // Bodies are written when hops are emitted (makeHop). Re-assert refs for safety.
+    for (const ev of events) {
+      if (!ev.responseBodyRef && ev.id) ev.responseBodyRef = `bodies/${ev.id}-res.json`;
+      if (!ev.requestBodyRef && ev.id) ev.requestBodyRef = `bodies/${ev.id}-req.json`;
+    }
+    const doc = createEmptyAtlasDocMap(events[0]?.scenario?.trim() || 'demo');
+    const written = writeAtlasDocHtml(outDir, doc, events);
+    if (written <= 0) {
+      return sendJson(res, 500, { success: false, error: 'writeAtlasDocHtml wrote 0 files' });
+    }
+    if (side === 'html') {
+      res.writeHead(302, { Location: '/atlas-html/index.html' });
+      res.end();
+      return;
+    }
+    const event = (hopId ? events.find((e) => e.id === hopId || e.requestId === hopId) : undefined) || events[0];
+    if (!event) return sendJson(res, 404, { success: false, error: 'hop not found' });
+    const rel = side === 'req'
+      ? (event.requestBodyRef || `bodies/${event.id}-req.json`)
+      : (event.responseBodyRef || `bodies/${event.id}-res.json`);
+    const abs = path.join(outDir, rel);
+    if (!fs.existsSync(abs)) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, JSON.stringify({ note: 'no body', id: event.id, side }, null, 2) + '\n');
+    }
+    res.writeHead(302, { Location: `/atlas-html/${rel.split(path.sep).join('/')}` });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/atlas-html' || pathname === '/atlas-html/' || pathname.startsWith('/atlas-html/')) {
+    const rel = pathname === '/atlas-html' || pathname === '/atlas-html/'
+      ? 'index.html'
+      : pathname.slice('/atlas-html/'.length);
+    const abs = path.resolve(path.join(mockDataPath, 'atlas-html', rel));
+    const root = path.resolve(path.join(mockDataPath, 'atlas-html'));
+    if (!abs.startsWith(root) || !fs.existsSync(abs) || fs.statSync(abs).isDirectory()) {
+      return sendJson(res, 404, { error: 'not found' });
+    }
+    const ext = path.extname(abs).toLowerCase();
+    const type = ext === '.html' ? 'text/html; charset=utf-8'
+      : ext === '.json' ? 'application/json; charset=utf-8'
+      : 'text/plain; charset=utf-8';
+    res.writeHead(200, { 'content-type': type });
+    fs.createReadStream(abs).pipe(res);
+    return;
+  }
+
+
   if (pathname === '/mockifyer-network-events/clear' && req.method === 'POST') {
     buffer.clear();
     return sendJson(res, 200, { success: true, size: 0 });

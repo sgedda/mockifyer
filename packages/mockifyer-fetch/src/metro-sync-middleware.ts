@@ -56,6 +56,7 @@ import {
   type AtlasDocMap,
   type NetworkEvent,
   getMetroNetworkEventBuffer,
+  resolveNetworkEventBodyRelPaths,
   analyzeMetroNetworkEvents,
   createEmptyAtlasDocMap,
   buildAtlasHarJson,
@@ -1541,6 +1542,88 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           );
         }
       });
+      return;
+    }
+
+    // Generate-on-click for terminal OSC-8 links (terminals cannot hijack OSC-8).
+    // GET /mockifyer-atlas-open?id=<hopId>&side=req|res|html
+    if (
+      req.method === "GET" &&
+      (url === "/mockifyer-atlas-open" || url.startsWith("/mockifyer-atlas-open?"))
+    ) {
+      const fullUrl = String(req.url || "");
+      const q = fullUrl.includes("?") ? fullUrl.slice(fullUrl.indexOf("?") + 1) : "";
+      const params = new URLSearchParams(q);
+      const hopId = (params.get("id") || "").trim();
+      const sideParam = (params.get("side") || "html").trim().toLowerCase();
+      const side =
+        sideParam === "req" || sideParam === "res" ? sideParam : "html";
+
+      const buffer = getMetroNetworkEventBuffer();
+      // Buffer is newest-first; render expects chronological / display order.
+      const events = [...buffer.list()].reverse();
+      const rendered = renderNetworkEventsAtlasHtml(projectRoot, mockDataPath, events);
+      if (!rendered.success) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            error: rendered.error || "atlas render failed",
+          }),
+        );
+        return;
+      }
+
+      if (side === "html") {
+        res.statusCode = 302;
+        res.setHeader("Location", "/atlas-html/index.html");
+        res.end();
+        return;
+      }
+
+      const event =
+        (hopId
+          ? events.find((e) => e && (e.id === hopId || e.requestId === hopId))
+          : undefined) || events[0];
+      if (!event) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify({ success: false, error: "hop not found" }));
+        return;
+      }
+
+      const rels = resolveNetworkEventBodyRelPaths(event);
+      const rel = side === "req" ? rels.req : rels.res;
+      const abs = path.join(mockDataPath, "atlas-html", rel);
+      if (!fs.existsSync(abs)) {
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        const preview =
+          side === "req" ? event.requestBodyPreview : event.responseBodyPreview;
+        const text =
+          preview != null && String(preview).trim() !== ""
+            ? String(preview)
+            : JSON.stringify(
+                {
+                  note: "No body captured for this hop yet",
+                  id: event.id,
+                  side,
+                },
+                null,
+                2,
+              );
+        fs.writeFileSync(
+          abs,
+          text.endsWith("\n") ? text : `${text}\n`,
+          "utf8",
+        );
+      }
+      res.statusCode = 302;
+      res.setHeader(
+        "Location",
+        `/atlas-html/${rel.split(path.sep).join("/")}`,
+      );
+      res.end();
       return;
     }
 

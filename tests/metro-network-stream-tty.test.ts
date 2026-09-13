@@ -700,9 +700,10 @@ describe('metro-network-stream-tty', () => {
     expect(line).toContain('\u001b]8;;file://');
     expect(line).toContain('bodies/req-abc-req.json');
     expect(line).toContain('bodies/req-abc-res.json');
+    expect(line).toContain('html');
     const plain = formatAtlasStreamHopLine(event);
     expect(atlasStreamVisibleWidth(line)).toBe(
-      atlasStreamVisibleWidth(plain) + '  req res'.length,
+      atlasStreamVisibleWidth(plain) + '  req res html'.length,
     );
   });
 
@@ -722,6 +723,23 @@ describe('metro-network-stream-tty', () => {
     expect(atlasStreamOsc8Link('file:///tmp/a', 'x')).toBe(
       '\u001b]8;;file:///tmp/a\u0007x\u001b]8;;\u0007',
     );
+  });
+
+
+  it('uses Metro open URL for OSC-8 links when bodyLinksOpenBaseUrl is set', () => {
+    const event = hop({
+      id: 'hop-open',
+      method: 'GET',
+      url: 'https://api.example.com/x',
+      path: '/x',
+      source: 'upstream',
+    });
+    const line = formatAtlasStreamHopLine(event, {
+      bodyLinksOpenBaseUrl: 'http://localhost:8081',
+    });
+    expect(line).toContain('http://localhost:8081/mockifyer-atlas-open?id=hop-open&side=req');
+    expect(line).toContain('side=res');
+    expect(line).toContain('side=html');
   });
 
 });

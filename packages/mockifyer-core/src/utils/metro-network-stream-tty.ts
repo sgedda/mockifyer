@@ -122,6 +122,11 @@ export interface FormatAtlasStreamHopOptions {
    * predicted body spill paths (clickable even before files exist).
    */
   bodyLinksDir?: string;
+  /**
+   * Metro origin (e.g. http://localhost:8081). When set, req/res/html OSC-8 links
+   * hit GET /mockifyer-atlas-open so click generates Atlas HTML then redirects.
+   */
+  bodyLinksOpenBaseUrl?: string;
 }
 
 function firstUsageScreen(usage: NetworkEvent["usage"]): string | undefined {
@@ -180,21 +185,33 @@ export function formatAtlasStreamHopBodyLinks(
   event: NetworkEvent,
   atlasHtmlDir: string,
   theme?: AtlasStreamColorTheme,
+  openBaseUrl?: string,
 ): string {
   const dir = atlasHtmlDir.trim();
-  if (!dir) return "";
-  const rels = resolveNetworkEventBodyRelPaths(event);
+  if (!dir && !openBaseUrl?.trim()) return "";
   const t = theme ?? createAtlasStreamColorTheme(false);
-  const req = atlasStreamOsc8Link(
-    atlasStreamBodyFileUrl(dir, rels.req),
-    t.muted("req"),
-  );
-  const res = atlasStreamOsc8Link(
-    atlasStreamBodyFileUrl(dir, rels.res),
-    t.muted("res"),
-  );
-  return `  ${req} ${res}`;
+  const base = openBaseUrl?.trim().replace(/\/$/, "") || "";
+  const id = encodeURIComponent(event.id);
+  const linkFor = (side: "req" | "res" | "html", label: string): string => {
+    if (base) {
+      return atlasStreamOsc8Link(
+        `${base}/mockifyer-atlas-open?id=${id}&side=${side}`,
+        label,
+      );
+    }
+    if (side === "html") {
+      return atlasStreamOsc8Link(
+        atlasStreamBodyFileUrl(dir, "index.html"),
+        label,
+      );
+    }
+    const rels = resolveNetworkEventBodyRelPaths(event);
+    const rel = side === "req" ? rels.req : rels.res;
+    return atlasStreamOsc8Link(atlasStreamBodyFileUrl(dir, rel), label);
+  };
+  return `  ${linkFor("req", t.muted("req"))} ${linkFor("res", t.muted("res"))} ${linkFor("html", t.muted("html"))}`;
 }
+
 
 export function formatAtlasStreamHopLine(
   event: NetworkEvent,
@@ -230,9 +247,15 @@ export function formatAtlasStreamHopLine(
 
   const badgeStr = badges.length ? `  ${badges.join(" ")}` : "";
   const prefix = treePrefix(depth, isLast, theme);
-  const bodyLinks = options?.bodyLinksDir
-    ? formatAtlasStreamHopBodyLinks(event, options.bodyLinksDir, theme)
-    : "";
+  const bodyLinks =
+    options?.bodyLinksDir || options?.bodyLinksOpenBaseUrl
+      ? formatAtlasStreamHopBodyLinks(
+          event,
+          options.bodyLinksDir ?? "",
+          theme,
+          options.bodyLinksOpenBaseUrl,
+        )
+      : "";
 
   return `${prefix}${ts}  ${methodCol} ${statusCol}  ${msCol}  ${sourceCol}  ${pathCol}${badgeStr}${bodyLinks}`;
 }
@@ -399,6 +422,8 @@ export interface AtlasStreamViewOptions {
   slowMs?: number;
   /** Absolute atlas-html dir for per-row OSC-8 req/res body links. */
   bodyLinksDir?: string;
+  /** Metro origin for generate-on-click open links. */
+  bodyLinksOpenBaseUrl?: string;
 }
 
 export type AtlasStreamLineHit =
@@ -452,6 +477,8 @@ export class MetroAtlasStreamView {
   slowMs: number;
   /** Atlas-html dir for OSC-8 body links on each hop row. */
   bodyLinksDir?: string;
+  /** Metro origin for generate-on-click open links. */
+  bodyLinksOpenBaseUrl?: string;
 
   private readonly childrenByParent = new Map<string, NetworkEvent[]>();
   private readonly eventsByRequestId = new Map<string, NetworkEvent>();
@@ -487,6 +514,7 @@ export class MetroAtlasStreamView {
     this.maxPathCols = options?.maxPathCols ?? 72;
     this.slowMs = options?.slowMs ?? DEFAULT_METRO_NETWORK_STREAM_SLOW_MS;
     this.bodyLinksDir = options?.bodyLinksDir?.trim() || undefined;
+    this.bodyLinksOpenBaseUrl = options?.bodyLinksOpenBaseUrl?.trim() || undefined;
   }
 
   get colorEnabled(): boolean {
@@ -633,6 +661,7 @@ export class MetroAtlasStreamView {
           color: this.theme,
           maxPathCols: this.maxPathCols,
           bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
           repeatSuffix: `×${duplicate.count}`,
         });
         // Replace the previous root-only line (no children were under it).
@@ -648,6 +677,7 @@ export class MetroAtlasStreamView {
           color: this.theme,
           maxPathCols: this.maxPathCols,
           bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
         }),
       );
       lineHits.push({ kind: "none" });
@@ -703,6 +733,7 @@ export class MetroAtlasStreamView {
           isLast: i === visible.length - 1,
           maxPathCols: this.maxPathCols,
           bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
         }),
       );
       lineHits.push({ kind: "none" });
@@ -743,6 +774,7 @@ export class MetroAtlasStreamView {
         color: this.theme,
         maxPathCols: this.maxPathCols,
         bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
         repeatSuffix: `×${this.duplicate.count}`,
       });
       const erase = this.lastRewritable === "duplicate" ? 1 : 0;
@@ -763,6 +795,7 @@ export class MetroAtlasStreamView {
           color: this.theme,
           maxPathCols: this.maxPathCols,
           bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
         }),
       ],
       lineHits: [{ kind: "none" }],
@@ -834,6 +867,7 @@ export class MetroAtlasStreamView {
         isLast: i === visible.length - 1,
         maxPathCols: this.maxPathCols,
         bodyLinksDir: this.bodyLinksDir,
+          bodyLinksOpenBaseUrl: this.bodyLinksOpenBaseUrl,
       }),
     );
     this.expandedBlocks.set(parentId, {

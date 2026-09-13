@@ -763,6 +763,7 @@ async function main(): Promise<void> {
     isTTY: process.stdout.isTTY === true,
     collapseChildren: options.expand !== true,
     bodyLinksDir: atlasHtmlDir,
+    bodyLinksOpenBaseUrl: metroBase(options),
   });
 
   const base = metroBase(options);
