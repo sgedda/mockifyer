@@ -291,7 +291,7 @@ function attachInputHandlers(
   hits: AtlasStreamHitTracker,
   applyPaint: (paint: AtlasStreamPaint) => void,
   clearHover: () => void,
-  setHoverRow: (row: number | null) => void,
+  setHover: (row: number, original: string) => void,
   getHoverRow: () => number | null,
   onQuit: () => void,
 ): void {
@@ -430,12 +430,16 @@ function attachInputHandlers(
 
     const original = hits.lineAtScreenRow(row, rows);
     // Only rewrite rows that actually carry a click glyph — avoids clobbering
-    // a mis-mapped parent timestamp line with an empty/partial hover paint.
+    // a parent timestamp line when mapping was wrong.
     if (original == null || (!original.includes("▸") && !original.includes("▾"))) {
       return;
     }
-    rewriteAtlasStreamScreenRow(row, formatAtlasStreamHoverLine(original));
-    setHoverRow(row);
+    const hovered = formatAtlasStreamHoverLine(original);
+    rewriteAtlasStreamScreenRow(row, hovered);
+    // Keep the viewport mirror in sync with the glyph we just painted, and
+    // remember the exact pre-hover text so restore cannot re-query a stale map.
+    hits.replaceViewportLine(row, hovered, rows);
+    setHover(row, original);
   };
 
   process.stdin.on("data", (chunk: string) => {
@@ -525,20 +529,23 @@ async function main(): Promise<void> {
   );
 
   let hoverRow: number | null = null;
+  let hoverOriginal: string | null = null;
   const clearHover = (): void => {
     if (hoverRow == null) return;
     const rows = process.stdout.rows || 24;
-    const original = hits.lineAtScreenRow(hoverRow, rows);
+    const original = hoverOriginal ?? hits.lineAtScreenRow(hoverRow, rows);
     if (original != null) {
       rewriteAtlasStreamScreenRow(hoverRow, original);
+      hits.replaceViewportLine(hoverRow, original, rows);
     }
     hoverRow = null;
+    hoverOriginal = null;
   };
 
   const applyPaint = (paint: AtlasStreamPaint): void => {
     // Restore any hover glyph before paint so mid-screen rewrites stay aligned.
     clearHover();
-    hits.notePaint(paint);
+    hits.notePaint(paint, process.stdout.rows || 24);
     writeAtlasStreamPaint(paint);
   };
 
@@ -563,19 +570,25 @@ async function main(): Promise<void> {
   console.log = (...args: unknown[]): void => {
     const rendered = args.map((a) => String(a)).join(" ");
     const lines = rendered.length === 0 ? [""] : rendered.split("\n");
-    hits.notePaint({
-      lines,
-      lineHits: lines.map(() => ({ kind: "none" as const })),
-    });
+    hits.notePaint(
+      {
+        lines,
+        lineHits: lines.map(() => ({ kind: "none" as const })),
+      },
+      process.stdout.rows || 24,
+    );
     origLog(...args);
   };
   console.error = (...args: unknown[]): void => {
     const rendered = args.map((a) => String(a)).join(" ");
     const lines = rendered.length === 0 ? [""] : rendered.split("\n");
-    hits.notePaint({
-      lines,
-      lineHits: lines.map(() => ({ kind: "none" as const })),
-    });
+    hits.notePaint(
+      {
+        lines,
+        lineHits: lines.map(() => ({ kind: "none" as const })),
+      },
+      process.stdout.rows || 24,
+    );
     origErr(...args);
   };
 
@@ -604,8 +617,9 @@ async function main(): Promise<void> {
     hits,
     applyPaint,
     clearHover,
-    (row) => {
+    (row, original) => {
       hoverRow = row;
+      hoverOriginal = original;
     },
     () => hoverRow,
     quit,

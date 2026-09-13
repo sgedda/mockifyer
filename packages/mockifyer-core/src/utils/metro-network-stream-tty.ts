@@ -777,8 +777,17 @@ export function writeAtlasStreamPaint(
 
 /** Track painted line hits for mouse click → parent expand/collapse. */
 export class AtlasStreamHitTracker {
+  /** Full history (capped) — kept for debugging / future use. */
   private hits: AtlasStreamLineHit[] = [];
   private lines: string[] = [];
+  /**
+   * Visible viewport mirror: index 0 = screen row 1. Always trimmed to at most
+   * (screenRows - 1) entries so mouse row → index is simply `row - 1` with no
+   * scroll-formula dual path (the old dual path rewrote timestamp rows when
+   * the buffer was full).
+   */
+  private viewportHits: AtlasStreamLineHit[] = [];
+  private viewportLines: string[] = [];
   private maxLines: number;
 
   constructor(maxLines = 200) {
@@ -793,78 +802,99 @@ export class AtlasStreamHitTracker {
     }
   }
 
-  notePaint(paint: AtlasStreamPaint): void {
+  /**
+   * Max content rows visible for a terminal height. The bottom row is the
+   * empty cursor line after each painted `\n`.
+   */
+  private maxViewportRows(screenRows: number): number {
+    return Math.max(1, Math.floor(screenRows) - 1);
+  }
+
+  private trimViewport(screenRows: number): void {
+    const max = this.maxViewportRows(screenRows);
+    if (this.viewportHits.length > max) {
+      const drop = this.viewportHits.length - max;
+      this.viewportHits = this.viewportHits.slice(drop);
+      this.viewportLines = this.viewportLines.slice(drop);
+    }
+  }
+
+  notePaint(
+    paint: AtlasStreamPaint,
+    screenRows: number = process.stdout.rows || 24,
+  ): void {
     const cols = Math.max(20, (process.stdout.columns || 80) - 1);
     if (paint.clearScreen) {
       this.hits = [];
       this.lines = [];
+      this.viewportHits = [];
+      this.viewportLines = [];
     } else {
       const erase = paint.erasePreviousLines ?? 0;
       if (erase > 0) {
         this.hits.splice(Math.max(0, this.hits.length - erase), erase);
         this.lines.splice(Math.max(0, this.lines.length - erase), erase);
+        this.viewportHits.splice(
+          Math.max(0, this.viewportHits.length - erase),
+          erase,
+        );
+        this.viewportLines.splice(
+          Math.max(0, this.viewportLines.length - erase),
+          erase,
+        );
       }
     }
     const lineHits =
       paint.lineHits ??
       paint.lines.map((): AtlasStreamLineHit => ({ kind: "none" }));
     for (let i = 0; i < paint.lines.length; i++) {
-      this.hits.push(lineHits[i] ?? { kind: "none" });
-      // Store the same truncated text the terminal shows so hover restore
-      // never wraps onto the next row.
-      this.lines.push(truncateAtlasStreamLine(paint.lines[i] ?? "", cols));
+      const hit = lineHits[i] ?? { kind: "none" };
+      const line = truncateAtlasStreamLine(paint.lines[i] ?? "", cols);
+      this.hits.push(hit);
+      this.lines.push(line);
+      this.viewportHits.push(hit);
+      this.viewportLines.push(line);
     }
     if (this.hits.length > this.maxLines) {
       this.hits = this.hits.slice(-this.maxLines);
       this.lines = this.lines.slice(-this.maxLines);
     }
-  }
-
-  private indexAtScreenRow(row: number, screenRows: number): number | null {
-    if (
-      !Number.isFinite(row) ||
-      !Number.isFinite(screenRows) ||
-      screenRows < 1
-    ) {
-      return null;
-    }
-    const r = Math.floor(row);
-    if (r < 1 || r > screenRows || this.hits.length === 0) return null;
-
-    // Each painted line ends with \n, so the cursor sits on an empty row
-    // below the last content line. Until the buffer fills the screen,
-    // content is top-anchored and the cursor row is blank.
-    if (this.hits.length < screenRows) {
-      if (r > this.hits.length) return null;
-      return r - 1;
-    }
-
-    // Once scrolled, the bottom screen row is the empty cursor line — only
-    // (screenRows - 1) content rows are visible. Using screenRows here was
-    // off-by-one and made hover rewrite the timestamp row above a ▸ line.
-    const contentRows = Math.max(1, screenRows - 1);
-    if (r > contentRows) return null;
-    const idx = this.hits.length - contentRows + (r - 1);
-    if (idx < 0 || idx >= this.hits.length) return null;
-    return idx;
+    this.trimViewport(screenRows);
   }
 
   /**
-   * Map a 1-based mouse row to a hit. Content is top-anchored until the
-   * buffer fills the screen; after scroll, the last (screenRows-1) hits sit
-   * on rows 1..(screenRows-1) with an empty cursor row at the bottom.
+   * Map a 1-based mouse row to a hit via the viewport mirror (row 1 = index 0).
+   * Returns null for the blank cursor row or rows beyond painted content.
    */
   hitAtScreenRow(row: number, screenRows: number): AtlasStreamLineHit | null {
-    const idx = this.indexAtScreenRow(row, screenRows);
-    if (idx == null) return null;
-    return this.hits[idx] ?? null;
+    this.trimViewport(screenRows);
+    if (!Number.isFinite(row) || row < 1) return null;
+    const r = Math.floor(row);
+    if (r > this.maxViewportRows(screenRows)) return null;
+    if (r > this.viewportHits.length) return null;
+    return this.viewportHits[r - 1] ?? null;
   }
 
   /** Painted text for a 1-based screen row (for hover restore). */
   lineAtScreenRow(row: number, screenRows: number): string | null {
-    const idx = this.indexAtScreenRow(row, screenRows);
-    if (idx == null) return null;
-    return this.lines[idx] ?? null;
+    this.trimViewport(screenRows);
+    if (!Number.isFinite(row) || row < 1) return null;
+    const r = Math.floor(row);
+    if (r > this.maxViewportRows(screenRows)) return null;
+    if (r > this.viewportLines.length) return null;
+    return this.viewportLines[r - 1] ?? null;
+  }
+
+  /**
+   * Update the viewport mirror after a mid-screen hover rewrite so later
+   * restores and hit tests stay aligned with what the terminal shows.
+   */
+  replaceViewportLine(row: number, text: string, screenRows: number): void {
+    this.trimViewport(screenRows);
+    const r = Math.floor(row);
+    if (r < 1 || r > this.viewportLines.length) return;
+    const cols = Math.max(20, (process.stdout.columns || 80) - 2);
+    this.viewportLines[r - 1] = truncateAtlasStreamLine(text, cols);
   }
 }
 

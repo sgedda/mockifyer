@@ -511,14 +511,17 @@ describe('metro-network-stream-tty', () => {
     // 7 painted lines → scrolled; visible content is last 4 hits on rows 1-4.
     for (let i = 0; i < 7; i++) {
       const isCollapse = i === 5; // second-to-last content in visible window
-      hits.notePaint({
-        lines: [`line-${i}${isCollapse ? ' ▸ nested' : ''}`],
-        lineHits: [
-          isCollapse
-            ? { kind: 'collapse', parentId: 'p-mid' }
-            : { kind: 'none' },
-        ],
-      });
+      hits.notePaint(
+        {
+          lines: [`line-${i}${isCollapse ? ' ▸ nested' : ''}`],
+          lineHits: [
+            isCollapse
+              ? { kind: 'collapse', parentId: 'p-mid' }
+              : { kind: 'none' },
+          ],
+        },
+        screenRows,
+      );
     }
     // Visible hits: 3,4,5,6 on rows 1-4. Row 5 = empty cursor.
     expect(hits.lineAtScreenRow(1, screenRows)).toContain('line-3');
@@ -532,6 +535,40 @@ describe('metro-network-stream-tty', () => {
     // Off-by-one regression: row 2 must be line-4, not the collapse line.
     expect(hits.lineAtScreenRow(2, screenRows)).toContain('line-4');
     expect(hits.hitAtScreenRow(2, screenRows)?.kind).toBe('none');
+  });
+
+  it('viewport mirror: timestamp row above ▸ never maps as collapse when scrolled', () => {
+    const hits = new AtlasStreamHitTracker(100);
+    const screenRows = 6;
+    // Fill past one screen: pairs of timestamp + collapse summary.
+    for (let i = 0; i < 5; i++) {
+      hits.notePaint(
+        {
+          lines: [`12:00:0${i}.000 GET /hop-${i}`],
+          lineHits: [{ kind: 'none' }],
+        },
+        screenRows,
+      );
+      hits.notePaint(
+        {
+          lines: [`│  └─ ▸ ${i + 1} nested · click expand`],
+          lineHits: [{ kind: 'collapse', parentId: `p-${i}` }],
+        },
+        screenRows,
+      );
+    }
+    // Visible (contentRows=5): last 5 of 10 lines.
+    // Rows: 1=ts, 2=▸, 3=ts, 4=▸, 5=ts? Wait last 5 of [t0,c0,t1,c1,t2,c2,t3,c3,t4,c4]
+    // = t2,c2,t3,c3,t4 on rows 1-5? That's 5 lines: t2,c2,t3,c3,t4 — missing c4.
+    // last 5: c2,t3,c3,t4,c4
+    expect(hits.lineAtScreenRow(1, screenRows)).toContain('▸');
+    expect(hits.hitAtScreenRow(1, screenRows)?.kind).toBe('collapse');
+    // Row above a ▸ (row 2 is timestamp /hop-3) must not be collapse.
+    expect(hits.lineAtScreenRow(2, screenRows)).toContain('/hop-3');
+    expect(hits.lineAtScreenRow(2, screenRows)).not.toContain('▸');
+    expect(hits.hitAtScreenRow(2, screenRows)?.kind).toBe('none');
+    expect(hits.lineAtScreenRow(3, screenRows)).toContain('▸');
+    expect(hits.hitAtScreenRow(3, screenRows)?.kind).toBe('collapse');
   });
 
 });
