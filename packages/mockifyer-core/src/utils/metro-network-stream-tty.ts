@@ -207,7 +207,7 @@ export function formatAtlasStreamCollapseSummary(
   if (slow) parts.push(theme.warn(`${slow} slow`));
   if (totalMs > 0) parts.push(theme.muted(`${Math.round(totalMs)}ms`));
   const hint =
-    options?.expandedHint === false ? "" : theme.muted("  · click/e expand");
+    options?.expandedHint === false ? "" : theme.muted("  · click expand");
   const glyph = theme.muted("▸");
   return `${theme.muted("│  └─ ")}${glyph} ${parts.join(" · ")}${hint}`;
 }
@@ -274,7 +274,7 @@ export function formatAtlasStreamExpandFooter(
 ): string {
   const theme = options?.color ?? createAtlasStreamColorTheme(false);
   return `${theme.muted("│  └─ ")}${theme.muted("▾")} ${theme.muted(
-    `${childCount} nested · click/e collapse`,
+    `${childCount} nested · click collapse`,
   )}`;
 }
 
@@ -350,7 +350,8 @@ interface DuplicateStreak {
 }
 
 /**
- * Stateful stream presenter with per-parent expand/collapse (click or `e` on last).
+ * Stateful stream presenter with per-parent expand/collapse (click) and
+ * expand/collapse-all (`e`).
  */
 export class MetroAtlasStreamView {
   private theme: AtlasStreamColorTheme;
@@ -376,7 +377,7 @@ export class MetroAtlasStreamView {
   private lastRewritable: "collapse" | "duplicate" | "expand-footer" | null =
     null;
   private lastCollapseParentId: string | null = null;
-  /** Most recent collapse/footer parent — keyboard `e` toggles this item. */
+  /** Most recent collapse/footer parent (click target bookkeeping). */
   private lastInteractiveParentId: string | null = null;
 
   constructor(options?: AtlasStreamViewOptions) {
@@ -425,7 +426,7 @@ export class MetroAtlasStreamView {
       this.theme.enabled ? "color" : "plain",
     ];
     return this.theme.muted(
-      `[atlas] view · ${bits.join(" · ")}  (click ▸ · e last · g/d/f)`,
+      `[atlas] view · ${bits.join(" · ")}  (click ▸ · e all · g/d/f)`,
     );
   }
 
@@ -446,9 +447,8 @@ export class MetroAtlasStreamView {
   }
 
   /**
-   * Toggle one parent (mouse click / keyboard `e` on last interactive row).
-   * Always redraws the full view so mid-screen clicks expand in place — not at
-   * the bottom cursor.
+   * Toggle one parent (mouse click). Always redraws the full view so mid-screen
+   * clicks expand in place — not at the bottom cursor.
    */
   toggleParentExpanded(parentId: string): AtlasStreamPaint {
     const children = this.childrenByParent.get(parentId) ?? [];
@@ -467,6 +467,28 @@ export class MetroAtlasStreamView {
     } else {
       this.expandedBlocks.delete(parentId);
     }
+
+    return this.rebuildView();
+  }
+
+  /**
+   * Expand every nested group, or collapse every group if all are already
+   * expanded. Clears per-parent overrides and updates the default so new hops
+   * match. Keyboard `e`.
+   */
+  toggleAllExpanded(): AtlasStreamPaint {
+    const parentIds: string[] = [];
+    for (const [parentId, children] of this.childrenByParent) {
+      if (children.length > 0) parentIds.push(parentId);
+    }
+
+    const anyCollapsed = parentIds.some(
+      (parentId) => !this.isParentExpanded(parentId),
+    );
+    const expandAll = anyCollapsed || parentIds.length === 0;
+
+    this.collapseChildren = !expandAll;
+    this.expandOverride.clear();
 
     return this.rebuildView();
   }

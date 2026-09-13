@@ -18,7 +18,7 @@
  *   s  snapshot hops → mock-data/atlas-html/{atlas-events.json,atlas.ndjson,atlas.har}
  *   r  render Atlas HTML from buffer + print browse URL
  *   o  open rendered Atlas HTML in browser
- *   e  expand/collapse the last nested group
+ *   e  expand/collapse all nested groups
  *   g  toggle default collapse for new nested hops
  *   d  toggle collapse duplicate consecutive roots (×N)
  *   f  toggle errors-only filter
@@ -94,7 +94,7 @@ Does not require the dashboard GUI.
 
 Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
-  ${theme.info("e")}  Expand/collapse the last nested group
+  ${theme.info("e")}  Expand/collapse all nested groups
   ${theme.info("g")}  Toggle default collapse for new nested hops
   ${theme.info("d")}  Toggle collapse duplicate consecutive roots (×N)
   ${theme.info("f")}  Toggle errors-only filter
@@ -201,7 +201,7 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const lines = [
     `${theme.bold("[atlas]")} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
     theme.muted(
-      "click ▸ nested to expand · e last · g/d/f view · a/s/r/o · c clear · h help · q quit",
+      "click ▸ nested to expand · e all · g/d/f view · a/s/r/o · c clear · h help · q quit",
     ),
     view.statusLine(),
     "",
@@ -336,14 +336,7 @@ function attachInputHandlers(
       return;
     }
     if (key === "e") {
-      const parentId = view.getLastInteractiveParentId();
-      if (parentId) {
-        applyPaint(view.toggleParentExpanded(parentId));
-      } else {
-        view.collapseChildren = !view.collapseChildren;
-        console.log(view.statusLine());
-        view.invalidateRewrite();
-      }
+      applyPaint(view.toggleAllExpanded());
       return;
     }
     if (key === "g") {

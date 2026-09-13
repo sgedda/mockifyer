@@ -323,6 +323,75 @@ describe('metro-network-stream-tty', () => {
     );
   });
 
+  it('toggleAllExpanded expands every nested group then collapses them', () => {
+    const view = new MetroAtlasStreamView({
+      color: false,
+      collapseChildren: true,
+      collapseDuplicates: false,
+    });
+    view.push(
+      hop({
+        requestId: 'early',
+        method: 'GET',
+        url: 'https://a.test/early',
+        path: '/early',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c-early',
+        parentRequestId: 'early',
+        method: 'GET',
+        url: 'https://a.test/early/child',
+        path: '/early/child',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'late',
+        method: 'GET',
+        url: 'https://a.test/late',
+        path: '/late',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+    view.push(
+      hop({
+        requestId: 'c-late',
+        parentRequestId: 'late',
+        method: 'GET',
+        url: 'https://a.test/late/child',
+        path: '/late/child',
+        status: 200,
+        source: 'upstream',
+      })
+    );
+
+    // Expand only one group first — toggleAll should still expand the rest.
+    view.toggleParentExpanded('early');
+    const allExpanded = view.toggleAllExpanded();
+    expect(allExpanded.clearScreen).toBe(true);
+    expect(view.isParentExpanded('early')).toBe(true);
+    expect(view.isParentExpanded('late')).toBe(true);
+    expect(allExpanded.lines.some((l) => l.includes('/early/child'))).toBe(true);
+    expect(allExpanded.lines.some((l) => l.includes('/late/child'))).toBe(true);
+    expect(view.collapseChildren).toBe(false);
+
+    const allCollapsed = view.toggleAllExpanded();
+    expect(allCollapsed.clearScreen).toBe(true);
+    expect(view.isParentExpanded('early')).toBe(false);
+    expect(view.isParentExpanded('late')).toBe(false);
+    expect(allCollapsed.lines.some((l) => l.includes('/early/child'))).toBe(false);
+    expect(allCollapsed.lines.some((l) => l.includes('/late/child'))).toBe(false);
+    expect(allCollapsed.lineHits?.filter((h) => h.kind === 'collapse')).toHaveLength(2);
+    expect(view.collapseChildren).toBe(true);
+  });
+
   it('hit tracker maps mouse rows from top before scroll', () => {
     const hits = new AtlasStreamHitTracker(50);
     hits.notePaint({
@@ -364,7 +433,7 @@ describe('metro-network-stream-tty', () => {
 
 
   it('formatAtlasStreamHoverLine swaps ▸/▾ to filled icons', () => {
-    const line = '│  └─ ▸ 2 nested  · click/e expand';
+    const line = '│  └─ ▸ 2 nested  · click expand';
     const hovered = formatAtlasStreamHoverLine(line);
     expect(hovered).toContain('▶');
     expect(hovered).not.toContain('▸');
