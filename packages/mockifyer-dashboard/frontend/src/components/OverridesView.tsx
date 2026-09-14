@@ -209,7 +209,7 @@ export default function OverridesView({
             hasDates: dateCount > 0,
             preview: (entry.responseFieldOverrides ?? []).slice(0, 3).map((p) => p.path),
             overrideCount: fieldCount + dateCount,
-            mockFound: Boolean(mock),
+            mockFound: loading ? true : Boolean(mock),
           }
         })
         .filter((item) => {

@@ -7,6 +7,20 @@ export const RELATED_KEY_LIMIT = 40
 export const UNMATCHED_OVERRIDE_ROW_CLASS = 'border-destructive/70 bg-destructive/10'
 
 /**
+ * Parse JSON string bodies before path traversal (some mocks store response.data as a JSON string).
+ */
+function normalizeResponseBody(data: unknown): unknown {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data)
+    } catch {
+      return data
+    }
+  }
+  return data
+}
+
+/**
  * True when a non-empty override path does not resolve in the stored response body.
  * Empty paths are treated as incomplete (not unmatched) so a newly added row is not
  * marked red until the user enters a path.
@@ -14,7 +28,8 @@ export const UNMATCHED_OVERRIDE_ROW_CLASS = 'border-destructive/70 bg-destructiv
 export function isUnmatchedOverridePath(responseBody: unknown, path: string): boolean {
   const trimmed = path.trim()
   if (!trimmed) return false
-  return getValueAtResponsePath(responseBody, trimmed) === undefined
+  const normalized = normalizeResponseBody(responseBody)
+  return getValueAtResponsePath(normalized, trimmed) === undefined
 }
 
 export interface PathCrumb {
