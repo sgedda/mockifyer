@@ -620,12 +620,141 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
   }
 
+  /**
+   * Load override groups for the current scenario using expo-file-system.
+   * This is the Expo equivalent of `ensureOverrideGroupRuntimeForScenarioPath`.
+   */
+  private async loadOverrideGroupsForScenario(options?: {
+    clientId?: string | null;
+    explicitGroupId?: string | null;
+    laneGroupId?: string | null;
+  }): Promise<void> {
+    const scenarioPath = this.getScenarioPath();
+    try {
+      const { 
+        replaceRegisteredOverrideGroups, 
+        setActiveOverrideGroup,
+        setOverrideGroupRuntimeScenarioPath 
+      } = await import('../utils/override-group-runtime');
+      const {
+        validateMockOverrideGroup,
+        normalizeMockOverrideGroup,
+      } = await import('../utils/override-group');
+      const { 
+        OVERRIDE_GROUPS_DIR_NAME, 
+        OVERRIDE_GROUP_CONFIG_FILENAME,
+        overrideGroupConfigFilenameForClient 
+      } = await import('../types/override-group');
+      const { 
+        resolveActiveOverrideGroupId,
+        readOverrideGroupIdFromEnv 
+      } = await import('../utils/override-group-resolve');
+
+      setOverrideGroupRuntimeScenarioPath(scenarioPath);
+
+      // Read default override-group-config.json
+      const configPath = this.joinFsUri(scenarioPath, OVERRIDE_GROUP_CONFIG_FILENAME);
+      let defaultGroup: string | null = null;
+      try {
+        const configInfo = await this.fsGetInfo(configPath);
+        if (configInfo.exists) {
+          const configText = await this.fsReadText(configPath);
+          const config = JSON.parse(configText);
+          defaultGroup = typeof config.currentGroup === 'string' && config.currentGroup.trim()
+            ? config.currentGroup.trim()
+            : null;
+        }
+      } catch {
+        // Config file doesn't exist or is invalid
+      }
+
+      // Read per-lane/client config if clientId provided
+      let laneGroup: string | null = null;
+      const clientId = typeof options?.clientId === 'string' && options.clientId.trim()
+        ? options.clientId.trim()
+        : null;
+      
+      if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
+        laneGroup = options.laneGroupId == null || options.laneGroupId === ''
+          ? null
+          : String(options.laneGroupId).trim() || null;
+      } else if (clientId) {
+        const laneConfigFilename = overrideGroupConfigFilenameForClient(clientId);
+        const laneConfigPath = this.joinFsUri(scenarioPath, laneConfigFilename);
+        try {
+          const laneInfo = await this.fsGetInfo(laneConfigPath);
+          if (laneInfo.exists) {
+            const laneText = await this.fsReadText(laneConfigPath);
+            const laneConfig = JSON.parse(laneText);
+            laneGroup = typeof laneConfig.currentGroup === 'string' && laneConfig.currentGroup.trim()
+              ? laneConfig.currentGroup.trim()
+              : null;
+          }
+        } catch {
+          // Lane config doesn't exist or is invalid
+        }
+      }
+
+      // Read all override group files from override-groups/
+      const groupsDir = this.joinFsUri(scenarioPath, OVERRIDE_GROUPS_DIR_NAME);
+      const groups: any[] = [];
+      try {
+        const groupsDirInfo = await this.fsGetInfo(groupsDir);
+        if (groupsDirInfo.exists && groupsDirInfo.isDirectory) {
+          const files = this.useLegacyExpoFileSystem
+            ? await this.FileSystem.readDirectoryAsync(groupsDir)
+            : this.newDirectory(groupsDir).list().map((item: any) => item.name);
+
+          for (const name of files) {
+            if (!name.endsWith('.json')) continue;
+            try {
+              const filePath = this.joinFsUri(groupsDir, name);
+              const raw = await this.fsReadText(filePath);
+              const parsed = JSON.parse(raw);
+              const err = validateMockOverrideGroup(parsed);
+              if (!err) {
+                groups.push(normalizeMockOverrideGroup(parsed));
+              }
+            } catch {
+              // Skip invalid group files
+            }
+          }
+        }
+      } catch {
+        // Groups directory doesn't exist
+      }
+
+      replaceRegisteredOverrideGroups(groups, scenarioPath);
+      
+      // Resolve active group using precedence: explicit → env → lane → default
+      const explicit = options?.explicitGroupId ?? null;
+      const envGroup = readOverrideGroupIdFromEnv();
+      const knownIds = groups.map((g: any) => g.id);
+      const currentGroup = resolveActiveOverrideGroupId({
+        explicitGroupId: explicit,
+        envGroupId: envGroup,
+        laneGroupId: laneGroup,
+        defaultGroupId: defaultGroup,
+        knownGroupIds: knownIds,
+      });
+
+      setActiveOverrideGroup(currentGroup, scenarioPath);
+    } catch {
+      // Override group modules not available or error loading - continue without groups
+    }
+  }
+
   async findExactMatch(
     request: StoredRequest,
     requestKey: string,
     options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
+    const scenarioPath = this.getScenarioPath();
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
@@ -640,10 +769,20 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           // If file hasn't changed, return cached result
           if (currentMtime === cachedMtime) {
-            return cached.content;
+            // Re-validate that the mock should still be included (group config might have changed)
+            if (mockShouldBeIncludedInRequestMatch(cached.content.mockData, {
+              includePassthroughMocks,
+              filename: cached.content.filename,
+              scenarioPath,
+            })) {
+              return cached.content;
+            }
+            // Mock no longer matches (e.g. due to group change), clear cache and re-read
+            this.fileCache.delete(requestKey);
+          } else {
+            // File has been modified, clear cache entry and re-read
+            this.fileCache.delete(requestKey);
           }
-          // File has been modified, clear cache entry and re-read
-          this.fileCache.delete(requestKey);
         } else {
           // File no longer exists, clear cache
           this.fileCache.delete(requestKey);
@@ -670,7 +809,6 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     }
 
     const files = await this.listMockFiles();
-    const scenarioPath = this.getScenarioPath();
 
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
@@ -706,7 +844,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const mockKey = generateRequestKey(mockData.request);
         if (
           mockKey === requestKey &&
-          mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })
+          mockShouldBeIncludedInRequestMatch(mockData, {
+            includePassthroughMocks,
+            filename: file,
+            scenarioPath,
+          })
         ) {
           // Get file modification time
           let fileMtime = Date.now();
@@ -770,6 +912,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     const files = await this.listMockFiles();
     const scenarioPath = this.getScenarioPath();
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     const results: CachedMockData[] = [];
 
     for (const file of files) {
@@ -810,7 +956,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           if (mockPath === requestPath &&
               (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            if (!mockPassesThroughToRealApi(mockData)) {
+            if (mockShouldBeIncludedInRequestMatch(mockData, { 
+              includePassthroughMocks: false,
+              filename: file,
+              scenarioPath 
+            })) {
               results.push({
                 mockData,
                 filename: file,

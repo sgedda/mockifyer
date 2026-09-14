@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
 import {
-  mockPassesThroughToRealApi,
   getScenarioFolderPath,
   ensureScenarioFolder,
   shouldExcludeUrl,
@@ -27,7 +26,7 @@ export function findMockOnDiskByRequestHash(
   mockDataPath: string,
   scenarioName: string,
   hash: string
-): MockData | null {
+): { mockData: MockData; filename: string } | null {
   const scenarioPath = getScenarioFolderPath(mockDataPath, scenarioName);
   if (!fs.existsSync(scenarioPath)) {
     return null;
@@ -39,13 +38,13 @@ export function findMockOnDiskByRequestHash(
       if (!mockData?.request || typeof mockData.request !== 'object') {
         continue;
       }
-      if (mockPassesThroughToRealApi(mockData)) {
-        continue;
-      }
       if (RedisMockStore.hashForMock(mockData) !== hash) {
         continue;
       }
-      return mockData;
+      return {
+        mockData,
+        filename: path.relative(scenarioPath, filePath).replace(/\\/g, '/'),
+      };
     } catch {
       continue;
     }

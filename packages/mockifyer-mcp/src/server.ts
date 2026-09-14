@@ -272,6 +272,156 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_get_field_overrides',
+    {
+      description:
+        'Get replay-time field overrides for a mock (path/value pairs only). Prefer this over mockifyer_get_mock when editing overlays.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename'),
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getFieldOverrides({
+            filename: args.filename,
+            scenario: args.scenario,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_override_groups',
+    {
+      description:
+        'List scenario override groups and effective selection (default vs per-client lane). Pass clientId to see that lane’s choice.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        clientId: z.string().optional().describe('MOCKIFYER_CLIENT_ID / lane id'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.listOverrideGroups({
+            scenario: args.scenario,
+            clientId: args.clientId,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_active_override_group',
+    {
+      description:
+        'Set or clear an override group. With clientId, sets per-lane selection (does not change teammates). Without clientId, sets the scenario default only. Prefer lane scope for shared scenarios.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        clientId: z.string().optional().describe('Lane id — preferred for shared scenarios'),
+        scope: z
+          .enum(['lane', 'default'])
+          .optional()
+          .describe('lane = per clientId; default = scenario-wide fallback'),
+        groupId: z
+          .string()
+          .nullable()
+          .describe('Override group id to activate, or null to clear'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.setActiveOverrideGroup({
+            currentGroup: args.groupId,
+            scenario: args.scenario,
+            clientId: args.clientId,
+            scope: args.scope ?? (args.clientId ? 'lane' : 'default'),
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_upsert_override_group_entry',
+    {
+      description:
+        'Create/update field overrides for one mock inside an override group. Use ensure=true to add an empty entry; clear=true to remove the entry.',
+      inputSchema: {
+        groupId: z.string(),
+        filename: z.string().describe('Scenario-relative mock filename'),
+        scenario: z.string().optional(),
+        overrides: z
+          .array(
+            z.object({
+              path: z.string(),
+              value: z.any(),
+            })
+          )
+          .optional(),
+        ensure: z.boolean().optional(),
+        clear: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.patchOverrideGroupEntry({
+            groupId: args.groupId,
+            filename: args.filename,
+            scenario: args.scenario,
+            responseFieldOverrides: args.clear
+              ? null
+              : args.overrides?.map((entry) => ({ path: entry.path, value: entry.value })),
+            clear: args.clear === true,
+            ensure: args.ensure === true,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_put_override_group',
+    {
+      description: 'Create or replace an override group document (id + label + optional entries).',
+      inputSchema: {
+        id: z.string(),
+        label: z.string(),
+        scenario: z.string().optional(),
+        entries: z.array(z.any()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.putOverrideGroup({
+            id: args.id,
+            label: args.label,
+            scenario: args.scenario,
+            entries: args.entries,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_set_field_overrides',
     {
       description:

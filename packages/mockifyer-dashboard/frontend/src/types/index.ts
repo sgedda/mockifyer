@@ -1,3 +1,8 @@
+export interface MockResponseFieldOverride {
+  path: string
+  value: unknown
+}
+
 /** Paths are relative to `response.data` (see Mockifyer core). */
 export interface MockResponseDateOverride {
   path: string
@@ -40,6 +45,12 @@ export interface MockFile {
     path: string
     summary: string
   }>
+  hasResponseFieldOverrides?: boolean
+  responseFieldOverridesPreview?: Array<{
+    path: string
+    summary: string
+  }>
+  responseFieldOverridesCount?: number
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
   replayMode?: MockReplayMode
@@ -86,6 +97,8 @@ export interface MockData {
     callStack?: string[]
     /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
     responseDateOverrides?: MockResponseDateOverride[]
+    /** Replay-time path/value overlays (stored body unchanged). */
+    responseFieldOverrides?: MockResponseFieldOverride[]
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
     alwaysUseRealApi?: boolean
     refreshOnNextRequest?: boolean
