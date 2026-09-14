@@ -31,6 +31,10 @@ function getAtPath(root: unknown, segments: (string | number)[]): unknown {
   return cur;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function setAtPath(root: unknown, segments: (string | number)[], value: unknown): void {
   if (segments.length === 0) {
     return;
@@ -38,12 +42,19 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   let cur: unknown = root;
   for (let i = 0; i < segments.length - 1; i++) {
     const key = segments[i];
-    const next = segments[i + 1];
-    const container = cur as Record<string | number, unknown>;
-    if (container[key as string | number] === undefined || container[key as string | number] === null) {
-      container[key as string | number] = typeof next === 'number' ? [] : {};
+    if (cur === null || typeof cur !== 'object') {
+      return;
     }
-    cur = container[key as string | number];
+    const container = cur as Record<string | number, unknown>;
+    const child = container[key as string | number];
+    // Never fabricate missing GraphQL/JSON parents (those stubs lack `__typename`).
+    if (child === undefined || child === null || typeof child !== 'object') {
+      return;
+    }
+    cur = child;
+  }
+  if (cur === null || typeof cur !== 'object') {
+    return;
   }
   const last = segments[segments.length - 1];
   (cur as Record<string | number, unknown>)[last as string | number] = value;
@@ -69,6 +80,8 @@ function deepCloneJson<T>(data: T): T {
 
 const MS_PER_MINUTE = 60 * 1000;
 const UNIX_MS_THRESHOLD = 1e11;
+const UNIX_S_MIN = 1e9;
+const UNIX_MS_MAX = 1e14;
 const ISO_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DATETIME_PATTERN =
   /^(\d{4}-\d{2}-\d{2})([T ])(\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|z|[+-]\d{2}:?\d{2})?$/;
@@ -203,6 +216,60 @@ function formatResolvedDate(
   }
 }
 
+function isLikelyUnixTimestamp(n: number): boolean {
+  return (n > UNIX_MS_THRESHOLD && n < UNIX_MS_MAX) || (n > UNIX_S_MIN && n <= UNIX_MS_THRESHOLD);
+}
+
+/**
+ * Rewrites a date-like leaf, preserving naive vs `Z` / offset ISO shapes.
+ * Non-date strings and non-timestamp numbers are left unchanged.
+ */
+function rewriteDateLikeLeaf(
+  value: unknown,
+  instant: Date,
+  explicitFormat?: MockResponseDateOverride['format']
+): unknown {
+  if (typeof value === 'string') {
+    if (!parseIsoDateStringShape(value)) {
+      return value;
+    }
+    if (explicitFormat === 'unix-ms' || explicitFormat === 'unix-s') {
+      return formatResolvedDate(instant, explicitFormat, value);
+    }
+    return formatDatePreservingOriginal(instant, value) ?? value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && isLikelyUnixTimestamp(value)) {
+    if (explicitFormat === 'iso') {
+      return formatResolvedDate(instant, 'iso', value);
+    }
+    const format = explicitFormat ?? resolveFormat({ path: '_' }, value);
+    return formatResolvedDate(instant, format, value);
+  }
+  return value;
+}
+
+/**
+ * Walks objects/arrays and rewrites date-like values in place so GraphQL
+ * `__typename` and sibling fields are not replaced by a bare ISO string.
+ */
+export function rewriteDateLikeTree(
+  value: unknown,
+  instant: Date,
+  explicitFormat?: MockResponseDateOverride['format']
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteDateLikeTree(item, instant, explicitFormat));
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      out[key] = rewriteDateLikeTree(child, instant, explicitFormat);
+    }
+    return out;
+  }
+  return rewriteDateLikeLeaf(value, instant, explicitFormat);
+}
+
 /** Total offset in ms from optional shorthand fields. */
 export function totalOverrideOffsetMs(override: MockResponseDateOverride): number {
   let ms = override.offsetMs ?? 0;
@@ -223,7 +290,10 @@ export function totalOverrideOffsetMs(override: MockResponseDateOverride): numbe
  *
  * Uses `getNow` (typically {@link getCurrentDate}) as the base "current" instant.
  * ISO-like original strings keep their wire shape (date-only, naive, offset, or `Z`);
- * explicit `unix-ms` / `unix-s` still win. Non-date strings fall back to `toISOString()`.
+ * explicit `unix-ms` / `unix-s` still win. Non-date strings at a leaf path fall back
+ * to `toISOString()`. Object/array paths rewrite date-like children in place so GraphQL
+ * `__typename` is preserved. Missing or null paths are skipped — we never invent
+ * `{ flightUtc: "<iso>" }` stubs that Apollo cannot cache.
  *
  * NOTE: `base: 'response'` (a legacy/deprecated value that may still appear in older
  * recordings) is treated identically to `base: 'now'`. This avoids drift caused by
@@ -263,11 +333,16 @@ export function applyResponseDateOverridesToData<T>(
       continue;
     }
     const original = getAtPath(clone, segments);
+    if (original === undefined || original === null) {
+      continue;
+    }
+    const instant = new Date(getNow().getTime() + totalOverrideOffsetMs(override));
+    if (isPlainObject(original) || Array.isArray(original)) {
+      setAtPath(clone, segments, rewriteDateLikeTree(original, instant, override.format));
+      continue;
+    }
     const format = resolveFormat(override, original);
-    const nowMs = getNow().getTime();
-    const next = new Date(nowMs + totalOverrideOffsetMs(override));
-    const value = formatResolvedDate(next, format, original);
-    setAtPath(clone, segments, value);
+    setAtPath(clone, segments, formatResolvedDate(instant, format, original));
   }
 
   return clone;
