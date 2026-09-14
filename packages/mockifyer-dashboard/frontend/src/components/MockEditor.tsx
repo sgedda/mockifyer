@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { updateMock, refreshMockFromLive } from '@/lib/api'
+import { updateMock, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData, MockFile, MockReplayMode, MockResponseDateOverride } from '@/types'
 import {
@@ -19,6 +19,7 @@ import {
 import { MockCallChainPanel } from '@/components/MockCallChainPanel'
 import { Input } from '@/components/ui/input'
 import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft, RefreshCw } from 'lucide-react'
+import { CopyableText } from '@/components/CopyableText'
 import {
   detectDateLikeFields,
   getValueAtResponsePath,
@@ -37,12 +38,14 @@ interface MockEditorProps {
   onSelectRelatedMock?: (file: MockFile) => void
   onClose: () => void
   onSave: () => void
-  /** `modal`: full-height scrollable body for use inside `Dialog` (default list view uses `default`). */
-  variant?: 'default' | 'modal'
+  /** Called after replay mode changes to refresh the list without reloading selectedMock. */
+  onListRefresh?: () => Promise<void>
+  /** `page`: dedicated editor route. `default` is the inline card layout. */
+  variant?: 'default' | 'page'
 }
 
 function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
-  if (mock.data.alwaysUseRealApi === true) return 'passthrough'
+  if (mock.data.alwaysUseRealApi === true || mock.data.responsePending === true) return 'passthrough'
   if (mock.data.alwaysRefreshFromLive === true) return 'always-refresh'
   if (mock.data.refreshOnNextRequest === true) return 'refresh-next'
   return 'stored'
@@ -110,18 +113,18 @@ function useCodeMirrorVscodeTheme(): Extension {
 interface JsonResponseCodeMirrorProps {
   value: string
   onChange: (text: string) => void
-  isModal: boolean
+  isPage: boolean
   readOnly?: boolean
 }
 
-function JsonResponseCodeMirror({ value, onChange, isModal, readOnly = false }: JsonResponseCodeMirrorProps) {
+function JsonResponseCodeMirror({ value, onChange, isPage, readOnly = false }: JsonResponseCodeMirrorProps) {
   const vscodeTheme = useCodeMirrorVscodeTheme()
   return (
     <div className="w-full overflow-hidden rounded-md border border-input focus-within:ring-2 focus-within:ring-ring">
       <CodeMirror
         value={value}
-        height={isModal ? 'min(32rem, 50vh)' : '24rem'}
-        minHeight={isModal ? 'min(280px, 35vh)' : undefined}
+        height={isPage ? 'min(32rem, 50vh)' : '24rem'}
+        minHeight={isPage ? 'min(280px, 35vh)' : undefined}
         theme={vscodeTheme}
         extensions={jsonLanguageExtensions}
         onChange={onChange}
@@ -180,6 +183,7 @@ export default function MockEditor({
   scenario,
   onClose,
   onSave,
+  onListRefresh,
   variant = 'default',
   scenarioLocked = false,
   allMocks = [],
@@ -382,7 +386,7 @@ export default function MockEditor({
       setSaving(true)
       // Intentionally preserve the current on-disk/Redis mock body and overrides.
       // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
-      await updateMock(mock.filename, mock.data.response?.data, undefined, next, scenario)
+      await updateMockReplayMode(mock.filename, next, scenario)
       toast({
         title: 'Saved',
         description:
@@ -390,7 +394,9 @@ export default function MockEditor({
             ? 'This mock will be served from Mockifyer.'
             : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
       })
-      onSave()
+      if (onListRefresh) {
+        await onListRefresh()
+      }
     } catch (error: any) {
       setReplayMode(resolveReplayModeFromMock(mock))
       toast({
@@ -530,15 +536,16 @@ export default function MockEditor({
     }
   }
 
-  const isModal = variant === 'modal'
+  const isPage = variant === 'page'
 
   const header = (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 pr-8 sm:pr-10">
-        <CardTitle className="text-xl">
-          Edit Mock: <span className="text-primary font-mono">{mock.filename}</span>
+      <div className="flex items-center justify-between gap-2">
+        <CardTitle className="text-xl min-w-0">
+          Edit Mock:{' '}
+          <span className="text-primary font-mono break-all">{mock.filename}</span>
         </CardTitle>
-        {!isModal && (
+        {!isPage && (
           <Button
             variant="ghost"
             size="icon"
@@ -635,8 +642,12 @@ export default function MockEditor({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium">URL</div>
-              <div className="font-mono text-sm bg-muted p-2 rounded break-all">
-                {mock.data.request.url}
+              <div className="font-mono text-sm bg-muted p-2 rounded">
+                <CopyableText
+                  value={mock.data.request.url}
+                  copyLabel="Copy request URL"
+                  textClassName="font-mono text-sm"
+                />
               </div>
             </div>
             <div className="space-y-2">
@@ -809,7 +820,7 @@ export default function MockEditor({
                     setResponseData(text)
                     validateJSON(text)
                   }}
-                  isModal={isModal}
+                  isPage={isPage}
                   readOnly={readOnly}
                 />
               )}
@@ -1134,12 +1145,12 @@ export default function MockEditor({
         </Tabs>
   )
 
-  if (isModal) {
+  if (isPage) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border px-6 pb-4 pt-1">{header}</div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{editorTabs}</div>
-      </div>
+      <Card>
+        <CardHeader>{header}</CardHeader>
+        <CardContent>{editorTabs}</CardContent>
+      </Card>
     )
   }
 

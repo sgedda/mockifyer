@@ -23,6 +23,7 @@ import {
   applyRecordingPassthroughFlag,
   buildRequestOnlyMockData,
   applyCapturedResponse,
+  mockHasCapturableResponse,
   resolveRecordResponsesForRequest,
   toNetworkLogBodyPreview,
   buildProxyUpstreamBodyInit,
@@ -36,6 +37,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
+import { shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
 import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
 import {
   appendProxyNetworkEvent,
@@ -393,12 +395,13 @@ router.post('/', async (req: Request, res: Response) => {
       ? resolveShouldPersistLiveCapture(mock as MockData, {})
       : false;
     const refreshPassthrough = resolveRefreshPassthroughRecordings({});
+    const existingSnapshot = mock != null && mockHasCapturableResponse(mock as MockData);
     if (
       mock &&
+      existingSnapshot &&
       resolveMockReplayMode(mock as MockData) === 'passthrough' &&
       !refreshPassthrough &&
-      !shouldPersistLiveCapture &&
-      !recordResolution.recordResponses
+      !shouldPersistLiveCapture
     ) {
       effectiveRecord = false;
       if (debugProxy) {
@@ -409,7 +412,11 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const mockNeedsUpstream = !mock || mockRequiresUpstreamFetch(mock as MockData);
-    if (recordResolution.recordResponses && mockNeedsUpstream) {
+    if (
+      recordResolution.recordResponses &&
+      mockNeedsUpstream &&
+      shouldWriteNewProxyRecording(mock as MockData | null)
+    ) {
       effectiveRecord = true;
     }
 
@@ -516,7 +523,7 @@ router.post('/', async (req: Request, res: Response) => {
       : response;
 
     let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
+    if (effectiveRecord === true && shouldWriteNewProxyRecording(mock as MockData | null)) {
       const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (scenarioLocked) {
         if (debugProxy) {

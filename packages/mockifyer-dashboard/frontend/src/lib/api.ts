@@ -132,6 +132,23 @@ export async function getMockAiContext(
   return response.json()
 }
 
+async function putMockUpdate(
+  filename: string,
+  body: Record<string, unknown>,
+  scenario?: string
+): Promise<void> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to update mock')
+    throw new Error(message)
+  }
+}
+
 export async function updateMock(
   filename: string,
   responseData: any,
@@ -146,16 +163,16 @@ export async function updateMock(
   if (replayMode !== undefined) {
     body.replayMode = replayMode
   }
-  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!response.ok) {
-    const message = await readErrorMessage(response, 'Failed to update mock')
-    throw new Error(message)
-  }
+  await putMockUpdate(filename, body, scenario)
+}
+
+/** Persist only replay mode — avoids re-uploading a large GraphQL response body. */
+export async function updateMockReplayMode(
+  filename: string,
+  replayMode: MockReplayMode,
+  scenario?: string
+): Promise<void> {
+  await putMockUpdate(filename, { replayMode }, scenario)
 }
 
 export async function refreshMockFromLive(
