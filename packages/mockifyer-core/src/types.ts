@@ -371,9 +371,23 @@ export interface MockResponseDateOverride {
   offsetDays?: number;
   offsetHours?: number;
   offsetMinutes?: number;
-  /** How to encode the value. If omitted, inferred from the existing value (ISO string vs unix s/ms). */
+  /**
+   * How to encode the value. If omitted, inferred from the existing value (ISO-like string vs unix s/ms).
+   *
+   * - `unix-ms` / `unix-s` always write a number (explicit encoding wins over a string original).
+   * - `iso` writes a string. When the original field is an ISO-like string, the original shape is
+   *   preserved (date-only, naive, offset, or `Z`) instead of rewriting via `Date#toISOString()`.
+   */
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }
+
+/**
+ * How a field override combines with the existing value at `path`.
+ * - **`replace`** (default) — set `value` at the path.
+ * - **`extend`** — if existing is an array, append item(s); if an object, shallow-merge keys; otherwise replace.
+ * - **`remove`** — delete the path (array index splice or object key delete). `value` is ignored.
+ */
+export type MockResponseFieldOverrideMode = 'replace' | 'extend' | 'remove';
 
 /**
  * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
@@ -382,7 +396,13 @@ export interface MockResponseDateOverride {
 export interface MockResponseFieldOverride {
   /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
   path: string;
-  value: unknown;
+  /** Value to set or extend with. Ignored when {@link mode} is `remove`. */
+  value?: unknown;
+  /**
+   * Default `replace`. Use `extend` to append to arrays or merge into objects.
+   * Use `remove` to delete an array index or object key at `path`.
+   */
+  mode?: MockResponseFieldOverrideMode;
 }
 
 export interface CopyArrayItemParams {
@@ -458,6 +478,8 @@ export const ENV_VARS = {
    */
   MOCK_SCRATCH_SCENARIO_TTL_SEC: 'MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC',
   MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
+  /** Active override group id for this process (wins over scenario default; below explicit header/body). */
+  MOCK_OVERRIDE_GROUP: 'MOCKIFYER_OVERRIDE_GROUP',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',
@@ -488,6 +510,13 @@ export const ENV_VARS = {
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
+  /**
+   * Metro hop stream for `mockifyer-atlas`: `on` \| `off` (auto when unset —
+   * enabled if `METRO_PORT` is set or React Native is detected).
+   */
+  MOCK_METRO_STREAM: 'MOCKIFYER_METRO_STREAM',
+  /** Optional Metro origin override for hop stream (default `http://localhost:$METRO_PORT`). */
+  MOCK_METRO_URL: 'MOCKIFYER_METRO_URL',
   /** `off` \| `live` \| `session` — CMS/surface atlas capture (see {@link MockifyerConfig.atlas}). */
   MOCK_ATLAS: 'MOCKIFYER_ATLAS',
   /**

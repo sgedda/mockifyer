@@ -14,6 +14,7 @@ import { proxyConfigRouter } from './routes/proxy-config';
 import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
 import { atlasRouter } from './routes/atlas';
+import overrideGroupsRouter from './routes/override-groups';
 import {
   attachDashboardContext,
   type DashboardContextConfig,
@@ -104,10 +105,11 @@ export function createServer(
   app.use('/api/network-events', networkEventsRouter);
   app.use('/api/fixture-pool', fixturePoolRouter);
   app.use('/api/atlas', atlasRouter);
+  app.use('/api/override-groups', overrideGroupsRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups'
   );
 
   // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
@@ -178,4 +180,3 @@ export function createServer(
 
   return app;
 }
-

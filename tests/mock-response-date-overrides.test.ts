@@ -1,5 +1,7 @@
 import {
   applyResponseDateOverridesToData,
+  formatDatePreservingOriginal,
+  parseIsoDateStringShape,
   parseResponseDataPath,
   totalOverrideOffsetMs,
   prepareMockResponseBody,
@@ -106,5 +108,79 @@ describe('mock response date overrides', () => {
       fixedNow
     );
     expect((out as typeof data).issuedAt).toBe('2025-06-15T12:00:00.000Z');
+  });
+
+  it('preserves naive, zoned, date-only, and UTC string shapes from bookings payloads', () => {
+    const data = {
+      startDate: '2026-09-11T07:00:00',
+      arrivalIsoZoned: '2026-09-11T12:05:00+03:00',
+      pickupDate: '2026-10-15',
+      arrivalUtc: '2026-09-11T09:05:00Z',
+    };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [
+        { path: 'startDate' },
+        { path: 'arrivalIsoZoned' },
+        { path: 'pickupDate' },
+        { path: 'arrivalUtc' },
+      ],
+      fixedNow
+    ) as typeof data;
+
+    expect(out.startDate).toBe('2025-06-15T12:00:00');
+    expect(out.arrivalIsoZoned).toBe('2025-06-15T15:00:00+03:00');
+    expect(out.pickupDate).toBe('2025-06-15');
+    expect(out.arrivalUtc).toBe('2025-06-15T12:00:00Z');
+  });
+
+  it('preserves original ISO shape even when format is explicitly iso', () => {
+    const data = { departureTime: '2026-09-11T07:00:00' };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'departureTime', format: 'iso', offsetDays: 1 }],
+      fixedNow
+    ) as typeof data;
+    expect(out.departureTime).toBe('2025-06-16T12:00:00');
+  });
+
+  it('lets explicit unix-ms win over a string original', () => {
+    const data = { pickupDate: '2026-10-15' };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'pickupDate', format: 'unix-ms' }],
+      fixedNow
+    ) as unknown as { pickupDate: number };
+    expect(out.pickupDate).toBe(fixedNow().getTime());
+  });
+
+  it('formats negative offsets and date-boundary zoned times', () => {
+    const data = {
+      west: '2026-09-11T07:00:00-05:00',
+      east: '2026-09-11T12:05:00.123+03:00',
+    };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'west' }, { path: 'east' }],
+      () => new Date('2025-06-15T01:00:00.000Z')
+    ) as typeof data;
+    expect(out.west).toBe('2025-06-14T20:00:00-05:00');
+    expect(out.east).toBe('2025-06-15T04:00:00.000+03:00');
+  });
+
+  it('formatDatePreservingOriginal matches parseable ISO-like originals', () => {
+    const instant = new Date('2025-06-15T12:00:00.000Z');
+    expect(formatDatePreservingOriginal(instant, '2026-10-15')).toBe('2025-06-15');
+    expect(formatDatePreservingOriginal(instant, '2026-09-11T07:00:00')).toBe(
+      '2025-06-15T12:00:00'
+    );
+    expect(formatDatePreservingOriginal(instant, '2026-09-11 07:00:00')).toBe(
+      '2025-06-15 12:00:00'
+    );
+    expect(formatDatePreservingOriginal(instant, '2026-09-11T09:05:00.000Z')).toBe(
+      '2025-06-15T12:00:00.000Z'
+    );
+    expect(formatDatePreservingOriginal(instant, 'not-a-date')).toBeNull();
+    expect(parseIsoDateStringShape('2026-09-11T12:05:00+03:00')?.kind).toBe('datetime');
   });
 });

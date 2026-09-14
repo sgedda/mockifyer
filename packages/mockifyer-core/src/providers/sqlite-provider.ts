@@ -152,13 +152,16 @@ export class SQLiteProvider implements DatabaseProvider {
       scenario: row.scenario || undefined
     };
 
-    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+    if (!mockShouldBeIncludedInRequestMatch(mockData, {
+      includePassthroughMocks,
+      filename: `sqlite/${row.id}.json`,
+    })) {
       return undefined;
     }
 
     return {
       mockData,
-      filename: `sqlite_${row.id}.json`, // Virtual filename for compatibility
+      filename: `sqlite/${row.id}.json`, // Virtual filename for compatibility
       filePath: this.dbPath // Use db path as filePath
     };
   }
@@ -208,7 +211,7 @@ export class SQLiteProvider implements DatabaseProvider {
 
         return {
           mockData,
-          filename: `sqlite_${row.id}.json`,
+          filename: `sqlite/${row.id}.json`,
           filePath: this.dbPath
         };
       })

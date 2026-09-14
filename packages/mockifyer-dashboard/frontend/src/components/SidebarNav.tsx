@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, BarChart3, Settings, Zap, GitBranch, Calendar, Radio, Layers, Map } from 'lucide-react'
+import { FileText, BarChart3, Settings, Zap, GitBranch, Calendar, Radio, Layers, Map, SlidersHorizontal } from 'lucide-react'
+import { buildSearch } from '@/lib/dashboard-urls'
 import {
   Sidebar,
   SidebarContent,
@@ -15,14 +16,16 @@ interface SidebarNavProps {
   activeTab?: string
   onTabChange: (tab: string) => void
   onNavigate?: () => void
+  scenario?: string
 }
 
-export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps) {
+export default function SidebarNav({ onTabChange, onNavigate, scenario }: SidebarNavProps) {
   const location = useLocation()
   
   const navItems = [
     { id: 'stats', label: 'Statistics', icon: BarChart3, path: '/' },
     { id: 'mocks', label: 'Mocks', icon: FileText, path: '/mocks' },
+    { id: 'overrides', label: 'Overrides', icon: SlidersHorizontal, path: '/overrides' },
     { id: 'fixture-pool', label: 'Fixture pool', icon: Layers, path: '/fixture-pool' },
     { id: 'timeline', label: 'Timeline', icon: GitBranch, path: '/timeline' },
     { id: 'atlas', label: 'Atlas', icon: Map, path: '/atlas' },
@@ -34,6 +37,9 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
   const isActive = (path: string) => {
     if (path === '/') {
       return location.pathname === '/'
+    }
+    if (path === '/mocks') {
+      return location.pathname === '/mocks' || location.pathname === '/mock'
     }
     return location.pathname === path
   }
@@ -60,7 +66,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
             return (
               <Link
                 key={item.id}
-                to={item.path}
+                to={{ pathname: item.path, search: buildSearch({ scenario }) }}
                 onClick={() => {
                   onTabChange(item.id)
                   onNavigate?.() // Close sidebar on mobile when navigating

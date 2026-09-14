@@ -1,9 +1,17 @@
 import type { CopyArrayItemParams, MockData, MockResponseFieldOverride } from '../types';
 import { parseResponseDataPath } from './mock-response-date-overrides';
 
+function isUnsafePrototypeSegment(segment: string | number): boolean {
+  return (
+    typeof segment === 'string' &&
+    (segment === '__proto__' || segment === 'prototype' || segment === 'constructor')
+  );
+}
+
 function getAtPath(root: unknown, segments: (string | number)[]): unknown {
   let cur: unknown = root;
   for (const s of segments) {
+    if (isUnsafePrototypeSegment(s)) return undefined;
     if (cur === null || cur === undefined) return undefined;
     if (typeof cur !== 'object') return undefined;
     cur = (cur as Record<string | number, unknown>)[s as string | number];
@@ -16,6 +24,7 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
   let cur: unknown = root;
   for (let i = 0; i < segments.length - 1; i++) {
     const key = segments[i]!;
+    if (isUnsafePrototypeSegment(key)) return;
     const next = segments[i + 1]!;
     const container = cur as Record<string | number, unknown>;
     if (container[key as string | number] === undefined || container[key as string | number] === null) {
@@ -24,7 +33,65 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
     cur = container[key as string | number];
   }
   const last = segments[segments.length - 1]!;
+  if (isUnsafePrototypeSegment(last)) return;
+  if (last === '__proto__' || last === 'prototype' || last === 'constructor') return;
   (cur as Record<string | number, unknown>)[last as string | number] = value;
+}
+
+/**
+ * Deletes the value at `segments` (array splice or object key delete). Soft no-op when missing/invalid.
+ */
+export function removeAtPath(root: unknown, segments: (string | number)[]): void {
+  if (segments.length === 0 || root === null || typeof root !== 'object') return;
+
+  let parent: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (isUnsafePrototypeSegment(segments[i]!)) return;
+    if (parent === null || typeof parent !== 'object') return;
+    parent = (parent as Record<string | number, unknown>)[segments[i]! as string | number];
+  }
+
+  if (parent === null || typeof parent !== 'object') return;
+
+  const last = segments[segments.length - 1]!;
+  if (isUnsafePrototypeSegment(last)) return;
+  if (last === '__proto__' || last === 'prototype' || last === 'constructor') return;
+  if (Array.isArray(parent)) {
+    if (typeof last !== 'number' || !Number.isInteger(last) || last < 0 || last >= parent.length) {
+      return;
+    }
+    parent.splice(last, 1);
+    return;
+  }
+  if (typeof last !== 'string' || !Object.prototype.hasOwnProperty.call(parent, last)) return;
+
+  delete (parent as Record<string, unknown>)[last];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Combine an existing path value with an override under `extend` mode.
+ * Arrays append (concat when `value` is an array); plain objects shallow-merge; otherwise replace.
+ */
+export function extendResponseFieldValue(existing: unknown, value: unknown): unknown {
+  if (Array.isArray(existing)) {
+    const cloned = deepCloneJson(existing);
+    if (Array.isArray(value)) {
+      cloned.push(...deepCloneJson(value));
+    } else {
+      cloned.push(deepCloneJson(value));
+    }
+    return cloned;
+  }
+
+  if (isPlainObject(existing) && isPlainObject(value)) {
+    return { ...deepCloneJson(existing), ...deepCloneJson(value) };
+  }
+
+  return deepCloneJson(value);
 }
 
 function deepCloneJson<T>(data: T): T {
@@ -93,7 +160,20 @@ export function applyResponseFieldOverridesToData<T>(
     if (!override?.path?.trim()) continue;
     const segments = parseResponseDataPath(override.path.trim());
     if (segments.length === 0) continue;
-    setAtPath(clone, segments, deepCloneJson(override.value));
+
+    if (override.mode === 'remove') {
+      removeAtPath(clone, segments);
+      continue;
+    }
+
+    const existingValue = getAtPath(clone, segments);
+    const nextValue =
+      override.mode === 'extend'
+        ? existingValue === undefined
+          ? deepCloneJson(override.value)
+          : extendResponseFieldValue(existingValue, override.value)
+        : deepCloneJson(override.value);
+    setAtPath(clone, segments, nextValue);
   }
 
   if (typeof data === 'string') {
@@ -191,6 +271,8 @@ export function copyArrayItemInResponseData(
   };
 }
 
+const VALID_FIELD_OVERRIDE_MODES = new Set(['replace', 'extend', 'remove']);
+
 /** Validates field override entries for dashboard/API persistence. */
 export function validateResponseFieldOverrides(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
@@ -199,12 +281,16 @@ export function validateResponseFieldOverrides(raw: unknown): string | null {
     if (!item || typeof item !== 'object') {
       return 'Each responseFieldOverrides entry must be an object';
     }
-    const path = (item as MockResponseFieldOverride).path;
+    const entry = item as MockResponseFieldOverride;
+    const path = entry.path;
     if (typeof path !== 'string' || !path.trim()) {
       return 'Each responseFieldOverrides entry must have a non-empty path string';
     }
-    if (!Object.prototype.hasOwnProperty.call(item, 'value')) {
-      return 'Each responseFieldOverrides entry must include a value';
+    if (entry.mode !== undefined && !VALID_FIELD_OVERRIDE_MODES.has(entry.mode)) {
+      return 'Each responseFieldOverrides entry mode must be "replace", "extend", or "remove"';
+    }
+    if (entry.mode !== 'remove' && !Object.prototype.hasOwnProperty.call(item, 'value')) {
+      return 'Each responseFieldOverrides entry must include a value (unless mode is "remove")';
     }
   }
   return null;
