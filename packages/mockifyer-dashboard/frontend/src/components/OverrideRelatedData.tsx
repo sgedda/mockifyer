@@ -33,6 +33,7 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
   const [inspectPath, setInspectPath] = useState<string | null>(null)
 
   useEffect(() => {
+    setOpen(false)
     setInspectPath(null)
   }, [trimmed])
 
@@ -76,7 +77,7 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
           )}
           Related data
         </Button>
-        {leafPreview ? (
+        {storedValue !== undefined ? (
           <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground" title={leafPreview}>
             stored {leafPreview}
           </span>
