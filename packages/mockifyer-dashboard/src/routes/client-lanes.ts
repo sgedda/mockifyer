@@ -117,6 +117,43 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
   }
 });
 
+router.put('/:clientId/override-set', async (req: Request, res: Response) => {
+  try {
+    const { clientId } = req.params;
+    const { overrideSetId } = req.body || {};
+    const { mockDataPath, config } = getDashboardContext(req);
+    if (!isCentralizedDashboardProvider(config.provider)) {
+      return res.status(400).json({ error: "client lanes require dashboard provider 'redis' or 'sqlite'." });
+    }
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const value =
+      overrideSetId === null
+        ? null
+        : typeof overrideSetId === 'string' && overrideSetId.trim()
+          ? overrideSetId.trim()
+          : undefined;
+    if (value === undefined) {
+      return res.status(400).json({ error: 'overrideSetId must be a non-empty string or null' });
+    }
+
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.setLaneOverrideSetId(canonicalClientId, value);
+      const lanes = await store.listClientLanes();
+      const globalScenario = await store.getActiveScenario();
+      return res.json({ success: true, lanes, globalScenario });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: any) {
+    console.error('[ClientLanesRoute] Set override set - Error:', error);
+    return res.status(500).json({ error: 'Failed to set lane override set', details: error.message });
+  }
+});
+
+
 router.delete('/:clientId', async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;

@@ -49,6 +49,8 @@ export * from './utils/recording-default-always-live';
 export * from './utils/mockifyer-init-log';
 export * from './utils/mock-response-field-overrides';
 export * from './utils/mock-response-prepare';
+export * from './utils/override-sets';
+export * from './utils/override-sets-fs';
 export * from './types/override-group';
 export * from './utils/override-group';
 export * from './utils/override-group-runtime';
@@ -87,4 +89,3 @@ export * from './utils/fixture-pool';
 // If you need CLI functions programmatically in Node.js scripts,
 // import directly from the CLI files:
 // import { syncToDevice } from '@sgedda/mockifyer-core/src/cli/sync-to-device';
-

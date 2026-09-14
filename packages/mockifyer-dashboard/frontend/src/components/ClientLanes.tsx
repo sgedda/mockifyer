@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { deleteClientLane, getClientLanes, setClientLaneNote, setClientLaneScenario, type ClientLane } from '@/lib/api'
+import { createOverrideSet, deleteClientLane, getClientLanes, listOverrideSets, setClientLaneNote, setClientLaneOverrideSet, setClientLaneScenario, type ClientLane, type OverrideSetSummary } from '@/lib/api'
 import { Trash2 } from 'lucide-react'
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
@@ -16,6 +16,8 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
   const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({})
+  const [overrideSetsByScenario, setOverrideSetsByScenario] = useState<Record<string, OverrideSetSummary[]>>({})
+  const [newOverrideSetId, setNewOverrideSetId] = useState('')
 
   const addLaneSuggestions = useMemo(() => {
     const existing = new Set(lanes.map((l) => l.clientId))
@@ -41,6 +43,23 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       setLanes(data.lanes || [])
       setDiscoveredLanes((data as any).discoveredLanes || [])
       setGlobalScenario(data.globalScenario || 'default')
+      const scenarios = Array.from(
+        new Set([
+          ...(data.lanes || []).map((l: ClientLane) => l.scenario),
+          data.globalScenario || 'default',
+        ])
+      ).filter(Boolean)
+      const setMap: Record<string, OverrideSetSummary[]> = {}
+      await Promise.all(
+        scenarios.map(async (scenario) => {
+          try {
+            setMap[scenario] = await listOverrideSets(scenario)
+          } catch {
+            setMap[scenario] = [{ id: 'default', entryCount: 0 }]
+          }
+        })
+      )
+      setOverrideSetsByScenario(setMap)
     } catch (e: any) {
       toast({
         title: 'Error',
@@ -77,6 +96,37 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       toast({
         title: 'Error',
         description: e?.message ?? 'Failed to create lane',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  async function handleOverrideSetChange(clientId: string, value: string) {
+    try {
+      await setClientLaneOverrideSet(clientId, value)
+      await load()
+      toast({ title: 'Saved', description: `Lane "${clientId}" override set updated.` })
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message ?? 'Failed to update lane override set',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  async function handleCreateOverrideSet(scenario: string) {
+    const id = newOverrideSetId.trim()
+    if (!id) return
+    try {
+      await createOverrideSet(scenario, id)
+      setNewOverrideSetId('')
+      await load()
+      toast({ title: 'Created', description: `Override set "${id}" created for ${scenario}.` })
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message ?? 'Failed to create override set',
         variant: 'destructive',
       })
     }
@@ -137,7 +187,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
         <CardDescription>
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
-          set an override here, that lane will read/write mocks under the selected scenario <em>without affecting other
+          set a scenario and override set here, that lane will read mocks under the selected scenario with the chosen override set <em>without affecting other
           builds</em>. The lane id must match what the app uses when initializing Mockifyer (
           typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
           <span className="font-mono">MockifyerConfig.clientId</span>
@@ -180,10 +230,25 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                       className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       value={availableScenarios.includes(lane.scenario) ? lane.scenario : globalScenario}
                       onChange={(e) => handleScenarioChange(lane.clientId, e.target.value)}
+                      title="Scenario"
+                      aria-label={`Scenario for ${lane.clientId}`}
                     >
                       {scenarioOptions.map((s) => (
                         <option key={s} value={s}>
                           {s}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="flex h-9 min-w-[10rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={lane.overrideSetId || 'default'}
+                      onChange={(e) => handleOverrideSetChange(lane.clientId, e.target.value)}
+                      title="Override set"
+                      aria-label={`Override set for ${lane.clientId}`}
+                    >
+                      {(overrideSetsByScenario[lane.scenario] || [{ id: 'default', entryCount: 0 }]).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.id}
                         </option>
                       ))}
                     </select>
@@ -300,6 +365,28 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           <Button type="button" variant="ghost" onClick={load}>
             Refresh
           </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <Input
+            placeholder="New override set id (e.g. delayed-departure)…"
+            value={newOverrideSetId}
+            onChange={(e) => setNewOverrideSetId(e.target.value)}
+            className="min-w-[16rem] flex-1 font-mono"
+            disabled={!enabled}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handleCreateOverrideSet(globalScenario)}
+            disabled={!enabled || !newOverrideSetId.trim()}
+          >
+            Create override set
+          </Button>
+          <div className="text-xs text-muted-foreground w-full">
+            Creates the set under the global scenario (<span className="font-mono">{globalScenario}</span>).
+            Assign it per lane with the override-set dropdown. Default set name is <span className="font-mono">default</span>.
+          </div>
         </div>
       </CardContent>
     </Card>

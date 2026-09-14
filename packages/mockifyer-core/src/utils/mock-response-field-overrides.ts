@@ -8,13 +8,47 @@ function isUnsafePrototypeSegment(segment: string | number): boolean {
   );
 }
 
+function hasOwnKey(container: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(container, key);
+}
+
+function getObjectChild(container: Record<string, unknown>, key: string): unknown {
+  return hasOwnKey(container, key) ? container[key] : undefined;
+}
+
+function getContainerChild(
+  container: unknown,
+  key: string | number
+): unknown {
+  if (Array.isArray(container)) {
+    if (typeof key !== 'number' || !Number.isInteger(key) || key < 0) return undefined;
+    return container[key];
+  }
+  if (container === null || typeof container !== 'object' || typeof key !== 'string') {
+    return undefined;
+  }
+  return getObjectChild(container as Record<string, unknown>, key);
+}
+
+function setContainerChild(container: unknown, key: string | number, value: unknown): boolean {
+  if (Array.isArray(container)) {
+    if (typeof key !== 'number' || !Number.isInteger(key) || key < 0) return false;
+    container[key] = value;
+    return true;
+  }
+  if (container === null || typeof container !== 'object' || typeof key !== 'string') {
+    return false;
+  }
+  (container as Record<string, unknown>)[key] = value;
+  return true;
+}
+
 function getAtPath(root: unknown, segments: (string | number)[]): unknown {
   let cur: unknown = root;
   for (const s of segments) {
     if (isUnsafePrototypeSegment(s)) return undefined;
+    cur = getContainerChild(cur, s);
     if (cur === null || cur === undefined) return undefined;
-    if (typeof cur !== 'object') return undefined;
-    cur = (cur as Record<string | number, unknown>)[s as string | number];
   }
   return cur;
 }
@@ -26,16 +60,18 @@ function setAtPath(root: unknown, segments: (string | number)[], value: unknown)
     const key = segments[i]!;
     if (isUnsafePrototypeSegment(key)) return;
     const next = segments[i + 1]!;
-    const container = cur as Record<string | number, unknown>;
-    if (container[key as string | number] === undefined || container[key as string | number] === null) {
-      container[key as string | number] = typeof next === 'number' ? [] : {};
+    const child = getContainerChild(cur, key);
+    if (child === undefined || child === null) {
+      if (!setContainerChild(cur, key, typeof next === 'number' ? [] : {})) return;
+      cur = getContainerChild(cur, key);
+      continue;
     }
-    cur = container[key as string | number];
+    cur = child;
   }
   const last = segments[segments.length - 1]!;
   if (isUnsafePrototypeSegment(last)) return;
   if (last === '__proto__' || last === 'prototype' || last === 'constructor') return;
-  (cur as Record<string | number, unknown>)[last as string | number] = value;
+  setContainerChild(cur, last, value);
 }
 
 /**
@@ -47,8 +83,8 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
   let parent: unknown = root;
   for (let i = 0; i < segments.length - 1; i++) {
     if (isUnsafePrototypeSegment(segments[i]!)) return;
-    if (parent === null || typeof parent !== 'object') return;
-    parent = (parent as Record<string | number, unknown>)[segments[i]! as string | number];
+    parent = getContainerChild(parent, segments[i]!);
+    if (parent === null || parent === undefined) return;
   }
 
   if (parent === null || typeof parent !== 'object') return;
@@ -63,7 +99,13 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
     parent.splice(last, 1);
     return;
   }
-  if (typeof last !== 'string' || !Object.prototype.hasOwnProperty.call(parent, last)) return;
+  if (
+    !isPlainObject(parent) ||
+    typeof last !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(parent, last)
+  ) {
+    return;
+  }
 
   delete (parent as Record<string, unknown>)[last];
 }
@@ -285,6 +327,9 @@ export function validateResponseFieldOverrides(raw: unknown): string | null {
     const path = entry.path;
     if (typeof path !== 'string' || !path.trim()) {
       return 'Each responseFieldOverrides entry must have a non-empty path string';
+    }
+    if (parseResponseDataPath(path.trim()).some((segment) => isUnsafePrototypeSegment(segment))) {
+      return 'Each responseFieldOverrides entry path must not contain __proto__, prototype, or constructor';
     }
     if (entry.mode !== undefined && !VALID_FIELD_OVERRIDE_MODES.has(entry.mode)) {
       return 'Each responseFieldOverrides entry mode must be "replace", "extend", or "remove"';

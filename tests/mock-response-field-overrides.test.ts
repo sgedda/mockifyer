@@ -20,6 +20,9 @@ describe('mock response field overrides', () => {
     expect(
       validateResponseFieldOverrides([{ path: 'x', value: 1, mode: 'append' } as never])
     ).toContain('mode');
+    expect(
+      validateResponseFieldOverrides([{ path: 'constructor.prototype.polluted', value: true }])
+    ).toContain('__proto__, prototype, or constructor');
   });
 
   it('validateResponseFieldOverrides accepts extend mode', () => {
@@ -132,6 +135,16 @@ describe('mock response field overrides', () => {
 
     expect(out).toEqual({});
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('treats inherited object properties as missing path segments', () => {
+    const out = applyResponseFieldOverridesToData(
+      {},
+      [{ path: 'toString.polluted', mode: 'extend', value: true }]
+    ) as Record<string, unknown>;
+
+    expect(out).toEqual({ toString: { polluted: true } });
+    expect(((Object.prototype.toString as unknown) as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it('applyResponseFieldOverridesToData soft no-ops for non-JSON-container roots', () => {
