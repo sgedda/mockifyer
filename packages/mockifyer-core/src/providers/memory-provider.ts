@@ -68,7 +68,7 @@ export class MemoryProvider implements DatabaseProvider {
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           
           if (mockPath === requestPath && mockMethod === requestMethod) {
-            if (!mockPassesThroughToRealApi(mockData)) {
+            if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks: false })) {
               results.push({
                 mockData,
                 filename: `memory/${key.substring(0, 64)}.json`,

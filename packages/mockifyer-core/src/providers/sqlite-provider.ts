@@ -215,7 +215,7 @@ export class SQLiteProvider implements DatabaseProvider {
           filePath: this.dbPath
         };
       })
-      .filter((cached) => !mockPassesThroughToRealApi(cached.mockData));
+      .filter((cached) => mockShouldBeIncludedInRequestMatch(cached.mockData, { includePassthroughMocks: false }));
   }
 
   exists(requestKey: string): boolean {

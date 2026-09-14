@@ -95,12 +95,16 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   private watchIntervalMs: number = 2000; // Check every 2 seconds
   private onFilesChanged?: () => void;
   private currentScenario: string = DEFAULT_SCENARIO;
+  private readonly clientId?: string;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
       throw new Error('ExpoFileSystemProvider requires a path in config');
     }
     this.mockDataPath = config.path;
+    const rawClient =
+      typeof config.options?.clientId === 'string' ? config.options.clientId.trim() : '';
+    this.clientId = rawClient || undefined;
 
     // Enable file watching if configured
     if (config.options?.watchFiles !== false) {
@@ -753,7 +757,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     const scenarioPath = this.getScenarioPath();
     
     // Hydrate override groups for this scenario before matching
-    await this.loadOverrideGroupsForScenario();
+    await this.loadOverrideGroupsForScenario({ clientId: this.clientId });
     
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
@@ -896,6 +900,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       };
     }
 
+    await this.loadOverrideGroupsForScenario({ clientId: this.clientId });
+
     logger.debug(`[ExpoFileSystemProvider] ⚠️ No exact match found`);
     return undefined;
   }
@@ -976,6 +982,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
     }
+
+    await this.loadOverrideGroupsForScenario({ clientId: this.clientId });
 
     return results;
   }

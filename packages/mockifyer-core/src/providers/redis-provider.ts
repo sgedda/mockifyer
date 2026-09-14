@@ -234,7 +234,7 @@ export class RedisProvider implements DatabaseProvider {
           const mockPath = mockUrl.pathname;
           const mockMethod = (mockData.request.method || 'GET').toUpperCase();
           if (mockPath === requestPath && mockMethod === requestMethod) {
-            if (mockPassesThroughToRealApi(mockData)) {
+            if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks: false })) {
               continue;
             }
             const h = members[i];

@@ -415,7 +415,7 @@ function walkUpAncestorsByRequestId(
   let current: MockFile | undefined = head
   while (current?.parentRequestId?.trim()) {
     if (prefix.length >= MAX_ENRICHED_ANCESTORS) {
-      return []
+      break
     }
     const parent = maps.byRequestId.get(current.parentRequestId.trim())
     if (!parent || walked.has(parent.filename)) {
