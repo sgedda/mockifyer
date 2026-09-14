@@ -248,6 +248,8 @@ export default function OverridesView({
             setDateOverrides(
               (mock.data.responseDateOverrides ?? []).map(normalizeDateOverrideRow)
             )
+          } else {
+            setDateOverrides([])
           }
         }
       } catch (error) {
@@ -268,7 +270,7 @@ export default function OverridesView({
     const listed = listItems.some((m) => m.filename === selectedFilename)
     const knownMock = mocks.some((m) => m.filename === selectedFilename)
     if (!listed && !knownMock) {
-      selectFilename(null)
+      setSelectedFilename(null)
       setDrafts([])
       setDateOverrides([])
       setResponseBody(null)
