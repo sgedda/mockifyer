@@ -78,6 +78,26 @@ describe('request-correlation', () => {
     expect(hop.parentRequestId).toBe('req-parent');
   });
 
+  it('does not leak hop ids onto a shared header bag across sequential requests', () => {
+    const sharedHeaders: Record<string, string> = { authorization: 'Bearer x' };
+
+    runWithRequestCorrelation({ requestId: 'inbound-root' }, () => {
+      const first = { headers: sharedHeaders };
+      const hop = applyOutboundRequestCorrelation(first);
+      expect(hop.parentRequestId).toBe('inbound-root');
+      expect(getOutboundMockifyerParentRequestIdHeader(first.headers)).toBe('inbound-root');
+      expect(sharedHeaders[MOCKIFYER_PARENT_REQUEST_ID_HEADER]).toBeUndefined();
+      expect(sharedHeaders[MOCKIFYER_REQUEST_ID_HEADER]).toBeUndefined();
+      expect(sharedHeaders.authorization).toBe('Bearer x');
+    });
+
+    const second = { headers: sharedHeaders };
+    const hop2 = applyOutboundRequestCorrelation(second);
+    expect(hop2.parentRequestId).toBeUndefined();
+    expect(getOutboundMockifyerParentRequestIdHeader(second.headers)).toBeUndefined();
+    expect(sharedHeaders.authorization).toBe('Bearer x');
+  });
+
   it('propagates inbound client id on outbound fetch without manual headers', () => {
     runWithMockifyerHopContext({ inboundClientId: 'lane-gateway' }, () => {
       const config = { headers: {} as Record<string, string> };

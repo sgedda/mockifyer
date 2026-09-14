@@ -27,7 +27,8 @@ export function buildNetworkEventChainMaps(events: NetworkEvent[]): NetworkEvent
 /** Walk parent links oldest-first (root → … → event). */
 export function getNetworkEventChain(
   event: NetworkEvent,
-  byRequestId: Map<string, NetworkEvent>
+  byRequestId: Map<string, NetworkEvent>,
+  childrenByParent?: Map<string, NetworkEvent[]>
 ): NetworkEvent[] {
   const chain: NetworkEvent[] = [event]
   const seen = new Set<string>([event.id])
@@ -37,6 +38,12 @@ export function getNetworkEventChain(
     const parent = byRequestId.get(current.parentRequestId)
     if (!parent || seen.has(parent.id)) {
       break
+    }
+    if (childrenByParent && parent.requestId) {
+      const siblingCount = childrenByParent.get(parent.requestId)?.length ?? 0
+      if (siblingCount >= 16) {
+        break
+      }
     }
     chain.unshift(parent)
     seen.add(parent.id)
@@ -108,7 +115,7 @@ export function filterNetworkEventsForAtlasDoc(
   const maps = buildNetworkEventChainMaps(events)
   const include = new Set<string>()
   for (const ev of matched) {
-    for (const hop of getNetworkEventChain(ev, maps.byRequestId)) {
+    for (const hop of getNetworkEventChain(ev, maps.byRequestId, maps.childrenByParent)) {
       include.add(hop.id)
     }
   }

@@ -315,6 +315,109 @@ function removeOutboundHeader(headers: unknown, canonicalLower: string): unknown
   return next;
 }
 
+function isPlainRecord(headers: unknown): headers is Record<string, unknown> {
+  return Boolean(headers) && typeof headers === 'object' && !Array.isArray(headers);
+}
+
+/**
+ * Copy hop headers onto a new bag so Mockifyer never mutates a shared
+ * `init.headers` / axios defaults object (that leaked parent ids across client calls).
+ */
+function cloneOutboundHeaders(headers: unknown): unknown {
+  if (!headers || typeof headers !== 'object') {
+    return {};
+  }
+
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return new Headers(headers);
+  }
+
+  const h = headers as Record<string, unknown> & {
+    toJSON?: () => unknown;
+    forEach?: (fn: (value: string, key: string) => void) => void;
+    set?: (name: string, value: string) => void;
+  };
+
+  if (typeof h.toJSON === 'function') {
+    try {
+      const json = h.toJSON();
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        return { ...(json as Record<string, unknown>) };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  if (typeof h.forEach === 'function' && typeof h.set === 'function') {
+    const next: Record<string, string> = {};
+    h.forEach((value, key) => {
+      if (value != null && key) {
+        next[key] = String(value);
+      }
+    });
+    return next;
+  }
+
+  if (!isPlainRecord(headers)) {
+    return {};
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === 'function') {
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
+}
+
+function deleteHeaderKeyInPlace(headers: Record<string, unknown>, canonicalLower: string): void {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === canonicalLower) {
+      delete headers[key];
+    }
+  }
+}
+
+/** Remove hop ids from the caller's original bag after they were copied onto the clone. */
+function scrubHopIdsFromCallerHeaders(headers: unknown): void {
+  if (!headers || typeof headers !== 'object') {
+    return;
+  }
+
+  const h = headers as Record<string, unknown> & {
+    delete?: (name: string) => void;
+  };
+
+  if (typeof h.delete === 'function') {
+    h.delete(MOCKIFYER_REQUEST_ID_HEADER);
+    h.delete(MOCKIFYER_PARENT_REQUEST_ID_HEADER);
+    return;
+  }
+
+  if (!isPlainRecord(headers)) {
+    return;
+  }
+
+  deleteHeaderKeyInPlace(headers, MOCKIFYER_REQUEST_ID_HEADER);
+  deleteHeaderKeyInPlace(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER);
+}
+
+/**
+ * Clone `config.headers` and strip hop ids from the original object so sequential
+ * client requests (shared header bags) do not inherit the previous hop as parent.
+ */
+function isolateOutboundHopHeaderBag(config: { headers?: unknown }): void {
+  const original = config.headers;
+  const cloned = cloneOutboundHeaders(original);
+  if (original && original !== cloned) {
+    scrubHopIdsFromCallerHeaders(original);
+  }
+  config.headers = cloned;
+}
+
 /**
  * Resolve parent for the next outbound hop:
  * 1. Active inbound correlation (Node auto-capture / Express middleware / ALS)
@@ -354,10 +457,12 @@ function applyOutboundInlineTraceHeaders(config: { headers?: unknown }): void {
 
 /**
  * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
- * Strips any stale `X-Mockifyer-Request-Id` on the config so each hop gets a fresh id.
+ * Clones the header bag first so shared `init.headers` / axios defaults are not mutated.
+ * Strips any stale `X-Mockifyer-Request-Id` on the clone so each hop gets a fresh id.
  * When the active request opted into inline trace, also forwards include-trace headers.
  */
 export function applyOutboundRequestCorrelation(config: { headers?: unknown }): RequestCorrelationContext {
+  isolateOutboundHopHeaderBag(config);
   applyInboundClientIdToOutboundHeaders(config);
   applyOutboundInlineTraceHeaders(config);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
@@ -368,6 +473,8 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
   headers = setOutboundHeader(headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
   if (parentRequestId) {
     headers = setOutboundHeader(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER, parentRequestId);
+  } else {
+    headers = removeOutboundHeader(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER);
   }
   config.headers = headers;
 

@@ -101,7 +101,7 @@ export async function exportCrashContextHtmlLocal(
   }
 
   const metroPort = resolveMetroPort(options.metroPort);
-  const browseUrl = `http://localhost:${metroPort}/mockifyer-atlas-html/incidents/${options.incidentId}.html`;
+  const browseUrl = `http://localhost:${metroPort}/atlas-html/incidents/${options.incidentId}.html`;
 
   try {
     const controller =

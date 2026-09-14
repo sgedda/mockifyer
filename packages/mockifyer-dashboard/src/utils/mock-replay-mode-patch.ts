@@ -16,6 +16,18 @@ export function getMockReplayModeListFlags(mockData: unknown): MockReplayModeLis
   };
 }
 
+const REPLAY_MODE_BODY_KEYS = [
+  'replayMode',
+  'alwaysUseRealApi',
+  'refreshOnNextRequest',
+  'alwaysRefreshFromLive',
+] as const;
+
+export function bodyHasReplayModeFields(body: Record<string, unknown> | null | undefined): boolean {
+  if (!body) return false;
+  return REPLAY_MODE_BODY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key));
+}
+
 /**
  * Applies replay-mode fields from a dashboard PATCH/PUT body onto mock data.
  * Supports `replayMode` (mutually exclusive) or individual boolean flags.

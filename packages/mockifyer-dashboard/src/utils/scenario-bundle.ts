@@ -319,17 +319,26 @@ async function clearRedisScenarioMocks(
   scenario: string,
   mockDataPath: string
 ): Promise<number> {
-  const items = await store.list(scenario);
-  for (const { hash } of items) {
-    await store.deleteByHash(hash, scenario);
-  }
-  await store.ensureScenarioRegistered(scenario);
-  let removed = items.length;
+  const removed = await store.clearAllMocksInScenario(scenario);
 
   const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
   const redisFolder = path.join(scenarioPath, 'redis');
   if (fs.existsSync(redisFolder)) {
     for (const filePath of getAllJsonFiles(redisFolder)) {
+      const rel = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+      const base = path.basename(filePath);
+      if (PRESERVED_SCENARIO_JSON.has(base) || PRESERVED_SCENARIO_JSON.has(rel)) {
+        continue;
+      }
+      let raw: string;
+      try {
+        raw = fs.readFileSync(filePath, 'utf-8');
+      } catch {
+        continue;
+      }
+      if (!isRecordedMockJson(raw)) {
+        continue;
+      }
       try {
         fs.unlinkSync(filePath);
       } catch {
@@ -351,8 +360,9 @@ export interface ClearScenarioMocksOptions {
 
 /**
  * Deletes recorded mocks for a scenario. The scenario itself stays (empty folder /
- * Redis index). Date config, lock metadata, domain-path rules, and proxy settings
- * are left in place.
+ * Redis registry). Redis also drops the mock index and path-index sets so the next
+ * list is not an MGET of leftover hashes. Date config, lock metadata, domain-path
+ * rules, and proxy settings are left in place.
  */
 export async function clearScenarioMocks(
   opts: ClearScenarioMocksOptions

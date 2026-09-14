@@ -1456,21 +1456,17 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (/^(https?:|data:|file:|\\/)/i.test(s)) return s;
     try {
       var pathName = (typeof location !== 'undefined' && location.pathname) ? String(location.pathname) : '';
-      // Metro serves under /mockifyer-atlas-html/… — keep assets under that prefix
-      var metroMarker = '/mockifyer-atlas-html/';
-      var metroIdx = pathName.indexOf(metroMarker);
-      if (metroIdx >= 0) {
-        return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
+      // Metro browse prefixes (prefer /atlas-html/; legacy /mockifyer-atlas-html/)
+      var metroMarkers = ['/atlas-html/', '/mockifyer-atlas-html/'];
+      for (var mi = 0; mi < metroMarkers.length; mi++) {
+        var metroMarker = metroMarkers[mi];
+        var metroIdx = pathName.indexOf(metroMarker);
+        if (metroIdx >= 0) {
+          return pathName.slice(0, metroIdx + metroMarker.length) + s.replace(/^\\.\\.\\//, '');
+        }
       }
-      // Also match /mockifyer-atlas-html without trailing slash (index served at exact path)
-      if (pathName.endsWith('/mockifyer-atlas-html')) {
+      if (pathName.endsWith('/atlas-html') || pathName.endsWith('/mockifyer-atlas-html')) {
         return pathName + '/' + s.replace(/^\\.\\.\\//, '');
-      }
-      // Static / Live Preview under …/mock-data/atlas-html/index.html
-      var atlasHtmlMarker = '/atlas-html/';
-      var atlasIdx = pathName.indexOf(atlasHtmlMarker);
-      if (atlasIdx >= 0) {
-        return pathName.slice(0, atlasIdx + atlasHtmlMarker.length) + s.replace(/^\\.\\.\\//, '');
       }
       // file:// …/atlas-html/incidents|pages/*.html → sibling screenshots/
       if (/\\/(incidents|pages)\\/[^/]+\\.html$/i.test(pathName)) {
