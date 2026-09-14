@@ -34,7 +34,7 @@ import http from "http";
 import path from "path";
 import { pathToFileURL } from "url";
 import fs from "fs";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import type { NetworkEvent } from "../utils/network-event-types";
 import {
   resolveMetroNetworkStreamPort,
@@ -195,18 +195,51 @@ function openUrl(target: string): void {
   const platform = process.platform;
   // Prefer a real filesystem path so `open`/`xdg-open` load index.html from disk
   // (Metro may not expose /atlas-html/ depending on how the server is wired).
-  const cmd =
+  const child =
     platform === "darwin"
-      ? `open ${JSON.stringify(target)}`
+      ? spawn("open", [target], { detached: true, stdio: "ignore" })
       : platform === "win32"
-        ? `start "" ${JSON.stringify(target)}`
-        : `xdg-open ${JSON.stringify(target)}`;
-  exec(cmd, (err) => {
-    if (err) {
-      console.error(`[atlas] could not open: ${err.message}`);
-      console.log(`[atlas] open manually: ${target}`);
-    }
+        ? spawn("cmd", ["/c", "start", "", target], {
+            detached: true,
+            stdio: "ignore",
+            windowsVerbatimArguments: true,
+          })
+        : spawn("xdg-open", [target], { detached: true, stdio: "ignore" });
+  child.once("error", (err) => {
+    console.error(`[atlas] could not open: ${err.message}`);
+    console.log(`[atlas] open manually: ${target}`);
   });
+  child.unref();
+}
+
+function redactAtlasConsoleText(text: string): string {
+  return text
+    .replace(
+      /\b(WEATHER_API_KEY|FOOTBALL_API_KEY|apiKey|apiKeyPrefix|x-rapidapi-key|authorization|token|secret|password)\b(\s*[:=]\s*)([^\s,]+)/gi,
+      (_, key: string, separator: string) => `${key}${separator}[redacted]`,
+    )
+    .replace(
+      /([?&](?:key|apiKey|token|authorization|password|secret)=)([^&\s]+)/gi,
+      (_, prefix: string) => `${prefix}[redacted]`,
+    );
+}
+
+function renderAtlasConsoleArg(arg: unknown): string {
+  if (typeof arg === "string") {
+    return redactAtlasConsoleText(arg);
+  }
+  if (arg instanceof Error) {
+    return redactAtlasConsoleText(arg.stack ?? arg.message);
+  }
+  try {
+    return redactAtlasConsoleText(JSON.stringify(arg));
+  } catch {
+    return redactAtlasConsoleText(String(arg));
+  }
+}
+
+function renderAtlasConsoleArgs(args: unknown[]): string {
+  return args.length === 0 ? "" : args.map((arg) => renderAtlasConsoleArg(arg)).join(" ");
 }
 
 
@@ -804,7 +837,7 @@ async function main(): Promise<void> {
   const origLog = console.log.bind(console);
   const origErr = console.error.bind(console);
   console.log = (...args: unknown[]): void => {
-    const rendered = args.map((a) => String(a)).join(" ");
+    const rendered = renderAtlasConsoleArgs(args);
     const lines = rendered.length === 0 ? [""] : rendered.split("\n");
     hits.notePaint(
       {
@@ -813,10 +846,10 @@ async function main(): Promise<void> {
       },
       process.stdout.rows || 24,
     );
-    origLog(...args);
+    origLog(rendered);
   };
   console.error = (...args: unknown[]): void => {
-    const rendered = args.map((a) => String(a)).join(" ");
+    const rendered = renderAtlasConsoleArgs(args);
     const lines = rendered.length === 0 ? [""] : rendered.split("\n");
     hits.notePaint(
       {
@@ -825,7 +858,7 @@ async function main(): Promise<void> {
       },
       process.stdout.rows || 24,
     );
-    origErr(...args);
+    origErr(rendered);
   };
 
   let sseReq: http.ClientRequest | null = null;

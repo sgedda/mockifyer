@@ -234,7 +234,7 @@ const server = http.createServer(async (req, res) => {
       for (const e of incoming) buffer.append(e);
       return sendJson(res, 201, { success: true, count: incoming.length, size: buffer.size });
     } catch (e) {
-      return sendJson(res, 400, { success: false, error: String(e.message || e) });
+      return sendJson(res, 400, { success: false, error: 'invalid request body' });
     }
   }
 
