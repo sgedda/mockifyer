@@ -1,5 +1,6 @@
 import { ChevronDown, GitBranch } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { CopyableText } from '@/components/CopyableText'
 import type { MockFile } from '@/types'
 import type { MockServiceChain } from '@/lib/mock-correlation-chains'
 import {
@@ -98,14 +99,21 @@ export function MockServiceChainCard({
                 >
                   {index + 1}
                 </div>
-                <button
-                  type="button"
-                  className={`flex-1 min-w-0 text-left rounded-md border px-3 py-2 transition-colors ${
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`flex-1 min-w-0 text-left rounded-md border px-3 py-2 transition-colors cursor-pointer ${
                     isSelected
                       ? 'border-primary bg-primary/10'
                       : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
                   }`}
                   onClick={() => onSelectHop(hop)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      onSelectHop(hop)
+                    }
+                  }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm text-foreground">{formatMockHopLabel(hop)}</span>
@@ -136,9 +144,12 @@ export function MockServiceChainCard({
                       </Badge>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                    {formatMockHopSubtitle(hop)}
-                  </div>
+                  <CopyableText
+                    value={formatMockHopSubtitle(hop)}
+                    copyLabel="Copy request URL"
+                    className="mt-0.5"
+                    textClassName="text-[11px] text-muted-foreground"
+                  />
                   <div className="mt-1 space-y-0.5 text-[10px] text-muted-foreground font-mono">
                     {hopRequestIdShort ? (
                       <div title={hop.requestId ?? undefined}>
@@ -154,7 +165,7 @@ export function MockServiceChainCard({
                       </div>
                     )}
                   </div>
-                </button>
+                </div>
               </div>
             </li>
           )

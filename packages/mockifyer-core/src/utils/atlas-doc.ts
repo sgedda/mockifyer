@@ -284,6 +284,11 @@ function emptyMap(scenario: string): AtlasDocMap {
   }
 }
 
+/** Empty Atlas doc (network-only Metro stream render). */
+export function createEmptyAtlasDocMap(scenario = 'default'): AtlasDocMap {
+  return emptyMap(scenario)
+}
+
 function touch(map: AtlasDocMap): AtlasDocMap {
   map.updatedAt = new Date().toISOString()
   return map

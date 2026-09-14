@@ -452,12 +452,12 @@ describe('incidents', () => {
       dashboardExplainUrl: 'http://localhost:3002/api/network-events/explain?incidentId=inc-123',
       localTrace: {
         relativePath: 'mock-data/atlas-html/incidents/inc-123.html',
-        browseUrl: 'http://localhost:8081/mockifyer-atlas-html/incidents/inc-123.html',
+        browseUrl: 'http://localhost:8081/atlas-html/incidents/inc-123.html',
       },
     });
     const block = String(errorSpy.mock.calls[0][0]);
     expect(block).toContain(
-      'Trace HTML: http://localhost:8081/mockifyer-atlas-html/incidents/inc-123.html'
+      'Trace HTML: http://localhost:8081/atlas-html/incidents/inc-123.html'
     );
     expect(block).toContain('Local file: mock-data/atlas-html/incidents/inc-123.html');
     errorSpy.mockRestore();
