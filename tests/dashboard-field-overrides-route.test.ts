@@ -68,6 +68,30 @@ describe('GET /api/mocks/*/field-overrides', () => {
     expect(body.responseFieldOverrides).toEqual(OVERRIDES);
   });
 
+  it('returns stored overrides when the dashboard is mounted at /mockifyer', async () => {
+    const express = require('../packages/mockifyer-dashboard/node_modules/express');
+    const dashboard = createServer(tmpDir, tmpDir, { provider: 'filesystem' });
+    const parent = express();
+    parent.use('/mockifyer', dashboard);
+    const mounted = require('http').createServer(parent);
+    const mountedUrl = await listen(mounted);
+    try {
+      const response = await fetch(
+        `${mountedUrl}/mockifyer/api/mocks/${REDIS_FILENAME}/field-overrides?scenario=${encodeURIComponent(
+          'different-kind-of-trips'
+        )}`
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.filename).toBe(REDIS_FILENAME);
+      expect(body.responseFieldOverrides).toEqual(OVERRIDES);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        mounted.close((err: Error | undefined) => (err ? reject(err) : resolve()));
+      });
+    }
+  });
+
   it('returns stored overrides when the filename slash is percent-encoded', async () => {
     const response = await fetch(
       `${baseUrl}/api/mocks/${encodeURIComponent(REDIS_FILENAME)}/field-overrides?scenario=${encodeURIComponent(

@@ -30,7 +30,11 @@ import {
   type DashboardRedisConfig,
 } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
-import { decodeMockFilenameParam, parseRedisHashFromFilename } from '../utils/mock-filename';
+import {
+  decodeMockFilenameParam,
+  parseRedisHashFromFilename,
+  stripFieldOverridesSuffix,
+} from '../utils/mock-filename';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   bulkCaptureResponsesForDomain,
@@ -705,10 +709,27 @@ function resolveFilePath(scenarioPath: string, relativeName: string): string | n
   return resolved;
 }
 
+async function respondGetFieldOverrides(
+  req: Request,
+  res: Response,
+  relativeName: string
+): Promise<void> {
+  const loaded = await loadMockByRelativeName(req, relativeName);
+  if (!loaded.ok) {
+    res.status(loaded.status).json({ error: loaded.error });
+    return;
+  }
+
+  res.json({
+    success: true,
+    filename: relativeName,
+    scenario: loaded.scenario,
+    responseFieldOverrides: loaded.mock.responseFieldOverrides ?? [],
+  });
+}
+
 /**
  * Load a mock by dashboard filename (`host/...json` or `redis/<hash>.json`).
- * Decoded names with a trailing `/field-overrides` suffix are invalid — that
- * action has its own route registered before GET `/*`.
  */
 async function loadMockByRelativeName(
   req: Request,
@@ -977,26 +998,18 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
 // Must be registered before GET /* — otherwise `redis/<hash>.json/field-overrides` is
 // treated as a mock filename and Redis hash parsing returns 400 Invalid filename.
-router.get('/*/field-overrides', async (req: Request, res: Response) => {
-  try {
-    const relativeName = getRelativeFilename(req);
-    const loaded = await loadMockByRelativeName(req, relativeName);
-    if (!loaded.ok) {
-      return res.status(loaded.status).json({ error: loaded.error });
-    }
+router.get(/^\/(.+)\/field-overrides\/?$/, handleGetFieldOverrides);
+router.get('/*/field-overrides', handleGetFieldOverrides);
 
-    return res.json({
-      success: true,
-      filename: relativeName,
-      scenario: loaded.scenario,
-      responseFieldOverrides: loaded.mock.responseFieldOverrides ?? [],
-    });
+async function handleGetFieldOverrides(req: Request, res: Response): Promise<void> {
+  try {
+    await respondGetFieldOverrides(req, res, getRelativeFilename(req));
   } catch (error: unknown) {
     console.error('[MocksRoute] field-overrides GET - Error:', error);
     const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: 'Failed to read field overrides', details: message });
+    res.status(500).json({ error: 'Failed to read field overrides', details: message });
   }
-});
+}
 
 /**
  * PATCH /api/mocks/.../pool-ref
@@ -1184,6 +1197,11 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 router.get('/*', async (req: Request, res: Response) => {
   try {
     const relativeName = getRelativeFilename(req);
+    const fieldOverridesFile = stripFieldOverridesSuffix(relativeName);
+    if (fieldOverridesFile) {
+      await respondGetFieldOverrides(req, res, fieldOverridesFile);
+      return;
+    }
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (isCentralizedDashboardProvider(config.provider)) {

@@ -29,3 +29,17 @@ export function parseRedisHashFromFilename(relativeName: string): string | null 
   const match = REDIS_MOCK_FILENAME_PATTERN.exec(decoded);
   return match?.[1] ?? null;
 }
+
+export const MOCK_FIELD_OVERRIDES_SUFFIX = '/field-overrides';
+
+/**
+ * If a catch-all mock path accidentally includes `/field-overrides`, return the
+ * real mock filename. Atlas embeds the dashboard at `/mockifyer` and GETs
+ * `.../redis/<hash>.json/field-overrides`.
+ */
+export function stripFieldOverridesSuffix(relativeName: string): string | null {
+  const decoded = decodeMockFilenameParam(relativeName);
+  if (!decoded.endsWith(MOCK_FIELD_OVERRIDES_SUFFIX)) return null;
+  const filename = decoded.slice(0, -MOCK_FIELD_OVERRIDES_SUFFIX.length);
+  return filename.length > 0 ? filename : null;
+}

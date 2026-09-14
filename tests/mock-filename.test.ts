@@ -1,6 +1,7 @@
 import {
   decodeMockFilenameParam,
   parseRedisHashFromFilename,
+  stripFieldOverridesSuffix,
 } from '../packages/mockifyer-dashboard/src/utils/mock-filename';
 
 const HASH = '97db31e9e128bd9d74eb4004a8e40a27246b338ca6aa12597abb38c9f3f2cc14';
@@ -15,7 +16,12 @@ describe('mock filename parsing', () => {
     expect(parseRedisHashFromFilename(encodeURIComponent(FILENAME))).toBe(HASH);
   });
 
-  it('rejects GET catch-all paths that include /field-overrides', () => {
+  it('strips a trailing /field-overrides suffix from catch-all paths', () => {
+    expect(stripFieldOverridesSuffix(`${FILENAME}/field-overrides`)).toBe(FILENAME);
+    expect(stripFieldOverridesSuffix(FILENAME)).toBeNull();
+  });
+
+  it('rejects GET catch-all paths that include /field-overrides until the suffix is stripped', () => {
     expect(parseRedisHashFromFilename(`${FILENAME}/field-overrides`)).toBeNull();
   });
 
