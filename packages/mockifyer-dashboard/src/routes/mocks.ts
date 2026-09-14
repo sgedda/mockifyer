@@ -36,6 +36,8 @@ import {
   bulkSetLiveApiForDomain,
 } from '../utils/bulk-domain-mocks';
 import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
+import { applyFieldOverridesFromBody, bodyHasFieldOverrides } from '../utils/mock-field-overrides-patch';
+import { getListOverrideFields } from '../utils/mock-override-preview';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
@@ -47,8 +49,6 @@ const router = express.Router();
 
 /** HTTP 423: scenario lock — mock writes are forbidden while locked. */
 const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
-
-type OverridePreview = { path: string; summary: string };
 
 function extractMockCorrelationIds(mockData: unknown): {
   requestId: string | null;
@@ -104,12 +104,13 @@ function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefi
   return (
     Object.prototype.hasOwnProperty.call(body, 'responseData') ||
     Object.prototype.hasOwnProperty.call(body, 'responseDateOverrides') ||
+    bodyHasFieldOverrides(body) ||
     bodyHasReplayModeFields(body)
   );
 }
 
 const PUT_BODY_MISSING_FIELDS_ERROR =
-  'Request body must contain responseData, replayMode, or responseDateOverrides';
+  'Request body must contain responseData, replayMode, responseDateOverrides, or responseFieldOverrides';
 
 /** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
 async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
@@ -127,41 +128,6 @@ function resolveFilesystemScenario(req: Request, mockDataPath: string): string {
     return raw.trim();
   }
   return getCurrentScenario(mockDataPath);
-}
-
-function buildOverrideSummary(override: Record<string, unknown>): string {
-  const pieces: string[] = [];
-  const offsetDays = override.offsetDays;
-  const offsetHours = override.offsetHours;
-  const offsetMinutes = override.offsetMinutes;
-  const offsetMs = override.offsetMs;
-
-  if (typeof offsetDays === 'number' && offsetDays !== 0) pieces.push(`${offsetDays}d`);
-  if (typeof offsetHours === 'number' && offsetHours !== 0) pieces.push(`${offsetHours}h`);
-  if (typeof offsetMinutes === 'number' && offsetMinutes !== 0) pieces.push(`${offsetMinutes}m`);
-  if (typeof offsetMs === 'number' && offsetMs !== 0) pieces.push(`${offsetMs}ms`);
-
-  const format = override.format;
-  if (typeof format === 'string' && format) pieces.push(`format=${format}`);
-
-  if (pieces.length === 0) return 'no offset';
-  return pieces.join(' ');
-}
-
-function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: OverridePreview[] } {
-  const overrides = mockData?.responseDateOverrides;
-  if (!Array.isArray(overrides) || overrides.length === 0) {
-    return { hasOverrides: false, preview: [] };
-  }
-  const preview: OverridePreview[] = [];
-  for (const o of overrides) {
-    if (!o || typeof o !== 'object') continue;
-    const pathVal = (o as any).path;
-    if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
-    preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
-    if (preview.length >= 3) break;
-  }
-  return { hasOverrides: preview.length > 0, preview };
 }
 
 function normalizeSearchQuery(raw: unknown): string {
@@ -321,7 +287,7 @@ router.get('/', async (req: Request, res: Response) => {
             let method: string | null = null;
             let sessionId: string | null = null;
             let activation = extractMockActivationFlags({});
-            const { hasOverrides, preview } = getOverridePreview(mockData);
+            const overrideFields = getListOverrideFields(mockData);
             try {
               if (mockData.request?.url) endpoint = mockData.request.url;
               if (mockData.request?.method) {
@@ -384,8 +350,7 @@ router.get('/', async (req: Request, res: Response) => {
               requestId: correlation.requestId,
               parentRequestId: correlation.parentRequestId,
               ...activation,
-              hasResponseDateOverrides: hasOverrides,
-              responseDateOverridesPreview: preview,
+              ...overrideFields,
             };
           })
           .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
@@ -416,8 +381,7 @@ router.get('/', async (req: Request, res: Response) => {
         let method: string | null = null;
         let sessionId = null;
         let activation = extractMockActivationFlags({});
-        let hasResponseDateOverrides = false;
-        let responseDateOverridesPreview: OverridePreview[] = [];
+        let overrideFields = getListOverrideFields({});
         let requestId: string | null = null;
         let parentRequestId: string | null = null;
         try {
@@ -435,9 +399,7 @@ router.get('/', async (req: Request, res: Response) => {
           if (mockData.sessionId) sessionId = mockData.sessionId;
           else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
-          const overrideInfo = getOverridePreview(mockData);
-          hasResponseDateOverrides = overrideInfo.hasOverrides;
-          responseDateOverridesPreview = overrideInfo.preview;
+          overrideFields = getListOverrideFields(mockData);
 
           if (mockData.request?.data) {
             let bodyData = mockData.request.data;
@@ -481,8 +443,7 @@ router.get('/', async (req: Request, res: Response) => {
           requestId,
           parentRequestId,
           ...activation,
-          hasResponseDateOverrides,
-          responseDateOverridesPreview,
+          ...overrideFields,
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -527,7 +488,7 @@ router.get('/search', async (req: Request, res: Response) => {
           let sessionId: string | null = null;
           let method: string | null = null;
           let alwaysUseRealApi = false;
-          const { hasOverrides, preview } = getOverridePreview(mockData);
+          const overrideFields = getListOverrideFields(mockData);
 
           try {
             if (mockData.request?.url) endpoint = mockData.request.url;
@@ -583,8 +544,7 @@ router.get('/search', async (req: Request, res: Response) => {
             requestId: correlation.requestId,
             parentRequestId: correlation.parentRequestId,
             alwaysUseRealApi,
-            hasResponseDateOverrides: hasOverrides,
-            responseDateOverridesPreview: preview,
+            ...overrideFields,
           });
 
           if (files.length >= limit) {
@@ -629,8 +589,7 @@ router.get('/search', async (req: Request, res: Response) => {
       let sessionId: string | null = null;
       let method: string | null = null;
       let alwaysUseRealApi = false;
-      let hasResponseDateOverrides = false;
-      let responseDateOverridesPreview: OverridePreview[] = [];
+      let overrideFields = getListOverrideFields({});
       let requestId: string | null = null;
       let parentRequestId: string | null = null;
 
@@ -645,9 +604,7 @@ router.get('/search', async (req: Request, res: Response) => {
         if (mockData.sessionId) sessionId = mockData.sessionId;
         else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
-        const overrideInfo = getOverridePreview(mockData);
-        hasResponseDateOverrides = overrideInfo.hasOverrides;
-        responseDateOverridesPreview = overrideInfo.preview;
+        overrideFields = getListOverrideFields(mockData);
 
         if (mockData.request?.data) {
           let bodyData = mockData.request.data;
@@ -688,8 +645,7 @@ router.get('/search', async (req: Request, res: Response) => {
         requestId,
         parentRequestId,
         alwaysUseRealApi,
-        hasResponseDateOverrides,
-        responseDateOverridesPreview,
+        ...overrideFields,
       });
     }
 
@@ -1249,6 +1205,11 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
+        const fieldErr = applyFieldOverridesFromBody(existingData as MockData, req.body);
+        if (fieldErr) {
+          return res.status(400).json({ error: fieldErr });
+        }
+
         if (bodyHasReplayModeFields(req.body)) {
           const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
           if (replayErr) {
@@ -1325,6 +1286,11 @@ router.put('/*', async (req: Request, res: Response) => {
       } else {
         return res.status(400).json({ error: 'responseDateOverrides must be an array or null' });
       }
+    }
+
+    const fieldErr = applyFieldOverridesFromBody(existingData as MockData, req.body);
+    if (fieldErr) {
+      return res.status(400).json({ error: fieldErr });
     }
 
     if (bodyHasReplayModeFields(req.body)) {

@@ -4,6 +4,7 @@ import type {
   MockAiContext,
   AiContextMode,
   MockResponseDateOverride,
+  MockResponseFieldOverride,
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
@@ -151,14 +152,18 @@ async function putMockUpdate(
 
 export async function updateMock(
   filename: string,
-  responseData: any,
+  responseData: unknown,
   responseDateOverrides?: MockResponseDateOverride[] | null,
   replayMode?: MockReplayMode | null,
-  scenario?: string
+  scenario?: string,
+  responseFieldOverrides?: MockResponseFieldOverride[] | null
 ): Promise<void> {
   const body: Record<string, unknown> = { responseData }
   if (responseDateOverrides !== undefined) {
     body.responseDateOverrides = responseDateOverrides
+  }
+  if (responseFieldOverrides !== undefined) {
+    body.responseFieldOverrides = responseFieldOverrides
   }
   if (replayMode !== undefined) {
     body.replayMode = replayMode
