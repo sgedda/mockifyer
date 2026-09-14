@@ -11,6 +11,7 @@ import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from
 import { MockCard } from '@/components/MockCard'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
+import { mockHasListOverrides } from '@/lib/mock-overrides'
 import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch } from 'lucide-react'
 
 interface MockListProps {
@@ -238,7 +239,7 @@ function MockListContent({
   const overrideMocks = useMemo(() => {
     const source = searchQuery.trim() ? mocks : allMocks
     return [...source]
-      .filter((m) => m.hasResponseDateOverrides === true)
+      .filter((m) => mockHasListOverrides(m))
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
   }, [allMocks, mocks, searchQuery])
 

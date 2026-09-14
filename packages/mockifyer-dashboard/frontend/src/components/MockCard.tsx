@@ -12,6 +12,11 @@ import {
 } from '@/lib/mock-correlation-chains'
 import { Copy, ExternalLink, Trash2, GitBranch } from 'lucide-react'
 import { CopyableText } from '@/components/CopyableText'
+import {
+  formatOverridePreviewLine,
+  mockHasListOverrides,
+  mockOverridePreviewLines,
+} from '@/lib/mock-overrides'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -37,12 +42,6 @@ function getGraphqlQueryPreview(query: string | null | undefined): string | null
   const top = m[1]
   const nested = m[2]
   return `"${top}": { ${nested}, … }`
-}
-
-function formatOverridePreviewLine(path: string, summary: string): string {
-  if (!path) return summary
-  if (!summary) return path
-  return `${path}: ${summary}`
 }
 
 function deriveDisplayName(mock: MockFile): string {
@@ -79,10 +78,8 @@ export function MockCard({
 }) {
   const isSelected = selectedMock?.filename === mock.filename
   const displayName = deriveDisplayName(mock)
-  const hasOverrides = mock.hasResponseDateOverrides === true
-  const overridePreview = Array.isArray(mock.responseDateOverridesPreview)
-    ? mock.responseDateOverridesPreview.slice(0, 3)
-    : []
+  const hasOverrides = mockHasListOverrides(mock)
+  const overridePreview = mockOverridePreviewLines(mock)
 
   const canShowActions = showActions && onDelete && onDuplicate
 
@@ -218,7 +215,7 @@ export function MockCard({
             <div className="mt-2 space-y-1">
               {overridePreview.map((o) => (
                 <div
-                  key={`override:${mock.filename}:${o.path}`}
+                  key={`override:${mock.filename}:${o.kind}:${o.path}`}
                   className="text-xs font-mono text-muted-foreground/90 break-words"
                 >
                   {formatOverridePreviewLine(o.path, o.summary)}

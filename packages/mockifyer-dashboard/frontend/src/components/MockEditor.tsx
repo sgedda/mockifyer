@@ -11,6 +11,12 @@ import { useToast } from '@/components/ui/use-toast'
 import { updateMock, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData, MockFile, MockReplayMode, MockResponseDateOverride } from '@/types'
+import FieldOverridesEditor from './FieldOverridesEditor'
+import {
+  fieldOverridesToRows,
+  rowsToFieldOverrides,
+  type FieldOverrideRow,
+} from '@/lib/field-overrides'
 import {
   buildMockChainMaps,
   buildMockServiceChainsForDisplay,
@@ -55,7 +61,7 @@ const REPLAY_MODE_OPTIONS: Array<{ value: MockReplayMode; label: string; descrip
   {
     value: 'stored',
     label: 'Use saved mock',
-    description: 'Serve the stored response body (date overrides still apply).',
+    description: 'Serve the stored response body (field and date overrides still apply).',
   },
   {
     value: 'refresh-next',
@@ -200,6 +206,7 @@ export default function MockEditor({
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
+  const [fieldOverrideRows, setFieldOverrideRows] = useState<FieldOverrideRow[]>([])
   const [replayMode, setReplayMode] = useState<MockReplayMode>('stored')
   const [refreshingLive, setRefreshingLive] = useState(false)
   const { toast } = useToast()
@@ -273,6 +280,7 @@ export default function MockEditor({
             : JSON.stringify(parsedData)
     )
     setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
+    setFieldOverrideRows(fieldOverridesToRows(mock.data.responseFieldOverrides))
     setReplayMode(resolveReplayModeFromMock(mock))
   }, [mock])
 
@@ -348,13 +356,23 @@ export default function MockEditor({
     }
 
     try {
+      const fieldResult = rowsToFieldOverrides(fieldOverrideRows)
+      if (fieldResult.error) {
+        toast({
+          title: 'Invalid field overrides',
+          description: fieldResult.error,
+          variant: 'destructive',
+        })
+        return
+      }
       setSaving(true)
       await updateMock(
         mock.filename,
         dataToSave,
         sanitizeOverridesForSave(dateOverrides),
         replayMode,
-        scenario
+        scenario,
+        fieldResult.overrides
       )
       toast({
         title: 'Success',
@@ -829,6 +847,12 @@ export default function MockEditor({
               )}
             </div>
 
+            <FieldOverridesEditor
+              rows={fieldOverrideRows}
+              onChange={setFieldOverrideRows}
+              readOnly={readOnly}
+            />
+
             <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
               <div className="space-y-1">
                 <div className="text-sm font-medium">Response date overrides</div>
@@ -921,7 +945,9 @@ export default function MockEditor({
                 )}
 
               {dateOverrides.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No overrides — stored values are returned as-is.</p>
+                <p className="text-xs text-muted-foreground">
+                  No date overrides — recorded timestamps are returned as-is.
+                </p>
               ) : (
                 <div className="space-y-3">
                   {dateOverrides.map((row, i) => (
