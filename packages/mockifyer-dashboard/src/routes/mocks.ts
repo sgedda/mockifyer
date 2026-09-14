@@ -30,6 +30,11 @@ import {
   type DashboardRedisConfig,
 } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
+import {
+  decodeMockFilenameParam,
+  parseRedisHashFromFilename,
+  stripFieldOverridesSuffix,
+} from '../utils/mock-filename';
 import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   bulkCaptureResponsesForDomain,
@@ -90,13 +95,8 @@ function getMockDataPath(): string {
   return detectMockDataPath();
 }
 
-function parseRedisHashFromFilename(relativeName: string): string | null {
-  // Expected format: redis/<hash>.json
-  if (!relativeName.startsWith('redis/')) return null;
-  if (!relativeName.endsWith('.json')) return null;
-  const hash = relativeName.slice('redis/'.length, -'.json'.length);
-  if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
-  return hash;
+function getRelativeFilename(req: Request): string {
+  return decodeMockFilenameParam(req.params[0]);
 }
 
 function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefined): boolean {
@@ -709,6 +709,57 @@ function resolveFilePath(scenarioPath: string, relativeName: string): string | n
   return resolved;
 }
 
+async function respondGetFieldOverrides(
+  req: Request,
+  res: Response,
+  relativeName: string
+): Promise<void> {
+  const loaded = await loadMockByRelativeName(req, relativeName);
+  if (!loaded.ok) {
+    res.status(loaded.status).json({ error: loaded.error });
+    return;
+  }
+
+  res.json({
+    success: true,
+    filename: relativeName,
+    scenario: loaded.scenario,
+    responseFieldOverrides: loaded.mock.responseFieldOverrides ?? [],
+  });
+}
+
+/**
+ * Load a mock by dashboard filename (`host/...json` or `redis/<hash>.json`).
+ */
+async function loadMockByRelativeName(
+  req: Request,
+  relativeName: string
+): Promise<{ ok: true; mock: MockData; scenario: string } | { ok: false; status: number; error: string }> {
+  const { mockDataPath, config } = getDashboardContext(req);
+
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const hash = parseRedisHashFromFilename(relativeName);
+    if (!hash) return { ok: false, status: 400, error: 'Invalid filename' };
+
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      const scenario = await resolveRedisScenario(req, store);
+      const mock = (await store.getByHash(hash, scenario)) as MockData | null;
+      if (!mock) return { ok: false, status: 404, error: 'Mock not found' };
+      return { ok: true, mock, scenario };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const scenario = resolveFilesystemScenario(req, mockDataPath);
+  const filePath = resolveFilePath(getScenarioFolderPath(mockDataPath, scenario), relativeName);
+  if (!filePath) return { ok: false, status: 400, error: 'Invalid filename' };
+  if (!fs.existsSync(filePath)) return { ok: false, status: 404, error: 'Mock file not found' };
+  const mock = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+  return { ok: true, mock, scenario };
+}
+
 router.get('/domain-path-rules', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
@@ -795,7 +846,7 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
 // Lightweight AI/MCP projection — must be registered before GET /*
 router.get('/*/ai-context', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
     const mode = parseAiContextMode(req.query.mode);
     const includePaths = parseCsvQuery(req.query.includePaths);
@@ -866,7 +917,7 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
 // Replay-time field overrides (no full responseData required)
 router.patch('/*/field-overrides', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, 'responseFieldOverrides')) {
@@ -945,13 +996,28 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
   }
 });
 
+// Must be registered before GET /* — otherwise `redis/<hash>.json/field-overrides` is
+// treated as a mock filename and Redis hash parsing returns 400 Invalid filename.
+router.get(/^\/(.+)\/field-overrides\/?$/, handleGetFieldOverrides);
+router.get('/*/field-overrides', handleGetFieldOverrides);
+
+async function handleGetFieldOverrides(req: Request, res: Response): Promise<void> {
+  try {
+    await respondGetFieldOverrides(req, res, getRelativeFilename(req));
+  } catch (error: unknown) {
+    console.error('[MocksRoute] field-overrides GET - Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: 'Failed to read field overrides', details: message });
+  }
+}
+
 /**
  * PATCH /api/mocks/.../pool-ref
  * Embed a `$pool` ref node into the mock response body (entire body or at a JSON path).
  */
 router.patch('/*/pool-ref', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
     const body = req.body ?? {};
 
@@ -1047,7 +1113,7 @@ router.patch('/*/pool-ref', async (req: Request, res: Response) => {
 // Copy an array item with optional field overrides (persists to response.data)
 router.post('/*/copy-array-item', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
     const body = req.body ?? {};
 
@@ -1130,7 +1196,12 @@ router.post('/*/copy-array-item', async (req: Request, res: Response) => {
 // Get a specific mock file — filename may contain slashes (e.g. host/graphql/file.json)
 router.get('/*', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
+    const fieldOverridesFile = stripFieldOverridesSuffix(relativeName);
+    if (fieldOverridesFile) {
+      await respondGetFieldOverrides(req, res, fieldOverridesFile);
+      return;
+    }
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (isCentralizedDashboardProvider(config.provider)) {
@@ -1179,7 +1250,7 @@ router.get('/*', async (req: Request, res: Response) => {
 // Update a mock file
 router.put('/*', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (isCentralizedDashboardProvider(config.provider)) {
@@ -1411,7 +1482,7 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
 // Delete a mock file
 router.delete('/*', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (isCentralizedDashboardProvider(config.provider)) {
@@ -1451,7 +1522,7 @@ router.delete('/*', async (req: Request, res: Response) => {
 
 router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
   try {
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
     const clientId =
       typeof req.body?.clientId === 'string' && req.body.clientId.trim()
@@ -1516,7 +1587,7 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
 router.post('/*/duplicate', async (req: Request, res: Response) => {
   try {
     // params[0] captures everything between the leading / and /duplicate
-    const relativeName = req.params[0];
+    const relativeName = getRelativeFilename(req);
     const { mockDataPath, config } = getDashboardContext(req);
 
     if (isCentralizedDashboardProvider(config.provider)) {

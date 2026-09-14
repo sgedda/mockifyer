@@ -364,6 +364,15 @@ export class DashboardApiClient {
     return this.request(`/mocks/${encoded}${qs}`);
   }
 
+  async getFieldOverrides(
+    filename: string,
+    scenario?: string
+  ): Promise<SetFieldOverridesResponse> {
+    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
+    const encoded = encodeMockFilename(filename);
+    return this.request(`/mocks/${encoded}/field-overrides${qs}`);
+  }
+
   async getScenarioConfig(): Promise<ScenarioConfigResponse> {
     return this.request('/scenario-config');
   }

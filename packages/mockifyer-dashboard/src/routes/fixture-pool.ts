@@ -37,11 +37,9 @@ import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/das
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { loadFixturePoolCatalog } from '../utils/fixture-pool-catalog';
+import { parseRedisHashFromFilename } from '../utils/mock-filename';
 
 const router = Router();
-
-/** Synthetic list/API name for Redis/SQLite-backed mocks: `redis/<64-hex>.json`. */
-const REDIS_MOCK_FILENAME_PATTERN = /^redis\/([a-f0-9]{64})\.json$/i;
 
 const fsAdapter: FixturePoolFsAdapter = {
   joinPath: (...parts) => path.join(...parts),
@@ -111,11 +109,6 @@ function resolveContainedMockFile(
   return filePath;
 }
 
-function parseRedisMockFilename(filename: string): string | null {
-  const match = REDIS_MOCK_FILENAME_PATTERN.exec(filename);
-  return match?.[1] ?? null;
-}
-
 function readMockFile(mockDataPath: string, scenario: string, filename: string): MockData | { error: string } | null {
   const resolved = resolveContainedMockFile(mockDataPath, scenario, filename);
   if (typeof resolved === 'object' && resolved !== null && 'error' in resolved) {
@@ -143,7 +136,7 @@ async function readMockForPool(
   filename: string
 ): Promise<MockData | { error: string } | null> {
   const { mockDataPath, config } = getDashboardContext(req);
-  const redisHash = parseRedisMockFilename(filename);
+  const redisHash = parseRedisHashFromFilename(filename);
 
   if (redisHash && isCentralizedDashboardProvider(config.provider)) {
     const store = createDashboardMockStore(config, mockDataPath);
