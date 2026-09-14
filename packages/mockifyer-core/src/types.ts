@@ -377,6 +377,8 @@ export interface MockResponseDateOverride {
    * - `unix-ms` / `unix-s` always write a number (explicit encoding wins over a string original).
    * - `iso` writes a string. When the original field is an ISO-like string, the original shape is
    *   preserved (date-only, naive, offset, or `Z`) instead of rewriting via `Date#toISOString()`.
+   * - When the path is a GraphQL/JSON object, date-like children are rewritten in place so
+   *   `__typename` and sibling fields stay intact.
    */
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }

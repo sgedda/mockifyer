@@ -7,6 +7,8 @@ import type { MockResponseDateOverride } from '@/types'
  */
 const MS_PER_MINUTE = 60 * 1000
 const UNIX_MS_THRESHOLD = 1e11
+const UNIX_S_MIN = 1e9
+const UNIX_MS_MAX = 1e14
 const ISO_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const ISO_DATETIME_PATTERN =
   /^(\d{4}-\d{2}-\d{2})([T ])(\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|z|[+-]\d{2}:?\d{2})?$/
@@ -116,6 +118,65 @@ function formatResolvedDate(
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isLikelyUnixTimestamp(n: number): boolean {
+  return (n > UNIX_MS_THRESHOLD && n < UNIX_MS_MAX) || (n > UNIX_S_MIN && n <= UNIX_MS_THRESHOLD)
+}
+
+function rewriteDateLikeLeaf(
+  value: unknown,
+  instant: Date,
+  explicitFormat?: MockResponseDateOverride['format']
+): unknown {
+  if (typeof value === 'string') {
+    if (!parseIsoDateStringShape(value)) return value
+    if (explicitFormat === 'unix-ms' || explicitFormat === 'unix-s') {
+      return formatResolvedDate(instant, explicitFormat, value)
+    }
+    return formatDatePreservingOriginal(instant, value) ?? value
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && isLikelyUnixTimestamp(value)) {
+    if (explicitFormat === 'iso') {
+      return formatResolvedDate(instant, 'iso', value)
+    }
+    const format = explicitFormat ?? resolveFormat({ path: '_' }, value)
+    return formatResolvedDate(instant, format, value)
+  }
+  return value
+}
+
+function rewriteDateLikeTree(
+  value: unknown,
+  instant: Date,
+  explicitFormat?: MockResponseDateOverride['format']
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => rewriteDateLikeTree(item, instant, explicitFormat))
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value)) {
+      out[key] = rewriteDateLikeTree(child, instant, explicitFormat)
+    }
+    return out
+  }
+  return rewriteDateLikeLeaf(value, instant, explicitFormat)
+}
+
+function formatPreviewValue(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
 /** Total overlay offset in ms (same fields as mockifyer-core). */
 export function totalDateOverrideOffsetMs(override: MockResponseDateOverride): number {
   let ms = override.offsetMs ?? 0
@@ -145,17 +206,19 @@ export function formatOffsetFromNowLabel(override: MockResponseDateOverride): st
 }
 
 export interface ServedDatePreview {
-  served: string | number
+  served: unknown
   servedText: string
   instantIso: string
   offsetMs: number
   offsetLabel: string
   resolvedFormat: 'iso' | 'unix-ms' | 'unix-s'
+  skipped: boolean
 }
 
 /**
  * Value written at the override path at serve time: Mockifyer now + offset,
- * formatted like the stored original (naive ISO stays naive).
+ * formatted like the stored original (naive ISO stays naive, GraphQL objects keep
+ * `__typename`). Missing/null paths are skipped so we don't invent ISO stubs.
  */
 export function previewServedDateOverride(
   override: MockResponseDateOverride,
@@ -164,14 +227,43 @@ export function previewServedDateOverride(
 ): ServedDatePreview {
   const offsetMs = totalDateOverrideOffsetMs(override)
   const instant = new Date(now.getTime() + offsetMs)
+  const offsetLabel = formatOffsetFromNowLabel(override)
+  const instantIso = instant.toISOString()
+
+  if (original === undefined || original === null) {
+    return {
+      served: original,
+      servedText: 'path missing — stored value unchanged',
+      instantIso,
+      offsetMs,
+      offsetLabel,
+      resolvedFormat: override.format ?? 'iso',
+      skipped: true,
+    }
+  }
+
+  if (isPlainObject(original) || Array.isArray(original)) {
+    const served = rewriteDateLikeTree(original, instant, override.format)
+    return {
+      served,
+      servedText: formatPreviewValue(served),
+      instantIso,
+      offsetMs,
+      offsetLabel,
+      resolvedFormat: override.format ?? 'iso',
+      skipped: false,
+    }
+  }
+
   const resolvedFormat = resolveFormat(override, original)
   const served = formatResolvedDate(instant, resolvedFormat, original)
   return {
     served,
     servedText: String(served),
-    instantIso: instant.toISOString(),
+    instantIso,
     offsetMs,
-    offsetLabel: formatOffsetFromNowLabel(override),
+    offsetLabel,
     resolvedFormat,
+    skipped: false,
   }
 }

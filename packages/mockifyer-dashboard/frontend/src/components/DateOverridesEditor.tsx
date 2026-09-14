@@ -33,11 +33,14 @@ function DateOverrideServedPreview({
 }) {
   const preview = previewServedDateOverride(override, original, now)
   const showUnixHint =
-    preview.resolvedFormat === 'unix-ms' || preview.resolvedFormat === 'unix-s'
+    !preview.skipped &&
+    (preview.resolvedFormat === 'unix-ms' || preview.resolvedFormat === 'unix-s')
 
   return (
     <div className="rounded-md border border-sky-500/25 bg-sky-500/5 px-2.5 py-2">
-      <div className="text-[11px] font-medium text-muted-foreground">Will serve now</div>
+      <div className="text-[11px] font-medium text-muted-foreground">
+        {preview.skipped ? 'Will not rewrite' : 'Will serve now'}
+      </div>
       <div className="break-all font-mono text-sm text-foreground">{preview.servedText}</div>
       {showUnixHint ? (
         <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{preview.instantIso}</div>
@@ -45,6 +48,7 @@ function DateOverrideServedPreview({
       <div className="mt-1 text-[11px] leading-snug text-muted-foreground">
         Mockifyer now {now.toISOString()}
         {preview.offsetLabel === 'no offset' ? ' (no offset)' : ` + ${preview.offsetLabel}`}
+        {preview.skipped ? '. Missing or null paths stay as stored (keeps GraphQL __typename).' : ''}
       </div>
     </div>
   )
@@ -77,7 +81,9 @@ export default function DateOverridesEditor({
           Relative to Mockifyer&apos;s current date plus an offset. Applied when serving the mock — the
           stored response body is not rewritten. Paths are from the JSON root (e.g.{' '}
           <code className="rounded bg-muted px-1 font-mono text-[11px]">bookings.0.startDate</code>
-          ).
+          ). Naive ISO strings stay naive; values with <code className="rounded bg-muted px-1 font-mono text-[11px]">Z</code> keep{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">Z</code>. GraphQL objects keep{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">__typename</code>.
         </p>
       </div>
 

@@ -183,4 +183,82 @@ describe('mock response date overrides', () => {
     expect(formatDatePreservingOriginal(instant, 'not-a-date')).toBeNull();
     expect(parseIsoDateStringShape('2026-09-11T12:05:00+03:00')?.kind).toBe('datetime');
   });
+
+  it('preserves naive vs Z ISO shapes from mixed booking payloads', () => {
+    const data = {
+      startDate: '2026-09-09T08:35:00',
+      endDate: '2026-09-23T21:35:00',
+      arrivalDate: '2026-09-09T13:25:00',
+      arrivalUtc: '2026-09-23T19:35:00Z',
+      departureDate: '2026-09-09T08:35:00',
+      departureUtc: '2026-09-09T06:35:00Z',
+    };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [
+        { path: 'startDate' },
+        { path: 'endDate' },
+        { path: 'arrivalDate' },
+        { path: 'arrivalUtc' },
+        { path: 'departureDate' },
+        { path: 'departureUtc' },
+      ],
+      fixedNow
+    ) as typeof data;
+
+    expect(out.startDate).toBe('2025-06-15T12:00:00');
+    expect(out.endDate).toBe('2025-06-15T12:00:00');
+    expect(out.arrivalDate).toBe('2025-06-15T12:00:00');
+    expect(out.arrivalUtc).toBe('2025-06-15T12:00:00Z');
+    expect(out.departureDate).toBe('2025-06-15T12:00:00');
+    expect(out.departureUtc).toBe('2025-06-15T12:00:00Z');
+  });
+
+  it('keeps GraphQL __typename when the override path is a datetime object', () => {
+    const data = {
+      departure: {
+        __typename: 'FlightDateTime',
+        flightUtc: '2026-09-09T06:35:00Z',
+        departureDate: '2026-09-09T08:35:00',
+      },
+    };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'departure' }],
+      fixedNow
+    ) as typeof data;
+
+    expect(out.departure).toEqual({
+      __typename: 'FlightDateTime',
+      flightUtc: '2025-06-15T12:00:00Z',
+      departureDate: '2025-06-15T12:00:00',
+    });
+  });
+
+  it('does not invent GraphQL objects without __typename for missing paths', () => {
+    const data = {
+      booking: {
+        __typename: 'Booking',
+        startDate: '2026-09-09T08:35:00',
+      },
+    };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'departure.flightUtc' }],
+      fixedNow
+    );
+
+    expect(out).toEqual(data);
+    expect(out).not.toHaveProperty('departure');
+  });
+
+  it('leaves null GraphQL objects null instead of replacing them with ISO stubs', () => {
+    const data = { departure: null as { flightUtc?: string } | null };
+    const out = applyResponseDateOverridesToData(
+      data,
+      [{ path: 'departure.flightUtc' }, { path: 'departure' }],
+      fixedNow
+    ) as typeof data;
+    expect(out.departure).toBeNull();
+  });
 });
