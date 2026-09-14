@@ -9,6 +9,7 @@ import {
 import { getAllJsonFiles } from './json-files';
 import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
+import { parseRedisHashFromFilename } from './mock-filename';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
@@ -91,14 +92,6 @@ function loadMergedDateConfig(mockDataPath: string, scenario: string): {
   }
 
   return { dateManipulation: null, source: 'none' };
-}
-
-function parseRedisHashFromFilename(relativeName: string): string | null {
-  if (!relativeName.startsWith('redis/')) return null;
-  if (!relativeName.endsWith('.json')) return null;
-  const hash = relativeName.slice('redis/'.length, -'.json'.length);
-  if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
-  return hash;
 }
 
 function resolveMockFilePath(scenarioPath: string, relativeName: string): string | null {

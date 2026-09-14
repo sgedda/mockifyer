@@ -65,6 +65,36 @@ describe('mockifyer-mcp dashboard-client', () => {
     }
   });
 
+  it('getFieldOverrides keeps redis/ slashes and appends /field-overrides', async () => {
+    const calls: string[] = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          filename: 'redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json',
+          scenario: 'different-kind-of-trips',
+          responseFieldOverrides: [],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    };
+
+    try {
+      await client.getFieldOverrides(
+        'redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json',
+        'different-kind-of-trips'
+      );
+      expect(calls[0]).toBe(
+        'http://test/api/mocks/redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json/field-overrides?scenario=different-kind-of-trips'
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('listNetworkEvents builds the network-events URL', async () => {
     const calls: string[] = [];
     const client = new DashboardApiClient({ apiBase: 'http://test/api' });
