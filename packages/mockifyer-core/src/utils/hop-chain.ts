@@ -24,7 +24,8 @@ export interface HopChainShape {
 /** Flat session of many unrelated APIs incorrectly parented to one root. */
 export const SESSION_FANOUT_MIN_HOPS = 16;
 export const SESSION_FANOUT_MIN_UNIQUE_ENDPOINTS = 8;
-export const SESSION_FANOUT_MIN_UNIQUE_HOSTS = 3;
+/** 2 covers recordings through a single dashboard proxy host plus one upstream. */
+export const SESSION_FANOUT_MIN_UNIQUE_HOSTS = 2;
 /** Nested service hops are depth 2+ (A → B → C). Depth 0–1 is a session fan-out. */
 export const SESSION_FANOUT_MAX_NESTING = 1;
 /** Linked-list of hops (each parent of the next) is not a service topology. */
