@@ -17,6 +17,8 @@ interface DateOverridesEditorProps {
   responseBody: unknown
   /** Mockifyer's current date (`getCurrentDate`), used for the served-value preview. */
   mockifyerNow: Date
+  /** Remount related-data panels when the mock or row index changes. */
+  instanceKey?: string
   readOnly?: boolean
 }
 
@@ -56,6 +58,7 @@ export default function DateOverridesEditor({
   onChange,
   responseBody,
   mockifyerNow,
+  instanceKey = 'date',
   readOnly = false,
 }: DateOverridesEditorProps) {
   const dateFieldCandidates = detectDateLikeFields(responseBody)
@@ -198,7 +201,11 @@ export default function DateOverridesEditor({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              <OverrideRelatedData path={row.path} responseBody={responseBody} />
+              <OverrideRelatedData
+                key={`${instanceKey}-${index}`}
+                path={row.path}
+                responseBody={responseBody}
+              />
               <div className="flex flex-wrap gap-2">
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Offset ms</span>

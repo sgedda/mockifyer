@@ -57,6 +57,7 @@ export function formatJsonPreview(value: unknown, maxChars = JSON_PREVIEW_MAX_CH
 export function formatLeafPreview(value: unknown, maxLen = 96): string {
   if (value === undefined) return ''
   if (typeof value === 'string') {
+    if (value.length === 0) return '""'
     return value.length > maxLen ? `${value.slice(0, maxLen - 1)}…` : value
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)

@@ -20,6 +20,8 @@ interface FieldOverridesEditorProps {
   rows: FieldOverrideRow[]
   onChange: (rows: FieldOverrideRow[]) => void
   responseBody?: unknown
+  /** Remount related-data panels when the mock or row index changes. */
+  instanceKey?: string
   readOnly?: boolean
 }
 
@@ -30,6 +32,7 @@ export default function FieldOverridesEditor({
   rows,
   onChange,
   responseBody = null,
+  instanceKey = 'field',
   readOnly = false,
 }: FieldOverridesEditorProps) {
   function updateRow(index: number, patch: Partial<FieldOverrideRow>) {
@@ -100,7 +103,11 @@ export default function FieldOverridesEditor({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              <OverrideRelatedData path={row.path} responseBody={responseBody} />
+              <OverrideRelatedData
+                key={`${instanceKey}-${index}`}
+                path={row.path}
+                responseBody={responseBody}
+              />
               {row.mode === 'remove' ? (
                 <p className="text-[11px] text-muted-foreground">
                   At serve time this path is deleted (array splice or object key). No value needed.

@@ -818,6 +818,7 @@ export default function OverridesView({
                   rows={drafts}
                   onChange={setDrafts}
                   responseBody={responseBody}
+                  instanceKey={selectedFilename}
                 />
 
                 <div className="border-t border-border pt-4">
@@ -826,6 +827,7 @@ export default function OverridesView({
                     onChange={setDateOverrides}
                     responseBody={responseBody}
                     mockifyerNow={mockifyerNow}
+                    instanceKey={selectedFilename}
                   />
                 </div>
               </>
