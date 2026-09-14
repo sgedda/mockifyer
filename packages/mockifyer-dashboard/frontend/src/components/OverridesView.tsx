@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ExternalLink, Plus, RefreshCw } from 'lucide-react'
 import {
   deleteOverrideGroup,
+  getDateConfig,
   getMock,
   getMockFieldOverrides,
   getOverrideGroup,
@@ -23,7 +24,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import DateOverridesEditor from '@/components/DateOverridesEditor'
 import FieldOverridesEditor from '@/components/FieldOverridesEditor'
-import { DASHBOARD_Q } from '@/lib/dashboard-urls'
+import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 import {
   fieldOverridesToRows,
   rowsToFieldOverrides,
@@ -73,6 +74,7 @@ export default function OverridesView({
   const [drafts, setDrafts] = useState<FieldOverrideRow[]>([])
   const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
   const [responseBody, setResponseBody] = useState<unknown>(null)
+  const [mockifyerNow, setMockifyerNow] = useState(() => new Date())
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -112,6 +114,22 @@ export default function OverridesView({
       })
     })
   }, [loadGroups, toast])
+
+  useEffect(() => {
+    let cancelled = false
+    void getDateConfig(scenario)
+      .then((config) => {
+        if (cancelled) return
+        const parsed = new Date(config.currentDate)
+        setMockifyerNow(Number.isNaN(parsed.getTime()) ? new Date() : parsed)
+      })
+      .catch(() => {
+        if (!cancelled) setMockifyerNow(new Date())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [scenario])
 
   useEffect(() => {
     if (editTarget === EDIT_MOCK_LEVEL) {
@@ -743,8 +761,20 @@ export default function OverridesView({
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {selectedFilename ? selectedFilename : 'Select a mock'}
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <span className="min-w-0 break-all">
+                {selectedFilename ? selectedFilename : 'Select a mock'}
+              </span>
+              {selectedFilename ? (
+                <Link
+                  to={mockEditorPath(selectedFilename, { scenario })}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-sky-300 hover:underline"
+                  title="Open this mock in the editor"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                  Open mock
+                </Link>
+              ) : null}
             </CardTitle>
             <CardDescription>
               {selectedMeta?.endpoint
@@ -784,13 +814,18 @@ export default function OverridesView({
                   </Button>
                 </div>
 
-                <FieldOverridesEditor rows={drafts} onChange={setDrafts} />
+                <FieldOverridesEditor
+                  rows={drafts}
+                  onChange={setDrafts}
+                  responseBody={responseBody}
+                />
 
                 <div className="border-t border-border pt-4">
                   <DateOverridesEditor
                     dateOverrides={dateOverrides}
                     onChange={setDateOverrides}
                     responseBody={responseBody}
+                    mockifyerNow={mockifyerNow}
                   />
                 </div>
               </>

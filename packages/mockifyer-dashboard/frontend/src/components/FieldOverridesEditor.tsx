@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import OverrideRelatedData from '@/components/OverrideRelatedData'
 import type { FieldOverrideRow } from '@/lib/field-overrides'
 import { emptyFieldOverrideRow } from '@/lib/field-overrides'
 import type { MockResponseFieldOverrideMode } from '@/types'
@@ -18,6 +19,7 @@ const FIELD_OVERRIDE_MODES: Array<{
 interface FieldOverridesEditorProps {
   rows: FieldOverrideRow[]
   onChange: (rows: FieldOverrideRow[]) => void
+  responseBody?: unknown
   readOnly?: boolean
 }
 
@@ -27,6 +29,7 @@ interface FieldOverridesEditorProps {
 export default function FieldOverridesEditor({
   rows,
   onChange,
+  responseBody = null,
   readOnly = false,
 }: FieldOverridesEditorProps) {
   function updateRow(index: number, patch: Partial<FieldOverrideRow>) {
@@ -97,6 +100,7 @@ export default function FieldOverridesEditor({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              <OverrideRelatedData path={row.path} responseBody={responseBody} />
               {row.mode === 'remove' ? (
                 <p className="text-[11px] text-muted-foreground">
                   At serve time this path is deleted (array splice or object key). No value needed.

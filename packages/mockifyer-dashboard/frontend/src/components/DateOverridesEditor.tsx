@@ -1,19 +1,51 @@
 import { CalendarSearch, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import OverrideRelatedData from '@/components/OverrideRelatedData'
 import type { MockResponseDateOverride } from '@/types'
 import {
   detectDateLikeFields,
   getValueAtResponsePath,
   inferFormatForOverrideValue,
 } from '@/lib/detect-date-fields'
+import { previewServedDateOverride } from '@/lib/date-override-preview'
 import { normalizeDateOverrideRow } from '@/lib/mock-overrides'
 
 interface DateOverridesEditorProps {
   dateOverrides: MockResponseDateOverride[]
   onChange: (next: MockResponseDateOverride[]) => void
   responseBody: unknown
+  /** Mockifyer's current date (`getCurrentDate`), used for the served-value preview. */
+  mockifyerNow: Date
   readOnly?: boolean
+}
+
+function DateOverrideServedPreview({
+  override,
+  original,
+  now,
+}: {
+  override: MockResponseDateOverride
+  original: unknown
+  now: Date
+}) {
+  const preview = previewServedDateOverride(override, original, now)
+  const showUnixHint =
+    preview.resolvedFormat === 'unix-ms' || preview.resolvedFormat === 'unix-s'
+
+  return (
+    <div className="rounded-md border border-sky-500/25 bg-sky-500/5 px-2.5 py-2">
+      <div className="text-[11px] font-medium text-muted-foreground">Will serve now</div>
+      <div className="break-all font-mono text-sm text-foreground">{preview.servedText}</div>
+      {showUnixHint ? (
+        <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{preview.instantIso}</div>
+      ) : null}
+      <div className="mt-1 text-[11px] leading-snug text-muted-foreground">
+        Mockifyer now {now.toISOString()}
+        {preview.offsetLabel === 'no offset' ? ' (no offset)' : ` + ${preview.offsetLabel}`}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -23,6 +55,7 @@ export default function DateOverridesEditor({
   dateOverrides,
   onChange,
   responseBody,
+  mockifyerNow,
   readOnly = false,
 }: DateOverridesEditorProps) {
   const dateFieldCandidates = detectDateLikeFields(responseBody)
@@ -165,6 +198,7 @@ export default function DateOverridesEditor({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              <OverrideRelatedData path={row.path} responseBody={responseBody} />
               <div className="flex flex-wrap gap-2">
                 <div className="space-y-1">
                   <span className="text-xs text-muted-foreground">Offset ms</span>
@@ -236,6 +270,11 @@ export default function DateOverridesEditor({
                   </select>
                 </div>
               </div>
+              <DateOverrideServedPreview
+                override={row}
+                original={getValueAtResponsePath(responseBody, row.path.trim())}
+                now={mockifyerNow}
+              />
             </div>
           ))}
         </div>
