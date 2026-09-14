@@ -149,20 +149,27 @@ function buildOverrideSummary(override: Record<string, unknown>): string {
   return pieces.join(' ');
 }
 
-function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: OverridePreview[] } {
+function getOverridePreview(mockData: any): {
+  hasOverrides: boolean;
+  preview: OverridePreview[];
+  count: number;
+} {
   const overrides = mockData?.responseDateOverrides;
   if (!Array.isArray(overrides) || overrides.length === 0) {
-    return { hasOverrides: false, preview: [] };
+    return { hasOverrides: false, preview: [], count: 0 };
   }
   const preview: OverridePreview[] = [];
+  let count = 0;
   for (const o of overrides) {
     if (!o || typeof o !== 'object') continue;
     const pathVal = (o as any).path;
     if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
-    preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
-    if (preview.length >= 3) break;
+    count += 1;
+    if (preview.length < 3) {
+      preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
+    }
   }
-  return { hasOverrides: preview.length > 0, preview };
+  return { hasOverrides: count > 0, preview, count };
 }
 
 function summarizeFieldOverrideValue(value: unknown): string {
@@ -200,9 +207,16 @@ function getFieldOverridePreview(mockData: any): {
     if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
     count += 1;
     if (preview.length < 3) {
+      const mode = (o as { mode?: unknown }).mode;
+      const summary =
+        mode === 'remove'
+          ? 'remove'
+          : mode === 'extend'
+            ? `extend ${summarizeFieldOverrideValue((o as { value?: unknown }).value)}`
+            : summarizeFieldOverrideValue((o as { value?: unknown }).value);
       preview.push({
         path: pathVal.trim(),
-        summary: summarizeFieldOverrideValue((o as { value?: unknown }).value),
+        summary,
       });
     }
   }
@@ -213,6 +227,7 @@ function getFieldOverridePreview(mockData: any): {
 function getMockOverrideListFields(mockData: any): {
   hasResponseDateOverrides: boolean;
   responseDateOverridesPreview: OverridePreview[];
+  responseDateOverridesCount: number;
   hasResponseFieldOverrides: boolean;
   responseFieldOverridesPreview: OverridePreview[];
   responseFieldOverridesCount: number;
@@ -222,6 +237,7 @@ function getMockOverrideListFields(mockData: any): {
   return {
     hasResponseDateOverrides: dateInfo.hasOverrides,
     responseDateOverridesPreview: dateInfo.preview,
+    responseDateOverridesCount: dateInfo.count,
     hasResponseFieldOverrides: fieldInfo.hasOverrides,
     responseFieldOverridesPreview: fieldInfo.preview,
     responseFieldOverridesCount: fieldInfo.count,

@@ -615,13 +615,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   mocks={allMocks}
                   loading={loading}
                   onRefresh={loadMocks}
-                  onOpenMock={(filename) => {
-                    const file = allMocks.find((m) => m.filename === filename)
-                    if (file) {
-                      void handleSelectMock(file)
-                    }
-                    navigate('/mocks')
-                  }}
                 />
               }
             />

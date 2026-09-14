@@ -11,7 +11,9 @@ import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from
 import { MockCard } from '@/components/MockCard'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch, SlidersHorizontal } from 'lucide-react'
+import { overridesPath } from '@/lib/dashboard-urls'
 
 interface MockListProps {
   mocks: MockFile[]
@@ -58,7 +60,6 @@ function MockListContent({
   const [groupBy, setGroupBy] = useState<'folders' | 'domains' | 'chains'>('folders')
   const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
-  const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
   const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
   const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(false)
@@ -324,39 +325,19 @@ function MockListContent({
 
       {!loading && overrideMocks.length > 0 && (
         <Card>
-          <CardContent className="p-4 space-y-3">
-            <button
-              type="button"
+          <CardContent className="p-4">
+            <Link
+              to={overridesPath(undefined, { scenario })}
               className="flex w-full items-center justify-between gap-3 text-left"
-              onClick={() => setOverridesCollapsed((c) => !c)}
-              title={overridesCollapsed ? 'Expand overrides' : 'Collapse overrides'}
             >
               <div className="flex items-center gap-2">
-                {overridesCollapsed ? (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
                 <div className="text-sm font-medium">
-                  Overrides {searchQuery.trim() ? '(matching search)' : ''}{' '}
-                  <span className="text-xs text-muted-foreground">({overrideMocks.length})</span>
+                  {overrideMocks.length} mock{overrideMocks.length === 1 ? '' : 's'} with overlays
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">Sorted by modified time</div>
-            </button>
-            {!overridesCollapsed && (
-              <div className="flex flex-col gap-2">
-                {overrideMocks.map((m) => (
-                  <MockCard
-                    key={`override:${m.filename}`}
-                    mock={m}
-                    selectedMock={selectedMock}
-                    onSelectMock={onSelectMock}
-                    showActions={false}
-                  />
-                ))}
-              </div>
-            )}
+              <div className="text-xs text-primary">Open Overrides →</div>
+            </Link>
           </CardContent>
         </Card>
       )}
@@ -520,6 +501,7 @@ function MockListContent({
                     selectedMock={selectedMock}
                     onSelectMock={onSelectMock}
                     showActions={false}
+                    scenario={scenario}
                   />
                 ))}
               </div>
@@ -592,6 +574,7 @@ function MockListContent({
             onDuplicate={scenarioLocked ? undefined : handleDuplicate}
             deleting={deleting}
             chainMaps={chainMaps}
+            scenario={scenario}
             domainTreeMode={
               groupBy === 'domains' && scenario
                 ? {

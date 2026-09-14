@@ -72,6 +72,10 @@ export function mockEditorPath(filename: string, extras?: QueryUpdates): string 
   return `/mock${buildSearch({ ...extras, file: filename })}`
 }
 
+export function overridesPath(filename?: string, extras?: QueryUpdates): string {
+  return `/overrides${buildSearch({ ...extras, file: filename })}`
+}
+
 export function networkPath(extras?: QueryUpdates): string {
   return `/network${buildSearch(extras ?? {})}`
 }

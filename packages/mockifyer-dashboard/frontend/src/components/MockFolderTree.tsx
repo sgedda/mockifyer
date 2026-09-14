@@ -117,6 +117,7 @@ interface MockFolderTreeProps {
   domainTreeMode?: DomainTreeModeProps
   /** For multi-service hop badges and indentation. */
   chainMaps?: MockChainMaps
+  scenario?: string
 }
 
 export function MockFolderTree({
@@ -129,6 +130,7 @@ export function MockFolderTree({
   deleting,
   domainTreeMode,
   chainMaps,
+  scenario,
 }: MockFolderTreeProps) {
   const folders = sortFolderEntries(node)
   const sortedFiles = [...node.files].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -145,6 +147,7 @@ export function MockFolderTree({
           onDuplicate={onDuplicate}
           deleting={deleting}
           chainMaps={chainMaps}
+          scenario={scenario}
         />
       ))}
       {folders.map(({ name, child }) => (
@@ -166,6 +169,7 @@ export function MockFolderTree({
             deleting={deleting}
             domainTreeMode={domainTreeMode}
             chainMaps={chainMaps}
+            scenario={scenario}
           />
         </FolderSection>
       ))}
