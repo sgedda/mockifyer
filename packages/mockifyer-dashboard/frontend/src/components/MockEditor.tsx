@@ -25,6 +25,10 @@ import {
   getValueAtResponsePath,
   inferFormatForOverrideValue,
 } from '@/lib/detect-date-fields'
+import {
+  formatEffectiveDateOverrideOffset,
+  looksLikeRecordedDateMinusNowSnapshot,
+} from '@/lib/date-override-offset'
 
 interface MockEditorProps {
   mock: MockData
@@ -159,6 +163,18 @@ function normalizeOverrideRow(o: MockResponseDateOverride): MockResponseDateOver
     offsetMinutes: o.offsetMinutes ?? 0,
     format: o.format,
   }
+}
+
+function patchNumericOverrideField(
+  overrides: MockResponseDateOverride[],
+  index: number,
+  key: 'offsetMs' | 'offsetDays' | 'offsetHours' | 'offsetMinutes',
+  raw: string
+): MockResponseDateOverride[] {
+  const parsed = raw === '' ? 0 : Number(raw)
+  const next = [...overrides]
+  next[index] = { ...next[index], [key]: Number.isNaN(parsed) ? 0 : parsed }
+  return next
 }
 
 /** Persist only non-zero offsets and optional format (matches mockifyer-core). */
@@ -837,6 +853,10 @@ export default function MockEditor({
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">expiresAt</code> or{' '}
                   <code className="rounded bg-muted px-1 font-mono text-[11px]">items.0.createdAt</code>
                   ). Applied when serving the mock or when returning a live/refreshed response.
+                  Days, hours, minutes, and extra ms are <strong>added together</strong> — they are not
+                  a breakdown of a single millisecond value. For eight days from now, set Days to{' '}
+                  <code className="rounded bg-muted px-1 font-mono text-[11px]">8</code> and leave the
+                  other offset fields at 0.
                 </p>
               </div>
 
@@ -975,33 +995,17 @@ export default function MockEditor({
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Offset ms</span>
-                          <Input
-                            type="number"
-                            className="h-9 w-[88px] text-xs"
-                            value={row.offsetMs ?? 0}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetMs: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1">
                           <span className="text-xs text-muted-foreground">Days</span>
                           <Input
                             type="number"
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetDays ?? 0}
                             readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetDays: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
+                            onChange={(e) =>
+                              setDateOverrides(
+                                patchNumericOverrideField(dateOverrides, i, 'offsetDays', e.target.value)
+                              )
+                            }
                           />
                         </div>
                         <div className="space-y-1">
@@ -1011,12 +1015,11 @@ export default function MockEditor({
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetHours ?? 0}
                             readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetHours: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
+                            onChange={(e) =>
+                              setDateOverrides(
+                                patchNumericOverrideField(dateOverrides, i, 'offsetHours', e.target.value)
+                              )
+                            }
                           />
                         </div>
                         <div className="space-y-1">
@@ -1026,12 +1029,25 @@ export default function MockEditor({
                             className="h-9 w-[72px] text-xs"
                             value={row.offsetMinutes ?? 0}
                             readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetMinutes: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
+                            onChange={(e) =>
+                              setDateOverrides(
+                                patchNumericOverrideField(dateOverrides, i, 'offsetMinutes', e.target.value)
+                              )
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Extra ms</span>
+                          <Input
+                            type="number"
+                            className="h-9 w-[88px] text-xs"
+                            value={row.offsetMs ?? 0}
+                            readOnly={readOnly}
+                            onChange={(e) =>
+                              setDateOverrides(
+                                patchNumericOverrideField(dateOverrides, i, 'offsetMs', e.target.value)
+                              )
+                            }
                           />
                         </div>
                         <div className="space-y-1 min-w-[140px]">
@@ -1057,6 +1073,18 @@ export default function MockEditor({
                           </select>
                         </div>
                       </div>
+                      <p className="text-[11px] font-mono text-muted-foreground">
+                        Effective: {formatEffectiveDateOverrideOffset(row)}
+                      </p>
+                      {looksLikeRecordedDateMinusNowSnapshot(row) && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-500 leading-relaxed">
+                          This looks like <code className="rounded bg-muted px-1 font-mono">recordedDate − now</code>{' '}
+                          split into days/hours/minutes plus leftover ms — not a stable “N days from now”
+                          offset. The dashboard is showing the stored fields as-is. For eight days from now,
+                          save <code className="rounded bg-muted px-1 font-mono">{`{ offsetDays: 8 }`}</code> and
+                          leave extra ms/hours/minutes at 0.
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
