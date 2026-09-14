@@ -459,13 +459,7 @@ export function formatAtlasStreamAnalysisRich(
   return lines
     .map((line, i) => {
       if (i === 0) {
-        return line
-          .replace(/errors=(\d+)/, (_, n) =>
-            Number(n) > 0 ? theme.err(`errors=${n}`) : theme.ok(`errors=${n}`),
-          )
-          .replace(/slow\([^)]+\)=(\d+)/, (m, n) =>
-            Number(n) > 0 ? theme.warn(m) : theme.muted(m),
-          );
+        return colorizeAtlasAnalysisSummaryLine(line, theme);
       }
       if (line.startsWith("slowest:") || line.startsWith("recent errors:")) {
         return theme.bold(line);
@@ -473,6 +467,58 @@ export function formatAtlasStreamAnalysisRich(
       return theme.muted(line.startsWith("  ") ? line : line);
     })
     .join("\n");
+}
+
+function colorizeAtlasAnalysisSummaryLine(
+  line: string,
+  theme: AtlasStreamColorTheme,
+): string {
+  const errorsPrefix = "errors=";
+  const errorsIndex = line.indexOf(errorsPrefix);
+  let nextLine = line;
+  if (errorsIndex >= 0) {
+    const valueStart = errorsIndex + errorsPrefix.length;
+    let valueEnd = valueStart;
+    while (valueEnd < nextLine.length && isAsciiDigit(nextLine.charCodeAt(valueEnd))) {
+      valueEnd += 1;
+    }
+    if (valueEnd > valueStart) {
+      const token = nextLine.slice(errorsIndex, valueEnd);
+      const colorized = Number(nextLine.slice(valueStart, valueEnd)) > 0
+        ? theme.err(token)
+        : theme.ok(token);
+      nextLine = `${nextLine.slice(0, errorsIndex)}${colorized}${nextLine.slice(valueEnd)}`;
+    }
+  }
+
+  const slowIndex = nextLine.indexOf("slow(");
+  if (slowIndex < 0) {
+    return nextLine;
+  }
+
+  const markerEnd = nextLine.indexOf(")=", slowIndex + 5);
+  if (markerEnd < 0) {
+    return nextLine;
+  }
+
+  const valueStart = markerEnd + 2;
+  let valueEnd = valueStart;
+  while (valueEnd < nextLine.length && isAsciiDigit(nextLine.charCodeAt(valueEnd))) {
+    valueEnd += 1;
+  }
+  if (valueEnd === valueStart) {
+    return nextLine;
+  }
+
+  const token = nextLine.slice(slowIndex, valueEnd);
+  const colorized = Number(nextLine.slice(valueStart, valueEnd)) > 0
+    ? theme.warn(token)
+    : theme.muted(token);
+  return `${nextLine.slice(0, slowIndex)}${colorized}${nextLine.slice(valueEnd)}`;
+}
+
+function isAsciiDigit(codePoint: number): boolean {
+  return codePoint >= 48 && codePoint <= 57;
 }
 
 export interface AtlasStreamViewOptions {
@@ -1072,7 +1118,9 @@ export class AtlasStreamHitTracker {
     const lineHits =
       paint.lineHits ??
       paint.lines.map((): AtlasStreamLineHit => ({ kind: "none" }));
-    for (let i = 0; i < paint.lines.length; i++) {
+    const maxIncomingLines = Math.max(200, this.maxLines * 4);
+    const lineCount = Math.min(paint.lines.length, maxIncomingLines);
+    for (let i = 0; i < lineCount; i++) {
       const hit = lineHits[i] ?? { kind: "none" };
       const line = truncateAtlasStreamLine(paint.lines[i] ?? "", cols);
       if (!preserveHistory) {

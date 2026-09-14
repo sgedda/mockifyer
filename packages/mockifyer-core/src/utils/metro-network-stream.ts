@@ -10,6 +10,14 @@ export const DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS = 2_000;
 export const DEFAULT_METRO_NETWORK_STREAM_SLOW_MS = 3_000;
 export const DEFAULT_METRO_NETWORK_PREVIEW_BYTES = 512;
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 export type MetroNetworkStreamListener = (event: NetworkEvent) => void;
 
 export interface MetroNetworkStreamAnalysis {
@@ -368,13 +376,13 @@ export function resolveMetroNetworkStreamBaseUrl(options?: {
     if (raw === "on" || raw === "true" || raw === "1" || raw === "yes") {
       const explicitUrl = process.env.MOCKIFYER_METRO_URL?.trim();
       if (explicitUrl) {
-        return explicitUrl.replace(/\/+$/, "");
+        return trimTrailingSlashes(explicitUrl);
       }
       return `http://localhost:${resolveMetroNetworkStreamPort(options?.metroPort)}`;
     }
     const explicitUrl = process.env.MOCKIFYER_METRO_URL?.trim();
     if (explicitUrl) {
-      return explicitUrl.replace(/\/+$/, "");
+      return trimTrailingSlashes(explicitUrl);
     }
     if (process.env.METRO_PORT?.trim()) {
       return `http://localhost:${resolveMetroNetworkStreamPort(options?.metroPort)}`;
@@ -401,5 +409,5 @@ function isLikelyReactNativeRuntime(): boolean {
 }
 
 export function joinMetroNetworkEventsUrl(metroBaseUrl: string): string {
-  return `${metroBaseUrl.replace(/\/+$/, "")}/mockifyer-network-events`;
+  return `${trimTrailingSlashes(metroBaseUrl)}/mockifyer-network-events`;
 }

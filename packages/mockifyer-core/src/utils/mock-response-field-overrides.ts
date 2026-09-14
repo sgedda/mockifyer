@@ -63,8 +63,9 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
     parent.splice(last, 1);
     return;
   }
+  if (typeof last !== 'string' || !Object.prototype.hasOwnProperty.call(parent, last)) return;
 
-  delete (parent as Record<string | number, unknown>)[last as string | number];
+  delete (parent as Record<string, unknown>)[last];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
