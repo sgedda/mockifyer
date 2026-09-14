@@ -24,10 +24,12 @@ function getContainerChild(
     if (typeof key !== 'number' || !Number.isInteger(key) || key < 0) return undefined;
     return container[key];
   }
-  if (container === null || typeof container !== 'object' || typeof key !== 'string') {
+  if (container === null || typeof container !== 'object') {
     return undefined;
   }
-  return getObjectChild(container as Record<string, unknown>, key);
+  const stringKey = typeof key === 'number' ? String(key) : key;
+  if (typeof stringKey !== 'string') return undefined;
+  return getObjectChild(container as Record<string, unknown>, stringKey);
 }
 
 function setContainerChild(container: unknown, key: string | number, value: unknown): boolean {
@@ -36,10 +38,12 @@ function setContainerChild(container: unknown, key: string | number, value: unkn
     container[key] = value;
     return true;
   }
-  if (container === null || typeof container !== 'object' || typeof key !== 'string') {
+  if (container === null || typeof container !== 'object') {
     return false;
   }
-  (container as Record<string, unknown>)[key] = value;
+  const stringKey = typeof key === 'number' ? String(key) : key;
+  if (typeof stringKey !== 'string') return false;
+  (container as Record<string, unknown>)[stringKey] = value;
   return true;
 }
 
@@ -99,15 +103,15 @@ export function removeAtPath(root: unknown, segments: (string | number)[]): void
     parent.splice(last, 1);
     return;
   }
-  if (
-    !isPlainObject(parent) ||
-    typeof last !== 'string' ||
-    !Object.prototype.hasOwnProperty.call(parent, last)
-  ) {
+  if (!isPlainObject(parent)) {
+    return;
+  }
+  const stringLast = typeof last === 'number' ? String(last) : last;
+  if (typeof stringLast !== 'string' || !Object.prototype.hasOwnProperty.call(parent, stringLast)) {
     return;
   }
 
-  delete (parent as Record<string, unknown>)[last];
+  delete (parent as Record<string, unknown>)[stringLast];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

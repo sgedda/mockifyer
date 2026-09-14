@@ -564,13 +564,18 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    const clientResponse = mock
-      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
-          filename: mockFilename,
-          scenarioPath,
-          overrideGroupId,
-        })
-      : response;
+    let clientResponse = response;
+    if (mock) {
+      const laneOverrideSetId =
+        (clientId ? await store.getLaneOverrideSetId(clientId) : null) ?? DEFAULT_OVERRIDE_SET_ID;
+      const overrideSetDocument = await store.getOverrideSet(resolvedScenarioName, laneOverrideSetId);
+      const mockWithOverrideSet = applyOverrideSetDocumentToMock(mock as MockData, overrideSetDocument);
+      clientResponse = buildClientResponseFromLiveCapture(mockWithOverrideSet, response, getNow, {
+        filename: mockFilename,
+        scenarioPath,
+        overrideGroupId,
+      });
+    }
 
     let storedMockForClient: MockData | null = null;
     if (effectiveRecord === true && shouldWriteNewProxyRecording(mock as MockData | null)) {

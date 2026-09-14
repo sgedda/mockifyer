@@ -48,9 +48,20 @@ export async function writeMockOverridesToOverrideSet(
         };
 
   if (params.store) {
-    const current = await params.store.getOverrideSet(params.scenario, setId);
-    const next = upsertOverrideSetEntry(current, hash, entry);
-    await params.store.putOverrideSet(params.scenario, next);
+    let attempts = 0;
+    const maxAttempts = 5;
+    while (attempts < maxAttempts) {
+      attempts++;
+      const current = await params.store.getOverrideSet(params.scenario, setId);
+      const currentUpdatedAt = current.updatedAt;
+      const latestBeforeWrite = await params.store.getOverrideSet(params.scenario, setId);
+      if (latestBeforeWrite.updatedAt !== currentUpdatedAt) {
+        continue;
+      }
+      const next = upsertOverrideSetEntry(latestBeforeWrite, hash, entry);
+      await params.store.putOverrideSet(params.scenario, next);
+      break;
+    }
   } else {
     const current = readOverrideSetFromFs(params.mockDataPath, params.scenario, setId);
     const next = upsertOverrideSetEntry(current, hash, entry);

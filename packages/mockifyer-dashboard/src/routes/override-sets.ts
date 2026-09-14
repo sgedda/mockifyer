@@ -94,12 +94,29 @@ router.put('/:setId', async (req: Request, res: Response) => {
     const setId = normalizeOverrideSetId(req.params.setId);
     const { mockDataPath, config } = getDashboardContext(req);
     const body = (req.body ?? {}) as Record<string, unknown>;
+    
+    const getExisting = async (): Promise<OverrideSetDocument | null> => {
+      if (isCentralizedDashboardProvider(config.provider)) {
+        const store = createDashboardMockStore(config, mockDataPath);
+        try {
+          return await store.getOverrideSet(scenario, setId);
+        } finally {
+          await store.close().catch(() => undefined);
+        }
+      }
+      return readOverrideSetFromFs(mockDataPath, scenario, setId);
+    };
+
+    const existing = await getExisting();
+    const hasExistingEntries = existing && existing.entries && Object.keys(existing.entries).length > 0;
+    const bodyHasEntries = body.entries && typeof body.entries === 'object' && Object.keys(body.entries).length > 0;
+    
     const document = parseOverrideSetDocument(
       {
         id: setId,
         label: body.label,
         updatedAt: body.updatedAt,
-        entries: body.entries ?? {},
+        entries: bodyHasEntries ? body.entries : hasExistingEntries ? existing.entries : {},
       },
       setId
     );
@@ -163,16 +180,31 @@ router.put('/:setId/entries/:hash', async (req: Request, res: Response) => {
       return writeOverrideSetToFs(mockDataPath, scenario, document);
     };
 
-    const current = await load();
-    const entry: OverrideSetEntry | null = clear
-      ? null
-      : {
-          responseFieldOverrides: body.responseFieldOverrides as OverrideSetEntry['responseFieldOverrides'],
-          responseDateOverrides: body.responseDateOverrides as OverrideSetEntry['responseDateOverrides'],
-          filename: typeof body.filename === 'string' ? body.filename : undefined,
-        };
-    const next = upsertOverrideSetEntry(current, hash, entry);
-    const saved = await save(next);
+    let attempts = 0;
+    const maxAttempts = 5;
+    let saved: OverrideSetDocument | null = null;
+    while (attempts < maxAttempts) {
+      attempts++;
+      const current = await load();
+      const currentUpdatedAt = current.updatedAt;
+      const latestBeforeWrite = await load();
+      if (latestBeforeWrite.updatedAt !== currentUpdatedAt) {
+        continue;
+      }
+      const entry: OverrideSetEntry | null = clear
+        ? null
+        : {
+            responseFieldOverrides: body.responseFieldOverrides as OverrideSetEntry['responseFieldOverrides'],
+            responseDateOverrides: body.responseDateOverrides as OverrideSetEntry['responseDateOverrides'],
+            filename: typeof body.filename === 'string' ? body.filename : undefined,
+          };
+      const next = upsertOverrideSetEntry(latestBeforeWrite, hash, entry);
+      saved = await save(next);
+      break;
+    }
+    if (!saved) {
+      return res.status(409).json({ error: 'Failed to update after multiple retries due to concurrent modifications' });
+    }
     return res.json({ success: true, scenario, document: saved, hash });
   } catch (error: unknown) {
     const status = (error as { status?: number })?.status ?? 500;
