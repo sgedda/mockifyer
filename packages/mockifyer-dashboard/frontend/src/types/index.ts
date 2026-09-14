@@ -1,6 +1,9 @@
+export type MockResponseFieldOverrideMode = 'replace' | 'extend' | 'remove'
+
 export interface MockResponseFieldOverride {
   path: string
-  value: unknown
+  value?: unknown
+  mode?: MockResponseFieldOverrideMode
 }
 
 /** Paths are relative to `response.data` (see Mockifyer core). */
@@ -51,6 +54,7 @@ export interface MockFile {
     summary: string
   }>
   responseFieldOverridesCount?: number
+  responseDateOverridesCount?: number
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
   replayMode?: MockReplayMode

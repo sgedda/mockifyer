@@ -196,6 +196,14 @@ export async function getMockFieldOverrides(
   return response.json()
 }
 
+export async function setMockDateOverrides(
+  filename: string,
+  responseDateOverrides: MockResponseDateOverride[] | null,
+  scenario?: string
+): Promise<void> {
+  await putMockUpdate(filename, { responseDateOverrides }, scenario)
+}
+
 export async function setMockFieldOverrides(
   filename: string,
   responseFieldOverrides: MockResponseFieldOverride[] | null,

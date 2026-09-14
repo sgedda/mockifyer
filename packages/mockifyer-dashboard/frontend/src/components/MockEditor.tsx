@@ -10,21 +10,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
 import { updateMock, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
-import type { MockData, MockFile, MockReplayMode, MockResponseDateOverride } from '@/types'
+import type { MockData, MockFile, MockReplayMode } from '@/types'
 import {
   buildMockChainMaps,
   buildMockServiceChainsForDisplay,
   getMockChain,
 } from '@/lib/mock-correlation-chains'
 import { MockCallChainPanel } from '@/components/MockCallChainPanel'
-import { Input } from '@/components/ui/input'
-import { X, Save, Code, Edit, Plus, Copy, Terminal, Trash2, CalendarSearch, AlignLeft, RefreshCw } from 'lucide-react'
+import { X, Save, Code, Edit, Plus, Copy, Terminal, AlignLeft, RefreshCw } from 'lucide-react'
 import { CopyableText } from '@/components/CopyableText'
-import {
-  detectDateLikeFields,
-  getValueAtResponsePath,
-  inferFormatForOverrideValue,
-} from '@/lib/detect-date-fields'
+import MockOverridesLink from '@/components/MockOverridesLink'
+import { countStoredOverrides } from '@/lib/mock-overrides'
 
 interface MockEditorProps {
   mock: MockData
@@ -55,7 +51,7 @@ const REPLAY_MODE_OPTIONS: Array<{ value: MockReplayMode; label: string; descrip
   {
     value: 'stored',
     label: 'Use saved mock',
-    description: 'Serve the stored response body (date overrides still apply).',
+    description: 'Serve the stored response body (field and date overrides still apply).',
   },
   {
     value: 'refresh-next',
@@ -149,35 +145,6 @@ function estimateResponsePayloadSize(data: unknown): number {
   }
 }
 
-function normalizeOverrideRow(o: MockResponseDateOverride): MockResponseDateOverride {
-  return {
-    path: o.path ?? '',
-    base: o.base,
-    offsetMs: o.offsetMs ?? 0,
-    offsetDays: o.offsetDays ?? 0,
-    offsetHours: o.offsetHours ?? 0,
-    offsetMinutes: o.offsetMinutes ?? 0,
-    format: o.format,
-  }
-}
-
-/** Persist only non-zero offsets and optional format (matches mockifyer-core). */
-function sanitizeOverridesForSave(overrides: MockResponseDateOverride[]): MockResponseDateOverride[] {
-  return overrides
-    .filter((o) => o.path?.trim())
-    .map((o) => {
-      const path = o.path.trim()
-      const out: MockResponseDateOverride = { path }
-      if (o.base && o.base !== 'now') out.base = o.base
-      if (o.offsetMs !== undefined && o.offsetMs !== 0) out.offsetMs = o.offsetMs
-      if (o.offsetDays !== undefined && o.offsetDays !== 0) out.offsetDays = o.offsetDays
-      if (o.offsetHours !== undefined && o.offsetHours !== 0) out.offsetHours = o.offsetHours
-      if (o.offsetMinutes !== undefined && o.offsetMinutes !== 0) out.offsetMinutes = o.offsetMinutes
-      if (o.format) out.format = o.format
-      return out
-    })
-}
-
 export default function MockEditor({
   mock,
   scenario,
@@ -199,27 +166,10 @@ export default function MockEditor({
   )
   const [saving, setSaving] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
-  const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
   const [replayMode, setReplayMode] = useState<MockReplayMode>('stored')
   const [refreshingLive, setRefreshingLive] = useState(false)
   const { toast } = useToast()
-
-  /** Same JSON the user is editing (form vs raw JSON tab). */
-  const responseBodyForDetection = useMemo(() => {
-    if (editMode === 'json') {
-      try {
-        return JSON.parse(responseData) as unknown
-      } catch {
-        return null
-      }
-    }
-    return responseObject
-  }, [editMode, responseData, responseObject])
-
-  const dateFieldCandidates = useMemo(
-    () => detectDateLikeFields(responseBodyForDetection),
-    [responseBodyForDetection]
-  )
+  const overrideCount = countStoredOverrides(mock)
 
   const serviceChain = useMemo(() => {
     if (!allMocks.length) return []
@@ -272,7 +222,6 @@ export default function MockEditor({
             ? parsedData
             : JSON.stringify(parsedData)
     )
-    setDateOverrides((mock.data.responseDateOverrides ?? []).map(normalizeOverrideRow))
     setReplayMode(resolveReplayModeFromMock(mock))
   }, [mock])
 
@@ -352,7 +301,7 @@ export default function MockEditor({
       await updateMock(
         mock.filename,
         dataToSave,
-        sanitizeOverridesForSave(dateOverrides),
+        undefined,
         replayMode,
         scenario
       )
@@ -591,7 +540,7 @@ export default function MockEditor({
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 The stored response below is the last captured snapshot. Refresh modes update it from upstream;
-                date overrides apply on top when serving live or saved responses.
+                field and date overrides apply on top when serving live or saved responses.
               </p>
               <div className="space-y-2">
                 {REPLAY_MODE_OPTIONS.map((option) => (
@@ -829,257 +778,23 @@ export default function MockEditor({
               )}
             </div>
 
-            <div className="space-y-3 rounded-md border border-border bg-muted/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/20 p-4">
               <div className="space-y-1">
-                <div className="text-sm font-medium">Response date overrides</div>
+                <div className="text-sm font-medium">Overrides</div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Paths are relative to the response JSON body (e.g.{' '}
-                  <code className="rounded bg-muted px-1 font-mono text-[11px]">expiresAt</code> or{' '}
-                  <code className="rounded bg-muted px-1 font-mono text-[11px]">items.0.createdAt</code>
-                  ). Applied when serving the mock or when returning a live/refreshed response.
+                  Field, date, and remove overlays live on the Overrides page. They apply at serve
+                  time and do not rewrite this stored JSON.
                 </p>
               </div>
-
-              {dateFieldCandidates.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <CalendarSearch className="h-3.5 w-3.5 shrink-0" />
-                    Date-like fields detected in response body
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    ISO strings and Unix timestamps are scanned. Click a row to add an override (or use
-                    &quot;Add date override&quot;).
-                  </p>
-                  <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border border-border bg-background p-2">
-                    {dateFieldCandidates.map((c) => {
-                      const already = dateOverrides.some(
-                        (o) => o.path.trim() === c.path
-                      )
-                      const currentVal = getValueAtResponsePath(
-                        responseBodyForDetection,
-                        c.path
-                      )
-                      return (
-                        <div
-                          key={c.path}
-                          className="flex flex-wrap items-center justify-between gap-2 rounded-sm px-1 py-1 text-xs hover:bg-muted/60"
-                        >
-                          <div className="min-w-0 flex-1 font-mono text-[11px] leading-snug">
-                            <span className="text-foreground">{c.path}</span>
-                            {c.preview ? (
-                              <span className="ml-2 text-muted-foreground">
-                                → {c.preview}
-                                {c.suggestedFormat ? (
-                                  <span className="ml-1 rounded bg-muted px-1 text-[10px]">
-                                    {c.suggestedFormat}
-                                  </span>
-                                ) : null}
-                              </span>
-                            ) : null}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="h-7 shrink-0 text-[11px]"
-                            disabled={already || readOnly}
-                            title={
-                              already
-                                ? 'Already in overrides below'
-                                : 'Add this path as a date override'
-                            }
-                            onClick={() => {
-                              if (already) return
-                              const fmt =
-                                inferFormatForOverrideValue(currentVal) ?? c.suggestedFormat
-                              setDateOverrides([
-                                ...dateOverrides,
-                                normalizeOverrideRow({
-                                  path: c.path,
-                                  base: 'now',
-                                  ...(fmt ? { format: fmt } : {}),
-                                }),
-                              ])
-                            }}
-                          >
-                            {already ? 'Added' : 'Add'}
-                          </Button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {dateFieldCandidates.length === 0 &&
-                responseBodyForDetection !== null &&
-                typeof responseBodyForDetection === 'object' && (
-                  <p className="text-[11px] text-muted-foreground">
-                    No date-like string or timestamp fields detected in the current response body. You can
-                    still add paths manually.
-                  </p>
-                )}
-
-              {dateOverrides.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No overrides — stored values are returned as-is.</p>
-              ) : (
-                <div className="space-y-3">
-                  {dateOverrides.map((row, i) => (
-                    <div key={i} className="space-y-2 rounded-md border border-border bg-background p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <input
-                            type="checkbox"
-                            checked={(row.base ?? 'now') === 'now'}
-                            disabled={readOnly}
-                            onChange={(e) => {
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], base: e.target.checked ? 'now' : 'response' }
-                              setDateOverrides(next)
-                            }}
-                          />
-                          Offset from now
-                        </label>
-                        {(row.base ?? 'now') !== 'now' && (
-                          <span className="text-[11px] text-muted-foreground">
-                            Offsetting from existing response value
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <span className="text-xs text-muted-foreground">Path (from response body root)</span>
-                          <Input
-                            className="font-mono text-xs h-9"
-                            placeholder="e.g. expiresAt or data.items.0.createdAt"
-                            value={row.path}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], path: e.target.value }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 shrink-0 text-destructive hover:text-destructive sm:mt-5"
-                          title="Remove override"
-                          disabled={readOnly}
-                          onClick={() => setDateOverrides(dateOverrides.filter((_, j) => j !== i))}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Offset ms</span>
-                          <Input
-                            type="number"
-                            className="h-9 w-[88px] text-xs"
-                            value={row.offsetMs ?? 0}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetMs: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Days</span>
-                          <Input
-                            type="number"
-                            className="h-9 w-[72px] text-xs"
-                            value={row.offsetDays ?? 0}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetDays: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Hours</span>
-                          <Input
-                            type="number"
-                            className="h-9 w-[72px] text-xs"
-                            value={row.offsetHours ?? 0}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetHours: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <span className="text-xs text-muted-foreground">Minutes</span>
-                          <Input
-                            type="number"
-                            className="h-9 w-[72px] text-xs"
-                            value={row.offsetMinutes ?? 0}
-                            readOnly={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value === '' ? 0 : Number(e.target.value)
-                              const next = [...dateOverrides]
-                              next[i] = { ...next[i], offsetMinutes: Number.isNaN(v) ? 0 : v }
-                              setDateOverrides(next)
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-1 min-w-[140px]">
-                          <span className="text-xs text-muted-foreground">Format</span>
-                          <select
-                            className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            value={row.format ?? ''}
-                            disabled={readOnly}
-                            onChange={(e) => {
-                              const v = e.target.value as MockResponseDateOverride['format'] | ''
-                              const next = [...dateOverrides]
-                              next[i] = {
-                                ...next[i],
-                                format: v === '' ? undefined : v,
-                              }
-                              setDateOverrides(next)
-                            }}
-                          >
-                            <option value="">Auto</option>
-                            <option value="iso">ISO string</option>
-                            <option value="unix-ms">Unix ms</option>
-                            <option value="unix-s">Unix s</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                disabled={readOnly}
-                onClick={() =>
-                  setDateOverrides([
-                    ...dateOverrides,
-                    normalizeOverrideRow({ path: '', base: 'now' }),
-                  ])
-                }
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Add date override
-              </Button>
+              <MockOverridesLink
+                filename={mock.filename}
+                count={overrideCount}
+                scenario={scenario}
+                showWhenEmpty
+              />
             </div>
 
-            {mock.data.response.headers && Object.keys(mock.data.response.headers).length > 0 && (
+                        {mock.data.response.headers && Object.keys(mock.data.response.headers).length > 0 && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">Response Headers</div>
                 <pre className="text-xs bg-muted p-3 rounded overflow-auto">

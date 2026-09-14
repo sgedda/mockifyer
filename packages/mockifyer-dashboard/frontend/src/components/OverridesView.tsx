@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ExternalLink, Plus, RefreshCw } from 'lucide-react'
 import {
   deleteOverrideGroup,
+  getDateConfig,
   getMock,
   getMockFieldOverrides,
   getOverrideGroup,
@@ -9,55 +11,40 @@ import {
   patchOverrideGroupEntry,
   putOverrideGroup,
   setActiveOverrideGroup,
+  setMockDateOverrides,
   setMockFieldOverrides,
   type OverrideGroup,
   type OverrideGroupSummary,
 } from '@/lib/api'
-import type { MockFile, MockResponseFieldOverride } from '@/types'
+import type { MockFile, MockResponseDateOverride } from '@/types'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
+import DateOverridesEditor from '@/components/DateOverridesEditor'
+import FieldOverridesEditor from '@/components/FieldOverridesEditor'
+import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
+import {
+  fieldOverridesToRows,
+  rowsToFieldOverrides,
+  type FieldOverrideRow,
+} from '@/lib/field-overrides'
+import {
+  countListOverrides,
+  normalizeDateOverrideRow,
+  sanitizeDateOverridesForSave,
+} from '@/lib/mock-overrides'
 
 interface OverridesViewProps {
   scenario: string
   mocks: MockFile[]
   loading?: boolean
   onRefresh?: () => void | Promise<void>
-  /** Open full mock editor (dates live there today). */
-  onOpenMock?: (filename: string) => void
-}
-
-interface FieldOverrideDraft {
-  path: string
-  valueText: string
 }
 
 /** Sentinel edit target: mock-level overlays stored on the mock file. */
 const EDIT_MOCK_LEVEL = '__mock_level__'
-
-function toDraftRows(overrides: MockResponseFieldOverride[]): FieldOverrideDraft[] {
-  return overrides.map((row) => ({
-    path: row.path,
-    valueText: JSON.stringify(row.value, null, 2),
-  }))
-}
-
-function parseDraftRows(rows: FieldOverrideDraft[]): MockResponseFieldOverride[] {
-  return rows.map((row, index) => {
-    const path = row.path.trim()
-    if (!path) {
-      throw new Error(`Row ${index + 1}: path is required`)
-    }
-    try {
-      return { path, value: JSON.parse(row.valueText) as unknown }
-    } catch {
-      throw new Error(`Row ${index + 1} (${path}): value must be valid JSON`)
-    }
-  })
-}
 
 function slugifyGroupId(label: string): string {
   const slug = label
@@ -77,17 +64,19 @@ export default function OverridesView({
   mocks,
   loading,
   onRefresh,
-  onOpenMock,
 }: OverridesViewProps) {
   const { toast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [filter, setFilter] = useState('')
-  const [selectedFilename, setSelectedFilename] = useState<string | null>(null)
-  const [drafts, setDrafts] = useState<FieldOverrideDraft[]>([])
+  const [selectedFilename, setSelectedFilename] = useState<string | null>(
+    () => searchParams.get(DASHBOARD_Q.file)
+  )
+  const [drafts, setDrafts] = useState<FieldOverrideRow[]>([])
+  const [dateOverrides, setDateOverrides] = useState<MockResponseDateOverride[]>([])
+  const [responseBody, setResponseBody] = useState<unknown>(null)
+  const [mockifyerNow, setMockifyerNow] = useState(() => new Date())
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [datePreview, setDatePreview] = useState<
-    Array<{ path: string; summary?: string }>
-  >([])
 
   const [groups, setGroups] = useState<OverrideGroupSummary[]>([])
   const [currentGroup, setCurrentGroup] = useState<string | null>(null)
@@ -127,6 +116,22 @@ export default function OverridesView({
   }, [loadGroups, toast])
 
   useEffect(() => {
+    let cancelled = false
+    void getDateConfig(scenario)
+      .then((config) => {
+        if (cancelled) return
+        const parsed = new Date(config.currentDate)
+        setMockifyerNow(Number.isNaN(parsed.getTime()) ? new Date() : parsed)
+      })
+      .catch(() => {
+        if (!cancelled) setMockifyerNow(new Date())
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [scenario])
+
+  useEffect(() => {
     if (editTarget === EDIT_MOCK_LEVEL) {
       setEditGroup(null)
       return
@@ -144,21 +149,63 @@ export default function OverridesView({
   }, [editTarget, scenario, toast])
 
   const editingGroup = editTarget !== EDIT_MOCK_LEVEL
+  const urlFilename = searchParams.get(DASHBOARD_Q.file)
+
+  const selectFilename = useCallback(
+    (filename: string | null) => {
+      setSelectedFilename(filename)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          if (filename) next.set(DASHBOARD_Q.file, filename)
+          else next.delete(DASHBOARD_Q.file)
+          return next
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
+  useEffect(() => {
+    if (urlFilename && urlFilename !== selectedFilename) {
+      setSelectedFilename(urlFilename)
+    }
+  }, [urlFilename, selectedFilename])
 
   const listItems = useMemo(() => {
     const q = filter.trim().toLowerCase()
+    const focused = urlFilename
+
+    function toItem(mock: MockFile) {
+      return {
+        filename: mock.filename,
+        method: mock.method,
+        endpoint: mock.endpoint,
+        fieldCount: mock.responseFieldOverridesCount ?? 0,
+        dateCount: mock.responseDateOverridesCount ?? 0,
+        hasDates: mock.hasResponseDateOverrides === true,
+        preview: (mock.responseFieldOverridesPreview ?? []).map((p) => p.path),
+        overrideCount: countListOverrides(mock),
+      }
+    }
+
     if (editingGroup && editGroup) {
       const byName = new Map(mocks.map((m) => [m.filename, m]))
       return editGroup.entries
         .map((entry) => {
           const mock = byName.get(entry.filename)
+          const fieldCount = entry.responseFieldOverrides?.length ?? 0
+          const dateCount = entry.responseDateOverrides?.length ?? 0
           return {
             filename: entry.filename,
             method: mock?.method,
             endpoint: mock?.endpoint,
-            fieldCount: entry.responseFieldOverrides?.length ?? 0,
-            hasDates: (entry.responseDateOverrides?.length ?? 0) > 0,
+            fieldCount,
+            dateCount,
+            hasDates: dateCount > 0,
             preview: (entry.responseFieldOverrides ?? []).slice(0, 3).map((p) => p.path),
+            overrideCount: fieldCount + dateCount,
           }
         })
         .filter((item) => {
@@ -172,11 +219,16 @@ export default function OverridesView({
         .sort((a, b) => a.filename.localeCompare(b.filename))
     }
 
-    return mocks
-      .filter(
-        (m) =>
-          m.hasResponseFieldOverrides === true || m.hasResponseDateOverrides === true
-      )
+    const withOverrides = mocks.filter(
+      (m) => m.hasResponseFieldOverrides === true || m.hasResponseDateOverrides === true
+    )
+    const focusedMock = focused ? mocks.find((m) => m.filename === focused) : undefined
+    const source =
+      focusedMock && !withOverrides.some((m) => m.filename === focused)
+        ? [focusedMock, ...withOverrides]
+        : withOverrides
+
+    return source
       .filter((m) => {
         if (!q) return true
         return (
@@ -186,15 +238,8 @@ export default function OverridesView({
         )
       })
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
-      .map((m) => ({
-        filename: m.filename,
-        method: m.method,
-        endpoint: m.endpoint,
-        fieldCount: m.responseFieldOverridesCount ?? 0,
-        hasDates: m.hasResponseDateOverrides === true,
-        preview: (m.responseFieldOverridesPreview ?? []).map((p) => p.path),
-      }))
-  }, [editingGroup, editGroup, mocks, filter])
+      .map((m) => toItem(m))
+  }, [editingGroup, editGroup, mocks, filter, urlFilename])
 
   const selectedMeta = useMemo(
     () => listItems.find((m) => m.filename === selectedFilename) ?? null,
@@ -205,47 +250,25 @@ export default function OverridesView({
     async (filename: string) => {
       setLoadingDetail(true)
       try {
+        const mock = await getMock(filename, scenario).catch(() => null)
+        setResponseBody(mock?.data.response?.data ?? null)
+
         if (editingGroup && editGroup) {
           const entry = editGroup.entries.find((e) => e.filename === filename)
-          setDrafts(toDraftRows(entry?.responseFieldOverrides ?? []))
-          const dates = entry?.responseDateOverrides ?? []
-          setDatePreview(
-            dates.map((d) => ({
-              path: d.path,
-              summary: [
-                d.base && d.base !== 'now' ? `base=${d.base}` : null,
-                d.offsetDays != null ? `days=${d.offsetDays}` : null,
-                d.offsetHours != null ? `hours=${d.offsetHours}` : null,
-                d.offsetMinutes != null ? `min=${d.offsetMinutes}` : null,
-                d.offsetMs != null ? `ms=${d.offsetMs}` : null,
-                d.format ? `format=${d.format}` : null,
-              ]
-                .filter(Boolean)
-                .join(' ') || 'no offset',
-            }))
+          setDrafts(fieldOverridesToRows(entry?.responseFieldOverrides ?? []))
+          setDateOverrides(
+            (entry?.responseDateOverrides ?? []).map(normalizeDateOverrideRow)
           )
         } else {
-          const [fieldRes, mock] = await Promise.all([
-            getMockFieldOverrides(filename, scenario),
-            getMock(filename, scenario),
-          ])
-          setDrafts(toDraftRows(fieldRes.responseFieldOverrides ?? []))
-          const dates = mock.data.responseDateOverrides ?? []
-          setDatePreview(
-            dates.map((d) => ({
-              path: d.path,
-              summary: [
-                d.base && d.base !== 'now' ? `base=${d.base}` : null,
-                d.offsetDays != null ? `days=${d.offsetDays}` : null,
-                d.offsetHours != null ? `hours=${d.offsetHours}` : null,
-                d.offsetMinutes != null ? `min=${d.offsetMinutes}` : null,
-                d.offsetMs != null ? `ms=${d.offsetMs}` : null,
-                d.format ? `format=${d.format}` : null,
-              ]
-                .filter(Boolean)
-                .join(' ') || 'no offset',
-            }))
-          )
+          const fieldRes = await getMockFieldOverrides(filename, scenario)
+          setDrafts(fieldOverridesToRows(fieldRes.responseFieldOverrides ?? []))
+          if (mock) {
+            setDateOverrides(
+              (mock.data.responseDateOverrides ?? []).map(normalizeDateOverrideRow)
+            )
+          } else {
+            setDateOverrides([])
+          }
         }
       } catch (error) {
         toast({
@@ -262,36 +285,48 @@ export default function OverridesView({
 
   useEffect(() => {
     if (!selectedFilename) return
-    if (!listItems.some((m) => m.filename === selectedFilename)) {
+    const listed = listItems.some((m) => m.filename === selectedFilename)
+    const knownMock = mocks.some((m) => m.filename === selectedFilename)
+    if (!listed && !knownMock) {
       setSelectedFilename(null)
       setDrafts([])
-      setDatePreview([])
+      setDateOverrides([])
+      setResponseBody(null)
       return
     }
     void loadSelected(selectedFilename)
-  }, [selectedFilename, listItems, loadSelected])
+  }, [selectedFilename, listItems, loadSelected, mocks, selectFilename])
 
   const handleSave = async () => {
     if (!selectedFilename) return
+    const parsed = rowsToFieldOverrides(drafts)
+    if (parsed.error) {
+      toast({ title: 'Save failed', description: parsed.error, variant: 'destructive' })
+      return
+    }
+    const dates = sanitizeDateOverridesForSave(dateOverrides)
     setSaving(true)
     try {
-      const parsed = parseDraftRows(drafts)
       if (editingGroup && editTarget !== EDIT_MOCK_LEVEL) {
         const res = await patchOverrideGroupEntry(
           editTarget,
           {
             filename: selectedFilename,
-            responseFieldOverrides: parsed.length ? parsed : [],
+            responseFieldOverrides: parsed.overrides,
+            responseDateOverrides: dates,
           },
           scenario
         )
         setEditGroup(res.group)
-        toast({ title: 'Group field overrides saved' })
+        toast({ title: 'Group overrides saved' })
       } else {
-        await setMockFieldOverrides(selectedFilename, parsed.length ? parsed : null, {
-          scenario,
-        })
-        toast({ title: 'Field overrides saved' })
+        await setMockFieldOverrides(
+          selectedFilename,
+          parsed.overrides.length ? parsed.overrides : null,
+          { scenario }
+        )
+        await setMockDateOverrides(selectedFilename, dates.length ? dates : null, scenario)
+        toast({ title: 'Overrides saved' })
       }
       await onRefresh?.()
       await loadGroups()
@@ -314,16 +349,23 @@ export default function OverridesView({
       if (editingGroup && editTarget !== EDIT_MOCK_LEVEL) {
         const res = await patchOverrideGroupEntry(
           editTarget,
-          { filename: selectedFilename, clear: true },
+          {
+            filename: selectedFilename,
+            responseFieldOverrides: [],
+            responseDateOverrides: [],
+          },
           scenario
         )
         setEditGroup(res.group)
         setDrafts([])
+        setDateOverrides([])
         toast({ title: 'Group entry cleared' })
       } else {
         await setMockFieldOverrides(selectedFilename, null, { scenario })
+        await setMockDateOverrides(selectedFilename, null, scenario)
         setDrafts([])
-        toast({ title: 'Field overrides cleared' })
+        setDateOverrides([])
+        toast({ title: 'Overrides cleared' })
       }
       await onRefresh?.()
       await loadGroups()
@@ -412,7 +454,7 @@ export default function OverridesView({
       await deleteOverrideGroup(editTarget, scenario)
       setEditTarget(EDIT_MOCK_LEVEL)
       setEditGroup(null)
-      setSelectedFilename(null)
+      selectFilename(null)
       await loadGroups()
       toast({ title: 'Override group deleted' })
     } catch (error) {
@@ -438,7 +480,7 @@ export default function OverridesView({
       )
       setEditGroup(res.group)
       setAddMockFilename('')
-      setSelectedFilename(filename)
+      selectFilename(filename)
       await loadGroups()
     } catch (error) {
       toast({
@@ -457,7 +499,7 @@ export default function OverridesView({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Overrides</h1>
           <p className="text-sm text-muted-foreground">
-            Field and date overlays for mocks, plus switchable override groups. Use “Set for
+            Field, date, and remove overlays for mocks, plus switchable override groups. Use “Set for
             lane” with your <code>clientId</code> so teammates sharing the scenario keep their own
             selection.
           </p>
@@ -530,7 +572,7 @@ export default function OverridesView({
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm"
                 value={editTarget}
                 onChange={(e) => {
-                  setSelectedFilename(null)
+                  selectFilename(null)
                   setEditTarget(e.target.value)
                 }}
               >
@@ -626,33 +668,40 @@ export default function OverridesView({
         className="max-w-xl"
       />
 
-      {editingGroup ? (
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-sm">
-            <span className="text-muted-foreground">Add mock to group</span>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-              value={addMockFilename}
-              onChange={(e) => setAddMockFilename(e.target.value)}
-            >
-              <option value="">Select mock…</option>
-              {mocks.map((m) => (
-                <option key={m.filename} value={m.filename}>
-                  {m.filename}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button
-            type="button"
-            size="sm"
-            disabled={saving || !addMockFilename}
-            onClick={() => void handleAddMockToGroup()}
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-[16rem] flex-1 flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">
+            {editingGroup ? 'Add mock to group' : 'Open mock for overlays'}
+          </span>
+          <select
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            value={addMockFilename}
+            onChange={(e) => setAddMockFilename(e.target.value)}
           >
-            Add to group
-          </Button>
-        </div>
-      ) : null}
+            <option value="">Select mock…</option>
+            {mocks.map((m) => (
+              <option key={m.filename} value={m.filename}>
+                {m.filename}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          disabled={saving || !addMockFilename}
+          onClick={() => {
+            if (editingGroup) {
+              void handleAddMockToGroup()
+              return
+            }
+            selectFilename(addMockFilename.trim())
+            setAddMockFilename('')
+          }}
+        >
+          {editingGroup ? 'Add to group' : 'Edit overlays'}
+        </Button>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
         <Card>
@@ -669,7 +718,7 @@ export default function OverridesView({
               <p className="text-sm text-muted-foreground">
                 {editingGroup
                   ? 'No entries yet. Add a mock above, then edit field overrides.'
-                  : 'No mock-level field or date overrides yet. Switch to a group to edit story overlays, or set fields on a mock.'}
+                  : 'No mock-level overlays yet. Pick a mock above to add field, date, or remove overlays.'}
               </p>
             ) : null}
             {listItems.map((mock) => {
@@ -678,7 +727,7 @@ export default function OverridesView({
                 <button
                   key={mock.filename}
                   type="button"
-                  onClick={() => setSelectedFilename(mock.filename)}
+                  onClick={() => selectFilename(mock.filename)}
                   className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                     active
                       ? 'border-primary bg-primary/5'
@@ -687,10 +736,17 @@ export default function OverridesView({
                 >
                   <div className="truncate font-medium">{mock.filename}</div>
                   <div className="mt-1 flex flex-wrap gap-1">
+                    {mock.overrideCount > 0 ? (
+                      <Badge variant="secondary">{mock.overrideCount} overlay{mock.overrideCount === 1 ? '' : 's'}</Badge>
+                    ) : (
+                      <Badge variant="outline">none yet</Badge>
+                    )}
                     {mock.fieldCount > 0 ? (
                       <Badge variant="secondary">fields {mock.fieldCount}</Badge>
                     ) : null}
-                    {mock.hasDates ? <Badge variant="outline">dates</Badge> : null}
+                    {mock.hasDates ? (
+                      <Badge variant="outline">dates {mock.dateCount || ''}</Badge>
+                    ) : null}
                   </div>
                   {mock.preview.length ? (
                     <div className="mt-1 truncate text-xs text-muted-foreground">
@@ -705,15 +761,27 @@ export default function OverridesView({
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {selectedFilename ? selectedFilename : 'Select a mock'}
+            <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+              <span className="min-w-0 break-all">
+                {selectedFilename ? selectedFilename : 'Select a mock'}
+              </span>
+              {selectedFilename ? (
+                <Link
+                  to={mockEditorPath(selectedFilename, { scenario })}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-sky-300 hover:underline"
+                  title="Open this mock in the editor"
+                >
+                  <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                  Open mock
+                </Link>
+              ) : null}
             </CardTitle>
             <CardDescription>
               {selectedMeta?.endpoint
                 ? `${selectedMeta.method ?? ''} ${selectedMeta.endpoint}`.trim()
                 : editingGroup
                   ? 'Saving writes into the selected override group entry.'
-                  : 'Field overrides apply at replay without rewriting stored response.data.'}
+                  : 'Field, date, and remove overlays apply at replay without rewriting stored response.data.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -730,112 +798,37 @@ export default function OverridesView({
                   <Button
                     type="button"
                     size="sm"
-                    className="gap-1"
-                    onClick={() =>
-                      setDrafts((rows) => [...rows, { path: '', valueText: '""' }])
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add field
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
                     disabled={saving}
                     onClick={() => void handleSave()}
                   >
-                    Save fields
+                    Save overlays
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={saving || drafts.length === 0}
+                    disabled={saving || (drafts.length === 0 && dateOverrides.length === 0)}
                     onClick={() => void handleClear()}
                   >
-                    Clear fields
+                    Clear overlays
                   </Button>
-                  {onOpenMock && !editingGroup ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1"
-                      onClick={() => onOpenMock(selectedFilename)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Open mock (dates)
-                    </Button>
-                  ) : null}
                 </div>
 
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium">Field overrides</h3>
-                  {drafts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No field overrides.</p>
-                  ) : (
-                    drafts.map((row, index) => (
-                      <div
-                        key={`field-${index}`}
-                        className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_minmax(0,1.2fr)_auto]"
-                      >
-                        <Input
-                          placeholder="path e.g. bookings.0.status"
-                          value={row.path}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setDrafts((rows) =>
-                              rows.map((r, i) => (i === index ? { ...r, path: value } : r))
-                            )
-                          }}
-                        />
-                        <Textarea
-                          placeholder='JSON value e.g. "CONFIRMED"'
-                          value={row.valueText}
-                          className="min-h-[2.5rem] font-mono text-xs"
-                          onChange={(e) => {
-                            const value = e.target.value
-                            setDrafts((rows) =>
-                              rows.map((r, i) =>
-                                i === index ? { ...r, valueText: value } : r
-                              )
-                            )
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label="Remove field override"
-                          onClick={() =>
-                            setDrafts((rows) => rows.filter((_, i) => i !== index))
-                          }
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <FieldOverridesEditor
+                  rows={drafts}
+                  onChange={setDrafts}
+                  responseBody={responseBody}
+                  instanceKey={selectedFilename}
+                />
 
-                <div className="space-y-2 border-t border-border pt-4">
-                  <h3 className="text-sm font-medium">Date overrides</h3>
-                  {datePreview.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      {editingGroup
-                        ? 'None on this group entry yet (edit via API / future UI).'
-                        : 'None on this mock. Use Open mock (dates) to add them.'}
-                    </p>
-                  ) : (
-                    <ul className="space-y-1 text-sm">
-                      {datePreview.map((row) => (
-                        <li key={row.path} className="flex flex-wrap gap-2">
-                          <code className="text-xs">{row.path}</code>
-                          <span className="text-muted-foreground">{row.summary}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                <div className="border-t border-border pt-4">
+                  <DateOverridesEditor
+                    dateOverrides={dateOverrides}
+                    onChange={setDateOverrides}
+                    responseBody={responseBody}
+                    mockifyerNow={mockifyerNow}
+                    instanceKey={selectedFilename}
+                  />
                 </div>
               </>
             )}
