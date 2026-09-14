@@ -62,6 +62,19 @@ export function inferFormatForOverrideValue(
   return undefined
 }
 
+/**
+ * Aligns with mockifyer-core: stored `response.data` may be a JSON string.
+ * Invalid JSON is returned as-is so a plain text body stays unmatched for dotted paths.
+ */
+export function parseResponseBodyRoot(root: unknown): unknown {
+  if (typeof root !== 'string') return root
+  try {
+    return JSON.parse(root)
+  } catch {
+    return root
+  }
+}
+
 function getAtPath(root: unknown, segments: string[]): unknown {
   let cur: unknown = root
   for (const s of segments) {
@@ -142,14 +155,15 @@ export function detectDateLikeFields(root: unknown): DateFieldCandidate[] {
     }
   }
 
-  if (root === null || root === undefined) return out
+  const data = parseResponseBodyRoot(root)
+  if (data === null || data === undefined) return out
 
   // Root must be an object/array for path-based overrides; skip primitive-only bodies here.
-  if (typeof root !== 'object') {
+  if (typeof data !== 'object') {
     return out
   }
 
-  walk(root, [])
+  walk(data, [])
   const seen = new Set<string>()
   const deduped: DateFieldCandidate[] = []
   for (const c of out) {
@@ -162,6 +176,7 @@ export function detectDateLikeFields(root: unknown): DateFieldCandidate[] {
 }
 
 export function getValueAtResponsePath(root: unknown, path: string): unknown {
-  if (path === '') return root
-  return getAtPath(root, parsePathSegments(path))
+  const data = parseResponseBodyRoot(root)
+  if (path === '') return data
+  return getAtPath(data, parsePathSegments(path))
 }

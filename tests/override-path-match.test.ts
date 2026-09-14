@@ -22,4 +22,15 @@ describe('isUnmatchedOverridePath', () => {
     expect(isUnmatchedOverridePath(body, 'nope')).toBe(true);
     expect(isUnmatchedOverridePath(null, 'bookings.0.status')).toBe(true);
   });
+
+  it('parses JSON-string bodies the same way serve-time overlays do', () => {
+    const encoded = JSON.stringify(body);
+    expect(isUnmatchedOverridePath(encoded, 'bookings.0.status')).toBe(false);
+    expect(isUnmatchedOverridePath(encoded, 'bookings.0.checkIn')).toBe(false);
+    expect(isUnmatchedOverridePath(encoded, 'bookings.0.missing')).toBe(true);
+  });
+
+  it('leaves a non-JSON string body unmatched for dotted paths', () => {
+    expect(isUnmatchedOverridePath('not-json', 'bookings.0.status')).toBe(true);
+  });
 });

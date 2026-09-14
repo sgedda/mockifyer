@@ -209,7 +209,7 @@ export default function OverridesView({
             hasDates: dateCount > 0,
             preview: (entry.responseFieldOverrides ?? []).slice(0, 3).map((p) => p.path),
             overrideCount: fieldCount + dateCount,
-            mockFound: loading ? true : Boolean(mock),
+            mockFound: Boolean(mock),
           }
         })
         .filter((item) => {
@@ -727,7 +727,8 @@ export default function OverridesView({
             ) : null}
             {listItems.map((mock) => {
               const active = mock.filename === selectedFilename
-              const unmatchedMock = !mock.mockFound
+              // Wait until the mock list has loaded so empty `mocks` is not treated as missing files.
+              const unmatchedMock = !loading && !mock.mockFound
               return (
                 <button
                   key={mock.filename}
