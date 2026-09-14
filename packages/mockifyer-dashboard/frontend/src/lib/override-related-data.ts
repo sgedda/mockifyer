@@ -3,6 +3,20 @@ import { getValueAtResponsePath, parsePathSegments } from './detect-date-fields'
 export const JSON_PREVIEW_MAX_CHARS = 20_000
 export const RELATED_KEY_LIMIT = 40
 
+/** Card chrome when an override path does not exist in the stored body. */
+export const UNMATCHED_OVERRIDE_ROW_CLASS = 'border-destructive/70 bg-destructive/10'
+
+/**
+ * True when a non-empty override path does not resolve in the stored response body.
+ * Empty paths are treated as incomplete (not unmatched) so a newly added row is not
+ * marked red until the user enters a path.
+ */
+export function isUnmatchedOverridePath(responseBody: unknown, path: string): boolean {
+  const trimmed = path.trim()
+  if (!trimmed) return false
+  return getValueAtResponsePath(responseBody, trimmed) === undefined
+}
+
 export interface PathCrumb {
   path: string
   label: string

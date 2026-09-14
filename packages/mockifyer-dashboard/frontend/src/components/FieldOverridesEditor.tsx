@@ -4,7 +4,12 @@ import { Input } from '@/components/ui/input'
 import OverrideRelatedData from '@/components/OverrideRelatedData'
 import type { FieldOverrideRow } from '@/lib/field-overrides'
 import { emptyFieldOverrideRow } from '@/lib/field-overrides'
+import {
+  isUnmatchedOverridePath,
+  UNMATCHED_OVERRIDE_ROW_CLASS,
+} from '@/lib/override-related-data'
 import type { MockResponseFieldOverrideMode } from '@/types'
+import { cn } from '@/lib/utils'
 
 const FIELD_OVERRIDE_MODES: Array<{
   value: MockResponseFieldOverrideMode
@@ -56,16 +61,30 @@ export default function FieldOverridesEditor({
         <p className="text-sm text-muted-foreground">No field overrides.</p>
       ) : (
         <div className="space-y-3">
-          {rows.map((row, index) => (
-            <div key={`field-${index}`} className="space-y-2 rounded-md border border-border p-3">
+          {rows.map((row, index) => {
+            const unmatched = isUnmatchedOverridePath(responseBody, row.path)
+            return (
+            <div
+              key={`field-${index}`}
+              className={cn(
+                'space-y-2 rounded-md border p-3',
+                unmatched ? UNMATCHED_OVERRIDE_ROW_CLASS : 'border-border'
+              )}
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                 <div className="min-w-0 flex-1 space-y-1">
-                  <span className="text-xs text-muted-foreground">Path</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Path</span>
+                    {unmatched ? (
+                      <span className="text-[11px] font-medium text-destructive">Unmatched</span>
+                    ) : null}
+                  </div>
                   <Input
-                    className="h-9 font-mono text-xs"
+                    className={cn('h-9 font-mono text-xs', unmatched && 'border-destructive')}
                     placeholder="e.g. bookings.0.status"
                     value={row.path}
                     readOnly={readOnly}
+                    aria-invalid={unmatched}
                     onChange={(event) => updateRow(index, { path: event.target.value })}
                   />
                 </div>
@@ -132,7 +151,8 @@ export default function FieldOverridesEditor({
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

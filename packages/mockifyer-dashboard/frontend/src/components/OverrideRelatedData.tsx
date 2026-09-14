@@ -6,6 +6,7 @@ import {
   defaultInspectPath,
   formatJsonPreview,
   formatLeafPreview,
+  isUnmatchedOverridePath,
   joinOverridePath,
   pathCrumbs,
   relatedChildKeys,
@@ -82,7 +83,7 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
             stored {leafPreview}
           </span>
         ) : (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[11px] font-medium text-destructive" role="status">
             Nothing at this path in the stored body
           </span>
         )}
@@ -95,16 +96,22 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
         >
           {crumbs.map((crumb, index) => {
             const selected = effectiveInspect === crumb.path && open
+            const crumbUnmatched = isUnmatchedOverridePath(responseBody, crumb.path)
             return (
               <span key={crumb.path} className="inline-flex items-center">
                 {index > 0 ? <span className="mx-0.5 text-muted-foreground">›</span> : null}
                 <button
                   type="button"
                   className={cn(
-                    'rounded px-0.5 text-sky-300 hover:underline',
-                    selected && 'bg-sky-500/20 text-sky-100'
+                    'rounded px-0.5 hover:underline',
+                    crumbUnmatched ? 'text-destructive' : 'text-sky-300',
+                    selected && (crumbUnmatched ? 'bg-destructive/20' : 'bg-sky-500/20 text-sky-100')
                   )}
-                  title={`Inspect stored JSON at ${crumb.path}`}
+                  title={
+                    crumbUnmatched
+                      ? `No stored JSON at ${crumb.path}`
+                      : `Inspect stored JSON at ${crumb.path}`
+                  }
                   onClick={() => inspect(crumb.path)}
                 >
                   {crumb.label}
@@ -136,7 +143,7 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
                 : 'Stored response body'}
             </div>
             {inspectValue === undefined ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] font-medium text-destructive">
                 Nothing at this path in the stored response body.
               </p>
             ) : (

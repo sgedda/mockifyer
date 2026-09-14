@@ -35,6 +35,8 @@ import {
   normalizeDateOverrideRow,
   sanitizeDateOverridesForSave,
 } from '@/lib/mock-overrides'
+import { UNMATCHED_OVERRIDE_ROW_CLASS } from '@/lib/override-related-data'
+import { cn } from '@/lib/utils'
 
 interface OverridesViewProps {
   scenario: string
@@ -187,6 +189,7 @@ export default function OverridesView({
         hasDates: mock.hasResponseDateOverrides === true,
         preview: (mock.responseFieldOverridesPreview ?? []).map((p) => p.path),
         overrideCount: countListOverrides(mock),
+        mockFound: true,
       }
     }
 
@@ -206,6 +209,7 @@ export default function OverridesView({
             hasDates: dateCount > 0,
             preview: (entry.responseFieldOverrides ?? []).slice(0, 3).map((p) => p.path),
             overrideCount: fieldCount + dateCount,
+            mockFound: Boolean(mock),
           }
         })
         .filter((item) => {
@@ -723,19 +727,29 @@ export default function OverridesView({
             ) : null}
             {listItems.map((mock) => {
               const active = mock.filename === selectedFilename
+              const unmatchedMock = !mock.mockFound
               return (
                 <button
                   key={mock.filename}
                   type="button"
                   onClick={() => selectFilename(mock.filename)}
-                  className={`w-full rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                    active
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
-                  }`}
+                  className={cn(
+                    'w-full rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    unmatchedMock
+                      ? UNMATCHED_OVERRIDE_ROW_CLASS
+                      : active
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:bg-muted/50',
+                    unmatchedMock && active && 'ring-1 ring-destructive/60'
+                  )}
                 >
-                  <div className="truncate font-medium">{mock.filename}</div>
+                  <div className={cn('truncate font-medium', unmatchedMock && 'text-destructive')}>
+                    {mock.filename}
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-1">
+                    {unmatchedMock ? (
+                      <Badge variant="destructive">no matching mock</Badge>
+                    ) : null}
                     {mock.overrideCount > 0 ? (
                       <Badge variant="secondary">{mock.overrideCount} overlay{mock.overrideCount === 1 ? '' : 's'}</Badge>
                     ) : (

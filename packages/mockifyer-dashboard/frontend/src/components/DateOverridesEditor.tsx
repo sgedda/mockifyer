@@ -10,6 +10,11 @@ import {
 } from '@/lib/detect-date-fields'
 import { previewServedDateOverride } from '@/lib/date-override-preview'
 import { normalizeDateOverrideRow } from '@/lib/mock-overrides'
+import {
+  isUnmatchedOverridePath,
+  UNMATCHED_OVERRIDE_ROW_CLASS,
+} from '@/lib/override-related-data'
+import { cn } from '@/lib/utils'
 
 interface DateOverridesEditorProps {
   dateOverrides: MockResponseDateOverride[]
@@ -158,8 +163,16 @@ export default function DateOverridesEditor({
         </p>
       ) : (
         <div className="space-y-3">
-          {dateOverrides.map((row, index) => (
-            <div key={`date-${index}`} className="space-y-2 rounded-md border border-border bg-background p-3">
+          {dateOverrides.map((row, index) => {
+            const unmatched = isUnmatchedOverridePath(responseBody, row.path)
+            return (
+            <div
+              key={`date-${index}`}
+              className={cn(
+                'space-y-2 rounded-md border p-3',
+                unmatched ? UNMATCHED_OVERRIDE_ROW_CLASS : 'border-border bg-background'
+              )}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input
@@ -180,12 +193,18 @@ export default function DateOverridesEditor({
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
                 <div className="min-w-0 flex-1 space-y-1">
-                  <span className="text-xs text-muted-foreground">Path (from response body root)</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">Path (from response body root)</span>
+                    {unmatched ? (
+                      <span className="text-[11px] font-medium text-destructive">Unmatched</span>
+                    ) : null}
+                  </div>
                   <Input
-                    className="h-9 font-mono text-xs"
+                    className={cn('h-9 font-mono text-xs', unmatched && 'border-destructive')}
                     placeholder="e.g. expiresAt or bookings.0.startDate"
                     value={row.path}
                     readOnly={readOnly}
+                    aria-invalid={unmatched}
                     onChange={(event) => updateRow(index, { path: event.target.value })}
                   />
                 </div>
@@ -283,7 +302,8 @@ export default function DateOverridesEditor({
                 now={mockifyerNow}
               />
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       <Button
