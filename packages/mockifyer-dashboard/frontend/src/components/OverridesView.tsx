@@ -244,9 +244,11 @@ export default function OverridesView({
         } else {
           const fieldRes = await getMockFieldOverrides(filename, scenario)
           setDrafts(fieldOverridesToRows(fieldRes.responseFieldOverrides ?? []))
-          setDateOverrides(
-            (mock?.data.responseDateOverrides ?? []).map(normalizeDateOverrideRow)
-          )
+          if (mock) {
+            setDateOverrides(
+              (mock.data.responseDateOverrides ?? []).map(normalizeDateOverrideRow)
+            )
+          }
         }
       } catch (error) {
         toast({
@@ -266,14 +268,14 @@ export default function OverridesView({
     const listed = listItems.some((m) => m.filename === selectedFilename)
     const knownMock = mocks.some((m) => m.filename === selectedFilename)
     if (!listed && !knownMock) {
-      setSelectedFilename(null)
+      selectFilename(null)
       setDrafts([])
       setDateOverrides([])
       setResponseBody(null)
       return
     }
     void loadSelected(selectedFilename)
-  }, [selectedFilename, listItems, loadSelected, mocks])
+  }, [selectedFilename, listItems, loadSelected, mocks, selectFilename])
 
   const handleSave = async () => {
     if (!selectedFilename) return
@@ -327,7 +329,11 @@ export default function OverridesView({
       if (editingGroup && editTarget !== EDIT_MOCK_LEVEL) {
         const res = await patchOverrideGroupEntry(
           editTarget,
-          { filename: selectedFilename, clear: true },
+          {
+            filename: selectedFilename,
+            responseFieldOverrides: [],
+            responseDateOverrides: [],
+          },
           scenario
         )
         setEditGroup(res.group)
