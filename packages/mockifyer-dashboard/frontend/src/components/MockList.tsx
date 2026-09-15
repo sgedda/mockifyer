@@ -57,7 +57,7 @@ function MockListContent({
 }: MockListProps) {
   const { toast } = useToast()
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
-  const { favoriteIds, favoritesOnly, setFavoritesOnly } = useMockFavorites()
+  const { favoriteIds, favoritesOnly, setFavoritesOnly, loading: favoritesLoading } = useMockFavorites()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains' | 'chains'>('folders')
   const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
@@ -70,19 +70,20 @@ function MockListContent({
   const [chainsOnly, setChainsOnly] = useState(false)
 
   const matchingFavoriteMocks = useMemo(() => {
+    if (favoritesLoading) return []
     const source = searchQuery.trim() ? mocks : allMocks
     return source.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [allMocks, mocks, searchQuery, favoriteIds])
+  }, [allMocks, mocks, searchQuery, favoriteIds, favoritesLoading])
 
   const visibleMocks = useMemo(() => {
-    if (!favoritesOnly) return mocks
+    if (!favoritesOnly || favoritesLoading) return mocks
     return mocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [favoritesOnly, mocks, favoriteIds])
+  }, [favoritesOnly, favoritesLoading, mocks, favoriteIds])
 
   const visibleAllMocks = useMemo(() => {
-    if (!favoritesOnly) return allMocks
+    if (!favoritesOnly || favoritesLoading) return allMocks
     return allMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [favoritesOnly, allMocks, favoriteIds])
+  }, [favoritesOnly, favoritesLoading, allMocks, favoriteIds])
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message

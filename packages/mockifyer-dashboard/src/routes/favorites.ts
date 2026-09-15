@@ -20,6 +20,14 @@ import {
 
 const router = express.Router();
 
+let favoritesOperationQueue = Promise.resolve();
+
+function serializeFavoritesOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const nextOperation = favoritesOperationQueue.then(operation, operation);
+  favoritesOperationQueue = nextOperation.then(() => undefined, () => undefined);
+  return nextOperation;
+}
+
 function resolveScenario(req: Request, mockDataPath: string): string {
   const fromQuery = typeof req.query.scenario === 'string' ? req.query.scenario.trim() : '';
   const fromBody =
@@ -64,7 +72,11 @@ async function saveFavoritesDocument(req: Request, document: FavoritesDocument):
     } finally {
       await store.close().catch(() => undefined);
     }
-    writeFavoritesFile(mockDataPath, payload);
+    try {
+      writeFavoritesFile(mockDataPath, payload);
+    } catch {
+      // Best-effort disk mirror; Redis/SQLite is the source of truth
+    }
     return;
   }
   const wrote = writeFavoritesFile(mockDataPath, payload);
@@ -108,24 +120,26 @@ router.get('/', async (req: Request, res: Response) => {
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { mockDataPath } = getDashboardContext(req);
-    const body = (req.body ?? {}) as { scenario?: unknown; filename?: unknown };
-    const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
-    if (!filename) {
-      return res.status(400).json({ error: 'filename is required' });
-    }
-    const scenario = resolveScenario(req, mockDataPath);
-    const mockData = await loadMockData(req, scenario, filename);
-    if (!mockData) {
-      return res.status(404).json({ error: 'Mock not found' });
-    }
-    const favorite = buildFavoriteFromMock(mockData, filename);
-    if (!favorite) {
-      return res.status(400).json({ error: 'Could not derive a request identity for this mock' });
-    }
-    const next = upsertFavorite(await loadFavoritesDocument(req), favorite);
-    await saveFavoritesDocument(req, next);
-    return res.json({ favorite, favorites: next.favorites });
+    await serializeFavoritesOperation(async () => {
+      const { mockDataPath } = getDashboardContext(req);
+      const body = (req.body ?? {}) as { scenario?: unknown; filename?: unknown };
+      const filename = typeof body.filename === 'string' ? body.filename.trim() : '';
+      if (!filename) {
+        return res.status(400).json({ error: 'filename is required' });
+      }
+      const scenario = resolveScenario(req, mockDataPath);
+      const mockData = await loadMockData(req, scenario, filename);
+      if (!mockData) {
+        return res.status(404).json({ error: 'Mock not found' });
+      }
+      const favorite = buildFavoriteFromMock(mockData, filename);
+      if (!favorite) {
+        return res.status(400).json({ error: 'Could not derive a request identity for this mock' });
+      }
+      const next = upsertFavorite(await loadFavoritesDocument(req), favorite);
+      await saveFavoritesDocument(req, next);
+      return res.json({ favorite, favorites: next.favorites });
+    });
   } catch (error: unknown) {
     const status = (error as { status?: number }).status ?? 500;
     const message = error instanceof Error ? error.message : String(error);
@@ -139,13 +153,15 @@ router.post('/', async (req: Request, res: Response) => {
 
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const id = typeof req.params.id === 'string' ? req.params.id.trim().toLowerCase() : '';
-    if (!isFavoriteRequestId(id)) {
-      return res.status(400).json({ error: 'Invalid favorite id' });
-    }
-    const next = removeFavorite(await loadFavoritesDocument(req), id);
-    await saveFavoritesDocument(req, next);
-    return res.json({ favorites: next.favorites });
+    await serializeFavoritesOperation(async () => {
+      const id = typeof req.params.id === 'string' ? req.params.id.trim().toLowerCase() : '';
+      if (!isFavoriteRequestId(id)) {
+        return res.status(400).json({ error: 'Invalid favorite id' });
+      }
+      const next = removeFavorite(await loadFavoritesDocument(req), id);
+      await saveFavoritesDocument(req, next);
+      return res.json({ favorites: next.favorites });
+    });
   } catch (error: unknown) {
     const status = (error as { status?: number }).status ?? 500;
     const message = error instanceof Error ? error.message : String(error);
