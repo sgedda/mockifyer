@@ -22,6 +22,22 @@ export function dashboardSpaPageAssetPrefix(): RegExp {
   return new RegExp(`^/(${segments})/assets/`);
 }
 
+/** JSON array for inline HTML boot scripts (`var suffixes = …`). */
+export function dashboardPageSuffixesJson(): string {
+  return JSON.stringify([...DASHBOARD_PAGE_SUFFIXES]);
+}
+
+/**
+ * Keep the first `var suffixes = […]` in `index.html` aligned with
+ * {@link DASHBOARD_PAGE_SUFFIXES} so `/mock` is not treated as an embed mount.
+ */
+export function replaceDashboardPageSuffixesLiteral(source: string): string {
+  return source.replace(
+    /var suffixes = \[[^\]]*\]/,
+    `var suffixes = ${dashboardPageSuffixesJson()}`
+  );
+}
+
 /**
  * Resolve a script `src` against the current page URL (not origin).
  * Relative `./assets/*.js` on `/mockifyer/overrides` must become `/mockifyer/assets/*.js`.
