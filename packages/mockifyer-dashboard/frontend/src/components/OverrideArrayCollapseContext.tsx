@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 interface OverrideArrayCollapseContextValue {
   isArrayCollapsed: (collapseKey: string) => boolean
   toggleArray: (collapseKey: string) => void
+  isItemCollapsed: (arrayItemPath: string) => boolean
+  toggleItem: (arrayItemPath: string) => void
   isRelatedOpen: (collapseKey: string) => boolean
   setRelatedOpen: (collapseKey: string, open: boolean) => void
 }
@@ -23,11 +25,19 @@ function toggleInSet(current: Set<string>, key: string): Set<string> {
  */
 export function OverrideArrayCollapseProvider({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => new Set())
   const [relatedOpen, setRelatedOpenState] = useState<Set<string>>(() => new Set())
 
   const isArrayCollapsed = useCallback((collapseKey: string) => collapsed.has(collapseKey), [collapsed])
   const toggleArray = useCallback((collapseKey: string) => {
     setCollapsed((current) => toggleInSet(current, collapseKey))
+  }, [])
+  const isItemCollapsed = useCallback(
+    (arrayItemPath: string) => collapsedItems.has(arrayItemPath),
+    [collapsedItems]
+  )
+  const toggleItem = useCallback((arrayItemPath: string) => {
+    setCollapsedItems((current) => toggleInSet(current, arrayItemPath))
   }, [])
   const isRelatedOpen = useCallback(
     (collapseKey: string) => relatedOpen.has(collapseKey),
@@ -45,8 +55,15 @@ export function OverrideArrayCollapseProvider({ children }: { children: ReactNod
   }, [])
 
   const value = useMemo(
-    () => ({ isArrayCollapsed, toggleArray, isRelatedOpen, setRelatedOpen }),
-    [isArrayCollapsed, toggleArray, isRelatedOpen, setRelatedOpen]
+    () => ({
+      isArrayCollapsed,
+      toggleArray,
+      isItemCollapsed,
+      toggleItem,
+      isRelatedOpen,
+      setRelatedOpen,
+    }),
+    [isArrayCollapsed, toggleArray, isItemCollapsed, toggleItem, isRelatedOpen, setRelatedOpen]
   )
 
   return (

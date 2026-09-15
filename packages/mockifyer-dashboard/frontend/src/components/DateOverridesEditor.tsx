@@ -12,7 +12,7 @@ import {
 } from '@/lib/detect-date-fields'
 import { previewServedDateOverride } from '@/lib/date-override-preview'
 import { normalizeDateOverrideRow } from '@/lib/mock-overrides'
-import { pathRelativeToArrayItem, topLevelArrayItemPath } from '@/lib/override-path-groups'
+import { pathRelativeToArrayItem } from '@/lib/override-path-groups'
 
 interface DateOverridesEditorProps {
   dateOverrides: MockResponseDateOverride[]
@@ -60,7 +60,7 @@ function DateOverrideServedPreview({
 function DateOverrideCard({
   row,
   index,
-  grouped,
+  groupPath,
   dateOverrides,
   onChange,
   updateRow,
@@ -71,7 +71,7 @@ function DateOverrideCard({
 }: {
   row: MockResponseDateOverride
   index: number
-  grouped: boolean
+  groupPath: string | null
   dateOverrides: MockResponseDateOverride[]
   onChange: (next: MockResponseDateOverride[]) => void
   updateRow: (index: number, patch: Partial<MockResponseDateOverride>) => void
@@ -80,9 +80,7 @@ function DateOverrideCard({
   instanceKey: string
   readOnly: boolean
 }) {
-  const arrayItemPath = topLevelArrayItemPath(row.path)
-  const relativePath =
-    grouped && arrayItemPath ? pathRelativeToArrayItem(row.path, arrayItemPath) : null
+  const relativePath = groupPath ? pathRelativeToArrayItem(row.path, groupPath) : null
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-background p-3">
@@ -130,7 +128,7 @@ function DateOverrideCard({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      {!grouped ? (
+      {!groupPath ? (
         <OverrideRelatedData
           key={`${instanceKey}-${index}`}
           path={row.path}
@@ -331,11 +329,11 @@ export default function DateOverridesEditor({
             rows={dateOverrides}
             responseBody={responseBody}
             instanceKey={instanceKey}
-            renderRow={(row, index, grouped) => (
+            renderRow={(row, index, groupPath) => (
               <DateOverrideCard
                 row={row}
                 index={index}
-                grouped={grouped}
+                groupPath={groupPath}
                 dateOverrides={dateOverrides}
                 onChange={onChange}
                 updateRow={updateRow}

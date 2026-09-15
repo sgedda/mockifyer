@@ -6,7 +6,7 @@ import OverrideArrayGroupList from '@/components/OverrideArrayGroupList'
 import { OverrideArrayCollapseScope } from '@/components/OverrideArrayCollapseContext'
 import type { FieldOverrideRow } from '@/lib/field-overrides'
 import { emptyFieldOverrideRow } from '@/lib/field-overrides'
-import { pathRelativeToArrayItem, topLevelArrayItemPath } from '@/lib/override-path-groups'
+import { pathRelativeToArrayItem } from '@/lib/override-path-groups'
 import type { MockResponseFieldOverrideMode } from '@/types'
 
 const FIELD_OVERRIDE_MODES: Array<{
@@ -31,7 +31,7 @@ interface FieldOverridesEditorProps {
 function FieldOverrideCard({
   row,
   index,
-  grouped,
+  groupPath,
   rows,
   onChange,
   updateRow,
@@ -41,7 +41,7 @@ function FieldOverrideCard({
 }: {
   row: FieldOverrideRow
   index: number
-  grouped: boolean
+  groupPath: string | null
   rows: FieldOverrideRow[]
   onChange: (rows: FieldOverrideRow[]) => void
   updateRow: (index: number, patch: Partial<FieldOverrideRow>) => void
@@ -49,9 +49,7 @@ function FieldOverrideCard({
   instanceKey: string
   readOnly: boolean
 }) {
-  const arrayItemPath = topLevelArrayItemPath(row.path)
-  const relativePath =
-    grouped && arrayItemPath ? pathRelativeToArrayItem(row.path, arrayItemPath) : null
+  const relativePath = groupPath ? pathRelativeToArrayItem(row.path, groupPath) : null
 
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
@@ -101,7 +99,7 @@ function FieldOverrideCard({
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      {!grouped ? (
+      {!groupPath ? (
         <OverrideRelatedData
           key={`${instanceKey}-${index}`}
           path={row.path}
@@ -168,11 +166,11 @@ export default function FieldOverridesEditor({
             rows={rows}
             responseBody={responseBody}
             instanceKey={instanceKey}
-            renderRow={(row, index, grouped) => (
+            renderRow={(row, index, groupPath) => (
               <FieldOverrideCard
                 row={row}
                 index={index}
-                grouped={grouped}
+                groupPath={groupPath}
                 rows={rows}
                 onChange={onChange}
                 updateRow={updateRow}

@@ -45,10 +45,37 @@ describe('override-path-groups', () => {
       'data.myAccount.bookings.0',
       'data.myAccount.bookings.1',
     ]);
-    expect(sections[0].itemGroups[0]!.items.map((row) => row.index)).toEqual([2, 3]);
-    expect(sections[0].itemGroups[1]!.items.map((row) => row.index)).toEqual([0]);
+    expect(sections[0].itemGroups[0]!.children.map((child) => child.kind)).toEqual([
+      'ungrouped',
+      'array',
+    ]);
+    const nested = sections[0].itemGroups[0]!.children[1];
+    expect(nested).toMatchObject({ kind: 'array', label: 'accommodations' });
+    if (nested?.kind !== 'array') throw new Error('expected nested accommodations');
+    expect(nested.itemGroups.map((g) => g.arrayItemPath)).toEqual([
+      'data.myAccount.bookings.0.booking.accommodations.0',
+    ]);
+    expect(sections[0].itemGroups[1]!.children).toHaveLength(1);
+    expect(sections[0].itemGroups[1]!.children[0]).toMatchObject({ kind: 'ungrouped', index: 0 });
     expect(sections[1]).toMatchObject({ kind: 'ungrouped', index: 1 });
     expect(sections[2]).toMatchObject({ kind: 'array', label: 'reservations' });
+  });
+
+  it('nests a second array under the parent item', () => {
+    const sections = groupOverridesByTopLevelArray([
+      { path: 'data.bookings.0.booking.bookedDate' },
+      { path: 'data.bookings.0.booking.accommodations.1.checkIn' },
+      { path: 'data.bookings.0.booking.accommodations.0.checkOut' },
+    ]);
+    expect(sections).toHaveLength(1);
+    if (sections[0]?.kind !== 'array') throw new Error('expected bookings');
+    const item = sections[0].itemGroups[0];
+    expect(item?.arrayItemPath).toBe('data.bookings.0');
+    expect(item?.children[0]).toMatchObject({ kind: 'ungrouped', index: 0 });
+    const acc = item?.children[1];
+    expect(acc).toMatchObject({ kind: 'array', label: 'accommodations' });
+    if (acc?.kind !== 'array') throw new Error('expected accommodations');
+    expect(acc.itemGroups.map((g) => g.indexLabel)).toEqual(['[0]', '[1]']);
   });
 
   it('summarizes a GraphQL booking edge for identity', () => {

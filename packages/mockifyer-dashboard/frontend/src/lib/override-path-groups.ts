@@ -61,7 +61,8 @@ export interface IndexedOverrideRow<T> {
 export interface OverrideArrayItemGroup<T> {
   arrayItemPath: string
   indexLabel: string
-  items: IndexedOverrideRow<T>[]
+  /** Nested array sections and leaf override rows under this index. */
+  children: OverrideEditorSection<T>[]
 }
 
 export interface OverrideArraySection<T> {
@@ -81,16 +82,25 @@ export interface OverrideUngroupedSection<T> {
 export type OverrideEditorSection<T> = OverrideArraySection<T> | OverrideUngroupedSection<T>
 
 /**
- * Prefix through the first numeric path segment (`data.bookings.0.date` → `data.bookings.0`).
+ * Next array-item path after `prefix` (`data.bookings.0.accommodations.0.date`
+ * after `data.bookings.0` → `data.bookings.0.accommodations.0`).
  */
-export function topLevelArrayItemPath(path: string): string | null {
+export function nextArrayItemAfterPrefix(path: string, prefix = ''): string | null {
   const segments = parsePathSegments(path.trim())
-  for (let i = 0; i < segments.length; i++) {
+  const prefixLen = prefix ? parsePathSegments(prefix).length : 0
+  for (let i = prefixLen; i < segments.length; i++) {
     if (INDEX_SEGMENT.test(segments[i]!)) {
       return segments.slice(0, i + 1).join('.')
     }
   }
   return null
+}
+
+/**
+ * Prefix through the first numeric path segment (`data.bookings.0.date` → `data.bookings.0`).
+ */
+export function topLevelArrayItemPath(path: string): string | null {
+  return nextArrayItemAfterPrefix(path)
 }
 
 /** Parent array path (`data.bookings.0` → `data.bookings`). Empty string for a root array. */
@@ -195,60 +205,81 @@ export function summarizeOverrideArrayItemAtPath(responseBody: unknown, arrayIte
   return summarizeOverrideArrayItem(getValueAtResponsePath(responseBody, arrayItemPath))
 }
 
+export function countOverrideSectionRows<T>(section: OverrideEditorSection<T>): number {
+  if (section.kind === 'ungrouped') return 1
+  return section.itemGroups.reduce((sum, group) => sum + countOverrideItemRows(group), 0)
+}
+
+export function countOverrideItemRows<T>(group: OverrideArrayItemGroup<T>): number {
+  return group.children.reduce((sum, child) => sum + countOverrideSectionRows(child), 0)
+}
+
+function sortItemPaths(paths: string[]): string[] {
+  return [...paths].sort((a, b) => {
+    const delta = Number(arrayItemIndex(a)) - Number(arrayItemIndex(b))
+    if (Number.isNaN(delta)) return a.localeCompare(b)
+    return delta
+  })
+}
+
 /**
- * Group override rows by the first array in the path.
- * Items of the same array are collected together (all indexes), then split per index.
- * Paths with no array index stay ungrouped, in first-seen order.
+ * Group override rows by each array in the path (bookings, then accommodations, …).
+ * Items of the same array are collected together, then split per index.
+ * Paths with no further array index stay as leaves, in first-seen order.
  */
 export function groupOverridesByTopLevelArray<T extends { path: string }>(
   rows: T[]
 ): OverrideEditorSection<T>[] {
+  return groupIndexedRows(
+    rows.map((item, index) => ({ item, index })),
+    ''
+  )
+}
+
+function groupIndexedRows<T extends { path: string }>(
+  rows: IndexedOverrideRow<T>[],
+  prefix: string
+): OverrideEditorSection<T>[] {
   const emitted = new Set<number>()
   const sections: OverrideEditorSection<T>[] = []
 
-  for (let i = 0; i < rows.length; i++) {
-    if (emitted.has(i)) continue
-    const itemPath = topLevelArrayItemPath(rows[i]!.path)
+  for (const row of rows) {
+    if (emitted.has(row.index)) continue
+    const itemPath = nextArrayItemAfterPrefix(row.item.path, prefix)
     if (!itemPath) {
-      emitted.add(i)
-      sections.push({ kind: 'ungrouped', item: rows[i]!, index: i })
+      emitted.add(row.index)
+      sections.push({ kind: 'ungrouped', item: row.item, index: row.index })
       continue
     }
 
     const arrayPath = arrayPathFromItemPath(itemPath)
-    const itemGroups = new Map<string, OverrideArrayItemGroup<T>>()
+    const rowsByItem = new Map<string, IndexedOverrideRow<T>[]>()
     const itemOrder: string[] = []
 
-    for (let j = 0; j < rows.length; j++) {
-      const otherItemPath = topLevelArrayItemPath(rows[j]!.path)
+    for (const other of rows) {
+      const otherItemPath = nextArrayItemAfterPrefix(other.item.path, prefix)
       if (!otherItemPath) continue
       if (arrayPathFromItemPath(otherItemPath) !== arrayPath) continue
-      emitted.add(j)
-      let group = itemGroups.get(otherItemPath)
-      if (!group) {
-        group = {
-          arrayItemPath: otherItemPath,
-          indexLabel: `[${arrayItemIndex(otherItemPath)}]`,
-          items: [],
-        }
-        itemGroups.set(otherItemPath, group)
+      emitted.add(other.index)
+      let list = rowsByItem.get(otherItemPath)
+      if (!list) {
+        list = []
+        rowsByItem.set(otherItemPath, list)
         itemOrder.push(otherItemPath)
       }
-      group.items.push({ item: rows[j]!, index: j })
+      list.push(other)
     }
-
-    itemOrder.sort((a, b) => {
-      const delta = Number(arrayItemIndex(a)) - Number(arrayItemIndex(b))
-      if (Number.isNaN(delta)) return a.localeCompare(b)
-      return delta
-    })
 
     sections.push({
       kind: 'array',
       arrayPath,
       collapseKey: arrayCollapseKey(arrayPath),
       label: arrayPathLabel(arrayPath),
-      itemGroups: itemOrder.map((key) => itemGroups.get(key)!),
+      itemGroups: sortItemPaths(itemOrder).map((key) => ({
+        arrayItemPath: key,
+        indexLabel: `[${arrayItemIndex(key)}]`,
+        children: groupIndexedRows(rowsByItem.get(key)!, key),
+      })),
     })
   }
 
