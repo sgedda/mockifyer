@@ -11,6 +11,7 @@ import {
   parseOverrideSetDocument,
   summarizeOverrideSetDocument,
 } from './override-sets';
+import { parseScenarioName } from './scenario';
 
 let fs: typeof import('fs') | undefined;
 let path: typeof import('path') | undefined;
@@ -30,10 +31,28 @@ function requireNodeFs(): { fs: typeof import('fs'); path: typeof import('path')
   return { fs, path };
 }
 
+function requireSafeScenarioName(scenario: string): string {
+  const parsed = parseScenarioName(scenario);
+  if (!parsed) {
+    throw new Error(
+      `Invalid scenario name: "${String(scenario).trim()}". Use only letters, numbers, hyphens, and underscores.`
+    );
+  }
+  return parsed;
+}
+
 /** `{mockDataPath}/{scenario}/override-sets` */
 export function getOverrideSetsDir(mockDataPath: string, scenario: string): string {
   const { path: nodePath } = requireNodeFs();
-  return nodePath.join(mockDataPath, scenario.trim(), OVERRIDE_SETS_DIR_NAME);
+  const safeScenario = requireSafeScenarioName(scenario);
+  const root = nodePath.resolve(mockDataPath);
+  const dir = nodePath.resolve(root, safeScenario, OVERRIDE_SETS_DIR_NAME);
+  if (dir !== root && !dir.startsWith(root + nodePath.sep)) {
+    throw new Error(
+      `Invalid scenario name: "${scenario}". Use only letters, numbers, hyphens, and underscores.`
+    );
+  }
+  return dir;
 }
 
 export function getOverrideSetFilePath(
