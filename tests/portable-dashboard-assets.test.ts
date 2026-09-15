@@ -95,6 +95,11 @@ describe('portable dashboard assets (host SPA fallback)', () => {
     expect(resolvePortableDashboardAssetUrl('/overrides', './assets/main.js')).toBe(
       '/assets/main.js'
     );
+    expect(resolvePortableDashboardAssetUrl('/mock', './assets/main.js')).toBe('/assets/main.js');
+    expect(resolvePortableDashboardAssetUrl('/mockifyer/mock', './assets/main.js')).toBe(
+      '/mockifyer/assets/main.js'
+    );
+    expect(resolvePortableDashboardAssetUrl('/mocks', './assets/main.js')).toBe('/assets/main.js');
   });
 
   it('strips relative ./assets tags and boots absolute URLs', () => {
@@ -109,6 +114,13 @@ describe('portable dashboard assets (host SPA fallback)', () => {
 
     const standalone = runBoot(html, '/overrides');
     expect(standalone.scripts).toEqual(['/assets/main-QnIA1sRA.js']);
+
+    const mockEditor = runBoot(html, '/mock');
+    expect(mockEditor.scripts).toEqual(['/assets/main-QnIA1sRA.js']);
+    expect(mockEditor.links).toEqual(['/assets/main-Cj6LkZgN.css']);
+
+    const embeddedMock = runBoot(html, '/mockifyer/mock');
+    expect(embeddedMock.scripts).toEqual(['/mockifyer/assets/main-QnIA1sRA.js']);
   });
 });
 
