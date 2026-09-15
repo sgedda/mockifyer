@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { getScenarioConfig, setScenario, createScenario, setScenarioLock, exportScenarioBundle, importScenarioBundle, clearScenarioMocks } from '@/lib/api'
 import type { ScenarioExportBundle } from '@/types'
-import { Save, Download, Upload, Trash2 } from 'lucide-react'
+import { Save, Download, Upload, Trash2, Star } from 'lucide-react'
 import ClientLanes from './ClientLanes'
+import { favoriteListLabel, useMockFavorites } from '@/lib/favorites-context'
 
 interface SettingsProps {
   scenario: string
@@ -42,6 +43,8 @@ export default function Settings({
   const [parsedBundle, setParsedBundle] = useState<ScenarioExportBundle | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+  const { favorites, unfavorite, loading: favoritesLoading } = useMockFavorites()
+  const [removingFavoriteId, setRemovingFavoriteId] = useState<string | null>(null)
 
   async function handleToggleScenarioLock(nextLocked: boolean) {
     try {
@@ -264,6 +267,22 @@ export default function Settings({
       toast({ title: 'Clear failed', description: message, variant: 'destructive' })
     } finally {
       setClearingMocks(false)
+    }
+  }
+
+  async function handleRemoveFavorite(id: string) {
+    try {
+      setRemovingFavoriteId(id)
+      await unfavorite(id)
+      toast({
+        title: 'Favorite removed',
+        description: 'The request is no longer starred globally.',
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to remove favorite'
+      toast({ title: 'Could not remove favorite', description: message, variant: 'destructive' })
+    } finally {
+      setRemovingFavoriteId(null)
     }
   }
 
@@ -518,6 +537,54 @@ export default function Settings({
               {importing ? 'Importing…' : 'Import into scenario'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Favorite requests</CardTitle>
+          <CardDescription>
+            Stars are global across scenarios. A starred request only appears on the Mocks tab when that scenario has a
+            matching recording.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {favoritesLoading ? (
+            <div className="text-sm text-muted-foreground">Loading favorites…</div>
+          ) : favorites.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No favorites yet. Star a request on the Mocks tab to pin it.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {favorites.map((favorite) => (
+                <li key={favorite.id} className="flex items-start justify-between gap-3 px-3 py-3">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" aria-hidden />
+                      <span className="truncate">{favoriteListLabel(favorite)}</span>
+                    </div>
+                    {favorite.endpoint ? (
+                      <div className="truncate font-mono text-xs text-muted-foreground" title={favorite.endpoint}>
+                        {favorite.endpoint}
+                      </div>
+                    ) : null}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0"
+                    disabled={removingFavoriteId === favorite.id}
+                    onClick={() => void handleRemoveFavorite(favorite.id)}
+                    title="Remove favorite"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

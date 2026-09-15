@@ -12,8 +12,9 @@ import { MockCard } from '@/components/MockCard'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Link } from 'react-router-dom'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch, SlidersHorizontal } from 'lucide-react'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch, SlidersHorizontal, Star } from 'lucide-react'
 import { overridesPath } from '@/lib/dashboard-urls'
+import { useMockFavorites } from '@/lib/favorites-context'
 
 interface MockListProps {
   mocks: MockFile[]
@@ -56,22 +57,39 @@ function MockListContent({
 }: MockListProps) {
   const { toast } = useToast()
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
+  const { favoriteIds, favoritesOnly, setFavoritesOnly } = useMockFavorites()
   const [deleting, setDeleting] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<'folders' | 'domains' | 'chains'>('folders')
   const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false)
   const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
   const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(false)
   const didSuggestChainsView = useRef(false)
   const [chainsOnly, setChainsOnly] = useState(false)
+
+  const matchingFavoriteMocks = useMemo(() => {
+    const source = searchQuery.trim() ? mocks : allMocks
+    return source.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [allMocks, mocks, searchQuery, favoriteIds])
+
+  const visibleMocks = useMemo(() => {
+    if (!favoritesOnly) return mocks
+    return mocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, mocks, favoriteIds])
+
+  const visibleAllMocks = useMemo(() => {
+    if (!favoritesOnly) return allMocks
+    return allMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, allMocks, favoriteIds])
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
     return 'Unexpected error'
   }
 
-  const chainSource = searchQuery.trim() ? mocks : allMocks
+  const chainSource = searchQuery.trim() ? visibleMocks : visibleAllMocks
 
   /** Redis-backed mocks with real URLs — use Domains (not redis/ filename folders) for Live/Replay. */
   const preferDomainsGrouping = useMemo(() => {
@@ -202,13 +220,13 @@ function MockListContent({
   const serviceChains = useMemo(() => buildMockServiceChainsForDisplay(chainSource), [chainSource])
 
   const displayedMocks = useMemo(() => {
-    if (!chainsOnly) return mocks
+    if (!chainsOnly) return visibleMocks
     const inChain = new Set<string>()
     for (const chain of serviceChains) {
       for (const hop of chain.hops) inChain.add(hop.filename)
     }
-    return mocks.filter((m) => inChain.has(m.filename))
-  }, [chainsOnly, mocks, serviceChains])
+    return visibleMocks.filter((m) => inChain.has(m.filename))
+  }, [chainsOnly, visibleMocks, serviceChains])
 
   const { folderTree, hasFolders } = useMemo(() => {
     if (groupBy === 'chains') {
@@ -230,21 +248,21 @@ function MockListContent({
   }, [groupBy, displayedMocks, serviceChains])
 
   const recentMocks = useMemo(() => {
-    const source = searchQuery.trim() ? mocks : allMocks
+    const source = searchQuery.trim() ? visibleMocks : visibleAllMocks
     return [...source]
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
       .slice(0, 5)
-  }, [allMocks, mocks, searchQuery])
+  }, [visibleAllMocks, visibleMocks, searchQuery])
 
   const overrideMocks = useMemo(() => {
-    const source = searchQuery.trim() ? mocks : allMocks
+    const source = searchQuery.trim() ? visibleMocks : visibleAllMocks
     return [...source]
       .filter(
         (m) =>
           m.hasResponseDateOverrides === true || m.hasResponseFieldOverrides === true
       )
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
-  }, [allMocks, mocks, searchQuery])
+  }, [visibleAllMocks, visibleMocks, searchQuery])
 
   return (
     <div className="space-y-4">
@@ -256,6 +274,20 @@ function MockListContent({
           className="min-w-[12rem] flex-1"
           disabled={loading}
         />
+        <label
+          className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm"
+          title="Show only starred requests that exist in this scenario"
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-input"
+            checked={favoritesOnly}
+            onChange={(e) => setFavoritesOnly(e.target.checked)}
+            disabled={loading}
+          />
+          <Star className={`h-3.5 w-3.5 ${favoritesOnly ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
+          <span className="hidden sm:inline">Favorites only</span>
+        </label>
         {!loading && mocks.length > 0 && (
           <div
             className="inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-border"
@@ -471,6 +503,49 @@ function MockListContent({
         </Card>
       )}
 
+      {!loading && !favoritesOnly && matchingFavoriteMocks.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setFavoritesCollapsed((c) => !c)}
+              title={favoritesCollapsed ? 'Expand favorites' : 'Collapse favorites'}
+            >
+              <div className="flex items-center gap-2">
+                {favoritesCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" aria-hidden />
+                <div className="text-sm font-medium">
+                  Favorites{' '}
+                  <span className="text-xs text-muted-foreground">
+                    ({matchingFavoriteMocks.length} in this scenario)
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">Global stars, matching requests only</div>
+            </button>
+            {!favoritesCollapsed && (
+              <div className="flex flex-col gap-2">
+                {matchingFavoriteMocks.map((m) => (
+                  <MockCard
+                    key={`favorite:${m.filename}`}
+                    mock={m}
+                    selectedMock={selectedMock}
+                    onSelectMock={onSelectMock}
+                    showActions={false}
+                    scenario={scenario}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && recentMocks.length > 0 && (
         <Card>
           <CardContent className="p-4 space-y-3">
@@ -532,9 +607,11 @@ function MockListContent({
             <div className="text-center text-muted-foreground">
               {chainsOnly
                 ? 'No multi-service chains in the current list'
-                : searchQuery
-                  ? 'No mocks found matching your search'
-                  : 'No mocks found'}
+                : favoritesOnly
+                  ? 'No favorite requests match this scenario'
+                  : searchQuery
+                    ? 'No mocks found matching your search'
+                    : 'No mocks found'}
             </div>
           </CardContent>
         </Card>

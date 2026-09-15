@@ -43,6 +43,7 @@ import {
   tryMirrorDomainPathRulesToDisk,
   writeDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
+import { favoriteIdForMock } from '../utils/favorites-store';
 
 const router = express.Router();
 
@@ -91,7 +92,7 @@ function getMockDataPath(): string {
   return detectMockDataPath();
 }
 
-function parseRedisHashFromFilename(relativeName: string): string | null {
+export function parseRedisHashFromFilename(relativeName: string): string | null {
   // Expected format: redis/<hash>.json
   if (!relativeName.startsWith('redis/')) return null;
   if (!relativeName.endsWith('.json')) return null;
@@ -294,6 +295,7 @@ function toMockListRow(params: {
     sessionId,
     requestId: correlation.requestId,
     parentRequestId: correlation.parentRequestId,
+    requestHash: favoriteIdForMock(mockData),
     ...activation,
     ...getMockOverrideListFields(mockData),
   };
@@ -524,11 +526,13 @@ router.get('/', async (req: Request, res: Response) => {
         let overrideFields = getMockOverrideListFields({});
         let requestId: string | null = null;
         let parentRequestId: string | null = null;
+        let requestHash: string | null = null;
         try {
           const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
           const correlation = extractMockCorrelationIds(mockData);
           requestId = correlation.requestId;
           parentRequestId = correlation.parentRequestId;
+          requestHash = favoriteIdForMock(mockData);
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
           }
@@ -566,6 +570,7 @@ router.get('/', async (req: Request, res: Response) => {
           sessionId,
           requestId,
           parentRequestId,
+          requestHash,
           ...activation,
           ...overrideFields,
         };
@@ -746,6 +751,7 @@ router.get('/search', async (req: Request, res: Response) => {
             sessionId,
             requestId: correlation.requestId,
             parentRequestId: correlation.parentRequestId,
+            requestHash: favoriteIdForMock(mockData),
             alwaysUseRealApi,
             ...getMockOverrideListFields(mockData),
           });
@@ -795,12 +801,14 @@ router.get('/search', async (req: Request, res: Response) => {
       let overrideFields = getMockOverrideListFields({});
       let requestId: string | null = null;
       let parentRequestId: string | null = null;
+      let requestHash: string | null = null;
 
       try {
         const mockData = JSON.parse(content);
         const correlation = extractMockCorrelationIds(mockData);
         requestId = correlation.requestId;
         parentRequestId = correlation.parentRequestId;
+        requestHash = favoriteIdForMock(mockData);
         if (mockData.request?.url) endpoint = mockData.request.url;
         if (mockData.request?.method) method = String(mockData.request.method);
         if (mockData.alwaysUseRealApi === true) alwaysUseRealApi = true;
@@ -847,6 +855,7 @@ router.get('/search', async (req: Request, res: Response) => {
         sessionId,
         requestId,
         parentRequestId,
+        requestHash,
         alwaysUseRealApi,
         ...overrideFields,
       });

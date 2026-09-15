@@ -40,7 +40,7 @@ export function getAllJsonFiles(dir: string): string[] {
         if (name === 'override-sets' || name === 'pool') continue;
         walk(full);
       } else if (name.endsWith('.json')) {
-        if (name === 'scenario-meta.json') continue;
+        if (name === 'scenario-meta.json' || name === 'favorites.json') continue;
         results.push(full);
       }
     }
