@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import {
   DEFAULT_OVERRIDE_SET_ID,
   applyOverrideSetDocumentToMock,
@@ -7,6 +10,7 @@ import {
   overrideSetEntryHashForMock,
   parseOverrideSetDocument,
   upsertOverrideSetEntry,
+  writeOverrideSetToFs,
   type MockData,
 } from '@sgedda/mockifyer-core';
 
@@ -89,5 +93,27 @@ describe('override sets', () => {
 
     const cleared = upsertOverrideSetEntry(parsed, 'b'.repeat(64), null);
     expect(Object.keys(cleared.entries)).toHaveLength(0);
+  });
+
+  it('refuses to write override-set files outside mockDataPath via scenario traversal', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-oset-'));
+    const mockDataPath = path.join(tmp, 'mock-data');
+    fs.mkdirSync(mockDataPath, { recursive: true });
+    const doc = createEmptyOverrideSetDocument(DEFAULT_OVERRIDE_SET_ID);
+
+    expect(() => writeOverrideSetToFs(mockDataPath, '..', doc)).toThrow(/Invalid scenario name/);
+    expect(() => writeOverrideSetToFs(mockDataPath, '../evil', doc)).toThrow(/Invalid scenario name/);
+    expect(() => writeOverrideSetToFs(mockDataPath, 'foo/bar', doc)).toThrow(/Invalid scenario name/);
+
+    const escaped = path.join(tmp, 'override-sets', `${DEFAULT_OVERRIDE_SET_ID}.json`);
+    expect(fs.existsSync(escaped)).toBe(false);
+    expect(fs.readdirSync(tmp)).toEqual(['mock-data']);
+
+    writeOverrideSetToFs(mockDataPath, 'default', doc);
+    expect(
+      fs.existsSync(path.join(mockDataPath, 'default', 'override-sets', `${DEFAULT_OVERRIDE_SET_ID}.json`))
+    ).toBe(true);
+
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
