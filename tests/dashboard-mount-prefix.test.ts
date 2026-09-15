@@ -1,5 +1,10 @@
+import fs from 'fs';
+import path from 'path';
 import {
+  DASHBOARD_PAGE_SUFFIXES,
+  dashboardSpaPageAssetPrefix,
   inferMountPrefixFromPathname,
+  replaceDashboardPageSuffixesLiteral,
   resolveApiBase,
   resolveRouterBasename,
   resolveScriptSrcToMountPrefix,
@@ -21,12 +26,60 @@ describe('dashboard mount inference (embedded /mockifyer)', () => {
     expect(inferMountPrefixFromPathname('/')).toBe('');
   });
 
+  it('has no prefix for standalone /mock and /mocks (not an embed mount)', () => {
+    expect(inferMountPrefixFromPathname('/mock')).toBe('');
+    expect(inferMountPrefixFromPathname('/mock/')).toBe('');
+    expect(inferMountPrefixFromPathname('/mocks')).toBe('');
+    expect(inferMountPrefixFromPathname('/mocks/')).toBe('');
+  });
+
+  it('reads the prefix from /mockifyer/mock and /mockifyer/mocks', () => {
+    expect(inferMountPrefixFromPathname('/mockifyer/mock')).toBe('/mockifyer');
+    expect(inferMountPrefixFromPathname('/mockifyer/mock/')).toBe('/mockifyer');
+    expect(inferMountPrefixFromPathname('/mockifyer/mocks')).toBe('/mockifyer');
+    expect(inferMountPrefixFromPathname('/mockifyer/mocks/')).toBe('/mockifyer');
+  });
+
   it('prefers the page mount for API and router even when Vite base is /', () => {
     expect(resolveApiBase('/', '/mockifyer')).toBe('/mockifyer/api');
     expect(resolveApiBase('./', '/mockifyer')).toBe('/mockifyer/api');
     expect(resolveRouterBasename('/', '/mockifyer')).toBe('/mockifyer');
     expect(resolveRouterBasename('./', '')).toBeUndefined();
     expect(resolveApiBase('/', '')).toBe('/api');
+    expect(resolveRouterBasename('/', inferMountPrefixFromPathname('/mock'))).toBeUndefined();
+    expect(resolveApiBase('/', inferMountPrefixFromPathname('/mock'))).toBe('/api');
+    expect(resolveRouterBasename('/', inferMountPrefixFromPathname('/mockifyer/mock'))).toBe(
+      '/mockifyer'
+    );
+    expect(resolveApiBase('/', inferMountPrefixFromPathname('/mockifyer/mock'))).toBe(
+      '/mockifyer/api'
+    );
+  });
+
+  it('keeps index.html mount suffixes in sync with DASHBOARD_PAGE_SUFFIXES', () => {
+    const html = fs.readFileSync(
+      path.join(
+        __dirname,
+        '../packages/mockifyer-dashboard/frontend/index.html'
+      ),
+      'utf8'
+    );
+    const match = html.match(/var suffixes = (\[[^\]]*\])/);
+    expect(match).not.toBeNull();
+    const fromHtml = JSON.parse((match?.[1] ?? '').replace(/'/g, '"')) as string[];
+    expect(fromHtml).toEqual([...DASHBOARD_PAGE_SUFFIXES]);
+    expect(fromHtml).toContain('/mock');
+    expect(
+      replaceDashboardPageSuffixesLiteral("var suffixes = ['/mocks'];")
+    ).toContain('"/mock"');
+  });
+
+  it('rewrites /mock/assets as a page-relative Vite URL, not an embed mount', () => {
+    const prefix = dashboardSpaPageAssetPrefix();
+    expect(prefix.test('/mock/assets/main.js')).toBe(true);
+    expect(prefix.test('/mocks/assets/main.js')).toBe(true);
+    expect(prefix.test('/overrides/assets/main.js')).toBe(true);
+    expect(prefix.test('/assets/main.js')).toBe(false);
   });
 
   it('resolves relative ./assets against the page URL, not origin', () => {

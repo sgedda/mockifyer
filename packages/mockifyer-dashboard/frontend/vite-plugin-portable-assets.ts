@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite'
+import { replaceDashboardPageSuffixesLiteral } from './src/lib/dashboard-mount'
 import { injectPortableDashboardAssets } from './src/lib/portable-dashboard-assets'
 
 /**
@@ -9,14 +10,14 @@ import { injectPortableDashboardAssets } from './src/lib/portable-dashboard-asse
 export function dashboardPortableAssetsPlugin(base: string): Plugin {
   return {
     name: 'mockifyer-dashboard-portable-assets',
-    apply: 'build',
     transformIndexHtml: {
       order: 'post',
       handler(html) {
+        const withSuffixes = replaceDashboardPageSuffixesLiteral(html)
         if (base !== './') {
-          return html
+          return withSuffixes
         }
-        return injectPortableDashboardAssets(html)
+        return injectPortableDashboardAssets(withSuffixes)
       },
     },
   }

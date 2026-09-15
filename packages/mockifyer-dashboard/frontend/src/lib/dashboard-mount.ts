@@ -1,6 +1,12 @@
-/** Dashboard client routes (relative to the Express mount). */
+/**
+ * Dashboard client routes (relative to the Express mount).
+ * Must include `/mock` (editor) as well as `/mocks` (list). Missing `/mock`
+ * made `/mock?file=` look like an embed prefix, so the router basename became
+ * `/mock` and in-app navigation stacked `/mock/mock`.
+ */
 export const DASHBOARD_PAGE_SUFFIXES = [
   '/mocks',
+  '/mock',
   '/overrides',
   '/timeline',
   '/atlas',
@@ -9,6 +15,28 @@ export const DASHBOARD_PAGE_SUFFIXES = [
   '/date-config',
   '/settings',
 ] as const;
+
+/** SPA fallback may request `/<page>/assets/*` when Vite `base` is `./`. */
+export function dashboardSpaPageAssetPrefix(): RegExp {
+  const segments = DASHBOARD_PAGE_SUFFIXES.map((suffix) => suffix.slice(1)).join('|');
+  return new RegExp(`^/(${segments})/assets/`);
+}
+
+/** JSON array for inline HTML boot scripts (`var suffixes = …`). */
+export function dashboardPageSuffixesJson(): string {
+  return JSON.stringify([...DASHBOARD_PAGE_SUFFIXES]);
+}
+
+/**
+ * Keep the first `var suffixes = […]` in `index.html` aligned with
+ * {@link DASHBOARD_PAGE_SUFFIXES} so `/mock` is not treated as an embed mount.
+ */
+export function replaceDashboardPageSuffixesLiteral(source: string): string {
+  return source.replace(
+    /var suffixes = \[[^\]]*\]/,
+    `var suffixes = ${dashboardPageSuffixesJson()}`
+  );
+}
 
 /**
  * Resolve a script `src` against the current page URL (not origin).
