@@ -37,6 +37,11 @@ interface DashboardProps {
   onScenarioChange: (scenario: string) => void
 }
 
+/** Tabs that render the full mock catalog. Overrides uses GET /mocks/with-overrides instead. */
+function tabNeedsMockCatalog(tab: string): boolean {
+  return tab === 'mocks'
+}
+
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -50,25 +55,27 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
   const [proxySaving, setProxySaving] = useState(false)
   
-  // Get active tab from URL path
+  // Get active tab from URL path (basename-relative or full embed path)
   const getActiveTabFromPath = () => {
-    const path = location.pathname
-    if (path === '/mocks' || path === '/mock') return 'mocks'
-    if (path === '/overrides') return 'overrides'
-    if (path === '/timeline') return 'timeline'
-    if (path === '/atlas') return 'atlas'
-    if (path === '/network') return 'network'
-    if (path === '/fixture-pool') return 'fixture-pool'
-    if (path === '/date-config') return 'date-config'
-    if (path === '/settings') return 'settings'
-    return 'stats' // default to stats (root path)
+    const path = (location.pathname || '/').replace(/\/+$/, '') || '/'
+    if (path === '/mocks' || path === '/mock' || path.endsWith('/mocks') || path.endsWith('/mock')) {
+      return 'mocks'
+    }
+    if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
+    if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
+    if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
+    if (path === '/network' || path.endsWith('/network')) return 'network'
+    if (path === '/fixture-pool' || path.endsWith('/fixture-pool')) return 'fixture-pool'
+    if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
+    if (path === '/settings' || path.endsWith('/settings')) return 'settings'
+    return 'stats'
   }
   
   const [activeTab, setActiveTab] = useState(getActiveTabFromPath())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mocks, setMocks] = useState<MockFile[]>([])
   const [allMocks, setAllMocks] = useState<MockFile[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const searchQuery = searchParams.get(DASHBOARD_Q.q) ?? searchParams.get(DASHBOARD_Q.endpoint) ?? ''
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
   const mocksLoadAbortRef = useRef<AbortController | null>(null)
@@ -216,9 +223,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   }, [urlScenario, scenario, switchingScenario])
 
   useEffect(() => {
-    if (activeTab === 'mocks' && location.pathname === '/mocks') {
-      loadMocks()
-    } else if (activeTab !== 'mocks') {
+    if (!tabNeedsMockCatalog(activeTab)) {
+      mocksLoadAbortRef.current?.abort()
+      return
+    }
+    loadMocks()
+    return () => {
       mocksLoadAbortRef.current?.abort()
     }
   }, [scenario, activeTab, location.pathname])
@@ -242,6 +252,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
       'network': '/network',
@@ -262,17 +273,19 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     mocksLoadAbortRef.current = ac
     const { signal } = ac
     const requestedSearchQuery = searchQuery.trim()
+    const wantSimilarGroups = activeTab === 'mocks'
+    const hasCatalog = allMocks.length > 0
     try {
-      setLoading(true)
+      if (!hasCatalog) setLoading(true)
       setSimilarBodyGroups([])
-      // List first without similarGroups so an empty/cleared scenario is not blocked
-      // by GraphQL clustering (or by a previous scenario's in-flight cluster).
       const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       setMocks(data.files)
       setAllMocks(data.files)
       setLoading(false)
+
+      if (!wantSimilarGroups) return
 
       const graphqlCount = data.files.reduce(
         (n, file) => (file.graphqlInfo?.query ? n + 1 : n),
@@ -609,14 +622,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"
-              element={
-                <OverridesView
-                  scenario={scenario}
-                  mocks={allMocks}
-                  loading={loading}
-                  onRefresh={loadMocks}
-                />
-              }
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+            />
+            <Route
+              path="/:mountPrefix/overrides"
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
             />
             <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
