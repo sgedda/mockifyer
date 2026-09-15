@@ -31,6 +31,7 @@ import {
   scenarioDisplayName,
 } from '@/lib/scenario-display'
 import { buildSearch, DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
+import { FavoritesProvider } from '@/lib/favorites-context'
 
 interface DashboardProps {
   scenario: string
@@ -383,6 +384,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
 
   return (
+    <FavoritesProvider scenario={scenario}>
     <div className="flex h-screen overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -660,5 +662,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
         </main>
       </div>
     </div>
+    </FavoritesProvider>
   )
 }
