@@ -26,6 +26,8 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import DateOverridesEditor from '@/components/DateOverridesEditor'
 import FieldOverridesEditor from '@/components/FieldOverridesEditor'
+import { OverrideArrayCollapseProvider } from '@/components/OverrideArrayCollapseContext'
+import GraphqlRequestPreview from '@/components/GraphqlRequestPreview'
 import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 import {
   fieldOverridesToRows,
@@ -241,6 +243,7 @@ export default function OverridesView({
         filename: mock.filename,
         method: mock.method,
         endpoint: mock.endpoint,
+        graphqlInfo: mock.graphqlInfo,
         fieldCount: mock.responseFieldOverridesCount ?? 0,
         dateCount: mock.responseDateOverridesCount ?? 0,
         hasDates: mock.hasResponseDateOverrides === true,
@@ -260,6 +263,7 @@ export default function OverridesView({
             filename: entry.filename,
             method: mock?.method,
             endpoint: mock?.endpoint,
+            graphqlInfo: mock?.graphqlInfo ?? null,
             fieldCount,
             dateCount,
             hasDates: dateCount > 0,
@@ -821,6 +825,9 @@ export default function OverridesView({
                       {mock.preview.join(' · ')}
                     </div>
                   ) : null}
+                  {mock.graphqlInfo ? (
+                    <GraphqlRequestPreview graphqlInfo={mock.graphqlInfo} compact />
+                  ) : null}
                 </button>
               )
             })}
@@ -851,6 +858,9 @@ export default function OverridesView({
                   ? 'Saving writes into the selected override group entry.'
                   : 'Field, date, and remove overlays apply at replay without rewriting stored response.data.'}
             </CardDescription>
+            {selectedMeta?.graphqlInfo ? (
+              <GraphqlRequestPreview graphqlInfo={selectedMeta.graphqlInfo} className="pt-1" />
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
             {!selectedFilename ? (
@@ -882,22 +892,24 @@ export default function OverridesView({
                   </Button>
                 </div>
 
-                <FieldOverridesEditor
-                  rows={drafts}
-                  onChange={setDrafts}
-                  responseBody={responseBody}
-                  instanceKey={selectedFilename}
-                />
-
-                <div className="border-t border-border pt-4">
-                  <DateOverridesEditor
-                    dateOverrides={dateOverrides}
-                    onChange={setDateOverrides}
+                <OverrideArrayCollapseProvider key={selectedFilename}>
+                  <FieldOverridesEditor
+                    rows={drafts}
+                    onChange={setDrafts}
                     responseBody={responseBody}
-                    mockifyerNow={mockifyerNow}
                     instanceKey={selectedFilename}
                   />
-                </div>
+
+                  <div className="border-t border-border pt-4">
+                    <DateOverridesEditor
+                      dateOverrides={dateOverrides}
+                      onChange={setDateOverrides}
+                      responseBody={responseBody}
+                      mockifyerNow={mockifyerNow}
+                      instanceKey={selectedFilename}
+                    />
+                  </div>
+                </OverrideArrayCollapseProvider>
               </>
             )}
           </CardContent>

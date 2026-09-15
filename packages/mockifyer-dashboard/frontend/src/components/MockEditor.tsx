@@ -21,6 +21,7 @@ import { X, Save, Code, Edit, Plus, Copy, Terminal, AlignLeft, RefreshCw } from 
 import { CopyableText } from '@/components/CopyableText'
 import MockOverridesLink from '@/components/MockOverridesLink'
 import { countStoredOverrides } from '@/lib/mock-overrides'
+import { formatGraphqlRequestBodyForEditor } from '@/lib/graphql-request-preview'
 
 interface MockEditorProps {
   mock: MockData
@@ -80,6 +81,26 @@ const LARGE_RESPONSE_CHAR_THRESHOLD = 48_000
 const MAX_JSON_PRETTY_INITIAL_CHARS = 2_000_000
 
 const jsonLanguageExtensions: Extension[] = [json(), EditorView.lineWrapping]
+
+function formatMockRequestBody(data: unknown): string {
+  const fromObject = formatGraphqlRequestBodyForEditor(data)
+  if (fromObject) return fromObject
+  if (typeof data === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(data)
+      const formatted = formatGraphqlRequestBodyForEditor(parsed)
+      if (formatted) return formatted
+    } catch {
+      // keep the raw string
+    }
+    return data
+  }
+  try {
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return String(data)
+  }
+}
 
 function useCodeMirrorVscodeTheme(): Extension {
   const [theme, setTheme] = useState<Extension>(() => {
@@ -635,10 +656,8 @@ export default function MockEditor({
             {mock.data.request.data && (
               <div className="space-y-2">
                 <div className="text-sm font-medium">Request Body</div>
-                <pre className="text-xs bg-muted p-3 rounded overflow-auto">
-                  {typeof mock.data.request.data === 'string'
-                    ? mock.data.request.data
-                    : JSON.stringify(mock.data.request.data, null, 2)}
+                <pre className="text-xs bg-muted p-3 rounded overflow-auto whitespace-pre-wrap break-all">
+                  {formatMockRequestBody(mock.data.request.data)}
                 </pre>
               </div>
             )}
