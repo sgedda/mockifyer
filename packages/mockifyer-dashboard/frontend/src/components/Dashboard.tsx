@@ -382,18 +382,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const viewingScratch = isScratchScenario(scenario)
   const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
 
-  const openMockFromOverrides = (filename: string) => {
-    const file = allMocks.find((m) => m.filename === filename)
-    if (file) {
-      void handleSelectMock(file)
-    }
-    navigate('/mocks')
-  }
-
-  const overridesPage = (
-    <OverridesView scenario={scenario} mocks={allMocks} onOpenMock={openMockFromOverrides} />
-  )
-
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile sidebar overlay */}
