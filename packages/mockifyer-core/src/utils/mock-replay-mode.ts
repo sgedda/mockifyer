@@ -1,6 +1,5 @@
 import type { MockData, MockifyerConfig } from '../types';
 import { applyCapturedResponse } from './request-only-mock';
-import { mockPassesThroughToRealApi } from './mock-passthrough';
 import { applyResponseDateOverridesToData } from './mock-response-date-overrides';
 import {
   applyResponseFieldOverridesToData,
@@ -21,17 +20,20 @@ export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'pas
  * - `stored` — serve saved body (+ optional date overrides).
  * - `refresh-next` — one upstream fetch, update stored body, clear flag, return live (+ overrides).
  * - `always-refresh` — every request fetches upstream, updates stored body, returns live (+ overrides).
- * - `passthrough` — legacy live API (`alwaysUseRealApi` / `responsePending`); optional store refresh via global config.
+ * - `passthrough` — live API (`alwaysUseRealApi` / `responsePending` with no other mode set).
+ *
+ * Explicit refresh flags win over `responsePending` so dashboard mode changes on
+ * request-only stubs take effect before a body is captured.
  */
 export function resolveMockReplayMode(mockData: MockData): MockReplayMode {
-  if (mockData.alwaysUseRealApi === true || mockData.responsePending === true) {
-    return 'passthrough';
-  }
   if (mockData.alwaysRefreshFromLive === true) {
     return 'always-refresh';
   }
   if (mockData.refreshOnNextRequest === true) {
     return 'refresh-next';
+  }
+  if (mockData.alwaysUseRealApi === true || mockData.responsePending === true) {
+    return 'passthrough';
   }
   return 'stored';
 }
@@ -70,7 +72,7 @@ export function mockShouldBeIncludedInRequestMatch(
   if (options?.includePassthroughMocks === true) {
     return true;
   }
-  if (mockPassesThroughToRealApi(mockData)) {
+  if (resolveMockReplayMode(mockData) === 'passthrough') {
     return (
       mockHasResponseDateOverrides(mockData) ||
       mockHasResponseFieldOverrides(mockData) ||
@@ -175,13 +177,28 @@ export function buildMockDataAfterLiveCapture(
   return updated;
 }
 
-/** Applies a mutually exclusive replay mode to a mock recording. */
+/**
+ * Applies a mutually exclusive replay mode to a mock recording.
+ *
+ * Request-only stubs (`responsePending`) stay on live API until a mode other than
+ * passthrough is chosen. Leaving passthrough clears `responsePending` so matching
+ * and the dashboard radio reflect the new mode. `stored` with no captured body
+ * becomes `refresh-next` so the next request records a response instead of serving empty JSON.
+ */
 export function applyMockReplayModeSetting(mockData: MockData, mode: MockReplayMode): void {
   delete mockData.alwaysUseRealApi;
   delete mockData.refreshOnNextRequest;
   delete mockData.alwaysRefreshFromLive;
 
-  switch (mode) {
+  const pendingWithoutBody = mockData.responsePending === true;
+  const resolvedMode =
+    mode === 'stored' && pendingWithoutBody ? 'refresh-next' : mode;
+
+  if (resolvedMode !== 'passthrough' && pendingWithoutBody) {
+    delete mockData.responsePending;
+  }
+
+  switch (resolvedMode) {
     case 'passthrough':
       mockData.alwaysUseRealApi = true;
       break;

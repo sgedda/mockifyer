@@ -1,8 +1,10 @@
 import {
   applyLiveFetchMockUpdates,
+  applyMockReplayModeSetting,
   buildClientResponseFromLiveCapture,
   buildMockDataAfterLiveCapture,
   mockHasResponseDateOverrides,
+  mockPassesThroughToRealApi,
   mockRequiresUpstreamFetch,
   mockShouldBeIncludedInRequestMatch,
   mockShouldServeStoredBody,
@@ -77,6 +79,48 @@ describe('mock replay mode', () => {
     );
     expect((client.data as { expiresAt: string }).expiresAt).toBe(fixed.toISOString());
     expect(mockHasResponseDateOverrides(mock)).toBe(true);
+  });
+
+  it('honors explicit refresh flags over responsePending', () => {
+    expect(
+      resolveMockReplayMode(baseMock({ responsePending: true, refreshOnNextRequest: true }))
+    ).toBe('refresh-next');
+    expect(
+      mockPassesThroughToRealApi(baseMock({ responsePending: true, refreshOnNextRequest: true }))
+    ).toBe(false);
+    expect(
+      mockShouldBeIncludedInRequestMatch(baseMock({ responsePending: true, refreshOnNextRequest: true }))
+    ).toBe(true);
+  });
+
+  it('clears responsePending when leaving live-api mode on a request-only stub', () => {
+    const pending = baseMock({
+      alwaysUseRealApi: true,
+      responsePending: true,
+      response: { status: 0, data: null, headers: {} },
+    });
+
+    applyMockReplayModeSetting(pending, 'refresh-next');
+    expect(pending.responsePending).toBeUndefined();
+    expect(pending.alwaysUseRealApi).toBeUndefined();
+    expect(pending.refreshOnNextRequest).toBe(true);
+    expect(resolveMockReplayMode(pending)).toBe('refresh-next');
+    expect(mockPassesThroughToRealApi(pending)).toBe(false);
+  });
+
+  it('promotes stored mode to refresh-next when no response has been captured', () => {
+    const pending = baseMock({ alwaysUseRealApi: true, responsePending: true });
+    applyMockReplayModeSetting(pending, 'stored');
+    expect(pending.responsePending).toBeUndefined();
+    expect(resolveMockReplayMode(pending)).toBe('refresh-next');
+  });
+
+  it('keeps responsePending when staying on passthrough', () => {
+    const pending = baseMock({ alwaysUseRealApi: true, responsePending: true });
+    applyMockReplayModeSetting(pending, 'passthrough');
+    expect(pending.responsePending).toBe(true);
+    expect(pending.alwaysUseRealApi).toBe(true);
+    expect(resolveMockReplayMode(pending)).toBe('passthrough');
   });
 
   it('buildMockDataAfterLiveCapture clones before mutating', () => {
