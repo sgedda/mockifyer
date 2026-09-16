@@ -141,9 +141,10 @@ export function createServer(
    * Vite `base: './'` + a trailing-slash deep link (`/mockifyer/overrides/`)
    * requests `/overrides/assets/*.js`. If we SPA-fallback that to index.html,
    * the browser never boots React and `/api/override-groups` is never called.
+   * Keep page names in sync with frontend `DASHBOARD_PAGE_SUFFIXES` (includes `/mock`).
    */
   const spaPageAssetPrefix =
-    /^\/(mocks|overrides|timeline|atlas|network|fixture-pool|date-config|settings)\/assets\//;
+    /^\/(mocks|mock|overrides|timeline|atlas|network|fixture-pool|date-config|settings)\/assets\//;
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return next();
