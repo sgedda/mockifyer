@@ -190,6 +190,13 @@ export interface HydrateOverrideGroupRuntimeOptions {
   explicitGroupId?: string | null;
   /** Redis (or other) lane selection when not using FS lane files. */
   laneGroupId?: string | null;
+  /** When set, skip disk listing and use these group documents. */
+  groups?: MockOverrideGroup[];
+  /**
+   * When the property is present (including `null`), skip reading
+   * `override-group-config.json` and use this default id.
+   */
+  defaultGroupId?: string | null;
 }
 
 export interface HydrateOverrideGroupRuntimeResult {
@@ -221,15 +228,10 @@ function classifySource(
   return 'none';
 }
 
-/**
- * Load group definitions and resolve the effective active group for a client/process.
- */
-export function hydrateOverrideGroupRuntimeFromScenarioPath(
+function resolveLaneGroupForHydrate(
   scenarioPath: string,
   options?: HydrateOverrideGroupRuntimeOptions
-): HydrateOverrideGroupRuntimeResult {
-  const groups = listOverrideGroupsFromDisk(scenarioPath);
-  const defaultConfig = readOverrideGroupConfig(scenarioPath);
+): { clientId: string | null; laneGroup: string | null } {
   const clientId =
     typeof options?.clientId === 'string' && options.clientId.trim()
       ? options.clientId.trim()
@@ -245,6 +247,31 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(
     const laneConfig = readClientOverrideGroupConfig(scenarioPath, clientId);
     laneGroup = laneConfig?.currentGroup ?? null;
   }
+  return { clientId, laneGroup };
+}
+
+function groupsAndDefaultForHydrate(
+  scenarioPath: string,
+  options?: HydrateOverrideGroupRuntimeOptions
+): { groups: MockOverrideGroup[]; defaultGroup: string | null } {
+  const groups = options?.groups ?? listOverrideGroupsFromDisk(scenarioPath);
+  const defaultGroup =
+    options && Object.prototype.hasOwnProperty.call(options, 'defaultGroupId')
+      ? options.defaultGroupId ?? null
+      : readOverrideGroupConfig(scenarioPath).currentGroup;
+  return { groups, defaultGroup };
+}
+
+/**
+ * Load group definitions and resolve the effective active group for a client/process.
+ * Pass `groups` / `defaultGroupId` to hydrate from Redis/SQLite instead of disk.
+ */
+export function hydrateOverrideGroupRuntimeFromScenarioPath(
+  scenarioPath: string,
+  options?: HydrateOverrideGroupRuntimeOptions
+): HydrateOverrideGroupRuntimeResult {
+  const { groups, defaultGroup } = groupsAndDefaultForHydrate(scenarioPath, options);
+  const { clientId, laneGroup } = resolveLaneGroupForHydrate(scenarioPath, options);
 
   const explicit = options?.explicitGroupId ?? null;
   const envGroup = readOverrideGroupIdFromEnv();
@@ -253,7 +280,7 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(
     explicitGroupId: explicit,
     envGroupId: envGroup,
     laneGroupId: laneGroup,
-    defaultGroupId: defaultConfig.currentGroup,
+    defaultGroupId: defaultGroup,
     knownGroupIds: knownIds,
   });
 
@@ -263,7 +290,7 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(
 
   return {
     groups,
-    defaultGroup: defaultConfig.currentGroup,
+    defaultGroup,
     laneGroup,
     currentGroup,
     source: classifySource(currentGroup, {
@@ -280,7 +307,7 @@ export function hydrateOverrideGroupRuntimeFromScenarioPath(
         knownGroupIds: knownIds,
       }),
       defaultGroup: resolveActiveOverrideGroupId({
-        defaultGroupId: defaultConfig.currentGroup,
+        defaultGroupId: defaultGroup,
         knownGroupIds: knownIds,
       }),
     }),
@@ -318,29 +345,14 @@ export function resolveOverrideGroupIdForServe(
   scenarioPath: string,
   options?: HydrateOverrideGroupRuntimeOptions
 ): string | null {
-  const groups = listOverrideGroupsFromDisk(scenarioPath);
-  const defaultConfig = readOverrideGroupConfig(scenarioPath);
-  const clientId =
-    typeof options?.clientId === 'string' && options.clientId.trim()
-      ? options.clientId.trim()
-      : null;
-
-  let laneGroup: string | null = null;
-  if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
-    laneGroup =
-      options.laneGroupId == null || options.laneGroupId === ''
-        ? null
-        : String(options.laneGroupId).trim() || null;
-  } else if (clientId) {
-    const laneConfig = readClientOverrideGroupConfig(scenarioPath, clientId);
-    laneGroup = laneConfig?.currentGroup ?? null;
-  }
+  const { groups, defaultGroup } = groupsAndDefaultForHydrate(scenarioPath, options);
+  const { laneGroup } = resolveLaneGroupForHydrate(scenarioPath, options);
 
   return resolveActiveOverrideGroupId({
     explicitGroupId: options?.explicitGroupId ?? null,
     envGroupId: readOverrideGroupIdFromEnv(),
     laneGroupId: laneGroup,
-    defaultGroupId: defaultConfig.currentGroup,
+    defaultGroupId: defaultGroup,
     knownGroupIds: groups.map((g) => g.id),
   });
 }

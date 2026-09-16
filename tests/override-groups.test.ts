@@ -213,4 +213,35 @@ describe('override groups', () => {
       applyActiveOverrideGroupOverlays({ x: 1 }, 'a.json', () => new Date(), scenarioPath)
     ).toEqual({ x: 1 });
   });
+
+  it('hydrates from loaded groups so two clients can select independently without disk', () => {
+    const otherPath = path.join(dir, 'redis-scenario');
+    const group: MockOverrideGroup = {
+      id: 'award-trip',
+      label: 'Award',
+      updatedAt: new Date().toISOString(),
+      entries: [
+        {
+          filename: 'bookings.json',
+          responseFieldOverrides: [{ path: 'status', value: 'AWARD' }],
+        },
+      ],
+    };
+    const alice = hydrateOverrideGroupRuntimeFromScenarioPath(otherPath, {
+      clientId: 'dev-alice',
+      groups: [group],
+      defaultGroupId: null,
+      laneGroupId: 'award-trip',
+    });
+    const bob = hydrateOverrideGroupRuntimeFromScenarioPath(otherPath, {
+      clientId: 'dev-bob',
+      groups: [group],
+      defaultGroupId: null,
+      laneGroupId: null,
+    });
+    expect(alice.currentGroup).toBe('award-trip');
+    expect(alice.source).toBe('lane');
+    expect(bob.currentGroup).toBeNull();
+    expect(bob.source).toBe('none');
+  });
 });

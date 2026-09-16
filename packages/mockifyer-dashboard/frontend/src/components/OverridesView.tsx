@@ -567,9 +567,9 @@ export default function OverridesView({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Overrides</h1>
           <p className="text-sm text-muted-foreground">
-            Field, date, and remove overlays for mocks, plus switchable override groups. Use “Set for
-            lane” with your <code>clientId</code> so teammates sharing the scenario keep their own
-            selection.
+            Field, date, and remove overlays for mocks, plus switchable override groups. Pair a
+            group with a scenario per <code>clientId</code> on Client lanes (same scope as scenario).
+            “Set for lane” here does that group assignment too.
           </p>
         </div>
         <Button

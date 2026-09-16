@@ -1,5 +1,12 @@
 import * as crypto from 'crypto';
-import type { MockData, DomainPathRulesMap, OverrideSetDocument, OverrideSetSummary } from '@sgedda/mockifyer-core';
+import type {
+  MockData,
+  DomainPathRulesMap,
+  OverrideSetDocument,
+  OverrideSetSummary,
+  MockOverrideGroup,
+  MockOverrideGroupConfig,
+} from '@sgedda/mockifyer-core';
 import {
   assertNotReservedScenarioName,
   generateRequestKey,
@@ -20,6 +27,10 @@ import {
   summarizeOverrideSetDocument,
   mockHasResponseFieldOverrides,
   mockHasResponseDateOverrides,
+  OVERRIDE_GROUP_ID_PATTERN,
+  normalizeMockOverrideGroup,
+  validateMockOverrideGroup,
+  emptyOverrideGroupConfig,
 } from '@sgedda/mockifyer-core';
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
@@ -931,7 +942,123 @@ export class RedisMockStore {
     await this.kv.sadd(this.clientLaneIdsSetKey, id);
   }
 
-  async listClientLanes(): Promise<Array<{ clientId: string; scenario: string; note: string | null; overrideSetId: string }>> {
+  // --- Override groups (per scenario) + scenario default ---
+
+  private overrideGroupRedisKey(scenario: string, groupId: string): string {
+    return `${this.keyPrefix}:override_group:${scenario.trim()}:${groupId.trim()}`;
+  }
+
+  private overrideGroupIdsRedisKey(scenario: string): string {
+    return `${this.keyPrefix}:override_groups:${scenario.trim()}`;
+  }
+
+  private overrideGroupConfigRedisKey(scenario: string): string {
+    return `${this.keyPrefix}:override_group_config:${scenario.trim()}`;
+  }
+
+  private parseStoredOverrideGroup(raw: string): MockOverrideGroup | null {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      const err = validateMockOverrideGroup(parsed);
+      if (err) return null;
+      return normalizeMockOverrideGroup(parsed as MockOverrideGroup);
+    } catch {
+      return null;
+    }
+  }
+
+  async listOverrideGroups(scenario: string): Promise<MockOverrideGroup[]> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const ids = await this.kv.smembers(this.overrideGroupIdsRedisKey(scenarioName)).catch(() => [] as string[]);
+    const groups: MockOverrideGroup[] = [];
+    for (const rawId of ids) {
+      const id = String(rawId || '').trim();
+      if (!id || !OVERRIDE_GROUP_ID_PATTERN.test(id)) continue;
+      const raw = await this.kv.get(this.overrideGroupRedisKey(scenarioName, id));
+      if (!raw) continue;
+      const group = this.parseStoredOverrideGroup(raw);
+      if (group) groups.push(group);
+    }
+    return groups.sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  async getOverrideGroup(scenario: string, groupId: string): Promise<MockOverrideGroup | null> {
+    const scenarioName = scenario.trim();
+    const id = groupId.trim();
+    if (!scenarioName || !id || !OVERRIDE_GROUP_ID_PATTERN.test(id)) return null;
+    const raw = await this.kv.get(this.overrideGroupRedisKey(scenarioName, id));
+    if (!raw) return null;
+    return this.parseStoredOverrideGroup(raw);
+  }
+
+  async putOverrideGroup(scenario: string, group: MockOverrideGroup): Promise<MockOverrideGroup> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const err = validateMockOverrideGroup(group);
+    if (err) throw new Error(err);
+    const next = normalizeMockOverrideGroup({
+      ...group,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.kv.set(this.overrideGroupRedisKey(scenarioName, next.id), JSON.stringify(next));
+    await this.kv.sadd(this.overrideGroupIdsRedisKey(scenarioName), next.id);
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    return next;
+  }
+
+  async deleteOverrideGroup(scenario: string, groupId: string): Promise<boolean> {
+    const scenarioName = scenario.trim();
+    const id = groupId.trim();
+    if (!scenarioName || !id || !OVERRIDE_GROUP_ID_PATTERN.test(id)) return false;
+    const existing = await this.getOverrideGroup(scenarioName, id);
+    await this.kv.del(this.overrideGroupRedisKey(scenarioName, id));
+    await this.kv.srem(this.overrideGroupIdsRedisKey(scenarioName), id);
+    const config = await this.getOverrideGroupConfig(scenarioName);
+    if (config?.currentGroup === id) {
+      await this.setOverrideGroupConfig(scenarioName, { currentGroup: null });
+    }
+    return existing != null;
+  }
+
+  /**
+   * Scenario-default active override group. `null` means no config key (fall back to disk).
+   */
+  async getOverrideGroupConfig(scenario: string): Promise<MockOverrideGroupConfig | null> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const raw = await this.kv.get(this.overrideGroupConfigRedisKey(scenarioName));
+    if (raw == null || raw === '') return null;
+    try {
+      const parsed = JSON.parse(raw) as MockOverrideGroupConfig;
+      const current =
+        typeof parsed.currentGroup === 'string' && parsed.currentGroup.trim()
+          ? parsed.currentGroup.trim()
+          : null;
+      return { currentGroup: current, updatedAt: parsed.updatedAt };
+    } catch {
+      return emptyOverrideGroupConfig();
+    }
+  }
+
+  async setOverrideGroupConfig(
+    scenario: string,
+    config: MockOverrideGroupConfig
+  ): Promise<MockOverrideGroupConfig> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) throw new Error('scenario is required');
+    const next: MockOverrideGroupConfig = {
+      currentGroup: config.currentGroup?.trim() || null,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.kv.set(this.overrideGroupConfigRedisKey(scenarioName), JSON.stringify(next));
+    await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    return next;
+  }
+
+  async listClientLanes(): Promise<
+    Array<{ clientId: string; scenario: string; note: string | null; overrideGroupId: string | null }>
+  > {
     const scenarioKeyPrefix = `${this.keyPrefix}:client_scenario:`;
     const registryIds = await this.kv.smembers(this.clientLaneIdsSetKey).catch(() => [] as string[]);
 
@@ -951,18 +1078,23 @@ export class RedisMockStore {
 
     const keys = allIds.map((clientId) => `${scenarioKeyPrefix}${clientId}`);
     const values: Array<string | null> = await this.kv.mget(keys);
-    const out: Array<{ clientId: string; scenario: string; note: string | null; overrideSetId: string }> = [];
+    const out: Array<{
+      clientId: string;
+      scenario: string;
+      note: string | null;
+      overrideGroupId: string | null;
+    }> = [];
     for (let i = 0; i < allIds.length; i++) {
       const val = values[i];
       if (!val || !val.trim()) continue;
       const clientId = allIds[i];
       const note: string | null = await this.kv.hget(this.laneNoteHashKey, clientId);
-      const overrideSetId = (await this.getLaneOverrideSetId(clientId)) ?? DEFAULT_OVERRIDE_SET_ID;
+      const overrideGroupId = await this.getLaneOverrideGroup(clientId);
       out.push({
         clientId,
         scenario: val.trim(),
         note: note && note.trim() ? note.trim() : null,
-        overrideSetId,
+        overrideGroupId,
       });
     }
     return out;

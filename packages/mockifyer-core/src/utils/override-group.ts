@@ -114,3 +114,20 @@ export function overlaysFromGroupEntry(
 export function emptyOverrideGroupConfig(): MockOverrideGroupConfig {
   return { currentGroup: null };
 }
+
+/**
+ * Merge override-group documents. `primary` wins on id collisions (store over disk).
+ */
+export function mergeOverrideGroups(
+  primary: MockOverrideGroup[],
+  fallback: MockOverrideGroup[]
+): MockOverrideGroup[] {
+  const byId = new Map<string, MockOverrideGroup>();
+  for (const group of fallback) {
+    byId.set(group.id, group);
+  }
+  for (const group of primary) {
+    byId.set(group.id, group);
+  }
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}

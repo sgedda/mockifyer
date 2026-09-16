@@ -14,8 +14,6 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   prepareMockResponseBody,
-  applyOverrideSetDocumentToMock,
-  DEFAULT_OVERRIDE_SET_ID,
   parseRecordingExclusionsEnv,
   shouldExcludeRecording,
   mockShouldServeStoredBody,
@@ -49,6 +47,7 @@ import * as path from 'path';
 import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
 import { shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
 import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
+import { loadMergedOverrideGroupState } from '../utils/override-group-persist';
 import {
   appendProxyNetworkEvent,
   applyProxyCorrelationToMockData,
@@ -349,16 +348,20 @@ router.post('/', async (req: Request, res: Response) => {
     const laneOverrideGroup = clientId
       ? await store.getLaneOverrideGroup(clientId).catch(() => null)
       : null;
-    const overrideGroupId = resolveOverrideGroupIdForServe(scenarioPath, {
+    const mergedGroups = await loadMergedOverrideGroupState(
+      store,
+      resolvedScenarioName,
+      scenarioPath
+    );
+    const overrideGroupHydrate = {
       clientId,
       explicitGroupId: explicitOverrideGroup,
       laneGroupId: laneOverrideGroup,
-    });
-    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, {
-      clientId,
-      explicitGroupId: explicitOverrideGroup,
-      laneGroupId: laneOverrideGroup,
-    });
+      groups: mergedGroups.groups,
+      defaultGroupId: mergedGroups.defaultGroup,
+    };
+    const overrideGroupId = resolveOverrideGroupIdForServe(scenarioPath, overrideGroupHydrate);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, overrideGroupHydrate);
 
     if (!mock && redisDisk.readFallback) {
       const diskHit = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
@@ -387,16 +390,9 @@ router.post('/', async (req: Request, res: Response) => {
               ),
             }
           : (mock as any);
-      const laneOverrideSetId =
-        (clientId ? await store.getLaneOverrideSetId(clientId) : null) ?? DEFAULT_OVERRIDE_SET_ID;
-      const overrideSetDocument = await store.getOverrideSet(resolvedScenarioName, laneOverrideSetId);
-      const mockWithOverrideSet = applyOverrideSetDocumentToMock(
-        sanitizedMock as MockData,
-        overrideSetDocument
-      );
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(mockWithOverrideSet, getNow, {
+        data: prepareMockResponseBody(sanitizedMock as MockData, getNow, {
           loadPoolResponse: createServeTimePoolResponseLoader({
             mockDataPath,
             nodeFs: fs,

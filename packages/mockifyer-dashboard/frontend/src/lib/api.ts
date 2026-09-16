@@ -62,9 +62,15 @@ function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
-    const err = (await response.json()) as { error?: string; message?: string }
-    if (typeof err.error === 'string' && err.error) return err.error
-    if (typeof err.message === 'string' && err.message) return err.message
+    const err = (await response.json()) as { error?: string; message?: string; details?: string }
+    const main =
+      (typeof err.error === 'string' && err.error) ||
+      (typeof err.message === 'string' && err.message) ||
+      ''
+    const details = typeof err.details === 'string' && err.details.trim() ? err.details.trim() : ''
+    if (main && details && details !== main) return `${main}: ${details}`
+    if (main) return main
+    if (details) return details
   } catch {
     // ignore
   }
@@ -584,7 +590,7 @@ export interface ClientLaneLastSeenResolved {
 export interface ClientLane {
   clientId: string
   scenario: string
-  overrideSetId?: string
+  overrideGroupId?: string | null
   note: string | null
   lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
@@ -635,50 +641,20 @@ export async function setClientLaneScenario(clientId: string, scenario: string |
   }
 }
 
-export async function setClientLaneOverrideSet(
+export async function setClientLaneOverrideGroup(
   clientId: string,
-  overrideSetId: string | null
+  overrideGroupId: string | null
 ): Promise<void> {
-  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/override-set`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ overrideSetId }),
-  })
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || error.message || 'Failed to set lane override set')
-  }
-}
-
-export interface OverrideSetSummary {
-  id: string
-  label?: string
-  updatedAt?: string
-  entryCount: number
-}
-
-export async function listOverrideSets(scenario: string): Promise<OverrideSetSummary[]> {
   const response = await fetchApi(
-    `${API_BASE}/override-sets?scenario=${encodeURIComponent(scenario)}`,
-    noStore
-  )
-  if (!response.ok) throw new Error('Failed to list override sets')
-  const data = await response.json()
-  return data.sets || []
-}
-
-export async function createOverrideSet(scenario: string, setId: string, label?: string): Promise<void> {
-  const response = await fetchApi(
-    `${API_BASE}/override-sets/${encodeURIComponent(setId)}?scenario=${encodeURIComponent(scenario)}`,
+    `${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/override-group`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: setId, label, entries: {} }),
+      body: JSON.stringify({ overrideGroupId }),
     }
   )
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || error.message || 'Failed to create override set')
+    throw new Error(await readErrorMessage(response, 'Failed to set lane override group'))
   }
 }
 

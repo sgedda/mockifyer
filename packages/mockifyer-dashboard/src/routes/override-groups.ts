@@ -1,29 +1,30 @@
 import express, { Request, Response } from 'express';
 import {
   OVERRIDE_GROUP_ID_PATTERN,
-  deleteOverrideGroupFromDisk,
   deleteClientOverrideGroupConfig,
   getCurrentScenario,
   getScenarioFolderPath,
   hydrateOverrideGroupRuntimeFromScenarioPath,
-  listOverrideGroupsFromDisk,
   listScenarios,
   normalizeMockOverrideGroup,
-  readClientOverrideGroupConfig,
-  readOverrideGroupConfig,
-  readOverrideGroupFromDisk,
   upsertOverrideGroupEntry,
   ensureOverrideGroupEntry,
   validateMockOverrideGroup,
   writeClientOverrideGroupConfig,
-  writeOverrideGroupConfig,
-  writeOverrideGroupToDisk,
   type MockOverrideGroup,
   type MockOverrideGroupEntry,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
+import type { RedisMockStore } from '../utils/redis-mock-store';
+import {
+  loadMergedOverrideGroupState,
+  readMergedOverrideGroup,
+  removeOverrideGroup,
+  saveOverrideGroup,
+  saveOverrideGroupConfig,
+} from '../utils/override-group-persist';
 
 const router = express.Router();
 
@@ -74,24 +75,6 @@ function readClientId(req: Request): string | null {
   return trimmed || null;
 }
 
-async function resolveLaneOverrideGroup(
-  req: Request,
-  mockDataPath: string,
-  clientId: string | null
-): Promise<string | null> {
-  if (!clientId) return null;
-  const { config } = getDashboardContext(req);
-  if (isCentralizedDashboardProvider(config.provider)) {
-    const store = createDashboardMockStore(config, mockDataPath);
-    try {
-      return await store.getLaneOverrideGroup(clientId);
-    } finally {
-      await store.close().catch(() => undefined);
-    }
-  }
-  return null;
-}
-
 async function writeLaneOverrideGroup(
   req: Request,
   mockDataPath: string,
@@ -109,6 +92,31 @@ async function writeLaneOverrideGroup(
   }
 }
 
+function openOverrideGroupStore(req: Request, mockDataPath: string): RedisMockStore | null {
+  const { config } = getDashboardContext(req);
+  if (!isCentralizedDashboardProvider(config.provider)) return null;
+  return createDashboardMockStore(config, mockDataPath);
+}
+
+async function hydrateMergedOverrideGroups(
+  req: Request,
+  mockDataPath: string,
+  scenario: string,
+  scenarioPath: string,
+  clientId: string | null
+) {
+  const store = openOverrideGroupStore(req, mockDataPath);
+  const redisLane = store && clientId ? await store.getLaneOverrideGroup(clientId) : undefined;
+  const merged = await loadMergedOverrideGroupState(store, scenario, scenarioPath);
+  const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
+    clientId,
+    groups: merged.groups,
+    defaultGroupId: merged.defaultGroup,
+    ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
+  });
+  return { ...hydrated, updatedAt: merged.updatedAt };
+}
+
 /** GET /api/override-groups — list groups + default/lane/effective selection */
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -119,23 +127,21 @@ router.get('/', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing scenario path' });
     }
     const clientId = readClientId(req);
-    const { config } = getDashboardContext(req);
-    const redisLane = isCentralizedDashboardProvider(config.provider)
-      ? await resolveLaneOverrideGroup(req, mockDataPath, clientId)
-      : undefined;
-    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
-      clientId,
-      ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
-    });
-    const laneGroup = hydrated.laneGroup;
+    const hydrated = await hydrateMergedOverrideGroups(
+      req,
+      mockDataPath,
+      scenario,
+      scenarioPath,
+      clientId
+    );
     res.json({
       scenario,
       clientId,
       defaultGroup: hydrated.defaultGroup,
-      laneGroup,
+      laneGroup: hydrated.laneGroup,
       currentGroup: hydrated.currentGroup,
       source: hydrated.source,
-      updatedAt: readOverrideGroupConfig(scenarioPath).updatedAt ?? null,
+      updatedAt: hydrated.updatedAt,
       groups: hydrated.groups.map((g) => ({
         id: g.id,
         label: g.label,
@@ -157,14 +163,13 @@ router.get('/config', async (req: Request, res: Response) => {
     const scenario = await resolveScenario(req, mockDataPath);
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     const clientId = readClientId(req);
-    const { config } = getDashboardContext(req);
-    const redisLane = isCentralizedDashboardProvider(config.provider)
-      ? await resolveLaneOverrideGroup(req, mockDataPath, clientId)
-      : undefined;
-    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
-      clientId,
-      ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
-    });
+    const hydrated = await hydrateMergedOverrideGroups(
+      req,
+      mockDataPath,
+      scenario,
+      scenarioPath,
+      clientId
+    );
     res.json({
       scenario,
       clientId,
@@ -210,7 +215,8 @@ router.put('/config', async (req: Request, res: Response) => {
       if (!OVERRIDE_GROUP_ID_PATTERN.test(currentGroup)) {
         return res.status(400).json({ error: `currentGroup must match ${OVERRIDE_GROUP_ID_PATTERN}` });
       }
-      const group = readOverrideGroupFromDisk(scenarioPath, currentGroup);
+      const store = openOverrideGroupStore(req, mockDataPath);
+      const group = await readMergedOverrideGroup(store, scenario, scenarioPath, currentGroup);
       if (!group) {
         return res.status(404).json({ error: `Override group not found: ${currentGroup}` });
       }
@@ -227,11 +233,13 @@ router.put('/config', async (req: Request, res: Response) => {
       } else {
         writeClientOverrideGroupConfig(scenarioPath, clientId, { currentGroup });
       }
-      const redisLane = await resolveLaneOverrideGroup(req, mockDataPath, clientId);
-      const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, {
-        clientId,
-        ...(redisLane !== undefined ? { laneGroupId: redisLane } : {}),
-      });
+      const hydrated = await hydrateMergedOverrideGroups(
+        req,
+        mockDataPath,
+        scenario,
+        scenarioPath,
+        clientId
+      );
       return res.json({
         success: true,
         scenario,
@@ -244,8 +252,19 @@ router.put('/config', async (req: Request, res: Response) => {
       });
     }
 
-    const config = writeOverrideGroupConfig(scenarioPath, { currentGroup });
-    const hydrated = hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath, { clientId });
+    const config = await saveOverrideGroupConfig({
+      store: openOverrideGroupStore(req, mockDataPath),
+      scenario,
+      scenarioPath,
+      config: { currentGroup },
+    });
+    const hydrated = await hydrateMergedOverrideGroups(
+      req,
+      mockDataPath,
+      scenario,
+      scenarioPath,
+      clientId
+    );
     res.json({
       success: true,
       scenario,
@@ -274,11 +293,16 @@ router.get('/:id', async (req: Request, res: Response) => {
     if (!OVERRIDE_GROUP_ID_PATTERN.test(id)) {
       return res.status(400).json({ error: `id must match ${OVERRIDE_GROUP_ID_PATTERN}` });
     }
-    const group = readOverrideGroupFromDisk(scenarioPath, id);
+    const group = await readMergedOverrideGroup(
+      openOverrideGroupStore(req, mockDataPath),
+      scenario,
+      scenarioPath,
+      id
+    );
     if (!group) {
       return res.status(404).json({ error: `Override group not found: ${id}` });
     }
-    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+    await hydrateMergedOverrideGroups(req, mockDataPath, scenario, scenarioPath, readClientId(req));
     res.json({ scenario, group });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -310,8 +334,13 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ error: err });
     }
 
-    const saved = writeOverrideGroupToDisk(scenarioPath, normalizeMockOverrideGroup(candidate));
-    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+    const saved = await saveOverrideGroup({
+      store: openOverrideGroupStore(req, mockDataPath),
+      scenario,
+      scenarioPath,
+      group: normalizeMockOverrideGroup(candidate),
+    });
+    await hydrateMergedOverrideGroups(req, mockDataPath, scenario, scenarioPath, readClientId(req));
     res.json({ success: true, scenario, group: saved });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -335,7 +364,8 @@ router.patch('/:id/entries', async (req: Request, res: Response) => {
       return res.status(400).json({ error: `id must match ${OVERRIDE_GROUP_ID_PATTERN}` });
     }
 
-    const group = readOverrideGroupFromDisk(scenarioPath, id);
+    const store = openOverrideGroupStore(req, mockDataPath);
+    const group = await readMergedOverrideGroup(store, scenario, scenarioPath, id);
     if (!group) {
       return res.status(404).json({ error: `Override group not found: ${id}` });
     }
@@ -378,8 +408,13 @@ router.patch('/:id/entries', async (req: Request, res: Response) => {
       next = upsertOverrideGroupEntry(group, entry);
     }
 
-    const saved = writeOverrideGroupToDisk(scenarioPath, next);
-    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+    const saved = await saveOverrideGroup({
+      store,
+      scenario,
+      scenarioPath,
+      group: next,
+    });
+    await hydrateMergedOverrideGroups(req, mockDataPath, scenario, scenarioPath, readClientId(req));
     res.json({ success: true, scenario, group: saved });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -399,16 +434,17 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(400).json({ error: `id must match ${OVERRIDE_GROUP_ID_PATTERN}` });
     }
 
-    const deleted = deleteOverrideGroupFromDisk(scenarioPath, id);
+    const deleted = await removeOverrideGroup({
+      store: openOverrideGroupStore(req, mockDataPath),
+      scenario,
+      scenarioPath,
+      groupId: id,
+    });
     if (!deleted) {
       return res.status(404).json({ error: `Override group not found: ${id}` });
     }
 
-    const config = readOverrideGroupConfig(scenarioPath);
-    if (config.currentGroup === id) {
-      writeOverrideGroupConfig(scenarioPath, { currentGroup: null });
-    }
-    hydrateOverrideGroupRuntimeFromScenarioPath(scenarioPath);
+    await hydrateMergedOverrideGroups(req, mockDataPath, scenario, scenarioPath, readClientId(req));
     res.json({ success: true, scenario, deleted: id });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
