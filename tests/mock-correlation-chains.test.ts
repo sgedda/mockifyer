@@ -6,6 +6,8 @@ import {
   chainHasRequestCorrelation,
   countNestedMockChainCalls,
   enrichChainHopsForDisplay,
+  filterMockServiceChainsByFilenames,
+  mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
@@ -174,6 +176,52 @@ describe('mock service chain display', () => {
     expect(chainHasRequestCorrelation(hops)).toBe(false)
   })
 
+  it('keeps a search hit inside its full chain instead of rebuilding from the match alone', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: '561371ed-8d84-47c5-ab9a-92cb9d351b4a',
+    })
+    const account = mock({
+      filename: 'myaccount.json',
+      endpoint: 'https://node-capi-member-api-ats.azurewebsites.net/v-2/myaccount/',
+      requestId: '6d086533-eb9d-48d2-8581-642b1e86f853',
+      parentRequestId: graphql.requestId,
+      modified: '2026-09-16T09:09:06.577Z',
+    })
+    const token = mock({
+      filename: 'token.json',
+      method: 'POST',
+      endpoint: 'http://tokenws.acctest.int/TokenService.asmx',
+      requestId: 'f740ef00-1754-4169-af4a-5f03ca10fc49',
+      parentRequestId: account.requestId,
+      modified: '2026-09-16T09:09:06.661Z',
+    })
+
+    const catalogChains = buildMockServiceChainsForDisplay([graphql, account, token])
+    expect(catalogChains).toHaveLength(1)
+    expect(catalogChains[0].hops.map((hop) => hop.filename)).toEqual([
+      'graphql.json',
+      'myaccount.json',
+      'token.json',
+    ])
+
+    const searchOnlyAccount = buildMockServiceChainsForDisplay([account])
+    expect(searchOnlyAccount).toHaveLength(0)
+
+    const filtered = filterMockServiceChainsByFilenames(
+      catalogChains,
+      new Set(['myaccount.json'])
+    )
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].hops.map((hop) => hop.filename)).toEqual([
+      'graphql.json',
+      'myaccount.json',
+      'token.json',
+    ])
+  })
+
   it('does not prepend catalog hops whose parent belongs to another chain', () => {
     const root = mock({
       filename: 'root.json',
@@ -335,6 +383,9 @@ describe('unique mock chain forest', () => {
       'POST /TokenService.asmx×2',
       '  GET /v-2/myaccount',
     ])
+    expect(forest[0].hops).toHaveLength(2)
+    expect(mockChainNodeCanExpand(forest[0])).toBe(true)
+    expect(mockChainNodeCanExpand(forest[0].children[0])).toBe(false)
   })
 })
 

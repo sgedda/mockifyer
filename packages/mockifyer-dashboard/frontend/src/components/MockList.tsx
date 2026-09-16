@@ -6,7 +6,11 @@ import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
-import { buildMockChainMaps, buildMockServiceChainsForDisplay } from '@/lib/mock-correlation-chains'
+import {
+  buildMockChainMaps,
+  buildMockServiceChainsForDisplay,
+  filterMockServiceChainsByFilenames,
+} from '@/lib/mock-correlation-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
@@ -90,7 +94,8 @@ function MockListContent({
     return 'Unexpected error'
   }
 
-  const chainSource = searchQuery.trim() ? visibleMocks : visibleAllMocks
+  /** Always the scenario catalog — search must not drop parent/child hops from chain building. */
+  const chainSource = visibleAllMocks
 
   /** Redis-backed mocks with real URLs — use Domains (not redis/ filename folders) for Live/Replay. */
   const preferDomainsGrouping = useMemo(() => {
@@ -111,8 +116,7 @@ function MockListContent({
   useEffect(() => {
     if (didAutoSwitchGroupBy.current || loading || !mocks?.length) return
 
-    const source = searchQuery.trim() ? mocks : allMocks
-    const chains = buildMockServiceChainsForDisplay(source)
+    const chains = buildMockServiceChainsForDisplay(allMocks)
     if (chains.length > 0) {
       setGroupBy('chains')
       didAutoSwitchGroupBy.current = true
@@ -128,7 +132,7 @@ function MockListContent({
       setGroupBy('domains')
       didAutoSwitchGroupBy.current = true
     }
-  }, [loading, mocks, allMocks, searchQuery])
+  }, [loading, mocks, allMocks])
 
   useEffect(() => {
     if (preferDomainsGrouping && groupBy === 'folders') {
@@ -217,7 +221,18 @@ function MockListContent({
 
   const chainMaps = useMemo(() => buildMockChainMaps(chainSource), [chainSource])
 
-  const serviceChains = useMemo(() => buildMockServiceChainsForDisplay(chainSource), [chainSource])
+  const catalogServiceChains = useMemo(
+    () => buildMockServiceChainsForDisplay(chainSource),
+    [chainSource]
+  )
+
+  const serviceChains = useMemo(() => {
+    if (!searchQuery.trim()) return catalogServiceChains
+    return filterMockServiceChainsByFilenames(
+      catalogServiceChains,
+      new Set(visibleMocks.map((mock) => mock.filename))
+    )
+  }, [searchQuery, catalogServiceChains, visibleMocks])
 
   const displayedMocks = useMemo(() => {
     if (!chainsOnly) return visibleMocks
@@ -239,13 +254,6 @@ function MockListContent({
       hasFolders: sortFolderEntries(tree).length > 0,
     }
   }, [groupBy, displayedMocks])
-
-  const chainsInView = useMemo(() => {
-    if (groupBy === 'chains') {
-      return buildMockServiceChainsForDisplay(displayedMocks)
-    }
-    return serviceChains
-  }, [groupBy, displayedMocks, serviceChains])
 
   const recentMocks = useMemo(() => {
     const source = searchQuery.trim() ? visibleMocks : visibleAllMocks
@@ -591,14 +599,20 @@ function MockListContent({
             <div className="text-center text-muted-foreground">Loading mocks...</div>
           </CardContent>
         </Card>
-      ) : groupBy === 'chains' && chainsInView.length === 0 ? (
+      ) : groupBy === 'chains' && serviceChains.length === 0 ? (
         <Card>
           <CardContent className="p-6 space-y-2 text-center text-muted-foreground text-sm">
-            <p>No linked service chains in this scenario yet.</p>
+            <p>
+              {searchQuery.trim()
+                ? 'No service chain includes a hop matching this search.'
+                : 'No linked service chains in this scenario yet.'}
+            </p>
+            {!searchQuery.trim() && (
             <p>
               Record via dashboard proxy (<span className="font-mono">dev:proxy:record</span>) and trigger a
               multi-service flow — each hop should appear here in order, like the Network tab.
             </p>
+            )}
           </CardContent>
         </Card>
       ) : displayedMocks.length === 0 ? (
@@ -626,7 +640,7 @@ function MockListContent({
             Each card is one user request across services. Nested hops start collapsed under the
             caller; expand a hop to see the next level.
           </p>
-          {chainsInView.map((chain) => (
+          {serviceChains.map((chain) => (
             <MockServiceChainCard
               key={chain.id}
               chain={chain}

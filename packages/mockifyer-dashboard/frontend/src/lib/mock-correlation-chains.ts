@@ -531,6 +531,18 @@ export function buildMockServiceChainsForDisplay(mocks: MockFile[]): MockService
   return buildInferredMockServiceChains(mocks)
 }
 
+/**
+ * Keep full multi-hop chains when the list is search-filtered.
+ * Matching on one hop (e.g. GET /v-2/myaccount) must not drop GraphQL/token siblings.
+ */
+export function filterMockServiceChainsByFilenames(
+  chains: MockServiceChain[],
+  filenames: ReadonlySet<string>
+): MockServiceChain[] {
+  if (filenames.size === 0) return []
+  return chains.filter((chain) => chain.hops.some((hop) => filenames.has(hop.filename)))
+}
+
 export function isEnrichedChainHop(chain: MockServiceChain, hop: MockFile): boolean {
   return chain.enrichedHopFilenames?.includes(hop.filename) === true
 }
@@ -774,4 +786,9 @@ function countUniqueChainNodes(nodes: MockUniqueChainNode[]): number {
 
 export function countUniqueMockChainHops(hops: MockFile[]): number {
   return countUniqueChainNodes(buildUniqueMockChainForest(hops))
+}
+
+/** True when the node hides nested services or multiple underlying calls behind ×N. */
+export function mockChainNodeCanExpand(node: MockUniqueChainNode): boolean {
+  return node.children.length > 0 || node.hops.length > 1
 }

@@ -16,7 +16,7 @@ import {
   type MockServiceChain,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
-import { ChainTreeToggle, CollapsibleChainTree } from '@/components/MockChainTree'
+import { ChainTreeToggle, CollapsibleChainTree, MockChainGroupedHopList } from '@/components/MockChainTree'
 
 function nodeHasReplay(node: MockUniqueChainNode): boolean {
   return node.hops.some((hop) => getMockHopTrafficMode(hop) === 'replay')
@@ -120,6 +120,7 @@ export function MockServiceChainCard({
                     hasChildren={hasChildren}
                     expanded={expanded}
                     nestedCount={nestedCount}
+                    instanceCount={node.hops.length}
                     onToggle={onToggle}
                   />
                 </div>
@@ -131,10 +132,20 @@ export function MockServiceChainCard({
                       ? 'border-primary bg-primary/10'
                       : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
                   }`}
-                  onClick={() => onSelectHop(hop)}
+                  onClick={() => {
+                    if (hasChildren && !expanded) {
+                      onToggle()
+                      return
+                    }
+                    onSelectHop(hop)
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
+                      if (hasChildren && !expanded) {
+                        onToggle()
+                        return
+                      }
                       onSelectHop(hop)
                     }
                   }}
@@ -142,12 +153,28 @@ export function MockServiceChainCard({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm text-foreground">{formatMockHopLabel(hop)}</span>
                     {node.callCount > 1 && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px]"
+                        title="Expand to each underlying call"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onToggle()
+                        }}
+                      >
                         ×{node.callCount}
                       </Badge>
                     )}
                     {collapsedNested && (
-                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] text-muted-foreground"
+                        title="Expand nested services"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onToggle()
+                        }}
+                      >
                         +{nestedCount} nested
                       </Badge>
                     )}
@@ -207,6 +234,13 @@ export function MockServiceChainCard({
                       </div>
                     )}
                   </div>
+                  {expanded && (
+                    <MockChainGroupedHopList
+                      hops={node.hops}
+                      selectedFilename={selectedFilename}
+                      onSelectHop={onSelectHop}
+                    />
+                  )}
                 </div>
               </div>
             )
@@ -223,7 +257,8 @@ export function MockServiceChainCard({
           </p>
         )}
         <p className="text-[11px] text-muted-foreground leading-relaxed">
-          Nested hops start collapsed. Expand a hop to see calls it triggered
+          Nested hops start collapsed. Expand a hop to see calls it triggered, or expand ×N to each
+          underlying request
           {hasEnrichedHops
             ? '. Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
             : chain.inferred
