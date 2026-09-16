@@ -2,8 +2,12 @@ import type { MockFile } from '@/types'
 import {
   buildMockChainMaps,
   buildMockServiceChainsForDisplay,
+  buildUniqueMockChainForest,
   chainHasRequestCorrelation,
+  countNestedMockChainCalls,
   enrichChainHopsForDisplay,
+  mockHopEndpointFingerprint,
+  type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
 
 function mock(partial: Partial<MockFile> & Pick<MockFile, 'filename' | 'endpoint'>): MockFile {
@@ -197,3 +201,140 @@ describe('mock service chain display', () => {
     expect(enriched.hops.map((hop) => hop.filename)).toEqual(['root.json', 'child.json'])
   })
 })
+
+function forestOutline(nodes: MockUniqueChainNode[], depth = 0): string[] {
+  return nodes.flatMap((node) => [
+    `${'  '.repeat(depth)}${mockHopEndpointFingerprint(node.representative)}${node.callCount > 1 ? `×${node.callCount}` : ''}`,
+    ...forestOutline(node.children, depth + 1),
+  ])
+}
+
+describe('unique mock chain forest', () => {
+  it('nests parent-linked hops at different tree levels instead of flattening them', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'root',
+    })
+    const cms = mock({
+      filename: 'cms.json',
+      endpoint: 'http://localhost:4000/cms/page',
+      requestId: 'cms',
+      parentRequestId: 'root',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    const fragment = mock({
+      filename: 'fragment.json',
+      endpoint: 'http://localhost:4000/cms/fragment',
+      requestId: 'frag',
+      parentRequestId: 'cms',
+      modified: '2026-09-10T16:18:02.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([graphql, cms, fragment])
+    expect(forestOutline(forest)).toEqual([
+      'POST /graphql',
+      '  GET /cms/page',
+      '    GET /cms/fragment',
+    ])
+    expect(countNestedMockChainCalls(forest[0])).toBe(2)
+  })
+
+  it('keeps the same endpoint nested when it appears on a deeper level', () => {
+    const page = mock({
+      filename: 'page.json',
+      endpoint: 'http://localhost:4000/cms/page',
+      requestId: 'page',
+    })
+    const nestedPage = mock({
+      filename: 'nested-page.json',
+      endpoint: 'http://localhost:4000/cms/page',
+      requestId: 'nested',
+      parentRequestId: 'page',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([page, nestedPage])
+    expect(forestOutline(forest)).toEqual(['GET /cms/page', '  GET /cms/page'])
+    expect(forest[0].callCount).toBe(1)
+    expect(forest[0].children[0].callCount).toBe(1)
+  })
+
+  it('nests inferred hops as a path so later services collapse under the entry', () => {
+    const aggregate = mock({
+      filename: 'aggregate.json',
+      endpoint: 'http://gateway:3000/aggregate',
+    })
+    const viaAxios = mock({
+      filename: 'via-axios.json',
+      endpoint: 'http://relay:3001/via-axios',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    const product = mock({
+      filename: 'product.json',
+      endpoint: 'http://catalog:3002/product/1',
+      modified: '2026-09-10T16:18:02.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([aggregate, viaAxios, product])
+    expect(forestOutline(forest)).toEqual([
+      'GET /aggregate',
+      '  GET /via-axios',
+      '    GET /product/:id',
+    ])
+  })
+
+  it('wraps an enriched entry hop around the linked subtree instead of a sibling root', () => {
+    const aggregate = mock({
+      filename: 'aggregate.json',
+      endpoint: 'http://gateway:3000/aggregate',
+    })
+    const viaAxios = mock({
+      filename: 'via-axios.json',
+      endpoint: 'http://relay:3001/via-axios',
+      requestId: 'relay',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    const product = mock({
+      filename: 'product.json',
+      endpoint: 'http://catalog:3002/product/1',
+      requestId: 'cat',
+      parentRequestId: 'relay',
+      modified: '2026-09-10T16:18:02.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([aggregate, viaAxios, product])
+    expect(forestOutline(forest)).toEqual([
+      'GET /aggregate',
+      '  GET /via-axios',
+      '    GET /product/:id',
+    ])
+  })
+
+  it('collapses consecutive identical hops at the same level and nests the next unique hop', () => {
+    const tokenA = mock({
+      filename: 'token-a.json',
+      method: 'POST',
+      endpoint: 'https://tokenws.acctest.nl/TokenService.asmx',
+    })
+    const tokenB = mock({
+      filename: 'token-b.json',
+      method: 'POST',
+      endpoint: 'https://tokenws.acctest.nl/TokenService.asmx',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    const account = mock({
+      filename: 'account.json',
+      endpoint: 'http://localhost:4000/v-2/myaccount',
+      modified: '2026-09-10T16:18:02.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([tokenA, tokenB, account])
+    expect(forestOutline(forest)).toEqual([
+      'POST /TokenService.asmx×2',
+      '  GET /v-2/myaccount',
+    ])
+  })
+})
+

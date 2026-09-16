@@ -2,10 +2,9 @@ import { ChevronDown, GitBranch } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { CopyableText } from '@/components/CopyableText'
 import type { MockFile } from '@/types'
-import type { MockServiceChain } from '@/lib/mock-correlation-chains'
 import {
+  buildUniqueMockChainForest,
   chainHasRequestCorrelation,
-  chainHasUpstreamReplayBlock,
   describeHopParentLink,
   formatMockHopLabel,
   formatMockHopSubtitle,
@@ -13,7 +12,37 @@ import {
   getChainRootRequestId,
   getMockHopTrafficMode,
   isEnrichedChainHop,
+  mockHopEndpointFingerprint,
+  type MockServiceChain,
+  type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
+import { ChainTreeToggle, CollapsibleChainTree } from '@/components/MockChainTree'
+
+function nodeHasReplay(node: MockUniqueChainNode): boolean {
+  return node.hops.some((hop) => getMockHopTrafficMode(hop) === 'replay')
+}
+
+function forestHasUpstreamReplayBlock(nodes: MockUniqueChainNode[]): boolean {
+  for (const node of nodes) {
+    if (node.children.length > 0 && nodeHasReplay(node)) return true
+    if (forestHasUpstreamReplayBlock(node.children)) return true
+  }
+  return false
+}
+
+function describeTreeParentLink(
+  ancestors: MockUniqueChainNode[],
+  hop: MockFile,
+  chainHops: MockFile[]
+): string | null {
+  const parent = ancestors[ancestors.length - 1]
+  if (parent) {
+    const short = formatShortCorrelationId(parent.representative.requestId)
+    return `Parent: ${mockHopEndpointFingerprint(parent.representative)}${short ? ` (${short})` : ''}`
+  }
+  const hopIndex = chainHops.findIndex((candidate) => candidate.filename === hop.filename)
+  return hopIndex >= 0 ? describeHopParentLink(chainHops, hopIndex) : null
+}
 
 export function MockServiceChainCard({
   chain,
@@ -25,7 +54,8 @@ export function MockServiceChainCard({
   onSelectHop: (mock: MockFile) => void
 }) {
   const recordedAt = new Date(chain.latestModified).toLocaleString()
-  const hasReplayBlock = chain.hops.some((_, index) => chainHasUpstreamReplayBlock(chain.hops, index))
+  const forest = buildUniqueMockChainForest(chain.hops)
+  const hasReplayBlock = forestHasUpstreamReplayBlock(forest)
   const rootRequestId = getChainRootRequestId(chain.hops)
   const rootRequestIdShort = formatShortCorrelationId(rootRequestId)
   const hasCorrelation = chainHasRequestCorrelation(chain.hops)
@@ -71,33 +101,27 @@ export function MockServiceChainCard({
         )}
       </div>
 
-      <ol className="p-3 space-y-0">
-        {chain.hops.map((hop, index) => {
-          const isSelected = hop.filename === selectedFilename
-          const isFirst = index === 0
-          const isLast = index === chain.hops.length - 1
-          const traffic = getMockHopTrafficMode(hop)
-          const blocked = chainHasUpstreamReplayBlock(chain.hops, index)
-          const hopRequestIdShort = formatShortCorrelationId(hop.requestId)
-          const parentLink = describeHopParentLink(chain.hops, index)
-          return (
-            <li key={hop.filename} className="relative">
-              {!isLast && (
-                <span
-                  className="absolute left-[1.15rem] top-9 bottom-0 w-px bg-border"
-                  aria-hidden
-                />
-              )}
-              <div className="flex gap-3 pb-3 last:pb-0">
-                <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${
-                    isFirst
-                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
-                      : 'border-border bg-background text-muted-foreground'
-                  }`}
-                  title={isFirst ? 'Chain entry (first service)' : `Hop ${index + 1}`}
-                >
-                  {index + 1}
+      <div className="p-3">
+        <CollapsibleChainTree
+          forest={forest}
+          selectedFilename={selectedFilename}
+          renderNode={({ node, depth, expanded, hasChildren, nestedCount, ancestors, onToggle }) => {
+            const hop = node.hops.find((h) => h.filename === selectedFilename) ?? node.representative
+            const isSelected = node.hops.some((candidate) => candidate.filename === selectedFilename)
+            const traffic = getMockHopTrafficMode(hop)
+            const blocked = ancestors.some(nodeHasReplay)
+            const hopRequestIdShort = formatShortCorrelationId(hop.requestId)
+            const parentLink = describeTreeParentLink(ancestors, hop, chain.hops)
+            const collapsedNested = !expanded && nestedCount > 0
+            return (
+              <div className="flex gap-2 pb-2 last:pb-0">
+                <div className="flex flex-col items-center pt-2">
+                  <ChainTreeToggle
+                    hasChildren={hasChildren}
+                    expanded={expanded}
+                    nestedCount={nestedCount}
+                    onToggle={onToggle}
+                  />
                 </div>
                 <div
                   role="button"
@@ -117,6 +141,16 @@ export function MockServiceChainCard({
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm text-foreground">{formatMockHopLabel(hop)}</span>
+                    {node.callCount > 1 && (
+                      <Badge variant="outline" className="text-[10px]">
+                        ×{node.callCount}
+                      </Badge>
+                    )}
+                    {collapsedNested && (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        +{nestedCount} nested
+                      </Badge>
+                    )}
                     <Badge
                       variant="outline"
                       className={`text-[10px] ${
@@ -143,6 +177,11 @@ export function MockServiceChainCard({
                         entry hop
                       </Badge>
                     )}
+                    {depth === 0 && (
+                      <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-100">
+                        entry
+                      </Badge>
+                    )}
                   </div>
                   <CopyableText
                     value={formatMockHopSubtitle(hop)}
@@ -159,7 +198,10 @@ export function MockServiceChainCard({
                       <div className="text-foreground/50">request id not stored</div>
                     )}
                     {parentLink && (
-                      <div className="flex items-center gap-1 text-emerald-200/80" title={hop.parentRequestId ?? undefined}>
+                      <div
+                        className="flex items-center gap-1 text-emerald-200/80"
+                        title={hop.parentRequestId ?? undefined}
+                      >
                         <ChevronDown className="h-3 w-3 shrink-0 rotate-[-90deg]" aria-hidden />
                         {parentLink}
                       </div>
@@ -167,10 +209,10 @@ export function MockServiceChainCard({
                   </div>
                 </div>
               </div>
-            </li>
-          )
-        })}
-      </ol>
+            )
+          }}
+        />
+      </div>
 
       <div className="px-3 pb-3 space-y-2">
         {hasReplayBlock && (
@@ -181,11 +223,12 @@ export function MockServiceChainCard({
           </p>
         )}
         <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Nested hops start collapsed. Expand a hop to see calls it triggered
           {hasEnrichedHops
-            ? 'Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
+            ? '. Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
             : chain.inferred
-              ? 'Inferred from mocks recorded in the same run (time + URL order). Exact parent links appear after re-recording with dashboard proxy.'
-              : 'Linked by Mockifyer hop ids — matches the Network tab call chain.'}
+              ? '. Inferred from mocks recorded in the same run (time + URL order). Exact parent links appear after re-recording with dashboard proxy.'
+              : '. Linked by Mockifyer hop ids — matches the Network tab call chain.'}
         </p>
       </div>
     </div>

@@ -65,7 +65,7 @@ function MockListContent({
   const [recentCollapsed, setRecentCollapsed] = useState(true)
   const [favoritesCollapsed, setFavoritesCollapsed] = useState(false)
   const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
-  const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(false)
+  const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(true)
   const didSuggestChainsView = useRef(false)
   const [chainsOnly, setChainsOnly] = useState(false)
 
@@ -115,7 +115,6 @@ function MockListContent({
     const chains = buildMockServiceChainsForDisplay(source)
     if (chains.length > 0) {
       setGroupBy('chains')
-      setServiceChainsCollapsed(false)
       didAutoSwitchGroupBy.current = true
       didSuggestChainsView.current = true
       return
@@ -375,6 +374,49 @@ function MockListContent({
         </Card>
       )}
 
+      {!loading && !favoritesOnly && matchingFavoriteMocks.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 text-left"
+              onClick={() => setFavoritesCollapsed((c) => !c)}
+              title={favoritesCollapsed ? 'Expand favorites' : 'Collapse favorites'}
+            >
+              <div className="flex items-center gap-2">
+                {favoritesCollapsed ? (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" aria-hidden />
+                <div className="text-sm font-medium">
+                  Favorites{' '}
+                  <span className="text-xs text-muted-foreground">
+                    ({matchingFavoriteMocks.length} in this scenario)
+                  </span>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground">Global stars, matching requests only</div>
+            </button>
+            {!favoritesCollapsed && (
+              <div className="flex flex-col gap-2">
+                {matchingFavoriteMocks.map((m) => (
+                  <MockCard
+                    key={`favorite:${m.filename}`}
+                    mock={m}
+                    selectedMock={selectedMock}
+                    onSelectMock={onSelectMock}
+                    showActions={false}
+                    scenario={scenario}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && groupBy !== 'chains' && serviceChains.length > 0 && (
         <Card>
           <CardContent className="p-4 space-y-3">
@@ -504,49 +546,6 @@ function MockListContent({
         </Card>
       )}
 
-      {!loading && !favoritesOnly && matchingFavoriteMocks.length > 0 && (
-        <Card>
-          <CardContent className="p-4 space-y-3">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 text-left"
-              onClick={() => setFavoritesCollapsed((c) => !c)}
-              title={favoritesCollapsed ? 'Expand favorites' : 'Collapse favorites'}
-            >
-              <div className="flex items-center gap-2">
-                {favoritesCollapsed ? (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
-                <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" aria-hidden />
-                <div className="text-sm font-medium">
-                  Favorites{' '}
-                  <span className="text-xs text-muted-foreground">
-                    ({matchingFavoriteMocks.length} in this scenario)
-                  </span>
-                </div>
-              </div>
-              <div className="text-xs text-muted-foreground">Global stars, matching requests only</div>
-            </button>
-            {!favoritesCollapsed && (
-              <div className="flex flex-col gap-2">
-                {matchingFavoriteMocks.map((m) => (
-                  <MockCard
-                    key={`favorite:${m.filename}`}
-                    mock={m}
-                    selectedMock={selectedMock}
-                    onSelectMock={onSelectMock}
-                    showActions={false}
-                    scenario={scenario}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {!loading && recentMocks.length > 0 && (
         <Card>
           <CardContent className="p-4 space-y-3">
@@ -624,8 +623,8 @@ function MockListContent({
             </div>
           )}
           <p className="text-sm text-muted-foreground">
-            Each card is one user request across services. Hop 1 is the entry service; later hops were triggered by
-            the previous service (parent request id).
+            Each card is one user request across services. Nested hops start collapsed under the
+            caller; expand a hop to see the next level.
           </p>
           {chainsInView.map((chain) => (
             <MockServiceChainCard
