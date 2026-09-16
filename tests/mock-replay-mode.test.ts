@@ -133,4 +133,19 @@ describe('mock replay mode', () => {
     expect(updated.refreshOnNextRequest).toBeUndefined();
     expect((updated.response.data as { fresh: boolean }).fresh).toBe(true);
   });
+
+  it('promotes stored to refresh-next even when responsePending was cleared but body is still empty', () => {
+    const mock = baseMock({
+      response: { status: 0, data: null, headers: {} },
+      alwaysUseRealApi: true,
+      responsePending: true,
+    });
+    applyMockReplayModeSetting(mock, 'always-refresh');
+    expect(mock.responsePending).toBeUndefined();
+    expect(mock.alwaysRefreshFromLive).toBe(true);
+    applyMockReplayModeSetting(mock, 'stored');
+    expect(resolveMockReplayMode(mock)).toBe('refresh-next');
+    expect(mock.response.status).toBe(0);
+    expect(mock.response.data).toBe(null);
+  });
 });

@@ -178,6 +178,14 @@ export function buildMockDataAfterLiveCapture(
 }
 
 /**
+ * True when the mock has a captured response body (not a request-only stub).
+ * Checks the durable response shape instead of `responsePending` flag.
+ */
+function mockHasCapturedBody(mockData: MockData): boolean {
+  return mockData.response.status !== 0 || mockData.response.data !== null;
+}
+
+/**
  * Applies a mutually exclusive replay mode to a mock recording.
  *
  * Request-only stubs (`responsePending`) stay on live API until a mode other than
@@ -190,7 +198,7 @@ export function applyMockReplayModeSetting(mockData: MockData, mode: MockReplayM
   delete mockData.refreshOnNextRequest;
   delete mockData.alwaysRefreshFromLive;
 
-  const pendingWithoutBody = mockData.responsePending === true;
+  const pendingWithoutBody = mockData.responsePending === true || !mockHasCapturedBody(mockData);
   const resolvedMode =
     mode === 'stored' && pendingWithoutBody ? 'refresh-next' : mode;
 

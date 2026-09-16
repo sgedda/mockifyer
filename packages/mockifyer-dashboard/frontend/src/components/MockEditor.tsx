@@ -49,9 +49,19 @@ function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
   return 'stored'
 }
 
+/**
+ * True when the mock has a captured response body (not a request-only stub).
+ * Checks the durable response shape instead of `responsePending` flag.
+ */
+function mockHasCapturedBody(mock: MockData): boolean {
+  return mock.data.response.status !== 0 || mock.data.response.data !== null;
+}
+
 /** Request-only stubs cannot serve a saved body; the next live call captures one. */
 function replayModeToPersist(next: MockReplayMode, mock: MockData): MockReplayMode {
-  if (next === 'stored' && mock.data.responsePending === true) return 'refresh-next'
+  if (next === 'stored' && (mock.data.responsePending === true || !mockHasCapturedBody(mock))) {
+    return 'refresh-next'
+  }
   return next
 }
 
