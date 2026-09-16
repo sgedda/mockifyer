@@ -8,10 +8,12 @@ import { getDashboardRouterBasename } from './lib/base-path'
 
 function App() {
   const [scenario, setScenario] = useState<string>('default')
+  const [scenarioConfigReady, setScenarioConfigReady] = useState(false)
   const { toast } = useToast()
 
   // Do not gate the router on scenario-config: a refresh of /overrides used to
   // sit on a full-page "Loading..." until that GET finished (or hung on Redis).
+  // URL sync / scenario POSTs must still wait — see planScenarioUrlSync.
   useEffect(() => {
     void loadScenario()
   }, [])
@@ -28,13 +30,19 @@ function App() {
         description: 'Failed to load scenario configuration',
         variant: 'destructive',
       })
+    } finally {
+      setScenarioConfigReady(true)
     }
   }
 
   return (
     <BrowserRouter basename={getDashboardRouterBasename()}>
       <div className="min-h-screen bg-background">
-        <Dashboard scenario={scenario} onScenarioChange={setScenario} />
+        <Dashboard
+          scenario={scenario}
+          scenarioConfigReady={scenarioConfigReady}
+          onScenarioChange={setScenario}
+        />
         <Toaster />
       </div>
     </BrowserRouter>
