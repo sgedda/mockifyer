@@ -3,7 +3,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { createOverrideSet, deleteClientLane, getClientLanes, listOverrideSets, setClientLaneNote, setClientLaneOverrideSet, setClientLaneScenario, type ClientLane, type OverrideSetSummary } from '@/lib/api'
+import {
+  deleteClientLane,
+  getClientLanes,
+  listOverrideGroups,
+  putOverrideGroup,
+  setClientLaneNote,
+  setClientLaneOverrideGroup,
+  setClientLaneScenario,
+  type ClientLane,
+  type OverrideGroupSummary,
+} from '@/lib/api'
 import { Trash2 } from 'lucide-react'
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
@@ -16,8 +26,10 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
   const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({})
-  const [overrideSetsByScenario, setOverrideSetsByScenario] = useState<Record<string, OverrideSetSummary[]>>({})
-  const [newOverrideSetId, setNewOverrideSetId] = useState('')
+  const [overrideGroupsByScenario, setOverrideGroupsByScenario] = useState<
+    Record<string, OverrideGroupSummary[]>
+  >({})
+  const [newOverrideGroupId, setNewOverrideGroupId] = useState('')
 
   const addLaneSuggestions = useMemo(() => {
     const existing = new Set(lanes.map((l) => l.clientId))
@@ -49,17 +61,18 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           data.globalScenario || 'default',
         ])
       ).filter(Boolean)
-      const setMap: Record<string, OverrideSetSummary[]> = {}
+      const groupMap: Record<string, OverrideGroupSummary[]> = {}
       await Promise.all(
         scenarios.map(async (scenario) => {
           try {
-            setMap[scenario] = await listOverrideSets(scenario)
+            const res = await listOverrideGroups(scenario)
+            groupMap[scenario] = res.groups
           } catch {
-            setMap[scenario] = [{ id: 'default', entryCount: 0 }]
+            groupMap[scenario] = []
           }
         })
       )
-      setOverrideSetsByScenario(setMap)
+      setOverrideGroupsByScenario(groupMap)
     } catch (e: any) {
       toast({
         title: 'Error',
@@ -101,32 +114,40 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
     }
   }
 
-  async function handleOverrideSetChange(clientId: string, value: string) {
+  async function handleOverrideGroupChange(clientId: string, value: string) {
     try {
-      await setClientLaneOverrideSet(clientId, value)
+      await setClientLaneOverrideGroup(clientId, value.trim() ? value.trim() : null)
       await load()
-      toast({ title: 'Saved', description: `Lane "${clientId}" override set updated.` })
+      toast({
+        title: 'Saved',
+        description: value.trim()
+          ? `Lane "${clientId}" → group ${value.trim()}`
+          : `Cleared override group for lane "${clientId}"`,
+      })
     } catch (e: any) {
       toast({
         title: 'Error',
-        description: e?.message ?? 'Failed to update lane override set',
+        description: e?.message ?? 'Failed to update lane override group',
         variant: 'destructive',
       })
     }
   }
 
-  async function handleCreateOverrideSet(scenario: string) {
-    const id = newOverrideSetId.trim()
+  async function handleCreateOverrideGroup(scenario: string) {
+    const id = newOverrideGroupId.trim()
     if (!id) return
     try {
-      await createOverrideSet(scenario, id)
-      setNewOverrideSetId('')
+      await putOverrideGroup(
+        { id, label: id, updatedAt: new Date().toISOString(), entries: [] },
+        scenario
+      )
+      setNewOverrideGroupId('')
       await load()
-      toast({ title: 'Created', description: `Override set "${id}" created for ${scenario}.` })
+      toast({ title: 'Created', description: `Override group "${id}" created for ${scenario}.` })
     } catch (e: any) {
       toast({
         title: 'Error',
-        description: e?.message ?? 'Failed to create override set',
+        description: e?.message ?? 'Failed to create override group',
         variant: 'destructive',
       })
     }
@@ -187,7 +208,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
         <CardDescription>
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
-          set a scenario and override set here, that lane will read mocks under the selected scenario with the chosen override set <em>without affecting other
+          set a scenario and override group here, that lane will read mocks under the selected scenario with the chosen override group <em>without affecting other
           builds</em>. The lane id must match what the app uses when initializing Mockifyer (
           typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
           <span className="font-mono">MockifyerConfig.clientId</span>
@@ -241,14 +262,15 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                     </select>
                     <select
                       className="flex h-9 min-w-[10rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={lane.overrideSetId || 'default'}
-                      onChange={(e) => handleOverrideSetChange(lane.clientId, e.target.value)}
-                      title="Override set"
-                      aria-label={`Override set for ${lane.clientId}`}
+                      value={lane.overrideGroupId || ''}
+                      onChange={(e) => handleOverrideGroupChange(lane.clientId, e.target.value)}
+                      title="Override group"
+                      aria-label={`Override group for ${lane.clientId}`}
                     >
-                      {(overrideSetsByScenario[lane.scenario] || [{ id: 'default', entryCount: 0 }]).map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.id}
+                      <option value="">(none)</option>
+                      {(overrideGroupsByScenario[lane.scenario] || []).map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.label || g.id}
                         </option>
                       ))}
                     </select>
@@ -369,23 +391,23 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
 
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <Input
-            placeholder="New override set id (e.g. delayed-departure)…"
-            value={newOverrideSetId}
-            onChange={(e) => setNewOverrideSetId(e.target.value)}
+            placeholder="New override group id (e.g. check-in-open)…"
+            value={newOverrideGroupId}
+            onChange={(e) => setNewOverrideGroupId(e.target.value)}
             className="min-w-[16rem] flex-1 font-mono"
             disabled={!enabled}
           />
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void handleCreateOverrideSet(globalScenario)}
-            disabled={!enabled || !newOverrideSetId.trim()}
+            onClick={() => void handleCreateOverrideGroup(globalScenario)}
+            disabled={!enabled || !newOverrideGroupId.trim()}
           >
-            Create override set
+            Create override group
           </Button>
           <div className="text-xs text-muted-foreground w-full">
-            Creates the set under the global scenario (<span className="font-mono">{globalScenario}</span>).
-            Assign it per lane with the override-set dropdown. Default set name is <span className="font-mono">default</span>.
+            Creates the group under the global scenario (<span className="font-mono">{globalScenario}</span>).
+            Assign it per lane with the override-group dropdown, next to scenario — same per-clientId scope.
           </div>
         </div>
       </CardContent>

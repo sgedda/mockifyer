@@ -1,8 +1,10 @@
 import express, { Request, Response } from 'express';
+import { getScenarioFolderPath, OVERRIDE_GROUP_ID_PATTERN } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { buildClientConnectionRows } from '../utils/client-connections';
+import { readMergedOverrideGroup } from '../utils/override-group-persist';
 
 const router = express.Router();
 
@@ -117,10 +119,10 @@ router.put('/:clientId/scenario', async (req: Request, res: Response) => {
   }
 });
 
-router.put('/:clientId/override-set', async (req: Request, res: Response) => {
+router.put('/:clientId/override-group', async (req: Request, res: Response) => {
   try {
     const { clientId } = req.params;
-    const { overrideSetId } = req.body || {};
+    const { overrideGroupId } = req.body || {};
     const { mockDataPath, config } = getDashboardContext(req);
     if (!isCentralizedDashboardProvider(config.provider)) {
       return res.status(400).json({ error: "client lanes require dashboard provider 'redis' or 'sqlite'." });
@@ -129,18 +131,31 @@ router.put('/:clientId/override-set', async (req: Request, res: Response) => {
     if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
 
     const value =
-      overrideSetId === null
+      overrideGroupId === null || overrideGroupId === ''
         ? null
-        : typeof overrideSetId === 'string' && overrideSetId.trim()
-          ? overrideSetId.trim()
+        : typeof overrideGroupId === 'string' && overrideGroupId.trim()
+          ? overrideGroupId.trim()
           : undefined;
     if (value === undefined) {
-      return res.status(400).json({ error: 'overrideSetId must be a non-empty string or null' });
+      return res.status(400).json({ error: 'overrideGroupId must be a string or null' });
+    }
+    if (value != null && !OVERRIDE_GROUP_ID_PATTERN.test(value)) {
+      return res.status(400).json({ error: `overrideGroupId must match ${OVERRIDE_GROUP_ID_PATTERN}` });
     }
 
     const store = createDashboardMockStore(config, mockDataPath);
     try {
-      await store.setLaneOverrideSetId(canonicalClientId, value);
+      if (value) {
+        const lanes = await store.listClientLanes();
+        const lane = lanes.find((l) => l.clientId === canonicalClientId);
+        const scenario = lane?.scenario ?? (await store.getActiveScenario());
+        const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+        const exists = await readMergedOverrideGroup(store, scenario, scenarioPath, value);
+        if (!exists) {
+          return res.status(404).json({ error: `Override group not found: ${value}` });
+        }
+      }
+      await store.setLaneOverrideGroup(canonicalClientId, value);
       const lanes = await store.listClientLanes();
       const globalScenario = await store.getActiveScenario();
       return res.json({ success: true, lanes, globalScenario });
@@ -148,8 +163,8 @@ router.put('/:clientId/override-set', async (req: Request, res: Response) => {
       await store.close().catch(() => undefined);
     }
   } catch (error: any) {
-    console.error('[ClientLanesRoute] Set override set - Error:', error);
-    return res.status(500).json({ error: 'Failed to set lane override set', details: error.message });
+    console.error('[ClientLanesRoute] Set override group - Error:', error);
+    return res.status(500).json({ error: 'Failed to set lane override group', details: error.message });
   }
 });
 
