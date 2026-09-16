@@ -103,3 +103,38 @@ export function pickPreservedQuery(
   }
   return extras
 }
+
+export type ScenarioUrlSyncPlan =
+  | { action: 'none' }
+  | { action: 'stamp-url'; scenario: string }
+  | { action: 'apply-url'; urlScenario: string }
+
+/**
+ * Decide how the dashboard should sync `?scenario=` with React/server state.
+ *
+ * Must not run until GET /api/scenario-config has populated the real active
+ * scenario. Booting with placeholder `default` and stamping that onto the URL
+ * makes the later mismatch look like the user chose `default`, so
+ * POST /api/scenario-config/set would clobber `_scratch` / named scenarios.
+ */
+export function planScenarioUrlSync(input: {
+  scenarioConfigReady: boolean
+  urlScenario: string | null
+  scenario: string
+  switchingScenario: boolean
+  rejectedUrlScenario: string | null
+}): ScenarioUrlSyncPlan {
+  if (!input.scenarioConfigReady || input.switchingScenario) {
+    return { action: 'none' }
+  }
+  if (!input.urlScenario) {
+    return { action: 'stamp-url', scenario: input.scenario }
+  }
+  if (input.urlScenario === input.scenario) {
+    return { action: 'none' }
+  }
+  if (input.rejectedUrlScenario === input.urlScenario) {
+    return { action: 'none' }
+  }
+  return { action: 'apply-url', urlScenario: input.urlScenario }
+}

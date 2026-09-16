@@ -30,10 +30,12 @@ import {
   isScratchScenario,
   scenarioDisplayName,
 } from '@/lib/scenario-display'
-import { buildSearch, DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
+import { buildSearch, DASHBOARD_Q, mockEditorPath, planScenarioUrlSync } from '@/lib/dashboard-urls'
 
 interface DashboardProps {
   scenario: string
+  /** False until GET /scenario-config has settled (success or error). */
+  scenarioConfigReady: boolean
   onScenarioChange: (scenario: string) => void
 }
 
@@ -42,7 +44,11 @@ function tabNeedsMockCatalog(tab: string): boolean {
   return tab === 'mocks'
 }
 
-export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
+export default function Dashboard({
+  scenario,
+  scenarioConfigReady,
+  onScenarioChange,
+}: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -200,29 +206,38 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const urlScenario = searchParams.get(DASHBOARD_Q.scenario)
 
   useEffect(() => {
-    if (!urlScenario) {
+    const plan = planScenarioUrlSync({
+      scenarioConfigReady,
+      urlScenario,
+      scenario,
+      switchingScenario,
+      rejectedUrlScenario: rejectedUrlScenarioRef.current,
+    })
+    if (plan.action === 'none') {
+      if (scenarioConfigReady && urlScenario && urlScenario === scenario) {
+        rejectedUrlScenarioRef.current = null
+      }
+      return
+    }
+    if (plan.action === 'stamp-url') {
       rejectedUrlScenarioRef.current = null
       setSearchParams(
         (prev) => {
-          if (prev.get(DASHBOARD_Q.scenario) === scenario) return prev
+          if (prev.get(DASHBOARD_Q.scenario) === plan.scenario) return prev
           const next = new URLSearchParams(prev)
-          next.set(DASHBOARD_Q.scenario, scenario)
+          next.set(DASHBOARD_Q.scenario, plan.scenario)
           return next
         },
         { replace: true }
       )
       return
     }
-    if (urlScenario === scenario) {
-      rejectedUrlScenarioRef.current = null
-      return
-    }
-    if (switchingScenario || rejectedUrlScenarioRef.current === urlScenario) return
-    void handleHeaderScenarioChange(urlScenario, { silent: true })
+    void handleHeaderScenarioChange(plan.urlScenario, { silent: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlScenario, scenario, switchingScenario])
+  }, [urlScenario, scenario, switchingScenario, scenarioConfigReady])
 
   useEffect(() => {
+    if (!scenarioConfigReady) return
     if (!tabNeedsMockCatalog(activeTab)) {
       mocksLoadAbortRef.current?.abort()
       return
@@ -231,7 +246,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     return () => {
       mocksLoadAbortRef.current?.abort()
     }
-  }, [scenario, activeTab, location.pathname])
+  }, [scenario, scenarioConfigReady, activeTab, location.pathname])
 
   function setSearchQuery(nextQuery: string) {
     setSearchParams(
@@ -615,18 +630,32 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 <MockEditorPage
                   scenario={scenario}
                   scenarioLocked={scenarioLocked}
-                  scenarioReady={!urlScenario || urlScenario === scenario}
+                  scenarioReady={
+                    scenarioConfigReady && (!urlScenario || urlScenario === scenario)
+                  }
                 />
               }
             />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"
-              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+              element={
+                <OverridesView
+                  scenario={scenario}
+                  scenarioConfigReady={scenarioConfigReady}
+                  mocks={allMocks}
+                />
+              }
             />
             <Route
               path="/:mountPrefix/overrides"
-              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+              element={
+                <OverridesView
+                  scenario={scenario}
+                  scenarioConfigReady={scenarioConfigReady}
+                  mocks={allMocks}
+                />
+              }
             />
             <Route path="/atlas" element={<Atlas scenario={scenario} />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
