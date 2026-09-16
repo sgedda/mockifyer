@@ -35,6 +35,7 @@ function describeTreeParentLink(
   hop: MockFile,
   chainHops: MockFile[]
 ): string | null {
+  if (!hop.parentRequestId?.trim()) return null
   const parent = ancestors[ancestors.length - 1]
   if (parent) {
     const short = formatShortCorrelationId(parent.representative.requestId)
