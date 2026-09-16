@@ -66,11 +66,23 @@ export interface MockFile {
   requestId?: string | null
   /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (upstream caller). */
   parentRequestId?: string | null
+  /** SHA-256 of the canonical request key — stable identity across scenarios. */
+  requestHash?: string | null
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).
    */
   similarBodyGroup?: { id: string; size: number; minSimilarity: number } | null
+}
+
+/** Global starred request (identity is {@link MockFile.requestHash}, not filename). */
+export interface FavoriteRequest {
+  id: string
+  method: string
+  endpoint: string
+  operationName: string | null
+  favoritedAt: string
+  filename?: string
 }
 
 export interface MockData {

@@ -20,6 +20,7 @@ import { MockCallChainPanel } from '@/components/MockCallChainPanel'
 import { X, Save, Code, Edit, Plus, Copy, Terminal, AlignLeft, RefreshCw } from 'lucide-react'
 import { CopyableText } from '@/components/CopyableText'
 import MockOverridesLink from '@/components/MockOverridesLink'
+import { FavoriteStarButton } from '@/components/FavoriteStarButton'
 import { countStoredOverrides } from '@/lib/mock-overrides'
 
 interface MockEditorProps {
@@ -494,16 +495,22 @@ export default function MockEditor({
           Edit Mock:{' '}
           <span className="text-primary font-mono break-all">{mock.filename}</span>
         </CardTitle>
-        {!isPage && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="hover:bg-destructive/20 hover:text-destructive shrink-0"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          <FavoriteStarButton
+            filename={mock.filename}
+            requestHash={allMocks?.find((file) => file.filename === mock.filename)?.requestHash}
+          />
+          {!isPage && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="hover:bg-destructive/20 hover:text-destructive"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
       {serviceChain.length >= 2 && onSelectRelatedMock && (
         <MockCallChainPanel
