@@ -220,6 +220,58 @@ describe('dashboard API cache / 304', () => {
       expect(nested.status).toBe(404);
       expect(nested.body).not.toContain('id="root"');
     });
+
+    it('serves the mock editor SPA under /mockifyer/mock', async () => {
+      const page = await httpGet(server, '/mockifyer/mock');
+      expect(page.status).toBe(200);
+      expect(page.body).toContain('id="root"');
+    });
+  });
+});
+
+describe('dashboard SPA /mock assets', () => {
+  let tmp: string;
+  let server: http.Server;
+
+  beforeEach(async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-mock-assets-'));
+    const publicDir = path.join(tmp, 'public');
+    const assetsDir = path.join(publicDir, 'assets');
+    const mockDataPath = path.join(tmp, 'mock-data');
+    fs.mkdirSync(assetsDir, { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'default'), { recursive: true });
+    fs.writeFileSync(path.join(assetsDir, 'main-QnIA1sRA.js'), 'export const ok = true;\n');
+    fs.writeFileSync(
+      path.join(publicDir, 'index.html'),
+      '<!doctype html><div id="root"></div>'
+    );
+    fs.writeFileSync(
+      path.join(mockDataPath, 'scenario-config.json'),
+      JSON.stringify({ currentScenario: 'default' })
+    );
+
+    const app = createServer(publicDir, mockDataPath, { provider: 'filesystem' });
+    server = await new Promise<http.Server>((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('rewrites /mock/assets to the real bundle instead of Asset not found', async () => {
+    const page = await httpGet(server, '/mock?file=bookings.json');
+    expect(page.status).toBe(200);
+    expect(page.body).toContain('id="root"');
+
+    const asset = await httpGet(server, '/mock/assets/main-QnIA1sRA.js');
+    expect(asset.status).toBe(200);
+    expect(asset.body).toContain('export const ok');
+    expect(asset.body).not.toContain('Asset not found');
   });
 });
 

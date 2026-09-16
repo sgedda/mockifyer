@@ -13,6 +13,7 @@ import type {
   NetworkLogConfig,
   NetworkEvent,
   MockReplayMode,
+  FavoriteRequest,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -168,6 +169,33 @@ export async function searchMocks(params: {
 
   const response = await fetchApi(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
   if (!response.ok) throw new Error('Failed to search mocks')
+  return response.json()
+}
+
+export async function getFavorites(): Promise<{ favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites`, noStore)
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to fetch favorites'))
+  return response.json()
+}
+
+export async function addFavorite(params: {
+  filename: string
+  scenario?: string
+}): Promise<{ favorite: FavoriteRequest; favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to add favorite'))
+  return response.json()
+}
+
+export async function removeFavorite(id: string): Promise<{ favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to remove favorite'))
   return response.json()
 }
 

@@ -14,6 +14,7 @@ import { Copy, ExternalLink, Trash2, GitBranch } from 'lucide-react'
 import { CopyableText } from '@/components/CopyableText'
 import MockOverridesLink from '@/components/MockOverridesLink'
 import GraphqlRequestPreview from '@/components/GraphqlRequestPreview'
+import { FavoriteStarButton } from '@/components/FavoriteStarButton'
 import { countListOverrides } from '@/lib/mock-overrides'
 
 function formatFileSize(bytes: number): string {
@@ -159,22 +160,25 @@ export function MockCard({
               )}
             </div>
           </div>
-          {canShowActions && (
-            <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" onClick={(e) => onDuplicate(mock.filename, e)} title="Duplicate">
-                <Copy className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => onDelete(mock.filename, e)}
-                disabled={deleting === mock.filename}
-                title="Delete"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
+          <div className="flex gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <FavoriteStarButton filename={mock.filename} requestHash={mock.requestHash} />
+            {canShowActions && (
+              <>
+                <Button variant="ghost" size="icon" onClick={(e) => onDuplicate(mock.filename, e)} title="Duplicate">
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => onDelete(mock.filename, e)}
+                  disabled={deleting === mock.filename}
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </CardHeader>
 

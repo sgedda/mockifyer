@@ -698,6 +698,21 @@ export class RedisMockStore {
     await this.kv.sadd(this.scenarioRegistrySetKey, scenario).catch(() => undefined);
   }
 
+  /** Global (not per-scenario) starred request identities. */
+  favoritesRedisKey(): string {
+    return `${this.keyPrefix}:favorites`;
+  }
+
+  async getFavoritesJson(): Promise<string | null> {
+    const raw = await this.kv.get(this.favoritesRedisKey());
+    if (raw === null || raw === '') return null;
+    return raw;
+  }
+
+  async setFavoritesJson(payload: string): Promise<void> {
+    await this.kv.set(this.favoritesRedisKey(), payload);
+  }
+
   async deleteProxyConfig(scenario: string): Promise<void> {
     await this.kv.del(this.proxyConfigRedisKey(scenario));
   }
