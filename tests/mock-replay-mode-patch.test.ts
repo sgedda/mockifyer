@@ -29,4 +29,16 @@ describe('applyReplayModeFieldsFromBody', () => {
     expect(applyReplayModeFieldsFromBody(mock, { replayMode: 'stored' })).toBeNull();
     expect(mock.alwaysUseRealApi).toBeUndefined();
   });
+
+  it('leaves request-only stubs when switching away from always-live without Refresh now', () => {
+    const mock = snapshot({
+      alwaysUseRealApi: true,
+      responsePending: true,
+      response: { status: 0, data: null, headers: {} },
+    });
+    expect(applyReplayModeFieldsFromBody(mock, { replayMode: 'always-refresh' })).toBeNull();
+    expect(mock.responsePending).toBeUndefined();
+    expect(mock.alwaysUseRealApi).toBeUndefined();
+    expect(mock.alwaysRefreshFromLive).toBe(true);
+  });
 });

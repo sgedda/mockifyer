@@ -43,10 +43,26 @@ interface MockEditorProps {
 }
 
 function resolveReplayModeFromMock(mock: MockData): MockReplayMode {
-  if (mock.data.alwaysUseRealApi === true || mock.data.responsePending === true) return 'passthrough'
   if (mock.data.alwaysRefreshFromLive === true) return 'always-refresh'
   if (mock.data.refreshOnNextRequest === true) return 'refresh-next'
+  if (mock.data.alwaysUseRealApi === true || mock.data.responsePending === true) return 'passthrough'
   return 'stored'
+}
+
+/**
+ * True when the mock has a captured response body (not a request-only stub).
+ * Checks the durable response shape instead of `responsePending` flag.
+ */
+function mockHasCapturedBody(mock: MockData): boolean {
+  return mock.data.response.status !== 0 || mock.data.response.data !== null;
+}
+
+/** Request-only stubs cannot serve a saved body; the next live call captures one. */
+function replayModeToPersist(next: MockReplayMode, mock: MockData): MockReplayMode {
+  if (next === 'stored' && (mock.data.responsePending === true || !mockHasCapturedBody(mock))) {
+    return 'refresh-next'
+  }
+  return next
 }
 
 const REPLAY_MODE_OPTIONS: Array<{ value: MockReplayMode; label: string; description: string }> = [
@@ -352,18 +368,21 @@ export default function MockEditor({
       })
       return
     }
-    setReplayMode(next)
+    const applied = replayModeToPersist(next, mock)
+    setReplayMode(applied)
     try {
       setSaving(true)
       // Intentionally preserve the current on-disk/Redis mock body and overrides.
       // This avoids overwriting unsaved edits (or invalid JSON) when the user just flips passthrough.
-      await updateMockReplayMode(mock.filename, next, scenario)
+      await updateMockReplayMode(mock.filename, applied, scenario)
       toast({
         title: 'Saved',
         description:
-          next === 'stored'
-            ? 'This mock will be served from Mockifyer.'
-            : REPLAY_MODE_OPTIONS.find((o) => o.value === next)?.description ?? 'Replay mode updated.',
+          next === 'stored' && applied === 'refresh-next'
+            ? 'No saved body yet — the next request will capture from live, then this mock will be served.'
+            : applied === 'stored'
+              ? 'This mock will be served from Mockifyer.'
+              : REPLAY_MODE_OPTIONS.find((o) => o.value === applied)?.description ?? 'Replay mode updated.',
       })
       if (onListRefresh) {
         await onListRefresh()
