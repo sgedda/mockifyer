@@ -2,8 +2,11 @@ import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import OverrideRelatedData from '@/components/OverrideRelatedData'
+import OverrideArrayGroupList from '@/components/OverrideArrayGroupList'
+import { OverrideArrayCollapseScope } from '@/components/OverrideArrayCollapseContext'
 import type { FieldOverrideRow } from '@/lib/field-overrides'
 import { emptyFieldOverrideRow } from '@/lib/field-overrides'
+import { pathRelativeToArrayItem } from '@/lib/override-path-groups'
 import type { MockResponseFieldOverrideMode } from '@/types'
 
 const FIELD_OVERRIDE_MODES: Array<{
@@ -23,6 +26,109 @@ interface FieldOverridesEditorProps {
   /** Remount related-data panels when the mock or row index changes. */
   instanceKey?: string
   readOnly?: boolean
+}
+
+function FieldOverrideCard({
+  row,
+  index,
+  groupPath,
+  rows,
+  onChange,
+  updateRow,
+  responseBody,
+  instanceKey,
+  readOnly,
+}: {
+  row: FieldOverrideRow
+  index: number
+  groupPath: string | null
+  rows: FieldOverrideRow[]
+  onChange: (rows: FieldOverrideRow[]) => void
+  updateRow: (index: number, patch: Partial<FieldOverrideRow>) => void
+  responseBody: unknown
+  instanceKey: string
+  readOnly: boolean
+}) {
+  const relativePath = groupPath ? pathRelativeToArrayItem(row.path, groupPath) : null
+
+  return (
+    <div className="space-y-2 rounded-md border border-border p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1 space-y-1">
+          <span className="text-xs text-muted-foreground">Path</span>
+          {relativePath ? (
+            <div className="font-mono text-[11px] text-sky-200/90">in item → {relativePath}</div>
+          ) : null}
+          <Input
+            className="h-9 font-mono text-xs"
+            placeholder="e.g. bookings.0.status"
+            value={row.path}
+            readOnly={readOnly}
+            onChange={(event) => updateRow(index, { path: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1 sm:w-[8.5rem]">
+          <span className="text-xs text-muted-foreground">Mode</span>
+          <select
+            className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={row.mode}
+            disabled={readOnly}
+            title={FIELD_OVERRIDE_MODES.find((mode) => mode.value === row.mode)?.hint ?? ''}
+            onChange={(event) =>
+              updateRow(index, {
+                mode: event.target.value as MockResponseFieldOverrideMode,
+              })
+            }
+          >
+            {FIELD_OVERRIDE_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-9 shrink-0 text-destructive hover:text-destructive sm:mt-5"
+          aria-label="Remove field override"
+          disabled={readOnly}
+          onClick={() => onChange(rows.filter((_, other) => other !== index))}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      {!groupPath ? (
+        <OverrideRelatedData
+          key={`${instanceKey}-${index}`}
+          path={row.path}
+          responseBody={responseBody}
+        />
+      ) : null}
+      {row.mode === 'remove' ? (
+        <p className="text-[11px] text-muted-foreground">
+          At serve time this path is deleted (array splice or object key). No value needed.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">
+            {row.mode === 'extend' ? 'Value to append / merge (JSON)' : 'Value (JSON)'}
+          </span>
+          <textarea
+            className="flex min-h-[2.5rem] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            rows={2}
+            placeholder={
+              row.mode === 'extend' ? 'e.g. {"id":"2"} or ["extra"]' : 'e.g. "CONFIRMED"'
+            }
+            value={row.valueText}
+            readOnly={readOnly}
+            onChange={(event) => updateRow(index, { valueText: event.target.value })}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -55,85 +161,26 @@ export default function FieldOverridesEditor({
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No field overrides.</p>
       ) : (
-        <div className="space-y-3">
-          {rows.map((row, index) => (
-            <div key={`field-${index}`} className="space-y-2 rounded-md border border-border p-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <span className="text-xs text-muted-foreground">Path</span>
-                  <Input
-                    className="h-9 font-mono text-xs"
-                    placeholder="e.g. bookings.0.status"
-                    value={row.path}
-                    readOnly={readOnly}
-                    onChange={(event) => updateRow(index, { path: event.target.value })}
-                  />
-                </div>
-                <div className="space-y-1 sm:w-[8.5rem]">
-                  <span className="text-xs text-muted-foreground">Mode</span>
-                  <select
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={row.mode}
-                    disabled={readOnly}
-                    title={
-                      FIELD_OVERRIDE_MODES.find((mode) => mode.value === row.mode)?.hint ?? ''
-                    }
-                    onChange={(event) =>
-                      updateRow(index, {
-                        mode: event.target.value as MockResponseFieldOverrideMode,
-                      })
-                    }
-                  >
-                    {FIELD_OVERRIDE_MODES.map((mode) => (
-                      <option key={mode.value} value={mode.value}>
-                        {mode.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-9 shrink-0 text-destructive hover:text-destructive sm:mt-5"
-                  aria-label="Remove field override"
-                  disabled={readOnly}
-                  onClick={() => onChange(rows.filter((_, other) => other !== index))}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <OverrideRelatedData
-                key={`${instanceKey}-${index}`}
-                path={row.path}
+        <OverrideArrayCollapseScope>
+          <OverrideArrayGroupList
+            rows={rows}
+            responseBody={responseBody}
+            instanceKey={instanceKey}
+            renderRow={(row, index, groupPath) => (
+              <FieldOverrideCard
+                row={row}
+                index={index}
+                groupPath={groupPath}
+                rows={rows}
+                onChange={onChange}
+                updateRow={updateRow}
                 responseBody={responseBody}
+                instanceKey={instanceKey}
+                readOnly={readOnly}
               />
-              {row.mode === 'remove' ? (
-                <p className="text-[11px] text-muted-foreground">
-                  At serve time this path is deleted (array splice or object key). No value needed.
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground">
-                    {row.mode === 'extend' ? 'Value to append / merge (JSON)' : 'Value (JSON)'}
-                  </span>
-                  <textarea
-                    className="flex min-h-[2.5rem] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    rows={2}
-                    placeholder={
-                      row.mode === 'extend'
-                        ? 'e.g. {"id":"2"} or ["extra"]'
-                        : 'e.g. "CONFIRMED"'
-                    }
-                    value={row.valueText}
-                    readOnly={readOnly}
-                    onChange={(event) => updateRow(index, { valueText: event.target.value })}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            )}
+          />
+        </OverrideArrayCollapseScope>
       )}
 
       <Button

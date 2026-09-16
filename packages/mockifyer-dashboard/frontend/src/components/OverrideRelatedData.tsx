@@ -15,13 +15,21 @@ import { cn } from '@/lib/utils'
 interface OverrideRelatedDataProps {
   path: string
   responseBody: unknown
+  /** Controlled expand state — share across overrides on the same array. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
  * Expandable stored-JSON inspector for one override path.
  * Path crumbs and related keys drill into parent objects (booking, timeline item, …).
  */
-export default function OverrideRelatedData({ path, responseBody }: OverrideRelatedDataProps) {
+export default function OverrideRelatedData({
+  path,
+  responseBody,
+  open: openProp,
+  onOpenChange,
+}: OverrideRelatedDataProps) {
   const panelId = useId()
   const trimmed = path.trim()
   const crumbs = useMemo(() => pathCrumbs(trimmed), [trimmed])
@@ -29,13 +37,20 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
     () => (trimmed ? getValueAtResponsePath(responseBody, trimmed) : undefined),
     [responseBody, trimmed]
   )
-  const [open, setOpen] = useState(false)
+  const isControlled = onOpenChange != null
+  const [localOpen, setLocalOpen] = useState(false)
+  const open = isControlled ? Boolean(openProp) : localOpen
   const [inspectPath, setInspectPath] = useState<string | null>(null)
 
+  function setOpen(next: boolean) {
+    if (isControlled) onOpenChange(next)
+    else setLocalOpen(next)
+  }
+
   useEffect(() => {
-    setOpen(false)
     setInspectPath(null)
-  }, [trimmed])
+    if (!isControlled) setLocalOpen(false)
+  }, [trimmed, isControlled])
 
   const effectiveInspect = inspectPath ?? (open ? defaultInspectPath(responseBody, trimmed) : trimmed)
   const inspectValue = useMemo(
@@ -68,7 +83,7 @@ export default function OverrideRelatedData({ path, responseBody }: OverrideRela
           className="h-7 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
           aria-expanded={open}
           aria-controls={panelId}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => setOpen(!open)}
         >
           {open ? (
             <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />

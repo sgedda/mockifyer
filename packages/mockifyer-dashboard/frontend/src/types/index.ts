@@ -38,9 +38,13 @@ export interface MockFile {
   /** HTTP method when available (GET/POST/...). */
   method?: string | null
   graphqlInfo: {
-    query: string
-    variables: any
+    query: string | null
+    variables: unknown
     operationName?: string | null
+    /** Truncated formatted query for list cards (present even when compact omits `query`). */
+    queryPreview?: string | null
+    /** Truncated JSON variables for list cards. */
+    variablesPreview?: string | null
   } | null
   sessionId: string | null
   hasResponseDateOverrides?: boolean

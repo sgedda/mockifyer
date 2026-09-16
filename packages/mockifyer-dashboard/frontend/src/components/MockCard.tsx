@@ -13,6 +13,7 @@ import {
 import { Copy, ExternalLink, Trash2, GitBranch } from 'lucide-react'
 import { CopyableText } from '@/components/CopyableText'
 import MockOverridesLink from '@/components/MockOverridesLink'
+import GraphqlRequestPreview from '@/components/GraphqlRequestPreview'
 import { FavoriteStarButton } from '@/components/FavoriteStarButton'
 import { countListOverrides } from '@/lib/mock-overrides'
 
@@ -24,22 +25,6 @@ function formatFileSize(bytes: number): string {
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleString()
-}
-
-function getGraphqlQueryPreview(query: string | null | undefined): string | null {
-  if (!query || typeof query !== 'string') return null
-  const compact = query.replace(/#[^\n]*\n/g, '\n').replace(/\s+/g, ' ').trim()
-  if (!compact) return null
-
-  // Heuristic: show the first top-level field and the first nested field.
-  // Example: myAccount { customerId ... }
-  const m = compact.match(
-    /\{\s*([_A-Za-z][_0-9A-Za-z]*)\s*(?:\([^)]*\))?\s*\{\s*([_A-Za-z][_0-9A-Za-z]*)/m
-  )
-  if (!m) return null
-  const top = m[1]
-  const nested = m[2]
-  return `"${top}": { ${nested}, … }`
 }
 
 function deriveDisplayName(mock: MockFile): string {
@@ -118,7 +103,9 @@ export function MockCard({
               </span>
               {mock.graphqlInfo && (
                 <Badge variant="outline" className="border-purple-500/30 bg-purple-500/20 text-purple-300">
-                  GraphQL
+                  {mock.graphqlInfo.operationName
+                    ? `GraphQL · ${mock.graphqlInfo.operationName}`
+                    : 'GraphQL'}
                 </Badge>
               )}
               {overrideCount > 0 && (
@@ -195,7 +182,7 @@ export function MockCard({
         </div>
       </CardHeader>
 
-      {(mock.endpoint || mock.graphqlInfo?.query) && (
+      {(mock.endpoint || mock.graphqlInfo) && (
         <CardContent>
           {mock.endpoint && (
             <div className="flex items-center gap-2 text-sm font-mono text-muted-foreground">
@@ -208,13 +195,7 @@ export function MockCard({
               />
             </div>
           )}
-          {mock.graphqlInfo?.query ? (
-            (() => {
-              const preview = getGraphqlQueryPreview(mock.graphqlInfo?.query)
-              if (!preview) return null
-              return <div className="mt-1 text-xs font-mono text-muted-foreground/90 break-words">{preview}</div>
-            })()
-          ) : null}
+          {mock.graphqlInfo ? <GraphqlRequestPreview graphqlInfo={mock.graphqlInfo} /> : null}
         </CardContent>
       )}
     </Card>

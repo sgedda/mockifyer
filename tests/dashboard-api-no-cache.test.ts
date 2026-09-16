@@ -399,11 +399,18 @@ describe('dashboard compact mock list and nested override paths', () => {
     const compactJson = JSON.parse(compact.body) as {
       files: Array<{
         hasResponseFieldOverrides?: boolean;
-        graphqlInfo?: { query?: string | null; operationName?: string | null };
+        graphqlInfo?: {
+          query?: string | null;
+          operationName?: string | null;
+          queryPreview?: string | null;
+          variablesPreview?: string | null;
+        };
       }>;
     };
     const compactGql = compactJson.files.find((f) => f.graphqlInfo?.operationName === 'Bookings');
     expect(compactGql?.graphqlInfo?.query).toBeNull();
+    expect(compactGql?.graphqlInfo?.queryPreview).toContain('query Bookings');
+    expect(compactGql?.graphqlInfo?.variablesPreview).toBeTruthy();
     expect(compactGql?.hasResponseFieldOverrides).toBe(true);
     expect(compact.body.length).toBeLessThan(full.body.length);
   });

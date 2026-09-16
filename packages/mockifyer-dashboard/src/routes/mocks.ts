@@ -22,6 +22,7 @@ import {
   validatePoolRef,
   setResponseDataValueAtPath,
   type PoolRef,
+  formatGraphqlQueryForDisplay,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import { writeMockOverridesToOverrideSet } from '../utils/override-set-write';
@@ -324,10 +325,37 @@ function parseCompactListQuery(raw: unknown): boolean {
   return parseSimilarGroupsQuery(raw);
 }
 
+const GRAPHQL_LIST_QUERY_PREVIEW_MAX = 1200;
+const GRAPHQL_LIST_VARIABLES_PREVIEW_MAX = 400;
+
+function truncateGraphqlPreview(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).replace(/\s+$/g, '')}\n…`;
+}
+
+function graphqlVariablesPreview(variables: unknown): string | null {
+  if (variables === undefined || variables === null) return null;
+  try {
+    const text = JSON.stringify(variables, null, 2);
+    if (!text || text === '{}' || text === 'null') return null;
+    return truncateGraphqlPreview(text, GRAPHQL_LIST_VARIABLES_PREVIEW_MAX);
+  } catch {
+    return String(variables);
+  }
+}
+
+interface GraphqlListInfo {
+  query: string | null;
+  variables: unknown;
+  operationName: string | null;
+  queryPreview: string | null;
+  variablesPreview: string | null;
+}
+
 function extractGraphqlListInfo(
   mockData: any,
   compact: boolean
-): { query: string | null; variables: unknown; operationName: string | null } | null {
+): GraphqlListInfo | null {
   const body = mockData?.request?.data;
   const parsedBody =
     typeof body === 'string'
@@ -344,13 +372,27 @@ function extractGraphqlListInfo(
   }
   const operationName =
     typeof parsedBody.operationName === 'string' ? parsedBody.operationName : null;
+  const queryPreview = truncateGraphqlPreview(
+    formatGraphqlQueryForDisplay(parsedBody.query),
+    GRAPHQL_LIST_QUERY_PREVIEW_MAX
+  );
+  const variables = parsedBody.variables || null;
+  const variablesPreview = graphqlVariablesPreview(variables);
   if (compact) {
-    return { query: null, variables: null, operationName };
+    return {
+      query: null,
+      variables: null,
+      operationName,
+      queryPreview,
+      variablesPreview,
+    };
   }
   return {
     query: parsedBody.query,
-    variables: parsedBody.variables || null,
+    variables,
     operationName,
+    queryPreview,
+    variablesPreview,
   };
 }
 
@@ -711,27 +753,7 @@ router.get('/search', async (req: Request, res: Response) => {
               if (qs && endpoint) endpoint += '?' + qs;
             }
 
-            const body = (mockData.request as any)?.data;
-            const parsedBody =
-              typeof body === 'string'
-                ? (() => {
-                    try {
-                      return JSON.parse(body);
-                    } catch {
-                      return body;
-                    }
-                  })()
-                : body;
-            if (
-              parsedBody &&
-              typeof parsedBody === 'object' &&
-              typeof (parsedBody as any).query === 'string'
-            ) {
-              graphqlInfo = {
-                query: (parsedBody as any).query,
-                variables: (parsedBody as any).variables || null,
-              };
-            }
+            graphqlInfo = extractGraphqlListInfo(mockData, false);
             sessionId = (mockData as any).sessionId || null;
             alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
           } catch {
@@ -816,20 +838,7 @@ router.get('/search', async (req: Request, res: Response) => {
         else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
 
         overrideFields = getMockOverrideListFields(mockData);
-
-        if (mockData.request?.data) {
-          let bodyData = mockData.request.data;
-          if (typeof bodyData === 'string') {
-            try {
-              bodyData = JSON.parse(bodyData);
-            } catch {
-              /* not JSON */
-            }
-          }
-          if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-            graphqlInfo = { query: bodyData.query, variables: bodyData.variables || null };
-          }
-        }
+        graphqlInfo = extractGraphqlListInfo(mockData, false);
 
         if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
           const params = new URLSearchParams();
