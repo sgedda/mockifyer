@@ -61,7 +61,7 @@ export function graphqlVariablesPreviewText(info: GraphqlListInfo | null | undef
  */
 export function formatGraphqlRequestBodyForEditor(data: unknown): string | null {
   if (data == null || typeof data !== 'object' || Array.isArray(data)) return null
-  const body = data as { query?: unknown; variables?: unknown; operationName?: unknown }
+  const body = data as Record<string, unknown>
   if (typeof body.query !== 'string') return null
   const trimmed = body.query.trim()
   if (!/^(query|mutation|subscription)\b/.test(trimmed) && !/^\{/.test(trimmed)) return null
@@ -76,6 +76,27 @@ export function formatGraphqlRequestBodyForEditor(data: unknown): string | null 
       parts.push(JSON.stringify(body.variables, null, 2))
     } catch {
       parts.push(String(body.variables))
+    }
+  }
+  if (body.extensions !== undefined && body.extensions !== null) {
+    parts.push('', '# Extensions')
+    try {
+      parts.push(JSON.stringify(body.extensions, null, 2))
+    } catch {
+      parts.push(String(body.extensions))
+    }
+  }
+  // Include any other extra fields that aren't the standard GraphQL fields
+  const standardFields = new Set(['query', 'variables', 'operationName', 'extensions'])
+  const extraFields = Object.keys(body).filter((key) => !standardFields.has(key))
+  if (extraFields.length > 0) {
+    for (const key of extraFields) {
+      parts.push('', `# ${key}`)
+      try {
+        parts.push(JSON.stringify(body[key], null, 2))
+      } catch {
+        parts.push(String(body[key]))
+      }
     }
   }
   return parts.join('\n')

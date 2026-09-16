@@ -7,6 +7,7 @@ import {
   arrayItemGroupLabel,
   countOverrideItemRows,
   countOverrideSectionRows,
+  getSectionRowIndices,
   groupOverridesByTopLevelArray,
   summarizeOverrideArrayItemAtPath,
   type OverrideArrayItemGroup,
@@ -184,17 +185,20 @@ function ArraySectionBlock<T extends { path: string }>({
       </Button>
       {!collapsed ? (
         <div id={panelId} className="space-y-3">
-          {section.itemGroups.map((group) => (
-            <ArrayItemBlock
-              key={group.arrayItemPath}
-              group={group}
-              arrayCollapseKey={section.collapseKey}
-              responseBody={responseBody}
-              instanceKey={instanceKey}
-              nested={nested}
-              renderRow={renderRow}
-            />
-          ))}
+          {section.itemGroups.map((group) => {
+            const groupIndices = group.children.flatMap((child) => getSectionRowIndices(child))
+            return (
+              <ArrayItemBlock
+                key={`item-${groupIndices.join('-')}`}
+                group={group}
+                arrayCollapseKey={section.collapseKey}
+                responseBody={responseBody}
+                instanceKey={instanceKey}
+                nested={nested}
+                renderRow={renderRow}
+              />
+            )
+          })}
         </div>
       ) : null}
     </div>
@@ -214,14 +218,15 @@ function OverrideSectionList<T extends { path: string }>({
       {sections.map((section) => {
         if (section.kind === 'ungrouped') {
           return (
-            <div key={`${instanceKey}-ungrouped-${section.index}`}>
+            <div key={`row-${section.index}`}>
               {renderRow(section.item, section.index, groupPath)}
             </div>
           )
         }
+        const sectionIndices = getSectionRowIndices(section)
         return (
           <ArraySectionBlock
-            key={`${instanceKey}-array-${section.collapseKey}`}
+            key={`section-${sectionIndices.join('-')}`}
             section={section}
             responseBody={responseBody}
             instanceKey={instanceKey}

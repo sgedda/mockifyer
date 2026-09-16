@@ -214,6 +214,21 @@ export function countOverrideItemRows<T>(group: OverrideArrayItemGroup<T>): numb
   return group.children.reduce((sum, child) => sum + countOverrideSectionRows(child), 0)
 }
 
+/**
+ * Extract all original row indices from a section (recursively for array sections).
+ * Used to create stable React keys based on row identity.
+ */
+export function getSectionRowIndices<T>(section: OverrideEditorSection<T>): number[] {
+  if (section.kind === 'ungrouped') return [section.index]
+  const indices: number[] = []
+  for (const group of section.itemGroups) {
+    for (const child of group.children) {
+      indices.push(...getSectionRowIndices(child))
+    }
+  }
+  return indices
+}
+
 function sortItemPaths(paths: string[]): string[] {
   return [...paths].sort((a, b) => {
     const delta = Number(arrayItemIndex(a)) - Number(arrayItemIndex(b))
