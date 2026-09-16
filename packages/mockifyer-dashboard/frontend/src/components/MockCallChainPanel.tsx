@@ -6,64 +6,8 @@ import {
   formatShortCorrelationId,
   getChainRootRequestId,
   mockHopEndpointFingerprint,
-  type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
-
-function UniqueChainNodeButton({
-  node,
-  selectedFilename,
-  onSelectHop,
-  depth,
-}: {
-  node: MockUniqueChainNode
-  selectedFilename?: string | null
-  onSelectHop: (mock: MockFile) => void
-  depth: number
-}) {
-  const selected = node.hops.some((hop) => hop.filename === selectedFilename)
-
-  return (
-    <div className={depth > 0 ? 'ml-4 mt-1 border-l border-border/60 pl-2' : ''}>
-      <button
-        type="button"
-        className={`text-left rounded px-2 py-1 text-[11px] font-mono border transition-colors max-w-full truncate ${
-          selected
-            ? 'border-primary bg-primary/10'
-            : 'border-transparent hover:border-border hover:bg-background'
-        }`}
-        title={
-          [
-            mockHopEndpointFingerprint(node.representative),
-            node.callCount > 1 ? `${node.callCount} identical calls` : null,
-            depth > 0 ? `nested level ${depth}` : 'entry',
-            node.representative.requestId ? `request ${node.representative.requestId}` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ')
-        }
-        onClick={() => {
-          const hop =
-            node.hops.find((h) => h.filename === selectedFilename) ?? node.representative
-          onSelectHop(hop)
-        }}
-      >
-        {mockHopEndpointFingerprint(node.representative)}
-        {node.callCount > 1 ? (
-          <span className="ml-1 font-sans text-muted-foreground">×{node.callCount}</span>
-        ) : null}
-      </button>
-      {node.children.map((child) => (
-        <UniqueChainNodeButton
-          key={child.fingerprint + child.representative.filename}
-          node={child}
-          selectedFilename={selectedFilename}
-          onSelectHop={onSelectHop}
-          depth={depth + 1}
-        />
-      ))}
-    </div>
-  )
-}
+import { ChainTreeToggle, CollapsibleChainTree } from '@/components/MockChainTree'
 
 export function MockCallChainPanel({
   chain,
@@ -94,20 +38,58 @@ export function MockCallChainPanel({
           </span>
         )}
       </div>
-      <div className="space-y-0.5">
-        {forest.map((node) => (
-          <UniqueChainNodeButton
-            key={node.fingerprint + node.representative.filename}
-            node={node}
-            selectedFilename={selectedFilename}
-            onSelectHop={onSelectHop}
-            depth={0}
-          />
-        ))}
-      </div>
+      <CollapsibleChainTree
+        forest={forest}
+        selectedFilename={selectedFilename}
+        renderNode={({ node, depth, expanded, hasChildren, nestedCount, onToggle }) => {
+          const selected = node.hops.some((hop) => hop.filename === selectedFilename)
+          return (
+            <div className="flex items-center gap-0.5 min-w-0">
+              <ChainTreeToggle
+                hasChildren={hasChildren}
+                expanded={expanded}
+                nestedCount={nestedCount}
+                onToggle={onToggle}
+              />
+              <button
+                type="button"
+                className={`text-left rounded px-2 py-1 text-[11px] font-mono border transition-colors max-w-full truncate ${
+                  selected
+                    ? 'border-primary bg-primary/10'
+                    : 'border-transparent hover:border-border hover:bg-background'
+                }`}
+                title={
+                  [
+                    mockHopEndpointFingerprint(node.representative),
+                    node.callCount > 1 ? `${node.callCount} identical calls` : null,
+                    depth > 0 ? `nested level ${depth}` : 'entry',
+                    !expanded && nestedCount > 0 ? `${nestedCount} nested hops` : null,
+                    node.representative.requestId ? `request ${node.representative.requestId}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                }
+                onClick={() => {
+                  const hop =
+                    node.hops.find((h) => h.filename === selectedFilename) ?? node.representative
+                  onSelectHop(hop)
+                }}
+              >
+                {mockHopEndpointFingerprint(node.representative)}
+                {node.callCount > 1 ? (
+                  <span className="ml-1 font-sans text-muted-foreground">×{node.callCount}</span>
+                ) : null}
+                {!expanded && nestedCount > 0 ? (
+                  <span className="ml-1 font-sans text-muted-foreground">+{nestedCount} nested</span>
+                ) : null}
+              </button>
+            </div>
+          )
+        }}
+      />
       <p className="text-[11px] text-muted-foreground">
         Nested hops from one user request. Repeated sibling calls are grouped (×N). Downstream mocks
-        reference the caller as parent via Mockifyer correlation headers.
+        start collapsed under their caller.
       </p>
     </div>
   )

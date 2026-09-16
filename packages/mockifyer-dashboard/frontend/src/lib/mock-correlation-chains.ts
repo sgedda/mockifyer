@@ -684,8 +684,43 @@ function uniqueChildrenOf(
 }
 
 /**
+ * Fold consecutive unique hops into a path tree so later services nest under
+ * the caller even when parent-request-id links are missing (inferred chains).
+ */
+function nestUniqueNodesAsPath(nodes: MockUniqueChainNode[]): MockUniqueChainNode[] {
+  if (nodes.length <= 1) return nodes
+  for (let i = nodes.length - 1; i > 0; i--) {
+    nodes[i - 1].children.push(nodes[i])
+  }
+  return [nodes[0]]
+}
+
+function buildSequentialUniquePath(hops: MockFile[]): MockUniqueChainNode[] {
+  const unique: MockUniqueChainNode[] = []
+  for (const hop of hops) {
+    const key = mockHopEndpointFingerprint(hop)
+    const last = unique[unique.length - 1]
+    if (last && last.fingerprint === key) {
+      last.hops.push(hop)
+      last.callCount += 1
+      continue
+    }
+    unique.push({
+      fingerprint: key,
+      representative: hop,
+      hops: [hop],
+      callCount: 1,
+      children: [],
+    })
+  }
+  return nestUniqueNodesAsPath(unique)
+}
+
+/**
  * Nested unique-endpoint forest for display. Repeated sibling calls collapse to ×N
  * (same idea as Atlas HTML unique chains) instead of a linear dump of every hop.
+ * Distinct hops nest as a tree: parent-linked children stay under their caller,
+ * and inferred/enriched hops without ids still nest as a path (not siblings).
  */
 export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNode[] {
   if (hops.length === 0) return []
@@ -703,27 +738,29 @@ export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNod
     for (const node of grouped) {
       node.children = uniqueChildrenOf(node.hops, maps, inChain)
     }
-    return grouped
+    return nestUniqueNodesAsPath(grouped)
   }
 
-  const nodes: MockUniqueChainNode[] = []
-  for (const hop of hops) {
-    const key = mockHopEndpointFingerprint(hop)
-    const last = nodes[nodes.length - 1]
-    if (last && last.fingerprint === key) {
-      last.hops.push(hop)
-      last.callCount += 1
-      continue
-    }
-    nodes.push({
-      fingerprint: key,
-      representative: hop,
-      hops: [hop],
-      callCount: 1,
-      children: [],
-    })
+  return buildSequentialUniquePath(hops)
+}
+
+/** Downstream call count under this node (nested levels, including repeats). */
+export function countNestedMockChainCalls(node: MockUniqueChainNode): number {
+  let n = 0
+  for (const child of node.children) {
+    n += child.callCount
+    n += countNestedMockChainCalls(child)
   }
-  return nodes
+  return n
+}
+
+export function uniqueChainNodeContainsFilename(
+  node: MockUniqueChainNode,
+  filename: string | null | undefined
+): boolean {
+  if (!filename) return false
+  if (node.hops.some((hop) => hop.filename === filename)) return true
+  return node.children.some((child) => uniqueChainNodeContainsFilename(child, filename))
 }
 
 function countUniqueChainNodes(nodes: MockUniqueChainNode[]): number {
