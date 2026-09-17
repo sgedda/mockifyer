@@ -334,25 +334,27 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       return
     }
 
-    const t = window.setTimeout(() => {
-      void (async () => {
-        try {
-          setLoading(true)
-          const result = await searchMocks({ q, scenario, limit: 200 })
-          setMocks(result.files)
-        } catch (error) {
-          toast({
-            title: 'Error',
-            description: 'Failed to search mocks',
-            variant: 'destructive',
-          })
-        } finally {
-          setLoading(false)
-        }
-      })()
-    }, 350)
-
-    return () => window.clearTimeout(t)
+    let cancelled = false
+    void (async () => {
+      try {
+        setLoading(true)
+        const result = await searchMocks({ q, scenario, limit: 200 })
+        if (cancelled) return
+        setMocks(result.files)
+      } catch (error) {
+        if (cancelled) return
+        toast({
+          title: 'Error',
+          description: 'Failed to search mocks',
+          variant: 'destructive',
+        })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [activeTab, scenario, searchQuery, location.pathname])
 
   function handleSelectMock(file: MockFile) {
