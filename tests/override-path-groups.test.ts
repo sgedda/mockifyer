@@ -9,6 +9,7 @@ import {
 import {
   formatGraphqlRequestBodyForEditor,
   graphqlQueryPreviewText,
+  graphqlVariablesOneLineText,
   graphqlVariablesPreviewText,
 } from '@/lib/graphql-request-preview';
 
@@ -125,5 +126,20 @@ describe('graphql-request-preview', () => {
     expect(preview).toBeTruthy();
     expect(preview!.length).toBeLessThan(500);
     expect(preview).toContain('…');
+  });
+
+  it('collapses variables onto one line', () => {
+    const oneLine = graphqlVariablesOneLineText({
+      variables: { wvId: 119368, roomTypeKey: 336897 },
+    });
+    expect(oneLine).toBe('{"wvId":119368,"roomTypeKey":336897}');
+    expect(oneLine).not.toContain('\n');
+  });
+
+  it('collapses a pretty variablesPreview onto one line when the object is absent', () => {
+    const oneLine = graphqlVariablesOneLineText({
+      variablesPreview: '{\n  "wvId": 119368,\n  "roomTypeKey": 336897\n}',
+    });
+    expect(oneLine).toBe('{"wvId":119368,"roomTypeKey":336897}');
   });
 });

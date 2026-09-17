@@ -57,6 +57,31 @@ export function graphqlVariablesPreviewText(info: GraphqlListInfo | null | undef
 }
 
 /**
+ * Single-line variables JSON for clamped list/card previews.
+ * Prefers compact stringify of the object; falls back to collapsing a pretty preview.
+ */
+export function graphqlVariablesOneLineText(info: GraphqlListInfo | null | undefined): string | null {
+  if (!info) return null
+  if (info.variables !== undefined && info.variables !== null) {
+    try {
+      const text = JSON.stringify(info.variables)
+      if (!text || text === '{}' || text === 'null') return null
+      if (text.length <= CLIENT_VARIABLES_PREVIEW_MAX) return text
+      return `${text.slice(0, CLIENT_VARIABLES_PREVIEW_MAX)}…`
+    } catch {
+      return String(info.variables)
+    }
+  }
+  const preview = graphqlVariablesPreviewText(info)
+  if (!preview) return null
+  try {
+    return JSON.stringify(JSON.parse(preview))
+  } catch {
+    return preview.replace(/\s+/g, ' ').trim()
+  }
+}
+
+/**
  * Readable GraphQL POST body for the mock editor (query with real newlines + variables).
  */
 export function formatGraphqlRequestBodyForEditor(data: unknown): string | null {
