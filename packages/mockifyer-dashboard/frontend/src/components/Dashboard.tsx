@@ -282,7 +282,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
-      setMocks(data.files)
+      if (!requestedSearchQuery) {
+        setMocks(data.files)
+      }
       setAllMocks(data.files)
       setLoading(false)
 
@@ -328,6 +330,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       // Restore full list when clearing search.
       if (allMocks.length > 0) {
         setMocks(allMocks)
+        setLoading(false)
         return
       }
       loadMocks()
