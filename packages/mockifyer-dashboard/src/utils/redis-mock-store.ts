@@ -37,7 +37,11 @@ import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
 import { compileMockSearch } from './mock-search';
 import { rewriteClonedMockJson } from './scenario-clone-replay-mode';
-import { parseMockJsonForCatalog } from './mock-json-catalog';
+import {
+  parseCatalogSidecarEntry,
+  parseMockJsonForCatalog,
+  serializeCatalogSidecarEntry,
+} from './mock-json-catalog';
 
 export interface RedisMockStoreConfig {
   /** When set, used directly (Redis or SQLite KV backend). */
@@ -318,6 +322,14 @@ export class RedisMockStore {
     this.catalogCache.delete(scenarioName.trim());
   }
 
+  private listCatalogSidecarKey(scenarioName: string): string {
+    return `${this.keyPrefix}:list_catalog:${scenarioName}`;
+  }
+
+  private mockDataKeyInScenario(hash: string, scenarioName: string): string {
+    return `${this.keyPrefix}:mock:${scenarioName}:${hash}`;
+  }
+
   /**
    * Load every mock in a scenario index.
    * Fetches values via {@link MockKvBackend.mget} with an array (never `mget(...keys)`),
@@ -330,10 +342,173 @@ export class RedisMockStore {
   }
 
   /**
-   * Dashboard mocks/stats listing: skip JSON.parse of huge `response.data` and reuse a short TTL cache.
+   * Dashboard mocks/stats listing: prefer the Redis catalog HASH (no MGET of bodies).
+   * Falls back to stripped parse + sidecar backfill when the HASH is missing or incomplete.
    */
   async listCatalog(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
-    return this.listInternal(scenario, clientId, { stripResponseBodies: true, useCache: true });
+    const scenarioName = scenario?.trim() || (await this.scenarioKey(undefined, clientId));
+    const cached = this.catalogCache.get(scenarioName);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.items;
+    }
+
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const hashes: string[] = await this.kv.smembers(indexKey);
+    if (hashes.length === 0) {
+      await this.dropCatalogSidecar(scenarioName);
+      this.catalogCache.set(scenarioName, { expiresAt: Date.now() + CATALOG_CACHE_TTL_MS, items: [] });
+      return [];
+    }
+
+    if (isScratchScenario(scenarioName)) {
+      return this.listInternal(scenario, clientId, { stripResponseBodies: true, useCache: true });
+    }
+
+    const sidecar = await this.loadCatalogSidecar(scenarioName);
+    const hashSet = new Set(hashes);
+    const extraFields = Object.keys(sidecar).filter((hash) => !hashSet.has(hash));
+    if (extraFields.length > 0) {
+      await this.removeCatalogSidecarFields(scenarioName, extraFields);
+    }
+
+    const missingHashes = hashes.filter((hash) => !sidecar.has(hash));
+    const fetched = missingHashes.length > 0
+      ? await this.mgetStrippedCatalogItems(missingHashes, scenarioName, indexKey)
+      : [];
+    if (fetched.length > 0) {
+      await this.writeCatalogSidecarItems(scenarioName, fetched);
+    }
+
+    const byHash = new Map<string, RedisMockListItem>();
+    for (const [hash, item] of sidecar) {
+      if (hashSet.has(hash)) byHash.set(hash, item);
+    }
+    for (const item of fetched) {
+      byHash.set(item.hash, item);
+    }
+
+    const items = hashes
+      .map((hash) => byHash.get(hash))
+      .filter((item): item is RedisMockListItem => item != null);
+    this.catalogCache.set(scenarioName, {
+      expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
+      items,
+    });
+    return items;
+  }
+
+  private async loadCatalogSidecar(scenarioName: string): Promise<Map<string, RedisMockListItem>> {
+    const out = new Map<string, RedisMockListItem>();
+    try {
+      const rawFields = await this.kv.hgetall(this.listCatalogSidecarKey(scenarioName));
+      for (const [hash, raw] of Object.entries(rawFields)) {
+        const parsed = parseCatalogSidecarEntry(raw);
+        if (!parsed) continue;
+        out.set(hash, {
+          hash,
+          mockData: parsed.mockData,
+          redisKey: this.mockDataKeyInScenario(hash, scenarioName),
+          rawByteLength: parsed.rawByteLength,
+        });
+      }
+    } catch (error) {
+      console.warn('[RedisMockStore] catalog sidecar read failed:', error);
+    }
+    return out;
+  }
+
+  private async writeCatalogSidecarItems(
+    scenarioName: string,
+    items: RedisMockListItem[]
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const fields: Record<string, string> = {};
+    for (const item of items) {
+      fields[item.hash] = serializeCatalogSidecarEntry({
+        mockData: item.mockData,
+        rawByteLength: item.rawByteLength ?? 0,
+      });
+    }
+    try {
+      await this.kv.hsetMany(this.listCatalogSidecarKey(scenarioName), fields);
+    } catch (error) {
+      console.warn('[RedisMockStore] catalog sidecar write failed:', error);
+    }
+  }
+
+  private async upsertCatalogSidecarItem(
+    scenarioName: string,
+    hash: string,
+    mockData: MockData,
+    rawByteLength: number
+  ): Promise<void> {
+    try {
+      await this.kv.hset(
+        this.listCatalogSidecarKey(scenarioName),
+        hash,
+        serializeCatalogSidecarEntry({ mockData, rawByteLength })
+      );
+    } catch (error) {
+      console.warn('[RedisMockStore] catalog sidecar upsert failed:', error);
+    }
+  }
+
+  private async removeCatalogSidecarFields(scenarioName: string, hashes: string[]): Promise<void> {
+    if (hashes.length === 0) return;
+    try {
+      for (const chunk of chunkArray(hashes)) {
+        await this.kv.hdel(this.listCatalogSidecarKey(scenarioName), ...chunk);
+      }
+    } catch (error) {
+      console.warn('[RedisMockStore] catalog sidecar prune failed:', error);
+    }
+  }
+
+  private async dropCatalogSidecar(scenarioName: string): Promise<void> {
+    try {
+      await this.kv.del(this.listCatalogSidecarKey(scenarioName));
+    } catch {
+      // best-effort
+    }
+  }
+
+  private async mgetStrippedCatalogItems(
+    hashes: string[],
+    scenarioName: string,
+    indexKey: string
+  ): Promise<RedisMockListItem[]> {
+    const keys = hashes.map((hash) => this.mockDataKeyInScenario(hash, scenarioName));
+    const values: Array<string | null> = await this.kv.mget(keys);
+    const out: RedisMockListItem[] = [];
+    const missingHashes: string[] = [];
+    let parsed = 0;
+    for (let i = 0; i < hashes.length; i++) {
+      const raw = values[i];
+      if (!raw) {
+        missingHashes.push(hashes[i]);
+        continue;
+      }
+      try {
+        const parsedMock = parseMockJsonForCatalog(raw);
+        out.push({
+          hash: hashes[i],
+          mockData: parsedMock.mockData,
+          redisKey: keys[i],
+          rawByteLength: parsedMock.rawByteLength,
+        });
+      } catch {
+        continue;
+      }
+      parsed += 1;
+      if (parsed % CATALOG_PARSE_YIELD_EVERY === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+    if (missingHashes.length > 0) {
+      void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
+      void this.removeCatalogSidecarFields(scenarioName, missingHashes);
+    }
+    return out;
   }
 
   private async listInternal(
@@ -606,6 +781,7 @@ export class RedisMockStore {
       ...pathIndexKeys,
       this.overrideIndexKey(scenarioName),
       this.overrideIndexReadyKey(scenarioName),
+      this.listCatalogSidecarKey(scenarioName),
     ];
     for (const chunk of chunkArray(toDelete)) {
       await this.kv.del(...chunk);
@@ -735,10 +911,12 @@ export class RedisMockStore {
       }
     }
 
+    const payload = JSON.stringify(mockData);
     if (isScratchScenario(scenarioName)) {
-      await this.kv.set(key, JSON.stringify(mockData), 'EX', getScratchScenarioTtlSec());
+      await this.kv.set(key, payload, 'EX', getScratchScenarioTtlSec());
     } else {
-      await this.kv.set(key, JSON.stringify(mockData));
+      await this.kv.set(key, payload);
+      await this.upsertCatalogSidecarItem(scenarioName, hash, mockData, Buffer.byteLength(payload));
     }
     await this.kv.sadd(indexKey, hash);
     if (pathIndexKey) {
@@ -772,6 +950,7 @@ export class RedisMockStore {
     await this.kv.del(dataKey);
     await this.kv.srem(indexKey, hash);
     await this.kv.srem(this.overrideIndexKey(scenarioName), hash).catch(() => undefined);
+    await this.removeCatalogSidecarFields(scenarioName, [hash]);
     this.invalidateCatalogCache(scenarioName);
   }
 
@@ -985,13 +1164,26 @@ export class RedisMockStore {
 
     const multi = this.kv.multi();
     let copied = 0;
+    const destCatalogItems: RedisMockListItem[] = [];
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) continue;
       const hash = hashes[i];
+      const rewritten = rewriteClonedMockJson(raw) ?? raw;
       const toKey = await this.dataKey(hash, to);
-      multi.set(toKey, rewriteClonedMockJson(raw) ?? raw);
+      multi.set(toKey, rewritten);
       copied++;
+      try {
+        const parsedMock = parseMockJsonForCatalog(rewritten);
+        destCatalogItems.push({
+          hash,
+          mockData: parsedMock.mockData,
+          redisKey: toKey,
+          rawByteLength: parsedMock.rawByteLength,
+        });
+      } catch {
+        // sidecar backfill on next listCatalog
+      }
     }
     if (copied > 0) {
       const toIndexKey = await this.indexKey(to);
@@ -1003,6 +1195,7 @@ export class RedisMockStore {
     multi.sadd(this.scenarioRegistrySetKey, to);
 
     await multi.exec();
+    await this.writeCatalogSidecarItems(to, destCatalogItems);
     this.invalidateCatalogCache(to);
     return { mocksCopied: copied, dateConfigCopied };
   }

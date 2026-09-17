@@ -165,6 +165,72 @@ export interface ParsedCatalogMock {
   rawByteLength: number;
 }
 
+export interface CatalogSidecarEntry {
+  mockData: MockData;
+  rawByteLength: number;
+}
+
+/**
+ * Keep list/stats fields and drop response bodies so the Redis catalog HASH
+ * never stores multi-MB GraphQL payloads.
+ */
+export function compactMockDataForCatalog(mockData: MockData): MockData {
+  const request = mockData.request;
+  const response = mockData.response;
+  const compact: MockData = {
+    request: {
+      method: request?.method ?? 'GET',
+      url: request?.url ?? '',
+      headers: {},
+      queryParams: request?.queryParams ?? {},
+      ...(request?.data !== undefined ? { data: request.data } : {}),
+    },
+    response: {
+      status: response?.status ?? 200,
+      headers: {},
+      data: null,
+    },
+    timestamp: mockData.timestamp,
+  };
+  if (mockData.sessionId) compact.sessionId = mockData.sessionId;
+  if (mockData.requestId) compact.requestId = mockData.requestId;
+  if (mockData.parentRequestId) compact.parentRequestId = mockData.parentRequestId;
+  if (mockData.alwaysUseRealApi === true) compact.alwaysUseRealApi = true;
+  if (mockData.responsePending === true) compact.responsePending = true;
+  if (mockData.refreshOnNextRequest === true) compact.refreshOnNextRequest = true;
+  if (mockData.alwaysRefreshFromLive === true) compact.alwaysRefreshFromLive = true;
+  if (mockData.responseDateOverrides && mockData.responseDateOverrides.length > 0) {
+    compact.responseDateOverrides = mockData.responseDateOverrides;
+  }
+  if (mockData.responseFieldOverrides && mockData.responseFieldOverrides.length > 0) {
+    compact.responseFieldOverrides = mockData.responseFieldOverrides;
+  }
+  return compact;
+}
+
+export function serializeCatalogSidecarEntry(entry: CatalogSidecarEntry): string {
+  return JSON.stringify({
+    rawByteLength: entry.rawByteLength,
+    mockData: compactMockDataForCatalog(entry.mockData),
+  });
+}
+
+export function parseCatalogSidecarEntry(raw: string): CatalogSidecarEntry | null {
+  try {
+    const parsed = JSON.parse(raw) as { mockData?: MockData; rawByteLength?: unknown };
+    if (!parsed || typeof parsed !== 'object' || !parsed.mockData || typeof parsed.mockData !== 'object') {
+      return null;
+    }
+    const rawByteLength =
+      typeof parsed.rawByteLength === 'number' && Number.isFinite(parsed.rawByteLength)
+        ? parsed.rawByteLength
+        : 0;
+    return { mockData: parsed.mockData, rawByteLength };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Parse a stored mock for dashboard catalog/stats. Large response bodies are nulled first
  * so GraphQL recordings do not JSON.parse multi-megabyte payloads.

@@ -208,6 +208,32 @@ export class SqliteMockKvBackend implements MockKvBackend {
       .run(key, field, value);
   }
 
+  async hsetMany(key: string, fields: Record<string, string>): Promise<void> {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) return;
+    const stmt = this.db.prepare(
+      `INSERT INTO hash_fields (hash_key, field, value) VALUES (?, ?, ?)
+       ON CONFLICT(hash_key, field) DO UPDATE SET value = excluded.value`
+    );
+    const run = this.db.transaction(() => {
+      for (const [field, value] of entries) {
+        stmt.run(key, field, value);
+      }
+    });
+    run();
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    const rows = this.db
+      .prepare(`SELECT field, value FROM hash_fields WHERE hash_key = ?`)
+      .all(key) as Array<{ field: string; value: string }>;
+    const out: Record<string, string> = {};
+    for (const row of rows) {
+      out[row.field] = row.value;
+    }
+    return out;
+  }
+
   async hdel(key: string, ...fields: string[]): Promise<void> {
     if (fields.length === 0) return;
     const stmt = this.db.prepare(`DELETE FROM hash_fields WHERE hash_key = ? AND field = ?`);
