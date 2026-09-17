@@ -4,7 +4,7 @@ import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
-import { OVERRIDE_SETS_DIR_NAME } from '../utils/override-sets';
+import { isMockRecordingSidecarDir } from '../utils/mock-recording-sidecars';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
 import { getCurrentDate } from '../utils/date';
@@ -115,7 +115,7 @@ export class FilesystemProvider implements DatabaseProvider {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === OVERRIDE_SETS_DIR_NAME || entry.name === 'pool') {
+        if (isMockRecordingSidecarDir(entry.name)) {
           continue;
         }
         results.push(...this.getAllJsonFiles(fullPath));

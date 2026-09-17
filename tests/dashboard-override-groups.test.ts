@@ -90,6 +90,46 @@ describe('dashboard override groups API', () => {
       fs.rmSync(tmp, { recursive: true, force: true });
     });
 
+    it('does not list override-group sidecar JSON as mock recordings', async () => {
+      fs.writeFileSync(
+        path.join(tmp, 'mock-data', 'default', 'bookings.json'),
+        JSON.stringify({
+          request: { method: 'GET', url: 'https://api.example.com/bookings', headers: {} },
+          response: { status: 200, data: { status: 'OPEN' }, headers: {} },
+          timestamp: '2026-01-01T00:00:00.000Z',
+        })
+      );
+
+      const created = await httpJson(server, 'PUT', '/api/override-groups/check-in-open?scenario=default', {
+        id: 'check-in-open',
+        label: 'Check-in open',
+        entries: [
+          {
+            filename: 'bookings.json',
+            responseFieldOverrides: [{ path: 'status', value: 'CLOSED' }],
+          },
+        ],
+      });
+      expect(created.status).toBe(200);
+
+      await httpJson(server, 'PUT', '/api/override-groups/config?scenario=default', {
+        currentGroup: 'check-in-open',
+        scope: 'default',
+      });
+
+      const listed = await httpJson(server, 'GET', '/api/mocks?scenario=default');
+      expect(listed.status).toBe(200);
+      const files = (listed.json.files as Array<{ filename: string }>).map((file) =>
+        file.filename.replace(/\\/g, '/')
+      );
+      expect(files).toContain('bookings.json');
+      expect(files.some((name) => name.startsWith('override-groups/'))).toBe(false);
+      expect(files.some((name) => name.includes('override-group-config'))).toBe(false);
+
+      const groupOnDisk = path.join(tmp, 'mock-data', 'default', 'override-groups', 'check-in-open.json');
+      expect(fs.existsSync(groupOnDisk)).toBe(true);
+    });
+
     it('creates a group, sets scenario default, then clears default', async () => {
       const created = await httpJson(server, 'PUT', '/api/override-groups/check-in-open?scenario=default', {
         id: 'check-in-open',
