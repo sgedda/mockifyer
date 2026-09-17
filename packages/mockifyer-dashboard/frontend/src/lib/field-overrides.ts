@@ -49,6 +49,29 @@ export function emptyFieldOverrideRow(): FieldOverrideRow {
 }
 
 /**
+ * Prefill a field overlay from stored JSON. Replace copies the current value;
+ * remove needs no value; extend starts with an empty object to append/merge.
+ */
+export function fieldOverrideRowFromStored(
+  path: string,
+  storedValue: unknown,
+  mode: MockResponseFieldOverrideMode = 'replace'
+): FieldOverrideRow {
+  if (mode === 'remove') {
+    return { path, mode: 'remove', valueText: '' }
+  }
+  if (mode === 'extend') {
+    return { path, mode: 'extend', valueText: '{}' }
+  }
+  const valueText = encodeOverrideValue(storedValue)
+  return {
+    path,
+    mode: 'replace',
+    valueText: valueText === '' ? 'null' : valueText,
+  }
+}
+
+/**
  * Convert editor rows into persistable field overlays.
  * Rows with an empty path are skipped. Returns an error instead of a partial list.
  */
