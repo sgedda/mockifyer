@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { CalendarSearch, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -68,6 +69,8 @@ function DateOverrideCard({
   mockifyerNow,
   instanceKey,
   readOnly,
+  existingPaths,
+  onAddDateOverride,
 }: {
   row: MockResponseDateOverride
   index: number
@@ -79,6 +82,8 @@ function DateOverrideCard({
   mockifyerNow: Date
   instanceKey: string
   readOnly: boolean
+  existingPaths: Set<string>
+  onAddDateOverride: (path: string, storedValue: unknown) => void
 }) {
   const relativePath = groupPath ? pathRelativeToArrayItem(row.path, groupPath) : null
 
@@ -133,6 +138,9 @@ function DateOverrideCard({
           key={`${instanceKey}-${index}`}
           path={row.path}
           responseBody={responseBody}
+          existingPaths={existingPaths}
+          readOnly={readOnly}
+          onAddDateOverride={onAddDateOverride}
         />
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -227,11 +235,30 @@ export default function DateOverridesEditor({
   readOnly = false,
 }: DateOverridesEditorProps) {
   const dateFieldCandidates = detectDateLikeFields(responseBody)
+  const existingPaths = useMemo(
+    () => new Set(dateOverrides.map((row) => row.path.trim()).filter(Boolean)),
+    [dateOverrides]
+  )
+  const [browseOpen, setBrowseOpen] = useState(false)
 
   function updateRow(index: number, patch: Partial<MockResponseDateOverride>) {
     const next = [...dateOverrides]
     next[index] = { ...next[index], ...patch }
     onChange(next)
+  }
+
+  function addDateOverride(path: string, storedValue: unknown) {
+    const trimmed = path.trim()
+    if (!trimmed || existingPaths.has(trimmed)) return
+    const fmt = inferFormatForOverrideValue(storedValue)
+    onChange([
+      ...dateOverrides,
+      normalizeDateOverrideRow({
+        path: trimmed,
+        base: 'now',
+        ...(fmt ? { format: fmt } : {}),
+      }),
+    ])
   }
 
   return (
@@ -240,13 +267,27 @@ export default function DateOverridesEditor({
         <h3 className="text-sm font-medium">Date overrides</h3>
         <p className="text-xs text-muted-foreground leading-relaxed">
           Relative to Mockifyer&apos;s current date plus an offset. Applied when serving the mock — the
-          stored response body is not rewritten. Paths are from the JSON root (e.g.{' '}
-          <code className="rounded bg-muted px-1 font-mono text-[11px]">bookings.0.startDate</code>
-          ). Naive ISO strings stay naive; values with <code className="rounded bg-muted px-1 font-mono text-[11px]">Z</code> keep{' '}
+          stored response body is not rewritten. Click through the stored JSON to pick a date field,
+          or use the detected list below. Naive ISO strings stay naive; values with{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[11px]">Z</code> keep{' '}
           <code className="rounded bg-muted px-1 font-mono text-[11px]">Z</code>. GraphQL objects keep{' '}
           <code className="rounded bg-muted px-1 font-mono text-[11px]">__typename</code>.
         </p>
       </div>
+
+      {responseBody != null ? (
+        <OverrideRelatedData
+          key={`${instanceKey}-browse`}
+          path=""
+          responseBody={responseBody}
+          open={browseOpen}
+          onOpenChange={setBrowseOpen}
+          browseLabel="Browse JSON to add date override"
+          existingPaths={existingPaths}
+          readOnly={readOnly}
+          onAddDateOverride={addDateOverride}
+        />
+      ) : null}
 
       {dateFieldCandidates.length > 0 && (
         <div className="space-y-2">
@@ -329,6 +370,9 @@ export default function DateOverridesEditor({
             rows={dateOverrides}
             responseBody={responseBody}
             instanceKey={instanceKey}
+            existingPaths={existingPaths}
+            readOnly={readOnly}
+            onAddDateOverride={addDateOverride}
             renderRow={(row, index, groupPath) => (
               <DateOverrideCard
                 row={row}
@@ -341,6 +385,8 @@ export default function DateOverridesEditor({
                 mockifyerNow={mockifyerNow}
                 instanceKey={instanceKey}
                 readOnly={readOnly}
+                existingPaths={existingPaths}
+                onAddDateOverride={addDateOverride}
               />
             )}
           />
