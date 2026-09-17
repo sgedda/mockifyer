@@ -35,6 +35,7 @@ import {
 import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
+import { compileMockSearch } from './mock-search';
 
 export interface RedisMockStoreConfig {
   /** When set, used directly (Redis or SQLite KV backend). */
@@ -60,6 +61,10 @@ export interface RedisMockListItem {
   hash: string;
   mockData: MockData;
   redisKey: string;
+}
+
+export interface RedisMockSearchItem extends RedisMockListItem {
+  size: number;
 }
 
 /** How the dashboard proxy resolved the effective scenario name for Redis keys / date config / proxy settings. */
@@ -330,6 +335,67 @@ export class RedisMockStore {
       void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
     }
     return out;
+  }
+
+  /**
+   * Full-text search over raw mock JSON (and `redis/<hash>.json`).
+   * MGETs in small chunks, parses only matches, and stops after `limit` hits
+   * so large scenarios do not JSON.parse every recording.
+   */
+  async search(
+    scenario: string | undefined,
+    tokens: string[],
+    limit: number
+  ): Promise<{ items: RedisMockSearchItem[]; truncated: boolean }> {
+    if (tokens.length === 0 || limit <= 0) {
+      return { items: [], truncated: false };
+    }
+
+    const matches = compileMockSearch(tokens);
+    const scenarioName = await this.scenarioKey(scenario);
+    const indexKey = `${this.keyPrefix}:index:${scenarioName}`;
+    const hashes: string[] = await this.kv.smembers(indexKey);
+    if (hashes.length === 0) return { items: [], truncated: false };
+
+    const items: RedisMockSearchItem[] = [];
+    const missingHashes: string[] = [];
+    let truncated = false;
+
+    for (const chunk of chunkArray(hashes, OVERRIDE_SCAN_CHUNK_SIZE)) {
+      const keys = chunk.map((hash) => `${this.keyPrefix}:mock:${scenarioName}:${hash}`);
+      const values: Array<string | null> = await this.kv.mget(keys);
+      for (let i = 0; i < chunk.length; i++) {
+        const raw = values[i];
+        if (!raw) {
+          missingHashes.push(chunk[i]);
+          continue;
+        }
+        const filename = `redis/${chunk[i]}.json`;
+        if (!matches(filename, raw)) continue;
+        try {
+          const mockData = JSON.parse(raw) as MockData;
+          items.push({
+            hash: chunk[i],
+            mockData,
+            redisKey: keys[i],
+            size: Buffer.byteLength(raw),
+          });
+        } catch {
+          continue;
+        }
+        if (items.length >= limit) {
+          truncated = true;
+          break;
+        }
+      }
+      if (truncated) break;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    if (missingHashes.length > 0) {
+      void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
+    }
+    return { items, truncated };
   }
 
   private overrideIndexKey(scenarioName: string): string {
