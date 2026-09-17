@@ -15,6 +15,7 @@ import {
   type PoolResponseItem,
 } from '../types/fixture-pool';
 import { validatePoolResponseItem } from '../utils/fixture-pool/validate';
+import { isMockRecordingSidecarDir } from '../utils/mock-recording-sidecars';
 
 const DEFAULT_SCENARIO = 'default';
 
@@ -325,6 +326,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const childUri = this.joinFsUri(dirUri, name);
         const childInfo = await this.fsGetInfo(childUri);
         if (childInfo.isDirectory) {
+          if (isMockRecordingSidecarDir(name)) continue;
           out.push(...(await this.fsListJsonRecursive(childUri, baseUri)));
         } else if (name.endsWith('.json')) {
           const rel = childUri.startsWith(prefix) ? childUri.slice(prefix.length) : name;
@@ -338,6 +340,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       const results: string[] = [];
       for (const item of items as any[]) {
         if (typeof this.FileSystem.Directory === 'function' && item instanceof this.FileSystem.Directory) {
+          const dirName =
+            String(item.uri || '')
+              .replace(/\/+$/, '')
+              .split('/')
+              .pop() || '';
+          if (isMockRecordingSidecarDir(dirName)) continue;
           results.push(...(await this.fsListJsonRecursive(item.uri as string, baseUri)));
         } else if (typeof item?.name === 'string' && item.name.endsWith('.json')) {
           const relUri = typeof item.uri === 'string' ? item.uri : '';

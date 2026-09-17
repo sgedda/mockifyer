@@ -1,5 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import {
+  isMockRecordingSidecarDir,
+  isOverrideGroupConfigFilename,
+  SCENARIO_META_FILENAME,
+} from '@sgedda/mockifyer-core';
 
 /**
  * Recursively collect all .json file paths under a directory.
@@ -37,10 +42,16 @@ export function getAllJsonFiles(dir: string): string[] {
       }
       if (st.isDirectory()) {
         // Sidecar dirs — not recorded mock traffic
-        if (name === 'override-sets' || name === 'pool') continue;
+        if (isMockRecordingSidecarDir(name)) continue;
         walk(full);
       } else if (name.endsWith('.json')) {
-        if (name === 'scenario-meta.json' || name === 'favorites.json') continue;
+        if (
+          name === SCENARIO_META_FILENAME ||
+          name === 'favorites.json' ||
+          isOverrideGroupConfigFilename(name)
+        ) {
+          continue;
+        }
         results.push(full);
       }
     }
