@@ -132,7 +132,9 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
   };
 }
 
-/** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network. */
+/** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
+ * Existing ids stay put so always-refresh does not break parentRequestId links.
+ */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
   ctx: ProxyNetworkLogContext | null,
@@ -146,12 +148,24 @@ export function applyProxyCorrelationToMockData(
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()
       : undefined);
-  if (requestId) {
+  if (requestId && !mock.requestId?.trim()) {
     mock.requestId = requestId;
   }
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
   }
+}
+
+/** Prefer the hop id already stored on a matched mock for this proxy request. */
+export function adoptStoredHopIdOnProxyLog(
+  ctx: ProxyNetworkLogContext | null,
+  mock: { requestId?: string | null } | null | undefined
+): void {
+  const stored = mock?.requestId?.trim();
+  if (!ctx || !stored) {
+    return;
+  }
+  ctx.requestId = stored;
 }
 
 /** Trace ids for proxy JSON responses and `X-Mockifyer-Request-Id` response header. */

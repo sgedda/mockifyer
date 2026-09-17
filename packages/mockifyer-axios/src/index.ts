@@ -35,6 +35,8 @@ import {
   MOCKIFYER_DEVICE_ID_HEADER,
   newRecordingUsesAlwaysUseRealApi,
   applyOutboundRequestCorrelation,
+  adoptStoredOutboundRequestId,
+  resolvePersistedHopIds,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   type RequestCorrelationContext,
@@ -229,6 +231,22 @@ class MockifyerClass {
       correlation.requestId;
     (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
       correlation.parentRequestId;
+  }
+
+  private bindStoredHopId(
+    config: unknown,
+    mockData: { requestId?: string } | undefined,
+    fallback?: RequestCorrelationContext
+  ): RequestCorrelationContext | undefined {
+    const adopted = adoptStoredOutboundRequestId(
+      config as { headers?: unknown },
+      mockData?.requestId
+    );
+    if (adopted) {
+      this.stashRequestCorrelation(config, adopted);
+      return adopted;
+    }
+    return fallback;
   }
 
   /** Skip proxy, mock lookup, and recording when the URL matches {@link MockifyerConfig.excludedUrls}. */
@@ -775,7 +793,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      const correlation = applyOutboundRequestCorrelation(config);
+      let correlation = applyOutboundRequestCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -894,6 +912,7 @@ class MockifyerClass {
       const cachedMock = await this.findBestMatchingMock(request);
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        correlation = this.bindStoredHopId(config, mockData, correlation) ?? correlation;
         if (!mockShouldServeStoredBody(mockData)) {
           (config as any).__mockifyer_matchedMock = cachedMock;
           (config as any).__mockifyer_requestKey = requestKey;
@@ -1097,7 +1116,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      const correlation = applyOutboundRequestCorrelation(config);
+      let correlation = applyOutboundRequestCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -1229,6 +1248,7 @@ class MockifyerClass {
         // If mock found, use it regardless of processingRequests status
         if (cachedMock) {
           const { mockData, filename, filePath } = cachedMock;
+          correlation = this.bindStoredHopId(config, mockData, correlation) ?? correlation;
           if (!mockShouldServeStoredBody(mockData)) {
             logger.debug(`[Mockifyer] 🔄 Live refresh for ${requestKey}, deferring to upstream`);
             (config as any).__mockifyer_matchedMock = cachedMock;
@@ -2074,6 +2094,10 @@ class MockifyerClass {
       const duration = startTime ? Date.now() - startTime : undefined;
 
       const correlation = this.readRequestCorrelation(response.config);
+      const hopIds = resolvePersistedHopIds(
+        saveDecision.action === 'overwrite' ? existingMock?.mockData : undefined,
+        correlation
+      );
 
       const mockData: MockData = {
         request,
@@ -2085,8 +2109,8 @@ class MockifyerClass {
           saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
             ? existingMock.mockData.sessionId
             : this.currentSessionId,
-        requestId: correlation?.requestId,
-        parentRequestId: correlation?.parentRequestId,
+        requestId: hopIds.requestId,
+        parentRequestId: hopIds.parentRequestId,
         ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 

@@ -28,6 +28,7 @@ import {
   clearScenarioMocks,
   parseScenarioImportRequest,
 } from '../utils/scenario-bundle';
+import { resetReplayModesInScenarioFolder } from '../utils/scenario-clone-replay-mode';
 import fs from 'fs';
 import path from 'path';
 
@@ -280,6 +281,7 @@ router.post('/create', async (req: Request, res: Response) => {
         copyDirectoryRecursive(src, dest, {
           skipFilenames: new Set([SCENARIO_META_FILENAME]),
         });
+        resetReplayModesInScenarioFolder(dest);
       }
     }
 
