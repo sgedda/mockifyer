@@ -143,6 +143,38 @@ describe('RedisMockStore.list', () => {
   });
 });
 
+describe('RedisMockStore.listCatalog', () => {
+  it('parses large recordings without keeping response.data and caches the result', async () => {
+    const scenario = 'different-kind-of-trips';
+    const hash = 'e'.repeat(64);
+    const huge = JSON.stringify({
+      ...MOCK_PAYLOAD,
+      response: { status: 201, data: { bookings: 'z'.repeat(40_000) }, headers: {} },
+    });
+    const values = new Map<string, string>([[`mockifyer:v1:mock:${scenario}:${hash}`, huge]]);
+    const mgetCalls: number[] = [];
+    const store = new RedisMockStore({
+      kv: listOnlyKv({
+        hashes: [hash],
+        values,
+        onMget: (keys) => mgetCalls.push(keys.length),
+      }),
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const first = await store.listCatalog(scenario);
+    expect(first).toHaveLength(1);
+    expect(first[0].mockData.response.status).toBe(201);
+    expect(first[0].mockData.response.data).toBeNull();
+    expect(first[0].rawByteLength).toBe(Buffer.byteLength(huge));
+    expect(mgetCalls).toEqual([1]);
+
+    const second = await store.listCatalog(scenario);
+    expect(second[0].hash).toBe(hash);
+    expect(mgetCalls).toEqual([1]);
+  });
+});
+
 describe('RedisMockStore.listWithOverrides', () => {
   function overrideKv(input: {
     hashes: string[];

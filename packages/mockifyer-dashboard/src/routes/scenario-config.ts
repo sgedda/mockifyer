@@ -98,10 +98,7 @@ router.get('/', async (req: Request, res: Response) => {
         currentScenario = await store.getActiveScenario();
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
-        const scenarioLocks: Record<string, boolean> = {};
-        for (const name of scenarios) {
-          scenarioLocks[name] = await store.isScenarioLocked(name);
-        }
+        const scenarioLocks = await store.getScenarioLocks(scenarios);
         res.json({
           currentScenario,
           scenarios,
@@ -334,10 +331,7 @@ router.post('/lock', async (req: Request, res: Response) => {
         console.log(`[ScenarioConfigRoute] Scenario "${sanitized}" locked=${isLocked}`);
 
         const currentScenario = await store.getActiveScenario();
-        const scenarioLocks: Record<string, boolean> = {};
-        for (const name of scenarios) {
-          scenarioLocks[name] = await store.isScenarioLocked(name);
-        }
+        const scenarioLocks = await store.getScenarioLocks(scenarios);
         res.json({
           success: true,
           currentScenario,

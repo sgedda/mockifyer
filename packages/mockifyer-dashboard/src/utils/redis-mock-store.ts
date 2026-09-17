@@ -37,6 +37,7 @@ import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
 import { compileMockSearch } from './mock-search';
 import { rewriteClonedMockJson } from './scenario-clone-replay-mode';
+import { parseMockJsonForCatalog } from './mock-json-catalog';
 
 export interface RedisMockStoreConfig {
   /** When set, used directly (Redis or SQLite KV backend). */
@@ -62,6 +63,8 @@ export interface RedisMockListItem {
   hash: string;
   mockData: MockData;
   redisKey: string;
+  /** Original Redis string size (before catalog parse strips `response.data`). */
+  rawByteLength?: number;
 }
 
 export interface RedisMockSearchItem extends RedisMockListItem {
@@ -125,6 +128,10 @@ const OVERRIDE_PROBE_TAIL_BYTES = 16_384;
 const OVERRIDE_PROBE_HEAD_BYTES = 4_096;
 /** Small MGET/GETRANGE batches so a large scenario cannot pin the event loop. */
 const OVERRIDE_SCAN_CHUNK_SIZE = 32;
+/** Yield between catalog JSON.parse batches so GET /mocks/:id is not blocked. */
+const CATALOG_PARSE_YIELD_EVERY = 64;
+/** Reuse stripped catalog rows across list/stats while the dashboard is idle. */
+const CATALOG_CACHE_TTL_MS = 8_000;
 
 export class RedisMockStore {
   private readonly kv: MockKvBackend;
@@ -141,6 +148,7 @@ export class RedisMockStore {
   private readonly proxyConfigPrefix: string;
   private readonly strictLaneScenarioResolution: boolean;
   private static readonly EFFECTIVE_TTL_SEC = 60 * 60 * 24 * 14;
+  private readonly catalogCache = new Map<string, { expiresAt: number; items: RedisMockListItem[] }>();
 
   constructor(config: RedisMockStoreConfig) {
     if (config.kv) {
@@ -302,6 +310,14 @@ export class RedisMockStore {
     await this.kv.ping();
   }
 
+  private invalidateCatalogCache(scenarioName?: string): void {
+    if (!scenarioName) {
+      this.catalogCache.clear();
+      return;
+    }
+    this.catalogCache.delete(scenarioName.trim());
+  }
+
   /**
    * Load every mock in a scenario index.
    * Fetches values via {@link MockKvBackend.mget} with an array (never `mget(...keys)`),
@@ -310,15 +326,44 @@ export class RedisMockStore {
    * so a "cleared" scenario does not keep MGET-ing ghost hashes on every list.
    */
   async list(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
+    return this.listInternal(scenario, clientId, { stripResponseBodies: false, useCache: false });
+  }
+
+  /**
+   * Dashboard mocks/stats listing: skip JSON.parse of huge `response.data` and reuse a short TTL cache.
+   */
+  async listCatalog(scenario?: string, clientId?: string): Promise<RedisMockListItem[]> {
+    return this.listInternal(scenario, clientId, { stripResponseBodies: true, useCache: true });
+  }
+
+  private async listInternal(
+    scenario: string | undefined,
+    clientId: string | undefined,
+    options: { stripResponseBodies: boolean; useCache: boolean }
+  ): Promise<RedisMockListItem[]> {
+    const scenarioName = scenario?.trim() || (await this.scenarioKey(undefined, clientId));
+    if (options.useCache) {
+      const cached = this.catalogCache.get(scenarioName);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cached.items;
+      }
+    }
+
     const indexKey = await this.indexKey(scenario, clientId);
     const hashes: string[] = await this.kv.smembers(indexKey);
-    if (hashes.length === 0) return [];
+    if (hashes.length === 0) {
+      if (options.useCache) {
+        this.catalogCache.set(scenarioName, { expiresAt: Date.now() + CATALOG_CACHE_TTL_MS, items: [] });
+      }
+      return [];
+    }
 
     const keys = await Promise.all(hashes.map((hash) => this.dataKey(hash, scenario, clientId)));
     const values: Array<string | null> = await this.kv.mget(keys);
 
     const out: RedisMockListItem[] = [];
     const missingHashes: string[] = [];
+    let parsed = 0;
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) {
@@ -326,14 +371,39 @@ export class RedisMockStore {
         continue;
       }
       try {
-        const mockData = JSON.parse(raw) as MockData;
-        out.push({ hash: hashes[i], mockData, redisKey: keys[i] });
+        if (options.stripResponseBodies) {
+          const parsedMock = parseMockJsonForCatalog(raw);
+          out.push({
+            hash: hashes[i],
+            mockData: parsedMock.mockData,
+            redisKey: keys[i],
+            rawByteLength: parsedMock.rawByteLength,
+          });
+        } else {
+          const mockData = JSON.parse(raw) as MockData;
+          out.push({
+            hash: hashes[i],
+            mockData,
+            redisKey: keys[i],
+            rawByteLength: Buffer.byteLength(raw),
+          });
+        }
       } catch {
         continue;
+      }
+      parsed += 1;
+      if (options.stripResponseBodies && parsed % CATALOG_PARSE_YIELD_EVERY === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
     if (missingHashes.length > 0) {
       void pruneMissingIndexHashes(this.kv, indexKey, missingHashes);
+    }
+    if (options.useCache) {
+      this.catalogCache.set(scenarioName, {
+        expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
+        items: out,
+      });
     }
     return out;
   }
@@ -541,14 +611,24 @@ export class RedisMockStore {
       await this.kv.del(...chunk);
     }
     await this.ensureScenarioRegistered(scenarioName);
+    this.invalidateCatalogCache(scenarioName);
     return hashes.length;
   }
 
-  async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {
+  async getByHashWithMeta(
+    hash: string,
+    scenario?: string,
+    clientId?: string
+  ): Promise<{ mockData: MockData; rawByteLength: number } | null> {
     const dataKey = await this.dataKey(hash, scenario, clientId);
     const raw: string | null = await this.kv.get(dataKey);
     if (!raw) return null;
-    return JSON.parse(raw) as MockData;
+    return { mockData: JSON.parse(raw) as MockData, rawByteLength: Buffer.byteLength(raw) };
+  }
+
+  async getByHash(hash: string, scenario?: string, clientId?: string): Promise<MockData | null> {
+    const rec = await this.getByHashWithMeta(hash, scenario, clientId);
+    return rec?.mockData ?? null;
   }
 
   /**
@@ -666,6 +746,7 @@ export class RedisMockStore {
     }
     await this.kv.sadd(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
     await this.syncOverrideIndexMembership(scenarioName, hash, mockData);
+    this.invalidateCatalogCache(scenarioName);
     return true;
   }
 
@@ -691,6 +772,7 @@ export class RedisMockStore {
     await this.kv.del(dataKey);
     await this.kv.srem(indexKey, hash);
     await this.kv.srem(this.overrideIndexKey(scenarioName), hash).catch(() => undefined);
+    this.invalidateCatalogCache(scenarioName);
   }
 
   /** Redis key for JSON `{ dateManipulation, updatedAt }` per scenario (dashboard Date Config + proxy). */
@@ -921,6 +1003,7 @@ export class RedisMockStore {
     multi.sadd(this.scenarioRegistrySetKey, to);
 
     await multi.exec();
+    this.invalidateCatalogCache(to);
     return { mocksCopied: copied, dateConfigCopied };
   }
 
@@ -939,6 +1022,11 @@ export class RedisMockStore {
       }
     } catch {
       // ignore
+    }
+
+    // SCAN MATCH still walks the whole Redis keyspace. Skip when the registry is populated.
+    if (out.size > 0) {
+      return Array.from(out).sort();
     }
 
     // 2) Legacy discovery: scan index keys.
@@ -1499,6 +1587,28 @@ export class RedisMockStore {
   async isScenarioLocked(scenario: string): Promise<boolean> {
     const m = await this.getScenarioMetaJson(scenario);
     return m?.locked === true;
+  }
+
+  /** One MGET for scenario lock flags (avoids N Redis round-trips on Settings). */
+  async getScenarioLocks(scenarios: string[]): Promise<Record<string, boolean>> {
+    const unique = [...new Set(scenarios.map((name) => name.trim()).filter(Boolean))];
+    const result: Record<string, boolean> = {};
+    for (const name of unique) result[name] = false;
+    if (unique.length === 0) return result;
+    const values: Array<string | null> = await this.kv.mget(
+      unique.map((name) => this.scenarioMetaRedisKey(name))
+    );
+    for (let i = 0; i < unique.length; i++) {
+      const raw = values[i];
+      if (!raw) continue;
+      try {
+        const meta = JSON.parse(raw) as { locked?: boolean };
+        result[unique[i]] = meta?.locked === true;
+      } catch {
+        // leave false
+      }
+    }
+    return result;
   }
 
   async setScenarioLocked(scenario: string, locked: boolean): Promise<void> {

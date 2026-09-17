@@ -71,7 +71,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
 
   useEffect(() => {
     loadStats()
-    const interval = setInterval(() => loadStats(), 5000) // Refresh every 5 seconds
+    const interval = setInterval(() => loadStats(), 30_000)
     return () => clearInterval(interval)
   }, [scenario])
 

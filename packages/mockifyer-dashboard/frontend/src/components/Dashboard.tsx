@@ -274,42 +274,22 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     mocksLoadAbortRef.current = ac
     const { signal } = ac
     const requestedSearchQuery = searchQuery.trim()
-    const wantSimilarGroups = activeTab === 'mocks'
     const hasCatalog = allMocks.length > 0
     try {
       if (!hasCatalog) setLoading(true)
       setSimilarBodyGroups([])
-      const data = await getMocks(scenario, { signal })
+      const data = await getMocks(scenario, {
+        signal,
+        compact: true,
+        similarGroups: true,
+      })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       if (!requestedSearchQuery) {
         setMocks(data.files)
       }
       setAllMocks(data.files)
-      setLoading(false)
-
-      if (!wantSimilarGroups) return
-
-      const graphqlCount = data.files.reduce(
-        (n, file) => (file.graphqlInfo?.query ? n + 1 : n),
-        0
-      )
-      if (graphqlCount < 2) return
-
-      try {
-        const grouped = await getMocks(scenario, { similarGroups: true, signal })
-        if (signal.aborted) return
-        if (searchQueryRef.current.trim() !== requestedSearchQuery) return
-        // Only update mocks if no search is active (clustering should not overwrite search results)
-        if (!requestedSearchQuery) {
-          setMocks(grouped.files)
-        }
-        setAllMocks(grouped.files)
-        setSimilarBodyGroups(grouped.similarBodyGroups ?? [])
-      } catch (error) {
-        if (isAbortError(error)) return
-        // List already rendered; similar clusters are optional.
-      }
+      setSimilarBodyGroups(data.similarBodyGroups ?? [])
     } catch (error) {
       if (isAbortError(error)) return
       toast({
@@ -644,6 +624,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={
                 <Settings
                   scenario={scenario}
+                  availableScenarios={availableScenarios}
                   scenarioLocks={scenarioLocks}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)
