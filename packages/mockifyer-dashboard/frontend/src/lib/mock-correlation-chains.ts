@@ -117,6 +117,33 @@ function describeMockChainShape(hops: MockFile[]): {
   }
 }
 
+/** GraphQL / BFF entry hop that routinely fans out to many upstream services. */
+function isGraphqlLikeHop(mock: MockFile): boolean {
+  if (mock.graphqlInfo) return true
+  const method = (mock.method ?? 'GET').toUpperCase()
+  if (method !== 'POST') return false
+  const { path } = parseEndpointParts(mock.endpoint)
+  return /\/graphql\/?$/i.test(path)
+}
+
+/**
+ * Real GraphQL BFFs call many distinct upstream hosts at depth 1 (bookings, tokens, CRM).
+ * That looks like a client-session fan-out unless we exempt multi-host GraphQL roots.
+ * Proxy dumps that mostly stay on the GraphQL host (≤2 external hosts) still drop.
+ */
+function isGraphqlBffFanout(hops: MockFile[]): boolean {
+  const root = hops[0]
+  if (!root || !isGraphqlLikeHop(root)) return false
+  const rootHost = mockHopHostKey(root)
+  const externalHosts = new Set(
+    hops
+      .slice(1)
+      .map((hop) => mockHopHostKey(hop))
+      .filter((host) => Boolean(host) && host !== rootHost)
+  )
+  return externalHosts.size >= 3
+}
+
 function isNonsensicalMockServiceChain(hops: MockFile[]): boolean {
   const shape = describeMockChainShape(hops)
   const sessionFanout =
@@ -125,6 +152,9 @@ function isNonsensicalMockServiceChain(hops: MockFile[]): boolean {
     shape.maxDepth <= SESSION_FANOUT_MAX_NESTING &&
     shape.uniqueHosts >= SESSION_FANOUT_MIN_UNIQUE_HOSTS
   const daisyChain = shape.hopCount >= DAISY_CHAIN_MIN_HOPS && shape.maxDepth >= shape.hopCount - 1
+  if (sessionFanout && isGraphqlBffFanout(hops)) {
+    return daisyChain
+  }
   return sessionFanout || daisyChain
 }
 
@@ -347,15 +377,174 @@ function collectDescendants(
   }
 }
 
+/** True when this hop shares a missing parent id with at least one other mock. */
+function sharesMissingParentWithSiblings(
+  mock: MockFile,
+  mocks: MockFile[],
+  byRequestId: Map<string, MockFile>
+): boolean {
+  const parentId = mock.parentRequestId?.trim()
+  if (!parentId || byRequestId.has(parentId)) return false
+  return mocks.some(
+    (other) => other.filename !== mock.filename && other.parentRequestId?.trim() === parentId
+  )
+}
+
+/**
+ * When always-refresh rewrote a GraphQL requestId, children still point at the old id.
+ * Pick the nearest GraphQL hop that started just before (or near) the orphan window.
+ */
+function findGraphqlHealParentForOrphans(
+  orphans: MockFile[],
+  catalog: MockFile[],
+  assigned: Set<string>
+): MockFile | undefined {
+  if (orphans.length === 0) return undefined
+  const times = orphans
+    .map((hop) => new Date(hop.modified).getTime())
+    .filter((t) => Number.isFinite(t))
+    .sort((a, b) => a - b)
+  if (times.length === 0) return undefined
+  const windowStart = times[0]
+  const windowEnd = times[times.length - 1]
+
+  let best: MockFile | undefined
+  let bestScore = Number.POSITIVE_INFINITY
+  for (const candidate of catalog) {
+    if (assigned.has(candidate.filename)) continue
+    if (!isGraphqlLikeHop(candidate) || !candidate.requestId?.trim()) continue
+    const t = new Date(candidate.modified).getTime()
+    if (!Number.isFinite(t)) continue
+    if (t < windowStart - ENRICH_CHAIN_CLUSTER_MS) continue
+    if (t > windowEnd + ENRICH_CHAIN_CLUSTER_MS) continue
+    // Prefer callers that started before the first orphan (GraphQL then myaccount/bookings).
+    const score = t <= windowStart ? windowStart - t : (t - windowStart) * 4
+    if (score < bestScore) {
+      bestScore = score
+      best = candidate
+    }
+  }
+  return best
+}
+
+/** Display-only clones so forest nesting uses the healed GraphQL requestId as parent. */
+function adoptOrphansUnderGraphqlParent(parent: MockFile, orphans: MockFile[]): MockFile[] {
+  const parentId = parent.requestId?.trim()
+  if (!parentId) return orphans
+  return orphans.map((orphan) =>
+    orphan.parentRequestId?.trim() === parentId
+      ? orphan
+      : { ...orphan, parentRequestId: parentId }
+  )
+}
+
+function orderHopsWithAdoptedChildren(
+  root: MockFile,
+  adoptedChildren: MockFile[],
+  maps: MockChainMaps
+): MockFile[] {
+  const chainMocks: MockFile[] = [root, ...adoptedChildren]
+  for (const hop of adoptedChildren) {
+    collectDescendants(hop, maps, chainMocks)
+  }
+  collectDescendants(root, maps, chainMocks)
+
+  const ordered: MockFile[] = [root]
+  const inChain = new Set(chainMocks.map((m) => m.filename))
+  const seen = new Set<string>([root.filename])
+
+  const visit = (parentRequestId: string) => {
+    const children = (maps.childrenByParent.get(parentRequestId) ?? [])
+      .filter((c) => inChain.has(c.filename) && !seen.has(c.filename))
+      .sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
+    for (const child of children) {
+      ordered.push(child)
+      seen.add(child.filename)
+      if (child.requestId) visit(child.requestId)
+    }
+  }
+
+  if (root.requestId) visit(root.requestId)
+
+  const adoptedSorted = [...adoptedChildren].sort(
+    (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
+  )
+  for (const child of adoptedSorted) {
+    if (seen.has(child.filename)) continue
+    ordered.push(child)
+    seen.add(child.filename)
+    if (child.requestId) visit(child.requestId)
+  }
+
+  for (const hop of chainMocks) {
+    if (!seen.has(hop.filename)) {
+      ordered.push(hop)
+      seen.add(hop.filename)
+    }
+  }
+  return ordered
+}
+
+/**
+ * Rebuild chains when many hops share a parentRequestId that is no longer in the catalog
+ * (GraphQL hop id rewritten by always-refresh). Reattach under a nearby GraphQL when possible.
+ */
+function buildHealedMissingParentChains(
+  mocks: MockFile[],
+  maps: MockChainMaps,
+  assigned: Set<string>
+): MockServiceChain[] {
+  const orphansByMissingParent = new Map<string, MockFile[]>()
+  for (const mock of mocks) {
+    if (assigned.has(mock.filename)) continue
+    const parentId = mock.parentRequestId?.trim()
+    if (!parentId || maps.byRequestId.has(parentId)) continue
+    const list = orphansByMissingParent.get(parentId) ?? []
+    list.push(mock)
+    orphansByMissingParent.set(parentId, list)
+  }
+
+  const chains: MockServiceChain[] = []
+  for (const [, orphans] of orphansByMissingParent) {
+    if (orphans.length < 2) continue
+    const healParent = findGraphqlHealParentForOrphans(orphans, mocks, assigned)
+    if (!healParent?.requestId) continue
+
+    const adopted = adoptOrphansUnderGraphqlParent(healParent, orphans)
+    const hops = orderHopsWithAdoptedChildren(healParent, adopted, maps)
+    if (hops.length < 2) continue
+    if (isNonsensicalMockServiceChain(hops)) continue
+
+    for (const hop of hops) assigned.add(hop.filename)
+    const latestModified = hops.reduce(
+      (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
+      hops[0].modified
+    )
+    chains.push({
+      id: healParent.requestId,
+      hops,
+      latestModified,
+      inferred: true,
+      enrichedHopFilenames: [healParent.filename],
+    })
+  }
+  return chains
+}
+
 /** Multi-hop service chains (root → downstream), newest chains first. */
 export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
   const maps = buildMockChainMaps(mocks)
   const assigned = new Set<string>()
   const chains: MockServiceChain[] = []
 
+  // Heal first so myaccount is not claimed as its own root while GraphQL's old id is missing.
+  chains.push(...buildHealedMissingParentChains(mocks, maps, assigned))
+
   for (const mock of mocks) {
     if (!mockIsInServiceChain(mock, maps)) continue
     if (!isMockChainRoot(mock, maps.byRequestId)) continue
+    // Defer shared missing-parent families to heal (GraphQL → bookings/myaccount).
+    if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
     if (!mockHasChainChildren(mock, maps.childrenByParent)) continue
     if (assigned.has(mock.filename)) continue
 
@@ -384,6 +573,7 @@ export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
   for (const mock of mocks) {
     if (assigned.has(mock.filename)) continue
     if (!mock.parentRequestId) continue
+    if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
     if (!maps.byRequestId.has(mock.parentRequestId)) {
       const chainMocks: MockFile[] = [mock]
       collectDescendants(mock, maps, chainMocks)
@@ -547,14 +737,36 @@ export function isEnrichedChainHop(chain: MockServiceChain, hop: MockFile): bool
   return chain.enrichedHopFilenames?.includes(hop.filename) === true
 }
 
-export type MockHopTrafficMode = 'live' | 'replay' | 'pending'
+export type MockHopTrafficMode = 'live' | 'replay' | 'pending' | 'refresh'
 
-export function getMockHopTrafficMode(
-  mock: Pick<MockFile, 'alwaysUseRealApi' | 'responsePending'>
-): MockHopTrafficMode {
+type MockTrafficFields = Pick<
+  MockFile,
+  'alwaysUseRealApi' | 'responsePending' | 'alwaysRefreshFromLive' | 'refreshOnNextRequest' | 'replayMode'
+>
+
+/**
+ * Same precedence as core `resolveMockReplayMode` (refresh flags win over passthrough).
+ */
+function resolveMockFileReplayMode(mock: MockTrafficFields): NonNullable<MockFile['replayMode']> {
+  if (mock.replayMode) return mock.replayMode
+  if (mock.alwaysRefreshFromLive === true) return 'always-refresh'
+  if (mock.refreshOnNextRequest === true) return 'refresh-next'
+  if (mock.alwaysUseRealApi === true || mock.responsePending === true) return 'passthrough'
+  return 'stored'
+}
+
+/** True when this hop calls upstream instead of returning the stored body. */
+export function mockHopHitsUpstream(mock: MockTrafficFields): boolean {
+  if (mock.responsePending === true) return true
+  return resolveMockFileReplayMode(mock) !== 'stored'
+}
+
+export function getMockHopTrafficMode(mock: MockTrafficFields): MockHopTrafficMode {
   if (mock.responsePending === true) return 'pending'
-  if (mock.alwaysUseRealApi === true) return 'live'
-  return 'replay'
+  const mode = resolveMockFileReplayMode(mock)
+  if (mode === 'stored') return 'replay'
+  if (mode === 'always-refresh' || mode === 'refresh-next') return 'refresh'
+  return 'live'
 }
 
 /**
@@ -695,16 +907,29 @@ function uniqueChildrenOf(
   return grouped
 }
 
+function uniqueNodeHasHopId(node: MockUniqueChainNode): boolean {
+  return node.hops.some((hop) => Boolean(hop.requestId?.trim()))
+}
+
 /**
  * Fold consecutive unique hops into a path tree so later services nest under
  * the caller even when parent-request-id links are missing (inferred chains).
+ * Id-bearing orphan roots stay siblings — daisy-chaining them inverted GraphQL /
+ * myaccount / bookings after always-refresh rewrote a parent id.
  */
 function nestUniqueNodesAsPath(nodes: MockUniqueChainNode[]): MockUniqueChainNode[] {
   if (nodes.length <= 1) return nodes
-  for (let i = nodes.length - 1; i > 0; i--) {
-    nodes[i - 1].children.push(nodes[i])
+  const roots: MockUniqueChainNode[] = [nodes[0]]
+  for (let i = 1; i < nodes.length; i++) {
+    const prev = nodes[i - 1]
+    const curr = nodes[i]
+    if (uniqueNodeHasHopId(prev) && uniqueNodeHasHopId(curr)) {
+      roots.push(curr)
+      continue
+    }
+    prev.children.push(curr)
   }
-  return [nodes[0]]
+  return roots
 }
 
 function buildSequentialUniquePath(hops: MockFile[]): MockUniqueChainNode[] {

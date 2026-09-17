@@ -1,5 +1,6 @@
 import type { MockFile } from '@/types'
 import type { DomainPathRulesMap } from '@/lib/api'
+import { mockHopHitsUpstream } from '@/lib/mock-correlation-chains'
 
 /** Domain tree path for a mock endpoint (`host` + pathname segments), e.g. `127.0.0.1:4102/product`. */
 export function endpointToDomainPath(endpoint: string | null | undefined): string | null {
@@ -48,7 +49,7 @@ export function countMocksInDomainFolder(mocks: MockFile[], domainPath: string):
       continue
     }
     counts.recorded += 1
-    if (m.alwaysUseRealApi === true) {
+    if (mockHopHitsUpstream(m)) {
       counts.live += 1
     } else {
       counts.mocked += 1

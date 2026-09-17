@@ -36,6 +36,7 @@ import type { MockKvBackend } from './mock-kv-backend';
 import { RedisMockKvBackend } from './redis-mock-kv-backend';
 import { SqliteMockKvBackend } from './sqlite-mock-kv-backend';
 import { compileMockSearch } from './mock-search';
+import { rewriteClonedMockJson } from './scenario-clone-replay-mode';
 
 export interface RedisMockStoreConfig {
   /** When set, used directly (Redis or SQLite KV backend). */
@@ -852,6 +853,8 @@ export class RedisMockStore {
    *
    * Notes:
    * - Lane overrides are NOT copied; this is scenario->scenario only.
+   * - Replay mode (Use saved mock / Live / Refresh) is reset to live API on the copy.
+   *   Favorites are global request pins and must not carry replay settings into the new scenario.
    * - Existing destination scenario data is not deleted; caller should ensure it's new/empty.
    */
   async cloneScenario(fromScenario: string, toScenario: string): Promise<{
@@ -905,7 +908,7 @@ export class RedisMockStore {
       if (!raw) continue;
       const hash = hashes[i];
       const toKey = await this.dataKey(hash, to);
-      multi.set(toKey, raw);
+      multi.set(toKey, rewriteClonedMockJson(raw) ?? raw);
       copied++;
     }
     if (copied > 0) {
