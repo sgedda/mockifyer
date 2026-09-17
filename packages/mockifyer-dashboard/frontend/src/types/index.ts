@@ -178,6 +178,19 @@ export interface MockAiContext {
   data?: MockData['data']
 }
 
+export interface RankedResponseStat {
+  filename: string
+  endpoint: string
+  method: string
+  operationName?: string | null
+  durationMs?: number
+  size: number
+  requestId?: string | null
+  parentRequestId?: string | null
+  /** True when no other recording lists this hop as its parent (lowest-level call). */
+  isLeaf?: boolean
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -188,6 +201,10 @@ export interface Stats {
   recentActivity: Array<{ filename: string; modified: string }>
   /** Files per subdirectory (matches mock folder layout under the scenario). */
   folderBreakdown?: Array<{ folder: string; count: number }>
+  /** Slowest recorded round-trips (when duration was stored). */
+  slowestResponses?: RankedResponseStat[]
+  /** Largest mock recordings by stored size. */
+  largestResponses?: RankedResponseStat[]
   scenario: string
   mockDataPath?: string
   scenarioPath?: string

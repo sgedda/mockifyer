@@ -74,9 +74,13 @@ Remove unwanted mock files directly from the dashboard.
 ### Statistics
 View statistics about your mock data:
 - Total files and size
+- Service hops (multi-service request chains)
 - Most used endpoints
 - HTTP methods distribution
 - Status codes distribution
+
+### Hops
+Open **Hops** in the sidebar to inspect recorded multi-service request chains. Each card is one user request across services; expand a hop to see the calls it triggered.
 
 ## Integration with Metro
 

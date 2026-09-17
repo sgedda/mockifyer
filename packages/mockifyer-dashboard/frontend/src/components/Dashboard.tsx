@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/use-toast'
 import MockList from './MockList'
 import MockEditorPage from './MockEditorPage'
 import StatsView from './StatsView'
+import HopsView from './HopsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
 import Atlas from './Atlas'
@@ -62,6 +63,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     if (path === '/mocks' || path === '/mock' || path.endsWith('/mocks') || path.endsWith('/mock')) {
       return 'mocks'
     }
+    if (path === '/hops' || path.endsWith('/hops')) return 'hops'
     if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
     if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
     if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
@@ -253,6 +255,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'hops': '/hops',
       'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
@@ -606,6 +609,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 />
               }
             />
+            <Route path="/hops" element={<HopsView scenario={scenario} />} />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"

@@ -1,7 +1,7 @@
 /**
  * Dashboard location helpers. Nested path segments break the portable Vite `base: './'`
  * asset URLs on refresh, so resource identity lives in the query string on one-segment
- * routes (`/mocks`, `/mock`, `/network`, …). Those URLs copy/paste and reload cleanly.
+ * routes (`/mocks`, `/mock`, `/hops`, `/network`, …). Those URLs copy/paste and reload cleanly.
  */
 
 export const DASHBOARD_Q = {
@@ -66,6 +66,10 @@ export function searchParamsToRecord(params: URLSearchParams): Record<string, st
 
 export function mocksListPath(extras?: QueryUpdates): string {
   return `/mocks${buildSearch(extras ?? {})}`
+}
+
+export function hopsPath(extras?: QueryUpdates): string {
+  return `/hops${buildSearch(extras ?? {})}`
 }
 
 export function mockEditorPath(filename: string, extras?: QueryUpdates): string {

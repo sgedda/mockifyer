@@ -7,6 +7,7 @@
 export const DASHBOARD_PAGE_SUFFIXES = [
   '/mocks',
   '/mock',
+  '/hops',
   '/overrides',
   '/timeline',
   '/atlas',

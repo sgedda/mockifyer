@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { DASHBOARD_Q, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
+import { DASHBOARD_Q, hopsPath, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
+import { ServiceChainList } from '@/components/ServiceChainList'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
-import type { Stats } from '@/types'
+import { countServiceChainHops, useMockServiceChains } from '@/lib/use-mock-service-chains'
+import type { RankedResponseStat, Stats } from '@/types'
 import {
   BarChart3,
   FileText,
@@ -14,6 +16,9 @@ import {
   ChevronDown,
   ExternalLink,
   Folder,
+  GitFork,
+  Clock,
+  HardDrive,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -21,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
 import { CopyableText } from '@/components/CopyableText'
 
 interface StatsViewProps {
@@ -36,6 +42,12 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const { toast } = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const {
+    chains: hopChains,
+    loading: hopsLoading,
+    hasOrphanParentIds,
+  } = useMockServiceChains(scenario)
+  const hopCount = countServiceChainHops(hopChains)
 
   function handleEndpointClick(endpoint: string) {
     navigate(
@@ -125,6 +137,17 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
   }
 
+  function formatDurationMs(ms: number): string {
+    if (ms < 1000) return `${Math.round(ms)} ms`
+    if (ms < 10_000) return `${(ms / 1000).toFixed(2)} s`
+    return `${(ms / 1000).toFixed(1)} s`
+  }
+
+  function rankedResponseLabel(item: RankedResponseStat): string {
+    if (item.operationName) return `${item.method} ${item.operationName}`
+    return `${item.method} ${item.endpoint}`
+  }
+
   if (loading || !stats) {
     return (
       <Card>
@@ -151,7 +174,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
         </Card>
       )}
       
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Files</CardTitle>
@@ -182,6 +205,25 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
           <CardContent>
             <div className="text-2xl font-bold">{stats.endpoints.length}</div>
             <p className="text-xs text-muted-foreground">Different APIs</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="cursor-pointer hover:bg-accent/50 transition-colors"
+          onClick={() => navigate(hopsPath({ scenario }))}
+          title="Open hops"
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Service hops</CardTitle>
+            <GitFork className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{hopsLoading ? '—' : hopCount}</div>
+            <p className="text-xs text-muted-foreground">
+              {hopsLoading
+                ? 'Loading chains…'
+                : `${hopChains.length} request chain${hopChains.length === 1 ? '' : 's'}`}
+            </p>
           </CardContent>
         </Card>
 
@@ -228,7 +270,133 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
         </Card>
       </div>
 
+      {(hopsLoading || hopChains.length > 0 || hasOrphanParentIds) && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">Service hops</h2>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0"
+              onClick={() => navigate(hopsPath({ scenario }))}
+            >
+              View all →
+            </Button>
+          </div>
+          <ServiceChainList
+            chains={hopChains}
+            loading={hopsLoading}
+            scenario={scenario}
+            limit={6}
+            hasOrphanParentIds={hasOrphanParentIds}
+            onSelectHop={(mock) => handleRecentFileClick(mock.filename)}
+          />
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-primary" />
+              Slowest leaf hops
+            </CardTitle>
+            <p className="text-xs text-muted-foreground font-normal">
+              Lowest-level calls only — parent hops include nested request time.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(stats.slowestResponses ?? []).length > 0 ? (
+                (stats.slowestResponses ?? []).map((item) => (
+                  <div
+                    key={item.filename}
+                    className="flex items-center justify-between gap-2 text-sm group rounded-md px-2 py-1.5 -mx-2 border border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/15 transition-colors cursor-pointer"
+                    onClick={() => handleRecentFileClick(item.filename)}
+                    title="Open this hop"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] shrink-0 border-amber-400/50 text-amber-100"
+                        >
+                          leaf
+                        </Badge>
+                        <span className="font-mono text-xs truncate group-hover:text-primary">
+                          {rankedResponseLabel(item)}
+                        </span>
+                      </div>
+                      <CopyableText
+                        value={item.endpoint}
+                        copyLabel="Copy endpoint URL"
+                        className="mt-0.5"
+                        textClassName="font-mono text-[11px] text-muted-foreground"
+                      />
+                    </div>
+                    <span className="text-foreground font-medium shrink-0 tabular-nums">
+                      {item.durationMs != null ? formatDurationMs(item.durationMs) : '—'}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">No leaf hop durations recorded</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HardDrive className="h-4 w-4 text-primary" />
+              Largest leaf hops
+            </CardTitle>
+            <p className="text-xs text-muted-foreground font-normal">
+              Lowest-level recordings — parent payloads include nested responses.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {(stats.largestResponses ?? []).length > 0 ? (
+                (stats.largestResponses ?? []).map((item) => (
+                  <div
+                    key={item.filename}
+                    className="flex items-center justify-between gap-2 text-sm group rounded-md px-2 py-1.5 -mx-2 border border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/15 transition-colors cursor-pointer"
+                    onClick={() => handleRecentFileClick(item.filename)}
+                    title="Open this hop"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] shrink-0 border-amber-400/50 text-amber-100"
+                        >
+                          leaf
+                        </Badge>
+                        <span className="font-mono text-xs truncate group-hover:text-primary">
+                          {rankedResponseLabel(item)}
+                        </span>
+                      </div>
+                      <CopyableText
+                        value={item.endpoint}
+                        copyLabel="Copy endpoint URL"
+                        className="mt-0.5"
+                        textClassName="font-mono text-[11px] text-muted-foreground"
+                      />
+                    </div>
+                    <span className="text-foreground font-medium shrink-0 tabular-nums">
+                      {formatFileSize(item.size)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground">No leaf hop sizes recorded</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Top Endpoints</CardTitle>

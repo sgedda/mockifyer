@@ -8,8 +8,37 @@ import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
+import {
+  leafResponses,
+  rankLargestResponses,
+  rankSlowestResponses,
+  toRankedResponseStat,
+  type RankedResponseStat,
+} from '../utils/stats-rankings';
 
 const router = express.Router();
+
+function emptyStats(params: {
+  scenario: string;
+  mockDataPath: string;
+  scenarioPath: string;
+}) {
+  return {
+    totalFiles: 0,
+    totalSize: 0,
+    endpoints: [] as Array<{ endpoint: string; count: number }>,
+    domains: {} as Record<string, number>,
+    methods: {} as Record<string, number>,
+    statusCodes: {} as Record<string, number>,
+    recentActivity: [] as Array<{ filename: string; modified: string }>,
+    folderBreakdown: [] as Array<{ folder: string; count: number }>,
+    slowestResponses: [] as RankedResponseStat[],
+    largestResponses: [] as RankedResponseStat[],
+    scenario: params.scenario,
+    mockDataPath: params.mockDataPath,
+    scenarioPath: params.scenarioPath,
+  };
+}
 
 function getMockDataPath(): string {
   // Use the shared path detection function
@@ -35,11 +64,15 @@ router.get('/', async (req: Request, res: Response) => {
         const methods: Record<string, number> = {};
         const statusCodes: Record<string, number> = {};
         const recentActivity: Array<{ filename: string; modified: Date }> = [];
+        const ranked: RankedResponseStat[] = [];
 
         for (const { hash, mockData, rawByteLength } of items) {
-          totalSize += rawByteLength ?? 0;
+          const size = rawByteLength ?? 0;
+          totalSize += size;
+          const filename = `redis/${hash}.json`;
           const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
-          recentActivity.push({ filename: `redis/${hash}.json`, modified: ts });
+          recentActivity.push({ filename, modified: ts });
+          ranked.push(toRankedResponseStat({ filename, mockData, size }));
 
           if (mockData.request) {
             const endpoint = mockData.request.url || 'unknown';
@@ -77,6 +110,8 @@ router.get('/', async (req: Request, res: Response) => {
             modified: item.modified.toISOString(),
           })),
           folderBreakdown: [],
+          slowestResponses: rankSlowestResponses(leafResponses(ranked)),
+          largestResponses: rankLargestResponses(leafResponses(ranked)),
           scenario: currentScenario,
           mockDataPath,
           scenarioPath: `redis://${config.keyPrefix || 'mockifyer:v1'}:index:${currentScenario}`,
@@ -87,35 +122,15 @@ router.get('/', async (req: Request, res: Response) => {
     }
     
     if (!fs.existsSync(mockDataPath)) {
-      return res.json({
-        totalFiles: 0,
-        totalSize: 0,
-        endpoints: [],
-        domains: {},
-        methods: {},
-        statusCodes: {},
-        recentActivity: [],
-        folderBreakdown: [],
-        scenario: currentScenario,
-        mockDataPath: mockDataPath,
-        scenarioPath: scenarioPath
-      });
+      return res.json(
+        emptyStats({ scenario: currentScenario, mockDataPath, scenarioPath })
+      );
     }
 
     if (!fs.existsSync(scenarioPath)) {
-      return res.json({
-        totalFiles: 0,
-        totalSize: 0,
-        endpoints: [],
-        domains: {},
-        methods: {},
-        statusCodes: {},
-        recentActivity: [],
-        folderBreakdown: [],
-        scenario: currentScenario,
-        mockDataPath: mockDataPath,
-        scenarioPath: scenarioPath
-      });
+      return res.json(
+        emptyStats({ scenario: currentScenario, mockDataPath, scenarioPath })
+      );
     }
 
     const filePaths = getAllJsonFiles(scenarioPath);
@@ -127,6 +142,7 @@ router.get('/', async (req: Request, res: Response) => {
     const statusCodes: Record<string, number> = {};
     const folderCounts: Record<string, number> = {};
     const recentActivity: Array<{ filename: string; modified: Date }> = [];
+    const ranked: RankedResponseStat[] = [];
 
     filePaths.forEach((filePath) => {
       const relativeName = path.relative(scenarioPath, filePath).split(path.sep).join('/');
@@ -145,6 +161,9 @@ router.get('/', async (req: Request, res: Response) => {
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const { mockData } = parseMockJsonForCatalog(raw);
+        ranked.push(
+          toRankedResponseStat({ filename: relativeName, mockData, size: stats.size })
+        );
         
         if (mockData.request) {
           // Count endpoints
@@ -202,6 +221,8 @@ router.get('/', async (req: Request, res: Response) => {
         modified: item.modified.toISOString()
       })),
       folderBreakdown,
+      slowestResponses: rankSlowestResponses(leafResponses(ranked)),
+      largestResponses: rankLargestResponses(leafResponses(ranked)),
       scenario: currentScenario,
       mockDataPath: mockDataPath,
       scenarioPath: scenarioPath
@@ -213,4 +234,3 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 export const statsRouter = router;
-
