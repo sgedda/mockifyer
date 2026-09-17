@@ -431,7 +431,9 @@ export default function Settings({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Scenarios allow you to organize different sets of mock responses for testing various scenarios.
+                  Scenarios keep separate mock bodies and replay modes. Deriving copies recordings from another
+                  scenario but does not copy Live / Refresh / Use saved mock — set those in the new scenario
+                  (favorites are global request pins, not a shared replay setting).
                 </p>
               </div>
             </>

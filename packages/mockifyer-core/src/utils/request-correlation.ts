@@ -421,12 +421,17 @@ function isolateOutboundHopHeaderBag(config: { headers?: unknown }): void {
 /**
  * Resolve parent for the next outbound hop:
  * 1. Active inbound correlation (Node auto-capture / Express middleware / ALS)
- * 2. Explicit `X-Mockifyer-Parent-Request-Id` on the outbound config
+ * 2. Forwarded inbound `X-Mockifyer-Request-Id` (service copied `req.headers` onto the client)
+ * 3. Explicit `X-Mockifyer-Parent-Request-Id` on the outbound config
  */
 export function resolveOutboundParentRequestId(headers: unknown): string | undefined {
   const active = getActiveRequestCorrelation()?.requestId;
   if (active) {
     return active;
+  }
+  const forwardedInboundHopId = getOutboundMockifyerRequestIdHeader(headers);
+  if (forwardedInboundHopId) {
+    return forwardedInboundHopId;
   }
   return getOutboundMockifyerParentRequestIdHeader(headers);
 }
@@ -479,6 +484,41 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
   config.headers = headers;
 
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
+}
+
+/**
+ * Reuse the hop id already stored on a matched mock.
+ * Always-refresh / live capture must not mint a new requestId or child mocks
+ * (`parentRequestId`) detach from GraphQL / myaccount on the next run.
+ */
+export function adoptStoredOutboundRequestId(
+  config: { headers?: unknown },
+  storedRequestId: string | null | undefined
+): RequestCorrelationContext | undefined {
+  const requestId = storedRequestId?.trim();
+  if (!requestId) {
+    return undefined;
+  }
+  const parentRequestId = getOutboundMockifyerParentRequestIdHeader(config.headers);
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
+  return parentRequestId ? { requestId, parentRequestId } : { requestId };
+}
+
+/**
+ * Prefer hop ids already stored on a mock when refreshing/overwriting it.
+ * `requestId` stays stable so children keep a valid parent; `parentRequestId`
+ * follows the live caller so a stale link can heal on the next refresh.
+ */
+export function resolvePersistedHopIds(
+  existing: { requestId?: string; parentRequestId?: string } | null | undefined,
+  live?: { requestId?: string; parentRequestId?: string }
+): { requestId?: string; parentRequestId?: string } {
+  const requestId = existing?.requestId?.trim() || live?.requestId?.trim();
+  const parentRequestId = live?.parentRequestId?.trim() || existing?.parentRequestId?.trim();
+  return {
+    ...(requestId ? { requestId } : {}),
+    ...(parentRequestId ? { parentRequestId } : {}),
+  };
 }
 
 export interface MockifyerCorrelationMiddlewareRequest {

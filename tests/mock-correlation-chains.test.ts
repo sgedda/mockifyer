@@ -4,11 +4,14 @@ import {
   buildMockServiceChainsForDisplay,
   buildUniqueMockChainForest,
   chainHasRequestCorrelation,
+  chainHasUpstreamReplayBlock,
   countNestedMockChainCalls,
   enrichChainHopsForDisplay,
   filterMockServiceChainsByFilenames,
+  getMockHopTrafficMode,
   mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
+  mockHopHitsUpstream,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
 
@@ -386,6 +389,67 @@ describe('unique mock chain forest', () => {
     expect(forest[0].hops).toHaveLength(2)
     expect(mockChainNodeCanExpand(forest[0])).toBe(true)
     expect(mockChainNodeCanExpand(forest[0].children[0])).toBe(false)
+  })
+
+  it('does not nest two id-bearing orphan roots after a stale parent id', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'g-new',
+    })
+    const myaccount = mock({
+      filename: 'myaccount.json',
+      endpoint: 'http://localhost:4000/v-2/myaccount',
+      requestId: 'acct',
+      parentRequestId: 'g-old',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    const bookings = mock({
+      filename: 'bookings.json',
+      endpoint: 'http://localhost:4000/v-2/myaccount/bookings/11111111-1111-1111-1111-111111111111',
+      requestId: 'book',
+      parentRequestId: 'acct',
+      modified: '2026-09-10T16:18:02.000Z',
+    })
+
+    const forest = buildUniqueMockChainForest([graphql, myaccount, bookings])
+    expect(forestOutline(forest)).toEqual([
+      'POST /graphql',
+      'GET /v-2/myaccount',
+      '  GET /v-2/myaccount/bookings/:id',
+    ])
+  })
+})
+
+describe('getMockHopTrafficMode', () => {
+  it('treats always-refresh-from-live as refresh, not replay', () => {
+    const hop = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      alwaysRefreshFromLive: true,
+      replayMode: 'always-refresh',
+    })
+    expect(getMockHopTrafficMode(hop)).toBe('refresh')
+    expect(mockHopHitsUpstream(hop)).toBe(true)
+    expect(chainHasUpstreamReplayBlock([hop, hop], 1)).toBe(false)
+  })
+
+  it('treats use-saved-mock as replay that blocks downstream hops', () => {
+    const upstream = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      replayMode: 'stored',
+    })
+    const downstream = mock({
+      filename: 'account.json',
+      endpoint: 'http://localhost:4000/v-2/myaccount',
+    })
+    expect(getMockHopTrafficMode(upstream)).toBe('replay')
+    expect(mockHopHitsUpstream(upstream)).toBe(false)
+    expect(chainHasUpstreamReplayBlock([upstream, downstream], 1)).toBe(true)
   })
 })
 

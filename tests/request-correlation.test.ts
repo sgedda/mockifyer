@@ -1,6 +1,8 @@
 import http from 'http';
 import {
   applyOutboundRequestCorrelation,
+  adoptStoredOutboundRequestId,
+  resolvePersistedHopIds,
   attachMockifyerRequestIdToError,
   captureInboundMockifyerContext,
   captureInboundRequestCorrelation,
@@ -76,6 +78,47 @@ describe('request-correlation', () => {
     expect(resolveOutboundParentRequestId(config.headers)).toBe('req-parent');
     const hop = applyOutboundRequestCorrelation(config);
     expect(hop.parentRequestId).toBe('req-parent');
+  });
+
+  it('uses forwarded inbound request id as parent when ALS is missing', () => {
+    const config = {
+      headers: {
+        [MOCKIFYER_REQUEST_ID_HEADER]: 'inbound-hop',
+        [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: 'grandparent-hop',
+      },
+    };
+    expect(resolveOutboundParentRequestId(config.headers)).toBe('inbound-hop');
+    const hop = applyOutboundRequestCorrelation(config);
+    expect(hop.parentRequestId).toBe('inbound-hop');
+    expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('inbound-hop');
+    expect(getOutboundMockifyerRequestIdHeader(config.headers)).toBe(hop.requestId);
+    expect(hop.requestId).not.toBe('inbound-hop');
+  });
+
+  it('reuses the stored mock hop id instead of the freshly minted outbound id', () => {
+    const config = {
+      headers: {
+        [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: 'parent-hop',
+      },
+    };
+    const minted = applyOutboundRequestCorrelation(config);
+    expect(minted.requestId).not.toBe('stored-hop');
+    const adopted = adoptStoredOutboundRequestId(config, 'stored-hop');
+    expect(adopted).toEqual({ requestId: 'stored-hop', parentRequestId: 'parent-hop' });
+    expect(getOutboundMockifyerRequestIdHeader(config.headers)).toBe('stored-hop');
+    expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('parent-hop');
+  });
+
+  it('keeps stored hop ids when persisting a live refresh', () => {
+    expect(
+      resolvePersistedHopIds(
+        { requestId: 'stored-gql', parentRequestId: 'stale-parent' },
+        { requestId: 'live-gql', parentRequestId: 'live-parent' }
+      )
+    ).toEqual({ requestId: 'stored-gql', parentRequestId: 'live-parent' });
+    expect(resolvePersistedHopIds(undefined, { requestId: 'live-gql' })).toEqual({
+      requestId: 'live-gql',
+    });
   });
 
   it('does not leak hop ids onto a shared header bag across sequential requests', () => {

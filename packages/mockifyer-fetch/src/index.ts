@@ -77,6 +77,8 @@ import {
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
+  adoptStoredOutboundRequestId,
+  resolvePersistedHopIds,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   configureFlightRecorder,
@@ -203,6 +205,22 @@ class MockifyerClass {
       correlation.requestId;
     (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
       correlation.parentRequestId;
+  }
+
+  private bindStoredHopId(
+    config: unknown,
+    mockData: { requestId?: string } | undefined,
+    fallback?: RequestCorrelationContext
+  ): RequestCorrelationContext | undefined {
+    const adopted = adoptStoredOutboundRequestId(
+      config as { headers?: unknown },
+      mockData?.requestId
+    );
+    if (adopted) {
+      this.stashRequestCorrelation(config, adopted);
+      return adopted;
+    }
+    return fallback;
   }
 
   private readRequestCorrelation(config: unknown): RequestCorrelationContext | undefined {
@@ -758,7 +776,7 @@ class MockifyerClass {
         return config;
       }
 
-      const correlation = applyOutboundRequestCorrelation(config);
+      let correlation = applyOutboundRequestCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       // Normalize empty params: treat {} the same as undefined for consistent matching
@@ -806,6 +824,7 @@ class MockifyerClass {
       
       if (cachedMock) {
         const { mockData, filename, filePath } = cachedMock;
+        correlation = this.bindStoredHopId(config, mockData, correlation) ?? correlation;
         if (mockShouldServeStoredBody(mockData)) {
           logger.info(
             `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
@@ -1334,6 +1353,10 @@ class MockifyerClass {
       const duration = startTime ? Date.now() - startTime : undefined;
 
       const correlation = this.readRequestCorrelation(response.config);
+      const hopIds = resolvePersistedHopIds(
+        saveDecision.action === 'overwrite' ? existingMock?.mockData : undefined,
+        correlation
+      );
 
       const mockData: MockData = {
         request: {
@@ -1354,8 +1377,8 @@ class MockifyerClass {
           saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
             ? existingMock.mockData.sessionId
             : this.currentSessionId,
-        requestId: correlation?.requestId,
-        parentRequestId: correlation?.parentRequestId,
+        requestId: hopIds.requestId,
+        parentRequestId: hopIds.parentRequestId,
         ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 

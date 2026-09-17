@@ -183,12 +183,29 @@ export function MockServiceChainCard({
                       className={`text-[10px] ${
                         traffic === 'live'
                           ? 'border-orange-500/40 text-orange-100'
-                          : traffic === 'pending'
-                            ? 'border-amber-500/40 text-amber-100'
-                            : 'border-sky-500/40 text-sky-100'
+                          : traffic === 'refresh'
+                            ? 'border-cyan-500/40 text-cyan-100'
+                            : traffic === 'pending'
+                              ? 'border-amber-500/40 text-amber-100'
+                              : 'border-sky-500/40 text-sky-100'
                       }`}
+                      title={
+                        traffic === 'live'
+                          ? 'Always use live API'
+                          : traffic === 'refresh'
+                            ? 'Hits live API and updates the stored snapshot'
+                            : traffic === 'pending'
+                              ? 'Waiting for a captured response'
+                              : 'Serves the saved mock body (does not call the next service)'
+                      }
                     >
-                      {traffic === 'live' ? 'Live' : traffic === 'pending' ? 'Pending' : 'Replay'}
+                      {traffic === 'live'
+                        ? 'Live'
+                        : traffic === 'refresh'
+                          ? 'Refresh'
+                          : traffic === 'pending'
+                            ? 'Pending'
+                            : 'Replay'}
                     </Badge>
                     {blocked && (
                       <Badge variant="outline" className="text-[10px] border-rose-500/40 text-rose-100">
@@ -251,8 +268,10 @@ export function MockServiceChainCard({
       <div className="px-3 pb-3 space-y-2">
         {hasReplayBlock && (
           <p className="text-[11px] text-amber-200/90 leading-relaxed">
-            A hop on <strong className="font-medium">Replay</strong> returns its saved response and does not call
-            the next service. To replay a downstream hop, set every upstream hop to <strong className="font-medium">Live</strong>{' '}
+            A hop on <strong className="font-medium">Replay</strong> (use saved mock) returns its stored response
+            and does not call the next service. Always refresh from live / Live API still hit upstream.
+            To reach a downstream hop, set every upstream hop to{' '}
+            <strong className="font-medium">Live</strong> or <strong className="font-medium">Always refresh from live</strong>{' '}
             (Domains view → Replay on the target path does this automatically).
           </p>
         )}

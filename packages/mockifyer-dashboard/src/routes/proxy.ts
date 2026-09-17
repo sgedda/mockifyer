@@ -57,6 +57,7 @@ import {
   resolveNetworkLogScenario,
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
+  adoptStoredHopIdOnProxyLog,
 } from '../utils/proxy-network-log';
 
 const router = express.Router();
@@ -371,6 +372,8 @@ router.post('/', async (req: Request, res: Response) => {
         mockSource = 'disk';
       }
     }
+
+    adoptStoredHopIdOnProxyLog(networkLogCtx, mock as MockData | null);
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({

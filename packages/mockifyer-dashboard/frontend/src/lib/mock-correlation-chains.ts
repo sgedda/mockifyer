@@ -547,14 +547,36 @@ export function isEnrichedChainHop(chain: MockServiceChain, hop: MockFile): bool
   return chain.enrichedHopFilenames?.includes(hop.filename) === true
 }
 
-export type MockHopTrafficMode = 'live' | 'replay' | 'pending'
+export type MockHopTrafficMode = 'live' | 'replay' | 'pending' | 'refresh'
 
-export function getMockHopTrafficMode(
-  mock: Pick<MockFile, 'alwaysUseRealApi' | 'responsePending'>
-): MockHopTrafficMode {
+type MockTrafficFields = Pick<
+  MockFile,
+  'alwaysUseRealApi' | 'responsePending' | 'alwaysRefreshFromLive' | 'refreshOnNextRequest' | 'replayMode'
+>
+
+/**
+ * Same precedence as core `resolveMockReplayMode` (refresh flags win over passthrough).
+ */
+function resolveMockFileReplayMode(mock: MockTrafficFields): NonNullable<MockFile['replayMode']> {
+  if (mock.replayMode) return mock.replayMode
+  if (mock.alwaysRefreshFromLive === true) return 'always-refresh'
+  if (mock.refreshOnNextRequest === true) return 'refresh-next'
+  if (mock.alwaysUseRealApi === true || mock.responsePending === true) return 'passthrough'
+  return 'stored'
+}
+
+/** True when this hop calls upstream instead of returning the stored body. */
+export function mockHopHitsUpstream(mock: MockTrafficFields): boolean {
+  if (mock.responsePending === true) return true
+  return resolveMockFileReplayMode(mock) !== 'stored'
+}
+
+export function getMockHopTrafficMode(mock: MockTrafficFields): MockHopTrafficMode {
   if (mock.responsePending === true) return 'pending'
-  if (mock.alwaysUseRealApi === true) return 'live'
-  return 'replay'
+  const mode = resolveMockFileReplayMode(mock)
+  if (mode === 'stored') return 'replay'
+  if (mode === 'always-refresh' || mode === 'refresh-next') return 'refresh'
+  return 'live'
 }
 
 /**
@@ -695,16 +717,29 @@ function uniqueChildrenOf(
   return grouped
 }
 
+function uniqueNodeHasHopId(node: MockUniqueChainNode): boolean {
+  return node.hops.some((hop) => Boolean(hop.requestId?.trim()))
+}
+
 /**
  * Fold consecutive unique hops into a path tree so later services nest under
  * the caller even when parent-request-id links are missing (inferred chains).
+ * Id-bearing orphan roots stay siblings — daisy-chaining them inverted GraphQL /
+ * myaccount / bookings after always-refresh rewrote a parent id.
  */
 function nestUniqueNodesAsPath(nodes: MockUniqueChainNode[]): MockUniqueChainNode[] {
   if (nodes.length <= 1) return nodes
-  for (let i = nodes.length - 1; i > 0; i--) {
-    nodes[i - 1].children.push(nodes[i])
+  const roots: MockUniqueChainNode[] = [nodes[0]]
+  for (let i = 1; i < nodes.length; i++) {
+    const prev = nodes[i - 1]
+    const curr = nodes[i]
+    if (uniqueNodeHasHopId(prev) && uniqueNodeHasHopId(curr)) {
+      roots.push(curr)
+      continue
+    }
+    prev.children.push(curr)
   }
-  return [nodes[0]]
+  return roots
 }
 
 function buildSequentialUniquePath(hops: MockFile[]): MockUniqueChainNode[] {
