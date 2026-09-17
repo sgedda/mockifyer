@@ -72,6 +72,11 @@ function MockListContent({
   const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(true)
   const didSuggestChainsView = useRef(false)
   const [chainsOnly, setChainsOnly] = useState(false)
+  const [searchDraft, setSearchDraft] = useState(searchQuery)
+
+  useEffect(() => {
+    setSearchDraft(searchQuery)
+  }, [searchQuery])
 
   const matchingFavoriteMocks = useMemo(() => {
     if (favoritesLoading) return []
@@ -275,13 +280,31 @@ function MockListContent({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder='Search mocks — words are AND; "quotes" keep a phrase'
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
+        <form
           className="min-w-[12rem] flex-1"
-          disabled={loading}
-        />
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSearchChange(searchDraft)
+          }}
+        >
+          <Input
+            type="search"
+            enterKeyHint="search"
+            placeholder='Search mocks — press Enter. Words are AND; "quotes" keep a phrase'
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              onSearchChange(searchDraft)
+            }}
+            className="w-full"
+            aria-label="Search mocks"
+          />
+          <button type="submit" className="sr-only">
+            Search
+          </button>
+        </form>
         <label
           className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm"
           title="Show only starred requests that exist in this scenario"

@@ -282,7 +282,9 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       const data = await getMocks(scenario, { signal })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
-      setMocks(data.files)
+      if (!requestedSearchQuery) {
+        setMocks(data.files)
+      }
       setAllMocks(data.files)
       setLoading(false)
 
@@ -328,31 +330,34 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       // Restore full list when clearing search.
       if (allMocks.length > 0) {
         setMocks(allMocks)
+        setLoading(false)
         return
       }
       loadMocks()
       return
     }
 
-    const t = window.setTimeout(() => {
-      void (async () => {
-        try {
-          setLoading(true)
-          const result = await searchMocks({ q, scenario, limit: 200 })
-          setMocks(result.files)
-        } catch (error) {
-          toast({
-            title: 'Error',
-            description: 'Failed to search mocks',
-            variant: 'destructive',
-          })
-        } finally {
-          setLoading(false)
-        }
-      })()
-    }, 350)
-
-    return () => window.clearTimeout(t)
+    let cancelled = false
+    void (async () => {
+      try {
+        setLoading(true)
+        const result = await searchMocks({ q, scenario, limit: 200 })
+        if (cancelled) return
+        setMocks(result.files)
+      } catch (error) {
+        if (cancelled) return
+        toast({
+          title: 'Error',
+          description: 'Failed to search mocks',
+          variant: 'destructive',
+        })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [activeTab, scenario, searchQuery, location.pathname])
 
   function handleSelectMock(file: MockFile) {
