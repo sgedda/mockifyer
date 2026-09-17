@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { ServiceChainList } from '@/components/ServiceChainList'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import { countServiceChainHops, useMockServiceChains } from '@/lib/use-mock-service-chains'
-import type { RankedResponseStat, Stats } from '@/types'
+import type { RankedResponseStat, ReplayModeBreakdown, Stats } from '@/types'
 import {
   BarChart3,
   FileText,
@@ -19,6 +19,7 @@ import {
   GitFork,
   Clock,
   HardDrive,
+  Radio,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -33,6 +34,45 @@ interface StatsViewProps {
   scenario: string
   onScenarioChange: (scenario: string) => void
 }
+
+const EMPTY_REPLAY_MODES: ReplayModeBreakdown = {
+  replay: 0,
+  refresh: 0,
+  pending: 0,
+  live: 0,
+}
+
+const REPLAY_MODE_ROWS: Array<{
+  key: keyof ReplayModeBreakdown
+  label: string
+  hint: string
+  badgeClass: string
+}> = [
+  {
+    key: 'replay',
+    label: 'Replay',
+    hint: 'Serves the saved mock body',
+    badgeClass: 'border-sky-500/40 text-sky-100',
+  },
+  {
+    key: 'refresh',
+    label: 'Refresh',
+    hint: 'Hits live API and updates the stored snapshot',
+    badgeClass: 'border-cyan-500/40 text-cyan-100',
+  },
+  {
+    key: 'pending',
+    label: 'Pending',
+    hint: 'Waiting for a captured response',
+    badgeClass: 'border-amber-500/40 text-amber-100',
+  },
+  {
+    key: 'live',
+    label: 'Live',
+    hint: 'Always uses the live API',
+    badgeClass: 'border-orange-500/40 text-orange-100',
+  },
+]
 
 export default function StatsView({ scenario, onScenarioChange }: StatsViewProps) {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -157,6 +197,9 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
       </Card>
     )
   }
+
+  const replayModes = stats.replayModes ?? EMPTY_REPLAY_MODES
+  const upstreamCount = replayModes.live + replayModes.pending + replayModes.refresh
 
   return (
     <div className="space-y-6">
@@ -295,6 +338,42 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Radio className="h-4 w-4 text-primary" />
+              Replay mode
+            </CardTitle>
+            <p className="text-xs text-muted-foreground font-normal">
+              Same buckets as hop Replay / Live / Pending / Refresh badges.
+              {upstreamCount > 0
+                ? ` ${upstreamCount} of ${stats.totalFiles} still call upstream.`
+                : stats.totalFiles > 0
+                  ? ' All recordings serve stored mocks.'
+                  : ''}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {REPLAY_MODE_ROWS.map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="outline" className={`text-[10px] shrink-0 ${row.badgeClass}`}>
+                      {row.label}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground truncate" title={row.hint}>
+                      {row.hint}
+                    </span>
+                  </div>
+                  <span className="text-foreground font-medium shrink-0 tabular-nums">
+                    {replayModes[row.key]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

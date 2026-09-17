@@ -9,6 +9,8 @@ import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
 import {
+  addReplayModeCount,
+  emptyReplayModeBreakdown,
   leafResponses,
   rankLargestResponses,
   rankSlowestResponses,
@@ -34,6 +36,7 @@ function emptyStats(params: {
     folderBreakdown: [] as Array<{ folder: string; count: number }>,
     slowestResponses: [] as RankedResponseStat[],
     largestResponses: [] as RankedResponseStat[],
+    replayModes: emptyReplayModeBreakdown(),
     scenario: params.scenario,
     mockDataPath: params.mockDataPath,
     scenarioPath: params.scenarioPath,
@@ -65,6 +68,7 @@ router.get('/', async (req: Request, res: Response) => {
         const statusCodes: Record<string, number> = {};
         const recentActivity: Array<{ filename: string; modified: Date }> = [];
         const ranked: RankedResponseStat[] = [];
+        const replayModes = emptyReplayModeBreakdown();
 
         for (const { hash, mockData, rawByteLength } of items) {
           const size = rawByteLength ?? 0;
@@ -73,6 +77,7 @@ router.get('/', async (req: Request, res: Response) => {
           const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
           recentActivity.push({ filename, modified: ts });
           ranked.push(toRankedResponseStat({ filename, mockData, size }));
+          addReplayModeCount(replayModes, mockData);
 
           if (mockData.request) {
             const endpoint = mockData.request.url || 'unknown';
@@ -112,6 +117,7 @@ router.get('/', async (req: Request, res: Response) => {
           folderBreakdown: [],
           slowestResponses: rankSlowestResponses(leafResponses(ranked)),
           largestResponses: rankLargestResponses(leafResponses(ranked)),
+          replayModes,
           scenario: currentScenario,
           mockDataPath,
           scenarioPath: `redis://${config.keyPrefix || 'mockifyer:v1'}:index:${currentScenario}`,
@@ -143,6 +149,7 @@ router.get('/', async (req: Request, res: Response) => {
     const folderCounts: Record<string, number> = {};
     const recentActivity: Array<{ filename: string; modified: Date }> = [];
     const ranked: RankedResponseStat[] = [];
+    const replayModes = emptyReplayModeBreakdown();
 
     filePaths.forEach((filePath) => {
       const relativeName = path.relative(scenarioPath, filePath).split(path.sep).join('/');
@@ -164,6 +171,7 @@ router.get('/', async (req: Request, res: Response) => {
         ranked.push(
           toRankedResponseStat({ filename: relativeName, mockData, size: stats.size })
         );
+        addReplayModeCount(replayModes, mockData);
         
         if (mockData.request) {
           // Count endpoints
@@ -223,6 +231,7 @@ router.get('/', async (req: Request, res: Response) => {
       folderBreakdown,
       slowestResponses: rankSlowestResponses(leafResponses(ranked)),
       largestResponses: rankLargestResponses(leafResponses(ranked)),
+      replayModes,
       scenario: currentScenario,
       mockDataPath: mockDataPath,
       scenarioPath: scenarioPath

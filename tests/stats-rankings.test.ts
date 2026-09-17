@@ -1,9 +1,11 @@
 import {
   annotateLeafHops,
+  countReplayModes,
   leafResponses,
   rankLargestResponses,
   rankSlowestResponses,
   readMockDurationMs,
+  statsTrafficMode,
   toRankedResponseStat,
 } from '../packages/mockifyer-dashboard/src/utils/stats-rankings';
 import type { MockData } from '@sgedda/mockifyer-core';
@@ -16,6 +18,10 @@ function mock(partial: {
   operationName?: string;
   requestId?: string;
   parentRequestId?: string;
+  alwaysUseRealApi?: boolean;
+  responsePending?: boolean;
+  alwaysRefreshFromLive?: boolean;
+  refreshOnNextRequest?: boolean;
 }): MockData {
   return {
     request: {
@@ -29,6 +35,10 @@ function mock(partial: {
     duration: partial.duration,
     requestId: partial.requestId,
     parentRequestId: partial.parentRequestId,
+    alwaysUseRealApi: partial.alwaysUseRealApi,
+    responsePending: partial.responsePending,
+    alwaysRefreshFromLive: partial.alwaysRefreshFromLive,
+    refreshOnNextRequest: partial.refreshOnNextRequest,
     ...(partial.responseTime != null ? { responseTime: partial.responseTime } : {}),
   } as MockData;
 }
@@ -108,5 +118,31 @@ describe('stats rankings', () => {
       'leaf-big.json',
       'leaf-slow.json',
     ]);
+  });
+
+  it('counts replay modes with pending winning over live flags', () => {
+    expect(statsTrafficMode(mock({}))).toBe('replay');
+    expect(statsTrafficMode(mock({ alwaysUseRealApi: true }))).toBe('live');
+    expect(statsTrafficMode(mock({ responsePending: true }))).toBe('pending');
+    expect(statsTrafficMode(mock({ alwaysRefreshFromLive: true }))).toBe('refresh');
+    expect(statsTrafficMode(mock({ refreshOnNextRequest: true }))).toBe('refresh');
+    expect(statsTrafficMode(mock({ alwaysUseRealApi: true, responsePending: true }))).toBe(
+      'pending'
+    );
+
+    expect(
+      countReplayModes([
+        mock({}),
+        mock({ alwaysUseRealApi: true }),
+        mock({ responsePending: true }),
+        mock({ alwaysRefreshFromLive: true }),
+        mock({ refreshOnNextRequest: true }),
+      ])
+    ).toEqual({
+      replay: 1,
+      live: 1,
+      pending: 1,
+      refresh: 2,
+    });
   });
 });

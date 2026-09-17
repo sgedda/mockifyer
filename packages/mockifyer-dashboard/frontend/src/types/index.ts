@@ -191,6 +191,13 @@ export interface RankedResponseStat {
   isLeaf?: boolean
 }
 
+export interface ReplayModeBreakdown {
+  replay: number
+  refresh: number
+  pending: number
+  live: number
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -205,6 +212,8 @@ export interface Stats {
   slowestResponses?: RankedResponseStat[]
   /** Largest mock recordings by stored size. */
   largestResponses?: RankedResponseStat[]
+  /** Counts by hop traffic badge: Replay, Refresh, Pending, Live. */
+  replayModes?: ReplayModeBreakdown
   scenario: string
   mockDataPath?: string
   scenarioPath?: string

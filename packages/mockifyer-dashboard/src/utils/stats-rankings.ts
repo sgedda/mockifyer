@@ -1,4 +1,42 @@
-import type { MockData } from '@sgedda/mockifyer-core';
+import { resolveMockReplayMode, type MockData } from '@sgedda/mockifyer-core';
+
+/** Same four buckets as hop Replay / Live / Pending / Refresh badges. */
+export type StatsTrafficMode = 'replay' | 'refresh' | 'pending' | 'live';
+
+export interface ReplayModeBreakdown {
+  replay: number;
+  refresh: number;
+  pending: number;
+  live: number;
+}
+
+export function emptyReplayModeBreakdown(): ReplayModeBreakdown {
+  return { replay: 0, refresh: 0, pending: 0, live: 0 };
+}
+
+/**
+ * Pending stubs are counted separately from Live even though both hit upstream.
+ * Matches dashboard hop badges (`getMockHopTrafficMode`).
+ */
+export function statsTrafficMode(mockData: MockData): StatsTrafficMode {
+  if (mockData.responsePending === true) return 'pending';
+  const mode = resolveMockReplayMode(mockData);
+  if (mode === 'stored') return 'replay';
+  if (mode === 'always-refresh' || mode === 'refresh-next') return 'refresh';
+  return 'live';
+}
+
+export function countReplayModes(items: MockData[]): ReplayModeBreakdown {
+  const counts = emptyReplayModeBreakdown();
+  for (const item of items) {
+    counts[statsTrafficMode(item)] += 1;
+  }
+  return counts;
+}
+
+export function addReplayModeCount(counts: ReplayModeBreakdown, mockData: MockData): void {
+  counts[statsTrafficMode(mockData)] += 1;
+}
 
 export const STATS_TOP_RESPONSES = 10;
 
