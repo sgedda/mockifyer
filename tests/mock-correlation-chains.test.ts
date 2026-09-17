@@ -420,6 +420,91 @@ describe('unique mock chain forest', () => {
       '  GET /v-2/myaccount/bookings/:id',
     ])
   })
+
+  it('heals orphans that still point at a rewritten GraphQL request id', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'g-new',
+      graphqlInfo: { query: 'query myAccountDeferredBookings { myAccount { id } }', variables: null },
+      modified: '2026-09-17T15:00:00.000Z',
+    })
+    const myaccount = mock({
+      filename: 'myaccount.json',
+      endpoint: 'https://node-capi-member-api-ats.azurewebsites.net/v-2/myaccount/',
+      requestId: 'acct',
+      parentRequestId: 'g-old',
+      modified: '2026-09-17T15:00:01.000Z',
+    })
+    const independent = mock({
+      filename: 'independent.json',
+      method: 'POST',
+      endpoint: 'https://independentws-ver3.acctest.int/IndependentService.asmx',
+      requestId: 'ind',
+      parentRequestId: 'acct',
+      modified: '2026-09-17T15:00:02.000Z',
+    })
+    const bookingRepo: MockFile[] = []
+    for (let i = 0; i < 8; i += 1) {
+      bookingRepo.push(
+        mock({
+          filename: `booking-repo-${i}.json`,
+          endpoint: `https://bwoty-bookingrepositoryapi-acctst.azurewebsites.net/api/booking/11111111-1111-1111-1111-11111111111${i}`,
+          requestId: `repo-${i}`,
+          parentRequestId: 'g-old',
+          modified: new Date(Date.parse('2026-09-17T15:00:03.000Z') + i * 100).toISOString(),
+        })
+      )
+    }
+    const bookingHub: MockFile[] = []
+    for (let i = 0; i < 8; i += 1) {
+      bookingHub.push(
+        mock({
+          filename: `booking-hub-${i}.json`,
+          endpoint: `https://bwoty-bookinghubapi-acctst.azurewebsites.net/api/booking/22222222-2222-2222-2222-22222222222${i}`,
+          requestId: `hub-${i}`,
+          parentRequestId: 'g-old',
+          modified: new Date(Date.parse('2026-09-17T15:00:04.000Z') + i * 100).toISOString(),
+        })
+      )
+    }
+    const tokens: MockFile[] = []
+    for (let i = 0; i < 8; i += 1) {
+      tokens.push(
+        mock({
+          filename: `token-${i}.json`,
+          method: 'POST',
+          endpoint: 'https://nltg-crm-token-fn-acctest.azurewebsites.net/api/token',
+          requestId: `tok-${i}`,
+          parentRequestId: 'g-old',
+          modified: new Date(Date.parse('2026-09-17T15:00:05.000Z') + i * 100).toISOString(),
+        })
+      )
+    }
+
+    const chains = buildMockServiceChainsForDisplay([
+      graphql,
+      myaccount,
+      independent,
+      ...bookingRepo,
+      ...bookingHub,
+      ...tokens,
+    ])
+    expect(chains).toHaveLength(1)
+    expect(chains[0].hops[0].filename).toBe('graphql.json')
+    expect(chains[0].hops.some((hop) => hop.filename === 'myaccount.json')).toBe(true)
+    expect(chains[0].hops.some((hop) => hop.filename.startsWith('booking-repo-'))).toBe(true)
+
+    const forest = buildUniqueMockChainForest(chains[0].hops)
+    expect(forestOutline(forest)).toEqual([
+      'POST /graphql',
+      '  GET /v-2/myaccount/',
+      '    POST /IndependentService.asmx',
+      '  GET /api/booking/:id×16',
+      '  POST /api/token×8',
+    ])
+  })
 })
 
 describe('getMockHopTrafficMode', () => {
