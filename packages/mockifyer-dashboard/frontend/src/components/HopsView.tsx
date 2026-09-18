@@ -113,7 +113,6 @@ export default function HopsView({ scenario }: HopsViewProps) {
         chains={visibleChains}
         loading={loading}
         searchQuery={searchQuery}
-        scenario={scenario}
         hasOrphanParentIds={hasOrphanParentIds}
         onSelectHop={(mock) => {
           navigate(

@@ -77,6 +77,35 @@ export function readGraphqlOperationName(mockData: MockData): string | null {
   return typeof name === 'string' && name.trim() ? name.trim() : null;
 }
 
+export interface RecentActivityStat {
+  filename: string;
+  modified: string;
+  method: string;
+  endpoint: string;
+  operationName?: string | null;
+}
+
+export function toRecentActivityStat(params: {
+  filename: string;
+  mockData: MockData;
+  modified: Date;
+}): RecentActivityStat {
+  const ranked = toRankedResponseStat({ filename: params.filename, mockData: params.mockData, size: 0 });
+  return {
+    filename: ranked.filename,
+    modified: params.modified.toISOString(),
+    method: ranked.method,
+    endpoint: ranked.endpoint,
+    operationName: ranked.operationName,
+  };
+}
+
+export function rankRecentActivity(items: RecentActivityStat[], limit = STATS_TOP_RESPONSES): RecentActivityStat[] {
+  return [...items]
+    .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
+    .slice(0, limit);
+}
+
 export function toRankedResponseStat(params: {
   filename: string;
   mockData: MockData;

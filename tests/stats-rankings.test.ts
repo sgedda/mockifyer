@@ -3,10 +3,12 @@ import {
   countReplayModes,
   leafResponses,
   rankLargestResponses,
+  rankRecentActivity,
   rankSlowestResponses,
   readMockDurationMs,
   statsTrafficMode,
   toRankedResponseStat,
+  toRecentActivityStat,
 } from '../packages/mockifyer-dashboard/src/utils/stats-rankings';
 import type { MockData } from '@sgedda/mockifyer-core';
 
@@ -144,5 +146,28 @@ describe('stats rankings', () => {
       pending: 1,
       refresh: 2,
     });
+  });
+
+  it('summarizes recent activity by method and GraphQL operation, not file id', () => {
+    const newer = toRecentActivityStat({
+      filename: 'redis/abc.json',
+      mockData: mock({ operationName: 'MyAccount', url: 'http://localhost:4000/graphql' }),
+      modified: new Date('2026-09-14T18:00:00.000Z'),
+    });
+    const older = toRecentActivityStat({
+      filename: 'redis/def.json',
+      mockData: mock({ method: 'GET', url: 'https://api.example.com/v-2/myaccount/' }),
+      modified: new Date('2026-09-14T12:00:00.000Z'),
+    });
+
+    expect(newer.method).toBe('POST');
+    expect(newer.operationName).toBe('MyAccount');
+    expect(newer.filename).toBe('redis/abc.json');
+
+    const ranked = rankRecentActivity([older, newer], 2);
+    expect(ranked.map((row) => row.operationName ?? row.endpoint)).toEqual([
+      'MyAccount',
+      'https://api.example.com/v-2/myaccount/',
+    ]);
   });
 });

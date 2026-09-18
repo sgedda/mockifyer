@@ -13,9 +13,12 @@ import {
   emptyReplayModeBreakdown,
   leafResponses,
   rankLargestResponses,
+  rankRecentActivity,
   rankSlowestResponses,
   toRankedResponseStat,
+  toRecentActivityStat,
   type RankedResponseStat,
+  type RecentActivityStat,
 } from '../utils/stats-rankings';
 
 const router = express.Router();
@@ -32,7 +35,7 @@ function emptyStats(params: {
     domains: {} as Record<string, number>,
     methods: {} as Record<string, number>,
     statusCodes: {} as Record<string, number>,
-    recentActivity: [] as Array<{ filename: string; modified: string }>,
+    recentActivity: [] as RecentActivityStat[],
     folderBreakdown: [] as Array<{ folder: string; count: number }>,
     slowestResponses: [] as RankedResponseStat[],
     largestResponses: [] as RankedResponseStat[],
@@ -66,7 +69,7 @@ router.get('/', async (req: Request, res: Response) => {
         const domains: Record<string, number> = {};
         const methods: Record<string, number> = {};
         const statusCodes: Record<string, number> = {};
-        const recentActivity: Array<{ filename: string; modified: Date }> = [];
+        const recentActivity: RecentActivityStat[] = [];
         const ranked: RankedResponseStat[] = [];
         const replayModes = emptyReplayModeBreakdown();
 
@@ -75,7 +78,7 @@ router.get('/', async (req: Request, res: Response) => {
           totalSize += size;
           const filename = `redis/${hash}.json`;
           const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
-          recentActivity.push({ filename, modified: ts });
+          recentActivity.push(toRecentActivityStat({ filename, mockData, modified: ts }));
           ranked.push(toRankedResponseStat({ filename, mockData, size }));
           addReplayModeCount(replayModes, mockData);
 
@@ -97,7 +100,6 @@ router.get('/', async (req: Request, res: Response) => {
           }
         }
 
-        recentActivity.sort((a, b) => b.modified.getTime() - a.modified.getTime());
         const topEndpoints = Object.entries(endpoints)
           .sort(([, a], [, b]) => b - a)
           .slice(0, 10)
@@ -110,10 +112,7 @@ router.get('/', async (req: Request, res: Response) => {
           domains,
           methods,
           statusCodes,
-          recentActivity: recentActivity.slice(0, 10).map((item) => ({
-            filename: item.filename,
-            modified: item.modified.toISOString(),
-          })),
+          recentActivity: rankRecentActivity(recentActivity),
           folderBreakdown: [],
           slowestResponses: rankSlowestResponses(leafResponses(ranked)),
           largestResponses: rankLargestResponses(leafResponses(ranked)),
@@ -147,7 +146,7 @@ router.get('/', async (req: Request, res: Response) => {
     const methods: Record<string, number> = {};
     const statusCodes: Record<string, number> = {};
     const folderCounts: Record<string, number> = {};
-    const recentActivity: Array<{ filename: string; modified: Date }> = [];
+    const recentActivity: RecentActivityStat[] = [];
     const ranked: RankedResponseStat[] = [];
     const replayModes = emptyReplayModeBreakdown();
 
@@ -160,11 +159,6 @@ router.get('/', async (req: Request, res: Response) => {
       const stats = fs.statSync(filePath);
       totalSize += stats.size;
 
-      recentActivity.push({
-        filename: relativeName,
-        modified: stats.mtime
-      });
-
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const { mockData } = parseMockJsonForCatalog(raw);
@@ -172,6 +166,10 @@ router.get('/', async (req: Request, res: Response) => {
           toRankedResponseStat({ filename: relativeName, mockData, size: stats.size })
         );
         addReplayModeCount(replayModes, mockData);
+        const modified = mockData.timestamp ? new Date(mockData.timestamp) : stats.mtime;
+        recentActivity.push(
+          toRecentActivityStat({ filename: relativeName, mockData, modified })
+        );
         
         if (mockData.request) {
           // Count endpoints
@@ -201,9 +199,6 @@ router.get('/', async (req: Request, res: Response) => {
       }
     });
 
-    // Sort recent activity by modified date
-    recentActivity.sort((a, b) => b.modified.getTime() - a.modified.getTime());
-    
     // Get top endpoints
     const topEndpoints = Object.entries(endpoints)
       .sort(([, a], [, b]) => b - a)
@@ -224,10 +219,7 @@ router.get('/', async (req: Request, res: Response) => {
       domains,
       methods,
       statusCodes,
-      recentActivity: recentActivity.slice(0, 10).map(item => ({
-        filename: item.filename,
-        modified: item.modified.toISOString()
-      })),
+      recentActivity: rankRecentActivity(recentActivity),
       folderBreakdown,
       slowestResponses: rankSlowestResponses(leafResponses(ranked)),
       largestResponses: rankLargestResponses(leafResponses(ranked)),

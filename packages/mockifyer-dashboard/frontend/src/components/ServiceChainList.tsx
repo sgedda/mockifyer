@@ -1,12 +1,11 @@
-import { Link } from 'react-router-dom'
 import { GitFork } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import { hopsPath } from '@/lib/dashboard-urls'
-import type { MockServiceChain } from '@/lib/mock-correlation-chains'
+import { formatMockHopLabel, type MockServiceChain } from '@/lib/mock-correlation-chains'
+import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import type { MockFile } from '@/types'
-
-const STATS_PREVIEW_LIMIT = 6
+import { Link } from 'react-router-dom'
 
 export function hopsSummaryLabel(chainCount: number, hopCount: number): string {
   const chains = `${chainCount} multi-hop${chainCount === 1 ? '' : 's'}`
@@ -46,15 +45,64 @@ export function HopsNavCard({
   )
 }
 
+function chainEntryLabel(chain: MockServiceChain): string {
+  const root = chain.hops[0]
+  return root ? formatMockHopLabel(root) : chain.id
+}
+
+/** Compact read-only chain list for Statistics (no expand / click-through). */
+export function ServiceHopSummaryCard({
+  chains,
+  loading = false,
+}: {
+  chains: MockServiceChain[]
+  loading?: boolean
+}) {
+  const hopCount = countServiceChainHops(chains)
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GitFork className="h-4 w-4 text-primary" />
+          Service hops
+        </CardTitle>
+        <p className="text-xs text-muted-foreground font-normal">
+          {loading && chains.length === 0
+            ? 'Loading chains…'
+            : hopsSummaryLabel(chains.length, hopCount)}
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading && chains.length === 0 ? (
+          <div className="text-sm text-muted-foreground">Loading hops...</div>
+        ) : chains.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No linked service chains in this scenario yet.</div>
+        ) : (
+          <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
+            {chains.map((chain) => (
+              <div key={chain.id} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
+                <span className="font-mono text-xs truncate" title={chainEntryLabel(chain)}>
+                  {chainEntryLabel(chain)}
+                </span>
+                <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
+                  {chain.hops.length} hop{chain.hops.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 interface ServiceChainListProps {
   chains: MockServiceChain[]
   onSelectHop: (mock: MockFile) => void
   selectedFilename?: string | null
   loading?: boolean
   searchQuery?: string
-  scenario?: string
-  /** When set, only the newest N chains are shown (statistics preview). */
-  limit?: number
   hasOrphanParentIds?: boolean
 }
 
@@ -64,13 +112,8 @@ export function ServiceChainList({
   selectedFilename = null,
   loading = false,
   searchQuery = '',
-  scenario,
-  limit,
   hasOrphanParentIds = false,
 }: ServiceChainListProps) {
-  const previewLimit = limit ?? STATS_PREVIEW_LIMIT
-  const isPreview = limit != null
-  const shown = isPreview ? chains.slice(0, previewLimit) : chains
   const q = searchQuery.trim()
 
   if (loading && chains.length === 0) {
@@ -125,7 +168,7 @@ export function ServiceChainList({
         Each card is one user request across services. Nested hops start collapsed under the caller;
         expand a hop to see the next level.
       </p>
-      {shown.map((chain) => (
+      {chains.map((chain) => (
         <MockServiceChainCard
           key={chain.id}
           chain={chain}
@@ -133,14 +176,6 @@ export function ServiceChainList({
           onSelectHop={onSelectHop}
         />
       ))}
-      {isPreview && chains.length > previewLimit && (
-        <p className="text-xs text-muted-foreground">
-          Showing {previewLimit} newest chains.{' '}
-          <Link to={hopsPath({ scenario })} className="text-primary hover:underline">
-            Open Hops for the full list →
-          </Link>
-        </p>
-      )}
     </div>
   )
 }

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { DASHBOARD_Q, hopsPath, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
+import { useNavigate } from 'react-router-dom'
+import { DASHBOARD_Q, mocksListPath } from '@/lib/dashboard-urls'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { ServiceChainList } from '@/components/ServiceChainList'
+import { ServiceHopSummaryCard } from '@/components/ServiceChainList'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import { countServiceChainHops, useMockServiceChains } from '@/lib/use-mock-service-chains'
-import type { RankedResponseStat, ReplayModeBreakdown, Stats } from '@/types'
+import type { ReplayModeBreakdown, Stats } from '@/types'
 import {
   BarChart3,
   FileText,
@@ -81,11 +81,9 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [switching, setSwitching] = useState(false)
   const { toast } = useToast()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const {
     chains: hopChains,
     loading: hopsLoading,
-    hasOrphanParentIds,
   } = useMockServiceChains(scenario)
   const hopCount = countServiceChainHops(hopChains)
 
@@ -94,15 +92,6 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
       mocksListPath({
         scenario,
         [DASHBOARD_Q.q]: endpoint,
-      })
-    )
-  }
-
-  function handleRecentFileClick(filename: string) {
-    navigate(
-      mockEditorPath(filename, {
-        scenario,
-        q: searchParams.get(DASHBOARD_Q.q) ?? undefined,
       })
     )
   }
@@ -183,9 +172,18 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     return `${(ms / 1000).toFixed(1)} s`
   }
 
-  function rankedResponseLabel(item: RankedResponseStat): string {
+  function rankedResponseLabel(item: {
+    method: string
+    endpoint: string
+    operationName?: string | null
+  }): string {
     if (item.operationName) return `${item.method} ${item.operationName}`
-    return `${item.method} ${item.endpoint}`
+    try {
+      const url = new URL(item.endpoint)
+      return `${item.method} ${url.pathname || '/'}`
+    } catch {
+      return `${item.method} ${item.endpoint}`
+    }
   }
 
   if (loading || !stats) {
@@ -251,11 +249,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
           </CardContent>
         </Card>
 
-        <Card
-          className="cursor-pointer hover:bg-accent/50 transition-colors"
-          onClick={() => navigate(hopsPath({ scenario }))}
-          title="Open hops"
-        >
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Service hops</CardTitle>
             <GitFork className="h-4 w-4 text-muted-foreground" />
@@ -313,31 +307,9 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
         </Card>
       </div>
 
-      {(hopsLoading || hopChains.length > 0 || hasOrphanParentIds) && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">Service hops</h2>
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto p-0"
-              onClick={() => navigate(hopsPath({ scenario }))}
-            >
-              View all →
-            </Button>
-          </div>
-          <ServiceChainList
-            chains={hopChains}
-            loading={hopsLoading}
-            scenario={scenario}
-            limit={6}
-            hasOrphanParentIds={hasOrphanParentIds}
-            onSelectHop={(mock) => handleRecentFileClick(mock.filename)}
-          />
-        </div>
-      )}
-
       <div className="grid gap-4 md:grid-cols-2">
+        <ServiceHopSummaryCard chains={hopChains} loading={hopsLoading} />
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -385,35 +357,14 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
               {(stats.slowestResponses ?? []).length > 0 ? (
                 (stats.slowestResponses ?? []).map((item) => (
-                  <div
-                    key={item.filename}
-                    className="flex items-center justify-between gap-2 text-sm group rounded-md px-2 py-1.5 -mx-2 border border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/15 transition-colors cursor-pointer"
-                    onClick={() => handleRecentFileClick(item.filename)}
-                    title="Open this hop"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] shrink-0 border-amber-400/50 text-amber-100"
-                        >
-                          leaf
-                        </Badge>
-                        <span className="font-mono text-xs truncate group-hover:text-primary">
-                          {rankedResponseLabel(item)}
-                        </span>
-                      </div>
-                      <CopyableText
-                        value={item.endpoint}
-                        copyLabel="Copy endpoint URL"
-                        className="mt-0.5"
-                        textClassName="font-mono text-[11px] text-muted-foreground"
-                      />
-                    </div>
-                    <span className="text-foreground font-medium shrink-0 tabular-nums">
+                  <div key={item.filename} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
+                    <span className="font-mono text-xs truncate" title={item.endpoint}>
+                      {rankedResponseLabel(item)}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
                       {item.durationMs != null ? formatDurationMs(item.durationMs) : '—'}
                     </span>
                   </div>
@@ -436,35 +387,14 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
               {(stats.largestResponses ?? []).length > 0 ? (
                 (stats.largestResponses ?? []).map((item) => (
-                  <div
-                    key={item.filename}
-                    className="flex items-center justify-between gap-2 text-sm group rounded-md px-2 py-1.5 -mx-2 border border-amber-400/40 bg-amber-500/10 hover:bg-amber-500/15 transition-colors cursor-pointer"
-                    onClick={() => handleRecentFileClick(item.filename)}
-                    title="Open this hop"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] shrink-0 border-amber-400/50 text-amber-100"
-                        >
-                          leaf
-                        </Badge>
-                        <span className="font-mono text-xs truncate group-hover:text-primary">
-                          {rankedResponseLabel(item)}
-                        </span>
-                      </div>
-                      <CopyableText
-                        value={item.endpoint}
-                        copyLabel="Copy endpoint URL"
-                        className="mt-0.5"
-                        textClassName="font-mono text-[11px] text-muted-foreground"
-                      />
-                    </div>
-                    <span className="text-foreground font-medium shrink-0 tabular-nums">
+                  <div key={item.filename} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
+                    <span className="font-mono text-xs truncate" title={item.endpoint}>
+                      {rankedResponseLabel(item)}
+                    </span>
+                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
                       {formatFileSize(item.size)}
                     </span>
                   </div>
@@ -598,19 +528,14 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
               {stats.recentActivity.length > 0 ? (
-                stats.recentActivity.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between text-sm group hover:bg-accent/50 rounded-md px-2 py-1 -mx-2 -my-1 transition-colors cursor-pointer"
-                    onClick={() => handleRecentFileClick(item.filename)}
-                    title="Open mocks list filtered to this file"
-                  >
-                    <span className="font-mono text-xs truncate flex-1 group-hover:text-primary">
-                      {item.filename}
+                stats.recentActivity.map((item) => (
+                  <div key={`${item.filename}-${item.modified}`} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
+                    <span className="font-mono text-xs truncate" title={item.endpoint}>
+                      {rankedResponseLabel(item)}
                     </span>
-                    <span className="text-muted-foreground ml-4 text-xs shrink-0">
+                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
                       {new Date(item.modified).toLocaleDateString()}
                     </span>
                   </div>

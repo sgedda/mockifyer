@@ -198,6 +198,14 @@ export interface ReplayModeBreakdown {
   live: number
 }
 
+export interface RecentActivityStat {
+  filename: string
+  modified: string
+  method: string
+  endpoint: string
+  operationName?: string | null
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -205,7 +213,7 @@ export interface Stats {
   domains: Record<string, number>
   methods: Record<string, number>
   statusCodes: Record<string, number>
-  recentActivity: Array<{ filename: string; modified: string }>
+  recentActivity: RecentActivityStat[]
   /** Files per subdirectory (matches mock folder layout under the scenario). */
   folderBreakdown?: Array<{ folder: string; count: number }>
   /** Slowest recorded round-trips (when duration was stored). */
