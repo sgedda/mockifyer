@@ -1,11 +1,12 @@
+import { Link } from 'react-router-dom'
 import { GitFork } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MockServiceChainCard } from '@/components/MockServiceChainCard'
-import { hopsPath } from '@/lib/dashboard-urls'
-import { formatMockHopLabel, type MockServiceChain } from '@/lib/mock-correlation-chains'
+import { hopsFocusPath, hopsPath } from '@/lib/dashboard-urls'
+import { ColoredChainPathLabel } from '@/components/ColoredHopLabel'
+import { formatChainFirstLastLabel, type MockServiceChain } from '@/lib/mock-correlation-chains'
 import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import type { MockFile } from '@/types'
-import { Link } from 'react-router-dom'
 
 export function hopsSummaryLabel(chainCount: number, hopCount: number): string {
   const chains = `${chainCount} multi-hop${chainCount === 1 ? '' : 's'}`
@@ -45,18 +46,15 @@ export function HopsNavCard({
   )
 }
 
-function chainEntryLabel(chain: MockServiceChain): string {
-  const root = chain.hops[0]
-  return root ? formatMockHopLabel(root) : chain.id
-}
-
-/** Compact read-only chain list for Statistics (no expand / click-through). */
+/** Compact chain list for Statistics; rows open Hops focused on that chain. */
 export function ServiceHopSummaryCard({
   chains,
   loading = false,
+  scenario,
 }: {
   chains: MockServiceChain[]
   loading?: boolean
+  scenario?: string
 }) {
   const hopCount = countServiceChainHops(chains)
 
@@ -79,17 +77,34 @@ export function ServiceHopSummaryCard({
         ) : chains.length === 0 ? (
           <div className="text-sm text-muted-foreground">No linked service chains in this scenario yet.</div>
         ) : (
-          <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
-            {chains.map((chain) => (
-              <div key={chain.id} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
-                <span className="font-mono text-xs truncate" title={chainEntryLabel(chain)}>
-                  {chainEntryLabel(chain)}
-                </span>
-                <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
-                  {chain.hops.length} hop{chain.hops.length === 1 ? '' : 's'}
-                </span>
-              </div>
-            ))}
+          <div className="space-y-0.5">
+            {chains.map((chain) => {
+              const focusFile = chain.hops[chain.hops.length - 1]?.filename ?? chain.hops[0]?.filename
+              const label = formatChainFirstLastLabel(chain)
+              if (!focusFile) {
+                return (
+                  <div key={chain.id} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
+                    <span className="font-mono text-xs truncate" title={label}>
+                      <ColoredChainPathLabel chain={chain} />
+                    </span>
+                  </div>
+                )
+              }
+              return (
+                <Link
+                  key={chain.id}
+                  to={hopsFocusPath({ scenario, filename: focusFile })}
+                  className="flex items-center justify-between gap-2 px-2 py-1 -mx-2 rounded-md hover:bg-accent/50"
+                >
+                  <span className="font-mono text-xs truncate" title={label}>
+                    <ColoredChainPathLabel chain={chain} />
+                  </span>
+                  <span className="text-zinc-500 shrink-0 tabular-nums text-xs">
+                    {chain.hops.length} hop{chain.hops.length === 1 ? '' : 's'}
+                  </span>
+                </Link>
+              )
+            })}
           </div>
         )}
       </CardContent>
@@ -168,14 +183,23 @@ export function ServiceChainList({
         Each card is one user request across services. Nested hops start collapsed under the caller;
         expand a hop to see the next level.
       </p>
-      {chains.map((chain) => (
-        <MockServiceChainCard
-          key={chain.id}
-          chain={chain}
-          selectedFilename={selectedFilename}
-          onSelectHop={onSelectHop}
-        />
-      ))}
+      {chains.map((chain) => {
+        const focused = Boolean(
+          selectedFilename && chain.hops.some((hop) => hop.filename === selectedFilename)
+        )
+        return (
+          <div
+            key={chain.id}
+            ref={focused ? (node) => node?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) : undefined}
+          >
+            <MockServiceChainCard
+              chain={chain}
+              selectedFilename={selectedFilename}
+              onSelectHop={onSelectHop}
+            />
+          </div>
+        )
+      })}
     </div>
   )
 }

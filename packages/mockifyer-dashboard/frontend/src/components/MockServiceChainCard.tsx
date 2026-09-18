@@ -6,8 +6,8 @@ import {
   buildUniqueMockChainForest,
   chainHasRequestCorrelation,
   describeHopParentLink,
-  formatMockHopLabel,
   formatMockHopSubtitle,
+  hopPathLabelSourceFromMock,
   formatShortCorrelationId,
   getChainRootRequestId,
   getMockHopTrafficMode,
@@ -16,6 +16,7 @@ import {
   type MockServiceChain,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
+import { ColoredHopLabel } from '@/components/ColoredHopLabel'
 import { ChainTreeToggle, CollapsibleChainTree, MockChainGroupedHopList } from '@/components/MockChainTree'
 
 function nodeHasReplay(node: MockUniqueChainNode): boolean {
@@ -159,7 +160,9 @@ export function MockServiceChainCard({
                   }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-foreground">{formatMockHopLabel(hop)}</span>
+                    <span className="font-mono text-sm">
+                      <ColoredHopLabel source={hopPathLabelSourceFromMock(hop)} />
+                    </span>
                     {node.callCount > 1 && (
                       <Badge
                         variant="outline"

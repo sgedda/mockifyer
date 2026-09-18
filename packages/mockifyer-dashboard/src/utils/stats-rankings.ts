@@ -38,6 +38,34 @@ export function addReplayModeCount(counts: ReplayModeBreakdown, mockData: MockDa
   counts[statsTrafficMode(mockData)] += 1;
 }
 
+export function readEndpointHostname(endpoint: string | null | undefined): string | null {
+  if (!endpoint?.trim()) return null;
+  try {
+    const hostname = new URL(endpoint).hostname.trim();
+    return hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+export function matchesStatsDomain(
+  endpoint: string | null | undefined,
+  domain: string | null | undefined
+): boolean {
+  const wanted = domain?.trim();
+  if (!wanted) return true;
+  return readEndpointHostname(endpoint) === wanted;
+}
+
+export function filterByStatsDomain<T extends { endpoint: string }>(
+  items: T[],
+  domain: string | null | undefined
+): T[] {
+  const wanted = domain?.trim();
+  if (!wanted) return items;
+  return items.filter((item) => matchesStatsDomain(item.endpoint, wanted));
+}
+
 export const STATS_TOP_RESPONSES = 10;
 
 export interface RankedResponseStat {
@@ -51,6 +79,8 @@ export interface RankedResponseStat {
   parentRequestId?: string | null;
   /** True when no other recording lists this hop as its parent (lowest-level call). */
   isLeaf?: boolean;
+  /** Same buckets as hop Replay / Live / Pending / Refresh badges. */
+  trafficMode?: StatsTrafficMode;
 }
 
 function isPositiveNumber(value: unknown): value is number {
@@ -113,7 +143,7 @@ export function toRankedResponseStat(params: {
 }): RankedResponseStat {
   const { filename, mockData, size } = params;
   const method = String(mockData.request?.method || 'GET').toUpperCase();
-  const endpoint = mockData.request?.url || filename;
+  const endpoint = mockData.request?.url || '';
   return {
     filename,
     endpoint,
@@ -123,6 +153,7 @@ export function toRankedResponseStat(params: {
     size,
     requestId: trimId(mockData.requestId),
     parentRequestId: trimId(mockData.parentRequestId),
+    trafficMode: statsTrafficMode(mockData),
   };
 }
 

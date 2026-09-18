@@ -533,10 +533,12 @@ export async function duplicateMock(filename: string, scenario?: string): Promis
   return response.json()
 }
 
-export async function getStats(scenario?: string): Promise<Stats> {
-  const url = scenario
-    ? `${API_BASE}/stats?scenario=${encodeURIComponent(scenario)}`
-    : `${API_BASE}/stats`
+export async function getStats(scenario?: string, domain?: string): Promise<Stats> {
+  const params = new URLSearchParams()
+  if (scenario) params.set('scenario', scenario)
+  if (domain) params.set('domain', domain)
+  const query = params.toString()
+  const url = query ? `${API_BASE}/stats?${query}` : `${API_BASE}/stats`
   const response = await fetchApi(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch stats')
   return response.json()

@@ -23,6 +23,7 @@ export default function HopsView({ scenario }: HopsViewProps) {
   const { toast } = useToast()
   const { searchParams, patch } = useLocationQuery()
   const searchQuery = searchParams.get(DASHBOARD_Q.q) ?? ''
+  const focusedHop = searchParams.get(DASHBOARD_Q.hop)
   const [searchDraft, setSearchDraft] = useState(searchQuery)
   const { mocks, chains, loading, error, reload, hasOrphanParentIds } = useMockServiceChains(scenario)
 
@@ -113,6 +114,7 @@ export default function HopsView({ scenario }: HopsViewProps) {
         chains={visibleChains}
         loading={loading}
         searchQuery={searchQuery}
+        selectedFilename={focusedHop}
         hasOrphanParentIds={hasOrphanParentIds}
         onSelectHop={(mock) => {
           navigate(

@@ -25,6 +25,7 @@ export function filterChainsBySearch(
           mock.filename.toLowerCase().includes(q) ||
           (mock.endpoint ?? '').toLowerCase().includes(q) ||
           (mock.method ?? '').toLowerCase().includes(q) ||
+          (mock.graphqlInfo?.operationName ?? '').toLowerCase().includes(q) ||
           (mock.requestId ?? '').toLowerCase().includes(q) ||
           (mock.parentRequestId ?? '').toLowerCase().includes(q)
         )

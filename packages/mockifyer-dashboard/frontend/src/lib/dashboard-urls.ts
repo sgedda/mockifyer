@@ -22,6 +22,8 @@ export const DASHBOARD_Q = {
   page: 'page',
   node: 'node',
   hop: 'hop',
+  domain: 'domain',
+  traffic: 'traffic',
   session: 'session',
   screen: 'screen',
   entity: 'entity',
@@ -70,6 +72,14 @@ export function mocksListPath(extras?: QueryUpdates): string {
 
 export function hopsPath(extras?: QueryUpdates): string {
   return `/hops${buildSearch(extras ?? {})}`
+}
+
+/** Open Hops focused on one recording (chain is highlighted, not filtered away). */
+export function hopsFocusPath(params: { scenario?: string; filename: string }): string {
+  return hopsPath({
+    scenario: params.scenario,
+    [DASHBOARD_Q.hop]: params.filename,
+  })
 }
 
 export function mockEditorPath(filename: string, extras?: QueryUpdates): string {

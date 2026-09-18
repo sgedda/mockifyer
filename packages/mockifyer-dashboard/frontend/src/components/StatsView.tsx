@@ -1,13 +1,25 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { DASHBOARD_Q, mocksListPath } from '@/lib/dashboard-urls'
+import { useState, useEffect, useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { DASHBOARD_Q, hopsFocusPath, mockEditorPath, mocksListPath } from '@/lib/dashboard-urls'
+import { useLocationQuery } from '@/lib/use-location-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
 import { ServiceHopSummaryCard } from '@/components/ServiceChainList'
 import { getStats, getScenarioConfig, setScenario } from '@/lib/api'
 import { countServiceChainHops, useMockServiceChains } from '@/lib/use-mock-service-chains'
-import type { ReplayModeBreakdown, Stats } from '@/types'
+import { ColoredHopLabel } from '@/components/ColoredHopLabel'
+import { httpMethodTextClass } from '@/lib/http-method-style'
+import {
+  endpointHostname,
+  formatHopPathLabel,
+  hopPathLabelSourceWithCatalog,
+  indexChainLeafFilenames,
+  isChainLeafHop,
+  isOpaqueMockFilename,
+  type HopPathLabelSource,
+} from '@/lib/mock-correlation-chains'
+import type { RankedResponseStat, ReplayModeBreakdown, Stats } from '@/types'
 import {
   BarChart3,
   FileText,
@@ -17,6 +29,7 @@ import {
   ExternalLink,
   Folder,
   GitFork,
+  Globe,
   Clock,
   HardDrive,
   Radio,
@@ -74,6 +87,80 @@ const REPLAY_MODE_ROWS: Array<{
   },
 ]
 
+function formatStatsDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function statsValueClass(tone: 'size' | 'duration' | 'date' | 'count'): string {
+  switch (tone) {
+    case 'size':
+      return 'text-amber-300/90'
+    case 'duration':
+      return 'text-cyan-300/90'
+    case 'date':
+      return 'text-zinc-500'
+    default:
+      return 'text-zinc-400'
+  }
+}
+
+function StatsHopRow({
+  filename,
+  source,
+  title,
+  value,
+  valueTone = 'count',
+  scenario,
+  isMockReplay = false,
+}: {
+  filename: string
+  source: HopPathLabelSource
+  title?: string
+  value: string
+  valueTone?: 'size' | 'duration' | 'date' | 'count'
+  scenario: string
+  isMockReplay?: boolean
+}) {
+  const label = formatHopPathLabel(source)
+  return (
+    <div className="flex items-center justify-between gap-2 px-2 py-1 -mx-2 rounded-md hover:bg-accent/50">
+      <Link
+        to={hopsFocusPath({ scenario, filename })}
+        className="min-w-0 flex-1 font-mono text-xs truncate"
+        title={title && !isOpaqueMockFilename(title) ? title : label}
+      >
+        <ColoredHopLabel source={source} />
+      </Link>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {isMockReplay ? (
+          <Link
+            to={mockEditorPath(filename, { scenario })}
+            title="Stored mock — nested hops may not have been recorded, so this may not be a true leaf"
+          >
+            <Badge variant="outline" className="h-4 px-1 text-[10px] border-sky-500/40 text-sky-100">
+              Mock
+            </Badge>
+          </Link>
+        ) : (
+          <Link
+            to={mockEditorPath(filename, { scenario })}
+            title="Open mock"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <FileText className="h-3 w-3" />
+          </Link>
+        )}
+        <span className={`tabular-nums text-xs ${statsValueClass(valueTone)}`}>{value}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function StatsView({ scenario, onScenarioChange }: StatsViewProps) {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -81,11 +168,40 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
   const [switching, setSwitching] = useState(false)
   const { toast } = useToast()
   const navigate = useNavigate()
+  const { searchParams, patch } = useLocationQuery()
+  const selectedDomain = searchParams.get(DASHBOARD_Q.domain)?.trim() || ''
   const {
+    mocks: hopMocks,
     chains: hopChains,
     loading: hopsLoading,
   } = useMockServiceChains(scenario)
-  const hopCount = countServiceChainHops(hopChains)
+  const mocksByFilename = useMemo(() => {
+    const byFilename = new Map<string, (typeof hopMocks)[number]>()
+    for (const mock of hopMocks) byFilename.set(mock.filename, mock)
+    return byFilename
+  }, [hopMocks])
+
+  function statsHopCopy(item: {
+    filename: string
+    method: string
+    endpoint: string
+    operationName?: string | null
+  }): { source: HopPathLabelSource; title: string } {
+    const catalog = mocksByFilename.get(item.filename)
+    const source = hopPathLabelSourceWithCatalog(item, catalog)
+    const endpoint = [item.endpoint, catalog?.endpoint].find(
+      (value) => value && !isOpaqueMockFilename(value)
+    )
+    return { source, title: endpoint || formatHopPathLabel(source) }
+  }
+  const visibleHopChains = useMemo(() => {
+    if (!selectedDomain) return hopChains
+    return hopChains.filter((chain) =>
+      chain.hops.some((hop) => endpointHostname(hop.endpoint) === selectedDomain)
+    )
+  }, [hopChains, selectedDomain])
+  const hopCount = countServiceChainHops(visibleHopChains)
+  const chainLeaves = useMemo(() => indexChainLeafFilenames(visibleHopChains), [visibleHopChains])
 
   function handleEndpointClick(endpoint: string) {
     navigate(
@@ -114,7 +230,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     loadStats()
     const interval = setInterval(() => loadStats(), 30_000)
     return () => clearInterval(interval)
-  }, [scenario])
+  }, [scenario, selectedDomain])
 
   async function loadScenarios() {
     try {
@@ -151,7 +267,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
 
   async function loadStats(scenarioOverride?: string) {
     try {
-      const data = await getStats(scenarioOverride ?? scenario)
+      const data = await getStats(scenarioOverride ?? scenario, selectedDomain || undefined)
       setStats(data)
     } catch (error) {
       console.error('Failed to load stats:', error)
@@ -172,18 +288,11 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
     return `${(ms / 1000).toFixed(1)} s`
   }
 
-  function rankedResponseLabel(item: {
-    method: string
-    endpoint: string
-    operationName?: string | null
-  }): string {
-    if (item.operationName) return `${item.method} ${item.operationName}`
-    try {
-      const url = new URL(item.endpoint)
-      return `${item.method} ${url.pathname || '/'}`
-    } catch {
-      return `${item.method} ${item.endpoint}`
-    }
+  function visibleLeafHops(items: RankedResponseStat[] | undefined): RankedResponseStat[] {
+    const list = items ?? []
+    if (hopsLoading && visibleHopChains.length === 0) return list
+    const chainLeavesOnly = list.filter((item) => isChainLeafHop(item.filename, chainLeaves))
+    return chainLeavesOnly.length > 0 ? chainLeavesOnly : list
   }
 
   if (loading || !stats) {
@@ -198,18 +307,62 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
 
   const replayModes = stats.replayModes ?? EMPTY_REPLAY_MODES
   const upstreamCount = replayModes.live + replayModes.pending + replayModes.refresh
+  const domainNames = Object.keys(stats.domains).sort((a, b) => a.localeCompare(b))
+  const slowestLeaves = visibleLeafHops(stats.slowestResponses)
+  const largestLeaves = visibleLeafHops(stats.largestResponses)
 
   return (
     <div className="space-y-6">
-      {/* Mock Data Path Display */}
-      {stats.mockDataPath && (
+      {(stats.mockDataPath || domainNames.length > 0) && (
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">Mock Data Path:</span>
-              <code className="text-sm font-mono bg-muted px-2 py-1 rounded flex-1 truncate">
-                {stats.scenarioPath || stats.mockDataPath}
-              </code>
+            <div className="flex flex-wrap items-center gap-3">
+              {stats.mockDataPath && (
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="text-sm font-medium text-muted-foreground shrink-0">Mock Data Path:</span>
+                  <code className="text-sm font-mono bg-muted px-2 py-1 rounded min-w-0 flex-1 truncate">
+                    {stats.scenarioPath || stats.mockDataPath}
+                  </code>
+                </div>
+              )}
+              {domainNames.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 max-w-[min(100%,18rem)] shrink-0 gap-1.5"
+                      title="Show statistics for one domain"
+                    >
+                      <Globe className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{selectedDomain || 'All domains'}</span>
+                      <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+                    <DropdownMenuItem
+                      onClick={() => patch({ [DASHBOARD_Q.domain]: null })}
+                      className={!selectedDomain ? 'bg-primary/10' : ''}
+                    >
+                      All domains
+                      {!selectedDomain && ' ✓'}
+                    </DropdownMenuItem>
+                    {domainNames.map((domain) => (
+                      <DropdownMenuItem
+                        key={domain}
+                        onClick={() => patch({ [DASHBOARD_Q.domain]: domain })}
+                        className={domain === selectedDomain ? 'bg-primary/10' : ''}
+                      >
+                        <span className="truncate">{domain}</span>
+                        <span className="ml-3 text-muted-foreground tabular-nums">
+                          {stats.domains[domain]}
+                        </span>
+                        {domain === selectedDomain ? ' ✓' : ''}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -259,7 +412,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <p className="text-xs text-muted-foreground">
               {hopsLoading
                 ? 'Loading chains…'
-                : `${hopChains.length} request chain${hopChains.length === 1 ? '' : 's'}`}
+                : `${visibleHopChains.length} request chain${visibleHopChains.length === 1 ? '' : 's'}`}
             </p>
           </CardContent>
         </Card>
@@ -308,7 +461,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ServiceHopSummaryCard chains={hopChains} loading={hopsLoading} />
+        <ServiceHopSummaryCard chains={visibleHopChains} loading={hopsLoading} scenario={scenario} />
 
         <Card>
           <CardHeader>
@@ -326,9 +479,18 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-0.5">
               {REPLAY_MODE_ROWS.map((row) => (
-                <div key={row.key} className="flex items-center justify-between gap-2 text-sm">
+                <Link
+                  key={row.key}
+                  to={mocksListPath({
+                    scenario,
+                    [DASHBOARD_Q.traffic]: row.key,
+                    [DASHBOARD_Q.domain]: selectedDomain || undefined,
+                  })}
+                  className="flex items-center justify-between gap-2 rounded-md px-2 py-1 -mx-2 text-sm hover:bg-accent/50"
+                  title={`Show ${row.label.toLowerCase()} mocks`}
+                >
                   <div className="flex items-center gap-2 min-w-0">
                     <Badge variant="outline" className={`text-[10px] shrink-0 ${row.badgeClass}`}>
                       {row.label}
@@ -340,7 +502,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
                   <span className="text-foreground font-medium shrink-0 tabular-nums">
                     {replayModes[row.key]}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           </CardContent>
@@ -357,20 +519,28 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
-              {(stats.slowestResponses ?? []).length > 0 ? (
-                (stats.slowestResponses ?? []).map((item) => (
-                  <div key={item.filename} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
-                    <span className="font-mono text-xs truncate" title={item.endpoint}>
-                      {rankedResponseLabel(item)}
-                    </span>
-                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
-                      {item.durationMs != null ? formatDurationMs(item.durationMs) : '—'}
-                    </span>
-                  </div>
-                ))
+            <div className="space-y-0.5">
+              {slowestLeaves.length > 0 ? (
+                slowestLeaves.map((item) => {
+                  const copy = statsHopCopy(item)
+                  return (
+                  <StatsHopRow
+                    key={item.filename}
+                    filename={item.filename}
+                    source={copy.source}
+                    title={copy.title}
+                    value={item.durationMs != null ? formatDurationMs(item.durationMs) : '—'}
+                    valueTone="duration"
+                    scenario={scenario}
+                    isMockReplay={item.trafficMode === 'replay'}
+                  />
+                  )
+                })
               ) : (
-                <div className="text-sm text-muted-foreground">No leaf hop durations recorded</div>
+                <div className="text-sm text-muted-foreground">
+                  No stored round-trip times on these leaf recordings. Dashboard proxy captures did not
+                  save duration; new live recordings will.
+                </div>
               )}
             </div>
           </CardContent>
@@ -387,18 +557,23 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
-              {(stats.largestResponses ?? []).length > 0 ? (
-                (stats.largestResponses ?? []).map((item) => (
-                  <div key={item.filename} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
-                    <span className="font-mono text-xs truncate" title={item.endpoint}>
-                      {rankedResponseLabel(item)}
-                    </span>
-                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
-                      {formatFileSize(item.size)}
-                    </span>
-                  </div>
-                ))
+            <div className="space-y-0.5">
+              {largestLeaves.length > 0 ? (
+                largestLeaves.map((item) => {
+                  const copy = statsHopCopy(item)
+                  return (
+                  <StatsHopRow
+                    key={item.filename}
+                    filename={item.filename}
+                    source={copy.source}
+                    title={copy.title}
+                    value={formatFileSize(item.size)}
+                    valueTone="size"
+                    scenario={scenario}
+                    isMockReplay={item.trafficMode === 'replay'}
+                  />
+                  )
+                })
               ) : (
                 <div className="text-sm text-muted-foreground">No leaf hop sizes recorded</div>
               )}
@@ -484,7 +659,7 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
               {Object.keys(stats.methods).length > 0 ? (
                 Object.entries(stats.methods).map(([method, count]) => (
                   <div key={method} className="flex items-center justify-between text-sm">
-                    <span className="font-semibold">{method}</span>
+                    <span className={`font-semibold ${httpMethodTextClass(method)}`}>{method}</span>
                     <span className="text-muted-foreground">{count}</span>
                   </div>
                 ))
@@ -528,18 +703,22 @@ export default function StatsView({ scenario, onScenarioChange }: StatsViewProps
             <CardTitle>Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-0.5 max-h-[280px] overflow-y-auto pr-1">
+            <div className="space-y-0.5">
               {stats.recentActivity.length > 0 ? (
-                stats.recentActivity.map((item) => (
-                  <div key={`${item.filename}-${item.modified}`} className="flex items-center justify-between gap-2 px-2 py-1 -mx-2">
-                    <span className="font-mono text-xs truncate" title={item.endpoint}>
-                      {rankedResponseLabel(item)}
-                    </span>
-                    <span className="text-muted-foreground shrink-0 tabular-nums text-xs">
-                      {new Date(item.modified).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))
+                stats.recentActivity.map((item) => {
+                  const copy = statsHopCopy(item)
+                  return (
+                  <StatsHopRow
+                    key={`${item.filename}-${item.modified}`}
+                    filename={item.filename}
+                    source={copy.source}
+                    title={copy.title}
+                    value={formatStatsDate(item.modified)}
+                    valueTone="date"
+                    scenario={scenario}
+                  />
+                  )
+                })
               ) : (
                 <div className="text-sm text-muted-foreground">No recent activity</div>
               )}

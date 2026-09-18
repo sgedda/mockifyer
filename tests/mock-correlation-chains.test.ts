@@ -8,6 +8,11 @@ import {
   countNestedMockChainCalls,
   enrichChainHopsForDisplay,
   filterMockServiceChainsByFilenames,
+  formatChainFirstLastLabel,
+  formatHopPathLabel,
+  formatHopPathLabelWithCatalog,
+  hopPathLabelParts,
+  filterMocksByHopTraffic,
   getMockHopTrafficMode,
   mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
@@ -535,6 +540,110 @@ describe('getMockHopTrafficMode', () => {
     expect(getMockHopTrafficMode(upstream)).toBe('replay')
     expect(mockHopHitsUpstream(upstream)).toBe(false)
     expect(chainHasUpstreamReplayBlock([upstream, downstream], 1)).toBe(true)
+  })
+
+  it('filters mocks by replay traffic mode', () => {
+    const stored = mock({
+      filename: 'stored.json',
+      endpoint: 'http://localhost:4000/graphql',
+      replayMode: 'stored',
+    })
+    const live = mock({
+      filename: 'live.json',
+      endpoint: 'http://localhost:4000/v-2/myaccount',
+      alwaysUseRealApi: true,
+    })
+    expect(filterMocksByHopTraffic([stored, live], 'replay').map((row) => row.filename)).toEqual([
+      'stored.json',
+    ])
+    expect(filterMocksByHopTraffic([stored, live], 'live').map((row) => row.filename)).toEqual([
+      'live.json',
+    ])
+  })
+})
+
+describe('hop path labels', () => {
+  it('uses GraphQL operation names and first → last chain path', () => {
+    expect(
+      formatHopPathLabel({
+        method: 'POST',
+        endpoint: 'http://localhost:4000/graphql',
+        operationName: 'myAccountBookingExtras',
+      })
+    ).toBe('POST myAccountBookingExtras')
+    expect(
+      formatHopPathLabel({
+        method: 'POST',
+        endpoint: 'https://tokenws.acctest.nl/',
+      })
+    ).toBe('POST tokenws.acctest.nl/')
+
+    const chain = {
+      id: 'root-1',
+      hops: [
+        mock({
+          filename: 'graphql.json',
+          method: 'POST',
+          endpoint: 'http://localhost:4000/graphql',
+          graphqlInfo: { operationName: 'Home', query: null, variables: null },
+        }),
+        mock({
+          filename: 'account.json',
+          method: 'GET',
+          endpoint: 'http://localhost:4000/v-2/myaccount/',
+        }),
+      ],
+      latestModified: '2026-09-10T16:18:01.000Z',
+    }
+    expect(formatChainFirstLastLabel(chain)).toBe('POST Home → GET /v-2/myaccount/')
+    expect(
+      hopPathLabelParts({
+        method: 'GET',
+        endpoint: 'https://api.weather.com/weather/currentConditions?api-version=1.1',
+      })
+    ).toEqual({
+      method: 'GET',
+      kind: 'path',
+      text: '/weather/currentConditions',
+      query: '?api-version=1.1',
+    })
+  })
+
+  it('does not use Redis hash filenames as hop labels', () => {
+    const hash = '29348224605608adf7422ce28684fef8d85534ffc98611c86d797cfd29457a33.json'
+    expect(
+      formatHopPathLabel({
+        method: 'POST',
+        endpoint: `redis/${hash}`,
+        filename: `redis/${hash}`,
+      })
+    ).toBe('POST')
+    expect(
+      formatHopPathLabel({
+        method: 'GET',
+        endpoint: hash,
+        filename: hash,
+      })
+    ).toBe('GET')
+  })
+
+  it('fills missing stats URLs from the compact mock catalog', () => {
+    const hash = '29348224605608adf7422ce28684fef8d85534ffc98611c86d797cfd29457a33.json'
+    const catalog = mock({
+      filename: `redis/${hash}`,
+      method: 'GET',
+      endpoint: 'http://localhost:4000/v-2/myaccount/',
+    })
+    expect(
+      formatHopPathLabelWithCatalog(
+        {
+          method: 'GET',
+          endpoint: `redis/${hash}`,
+          filename: `redis/${hash}`,
+        },
+        catalog
+      )
+    ).toBe('GET /v-2/myaccount/')
   })
 })
 

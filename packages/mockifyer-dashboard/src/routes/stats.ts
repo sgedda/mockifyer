@@ -11,10 +11,13 @@ import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
 import {
   addReplayModeCount,
   emptyReplayModeBreakdown,
+  filterByStatsDomain,
   leafResponses,
+  matchesStatsDomain,
   rankLargestResponses,
   rankRecentActivity,
   rankSlowestResponses,
+  readEndpointHostname,
   toRankedResponseStat,
   toRecentActivityStat,
   type RankedResponseStat,
@@ -58,12 +61,14 @@ router.get('/', async (req: Request, res: Response) => {
     const requestedScenario = req.query.scenario as string | undefined;
     const currentScenario = requestedScenario || getCurrentScenario(mockDataPath);
     const scenarioPath = path.resolve(getScenarioFolderPath(mockDataPath, currentScenario));
+    const requestedDomain = typeof req.query.domain === 'string' ? req.query.domain.trim() : '';
 
     if (isCentralizedDashboardProvider(config.provider)) {
       const store = createDashboardMockStore(config, mockDataPath);
 
       try {
         const items = await store.listCatalog(currentScenario);
+        let matchingFiles = 0;
         let totalSize = 0;
         const endpoints: Record<string, number> = {};
         const domains: Record<string, number> = {};
@@ -75,24 +80,24 @@ router.get('/', async (req: Request, res: Response) => {
 
         for (const { hash, mockData, rawByteLength } of items) {
           const size = rawByteLength ?? 0;
-          totalSize += size;
           const filename = `redis/${hash}.json`;
+          const endpoint = mockData.request?.url || '';
+          const host = readEndpointHostname(endpoint);
+          if (host) domains[host] = (domains[host] || 0) + 1;
+          ranked.push(toRankedResponseStat({ filename, mockData, size }));
+          if (!matchesStatsDomain(endpoint, requestedDomain)) continue;
+
+          matchingFiles += 1;
+          totalSize += size;
           const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
           recentActivity.push(toRecentActivityStat({ filename, mockData, modified: ts }));
-          ranked.push(toRankedResponseStat({ filename, mockData, size }));
           addReplayModeCount(replayModes, mockData);
 
           if (mockData.request) {
-            const endpoint = mockData.request.url || 'unknown';
-            endpoints[endpoint] = (endpoints[endpoint] || 0) + 1;
+            const requestUrl = mockData.request.url || 'unknown';
+            endpoints[requestUrl] = (endpoints[requestUrl] || 0) + 1;
             const method = (mockData.request.method || 'unknown').toUpperCase();
             methods[method] = (methods[method] || 0) + 1;
-            try {
-              const url = new URL(endpoint);
-              domains[url.hostname] = (domains[url.hostname] || 0) + 1;
-            } catch {
-              // ignore
-            }
           }
           if ((mockData as any).response) {
             const status = String((mockData as any).response?.status || 200);
@@ -104,9 +109,10 @@ router.get('/', async (req: Request, res: Response) => {
           .sort(([, a], [, b]) => b - a)
           .slice(0, 10)
           .map(([endpoint, count]) => ({ endpoint, count }));
+        const domainLeaves = filterByStatsDomain(leafResponses(ranked), requestedDomain);
 
         return res.json({
-          totalFiles: items.length,
+          totalFiles: matchingFiles,
           totalSize,
           endpoints: topEndpoints,
           domains,
@@ -114,8 +120,8 @@ router.get('/', async (req: Request, res: Response) => {
           statusCodes,
           recentActivity: rankRecentActivity(recentActivity),
           folderBreakdown: [],
-          slowestResponses: rankSlowestResponses(leafResponses(ranked)),
-          largestResponses: rankLargestResponses(leafResponses(ranked)),
+          slowestResponses: rankSlowestResponses(domainLeaves),
+          largestResponses: rankLargestResponses(domainLeaves),
           replayModes,
           scenario: currentScenario,
           mockDataPath,
@@ -140,6 +146,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     const filePaths = getAllJsonFiles(scenarioPath);
 
+    let matchingFiles = 0;
     let totalSize = 0;
     const endpoints: Record<string, number> = {};
     const domains: Record<string, number> = {};
@@ -154,42 +161,35 @@ router.get('/', async (req: Request, res: Response) => {
       const relativeName = path.relative(scenarioPath, filePath).split(path.sep).join('/');
       const dir = path.dirname(relativeName).split(path.sep).join('/');
       const folderKey = dir === '.' ? '' : dir;
-      folderCounts[folderKey] = (folderCounts[folderKey] || 0) + 1;
-
       const stats = fs.statSync(filePath);
-      totalSize += stats.size;
 
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         const { mockData } = parseMockJsonForCatalog(raw);
+        const endpoint = mockData.request?.url || '';
+        const host = readEndpointHostname(endpoint);
+        if (host) domains[host] = (domains[host] || 0) + 1;
         ranked.push(
           toRankedResponseStat({ filename: relativeName, mockData, size: stats.size })
         );
+        if (!matchesStatsDomain(endpoint, requestedDomain)) return;
+
+        matchingFiles += 1;
+        totalSize += stats.size;
+        folderCounts[folderKey] = (folderCounts[folderKey] || 0) + 1;
         addReplayModeCount(replayModes, mockData);
         const modified = mockData.timestamp ? new Date(mockData.timestamp) : stats.mtime;
         recentActivity.push(
           toRecentActivityStat({ filename: relativeName, mockData, modified })
         );
-        
+
         if (mockData.request) {
-          // Count endpoints
-          const endpoint = mockData.request.url || 'unknown';
-          endpoints[endpoint] = (endpoints[endpoint] || 0) + 1;
-          
-          // Count methods
+          const requestUrl = mockData.request.url || 'unknown';
+          endpoints[requestUrl] = (endpoints[requestUrl] || 0) + 1;
           const method = mockData.request.method || 'unknown';
           methods[method] = (methods[method] || 0) + 1;
-          
-          // Count domains
-          try {
-            const url = new URL(mockData.request.url);
-            const domain = url.hostname;
-            domains[domain] = (domains[domain] || 0) + 1;
-          } catch (e) {
-            // Invalid URL, skip
-          }
         }
-        
+
         if (mockData.response) {
           const status = String(mockData.response.status || 200);
           statusCodes[status] = (statusCodes[status] || 0) + 1;
@@ -212,8 +212,10 @@ router.get('/', async (req: Request, res: Response) => {
       }))
       .sort((a, b) => a.folder.localeCompare(b.folder));
 
+    const domainLeaves = filterByStatsDomain(leafResponses(ranked), requestedDomain);
+
     res.json({
-      totalFiles: filePaths.length,
+      totalFiles: matchingFiles,
       totalSize,
       endpoints: topEndpoints,
       domains,
@@ -221,8 +223,8 @@ router.get('/', async (req: Request, res: Response) => {
       statusCodes,
       recentActivity: rankRecentActivity(recentActivity),
       folderBreakdown,
-      slowestResponses: rankSlowestResponses(leafResponses(ranked)),
-      largestResponses: rankLargestResponses(leafResponses(ranked)),
+      slowestResponses: rankSlowestResponses(domainLeaves),
+      largestResponses: rankLargestResponses(domainLeaves),
       replayModes,
       scenario: currentScenario,
       mockDataPath: mockDataPath,

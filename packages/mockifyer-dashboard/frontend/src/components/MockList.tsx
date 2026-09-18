@@ -6,15 +6,22 @@ import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
-import { buildMockChainMaps, buildMockServiceChainsForDisplay } from '@/lib/mock-correlation-chains'
+import {
+  buildMockChainMaps,
+  buildMockServiceChainsForDisplay,
+  filterMocksByHopTraffic,
+  MOCK_HOP_TRAFFIC_LABELS,
+  parseMockHopTrafficMode,
+} from '@/lib/mock-correlation-chains'
 import { HopsNavCard } from '@/components/ServiceChainList'
 import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Link } from 'react-router-dom'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, SlidersHorizontal, Star } from 'lucide-react'
-import { overridesPath, hopsPath } from '@/lib/dashboard-urls'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, SlidersHorizontal, Star, X } from 'lucide-react'
+import { DASHBOARD_Q, hopsPath, overridesPath } from '@/lib/dashboard-urls'
+import { useLocationQuery } from '@/lib/use-location-query'
 import { useMockFavorites } from '@/lib/favorites-context'
 
 interface MockListProps {
@@ -57,6 +64,9 @@ function MockListContent({
   onRefresh,
 }: MockListProps) {
   const { toast } = useToast()
+  const { searchParams, patch } = useLocationQuery()
+  const trafficFilter = parseMockHopTrafficMode(searchParams.get(DASHBOARD_Q.traffic))
+  const domainFilter = searchParams.get(DASHBOARD_Q.domain)?.trim() || ''
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
   const { favoriteIds, favoritesOnly, setFavoritesOnly, loading: favoritesLoading } = useMockFavorites()
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -72,21 +82,30 @@ function MockListContent({
     setSearchDraft(searchQuery)
   }, [searchQuery])
 
+  const scopedMocks = useMemo(
+    () => filterMocksByHopTraffic(mocks, trafficFilter, domainFilter),
+    [mocks, trafficFilter, domainFilter]
+  )
+  const scopedAllMocks = useMemo(
+    () => filterMocksByHopTraffic(allMocks, trafficFilter, domainFilter),
+    [allMocks, trafficFilter, domainFilter]
+  )
+
   const matchingFavoriteMocks = useMemo(() => {
     if (favoritesLoading) return []
-    const source = searchQuery.trim() ? mocks : allMocks
+    const source = searchQuery.trim() ? scopedMocks : scopedAllMocks
     return source.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [allMocks, mocks, searchQuery, favoriteIds, favoritesLoading])
+  }, [scopedAllMocks, scopedMocks, searchQuery, favoriteIds, favoritesLoading])
 
   const visibleMocks = useMemo(() => {
-    if (!favoritesOnly || favoritesLoading) return mocks
-    return mocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [favoritesOnly, favoritesLoading, mocks, favoriteIds])
+    if (!favoritesOnly || favoritesLoading) return scopedMocks
+    return scopedMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, favoritesLoading, scopedMocks, favoriteIds])
 
   const visibleAllMocks = useMemo(() => {
-    if (!favoritesOnly || favoritesLoading) return allMocks
-    return allMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
-  }, [favoritesOnly, favoritesLoading, allMocks, favoriteIds])
+    if (!favoritesOnly || favoritesLoading) return scopedAllMocks
+    return scopedAllMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, favoritesLoading, scopedAllMocks, favoriteIds])
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
@@ -286,6 +305,23 @@ function MockListContent({
           <Star className={`h-3.5 w-3.5 ${favoritesOnly ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
           <span className="hidden sm:inline">Favorites only</span>
         </label>
+        {(trafficFilter || domainFilter) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1.5"
+            onClick={() => patch({ [DASHBOARD_Q.traffic]: null, [DASHBOARD_Q.domain]: null })}
+            title="Clear replay-mode and domain filters"
+          >
+            <span className="truncate max-w-[14rem]">
+              {[trafficFilter ? MOCK_HOP_TRAFFIC_LABELS[trafficFilter] : null, domainFilter || null]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
         {!loading && mocks.length > 0 && groupByModes.length > 1 && (
           <div
             className="inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-border"
@@ -538,7 +574,9 @@ function MockListContent({
                 ? 'No favorite requests match this scenario'
                 : searchQuery
                   ? 'No mocks found matching your search'
-                  : 'No mocks found'}
+                  : trafficFilter || domainFilter
+                    ? 'No mocks match this replay mode or domain'
+                    : 'No mocks found'}
             </div>
           </CardContent>
         </Card>

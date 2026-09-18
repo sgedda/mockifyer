@@ -1,7 +1,9 @@
 import {
   annotateLeafHops,
   countReplayModes,
+  filterByStatsDomain,
   leafResponses,
+  matchesStatsDomain,
   rankLargestResponses,
   rankRecentActivity,
   rankSlowestResponses,
@@ -146,6 +148,26 @@ describe('stats rankings', () => {
       pending: 1,
       refresh: 2,
     });
+  });
+
+  it('filters rankings by request hostname', () => {
+    const local = toRankedResponseStat({
+      filename: 'local.json',
+      mockData: mock({ url: 'http://localhost:4000/graphql', operationName: 'Home', duration: 20 }),
+      size: 100,
+    });
+    const remote = toRankedResponseStat({
+      filename: 'remote.json',
+      mockData: mock({ url: 'https://api.example.com/booking', duration: 80 }),
+      size: 400,
+    });
+
+    expect(local.trafficMode).toBe('replay');
+    expect(filterByStatsDomain([local, remote], 'api.example.com').map((row) => row.filename)).toEqual([
+      'remote.json',
+    ]);
+    expect(matchesStatsDomain(local.endpoint, '')).toBe(true);
+    expect(matchesStatsDomain(local.endpoint, 'api.example.com')).toBe(false);
   });
 
   it('summarizes recent activity by method and GraphQL operation, not file id', () => {

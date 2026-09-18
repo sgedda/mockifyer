@@ -189,6 +189,8 @@ export interface RankedResponseStat {
   parentRequestId?: string | null
   /** True when no other recording lists this hop as its parent (lowest-level call). */
   isLeaf?: boolean
+  /** Same buckets as hop Replay / Live / Pending / Refresh badges. */
+  trafficMode?: 'replay' | 'refresh' | 'pending' | 'live'
 }
 
 export interface ReplayModeBreakdown {
