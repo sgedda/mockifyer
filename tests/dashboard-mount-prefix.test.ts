@@ -31,12 +31,15 @@ describe('dashboard mount inference (embedded /mockifyer)', () => {
     expect(inferMountPrefixFromPathname('/mock/')).toBe('');
     expect(inferMountPrefixFromPathname('/mocks')).toBe('');
     expect(inferMountPrefixFromPathname('/mocks/')).toBe('');
+    expect(inferMountPrefixFromPathname('/hops')).toBe('');
+    expect(inferMountPrefixFromPathname('/hops/')).toBe('');
   });
 
   it('reads the prefix from /mockifyer/mock and /mockifyer/mocks', () => {
     expect(inferMountPrefixFromPathname('/mockifyer/mock')).toBe('/mockifyer');
     expect(inferMountPrefixFromPathname('/mockifyer/mock/')).toBe('/mockifyer');
     expect(inferMountPrefixFromPathname('/mockifyer/mocks')).toBe('/mockifyer');
+    expect(inferMountPrefixFromPathname('/mockifyer/hops')).toBe('/mockifyer');
     expect(inferMountPrefixFromPathname('/mockifyer/mocks/')).toBe('/mockifyer');
   });
 
@@ -78,6 +81,7 @@ describe('dashboard mount inference (embedded /mockifyer)', () => {
     const prefix = dashboardSpaPageAssetPrefix();
     expect(prefix.test('/mock/assets/main.js')).toBe(true);
     expect(prefix.test('/mocks/assets/main.js')).toBe(true);
+    expect(prefix.test('/hops/assets/main.js')).toBe(true);
     expect(prefix.test('/overrides/assets/main.js')).toBe(true);
     expect(prefix.test('/assets/main.js')).toBe(false);
   });

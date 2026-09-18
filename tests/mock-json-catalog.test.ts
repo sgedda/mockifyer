@@ -73,6 +73,16 @@ describe('compactMockDataForCatalog', () => {
     expect(compact.alwaysUseRealApi).toBe(true);
   });
 
+  it('keeps duration so slowest-leaf stats can rank Redis catalog entries', () => {
+    const compact = compactMockDataForCatalog({
+      request: { method: 'GET', url: 'https://api.example.com/slow', headers: {}, queryParams: {} },
+      response: { status: 200, data: {}, headers: {} },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      duration: 842,
+    });
+    expect(compact.duration).toBe(842);
+  });
+
   it('round-trips through the sidecar JSON shape', () => {
     const mockData = compactMockDataForCatalog({
       request: { method: 'GET', url: 'https://api.example.com/ok', headers: {}, queryParams: {} },
@@ -81,5 +91,6 @@ describe('compactMockDataForCatalog', () => {
     });
     const raw = serializeCatalogSidecarEntry({ mockData, rawByteLength: 42 });
     expect(parseCatalogSidecarEntry(raw)).toEqual({ mockData, rawByteLength: 42 });
+    expect(parseCatalogSidecarEntry(JSON.stringify({ mockData, rawByteLength: 42 }))).toBeNull();
   });
 });

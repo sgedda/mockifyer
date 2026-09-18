@@ -256,17 +256,181 @@ export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
   return { byRequestId, byFilename, childrenByParent }
 }
 
-export function formatMockHopLabel(mock: MockFile): string {
-  const method = (mock.method ?? 'GET').toUpperCase()
-  if (mock.endpoint) {
+export function endpointHostname(endpoint?: string | null): string {
+  if (!endpoint?.trim()) return ''
+  try {
+    return new URL(endpoint).hostname
+  } catch {
+    return ''
+  }
+}
+
+const OPAQUE_MOCK_FILENAME = /^[a-f0-9]{32,}\.json$/i
+
+/** Redis catalog ids and other content-hash filenames — not useful as a hop label. */
+export function isOpaqueMockFilename(filename: string | null | undefined): boolean {
+  if (!filename?.trim()) return false
+  const base = filename.includes('/') ? filename.split('/').pop() ?? filename : filename
+  return OPAQUE_MOCK_FILENAME.test(base)
+}
+
+function usableHopEndpoint(endpoint?: string | null): string | undefined {
+  const raw = endpoint?.trim()
+  if (!raw || isOpaqueMockFilename(raw)) return undefined
+  return raw
+}
+
+export interface HopPathLabelSource {
+  method?: string | null
+  endpoint?: string | null
+  operationName?: string | null
+  filename?: string | null
+}
+
+export type HopPathLabelKind = 'operation' | 'path' | 'host' | 'filename' | 'method'
+
+export interface HopPathLabelParts {
+  method: string
+  kind: HopPathLabelKind
+  text: string
+  query?: string
+}
+
+export function hopPathLabelSourceFromMock(mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>): HopPathLabelSource {
+  return {
+    method: mock.method,
+    endpoint: mock.endpoint,
+    operationName: mock.graphqlInfo?.operationName,
+    filename: mock.filename,
+  }
+}
+
+/** Stats catalog sometimes stores a hash as `endpoint`; prefer the compact mock list URL. */
+export function hopPathLabelSourceWithCatalog(
+  item: HopPathLabelSource,
+  catalog?: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'> | null
+): HopPathLabelSource {
+  return {
+    method: item.method || catalog?.method,
+    endpoint: usableHopEndpoint(item.endpoint) ?? catalog?.endpoint,
+    operationName: item.operationName || catalog?.graphqlInfo?.operationName,
+    filename: item.filename || catalog?.filename,
+  }
+}
+
+export function hopPathLabelParts(params: HopPathLabelSource): HopPathLabelParts {
+  const method = (params.method ?? 'GET').toUpperCase()
+  const operation = params.operationName?.trim()
+  if (operation) return { method, kind: 'operation', text: operation }
+  const endpoint = usableHopEndpoint(params.endpoint)
+  if (endpoint) {
     try {
-      const url = new URL(mock.endpoint)
-      return `${method} ${url.pathname || '/'}`
+      const url = new URL(endpoint)
+      const path = url.pathname || '/'
+      const search = url.search
+      if (path === '/' && !search) {
+        if (url.hostname) return { method, kind: 'host', text: `${url.hostname}/` }
+        return { method, kind: 'path', text: '/' }
+      }
+      return {
+        method,
+        kind: 'path',
+        text: path,
+        ...(search ? { query: search } : {}),
+      }
     } catch {
-      return `${method} ${mock.endpoint}`
+      return { method, kind: 'path', text: endpoint }
     }
   }
-  return mock.filename.includes('/') ? mock.filename.split('/').pop()! : mock.filename
+  const filename = params.filename
+  if (filename && !isOpaqueMockFilename(filename)) {
+    const base = filename.includes('/') ? filename.split('/').pop()! : filename
+    return { method, kind: 'filename', text: base }
+  }
+  return { method, kind: 'method', text: '' }
+}
+
+export function formatHopPathLabel(params: HopPathLabelSource): string {
+  const parts = hopPathLabelParts(params)
+  if (parts.kind === 'filename') return parts.text
+  if (!parts.text) return parts.method
+  return `${parts.method} ${parts.text}${parts.query ?? ''}`
+}
+
+export function formatHopPathLabelWithCatalog(
+  item: HopPathLabelSource,
+  catalog?: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'> | null
+): string {
+  return formatHopPathLabel(hopPathLabelSourceWithCatalog(item, catalog))
+}
+
+export function formatMockHopLabel(mock: MockFile): string {
+  return formatHopPathLabel(hopPathLabelSourceFromMock(mock))
+}
+
+export function chainFirstLastHops(chain: MockServiceChain): { start: MockFile; end?: MockFile } | null {
+  if (chain.hops.length === 0) return null
+  const start = chain.hops[0]
+  if (!start) return null
+  if (chain.hops.length === 1) return { start }
+  const startLabel = formatMockHopLabel(start)
+  let end = chain.hops[chain.hops.length - 1]
+  if (end && formatMockHopLabel(end) === startLabel) {
+    for (let i = chain.hops.length - 2; i > 0; i -= 1) {
+      const hop = chain.hops[i]
+      if (hop && formatMockHopLabel(hop) !== startLabel) {
+        end = hop
+        break
+      }
+    }
+  }
+  if (!end || formatMockHopLabel(end) === startLabel) return { start }
+  return { start, end }
+}
+
+/** Entry → leaf path so collapsed Statistics rows stay unique. */
+export function formatChainFirstLastLabel(chain: MockServiceChain): string {
+  const pair = chainFirstLastHops(chain)
+  if (!pair) return chain.id
+  const start = formatMockHopLabel(pair.start)
+  if (!pair.end) return start
+  return `${start} → ${formatMockHopLabel(pair.end)}`
+}
+
+export interface ChainLeafIndex {
+  leaves: Set<string>
+  inAChain: Set<string>
+}
+
+function collectForestLeafFilenames(nodes: MockUniqueChainNode[], out: Set<string>): void {
+  for (const node of nodes) {
+    if (node.children.length === 0) {
+      for (const hop of node.hops) out.add(hop.filename)
+      continue
+    }
+    collectForestLeafFilenames(node.children, out)
+  }
+}
+
+/** Lowest-level hop files in each chain (parents with nested calls are excluded). */
+export function indexChainLeafFilenames(chains: MockServiceChain[]): ChainLeafIndex {
+  const leaves = new Set<string>()
+  const inAChain = new Set<string>()
+  for (const chain of chains) {
+    for (const hop of chain.hops) inAChain.add(hop.filename)
+    if (chain.hops.length === 1) {
+      const only = chain.hops[0]
+      if (only) leaves.add(only.filename)
+      continue
+    }
+    collectForestLeafFilenames(buildUniqueMockChainForest(chain.hops), leaves)
+  }
+  return { leaves, inAChain }
+}
+
+export function isChainLeafHop(filename: string, index: ChainLeafIndex): boolean {
+  if (index.leaves.has(filename)) return true
+  return !index.inAChain.has(filename)
 }
 
 /** Short host + path line for chain step subtitles. */
@@ -738,6 +902,34 @@ export function isEnrichedChainHop(chain: MockServiceChain, hop: MockFile): bool
 }
 
 export type MockHopTrafficMode = 'live' | 'replay' | 'pending' | 'refresh'
+
+export const MOCK_HOP_TRAFFIC_LABELS: Record<MockHopTrafficMode, string> = {
+  replay: 'Replay',
+  refresh: 'Refresh',
+  pending: 'Pending',
+  live: 'Live',
+}
+
+export function parseMockHopTrafficMode(value: string | null | undefined): MockHopTrafficMode | null {
+  if (value === 'replay' || value === 'refresh' || value === 'pending' || value === 'live') {
+    return value
+  }
+  return null
+}
+
+export function filterMocksByHopTraffic(
+  mocks: MockFile[],
+  traffic: MockHopTrafficMode | null,
+  domain?: string | null
+): MockFile[] {
+  const wantedDomain = domain?.trim() ?? ''
+  if (!traffic && !wantedDomain) return mocks
+  return mocks.filter((mock) => {
+    if (traffic && getMockHopTrafficMode(mock) !== traffic) return false
+    if (wantedDomain && endpointHostname(mock.endpoint) !== wantedDomain) return false
+    return true
+  })
+}
 
 type MockTrafficFields = Pick<
   MockFile,

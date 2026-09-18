@@ -170,6 +170,34 @@ export interface CatalogSidecarEntry {
   rawByteLength: number;
 }
 
+/** Bump when compact catalog fields change so stale Redis HASH entries are refetched. */
+export const CATALOG_SIDECAR_VERSION = 2;
+
+export function serializeCatalogSidecarEntry(entry: CatalogSidecarEntry): string {
+  return JSON.stringify({
+    v: CATALOG_SIDECAR_VERSION,
+    rawByteLength: entry.rawByteLength,
+    mockData: compactMockDataForCatalog(entry.mockData),
+  });
+}
+
+export function parseCatalogSidecarEntry(raw: string): CatalogSidecarEntry | null {
+  try {
+    const parsed = JSON.parse(raw) as { v?: unknown; mockData?: MockData; rawByteLength?: unknown };
+    if (!parsed || typeof parsed !== 'object' || !parsed.mockData || typeof parsed.mockData !== 'object') {
+      return null;
+    }
+    if (parsed.v !== CATALOG_SIDECAR_VERSION) return null;
+    const rawByteLength =
+      typeof parsed.rawByteLength === 'number' && Number.isFinite(parsed.rawByteLength)
+        ? parsed.rawByteLength
+        : 0;
+    return { mockData: parsed.mockData, rawByteLength };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Keep list/stats fields and drop response bodies so the Redis catalog HASH
  * never stores multi-MB GraphQL payloads.
@@ -195,6 +223,13 @@ export function compactMockDataForCatalog(mockData: MockData): MockData {
   if (mockData.sessionId) compact.sessionId = mockData.sessionId;
   if (mockData.requestId) compact.requestId = mockData.requestId;
   if (mockData.parentRequestId) compact.parentRequestId = mockData.parentRequestId;
+  if (typeof mockData.duration === 'number' && Number.isFinite(mockData.duration) && mockData.duration > 0) {
+    compact.duration = mockData.duration;
+  }
+  const responseTime = (mockData as MockData & { responseTime?: unknown }).responseTime;
+  if (typeof responseTime === 'number' && Number.isFinite(responseTime) && responseTime > 0) {
+    (compact as MockData & { responseTime: number }).responseTime = responseTime;
+  }
   if (mockData.alwaysUseRealApi === true) compact.alwaysUseRealApi = true;
   if (mockData.responsePending === true) compact.responsePending = true;
   if (mockData.refreshOnNextRequest === true) compact.refreshOnNextRequest = true;
@@ -206,29 +241,6 @@ export function compactMockDataForCatalog(mockData: MockData): MockData {
     compact.responseFieldOverrides = mockData.responseFieldOverrides;
   }
   return compact;
-}
-
-export function serializeCatalogSidecarEntry(entry: CatalogSidecarEntry): string {
-  return JSON.stringify({
-    rawByteLength: entry.rawByteLength,
-    mockData: compactMockDataForCatalog(entry.mockData),
-  });
-}
-
-export function parseCatalogSidecarEntry(raw: string): CatalogSidecarEntry | null {
-  try {
-    const parsed = JSON.parse(raw) as { mockData?: MockData; rawByteLength?: unknown };
-    if (!parsed || typeof parsed !== 'object' || !parsed.mockData || typeof parsed.mockData !== 'object') {
-      return null;
-    }
-    const rawByteLength =
-      typeof parsed.rawByteLength === 'number' && Number.isFinite(parsed.rawByteLength)
-        ? parsed.rawByteLength
-        : 0;
-    return { mockData: parsed.mockData, rawByteLength };
-  } catch {
-    return null;
-  }
 }
 
 /**

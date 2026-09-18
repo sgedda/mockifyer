@@ -37,6 +37,18 @@ describe('proxy hop id stability', () => {
     expect(mock.parentRequestId).toBe('live-parent');
   });
 
+  it('stamps elapsed proxy time as duration for slowest-leaf stats', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1_700_000_000_000);
+    const mock = mockData();
+    applyProxyCorrelationToMockData(mock, {
+      requestId: 'live-hop',
+      startedAt: 1_700_000_000_000 - 412,
+    } as ProxyNetworkLogContext);
+    expect(mock.duration).toBe(412);
+    jest.useRealTimers();
+  });
+
   it('adopts the stored hop id onto the proxy log so upstream keeps the same parent', () => {
     const ctx = { requestId: 'live-hop', parentRequestId: 'parent-hop' } as ProxyNetworkLogContext;
     adoptStoredHopIdOnProxyLog(ctx, mockData({ requestId: 'stored-hop' }));

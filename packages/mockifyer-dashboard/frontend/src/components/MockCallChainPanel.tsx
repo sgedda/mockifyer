@@ -58,13 +58,16 @@ export function MockCallChainPanel({
                   className={`text-left rounded px-2 py-1 text-[11px] font-mono border transition-colors max-w-full truncate ${
                     selected
                       ? 'border-primary bg-primary/10'
-                      : 'border-transparent hover:border-border hover:bg-background'
+                      : !hasChildren
+                        ? 'border-amber-400/50 bg-amber-500/15 hover:border-amber-300/70'
+                        : 'border-transparent hover:border-border hover:bg-background'
                   }`}
                   title={
                     [
                       mockHopEndpointFingerprint(node.representative),
                       node.callCount > 1 ? `${node.callCount} identical calls` : null,
                       depth > 0 ? `nested level ${depth}` : 'entry',
+                      !hasChildren ? 'leaf hop' : 'parent hop (includes nested requests)',
                       !expanded && nestedCount > 0 ? `${nestedCount} nested hops` : null,
                       node.representative.requestId ? `request ${node.representative.requestId}` : null,
                     ]
@@ -85,6 +88,9 @@ export function MockCallChainPanel({
                   {node.callCount > 1 ? (
                     <span className="ml-1 font-sans text-muted-foreground">×{node.callCount}</span>
                   ) : null}
+                  {!hasChildren ? (
+                    <span className="ml-1 font-sans text-amber-200/90">leaf</span>
+                  ) : null}
                   {!expanded && nestedCount > 0 ? (
                     <span className="ml-1 font-sans text-muted-foreground">+{nestedCount} nested</span>
                   ) : null}
@@ -103,7 +109,7 @@ export function MockCallChainPanel({
       />
       <p className="text-[11px] text-muted-foreground">
         Nested hops from one user request. Repeated sibling calls are grouped (×N) — expand to each
-        underlying call. Downstream mocks start collapsed under their caller.
+        underlying call. Lowest-level (leaf) hops are highlighted; parent hops include nested requests.
       </p>
     </div>
   )

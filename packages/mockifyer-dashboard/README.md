@@ -118,7 +118,8 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, config))
 
 - 📁 **Browse Mock Files** - View all mock files with search and filtering
 - ✏️ **Edit Mock Data** - Edit response data with JSON editor
-- 📊 **Statistics** - View mock file statistics and usage
+- 📊 **Statistics** - View mock file statistics, usage, and service hops
+- 🔗 **Hops** - Multi-service request chains recorded in the active scenario
 - 🔍 **Search** - Search by filename, endpoint, or method
 - 💾 **Save Changes** - Save edited mock data back to files
 - 🗑️ **Delete Mocks** - Delete unwanted mock files
