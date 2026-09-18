@@ -413,6 +413,19 @@ describe('dashboard compact mock list and nested override paths', () => {
     expect(compactGql?.graphqlInfo?.variablesPreview).toBeTruthy();
     expect(compactGql?.hasResponseFieldOverrides).toBe(true);
     expect(compact.body.length).toBeLessThan(full.body.length);
+
+    const similar = await httpGet(
+      server,
+      '/api/mocks?scenario=default&compact=1&similarGroups=1'
+    );
+    expect(similar.status).toBe(200);
+    const similarJson = JSON.parse(similar.body) as {
+      files: Array<{ graphqlInfo?: { query?: string | null } }>;
+      similarBodyGroups?: unknown[];
+    };
+    const similarGql = similarJson.files.find((f) => f.graphqlInfo);
+    expect(similarGql?.graphqlInfo?.query).toBeNull();
+    expect(Array.isArray(similarJson.similarBodyGroups)).toBe(true);
   });
 
   it('GET/PATCH field-overrides for redis/<hash>.json nested filenames', async () => {

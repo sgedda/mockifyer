@@ -13,6 +13,8 @@ interface SettingsProps {
   scenario: string
   onScenarioChange: (scenario: string) => void
   scenarioLocks: Record<string, boolean>
+  /** Header already loaded this; render immediately instead of blocking on scenario-config. */
+  availableScenarios?: string[]
   onScenarioConfigRefresh?: () => void | Promise<void>
   /** Reload mock list after clearing or other mock-store changes. */
   onMocksChanged?: () => void | Promise<void>
@@ -22,13 +24,16 @@ export default function Settings({
   scenario,
   onScenarioChange,
   scenarioLocks,
+  availableScenarios: availableScenariosFromParent,
   onScenarioConfigRefresh,
   onMocksChanged,
 }: SettingsProps) {
-  const [availableScenarios, setAvailableScenarios] = useState<string[]>(['default'])
+  const [availableScenarios, setAvailableScenarios] = useState<string[]>(
+    availableScenariosFromParent?.length ? availableScenariosFromParent : ['default']
+  )
   const [newScenario, setNewScenario] = useState('')
   const [deriveFromScenario, setDeriveFromScenario] = useState<string>('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!(availableScenariosFromParent && availableScenariosFromParent.length > 0))
   const [saving, setSaving] = useState(false)
   const [lockSaving, setLockSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,12 +78,18 @@ export default function Settings({
   }, [scenario])
 
   useEffect(() => {
+    if (availableScenariosFromParent?.length) {
+      setAvailableScenarios(availableScenariosFromParent)
+      setLoading(false)
+    }
+  }, [availableScenariosFromParent])
+
+  useEffect(() => {
     loadScenarios()
   }, [])
 
   async function loadScenarios() {
     try {
-      setLoading(true)
       setError(null)
       const config = await getScenarioConfig()
       // The API returns 'scenarios' array, map it to availableScenarios
@@ -87,8 +98,9 @@ export default function Settings({
     } catch (error: any) {
       console.error('Failed to load scenarios:', error)
       setError(error.message || 'Failed to load scenarios')
-      // Keep default scenario available even if API fails
-      setAvailableScenarios(['default'])
+      if (!availableScenariosFromParent?.length) {
+        setAvailableScenarios(['default'])
+      }
       toast({
         title: 'Warning',
         description: 'Could not load scenarios from server. Using default.',

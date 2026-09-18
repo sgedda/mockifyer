@@ -7,6 +7,7 @@ import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-cor
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
+import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.get('/', async (req: Request, res: Response) => {
       const store = createDashboardMockStore(config, mockDataPath);
 
       try {
-        const items = await store.list(currentScenario);
+        const items = await store.listCatalog(currentScenario);
         let totalSize = 0;
         const endpoints: Record<string, number> = {};
         const domains: Record<string, number> = {};
@@ -35,9 +36,8 @@ router.get('/', async (req: Request, res: Response) => {
         const statusCodes: Record<string, number> = {};
         const recentActivity: Array<{ filename: string; modified: Date }> = [];
 
-        for (const { hash, mockData } of items) {
-          const payload = JSON.stringify(mockData);
-          totalSize += Buffer.byteLength(payload);
+        for (const { hash, mockData, rawByteLength } of items) {
+          totalSize += rawByteLength ?? 0;
           const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
           recentActivity.push({ filename: `redis/${hash}.json`, modified: ts });
 
@@ -143,8 +143,8 @@ router.get('/', async (req: Request, res: Response) => {
       });
 
       try {
-        const fileContent = fs.readFileSync(filePath, 'utf-8');
-        const mockData = JSON.parse(fileContent);
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const { mockData } = parseMockJsonForCatalog(raw);
         
         if (mockData.request) {
           // Count endpoints

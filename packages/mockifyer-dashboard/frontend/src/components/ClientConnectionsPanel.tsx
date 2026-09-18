@@ -7,7 +7,7 @@ import { getClientLanes, type ClientConnectionRow, type ClientConnectionStatus }
 import { ChevronDown, ChevronRight, Radio, Settings2 } from 'lucide-react'
 import { buildSearch } from '@/lib/dashboard-urls'
 
-const POLL_MS = 5000
+const POLL_MS = 15_000
 
 function statusLabel(status: ClientConnectionStatus): string {
   switch (status) {
