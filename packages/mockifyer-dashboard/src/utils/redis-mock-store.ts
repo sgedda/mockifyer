@@ -132,6 +132,8 @@ const OVERRIDE_PROBE_TAIL_BYTES = 16_384;
 const OVERRIDE_PROBE_HEAD_BYTES = 4_096;
 /** Small MGET/GETRANGE batches so a large scenario cannot pin the event loop. */
 const OVERRIDE_SCAN_CHUNK_SIZE = 32;
+/** Body-search fallback: larger than override probes so Redis search is fewer round-trips. */
+const SEARCH_BODY_MGET_CHUNK = 128;
 /** Yield between catalog JSON.parse batches so GET /mocks/:id is not blocked. */
 const CATALOG_PARSE_YIELD_EVERY = 64;
 /** Reuse stripped catalog rows across list/stats while the dashboard is idle. */
@@ -584,9 +586,11 @@ export class RedisMockStore {
   }
 
   /**
-   * Full-text search over raw mock JSON (and `redis/<hash>.json`).
-   * MGETs in small chunks, parses only matches, and stops after `limit` hits
-   * so large scenarios do not JSON.parse every recording.
+   * Search catalog metadata first (Redis HASH). When the sidecar covers the scenario and
+   * the query matches URLs / GraphQL `request.data` / ids, skip body MGET entirely.
+   * Fall back to chunked body scan only for terms that live in `response.data`, or when
+   * the sidecar is incomplete. Parses body matches with the catalog stripper so list rows
+   * do not allocate multi-MB GraphQL payloads.
    */
   async search(
     scenario: string | undefined,
@@ -603,12 +607,63 @@ export class RedisMockStore {
     const hashes: string[] = await this.kv.smembers(indexKey);
     if (hashes.length === 0) return { items: [], truncated: false };
 
+    const sidecar = isScratchScenario(scenarioName)
+      ? new Map<string, RedisMockListItem>()
+      : await this.loadCatalogSidecar(scenarioName);
+
     const items: RedisMockSearchItem[] = [];
+    const pending: string[] = [];
     const missingHashes: string[] = [];
     let truncated = false;
+    let sidecarComplete = !isScratchScenario(scenarioName);
 
-    for (const chunk of chunkArray(hashes, OVERRIDE_SCAN_CHUNK_SIZE)) {
-      const keys = chunk.map((hash) => `${this.keyPrefix}:mock:${scenarioName}:${hash}`);
+    const pushHit = (item: RedisMockSearchItem): boolean => {
+      items.push(item);
+      if (items.length < limit) return false;
+      truncated = true;
+      return true;
+    };
+
+    for (const hash of hashes) {
+      const sidecarItem = sidecar.get(hash);
+      if (!sidecarItem) {
+        sidecarComplete = false;
+        pending.push(hash);
+        continue;
+      }
+      const filename = `redis/${hash}.json`;
+      if (
+        matches(
+          filename,
+          serializeCatalogSidecarEntry({
+            mockData: sidecarItem.mockData,
+            rawByteLength: sidecarItem.rawByteLength ?? 0,
+          })
+        )
+      ) {
+        if (
+          pushHit({
+            hash: sidecarItem.hash,
+            mockData: sidecarItem.mockData,
+            redisKey: sidecarItem.redisKey,
+            size: sidecarItem.rawByteLength ?? 0,
+            rawByteLength: sidecarItem.rawByteLength,
+          })
+        ) {
+          break;
+        }
+        continue;
+      }
+      pending.push(hash);
+    }
+
+    if (truncated || (sidecarComplete && items.length > 0)) {
+      return { items, truncated };
+    }
+
+    const bodyHashes = truncated ? [] : pending;
+    for (const chunk of chunkArray(bodyHashes, SEARCH_BODY_MGET_CHUNK)) {
+      const keys = chunk.map((hash) => this.mockDataKeyInScenario(hash, scenarioName));
       const values: Array<string | null> = await this.kv.mget(keys);
       for (let i = 0; i < chunk.length; i++) {
         const raw = values[i];
@@ -619,19 +674,20 @@ export class RedisMockStore {
         const filename = `redis/${chunk[i]}.json`;
         if (!matches(filename, raw)) continue;
         try {
-          const mockData = JSON.parse(raw) as MockData;
-          items.push({
-            hash: chunk[i],
-            mockData,
-            redisKey: keys[i],
-            size: Buffer.byteLength(raw),
-          });
+          const parsedMock = parseMockJsonForCatalog(raw);
+          if (
+            pushHit({
+              hash: chunk[i],
+              mockData: parsedMock.mockData,
+              redisKey: keys[i],
+              size: parsedMock.rawByteLength,
+              rawByteLength: parsedMock.rawByteLength,
+            })
+          ) {
+            break;
+          }
         } catch {
           continue;
-        }
-        if (items.length >= limit) {
-          truncated = true;
-          break;
         }
       }
       if (truncated) break;
