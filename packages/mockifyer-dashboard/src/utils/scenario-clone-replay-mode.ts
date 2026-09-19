@@ -32,11 +32,15 @@ function isRecordedMockData(value: unknown): value is MockData {
 }
 
 /** Parse a cloned mock JSON document and strip source-scenario replay flags. */
-export function rewriteClonedMockJson(raw: string): string | null {
+export function rewriteClonedMockJson(raw: string, options?: { pretty?: boolean }): string | null {
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecordedMockData(parsed)) return null;
     resetReplayModeForDerivedScenario(parsed);
+    if (options?.pretty === false) {
+      return JSON.stringify(parsed);
+    }
     return `${JSON.stringify(parsed, null, 2)}\n`;
   } catch {
     return null;

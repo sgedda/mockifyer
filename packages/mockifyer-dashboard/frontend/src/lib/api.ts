@@ -706,8 +706,7 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
     body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Failed to create scenario')
+    throw new Error(await readErrorMessage(response, 'Failed to create scenario'))
   }
   const data = await response.json()
   return mapScenarioConfigPayload(data)

@@ -40,6 +40,13 @@ describe('scenario clone replay mode', () => {
     expect(parsed.response.data).toEqual({ data: { ok: true } });
   });
 
+  it('can rewrite compact JSON for Redis clones', () => {
+    const next = rewriteClonedMockJson(JSON.stringify(mockWithMode('stored')), { pretty: false });
+    expect(next).toBeTruthy();
+    expect(next?.includes('\n')).toBe(false);
+    expect(resolveMockReplayMode(JSON.parse(next!) as MockData)).toBe('passthrough');
+  });
+
   it('clears replay flags in a copied scenario folder but leaves date-config alone', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-clone-replay-'));
     try {
