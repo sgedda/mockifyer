@@ -234,6 +234,7 @@ export interface BulkReplayModeResult {
   scenario: string;
   updatedStored: number;
   updatedLive: number;
+  queuedRefreshNext: number;
   skippedPending: number;
   missing: number;
 }
@@ -267,17 +268,44 @@ function uniqueTrimmedFilenames(list: string[] | undefined): string[] {
   return out;
 }
 
-function applyReplayModeToMock(mockData: MockData, mode: MockReplayMode): 'updated' | 'skipped-pending' {
-  if (mode === 'stored' && mockData.responsePending === true) {
-    return 'skipped-pending';
-  }
+type ReplayModeApplyOutcome = 'stored' | 'refresh-next' | 'passthrough';
+
+/**
+ * Applies replay mode. `stored` on a request-only stub becomes refresh-next so the next
+ * matching request captures a body, then later requests replay that saved mock.
+ */
+function applyReplayModeToMock(mockData: MockData, mode: MockReplayMode): ReplayModeApplyOutcome {
   applyMockReplayModeSetting(mockData, mode);
-  return 'updated';
+  if (mode === 'passthrough') {
+    return 'passthrough';
+  }
+  if (mockData.refreshOnNextRequest === true) {
+    return 'refresh-next';
+  }
+  return 'stored';
+}
+
+interface ReplayModeApplyCounts {
+  updatedStored: number;
+  updatedLive: number;
+  queuedRefreshNext: number;
+}
+
+function tallyReplayOutcome(outcome: ReplayModeApplyOutcome, counts: ReplayModeApplyCounts): void {
+  if (outcome === 'passthrough') {
+    counts.updatedLive += 1;
+    return;
+  }
+  if (outcome === 'refresh-next') {
+    counts.queuedRefreshNext += 1;
+    return;
+  }
+  counts.updatedStored += 1;
 }
 
 /**
  * Set replay mode on specific mock files (`stored` = use mock, `passthrough` = live API).
- * Pending stubs are skipped for `stored` so they are not converted to refresh-next.
+ * Pending stubs requested as `stored` are queued as refresh-next (capture on next request, then replay).
  */
 export async function bulkSetReplayModeForFilenames(opts: {
   provider: 'filesystem' | 'sqlite' | 'redis';
@@ -298,9 +326,11 @@ export async function bulkSetReplayModeForFilenames(opts: {
     throw new Error(`Too many files (max ${BULK_REPLAY_MODE_MAX_FILES})`);
   }
 
-  let updatedStored = 0;
-  let updatedLive = 0;
-  let skippedPending = 0;
+  const counts: ReplayModeApplyCounts = {
+    updatedStored: 0,
+    updatedLive: 0,
+    queuedRefreshNext: 0,
+  };
   let missing = 0;
 
   const jobs: Array<{ filename: string; mode: MockReplayMode }> = [
@@ -326,13 +356,8 @@ export async function bulkSetReplayModeForFilenames(opts: {
           continue;
         }
         const outcome = applyReplayModeToMock(mockData, job.mode);
-        if (outcome === 'skipped-pending') {
-          skippedPending += 1;
-          continue;
-        }
         await store.setByHashInScenario(hash, mockData, scenarioName);
-        if (job.mode === 'stored') updatedStored += 1;
-        else updatedLive += 1;
+        tallyReplayOutcome(outcome, counts);
       }
     } finally {
       await store.close().catch(() => undefined);
@@ -353,22 +378,18 @@ export async function bulkSetReplayModeForFilenames(opts: {
         continue;
       }
       const outcome = applyReplayModeToMock(mockData, job.mode);
-      if (outcome === 'skipped-pending') {
-        skippedPending += 1;
-        continue;
-      }
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
-      if (job.mode === 'stored') updatedStored += 1;
-      else updatedLive += 1;
+      tallyReplayOutcome(outcome, counts);
     }
   }
 
   return {
     ok: true,
     scenario: scenarioName,
-    updatedStored,
-    updatedLive,
-    skippedPending,
+    updatedStored: counts.updatedStored,
+    updatedLive: counts.updatedLive,
+    queuedRefreshNext: counts.queuedRefreshNext,
+    skippedPending: 0,
     missing,
   };
 }
