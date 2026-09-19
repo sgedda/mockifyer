@@ -390,6 +390,62 @@ export async function clearScenarioMocks(
   return { mocksRemoved: clearFilesystemScenarioMocks(scenarioFolder) };
 }
 
+export interface DeleteEntireScenarioOptions extends ClearScenarioMocksOptions {}
+
+/**
+ * Ensures a scenario folder stays inside mockDataPath (no path traversal).
+ */
+function resolveScenarioFolderOrThrow(mockDataPath: string, scenario: string): string {
+  const resolvedRoot = path.resolve(mockDataPath);
+  const resolvedFolder = path.resolve(getScenarioFolderPath(mockDataPath, scenario));
+  const rootWithSep = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+  if (resolvedFolder === resolvedRoot || !resolvedFolder.startsWith(rootWithSep)) {
+    throw new Error(`Invalid scenario path for "${scenario}"`);
+  }
+  return resolvedFolder;
+}
+
+function removeFilesystemScenarioFolder(mockDataPath: string, scenario: string): boolean {
+  const scenarioFolder = resolveScenarioFolderOrThrow(mockDataPath, scenario);
+  if (!fs.existsSync(scenarioFolder)) {
+    return false;
+  }
+  fs.rmSync(scenarioFolder, { recursive: true, force: true });
+  return true;
+}
+
+/**
+ * Deletes a scenario completely: mocks, folder / Redis registry, date config, lock,
+ * domain-path rules, override groups/sets, and proxy settings. Client lanes that
+ * pointed at the scenario are unassigned.
+ */
+export async function deleteEntireScenario(
+  opts: DeleteEntireScenarioOptions
+): Promise<{ mocksRemoved: number; lanesUnassigned: number; folderRemoved: boolean }> {
+  const { mockDataPath, scenario, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const result = await store.deleteEntireScenario(scenario);
+      const folderRemoved = removeFilesystemScenarioFolder(mockDataPath, scenario);
+      return { ...result, folderRemoved };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const mocksRemoved = clearFilesystemScenarioMocks(getScenarioFolderPath(mockDataPath, scenario));
+  const folderRemoved = removeFilesystemScenarioFolder(mockDataPath, scenario);
+  return { mocksRemoved, lanesUnassigned: 0, folderRemoved };
+}
+
 function writeDateConfigFilesystem(scenarioFolder: string, dateManipulation: Record<string, unknown> | null): void {
   const configPath = path.join(scenarioFolder, DATE_CONFIG_BASENAME);
   const noManipulation =

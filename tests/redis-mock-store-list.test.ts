@@ -142,6 +142,44 @@ describe('RedisMockStore.list', () => {
     expect(deleted).toContain(pathIndexKey);
     expect(deleted).not.toContain(`mockifyer:v1:date_config:${scenario}`);
   });
+
+  it('deleteEntireScenario removes mocks, metadata, and registry membership', async () => {
+    const scenario = 'staging';
+    const liveHash = 'e'.repeat(64);
+    const deleted: string[] = [];
+    const sremCalls: Array<{ key: string; members: string[] }> = [];
+    const store = new RedisMockStore({
+      kv: {
+        smembers: async (key: string) => {
+          if (key.includes(`:index:${scenario}`)) return [liveHash];
+          return [];
+        },
+        scanKeys: async () => [],
+        del: async (...keys: string[]) => {
+          deleted.push(...keys);
+        },
+        sadd: async () => undefined,
+        srem: async (key: string, ...members: string[]) => {
+          sremCalls.push({ key, members });
+        },
+        mget: async () => [],
+        hget: async () => null,
+      } as unknown as MockKvBackend,
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const result = await store.deleteEntireScenario(scenario);
+    expect(result.mocksRemoved).toBe(1);
+    expect(result.lanesUnassigned).toBe(0);
+    expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${liveHash}`);
+    expect(deleted).toContain(`mockifyer:v1:date_config:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:proxy_config:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:path_rules:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:scenario_meta:${scenario}`);
+    expect(sremCalls.some((call) => call.key === 'mockifyer:v1:scenarios' && call.members.includes(scenario))).toBe(
+      true
+    );
+  });
 });
 
 describe('RedisMockStore.listCatalog', () => {

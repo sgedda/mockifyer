@@ -125,6 +125,40 @@ Use this when you want the scenario name to stay in the picker with no recorded 
 
 This does **not** delete the scenario folder or Redis registry entry. Create an empty scenario from **Settings → Create New Scenario** (leave “Derive from” as None) if you want a new empty name instead of clearing an existing one.
 
+## Delete scenario
+
+Use this when you want the scenario gone from the picker, not just emptied.
+
+### UI
+
+**Settings → Scenarios → Delete scenario.** Pick a name, confirm the dialog. Locked scenarios must be unlocked first. `default` and `_scratch` (temporary unscoped) cannot be deleted. If you delete the currently active scenario, the dashboard switches to `default`.
+
+### API
+
+`POST /api/scenario-config/delete`
+
+```json
+{ "scenario": "staging" }
+```
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "scenario": "staging",
+  "currentScenario": "default",
+  "scenarios": ["_scratch", "default"],
+  "mocksRemoved": 42,
+  "lanesUnassigned": 1,
+  "message": "Scenario \"staging\" deleted. Switched to \"default\"."
+}
+```
+
+**Errors:** `400` invalid name, default, scratch, or fixture pool; `404` unknown scenario; `423` if the scenario is locked; `500` unexpected server errors.
+
+Filesystem: removes the scenario folder. Redis/SQLite: drops mocks, date/proxy/lock keys, override groups/sets, and the registry entry, and unassigns client lanes that pointed at the scenario.
+
 ## Paths and Redis
 
 - **Filesystem:** `relativePath` is relative to the scenario directory (POSIX slashes). Paths are validated so imports cannot escape outside the scenario folder.

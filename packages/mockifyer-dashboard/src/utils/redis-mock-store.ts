@@ -847,6 +847,72 @@ export class RedisMockStore {
     return hashes.length;
   }
 
+  /**
+   * Permanently remove a scenario: mocks, indexes, date/proxy/lock, domain rules,
+   * override groups/sets, and registry membership. Unassigns client lanes that
+   * pointed at this scenario. Does not change the global active_scenario key.
+   */
+  async deleteEntireScenario(scenario: string): Promise<{
+    mocksRemoved: number;
+    lanesUnassigned: number;
+  }> {
+    const scenarioName = scenario.trim();
+    if (!scenarioName) {
+      throw new Error('scenario is required');
+    }
+
+    const mocksRemoved = await this.clearAllMocksInScenario(scenarioName);
+
+    const groups = await this.listOverrideGroups(scenarioName).catch(() => [] as MockOverrideGroup[]);
+    for (const group of groups) {
+      await this.deleteOverrideGroup(scenarioName, group.id).catch(() => undefined);
+    }
+
+    const overrideSetIds = await this.kv
+      .smembers(this.overrideSetIdsRedisKey(scenarioName))
+      .catch(() => [] as string[]);
+    const overrideSetKeys = [...new Set([DEFAULT_OVERRIDE_SET_ID, ...overrideSetIds])].map((rawId) =>
+      this.overrideSetRedisKey(scenarioName, String(rawId))
+    );
+
+    const leftoverGroupKeys = await this.kv
+      .scanKeys(`${this.keyPrefix}:override_group:${scenarioName}:*`)
+      .catch(() => [] as string[]);
+    const leftoverSetKeys = await this.kv
+      .scanKeys(`${this.keyPrefix}:override_set:${scenarioName}:*`)
+      .catch(() => [] as string[]);
+
+    const metadataKeys = [
+      this.dateConfigRedisKey(scenarioName),
+      this.proxyConfigRedisKey(scenarioName),
+      this.domainPathRulesRedisKey(scenarioName),
+      this.scenarioMetaRedisKey(scenarioName),
+      this.overrideGroupIdsRedisKey(scenarioName),
+      this.overrideGroupConfigRedisKey(scenarioName),
+      this.overrideSetIdsRedisKey(scenarioName),
+      ...overrideSetKeys,
+      ...leftoverGroupKeys,
+      ...leftoverSetKeys,
+    ];
+    for (const chunk of chunkArray(metadataKeys)) {
+      await this.kv.del(...chunk);
+    }
+
+    let lanesUnassigned = 0;
+    const lanes = await this.listClientLanes().catch(
+      () => [] as Array<{ clientId: string; scenario: string }>
+    );
+    for (const lane of lanes) {
+      if (lane.scenario !== scenarioName) continue;
+      await this.setLaneScenario(lane.clientId, null).catch(() => undefined);
+      lanesUnassigned += 1;
+    }
+
+    await this.kv.srem(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
+    this.invalidateCatalogCache(scenarioName);
+    return { mocksRemoved, lanesUnassigned };
+  }
+
   async getByHashWithMeta(
     hash: string,
     scenario?: string,

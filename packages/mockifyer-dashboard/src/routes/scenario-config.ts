@@ -4,12 +4,14 @@ import {
   listScenarios,
   createScenario,
   saveScenarioConfig,
+  DEFAULT_SCENARIO,
   SCRATCH_SCENARIO,
   isScratchScenario,
   getScratchScenarioTtlSec,
   scratchScenarioDisplayName,
   getScenarioFolderPath,
   hydrateOverrideGroupRuntimeFromScenarioPath,
+  POOL_DIR_NAME,
 } from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
@@ -20,14 +22,16 @@ import {
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
-import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   applyScenarioImport,
   buildFilesystemScenarioBundle,
   buildRedisScenarioBundle,
   clearScenarioMocks,
+  deleteEntireScenario,
   parseScenarioImportRequest,
 } from '../utils/scenario-bundle';
+import { getAtlasStore } from '../utils/atlas-store';
+import { createNetworkLogStore } from '../utils/network-log-store';
 import { resetReplayModesInScenarioFolder } from '../utils/scenario-clone-replay-mode';
 import fs from 'fs';
 import path from 'path';
@@ -477,6 +481,89 @@ router.post('/import', async (req: Request, res: Response) => {
 });
 
 const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
+const SCENARIO_DELETE_LOCKED_MESSAGE = 'Scenario is locked; unlock it before deleting.';
+
+function scenarioDeleteBlockReason(name: string): string | null {
+  if (name === DEFAULT_SCENARIO) {
+    return 'Cannot delete the default scenario';
+  }
+  if (isScratchScenario(name)) {
+    return 'Cannot delete the temporary unscoped scenario. Use Clear mocks to empty it.';
+  }
+  if (name === POOL_DIR_NAME) {
+    return 'Cannot delete the fixture pool.';
+  }
+  return null;
+}
+
+async function listDashboardScenarios(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<string[]> {
+  let scenarios = listScenarios(mockDataPath);
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    return scenarios;
+  }
+  const store = createDashboardMockStore(config, mockDataPath);
+  try {
+    const redisScenarios = await store.listScenarios();
+    return Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+}
+
+async function getActiveScenarioName(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<string> {
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    return getCurrentScenario(mockDataPath);
+  }
+  const store = createDashboardMockStore(config, mockDataPath);
+  try {
+    return await store.getActiveScenario();
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+}
+
+async function setActiveScenarioName(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config'],
+  scenario: string
+): Promise<void> {
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.setActiveScenario(scenario);
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+    return;
+  }
+  saveScenarioConfig(mockDataPath, scenario);
+}
+
+async function clearEphemeralScenarioSidecars(
+  scenario: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<void> {
+  try {
+    const atlas = getAtlasStore();
+    atlas.clearDoc(scenario);
+    atlas.clear({ scenario });
+  } catch {
+    // Atlas store is optional / in-memory.
+  }
+  try {
+    const logStore = createNetworkLogStore(config);
+    await logStore.clear({ scenario });
+    await logStore.close();
+  } catch {
+    // Network log is optional.
+  }
+}
 
 /**
  * Empty recorded mocks for a scenario. Keeps the scenario, date config, lock, and domain-path rules.
@@ -525,6 +612,90 @@ router.post('/clear-mocks', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Clear mocks - Error:', error);
     res.status(500).json({ error: 'Failed to clear scenario mocks', details: error.message });
+  }
+});
+
+/**
+ * Permanently delete a scenario (folder / Redis registry + mocks + metadata).
+ * POST /api/scenario-config/delete  { scenario }
+ */
+router.post('/delete', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const parsed = sanitizeScenarioName(req.body?.scenario);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const sanitized = parsed.value;
+
+    const blocked = scenarioDeleteBlockReason(sanitized);
+    if (blocked) {
+      return res.status(400).json({ error: blocked });
+    }
+
+    const scenarios = await listDashboardScenarios(mockDataPath, config);
+    if (!scenarios.includes(sanitized)) {
+      return res.status(404).json({ error: `Scenario "${sanitized}" does not exist` });
+    }
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(sanitized)) {
+          return res.status(423).json({ error: SCENARIO_DELETE_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, sanitized)) {
+      return res.status(423).json({ error: SCENARIO_DELETE_LOCKED_MESSAGE });
+    }
+
+    const wasActive = (await getActiveScenarioName(mockDataPath, config)) === sanitized;
+    const result = await deleteEntireScenario({
+      mockDataPath,
+      scenario: sanitized,
+      provider: config.provider,
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+
+    let currentScenario = await getActiveScenarioName(mockDataPath, config);
+    if (wasActive) {
+      await setActiveScenarioName(mockDataPath, config, DEFAULT_SCENARIO);
+      currentScenario = DEFAULT_SCENARIO;
+    }
+
+    await clearEphemeralScenarioSidecars(sanitized, config);
+
+    const scenariosOut = (await listDashboardScenarios(mockDataPath, config)).filter(
+      (name) => name !== sanitized
+    );
+    if (!scenariosOut.includes(DEFAULT_SCENARIO)) {
+      scenariosOut.push(DEFAULT_SCENARIO);
+    }
+    if (!scenariosOut.includes(SCRATCH_SCENARIO)) {
+      scenariosOut.push(SCRATCH_SCENARIO);
+    }
+    scenariosOut.sort();
+
+    console.log(`[ScenarioConfigRoute] Deleted scenario: ${sanitized}`);
+    return res.json({
+      success: true,
+      scenario: sanitized,
+      currentScenario,
+      scenarios: scenariosOut,
+      mocksRemoved: result.mocksRemoved,
+      lanesUnassigned: result.lanesUnassigned,
+      message:
+        wasActive
+          ? `Scenario "${sanitized}" deleted. Switched to "${DEFAULT_SCENARIO}".`
+          : `Scenario "${sanitized}" deleted.`,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Delete - Error:', error);
+    res.status(500).json({ error: 'Failed to delete scenario', details: error.message });
   }
 });
 

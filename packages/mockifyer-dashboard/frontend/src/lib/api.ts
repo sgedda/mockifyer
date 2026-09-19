@@ -766,6 +766,27 @@ export async function clearScenarioMocks(scenario: string): Promise<{
   return response.json()
 }
 
+export async function deleteScenario(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  currentScenario: string
+  scenarios: string[]
+  mocksRemoved: number
+  lanesUnassigned: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
 export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean
