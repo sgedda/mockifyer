@@ -293,15 +293,20 @@ function FolderSection({
         domainTreeMode.actionMocks ?? domainTreeMode.catalogMocks,
         domainPath
       )
-      if (plan.stored.length === 0 && plan.passthrough.length === 0) return
+      if (plan.stored.length === 0) return
       const result = await bulkSetReplayMode({
         scenario: domainTreeMode.scenario,
         stored: plan.stored,
-        passthrough: plan.passthrough,
       })
+      const upstreamHint =
+        plan.blockedByUpstream.length > 0
+          ? ` ${plan.blockedByUpstream.join(', ')} ${
+              plan.blockedByUpstream.length === 1 ? 'is' : 'are'
+            } still on Replay, so this service may not be called.`
+          : ''
       toast({
         title: 'Replay enabled',
-        description: describeBulkReplayModeResult(result),
+        description: `${describeBulkReplayModeResult(result)}${upstreamHint}`,
       })
       domainTreeMode.onRefresh()
     } catch (error: unknown) {
@@ -442,7 +447,7 @@ function FolderSection({
                 disabled={busy !== null || !canReplay}
                 title={
                   canReplay
-                    ? 'Replay saved responses. Pending stubs capture on the next matching request. Upstream hops switch to Live so traffic can reach this folder.'
+                    ? 'Replay saved responses for mocks in this folder only. Pending stubs capture on the next matching request.'
                     : 'Nothing to replay yet — capture a response first'
                 }
                 onClick={() => void handleTrafficModeChange('replay')}

@@ -695,7 +695,7 @@ describe('chain role replay plans', () => {
 })
 
 describe('domain folder replay plans', () => {
-  it('puts the folder on saved mocks and parent hops on Live', () => {
+  it('puts only the clicked folder on saved mocks', () => {
     const graphql = mock({
       filename: 'graphql.json',
       method: 'POST',
@@ -714,7 +714,31 @@ describe('domain folder replay plans', () => {
     expect(collectUpstreamDomainPathsForReplay([booking], catalog)).toEqual(['localhost:4000/graphql'])
     expect(planDomainFolderReplay(catalog, 'booking.example')).toEqual({
       stored: ['booking.json'],
-      passthrough: ['graphql.json'],
+      blockedByUpstream: ['localhost:4000'],
+    })
+  })
+
+  it('does not switch a sibling/parent host to Live when replaying a folder', () => {
+    const hub = mock({
+      filename: 'hub.json',
+      method: 'GET',
+      endpoint: 'https://bwoty-bookinghubapi-acctst.azurewebsites.net/trips',
+      requestId: 'hub-1',
+    })
+    const repo = mock({
+      filename: 'repo.json',
+      method: 'GET',
+      endpoint: 'https://bwoty-bookingrepositoryapi-acctst.azurewebsites.net/bookings/1',
+      requestId: 'repo-1',
+      parentRequestId: hub.requestId,
+    })
+    expect(planDomainFolderReplay([hub, repo], 'bwoty-bookingrepositoryapi-acctst.azurewebsites.net')).toEqual({
+      stored: ['repo.json'],
+      blockedByUpstream: ['bwoty-bookinghubapi-acctst.azurewebsites.net'],
+    })
+    expect(planDomainFolderReplay([hub, repo], 'bwoty-bookinghubapi-acctst.azurewebsites.net')).toEqual({
+      stored: ['hub.json'],
+      blockedByUpstream: [],
     })
   })
 
@@ -736,7 +760,7 @@ describe('domain folder replay plans', () => {
     expect(collectUpstreamDomainPathsForReplay([booking], [booking, noise])).toEqual([])
     expect(planDomainFolderReplay([booking, noise], 'booking.example')).toEqual({
       stored: ['booking.json'],
-      passthrough: [],
+      blockedByUpstream: [],
     })
   })
 

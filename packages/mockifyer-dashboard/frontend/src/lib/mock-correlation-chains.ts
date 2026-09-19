@@ -270,6 +270,15 @@ export function endpointHostname(endpoint?: string | null): string {
   }
 }
 
+function endpointHostLabel(endpoint?: string | null): string {
+  if (!endpoint?.trim()) return ''
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return endpointHostname(endpoint)
+  }
+}
+
 const OPAQUE_MOCK_FILENAME = /^[a-f0-9]{32,}\.json$/i
 
 /** Redis catalog ids and other content-hash filenames — not useful as a hop label. */
@@ -1096,12 +1105,13 @@ export function collectUpstreamDomainPathsForReplay(
 
 export interface DomainFolderReplayPlan {
   stored: string[]
-  passthrough: string[]
+  /** Hosts still on Replay that sit upstream of this folder (not mutated). */
+  blockedByUpstream: string[]
 }
 
 /**
- * Filenames to put on saved-mock vs Live API when Replay is clicked for a domain-tree folder.
- * Parent hops on other domain paths go Live so traffic can reach this folder.
+ * Filenames to put on saved-mock when Replay is clicked for a domain-tree folder.
+ * Only this folder is updated — sibling/parent hosts keep their current Live/Replay setting.
  */
 export function planDomainFolderReplay(
   catalogMocks: MockFile[],
@@ -1116,18 +1126,18 @@ export function planDomainFolderReplay(
   const upstreamDomains = collectUpstreamDomainPathsForReplay(domainMocks, catalogMocks).filter(
     (path) => path !== normalizedPath
   )
-  const passthrough: string[] = []
-  const seen = new Set<string>()
+  const blockedHosts = new Set<string>()
   for (const mock of catalogMocks) {
-    if (storedSet.has(mock.filename) || seen.has(mock.filename)) continue
+    if (storedSet.has(mock.filename)) continue
+    if (getMockHopTrafficMode(mock) !== 'replay') continue
     const matchesUpstream = upstreamDomains.some((path) =>
       endpointMatchesDomainPath(mock.endpoint ?? null, path)
     )
     if (!matchesUpstream) continue
-    seen.add(mock.filename)
-    passthrough.push(mock.filename)
+    const host = endpointHostLabel(mock.endpoint)
+    if (host) blockedHosts.add(host)
   }
-  return { stored, passthrough }
+  return { stored, blockedByUpstream: [...blockedHosts] }
 }
 
 export function describeBulkReplayModeResult(result: {
