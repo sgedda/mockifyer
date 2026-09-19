@@ -978,7 +978,7 @@ export function formatShortCorrelationId(id: string | null | undefined): string 
 /** Human label for which upstream hop triggered this one. */
 export function describeHopParentLink(chain: MockFile[], hopIndex: number): string | null {
   const hop = chain[hopIndex]
-  if (hopIndex <= 0 || !hop.parentRequestId?.trim()) return null
+  if (hopIndex < 0 || !hop?.parentRequestId?.trim()) return null
 
   const parentId = hop.parentRequestId.trim()
   const parentHop = chain.find((candidate) => candidate.requestId === parentId)
@@ -986,22 +986,80 @@ export function describeHopParentLink(chain: MockFile[], hopIndex: number): stri
   if (parentHop) {
     return `Parent: ${formatMockHopLabel(parentHop)}${shortParent ? ` (${shortParent})` : ''}`
   }
-  return shortParent ? `Parent request id: ${shortParent} (not in this chain)` : 'Parent request id linked'
+  return shortParent ? `Parent request id: ${shortParent} (missing from catalog)` : 'Parent request id linked'
+}
+
+/**
+ * When every top-level hop in a chain points at the same parentRequestId that is
+ * not present in the chain, that id is the real root (caller was not recorded /
+ * rewritten). Prefer it over promoting the first orphan as the root.
+ */
+export function getSharedMissingParentId(hops: MockFile[]): string | null {
+  if (hops.length === 0) return null
+  const maps = buildMockChainMaps(hops)
+  const inChain = new Set(hops.map((hop) => hop.filename))
+  const roots = hops.filter((hop) => {
+    const parentId = hop.parentRequestId?.trim()
+    if (!parentId) return true
+    const parent = maps.byRequestId.get(parentId)
+    return !parent || !inChain.has(parent.filename)
+  })
+  if (roots.length === 0) return null
+
+  const parentIds = new Set(
+    roots.map((hop) => hop.parentRequestId?.trim()).filter((id): id is string => Boolean(id))
+  )
+  if (parentIds.size !== 1) return null
+  const only = [...parentIds][0]!
+  if (!roots.every((hop) => hop.parentRequestId?.trim() === only)) return null
+  return only
 }
 
 export function chainHasRequestCorrelation(chain: MockFile[]): boolean {
+  if (getSharedMissingParentId(chain)) return true
   const requestIds = new Set(
     chain.map((hop) => hop.requestId?.trim()).filter((id): id is string => Boolean(id))
   )
-  return chain.some((hop, index) => {
-    if (index === 0) return false
+  return chain.some((hop) => {
     const parentId = hop.parentRequestId?.trim()
     return Boolean(parentId && requestIds.has(parentId))
   })
 }
 
 export function getChainRootRequestId(chain: MockFile[]): string | null {
-  return chain[0]?.requestId?.trim() ?? null
+  return getSharedMissingParentId(chain) ?? chain[0]?.requestId?.trim() ?? null
+}
+
+/** Fingerprint prefix for synthetic forest nodes that stand in for a missing parent hop. */
+export const MISSING_PARENT_NODE_PREFIX = 'missing-parent:'
+
+export function isMissingParentChainNode(node: MockUniqueChainNode): boolean {
+  return node.fingerprint.startsWith(MISSING_PARENT_NODE_PREFIX)
+}
+
+function makeMissingParentForestNode(
+  parentId: string,
+  children: MockUniqueChainNode[]
+): MockUniqueChainNode {
+  const representative: MockFile = {
+    filename: `${MISSING_PARENT_NODE_PREFIX}${parentId}`,
+    filePath: '',
+    size: 0,
+    created: '',
+    modified: '',
+    endpoint: null,
+    method: null,
+    graphqlInfo: null,
+    sessionId: null,
+    requestId: parentId,
+  }
+  return {
+    fingerprint: `${MISSING_PARENT_NODE_PREFIX}${parentId}`,
+    representative,
+    hops: [],
+    callCount: 0,
+    children,
+  }
 }
 
 function groupSiblingsByFingerprint(children: MockFile[]): MockUniqueChainNode[] {
@@ -1100,8 +1158,9 @@ function buildSequentialUniquePath(hops: MockFile[]): MockUniqueChainNode[] {
 /**
  * Nested unique-endpoint forest for display. Repeated sibling calls collapse to ×N
  * (same idea as Atlas HTML unique chains) instead of a linear dump of every hop.
- * Distinct hops nest as a tree: parent-linked children stay under their caller,
- * and inferred/enriched hops without ids still nest as a path (not siblings).
+ * Distinct hops nest as a tree: parent-linked children stay under their caller.
+ * Orphans that share one missing parentRequestId nest under a synthetic root for
+ * that id — never promote the first orphan as "the" entry hop.
  */
 export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNode[] {
   if (hops.length === 0) return []
@@ -1118,6 +1177,10 @@ export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNod
     const grouped = groupSiblingsByFingerprint(roots)
     for (const node of grouped) {
       node.children = uniqueChildrenOf(node.hops, maps, inChain)
+    }
+    const sharedMissing = getSharedMissingParentId(hops)
+    if (sharedMissing) {
+      return [makeMissingParentForestNode(sharedMissing, grouped)]
     }
     return nestUniqueNodesAsPath(grouped)
   }

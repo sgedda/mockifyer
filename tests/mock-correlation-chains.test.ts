@@ -13,6 +13,7 @@ import {
   formatHopPathLabelWithCatalog,
   hopPathLabelParts,
   filterMocksByHopTraffic,
+  getChainRootRequestId,
   getMockHopTrafficMode,
   mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
@@ -260,10 +261,15 @@ describe('mock service chain display', () => {
 })
 
 function forestOutline(nodes: MockUniqueChainNode[], depth = 0): string[] {
-  return nodes.flatMap((node) => [
-    `${'  '.repeat(depth)}${mockHopEndpointFingerprint(node.representative)}${node.callCount > 1 ? `×${node.callCount}` : ''}`,
-    ...forestOutline(node.children, depth + 1),
-  ])
+  return nodes.flatMap((node) => {
+    const label = node.fingerprint.startsWith('missing-parent:')
+      ? `missing-parent:${node.representative.requestId}`
+      : `${mockHopEndpointFingerprint(node.representative)}${node.callCount > 1 ? `×${node.callCount}` : ''}`
+    return [
+      `${'  '.repeat(depth)}${label}`,
+      ...forestOutline(node.children, depth + 1),
+    ]
+  })
 }
 
 describe('unique mock chain forest', () => {
@@ -505,11 +511,89 @@ describe('unique mock chain forest', () => {
 
     const forest = buildUniqueMockChainForest(chains[0].hops)
     expect(forestOutline(forest)).toEqual([
-      'GET /v-2/myaccount/',
-      '  POST /IndependentService.asmx',
-      'GET /api/booking/:id×16',
-      'POST /api/token×8',
+      'missing-parent:g-old',
+      '  GET /v-2/myaccount/',
+      '    POST /IndependentService.asmx',
+      '  GET /api/booking/:id×16',
+      '  POST /api/token×8',
     ])
+  })
+
+  it('does not promote the first orphan as root when siblings share a missing parent', () => {
+    const token = mock({
+      filename: 'token.json',
+      method: 'POST',
+      endpoint: 'https://tokenws.acctest.int/TokenService.asmx',
+      requestId: '991e728a-eeee-4000-8000-000000000001',
+      parentRequestId: '47afd835-aaaa-4000-8000-000000000099',
+      modified: '2026-09-19T20:00:00.000Z',
+    })
+    const membership = mock({
+      filename: 'membership.json',
+      method: 'POST',
+      endpoint: 'https://crmapi.acctest.int/Customerapi/api/v2/Membership/query',
+      requestId: 'c6d55262-eeee-4000-8000-000000000002',
+      parentRequestId: '47afd835-aaaa-4000-8000-000000000099',
+      modified: '2026-09-19T20:00:01.000Z',
+    })
+    const independents: MockFile[] = []
+    for (let i = 0; i < 5; i += 1) {
+      independents.push(
+        mock({
+          filename: `independent-${i}.json`,
+          method: 'POST',
+          endpoint: 'https://independentws-ver3.acctest.int/IndependentService.asmx',
+          requestId: `ind-${i}`,
+          parentRequestId: '47afd835-aaaa-4000-8000-000000000099',
+          modified: new Date(Date.parse('2026-09-19T20:00:02.000Z') + i * 100).toISOString(),
+        })
+      )
+    }
+
+    const chains = buildMockServiceChainsForDisplay([token, membership, ...independents])
+    expect(chains).toHaveLength(1)
+    expect(getChainRootRequestId(chains[0].hops)).toBe('47afd835-aaaa-4000-8000-000000000099')
+    expect(chainHasRequestCorrelation(chains[0].hops)).toBe(true)
+    expect(forestOutline(buildUniqueMockChainForest(chains[0].hops))).toEqual([
+      'missing-parent:47afd835-aaaa-4000-8000-000000000099',
+      '  POST /TokenService.asmx',
+      '  POST /Customerapi/api/v2/Membership/query',
+      '  POST /IndependentService.asmx×5',
+    ])
+  })
+
+  it('keeps an unrelated root-only hop out of a missing-parent sibling family', () => {
+    const loneToken = mock({
+      filename: 'lone-token.json',
+      method: 'POST',
+      endpoint: 'https://tokenws.acctest.int/TokenService.asmx',
+      requestId: 'lone-token',
+      modified: '2026-09-19T20:00:00.000Z',
+    })
+    const membership = mock({
+      filename: 'membership.json',
+      method: 'POST',
+      endpoint: 'https://crmapi.acctest.int/Customerapi/api/v2/Membership/query',
+      requestId: 'mem-1',
+      parentRequestId: 'missing-parent-1',
+      modified: '2026-09-19T20:00:01.000Z',
+    })
+    const independent = mock({
+      filename: 'independent.json',
+      method: 'POST',
+      endpoint: 'https://independentws-ver3.acctest.int/IndependentService.asmx',
+      requestId: 'ind-1',
+      parentRequestId: 'missing-parent-1',
+      modified: '2026-09-19T20:00:02.000Z',
+    })
+
+    const chains = buildMockServiceChainsForDisplay([loneToken, membership, independent])
+    expect(chains).toHaveLength(1)
+    expect(chains[0].hops.map((hop) => hop.filename).sort()).toEqual([
+      'independent.json',
+      'membership.json',
+    ])
+    expect(getChainRootRequestId(chains[0].hops)).toBe('missing-parent-1')
   })
 
   it('nests hops only when parentRequestId matches the caller requestId', () => {

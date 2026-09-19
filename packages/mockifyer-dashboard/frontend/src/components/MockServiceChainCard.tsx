@@ -13,6 +13,7 @@ import {
   getChainRootRequestId,
   getMockHopTrafficMode,
   isEnrichedChainHop,
+  isMissingParentChainNode,
   type MockServiceChain,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
@@ -44,6 +45,10 @@ function describeTreeParentLink(
   }
   const parent = ancestors[ancestors.length - 1]
   if (!parent) return null
+  if (isMissingParentChainNode(parent)) {
+    const short = formatShortCorrelationId(parent.representative.requestId)
+    return short ? `Parent request id: ${short} (missing from catalog)` : 'Parent request id missing from catalog'
+  }
   const parentHop = parent.representative
   const short = formatShortCorrelationId(parentHop.requestId)
   return `Parent: ${formatMockHopLabel(parentHop)}${short ? ` (${short})` : ''}`
@@ -119,6 +124,12 @@ export function MockServiceChainCard({
               : 'No root request id stored on the entry hop.'}
           </p>
         )}
+        {forest.some(isMissingParentChainNode) && (
+          <p className="text-amber-200/90">
+            Entry hop for this parent id is not in the catalog (rewritten or not recorded). Children below still
+            share that exact parent link.
+          </p>
+        )}
       </div>
 
       <div className="p-3">
@@ -126,6 +137,38 @@ export function MockServiceChainCard({
           forest={forest}
           selectedFilename={selectedFilename}
           renderNode={({ node, depth, expanded, hasChildren, nestedCount, ancestors, onToggle }) => {
+            if (isMissingParentChainNode(node)) {
+              const missingIdShort = formatShortCorrelationId(node.representative.requestId)
+              return (
+                <div className="flex gap-2 pb-2 last:pb-0">
+                  <div className="flex flex-col items-center pt-2">
+                    <ChainTreeToggle
+                      hasChildren={hasChildren}
+                      expanded={expanded}
+                      nestedCount={nestedCount}
+                      instanceCount={0}
+                      onToggle={onToggle}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-amber-50">Missing entry hop</span>
+                      <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-100">
+                        entry
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Parent request id{' '}
+                      <span className="font-mono text-foreground/80" title={node.representative.requestId ?? undefined}>
+                        {missingIdShort}
+                      </span>{' '}
+                      is not in this catalog — children below still link to it.
+                    </p>
+                  </div>
+                </div>
+              )
+            }
+
             const hop = node.hops.find((h) => h.filename === selectedFilename) ?? node.representative
             const isSelected = node.hops.some((candidate) => candidate.filename === selectedFilename)
             const traffic = getMockHopTrafficMode(hop)
