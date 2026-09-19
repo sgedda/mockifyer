@@ -58,9 +58,7 @@ export function MockCallChainPanel({
                   className={`text-left rounded px-2 py-1 text-[11px] font-mono border transition-colors max-w-full truncate ${
                     selected
                       ? 'border-primary bg-primary/10'
-                      : !hasChildren
-                        ? 'border-amber-400/50 bg-amber-500/15 hover:border-amber-300/70'
-                        : 'border-transparent hover:border-border hover:bg-background'
+                      : 'border-transparent hover:border-border hover:bg-background'
                   }`}
                   title={
                     [
@@ -109,7 +107,7 @@ export function MockCallChainPanel({
       />
       <p className="text-[11px] text-muted-foreground">
         Nested hops from one user request. Repeated sibling calls are grouped (×N) — expand to each
-        underlying call. Lowest-level (leaf) hops are highlighted; parent hops include nested requests.
+        underlying call. Lowest-level hops show a leaf badge; parent hops include nested requests.
       </p>
     </div>
   )

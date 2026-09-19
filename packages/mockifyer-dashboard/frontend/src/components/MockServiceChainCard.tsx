@@ -148,9 +148,7 @@ export function MockServiceChainCard({
                   className={`flex-1 min-w-0 text-left rounded-md border px-3 py-2 transition-colors cursor-pointer ${
                     isSelected
                       ? 'border-primary bg-primary/10'
-                      : isLeafHop
-                        ? 'border-amber-400/60 bg-amber-500/15 hover:border-amber-300/80 hover:bg-amber-500/20'
-                        : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
+                      : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
                   }`}
                   title={
                     isLeafHop
@@ -313,7 +311,7 @@ export function MockServiceChainCard({
         )}
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           Nested hops start collapsed. Expand a hop to see calls it triggered, or expand ×N to each
-          underlying request. <span className="text-amber-200/90">Lowest-level (leaf) hops are highlighted</span>
+          underlying request. Lowest-level hops show a <span className="text-amber-200/90">leaf</span> badge
           {' '}— parent hops include nested requests in their time and size
           {hasEnrichedHops
             ? '. Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
