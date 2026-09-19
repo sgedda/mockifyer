@@ -13,33 +13,11 @@ import { useToast } from '@/components/ui/use-toast'
 import { bulkSetReplayMode } from '@/lib/api'
 import {
   collectMockChainRoleFilenames,
+  describeBulkReplayModeResult,
   planChainRoleReplay,
   type ChainRoleReplayTarget,
   type MockServiceChain,
 } from '@/lib/mock-correlation-chains'
-
-function describeBulkResult(result: {
-  updatedStored: number
-  updatedLive: number
-  queuedRefreshNext: number
-}): string {
-  const parts: string[] = []
-  if (result.updatedStored > 0) {
-    parts.push(`${result.updatedStored} mock${result.updatedStored === 1 ? '' : 's'} on saved response`)
-  }
-  if (result.queuedRefreshNext > 0) {
-    parts.push(
-      `${result.queuedRefreshNext} will capture on next request, then replay`
-    )
-  }
-  if (result.updatedLive > 0) {
-    parts.push(`${result.updatedLive} parent hop${result.updatedLive === 1 ? '' : 's'} set to Live`)
-  }
-  if (parts.length === 0) {
-    return 'No hops updated'
-  }
-  return parts.join('. ')
-}
 
 function bulkResultTitle(
   target: ChainRoleReplayTarget,
@@ -85,7 +63,7 @@ export function MockChainRoleReplayMenu({
       })
       toast({
         title: bulkResultTitle(target, result),
-        description: describeBulkResult(result),
+        description: describeBulkReplayModeResult(result),
       })
       onDone()
     } catch (error: unknown) {

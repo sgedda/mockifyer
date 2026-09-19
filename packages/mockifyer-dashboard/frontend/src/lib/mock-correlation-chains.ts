@@ -1,5 +1,5 @@
 import type { MockFile } from '@/types'
-import { endpointToDomainPath } from '@/lib/domainTreeMatch'
+import { endpointMatchesDomainPath, endpointToDomainPath } from '@/lib/domainTreeMatch'
 
 export interface MockChainMaps {
   byRequestId: Map<string, MockFile>
@@ -1063,38 +1063,94 @@ export function collectUpstreamDomainPathsForReplay(
   catalogMocks: MockFile[]
 ): string[] {
   const chainMaps = buildMockChainMaps(catalogMocks)
+  const displayChains = buildMockServiceChainsForDisplay(catalogMocks)
   const domains = new Set<string>()
+  const chainIndex = new Map<string, MockFile[]>()
+  for (const chain of displayChains) {
+    for (const hop of chain.hops) {
+      if (!chainIndex.has(hop.filename)) chainIndex.set(hop.filename, chain.hops)
+    }
+  }
 
   const addHop = (hop: MockFile) => {
     const path = endpointToDomainPath(hop.endpoint)
     if (path) domains.add(path)
   }
 
+  const addParents = (hops: MockFile[], filename: string) => {
+    const idx = hops.findIndex((h) => h.filename === filename)
+    if (idx <= 0) return false
+    for (let i = 0; i < idx; i++) addHop(hops[i])
+    return true
+  }
+
   for (const mock of targetMocks) {
     const linked = getMockChain(mock, chainMaps.byRequestId, chainMaps.childrenByParent)
-    let idx = linked.findIndex((h) => h.filename === mock.filename)
-    if (idx > 0) {
-      for (let i = 0; i < idx; i++) addHop(linked[i])
-    }
-
-    for (const chain of buildMockServiceChainsForDisplay(catalogMocks)) {
-      idx = chain.hops.findIndex((h) => h.filename === mock.filename)
-      if (idx > 0) {
-        for (let i = 0; i < idx; i++) addHop(chain.hops[i])
-      }
-    }
-
-    const targetKey = inferHopSortKey(mock)
-    const targetTime = new Date(mock.modified).getTime()
-    for (const candidate of catalogMocks) {
-      if (candidate.filename === mock.filename) continue
-      if (inferHopSortKey(candidate) >= targetKey) continue
-      if (Math.abs(new Date(candidate.modified).getTime() - targetTime) > INFER_CLUSTER_MS) continue
-      addHop(candidate)
-    }
+    addParents(linked, mock.filename)
+    const displayHops = chainIndex.get(mock.filename)
+    if (displayHops) addParents(displayHops, mock.filename)
   }
 
   return [...domains]
+}
+
+export interface DomainFolderReplayPlan {
+  stored: string[]
+  passthrough: string[]
+}
+
+/**
+ * Filenames to put on saved-mock vs Live API when Replay is clicked for a domain-tree folder.
+ * Parent hops on other domain paths go Live so traffic can reach this folder.
+ */
+export function planDomainFolderReplay(
+  catalogMocks: MockFile[],
+  domainPath: string
+): DomainFolderReplayPlan {
+  const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
+  const domainMocks = catalogMocks.filter((mock) =>
+    endpointMatchesDomainPath(mock.endpoint ?? null, normalizedPath)
+  )
+  const stored = domainMocks.map((mock) => mock.filename)
+  const storedSet = new Set(stored)
+  const upstreamDomains = collectUpstreamDomainPathsForReplay(domainMocks, catalogMocks).filter(
+    (path) => path !== normalizedPath
+  )
+  const passthrough: string[] = []
+  const seen = new Set<string>()
+  for (const mock of catalogMocks) {
+    if (storedSet.has(mock.filename) || seen.has(mock.filename)) continue
+    const matchesUpstream = upstreamDomains.some((path) =>
+      endpointMatchesDomainPath(mock.endpoint ?? null, path)
+    )
+    if (!matchesUpstream) continue
+    seen.add(mock.filename)
+    passthrough.push(mock.filename)
+  }
+  return { stored, passthrough }
+}
+
+export function describeBulkReplayModeResult(result: {
+  updatedStored: number
+  updatedLive: number
+  queuedRefreshNext: number
+}): string {
+  const parts: string[] = []
+  if (result.updatedStored > 0) {
+    parts.push(`${result.updatedStored} mock${result.updatedStored === 1 ? '' : 's'} on saved response`)
+  }
+  if (result.queuedRefreshNext > 0) {
+    parts.push(`${result.queuedRefreshNext} will capture on next request, then replay`)
+  }
+  if (result.updatedLive > 0) {
+    parts.push(
+      `${result.updatedLive} parent hop${result.updatedLive === 1 ? '' : 's'} set to Live`
+    )
+  }
+  if (parts.length === 0) {
+    return 'No hops updated'
+  }
+  return parts.join('. ')
 }
 
 /** True when an upstream hop on Replay prevents later hops from running. */

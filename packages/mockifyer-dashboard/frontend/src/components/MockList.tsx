@@ -611,6 +611,7 @@ function MockListContent({
                 ? {
                     scenario,
                     catalogMocks: visibleMocks,
+                    actionMocks: allMocks,
                     pathRules: domainPathRules,
                     onPathRulesChange: setDomainPathRules,
                     onRefresh,

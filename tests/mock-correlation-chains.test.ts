@@ -19,6 +19,9 @@ import {
   mockHopHitsUpstream,
   collectMockChainRoleFilenames,
   planChainRoleReplay,
+  collectUpstreamDomainPathsForReplay,
+  planDomainFolderReplay,
+  describeBulkReplayModeResult,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
 
@@ -688,6 +691,63 @@ describe('chain role replay plans', () => {
       stored: expect.arrayContaining(['booking.json', 'token.json']),
       passthrough: ['graphql.json'],
     })
+  })
+})
+
+describe('domain folder replay plans', () => {
+  it('puts the folder on saved mocks and parent hops on Live', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'bff-1',
+      graphqlInfo: { query: 'query Q { a }', variables: {}, operationName: 'Q' },
+    })
+    const booking = mock({
+      filename: 'booking.json',
+      method: 'GET',
+      endpoint: 'http://booking.example/api/booking/1',
+      requestId: 'src-1',
+      parentRequestId: graphql.requestId,
+    })
+    const catalog = [graphql, booking]
+    expect(collectUpstreamDomainPathsForReplay([booking], catalog)).toEqual(['localhost:4000/graphql'])
+    expect(planDomainFolderReplay(catalog, 'booking.example')).toEqual({
+      stored: ['booking.json'],
+      passthrough: ['graphql.json'],
+    })
+  })
+
+  it('does not treat unrelated session traffic as upstream hops', () => {
+    const booking = mock({
+      filename: 'booking.json',
+      method: 'GET',
+      endpoint: 'http://booking.example/api/booking/1',
+      requestId: 'src-1',
+      modified: '2026-09-10T16:18:00.000Z',
+    })
+    const noise = mock({
+      filename: 'noise.json',
+      method: 'GET',
+      endpoint: 'http://localhost:4000/weather/currentConditions',
+      requestId: 'noise-1',
+      modified: '2026-09-10T16:18:01.000Z',
+    })
+    expect(collectUpstreamDomainPathsForReplay([booking], [booking, noise])).toEqual([])
+    expect(planDomainFolderReplay([booking, noise], 'booking.example')).toEqual({
+      stored: ['booking.json'],
+      passthrough: [],
+    })
+  })
+
+  it('describes mixed stored, pending, and parent-live results', () => {
+    expect(
+      describeBulkReplayModeResult({
+        updatedStored: 2,
+        queuedRefreshNext: 1,
+        updatedLive: 3,
+      })
+    ).toBe('2 mocks on saved response. 1 will capture on next request, then replay. 3 parent hops set to Live')
   })
 })
 

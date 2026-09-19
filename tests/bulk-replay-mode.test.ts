@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
-import { bulkSetReplayModeForFilenames } from '../packages/mockifyer-dashboard/src/utils/bulk-domain-mocks';
+import { bulkSetLiveApiForDomain, bulkSetReplayModeForFilenames } from '../packages/mockifyer-dashboard/src/utils/bulk-domain-mocks';
 
 function sampleMock(overrides: Partial<MockData> = {}): MockData {
   return {
@@ -86,6 +86,80 @@ describe('bulkSetReplayModeForFilenames', () => {
 
     expect(result.queuedRefreshNext).toBe(1);
     expect(result.updatedStored).toBe(0);
+    expect(result.skippedPending).toBe(0);
+    const pending = JSON.parse(fs.readFileSync(path.join(scenarioPath, 'pending.json'), 'utf-8')) as MockData;
+    expect(pending.responsePending).toBeUndefined();
+    expect(pending.alwaysUseRealApi).toBeUndefined();
+    expect(pending.refreshOnNextRequest).toBe(true);
+  });
+});
+
+describe('bulkSetLiveApiForDomain', () => {
+  let tmpRoot: string;
+
+  beforeEach(() => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-bulk-live-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('clears refresh-from-live flags when switching a domain to replay', async () => {
+    const scenarioPath = path.join(tmpRoot, 'default');
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(scenarioPath, 'booking.json'),
+      JSON.stringify(
+        sampleMock({
+          alwaysUseRealApi: undefined,
+          alwaysRefreshFromLive: true,
+        }),
+        null,
+        2
+      )
+    );
+
+    const result = await bulkSetLiveApiForDomain({
+      provider: 'filesystem',
+      mockDataPath: tmpRoot,
+      scenario: 'default',
+      domainPath: 'booking.example',
+      useLiveApi: false,
+    });
+
+    expect(result.updated).toBe(1);
+    const booking = JSON.parse(fs.readFileSync(path.join(scenarioPath, 'booking.json'), 'utf-8')) as MockData;
+    expect(booking.alwaysRefreshFromLive).toBeUndefined();
+    expect(booking.alwaysUseRealApi).toBeUndefined();
+    expect(booking.refreshOnNextRequest).toBeUndefined();
+  });
+
+  it('queues pending stubs as refresh-next instead of skipping them', async () => {
+    const scenarioPath = path.join(tmpRoot, 'default');
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(scenarioPath, 'pending.json'),
+      JSON.stringify(
+        sampleMock({
+          responsePending: true,
+          alwaysUseRealApi: true,
+          response: { status: 0, data: null, headers: {} },
+        }),
+        null,
+        2
+      )
+    );
+
+    const result = await bulkSetLiveApiForDomain({
+      provider: 'filesystem',
+      mockDataPath: tmpRoot,
+      scenario: 'default',
+      domainPath: 'booking.example',
+      useLiveApi: false,
+    });
+
+    expect(result.updated).toBe(1);
     expect(result.skippedPending).toBe(0);
     const pending = JSON.parse(fs.readFileSync(path.join(scenarioPath, 'pending.json'), 'utf-8')) as MockData;
     expect(pending.responsePending).toBeUndefined();
