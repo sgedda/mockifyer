@@ -30,13 +30,40 @@ export interface GetCurrentDateContext {
   explicitManipulation?: Record<string, unknown> | null;
 }
 
-function manipulationPayloadIsEffective(dm: Record<string, unknown>): boolean {
+/**
+ * True when a dateManipulation payload would change {@link getCurrentDate}
+ * (fixed date, offset, or timezone).
+ */
+export function dateManipulationHasEffect(
+  dm: Record<string, unknown> | null | undefined
+): boolean {
+  if (!dm || typeof dm !== 'object') {
+    return false;
+  }
   const fixed = dm.fixedDate;
   const hasFixed = fixed !== undefined && fixed !== null && fixed !== '';
   const hasOffset = dm.offset !== undefined && dm.offset !== null && typeof dm.offset === 'number';
   const tz = dm.timezone;
   const hasTz = tz !== undefined && tz !== null && tz !== '';
   return hasFixed || hasOffset || hasTz;
+}
+
+/**
+ * Date manipulation the dashboard proxy should pass as `explicitManipulation`.
+ * An effective **client-lane** payload wins over the scenario Redis/sqlite document.
+ * When the scenario document is missing (`null`), returns `null` so Redis mode does not fall back to disk.
+ */
+export function resolveExplicitDateManipulation(options: {
+  laneManipulation?: Record<string, unknown> | null;
+  scenarioDateDoc: { dateManipulation: Record<string, unknown> | null } | null;
+}): Record<string, unknown> | null {
+  if (dateManipulationHasEffect(options.laneManipulation)) {
+    return options.laneManipulation as Record<string, unknown>;
+  }
+  if (options.scenarioDateDoc === null) {
+    return null;
+  }
+  return options.scenarioDateDoc.dateManipulation ?? {};
 }
 
 /**
@@ -199,7 +226,7 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
     if (ex !== null && typeof ex === 'object') {
       // `{}` (or otherwise "ineffective") is an explicit "clear" signal: treat as no manipulation
       // and do not fall through to env vars / disk defaults.
-      if (!manipulationPayloadIsEffective(ex)) {
+      if (!dateManipulationHasEffect(ex)) {
         return new Date();
       }
       // Apply explicit manipulation directly (no env var precedence).
