@@ -766,6 +766,52 @@ export async function clearScenarioMocks(scenario: string): Promise<{
   return response.json()
 }
 
+export async function deleteScenario(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  currentScenario: string
+  scenarios: string[]
+  mocksRemoved: number
+  lanesUnassigned: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function renameScenario(
+  scenario: string,
+  newName: string
+): Promise<{
+  success: boolean
+  scenario: string
+  newName: string
+  currentScenario: string
+  scenarios: string[]
+  mocksMoved: number
+  lanesRemapped: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, newName }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to rename scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
 export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean

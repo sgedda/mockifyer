@@ -109,7 +109,7 @@ export function createServer(
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites'
   );
 
   // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
