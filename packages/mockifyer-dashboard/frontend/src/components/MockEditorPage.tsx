@@ -61,12 +61,12 @@ export default function MockEditorPage({
       try {
         setLoading(true)
         setNotFound(false)
-        const [mockData, list] = await Promise.all([
-          getMock(file, scenario),
-          getMocks(scenario).catch(() => ({ files: [] as MockFile[] })),
-        ])
+        const mockData = await getMock(file, scenario)
         if (cancelled) return
         setMock(mockData)
+        setLoading(false)
+        const list = await getMocks(scenario, { compact: true }).catch(() => ({ files: [] as MockFile[] }))
+        if (cancelled) return
         setAllMocks(list.files ?? [])
       } catch {
         if (cancelled) return
@@ -97,7 +97,7 @@ export default function MockEditorPage({
     try {
       const mockData = await getMock(filename, scenario)
       setMock(mockData)
-      const list = await getMocks(scenario)
+      const list = await getMocks(scenario, { compact: true })
       setAllMocks(list.files ?? [])
     } catch {
       // Keep the editor open with the last loaded mock if refresh fails.
@@ -151,7 +151,7 @@ export default function MockEditorPage({
         onClose={goToList}
         onSave={() => void handleSaved()}
         onListRefresh={async () => {
-          const list = await getMocks(scenario)
+          const list = await getMocks(scenario, { compact: true })
           setAllMocks(list.files ?? [])
         }}
       />

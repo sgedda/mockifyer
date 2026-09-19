@@ -1,7 +1,7 @@
 /**
  * Dashboard location helpers. Nested path segments break the portable Vite `base: './'`
  * asset URLs on refresh, so resource identity lives in the query string on one-segment
- * routes (`/mocks`, `/mock`, `/network`, …). Those URLs copy/paste and reload cleanly.
+ * routes (`/mocks`, `/mock`, `/hops`, `/network`, …). Those URLs copy/paste and reload cleanly.
  */
 
 export const DASHBOARD_Q = {
@@ -22,6 +22,8 @@ export const DASHBOARD_Q = {
   page: 'page',
   node: 'node',
   hop: 'hop',
+  domain: 'domain',
+  traffic: 'traffic',
   session: 'session',
   screen: 'screen',
   entity: 'entity',
@@ -66,6 +68,18 @@ export function searchParamsToRecord(params: URLSearchParams): Record<string, st
 
 export function mocksListPath(extras?: QueryUpdates): string {
   return `/mocks${buildSearch(extras ?? {})}`
+}
+
+export function hopsPath(extras?: QueryUpdates): string {
+  return `/hops${buildSearch(extras ?? {})}`
+}
+
+/** Open Hops focused on one recording (chain is highlighted, not filtered away). */
+export function hopsFocusPath(params: { scenario?: string; filename: string }): string {
+  return hopsPath({
+    scenario: params.scenario,
+    [DASHBOARD_Q.hop]: params.filename,
+  })
 }
 
 export function mockEditorPath(filename: string, extras?: QueryUpdates): string {

@@ -533,10 +533,12 @@ export async function duplicateMock(filename: string, scenario?: string): Promis
   return response.json()
 }
 
-export async function getStats(scenario?: string): Promise<Stats> {
-  const url = scenario
-    ? `${API_BASE}/stats?scenario=${encodeURIComponent(scenario)}`
-    : `${API_BASE}/stats`
+export async function getStats(scenario?: string, domain?: string): Promise<Stats> {
+  const params = new URLSearchParams()
+  if (scenario) params.set('scenario', scenario)
+  if (domain) params.set('domain', domain)
+  const query = params.toString()
+  const url = query ? `${API_BASE}/stats?${query}` : `${API_BASE}/stats`
   const response = await fetchApi(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch stats')
   return response.json()
@@ -591,6 +593,8 @@ export interface ClientLane {
   clientId: string
   scenario: string
   overrideGroupId?: string | null
+  /** ISO current date for this lane; when set, it overrides scenario Date Config. */
+  fixedDate?: string | null
   note: string | null
   lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
@@ -658,6 +662,20 @@ export async function setClientLaneOverrideGroup(
   }
 }
 
+export async function setClientLaneFixedDate(
+  clientId: string,
+  fixedDate: string | null
+): Promise<void> {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/date`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fixedDate }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set lane current date'))
+  }
+}
+
 
 export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
   const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
@@ -688,8 +706,7 @@ export async function createScenario(scenario: string, deriveFrom?: string | nul
     body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Failed to create scenario')
+    throw new Error(await readErrorMessage(response, 'Failed to create scenario'))
   }
   const data = await response.json()
   return mapScenarioConfigPayload(data)
@@ -759,6 +776,52 @@ export async function clearScenarioMocks(scenario: string): Promise<{
   })
   if (!response.ok) {
     const message = await readErrorMessage(response, 'Failed to clear scenario mocks')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function deleteScenario(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  currentScenario: string
+  scenarios: string[]
+  mocksRemoved: number
+  lanesUnassigned: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function renameScenario(
+  scenario: string,
+  newName: string
+): Promise<{
+  success: boolean
+  scenario: string
+  newName: string
+  currentScenario: string
+  scenarios: string[]
+  mocksMoved: number
+  lanesRemapped: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, newName }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to rename scenario')
     throw new Error(message)
   }
   return response.json()
@@ -954,6 +1017,29 @@ export async function bulkCaptureResponsesForDomain(payload: {
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || 'Failed to bulk capture responses')
+  }
+  return response.json()
+}
+
+export async function bulkSetReplayMode(payload: {
+  scenario: string
+  stored?: string[]
+  passthrough?: string[]
+}): Promise<{
+  ok: boolean
+  updatedStored: number
+  updatedLive: number
+  skippedPending: number
+  missing: number
+}> {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-replay-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update hop replay mode')
   }
   return response.json()
 }

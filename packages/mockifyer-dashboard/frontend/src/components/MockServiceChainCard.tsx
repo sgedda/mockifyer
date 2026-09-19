@@ -6,8 +6,8 @@ import {
   buildUniqueMockChainForest,
   chainHasRequestCorrelation,
   describeHopParentLink,
-  formatMockHopLabel,
   formatMockHopSubtitle,
+  hopPathLabelSourceFromMock,
   formatShortCorrelationId,
   getChainRootRequestId,
   getMockHopTrafficMode,
@@ -16,7 +16,9 @@ import {
   type MockServiceChain,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
+import { ColoredHopLabel } from '@/components/ColoredHopLabel'
 import { ChainTreeToggle, CollapsibleChainTree, MockChainGroupedHopList } from '@/components/MockChainTree'
+import { MockChainRoleReplayMenu } from '@/components/MockChainRoleReplayMenu'
 
 function nodeHasReplay(node: MockUniqueChainNode): boolean {
   return node.hops.some((hop) => getMockHopTrafficMode(hop) === 'replay')
@@ -48,10 +50,16 @@ export function MockServiceChainCard({
   chain,
   selectedFilename,
   onSelectHop,
+  scenario,
+  onReplayModeChange,
+  replayActionsDisabled = false,
 }: {
   chain: MockServiceChain
   selectedFilename?: string | null
   onSelectHop: (mock: MockFile) => void
+  scenario?: string
+  onReplayModeChange?: () => void
+  replayActionsDisabled?: boolean
 }) {
   const recordedAt = new Date(chain.latestModified).toLocaleString()
   const forest = buildUniqueMockChainForest(chain.hops)
@@ -77,6 +85,15 @@ export function MockServiceChainCard({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground ml-auto">{recordedAt}</span>
+        {scenario && onReplayModeChange && (
+          <MockChainRoleReplayMenu
+            scenario={scenario}
+            chains={[chain]}
+            onDone={onReplayModeChange}
+            disabled={replayActionsDisabled}
+            compact
+          />
+        )}
       </div>
 
       <div className="px-3 py-2 border-b border-border/40 bg-background/40 text-[11px] text-muted-foreground space-y-1">
@@ -113,6 +130,7 @@ export function MockServiceChainCard({
             const hopRequestIdShort = formatShortCorrelationId(hop.requestId)
             const parentLink = describeTreeParentLink(ancestors, hop, chain.hops)
             const collapsedNested = !expanded && nestedCount > 0
+            const isLeafHop = !hasChildren
             return (
               <div className="flex gap-2 pb-2 last:pb-0">
                 <div className="flex flex-col items-center pt-2">
@@ -130,8 +148,15 @@ export function MockServiceChainCard({
                   className={`flex-1 min-w-0 text-left rounded-md border px-3 py-2 transition-colors cursor-pointer ${
                     isSelected
                       ? 'border-primary bg-primary/10'
-                      : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
+                      : isLeafHop
+                        ? 'border-amber-400/60 bg-amber-500/15 hover:border-amber-300/80 hover:bg-amber-500/20'
+                        : 'border-border/60 hover:border-primary/40 hover:bg-accent/40'
                   }`}
+                  title={
+                    isLeafHop
+                      ? 'Lowest-level hop — this call does not include nested requests'
+                      : 'Parent hop — nested requests are included in this call'
+                  }
                   onClick={() => {
                     if (hasChildren && !expanded) {
                       onToggle()
@@ -151,7 +176,9 @@ export function MockServiceChainCard({
                   }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-foreground">{formatMockHopLabel(hop)}</span>
+                    <span className="font-mono text-sm">
+                      <ColoredHopLabel source={hopPathLabelSourceFromMock(hop)} />
+                    </span>
                     {node.callCount > 1 && (
                       <Badge
                         variant="outline"
@@ -226,6 +253,15 @@ export function MockServiceChainCard({
                         entry
                       </Badge>
                     )}
+                    {isLeafHop && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] border-amber-400/70 bg-amber-500/20 text-amber-50"
+                        title="Lowest-level hop. Parent hops include nested request time and payload."
+                      >
+                        leaf
+                      </Badge>
+                    )}
                   </div>
                   <CopyableText
                     value={formatMockHopSubtitle(hop)}
@@ -271,13 +307,14 @@ export function MockServiceChainCard({
             A hop on <strong className="font-medium">Replay</strong> (use saved mock) returns its stored response
             and does not call the next service. Always refresh from live / Live API still hit upstream.
             To reach a downstream hop, set every upstream hop to{' '}
-            <strong className="font-medium">Live</strong> or <strong className="font-medium">Always refresh from live</strong>{' '}
-            (Domains view → Replay on the target path does this automatically).
+            <strong className="font-medium">Live</strong> or <strong className="font-medium">Always refresh from live</strong>
+            {' '}(<strong className="font-medium">Use mock → All source hops</strong> does this automatically).
           </p>
         )}
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           Nested hops start collapsed. Expand a hop to see calls it triggered, or expand ×N to each
-          underlying request
+          underlying request. <span className="text-amber-200/90">Lowest-level (leaf) hops are highlighted</span>
+          {' '}— parent hops include nested requests in their time and size
           {hasEnrichedHops
             ? '. Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
             : chain.inferred

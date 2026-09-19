@@ -8,13 +8,108 @@ import {
   getClientLanes,
   listOverrideGroups,
   putOverrideGroup,
+  setClientLaneFixedDate,
   setClientLaneNote,
   setClientLaneOverrideGroup,
   setClientLaneScenario,
   type ClientLane,
   type OverrideGroupSummary,
 } from '@/lib/api'
-import { Trash2 } from 'lucide-react'
+import { datetimeLocalValueToIso, isoToDatetimeLocalValue } from '@/lib/datetime-local'
+import { Calendar, Trash2 } from 'lucide-react'
+
+function LaneCurrentDateField({
+  clientId,
+  fixedDate,
+  onSaved,
+}: {
+  clientId: string
+  fixedDate: string | null | undefined
+  onSaved: () => Promise<void>
+}) {
+  const { toast } = useToast()
+  const [value, setValue] = useState(fixedDate ? isoToDatetimeLocalValue(fixedDate) : '')
+
+  useEffect(() => {
+    setValue(fixedDate ? isoToDatetimeLocalValue(fixedDate) : '')
+  }, [fixedDate])
+
+  async function persist(nextIso: string | null) {
+    try {
+      await setClientLaneFixedDate(clientId, nextIso)
+      await onSaved()
+      toast({
+        title: 'Saved',
+        description: nextIso
+          ? `Lane "${clientId}" current date overrides scenario Date Config.`
+          : `Cleared lane date for "${clientId}" — scenario Date Config applies.`,
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to update lane date'
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Calendar className="h-3.5 w-3.5" />
+        <span>Current date (optional)</span>
+        {fixedDate ? (
+          <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-[10px] font-medium text-primary">
+            Overrides scenario
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="datetime-local"
+          className="h-9 max-w-[16rem]"
+          value={value}
+          onChange={(e) => {
+            const next = e.target.value
+            setValue(next)
+            const previousLocal = fixedDate ? isoToDatetimeLocalValue(fixedDate) : ''
+            if (next === previousLocal) return
+            if (!next) {
+              void persist(null)
+              return
+            }
+            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(next)) return
+            try {
+              void persist(datetimeLocalValueToIso(next))
+            } catch {
+              setValue(previousLocal)
+            }
+          }}
+          aria-label={`Current date for ${clientId}`}
+        />
+        {value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setValue('')
+              void persist(null)
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {fixedDate
+          ? 'This lane uses this date instead of the scenario date from Date Config.'
+          : 'Leave empty to use the scenario date from Date Config.'}
+      </p>
+    </div>
+  )
+}
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
   const { toast } = useToast()
@@ -209,7 +304,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
           set a scenario and override group here, that lane will read mocks under the selected scenario with the chosen override group <em>without affecting other
-          builds</em>. The lane id must match what the app uses when initializing Mockifyer (
+          builds</em>. Optionally set a current date per lane — it overrides the scenario date from Date Config for that lane only. The lane id must match what the app uses when initializing Mockifyer (
           typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
           <span className="font-mono">MockifyerConfig.clientId</span>
           ).
@@ -311,6 +406,11 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                     onBlur={(e) => handleNoteChange(lane.clientId, e.target.value)}
                   />
                 </div>
+                <LaneCurrentDateField
+                  clientId={lane.clientId}
+                  fixedDate={lane.fixedDate}
+                  onSaved={load}
+                />
 
                 {lane.devices?.recent && lane.devices.recent.length > 0 ? (
                   <div className="space-y-1">

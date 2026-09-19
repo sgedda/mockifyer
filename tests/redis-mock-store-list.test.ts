@@ -138,8 +138,252 @@ describe('RedisMockStore.list', () => {
     expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${liveHash}`);
     expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${ghostHash}`);
     expect(deleted).toContain(`mockifyer:v1:index:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:list_catalog:${scenario}`);
     expect(deleted).toContain(pathIndexKey);
     expect(deleted).not.toContain(`mockifyer:v1:date_config:${scenario}`);
+  });
+
+  it('deleteEntireScenario removes mocks, metadata, and registry membership', async () => {
+    const scenario = 'staging';
+    const liveHash = 'e'.repeat(64);
+    const deleted: string[] = [];
+    const sremCalls: Array<{ key: string; members: string[] }> = [];
+    const store = new RedisMockStore({
+      kv: {
+        smembers: async (key: string) => {
+          if (key.includes(`:index:${scenario}`)) return [liveHash];
+          return [];
+        },
+        scanKeys: async () => [],
+        del: async (...keys: string[]) => {
+          deleted.push(...keys);
+        },
+        sadd: async () => undefined,
+        srem: async (key: string, ...members: string[]) => {
+          sremCalls.push({ key, members });
+        },
+        mget: async () => [],
+        hget: async () => null,
+      } as unknown as MockKvBackend,
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const result = await store.deleteEntireScenario(scenario);
+    expect(result.mocksRemoved).toBe(1);
+    expect(result.lanesUnassigned).toBe(0);
+    expect(deleted).toContain(`mockifyer:v1:mock:${scenario}:${liveHash}`);
+    expect(deleted).toContain(`mockifyer:v1:date_config:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:proxy_config:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:path_rules:${scenario}`);
+    expect(deleted).toContain(`mockifyer:v1:scenario_meta:${scenario}`);
+    expect(sremCalls.some((call) => call.key === 'mockifyer:v1:scenarios' && call.members.includes(scenario))).toBe(
+      true
+    );
+  });
+
+  it('renameEntireScenario copies mock keys to the new name and remaps lanes', async () => {
+    const from = 'staging';
+    const to = 'staging-v2';
+    const liveHash = 'f'.repeat(64);
+    const mockPayload = JSON.stringify({
+      scenario: from,
+      request: { method: 'GET', url: 'https://api.example.com/users' },
+      response: { status: 200, data: { ok: true } },
+    });
+    const sets = new Map<string, Set<string>>([
+      [`mockifyer:v1:index:${from}`, new Set([liveHash])],
+      ['mockifyer:v1:scenarios', new Set([from])],
+    ]);
+    const strings = new Map<string, string>([[`mockifyer:v1:mock:${from}:${liveHash}`, mockPayload]]);
+    const store = new RedisMockStore({
+      kv: {
+        smembers: async (key: string) => Array.from(sets.get(key) ?? []),
+        scanKeys: async () => [],
+        mget: async (keys: string[]) => keys.map((key) => strings.get(key) ?? null),
+        get: async (key: string) => strings.get(key) ?? null,
+        set: async (key: string, value: string) => {
+          strings.set(key, value);
+        },
+        del: async (...keys: string[]) => {
+          for (const key of keys) strings.delete(key);
+        },
+        sadd: async (key: string, ...members: string[]) => {
+          const set = sets.get(key) ?? new Set<string>();
+          for (const member of members) set.add(member);
+          sets.set(key, set);
+        },
+        srem: async (key: string, ...members: string[]) => {
+          const set = sets.get(key);
+          if (!set) return;
+          for (const member of members) set.delete(member);
+        },
+        hgetall: async () => ({}),
+        hsetMany: async () => undefined,
+        hget: async () => null,
+      } as unknown as MockKvBackend,
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const result = await store.renameEntireScenario(from, to);
+    expect(result.mocksMoved).toBe(1);
+    expect(strings.has(`mockifyer:v1:mock:${to}:${liveHash}`)).toBe(true);
+    expect(JSON.parse(strings.get(`mockifyer:v1:mock:${to}:${liveHash}`) as string).scenario).toBe(to);
+    expect(sets.get('mockifyer:v1:scenarios')?.has(to)).toBe(true);
+    expect(sets.get('mockifyer:v1:scenarios')?.has(from)).toBe(false);
+  });
+});
+
+describe('RedisMockStore.listCatalog', () => {
+  it('parses large recordings without keeping response.data and caches the result', async () => {
+    const scenario = 'different-kind-of-trips';
+    const hash = 'e'.repeat(64);
+    const huge = JSON.stringify({
+      ...MOCK_PAYLOAD,
+      response: { status: 201, data: { bookings: 'z'.repeat(40_000) }, headers: {} },
+    });
+    const values = new Map<string, string>([[`mockifyer:v1:mock:${scenario}:${hash}`, huge]]);
+    const mgetCalls: number[] = [];
+    const store = new RedisMockStore({
+      kv: catalogKv({
+        hashes: [hash],
+        values,
+        onMget: (keys) => mgetCalls.push(keys.length),
+      }),
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const first = await store.listCatalog(scenario);
+    expect(first).toHaveLength(1);
+    expect(first[0].mockData.response.status).toBe(201);
+    expect(first[0].mockData.response.data).toBeNull();
+    expect(first[0].rawByteLength).toBe(Buffer.byteLength(huge));
+    expect(mgetCalls).toEqual([1]);
+
+    const second = await store.listCatalog(scenario);
+    expect(second[0].hash).toBe(hash);
+    expect(mgetCalls).toEqual([1]);
+  });
+
+  function catalogKv(input: {
+    hashes: string[];
+    values: Map<string, string>;
+    onMget: (keys: string[]) => void;
+  }): MockKvBackend {
+    const sets = new Map<string, Set<string>>();
+    const hashes = [...input.hashes];
+    const hashFields = new Map<string, Map<string, string>>();
+    return {
+      smembers: async (key: string) => {
+        if (key.includes(':index:') && !key.includes('path_index')) return hashes;
+        return [...(sets.get(key) ?? [])];
+      },
+      mget: async (keys: string[]) => {
+        input.onMget(keys);
+        return keys.map((key) => input.values.get(key) ?? null);
+      },
+      hgetall: async (key: string) => {
+        const fields = hashFields.get(key);
+        if (!fields) return {};
+        return Object.fromEntries(fields);
+      },
+      hset: async (key: string, field: string, value: string) => {
+        const fields = hashFields.get(key) ?? new Map<string, string>();
+        fields.set(field, value);
+        hashFields.set(key, fields);
+      },
+      hsetMany: async (key: string, fields: Record<string, string>) => {
+        const existing = hashFields.get(key) ?? new Map<string, string>();
+        for (const [field, value] of Object.entries(fields)) {
+          existing.set(field, value);
+        }
+        hashFields.set(key, existing);
+      },
+      hdel: async (key: string, ...fields: string[]) => {
+        const existing = hashFields.get(key);
+        if (!existing) return;
+        for (const field of fields) existing.delete(field);
+      },
+      del: async (...keys: string[]) => {
+        for (const key of keys) hashFields.delete(key);
+      },
+      srem: async () => undefined,
+      sadd: async () => undefined,
+    } as unknown as MockKvBackend;
+  }
+
+  it('serves later catalog reads from the Redis sidecar without MGET of bodies', async () => {
+    const scenario = 'different-kind-of-trips';
+    const hash = 'f'.repeat(64);
+    const huge = JSON.stringify({
+      ...MOCK_PAYLOAD,
+      request: {
+        ...MOCK_PAYLOAD.request,
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        data: { query: 'query Bookings { bookings { id } }' },
+      },
+      response: { status: 200, data: { bookings: 'z'.repeat(40_000) }, headers: {} },
+    });
+    const values = new Map<string, string>([[`mockifyer:v1:mock:${scenario}:${hash}`, huge]]);
+    const mgetCalls: number[] = [];
+    const kv = catalogKv({
+      hashes: [hash],
+      values,
+      onMget: (keys) => mgetCalls.push(keys.length),
+    });
+
+    const firstStore = new RedisMockStore({ kv, mockDataPath: '/tmp/mockifyer-unused' });
+    const first = await firstStore.listCatalog(scenario);
+    expect(first).toHaveLength(1);
+    expect(first[0].mockData.response.data).toBeNull();
+    expect((first[0].mockData.request.data as { query: string }).query).toContain('Bookings');
+    expect(mgetCalls).toEqual([1]);
+
+    const secondStore = new RedisMockStore({ kv, mockDataPath: '/tmp/mockifyer-unused' });
+    const second = await secondStore.listCatalog(scenario);
+    expect(second).toHaveLength(1);
+    expect(second[0].mockData.response.data).toBeNull();
+    expect(second[0].rawByteLength).toBe(Buffer.byteLength(huge));
+    expect(mgetCalls).toEqual([1]);
+  });
+
+  it('MGETs only hashes missing from the sidecar', async () => {
+    const scenario = 'default';
+    const cachedHash = 'a'.repeat(64);
+    const missingHash = 'b'.repeat(64);
+    const cachedPayload = JSON.stringify(MOCK_PAYLOAD);
+    const missingPayload = JSON.stringify({
+      ...MOCK_PAYLOAD,
+      request: { ...MOCK_PAYLOAD.request, url: 'https://api.example.com/new' },
+    });
+    const values = new Map<string, string>([
+      [`mockifyer:v1:mock:${scenario}:${cachedHash}`, cachedPayload],
+      [`mockifyer:v1:mock:${scenario}:${missingHash}`, missingPayload],
+    ]);
+    const mgetKeys: string[][] = [];
+    const kv = catalogKv({
+      hashes: [cachedHash, missingHash],
+      values,
+      onMget: (keys) => mgetKeys.push(keys),
+    });
+    const sidecarKey = `mockifyer:v1:list_catalog:${scenario}`;
+    await kv.hset(
+      sidecarKey,
+      cachedHash,
+      JSON.stringify({
+        rawByteLength: Buffer.byteLength(cachedPayload),
+        mockData: {
+          ...MOCK_PAYLOAD,
+          response: { status: 200, data: null, headers: {} },
+        },
+      })
+    );
+
+    const store = new RedisMockStore({ kv, mockDataPath: '/tmp/mockifyer-unused' });
+    const items = await store.listCatalog(scenario);
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.hash).sort()).toEqual([cachedHash, missingHash].sort());
+    expect(mgetKeys).toEqual([[`mockifyer:v1:mock:${scenario}:${missingHash}`]]);
   });
 });
 

@@ -11,6 +11,7 @@ import {
 import {
   generateRequestKey,
   getCurrentDate,
+  resolveExplicitDateManipulation,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   prepareMockResponseBody,
@@ -334,11 +335,15 @@ router.post('/', async (req: Request, res: Response) => {
       typeof allowUpstream === 'boolean' ? allowUpstream : proxyConfig?.allowUpstream ?? true;
 
     const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
+    const laneDateDoc = clientId ? await store.getLaneDateConfig(clientId).catch(() => null) : null;
     const getNow = () =>
       getCurrentDate({
         mockDataPath,
         scenario: resolvedScenarioName,
-        explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
+        explicitManipulation: resolveExplicitDateManipulation({
+          laneManipulation: laneDateDoc?.dateManipulation ?? null,
+          scenarioDateDoc: redisDateDoc,
+        }),
       });
 
     let mock = await store.getByHashInScenario(hash, resolvedScenarioName);

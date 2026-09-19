@@ -36,6 +36,7 @@ import { RedisMockStore, rawJsonMightContainResponseOverrides } from '../utils/r
 import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
+  bulkSetReplayModeForFilenames,
 } from '../utils/bulk-domain-mocks';
 import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
@@ -45,6 +46,7 @@ import {
   writeDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
 import { favoriteIdForMock } from '../utils/favorites-store';
+import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
 
 const router = express.Router();
 
@@ -255,10 +257,9 @@ function toMockListRow(params: {
   filename: string;
   filePath: string;
   mockData: MockData;
-  compact: boolean;
   size: number;
 }): Record<string, unknown> {
-  const { filename, filePath, mockData, compact, size } = params;
+  const { filename, filePath, mockData, size } = params;
   const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
   let endpoint: string | null = null;
   let method: string | null = null;
@@ -282,7 +283,7 @@ function toMockListRow(params: {
   } catch {
     // ignore malformed request metadata
   }
-  const graphqlInfo = extractGraphqlListInfo(mockData, compact);
+  const graphqlInfo = extractGraphqlListInfo(mockData);
   const correlation = extractMockCorrelationIds(mockData);
   return {
     filename,
@@ -348,8 +349,7 @@ interface GraphqlListInfo {
 }
 
 function extractGraphqlListInfo(
-  mockData: any,
-  compact: boolean
+  mockData: any
 ): GraphqlListInfo | null {
   const body = mockData?.request?.data;
   const parsedBody =
@@ -368,20 +368,11 @@ function extractGraphqlListInfo(
   const operationName =
     typeof parsedBody.operationName === 'string' ? parsedBody.operationName : null;
   const queryPreview = truncateGraphqlPreview(
-    formatGraphqlQueryForDisplay(parsedBody.query),
+    formatGraphqlQueryForDisplay(parsedBody.query.slice(0, GRAPHQL_LIST_QUERY_PREVIEW_MAX + 200)),
     GRAPHQL_LIST_QUERY_PREVIEW_MAX
   );
   const variables = parsedBody.variables || null;
   const variablesPreview = graphqlVariablesPreview(variables);
-  if (compact) {
-    return {
-      query: null,
-      variables: null,
-      operationName,
-      queryPreview,
-      variablesPreview,
-    };
-  }
   return {
     query: parsedBody.query,
     variables,
@@ -509,6 +500,24 @@ function maybeAttachSimilarBodyGroups(files: any[], req: Request): { similarBody
   };
 }
 
+function redactCompactGraphqlInfo(files: Array<{ graphqlInfo?: GraphqlListInfo | null }>): void {
+  for (const file of files) {
+    if (!file.graphqlInfo) continue;
+    file.graphqlInfo.query = null;
+    file.graphqlInfo.variables = null;
+  }
+}
+
+function finishMockListPayload(
+  files: Array<{ graphqlInfo?: GraphqlListInfo | null }>,
+  req: Request,
+  compact: boolean
+): { similarBodyGroups?: unknown[] } {
+  const extras = maybeAttachSimilarBodyGroups(files, req);
+  if (compact) redactCompactGraphqlInfo(files);
+  return extras;
+}
+
 // List all mock files (recursive)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -520,19 +529,18 @@ router.get('/', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
         const compact = parseCompactListQuery(req.query.compact);
-        const items = await store.list(scenario);
+        const items = await store.listCatalog(scenario);
         const files = items
-          .map(({ hash, mockData, redisKey }) =>
+          .map(({ hash, mockData, redisKey, rawByteLength }) =>
             toMockListRow({
               filename: `redis/${hash}.json`,
               filePath: `redis://${redisKey}`,
               mockData,
-              compact,
-              size: compact ? 0 : Buffer.byteLength(JSON.stringify(mockData)),
+              size: rawByteLength ?? 0,
             })
           )
           .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());
-        const similarExtras = compact ? {} : maybeAttachSimilarBodyGroups(files, req);
+        const similarExtras = finishMockListPayload(files, req, compact);
         return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
         console.error('[MocksRoute] Redis List - Error:', error);
@@ -565,7 +573,8 @@ router.get('/', async (req: Request, res: Response) => {
         let parentRequestId: string | null = null;
         let requestHash: string | null = null;
         try {
-          const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const { mockData } = parseMockJsonForCatalog(raw);
           const correlation = extractMockCorrelationIds(mockData);
           requestId = correlation.requestId;
           parentRequestId = correlation.parentRequestId;
@@ -578,10 +587,12 @@ router.get('/', async (req: Request, res: Response) => {
           }
           activation = extractMockActivationFlags(mockData);
           if (mockData.sessionId) sessionId = mockData.sessionId;
-          else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
+          else if ((mockData as { data?: { sessionId?: string } }).data?.sessionId) {
+            sessionId = (mockData as { data?: { sessionId?: string } }).data?.sessionId ?? null;
+          }
 
           overrideFields = getMockOverrideListFields(mockData);
-          graphqlInfo = extractGraphqlListInfo(mockData, compact);
+          graphqlInfo = extractGraphqlListInfo(mockData);
 
           if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
             const params = new URLSearchParams();
@@ -614,7 +625,7 @@ router.get('/', async (req: Request, res: Response) => {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-    const similarExtras = compact ? {} : maybeAttachSimilarBodyGroups(files, req);
+    const similarExtras = finishMockListPayload(files, req, compact);
     res.json({ files, mockDataPath, scenario, ...similarExtras });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
@@ -642,13 +653,13 @@ router.get('/with-overrides', async (req: Request, res: Response) => {
               filename: `redis/${hash}.json`,
               filePath: `redis://${redisKey}`,
               mockData,
-              compact: true,
               size: 0,
             })
           )
           .sort(
             (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
           );
+        redactCompactGraphqlInfo(files);
         return res.json({ files, mockDataPath, scenario });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -682,7 +693,6 @@ router.get('/with-overrides', async (req: Request, res: Response) => {
             filename: relativeName,
             filePath,
             mockData,
-            compact: true,
             size: stats.size,
           });
         } catch {
@@ -694,6 +704,7 @@ router.get('/with-overrides', async (req: Request, res: Response) => {
         (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
       );
 
+    redactCompactGraphqlInfo(files);
     return res.json({ files, mockDataPath, scenario });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -725,7 +736,6 @@ router.get('/search', async (req: Request, res: Response) => {
             filename: `redis/${hash}.json`,
             filePath: `redis://${redisKey}`,
             mockData,
-            compact: false,
             size,
           })
         );
@@ -760,7 +770,6 @@ router.get('/search', async (req: Request, res: Response) => {
           filename: hit.relativeName,
           filePath: hit.filePath,
           mockData,
-          compact: false,
           size: stats.size,
         });
         row.created = stats.birthtime;
@@ -1278,15 +1287,14 @@ router.get('/*', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
-        const data = await store.getByHash(hash, scenario);
-        if (!data) return res.status(404).json({ error: 'Mock not found' });
-        const payload = JSON.stringify(data);
-        const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+        const rec = await store.getByHashWithMeta(hash, scenario);
+        if (!rec) return res.status(404).json({ error: 'Mock not found' });
+        const ts = rec.mockData.timestamp ? new Date(rec.mockData.timestamp) : new Date();
         return res.json({
           filename: relativeName,
-          data,
+          data: rec.mockData,
           metadata: {
-            size: Buffer.byteLength(payload),
+            size: rec.rawByteLength,
             created: ts.toISOString(),
             modified: ts.toISOString(),
           },
@@ -1544,6 +1552,55 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: message || 'bulk-capture-responses failed' });
+  }
+});
+
+/** Bulk set stored mock vs live API for specific mock filenames (Hops source/BFF actions). */
+router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { scenario, stored, passthrough } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (stored !== undefined && !Array.isArray(stored)) {
+      return res.status(400).json({ error: 'stored must be an array of filenames' });
+    }
+    if (passthrough !== undefined && !Array.isArray(passthrough)) {
+      return res.status(400).json({ error: 'passthrough must be an array of filenames' });
+    }
+    if ((stored?.length ?? 0) === 0 && (passthrough?.length ?? 0) === 0) {
+      return res.status(400).json({ error: 'stored or passthrough filenames are required' });
+    }
+
+    const scenarioName = scenario.trim();
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(scenarioName)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, scenarioName)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+
+    const result = await bulkSetReplayModeForFilenames({
+      provider: config.provider,
+      mockDataPath,
+      scenario: scenarioName,
+      stored,
+      passthrough,
+      redisUrl: config.redisUrl,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'bulk-replay-mode failed' });
   }
 });
 

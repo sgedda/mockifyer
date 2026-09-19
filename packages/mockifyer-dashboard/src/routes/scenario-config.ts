@@ -4,12 +4,14 @@ import {
   listScenarios,
   createScenario,
   saveScenarioConfig,
+  DEFAULT_SCENARIO,
   SCRATCH_SCENARIO,
   isScratchScenario,
   getScratchScenarioTtlSec,
   scratchScenarioDisplayName,
   getScenarioFolderPath,
   hydrateOverrideGroupRuntimeFromScenarioPath,
+  POOL_DIR_NAME,
 } from '@sgedda/mockifyer-core';
 import {
   setScenarioLockedFs,
@@ -20,14 +22,17 @@ import {
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
-import { RedisMockStore } from '../utils/redis-mock-store';
 import {
   applyScenarioImport,
   buildFilesystemScenarioBundle,
   buildRedisScenarioBundle,
   clearScenarioMocks,
+  deleteEntireScenario,
+  renameEntireScenario,
   parseScenarioImportRequest,
 } from '../utils/scenario-bundle';
+import { getAtlasStore } from '../utils/atlas-store';
+import { createNetworkLogStore } from '../utils/network-log-store';
 import { resetReplayModesInScenarioFolder } from '../utils/scenario-clone-replay-mode';
 import fs from 'fs';
 import path from 'path';
@@ -98,10 +103,7 @@ router.get('/', async (req: Request, res: Response) => {
         currentScenario = await store.getActiveScenario();
         const redisScenarios = await store.listScenarios();
         scenarios = Array.from(new Set([...scenarios, ...redisScenarios])).sort();
-        const scenarioLocks: Record<string, boolean> = {};
-        for (const name of scenarios) {
-          scenarioLocks[name] = await store.isScenarioLocked(name);
-        }
+        const scenarioLocks = await store.getScenarioLocks(scenarios);
         res.json({
           currentScenario,
           scenarios,
@@ -250,60 +252,74 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Filesystem / sqlite: create on-disk scenario folder. Redis: scenarios materialize on first write — do not mkdir mockDataPath.
+    const destFolder = path.join(mockDataPath, sanitized);
+    let createdFolder = false;
     if (!isCentralizedDashboardProvider(config.provider)) {
       createScenario(mockDataPath, sanitized);
+      createdFolder = true;
     }
 
-    // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
-    if (deriveFromScenario) {
+    let clonedIntoStore = false;
+    try {
+      // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
+      // The picker always lists `default` / `_scratch` even when Redis has no registry entry
+      // and the filesystem folder does not exist yet — treat that as an empty source.
+      if (deriveFromScenario && !scenarios.includes(deriveFromScenario)) {
+        if (createdFolder) {
+          fs.rmSync(destFolder, { recursive: true, force: true });
+        }
+        return res.status(404).json({
+          error: `Base scenario "${deriveFromScenario}" does not exist`,
+        });
+      }
+
       if (isCentralizedDashboardProvider(config.provider)) {
         const store = createDashboardMockStore(config, mockDataPath);
         try {
-          const available = await store.listScenarios();
-          if (!available.includes(deriveFromScenario)) {
-            return res.status(404).json({
-              error: `Base scenario "${deriveFromScenario}" does not exist in Redis`,
-            });
+          if (deriveFromScenario) {
+            clonedIntoStore = true;
+            await store.cloneScenario(deriveFromScenario, sanitized);
           }
-          await store.cloneScenario(deriveFromScenario, sanitized);
+          await store.setActiveScenario(sanitized);
         } finally {
           await store.close().catch(() => undefined);
         }
       } else {
-        const available = listScenarios(mockDataPath);
-        if (!available.includes(deriveFromScenario)) {
-          return res.status(404).json({
-            error: `Base scenario "${deriveFromScenario}" does not exist`,
-          });
+        if (deriveFromScenario) {
+          const src = path.join(mockDataPath, deriveFromScenario);
+          if (fs.existsSync(src) && fs.statSync(src).isDirectory()) {
+            copyDirectoryRecursive(src, destFolder, {
+              skipFilenames: new Set([SCENARIO_META_FILENAME]),
+            });
+            resetReplayModesInScenarioFolder(destFolder);
+          }
         }
-        const src = path.join(mockDataPath, deriveFromScenario);
-        const dest = path.join(mockDataPath, sanitized);
-        copyDirectoryRecursive(src, dest, {
-          skipFilenames: new Set([SCENARIO_META_FILENAME]),
-        });
-        resetReplayModesInScenarioFolder(dest);
+        saveScenarioConfig(mockDataPath, sanitized);
       }
-    }
 
-    // Also set the scenario immediately, provider-aware.
-    if (isCentralizedDashboardProvider(config.provider)) {
-      const store = createDashboardMockStore(config, mockDataPath);
-      try {
-        await store.setActiveScenario(sanitized);
-      } finally {
-        await store.close().catch(() => undefined);
+      console.log(`[ScenarioConfigRoute] Created scenario: ${sanitized}`);
+      res.json({
+        success: true,
+        message: `Scenario "${sanitized}" created successfully`,
+        currentScenario: sanitized,
+        scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
+      });
+    } catch (deriveError: unknown) {
+      if (createdFolder) {
+        fs.rmSync(destFolder, { recursive: true, force: true });
       }
-    } else {
-      saveScenarioConfig(mockDataPath, sanitized);
+      if (clonedIntoStore && isCentralizedDashboardProvider(config.provider)) {
+        const store = createDashboardMockStore(config, mockDataPath);
+        try {
+          await store.deleteEntireScenario(sanitized);
+        } catch {
+          // best-effort cleanup of a partial Redis/SQLite clone
+        } finally {
+          await store.close().catch(() => undefined);
+        }
+      }
+      throw deriveError;
     }
-    
-    console.log(`[ScenarioConfigRoute] Created scenario: ${sanitized}`);
-    res.json({
-      success: true,
-      message: `Scenario "${sanitized}" created successfully`,
-      currentScenario: sanitized,
-      scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
-    });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Create - Error:', error);
     res.status(500).json({ error: 'Failed to create scenario', details: error.message });
@@ -334,10 +350,7 @@ router.post('/lock', async (req: Request, res: Response) => {
         console.log(`[ScenarioConfigRoute] Scenario "${sanitized}" locked=${isLocked}`);
 
         const currentScenario = await store.getActiveScenario();
-        const scenarioLocks: Record<string, boolean> = {};
-        for (const name of scenarios) {
-          scenarioLocks[name] = await store.isScenarioLocked(name);
-        }
+        const scenarioLocks = await store.getScenarioLocks(scenarios);
         res.json({
           success: true,
           currentScenario,
@@ -483,6 +496,92 @@ router.post('/import', async (req: Request, res: Response) => {
 });
 
 const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be edited.';
+const SCENARIO_DELETE_LOCKED_MESSAGE = 'Scenario is locked; unlock it before deleting.';
+const SCENARIO_RENAME_LOCKED_MESSAGE = 'Scenario is locked; unlock it before renaming.';
+
+function scenarioProtectedNameReason(name: string, verb: 'delete' | 'rename'): string | null {
+  if (name === DEFAULT_SCENARIO) {
+    return `Cannot ${verb} the default scenario`;
+  }
+  if (isScratchScenario(name)) {
+    return verb === 'delete'
+      ? 'Cannot delete the temporary unscoped scenario. Use Clear mocks to empty it.'
+      : 'Cannot rename the temporary unscoped scenario.';
+  }
+  if (name === POOL_DIR_NAME) {
+    return `Cannot ${verb} the fixture pool.`;
+  }
+  return null;
+}
+
+async function listDashboardScenarios(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<string[]> {
+  let scenarios = listScenarios(mockDataPath);
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    return scenarios;
+  }
+  const store = createDashboardMockStore(config, mockDataPath);
+  try {
+    const redisScenarios = await store.listScenarios();
+    return Array.from(new Set([...scenarios, ...redisScenarios])).sort();
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+}
+
+async function getActiveScenarioName(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<string> {
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    return getCurrentScenario(mockDataPath);
+  }
+  const store = createDashboardMockStore(config, mockDataPath);
+  try {
+    return await store.getActiveScenario();
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+}
+
+async function setActiveScenarioName(
+  mockDataPath: string,
+  config: ReturnType<typeof getDashboardContext>['config'],
+  scenario: string
+): Promise<void> {
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.setActiveScenario(scenario);
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+    return;
+  }
+  saveScenarioConfig(mockDataPath, scenario);
+}
+
+async function clearEphemeralScenarioSidecars(
+  scenario: string,
+  config: ReturnType<typeof getDashboardContext>['config']
+): Promise<void> {
+  try {
+    const atlas = getAtlasStore();
+    atlas.clearDoc(scenario);
+    atlas.clear({ scenario });
+  } catch {
+    // Atlas store is optional / in-memory.
+  }
+  try {
+    const logStore = createNetworkLogStore(config);
+    await logStore.clear({ scenario });
+    await logStore.close();
+  } catch {
+    // Network log is optional.
+  }
+}
 
 /**
  * Empty recorded mocks for a scenario. Keeps the scenario, date config, lock, and domain-path rules.
@@ -531,6 +630,200 @@ router.post('/clear-mocks', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Clear mocks - Error:', error);
     res.status(500).json({ error: 'Failed to clear scenario mocks', details: error.message });
+  }
+});
+
+/**
+ * Permanently delete a scenario (folder / Redis registry + mocks + metadata).
+ * POST /api/scenario-config/delete  { scenario }
+ */
+router.post('/delete', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const parsed = sanitizeScenarioName(req.body?.scenario);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const sanitized = parsed.value;
+
+    const blocked = scenarioProtectedNameReason(sanitized, 'delete');
+    if (blocked) {
+      return res.status(400).json({ error: blocked });
+    }
+
+    const scenarios = await listDashboardScenarios(mockDataPath, config);
+    if (!scenarios.includes(sanitized)) {
+      return res.status(404).json({ error: `Scenario "${sanitized}" does not exist` });
+    }
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(sanitized)) {
+          return res.status(423).json({ error: SCENARIO_DELETE_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, sanitized)) {
+      return res.status(423).json({ error: SCENARIO_DELETE_LOCKED_MESSAGE });
+    }
+
+    const wasActive = (await getActiveScenarioName(mockDataPath, config)) === sanitized;
+    const result = await deleteEntireScenario({
+      mockDataPath,
+      scenario: sanitized,
+      provider: config.provider,
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+
+    let currentScenario = await getActiveScenarioName(mockDataPath, config);
+    if (wasActive) {
+      await setActiveScenarioName(mockDataPath, config, DEFAULT_SCENARIO);
+      currentScenario = DEFAULT_SCENARIO;
+    }
+
+    await clearEphemeralScenarioSidecars(sanitized, config);
+
+    const scenariosOut = (await listDashboardScenarios(mockDataPath, config)).filter(
+      (name) => name !== sanitized
+    );
+    if (!scenariosOut.includes(DEFAULT_SCENARIO)) {
+      scenariosOut.push(DEFAULT_SCENARIO);
+    }
+    if (!scenariosOut.includes(SCRATCH_SCENARIO)) {
+      scenariosOut.push(SCRATCH_SCENARIO);
+    }
+    scenariosOut.sort();
+
+    console.log(`[ScenarioConfigRoute] Deleted scenario: ${sanitized}`);
+    return res.json({
+      success: true,
+      scenario: sanitized,
+      currentScenario,
+      scenarios: scenariosOut,
+      mocksRemoved: result.mocksRemoved,
+      lanesUnassigned: result.lanesUnassigned,
+      message:
+        wasActive
+          ? `Scenario "${sanitized}" deleted. Switched to "${DEFAULT_SCENARIO}".`
+          : `Scenario "${sanitized}" deleted.`,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Delete - Error:', error);
+    res.status(500).json({ error: 'Failed to delete scenario', details: error.message });
+  }
+});
+
+/**
+ * Rename a scenario. Moves folder / Redis keys and remaps lanes.
+ * POST /api/scenario-config/rename  { scenario, newName }
+ */
+router.post('/rename', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const parsedFrom = sanitizeScenarioName(req.body?.scenario);
+    if (!parsedFrom.ok) {
+      return res.status(400).json({ error: parsedFrom.error });
+    }
+    const from = parsedFrom.value;
+
+    const parsedTo = sanitizeScenarioName(req.body?.newName);
+    if (!parsedTo.ok) {
+      return res.status(400).json({ error: parsedTo.error });
+    }
+    const to = parsedTo.value;
+
+    const fromBlocked = scenarioProtectedNameReason(from, 'rename');
+    if (fromBlocked) {
+      return res.status(400).json({ error: fromBlocked });
+    }
+    const toBlocked = scenarioProtectedNameReason(to, 'rename');
+    if (toBlocked) {
+      return res.status(400).json({ error: toBlocked });
+    }
+    if (from === to) {
+      return res.status(400).json({ error: 'New name must be different from the current name' });
+    }
+
+    const scenarios = await listDashboardScenarios(mockDataPath, config);
+    if (!scenarios.includes(from)) {
+      return res.status(404).json({ error: `Scenario "${from}" does not exist` });
+    }
+    const nameConflict = findCaseInsensitiveScenarioConflict(
+      to,
+      scenarios.filter((name) => name !== from)
+    );
+    if (nameConflict) {
+      return res.status(409).json({
+        error:
+          nameConflict === to
+            ? `Scenario "${to}" already exists`
+            : `Scenario name "${to}" conflicts with existing "${nameConflict}" (names must be unique ignoring case)`,
+      });
+    }
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(from)) {
+          return res.status(423).json({ error: SCENARIO_RENAME_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, from)) {
+      return res.status(423).json({ error: SCENARIO_RENAME_LOCKED_MESSAGE });
+    }
+
+    const wasActive = (await getActiveScenarioName(mockDataPath, config)) === from;
+    const result = await renameEntireScenario({
+      mockDataPath,
+      scenario: from,
+      newName: to,
+      provider: config.provider,
+      redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+
+    let currentScenario = await getActiveScenarioName(mockDataPath, config);
+    if (wasActive) {
+      await setActiveScenarioName(mockDataPath, config, to);
+      currentScenario = to;
+    }
+
+    await clearEphemeralScenarioSidecars(from, config);
+
+    const scenariosOut = (await listDashboardScenarios(mockDataPath, config)).filter((name) => name !== from);
+    if (!scenariosOut.includes(to)) {
+      scenariosOut.push(to);
+    }
+    if (!scenariosOut.includes(DEFAULT_SCENARIO)) {
+      scenariosOut.push(DEFAULT_SCENARIO);
+    }
+    if (!scenariosOut.includes(SCRATCH_SCENARIO)) {
+      scenariosOut.push(SCRATCH_SCENARIO);
+    }
+    scenariosOut.sort();
+
+    console.log(`[ScenarioConfigRoute] Renamed scenario: ${from} -> ${to}`);
+    return res.json({
+      success: true,
+      scenario: from,
+      newName: to,
+      currentScenario,
+      scenarios: scenariosOut,
+      mocksMoved: result.mocksMoved,
+      lanesRemapped: result.lanesRemapped,
+      message: `Scenario "${from}" renamed to "${to}".`,
+    });
+  } catch (error: any) {
+    console.error('[ScenarioConfigRoute] Rename - Error:', error);
+    const status = /already exists/i.test(error.message) ? 409 : 500;
+    res.status(status).json({ error: 'Failed to rename scenario', details: error.message });
   }
 });
 

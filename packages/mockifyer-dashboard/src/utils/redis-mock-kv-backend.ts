@@ -1,6 +1,9 @@
 import { chunkArray, redisDel, redisMget, ResilientIoRedisClient } from '@sgedda/mockifyer-core';
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
 
+/** Field/value pairs per HSET so flattened args stay under Redis command chunk size (500). */
+const HSET_FIELD_PAIR_CHUNK = 250;
+
 /** Buffers MULTI commands until exec(), when the cluster-aware client is ready. */
 class BufferedRedisKvMulti implements MockKvMulti {
   private readonly ops: Array<(multi: any) => void> = [];
@@ -113,9 +116,39 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.holder.run((redis) => redis.hset(key, field, value));
   }
 
+  async hsetMany(key: string, fields: Record<string, string>): Promise<void> {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) return;
+    const pairChunk = HSET_FIELD_PAIR_CHUNK;
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(entries, pairChunk)) {
+        const args: string[] = [];
+        for (const [field, value] of chunk) {
+          args.push(field, value);
+        }
+        await redis.hset(key, ...args);
+      }
+    });
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    const raw = await this.holder.run((redis) => redis.hgetall(key));
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [field, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (value == null) continue;
+      out[field] = typeof value === 'string' ? value : String(value);
+    }
+    return out;
+  }
+
   async hdel(key: string, ...fields: string[]): Promise<void> {
     if (fields.length === 0) return;
-    await this.holder.run((redis) => redis.hdel(key, ...fields));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(fields)) {
+        await redis.hdel(key, ...chunk);
+      }
+    });
   }
 
   async zadd(key: string, score: number, member: string): Promise<void> {

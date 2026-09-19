@@ -178,6 +178,36 @@ export interface MockAiContext {
   data?: MockData['data']
 }
 
+export interface RankedResponseStat {
+  filename: string
+  endpoint: string
+  method: string
+  operationName?: string | null
+  durationMs?: number
+  size: number
+  requestId?: string | null
+  parentRequestId?: string | null
+  /** True when no other recording lists this hop as its parent (lowest-level call). */
+  isLeaf?: boolean
+  /** Same buckets as hop Replay / Live / Pending / Refresh badges. */
+  trafficMode?: 'replay' | 'refresh' | 'pending' | 'live'
+}
+
+export interface ReplayModeBreakdown {
+  replay: number
+  refresh: number
+  pending: number
+  live: number
+}
+
+export interface RecentActivityStat {
+  filename: string
+  modified: string
+  method: string
+  endpoint: string
+  operationName?: string | null
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -185,9 +215,15 @@ export interface Stats {
   domains: Record<string, number>
   methods: Record<string, number>
   statusCodes: Record<string, number>
-  recentActivity: Array<{ filename: string; modified: string }>
+  recentActivity: RecentActivityStat[]
   /** Files per subdirectory (matches mock folder layout under the scenario). */
   folderBreakdown?: Array<{ folder: string; count: number }>
+  /** Slowest recorded round-trips (when duration was stored). */
+  slowestResponses?: RankedResponseStat[]
+  /** Largest mock recordings by stored size. */
+  largestResponses?: RankedResponseStat[]
+  /** Counts by hop traffic badge: Replay, Refresh, Pending, Live. */
+  replayModes?: ReplayModeBreakdown
   scenario: string
   mockDataPath?: string
   scenarioPath?: string

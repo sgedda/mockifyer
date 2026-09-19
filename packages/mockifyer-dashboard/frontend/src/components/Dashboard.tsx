@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/use-toast'
 import MockList from './MockList'
 import MockEditorPage from './MockEditorPage'
 import StatsView from './StatsView'
+import HopsView from './HopsView'
 import Settings from './Settings'
 import Timeline from './Timeline'
 import Atlas from './Atlas'
@@ -62,6 +63,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     if (path === '/mocks' || path === '/mock' || path.endsWith('/mocks') || path.endsWith('/mock')) {
       return 'mocks'
     }
+    if (path === '/hops' || path.endsWith('/hops')) return 'hops'
     if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
     if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
     if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
@@ -253,6 +255,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
+      'hops': '/hops',
       'overrides': '/overrides',
       'timeline': '/timeline',
       'atlas': '/atlas',
@@ -274,42 +277,22 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     mocksLoadAbortRef.current = ac
     const { signal } = ac
     const requestedSearchQuery = searchQuery.trim()
-    const wantSimilarGroups = activeTab === 'mocks'
     const hasCatalog = allMocks.length > 0
     try {
       if (!hasCatalog) setLoading(true)
       setSimilarBodyGroups([])
-      const data = await getMocks(scenario, { signal })
+      const data = await getMocks(scenario, {
+        signal,
+        compact: true,
+        similarGroups: true,
+      })
       if (signal.aborted) return
       if (searchQueryRef.current.trim() !== requestedSearchQuery) return
       if (!requestedSearchQuery) {
         setMocks(data.files)
       }
       setAllMocks(data.files)
-      setLoading(false)
-
-      if (!wantSimilarGroups) return
-
-      const graphqlCount = data.files.reduce(
-        (n, file) => (file.graphqlInfo?.query ? n + 1 : n),
-        0
-      )
-      if (graphqlCount < 2) return
-
-      try {
-        const grouped = await getMocks(scenario, { similarGroups: true, signal })
-        if (signal.aborted) return
-        if (searchQueryRef.current.trim() !== requestedSearchQuery) return
-        // Only update mocks if no search is active (clustering should not overwrite search results)
-        if (!requestedSearchQuery) {
-          setMocks(grouped.files)
-        }
-        setAllMocks(grouped.files)
-        setSimilarBodyGroups(grouped.similarBodyGroups ?? [])
-      } catch (error) {
-        if (isAbortError(error)) return
-        // List already rendered; similar clusters are optional.
-      }
+      setSimilarBodyGroups(data.similarBodyGroups ?? [])
     } catch (error) {
       if (isAbortError(error)) return
       toast({
@@ -626,6 +609,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 />
               }
             />
+            <Route path="/hops" element={<HopsView scenario={scenario} scenarioLocked={scenarioLocked} />} />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"
@@ -644,6 +628,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={
                 <Settings
                   scenario={scenario}
+                  availableScenarios={availableScenarios}
                   scenarioLocks={scenarioLocks}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)

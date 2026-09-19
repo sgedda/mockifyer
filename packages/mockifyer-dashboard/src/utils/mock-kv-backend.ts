@@ -28,6 +28,9 @@ export interface MockKvBackend {
   sismember(key: string, member: string): Promise<boolean>;
   hget(key: string, field: string): Promise<string | null>;
   hset(key: string, field: string, value: string): Promise<void>;
+  /** Batch HSET so catalog backfill is not one round-trip per mock. */
+  hsetMany(key: string, fields: Record<string, string>): Promise<void>;
+  hgetall(key: string): Promise<Record<string, string>>;
   hdel(key: string, ...fields: string[]): Promise<void>;
   zadd(key: string, score: number, member: string): Promise<void>;
   zrem(key: string, ...members: string[]): Promise<void>;

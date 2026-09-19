@@ -49,6 +49,18 @@ export async function closeProxyNetworkLog(ctx: ProxyNetworkLogContext | null): 
   await ctx.store.close().catch(() => undefined);
 }
 
+/** Wall-clock ms since `openProxyNetworkLog`, when the timer is valid. */
+export function proxyNetworkElapsedMs(ctx: ProxyNetworkLogContext | null | undefined): number | undefined {
+  if (!ctx || typeof ctx.startedAt !== 'number' || !Number.isFinite(ctx.startedAt)) {
+    return undefined;
+  }
+  const ms = Date.now() - ctx.startedAt;
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return undefined;
+  }
+  return ms;
+}
+
 export async function appendProxyNetworkEvent(
   ctx: ProxyNetworkLogContext | null,
   partial: {
@@ -69,7 +81,7 @@ export async function appendProxyNetworkEvent(
   }
 ): Promise<void> {
   if (!ctx) return;
-  const durationMs = partial.durationMs ?? Math.max(0, Date.now() - ctx.startedAt);
+  const durationMs = partial.durationMs ?? proxyNetworkElapsedMs(ctx) ?? 0;
   await ctx.store
     .append(ctx.scenario, {
       requestId: ctx.requestId,
@@ -134,6 +146,7 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
 
 /** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
  * Existing ids stay put so always-refresh does not break parentRequestId links.
+ * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
  */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
@@ -153,6 +166,10 @@ export function applyProxyCorrelationToMockData(
   }
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
+  }
+  const durationMs = proxyNetworkElapsedMs(ctx);
+  if (durationMs != null) {
+    mock.duration = durationMs;
   }
 }
 
