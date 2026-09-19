@@ -14,6 +14,7 @@ import {
   parseMockHopTrafficMode,
 } from '@/lib/mock-correlation-chains'
 import { HopsNavCard } from '@/components/ServiceChainList'
+import { MockChainRoleReplayMenu } from '@/components/MockChainRoleReplayMenu'
 import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
 import { MockCard } from '@/components/MockCard'
@@ -370,6 +371,14 @@ function MockListContent({
               <span className="hidden sm:inline">Collapse all</span>
             </Button>
           </>
+        )}
+        {scenario && catalogServiceChains.length > 0 && (
+          <MockChainRoleReplayMenu
+            scenario={scenario}
+            chains={catalogServiceChains}
+            onDone={onRefresh}
+            disabled={loading || scenarioLocked}
+          />
         )}
         <Button onClick={onRefresh} variant="outline" size="icon" className="shrink-0" title="Refresh">
           <RefreshCw className="h-4 w-4" />

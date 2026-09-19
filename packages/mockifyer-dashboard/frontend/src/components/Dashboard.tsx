@@ -609,7 +609,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 />
               }
             />
-            <Route path="/hops" element={<HopsView scenario={scenario} />} />
+            <Route path="/hops" element={<HopsView scenario={scenario} scenarioLocked={scenarioLocked} />} />
             <Route path="/timeline" element={<Timeline scenario={scenario} />} />
             <Route
               path="/overrides"

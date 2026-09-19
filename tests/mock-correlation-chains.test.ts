@@ -17,6 +17,8 @@ import {
   mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
   mockHopHitsUpstream,
+  collectMockChainRoleFilenames,
+  planChainRoleReplay,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
 
@@ -644,6 +646,48 @@ describe('hop path labels', () => {
         catalog
       )
     ).toBe('GET /v-2/myaccount/')
+  })
+})
+
+describe('chain role replay plans', () => {
+  it('splits GraphQL BFF hops from source/leaf hops and plans Live ancestors', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'bff-1',
+      graphqlInfo: { query: 'query Q { a }', variables: {}, operationName: 'Q' },
+    })
+    const booking = mock({
+      filename: 'booking.json',
+      method: 'GET',
+      endpoint: 'http://booking.example/api/booking/1',
+      requestId: 'src-1',
+      parentRequestId: graphql.requestId,
+    })
+    const token = mock({
+      filename: 'token.json',
+      method: 'POST',
+      endpoint: 'https://token.example/TokenService.asmx',
+      requestId: 'src-2',
+      parentRequestId: graphql.requestId,
+    })
+    const chains = buildMockServiceChainsForDisplay([graphql, booking, token])
+    expect(chains).toHaveLength(1)
+
+    const roles = collectMockChainRoleFilenames(chains)
+    expect(roles.bff).toEqual(['graphql.json'])
+    expect(roles.sources.sort()).toEqual(['booking.json', 'token.json'])
+    expect(roles.ancestorsOfSources).toEqual(['graphql.json'])
+
+    expect(planChainRoleReplay(chains, 'bff')).toEqual({
+      stored: ['graphql.json'],
+      passthrough: [],
+    })
+    expect(planChainRoleReplay(chains, 'sources')).toEqual({
+      stored: expect.arrayContaining(['booking.json', 'token.json']),
+      passthrough: ['graphql.json'],
+    })
   })
 })
 

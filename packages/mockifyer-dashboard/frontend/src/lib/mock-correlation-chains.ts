@@ -126,6 +126,11 @@ function isGraphqlLikeHop(mock: MockFile): boolean {
   return /\/graphql\/?$/i.test(path)
 }
 
+/** Public alias for bulk replay: GraphQL gateway hops vs source/leaf hops. */
+export function isGraphqlBffHop(mock: MockFile): boolean {
+  return isGraphqlLikeHop(mock)
+}
+
 /**
  * Real GraphQL BFFs call many distinct upstream hosts at depth 1 (bookings, tokens, CRM).
  * That looks like a client-session fan-out unless we exempt multi-host GraphQL roots.
@@ -431,6 +436,94 @@ export function indexChainLeafFilenames(chains: MockServiceChain[]): ChainLeafIn
 export function isChainLeafHop(filename: string, index: ChainLeafIndex): boolean {
   if (index.leaves.has(filename)) return true
   return !index.inAChain.has(filename)
+}
+
+export interface MockChainRoleFilenames {
+  /** GraphQL / BFF hops. */
+  bff: string[]
+  /** Lowest-level source hops (not GraphQL). */
+  sources: string[]
+  /** Parent hops that must be Live before source hops can be reached. */
+  ancestorsOfSources: string[]
+}
+
+function collectRolesFromForest(
+  nodes: MockUniqueChainNode[],
+  bff: Set<string>,
+  sources: Set<string>,
+  ancestorsOfSources: Set<string>,
+  ancestorFilenames: string[]
+): void {
+  for (const node of nodes) {
+    const nodeFilenames = node.hops.map((hop) => hop.filename)
+    for (const hop of node.hops) {
+      if (isGraphqlLikeHop(hop)) bff.add(hop.filename)
+    }
+    if (node.children.length === 0) {
+      const hasSourceLeaf = node.hops.some((hop) => !isGraphqlLikeHop(hop))
+      for (const hop of node.hops) {
+        if (!isGraphqlLikeHop(hop)) sources.add(hop.filename)
+      }
+      if (hasSourceLeaf) {
+        for (const filename of ancestorFilenames) ancestorsOfSources.add(filename)
+      }
+      continue
+    }
+    collectRolesFromForest(node.children, bff, sources, ancestorsOfSources, [
+      ...ancestorFilenames,
+      ...nodeFilenames,
+    ])
+  }
+}
+
+/**
+ * Split chain hops into GraphQL/BFF vs source/leaf filenames for bulk "use mock".
+ */
+export function collectMockChainRoleFilenames(chains: MockServiceChain[]): MockChainRoleFilenames {
+  const bff = new Set<string>()
+  const sources = new Set<string>()
+  const ancestorsOfSources = new Set<string>()
+  for (const chain of chains) {
+    for (const hop of chain.hops) {
+      if (isGraphqlLikeHop(hop)) bff.add(hop.filename)
+    }
+    collectRolesFromForest(
+      buildUniqueMockChainForest(chain.hops),
+      bff,
+      sources,
+      ancestorsOfSources,
+      []
+    )
+  }
+  for (const filename of bff) {
+    sources.delete(filename)
+  }
+  return {
+    bff: [...bff],
+    sources: [...sources],
+    ancestorsOfSources: [...ancestorsOfSources],
+  }
+}
+
+export type ChainRoleReplayTarget = 'sources' | 'bff'
+
+/**
+ * Filenames to put on stored mock vs Live API for a bulk role replay.
+ * Source replay also flips ancestor/BFF hops to Live so traffic can reach them.
+ */
+export function planChainRoleReplay(
+  chains: MockServiceChain[],
+  target: ChainRoleReplayTarget
+): { stored: string[]; passthrough: string[] } {
+  const roles = collectMockChainRoleFilenames(chains)
+  if (target === 'bff') {
+    return { stored: roles.bff, passthrough: [] }
+  }
+  const sourceSet = new Set(roles.sources)
+  return {
+    stored: roles.sources,
+    passthrough: roles.ancestorsOfSources.filter((filename) => !sourceSet.has(filename)),
+  }
 }
 
 /** Short host + path line for chain step subtitles. */

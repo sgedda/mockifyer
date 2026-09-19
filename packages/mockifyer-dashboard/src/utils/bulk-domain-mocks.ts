@@ -2,9 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import {
   applyCapturedResponse,
+  applyMockReplayModeSetting,
   getScenarioFolderPath,
   mockHasCapturableResponse,
   type MockData,
+  type MockReplayMode,
 } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { endpointMatchesDomainPath } from './domain-tree-match';
@@ -222,5 +224,151 @@ export async function bulkCaptureResponsesForDomain(opts: {
     skippedAlready,
     failed,
     errors: errors.slice(0, 20),
+  };
+}
+
+export const BULK_REPLAY_MODE_MAX_FILES = 5000;
+
+export interface BulkReplayModeResult {
+  ok: true;
+  scenario: string;
+  updatedStored: number;
+  updatedLive: number;
+  skippedPending: number;
+  missing: number;
+}
+
+function parseRedisHashFromFilename(relativeName: string): string | null {
+  if (!relativeName.startsWith('redis/')) return null;
+  if (!relativeName.endsWith('.json')) return null;
+  const hash = relativeName.slice('redis/'.length, -'.json'.length);
+  if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
+  return hash;
+}
+
+function resolveScenarioMockFilePath(scenarioPath: string, relativeName: string): string | null {
+  if (!relativeName.endsWith('.json') || relativeName.includes('\0')) return null;
+  const resolved = path.resolve(scenarioPath, relativeName);
+  const root = path.resolve(scenarioPath);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+  return resolved;
+}
+
+function uniqueTrimmedFilenames(list: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list ?? []) {
+    if (typeof raw !== 'string') continue;
+    const name = raw.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
+}
+
+function applyReplayModeToMock(mockData: MockData, mode: MockReplayMode): 'updated' | 'skipped-pending' {
+  if (mode === 'stored' && mockData.responsePending === true) {
+    return 'skipped-pending';
+  }
+  applyMockReplayModeSetting(mockData, mode);
+  return 'updated';
+}
+
+/**
+ * Set replay mode on specific mock files (`stored` = use mock, `passthrough` = live API).
+ * Pending stubs are skipped for `stored` so they are not converted to refresh-next.
+ */
+export async function bulkSetReplayModeForFilenames(opts: {
+  provider: 'filesystem' | 'sqlite' | 'redis';
+  mockDataPath: string;
+  scenario: string;
+  stored?: string[];
+  passthrough?: string[];
+  redisUrl?: string;
+  keyPrefix?: string;
+  redisCluster?: boolean;
+}): Promise<BulkReplayModeResult> {
+  const scenarioName = opts.scenario.trim();
+  const stored = uniqueTrimmedFilenames(opts.stored);
+  const storedSet = new Set(stored);
+  const passthrough = uniqueTrimmedFilenames(opts.passthrough).filter((name) => !storedSet.has(name));
+  const total = stored.length + passthrough.length;
+  if (total > BULK_REPLAY_MODE_MAX_FILES) {
+    throw new Error(`Too many files (max ${BULK_REPLAY_MODE_MAX_FILES})`);
+  }
+
+  let updatedStored = 0;
+  let updatedLive = 0;
+  let skippedPending = 0;
+  let missing = 0;
+
+  const jobs: Array<{ filename: string; mode: MockReplayMode }> = [
+    ...passthrough.map((filename) => ({ filename, mode: 'passthrough' as const })),
+    ...stored.map((filename) => ({ filename, mode: 'stored' as const })),
+  ];
+
+  if (isCentralizedDashboardProvider(opts.provider)) {
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig(opts as DashboardRedisConfig),
+      opts.mockDataPath
+    );
+    try {
+      for (const job of jobs) {
+        const hash = parseRedisHashFromFilename(job.filename);
+        if (!hash) {
+          missing += 1;
+          continue;
+        }
+        const mockData = await store.getByHash(hash, scenarioName);
+        if (!mockData) {
+          missing += 1;
+          continue;
+        }
+        const outcome = applyReplayModeToMock(mockData, job.mode);
+        if (outcome === 'skipped-pending') {
+          skippedPending += 1;
+          continue;
+        }
+        await store.setByHashInScenario(hash, mockData, scenarioName);
+        if (job.mode === 'stored') updatedStored += 1;
+        else updatedLive += 1;
+      }
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } else {
+    const scenarioPath = getScenarioFolderPath(opts.mockDataPath, scenarioName);
+    for (const job of jobs) {
+      const filePath = resolveScenarioMockFilePath(scenarioPath, job.filename);
+      if (!filePath || !fs.existsSync(filePath)) {
+        missing += 1;
+        continue;
+      }
+      let mockData: MockData;
+      try {
+        mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+      } catch {
+        missing += 1;
+        continue;
+      }
+      const outcome = applyReplayModeToMock(mockData, job.mode);
+      if (outcome === 'skipped-pending') {
+        skippedPending += 1;
+        continue;
+      }
+      fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
+      if (job.mode === 'stored') updatedStored += 1;
+      else updatedLive += 1;
+    }
+  }
+
+  return {
+    ok: true,
+    scenario: scenarioName,
+    updatedStored,
+    updatedLive,
+    skippedPending,
+    missing,
   };
 }
