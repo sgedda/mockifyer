@@ -12,20 +12,21 @@ import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
 import {
-  collectUpstreamDomainPathsForReplay,
+  describeBulkReplayModeResult,
+  planDomainFolderReplay,
   type MockChainMaps,
 } from '@/lib/mock-correlation-chains'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
 import {
   aggregateLiveApiState,
   countMocksInDomainFolder,
-  endpointMatchesDomainPath,
   findEffectiveDomainPathRule,
   type LiveApiAggregate,
 } from '@/lib/domainTreeMatch'
 import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
+  bulkSetReplayMode,
   setDomainPathRule,
   type DomainPathRulesMap,
 } from '@/lib/api'
@@ -100,6 +101,8 @@ export function useFolderTreeBulkActions(): FolderTreeBulkContextValue {
 export interface DomainTreeModeProps {
   scenario: string
   catalogMocks: MockFile[]
+  /** Full scenario catalog for Replay/Live (not search-filtered). Defaults to catalogMocks. */
+  actionMocks?: MockFile[]
   pathRules: DomainPathRulesMap
   onPathRulesChange: (rules: DomainPathRulesMap) => void
   onRefresh: () => void
@@ -284,44 +287,21 @@ function FolderSection({
 
   async function handleSetReplayMode() {
     if (!domainTreeMode || !domainPath) return
-    if (pendingCount > 0) {
-      await handleBulkCapture()
-    }
-
-    const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
-    const domainMocks = domainTreeMode.catalogMocks.filter((m) =>
-      endpointMatchesDomainPath(m.endpoint ?? null, normalizedPath)
-    )
-    const upstreamDomains = collectUpstreamDomainPathsForReplay(
-      domainMocks,
-      domainTreeMode.catalogMocks
-    ).filter((path) => path !== normalizedPath)
-
     try {
       setBusy('mock')
-      for (const upstream of upstreamDomains) {
-        await bulkSetLiveApiForDomain({
-          scenario: domainTreeMode.scenario,
-          domainPath: upstream,
-          useLiveApi: true,
-        })
-      }
-      const result = await bulkSetLiveApiForDomain({
+      const plan = planDomainFolderReplay(
+        domainTreeMode.actionMocks ?? domainTreeMode.catalogMocks,
+        domainPath
+      )
+      if (plan.stored.length === 0 && plan.passthrough.length === 0) return
+      const result = await bulkSetReplayMode({
         scenario: domainTreeMode.scenario,
-        domainPath,
-        useLiveApi: false,
+        stored: plan.stored,
+        passthrough: plan.passthrough,
       })
-      const upstreamHint =
-        upstreamDomains.length > 0
-          ? `Set ${upstreamDomains.length} upstream hop${upstreamDomains.length === 1 ? '' : 's'} to Live so traffic reaches this service. `
-          : ''
-      const pendingHint =
-        result.skippedPending > 0
-          ? `Updated ${result.updated}; ${result.skippedPending} pending (capture responses first).`
-          : `Updated ${result.updated} mock(s) under ${domainPath}.`
       toast({
         title: 'Replay enabled',
-        description: `${upstreamHint}${pendingHint}`,
+        description: describeBulkReplayModeResult(result),
       })
       domainTreeMode.onRefresh()
     } catch (error: unknown) {
@@ -462,7 +442,7 @@ function FolderSection({
                 disabled={busy !== null || !canReplay}
                 title={
                   canReplay
-                    ? 'Replay saved responses (turns off live API for mocks in this folder)'
+                    ? 'Replay saved responses. Pending stubs capture on the next matching request. Upstream hops switch to Live so traffic can reach this folder.'
                     : 'Nothing to replay yet — capture a response first'
                 }
                 onClick={() => void handleTrafficModeChange('replay')}

@@ -5,6 +5,7 @@ import {
   applyMockReplayModeSetting,
   getScenarioFolderPath,
   mockHasCapturableResponse,
+  resolveMockReplayMode,
   type MockData,
   type MockReplayMode,
 } from '@sgedda/mockifyer-core';
@@ -53,6 +54,57 @@ function needsResponseCapture(mockData: MockData): boolean {
   return !mockHasCapturableResponse(mockData);
 }
 
+const BULK_STORE_WRITE_CONCURRENCY = 8;
+
+interface ReplayFlagSnapshot {
+  alwaysUseRealApi: boolean;
+  refreshOnNextRequest: boolean;
+  alwaysRefreshFromLive: boolean;
+  responsePending: boolean;
+}
+
+function snapshotReplayFlags(mockData: MockData): ReplayFlagSnapshot {
+  return {
+    alwaysUseRealApi: mockData.alwaysUseRealApi === true,
+    refreshOnNextRequest: mockData.refreshOnNextRequest === true,
+    alwaysRefreshFromLive: mockData.alwaysRefreshFromLive === true,
+    responsePending: mockData.responsePending === true,
+  };
+}
+
+function replayFlagsEqual(a: ReplayFlagSnapshot, b: ReplayFlagSnapshot): boolean {
+  return (
+    a.alwaysUseRealApi === b.alwaysUseRealApi &&
+    a.refreshOnNextRequest === b.refreshOnNextRequest &&
+    a.alwaysRefreshFromLive === b.alwaysRefreshFromLive &&
+    a.responsePending === b.responsePending
+  );
+}
+
+function catalogAlreadyInLiveApiMode(mockData: MockData, useLiveApi: boolean): boolean {
+  const mode = resolveMockReplayMode(mockData);
+  if (useLiveApi) return mode === 'passthrough';
+  return mode === 'stored';
+}
+
+async function mapPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return;
+  const limit = Math.max(1, concurrency);
+  let next = 0;
+  async function run(): Promise<void> {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await worker(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+}
+
 export async function bulkSetLiveApiForDomain(opts: {
   provider: 'filesystem' | 'sqlite' | 'redis';
   mockDataPath: string;
@@ -65,8 +117,9 @@ export async function bulkSetLiveApiForDomain(opts: {
 }): Promise<BulkLiveApiResult> {
   const scenarioName = opts.scenario.trim();
   const prefix = opts.domainPath.trim();
+  const desiredMode: MockReplayMode = opts.useLiveApi ? 'passthrough' : 'stored';
   let updated = 0;
-  let skippedPending = 0;
+  const skippedPending = 0;
 
   if (isCentralizedDashboardProvider(opts.provider)) {
     const store = createDashboardMockStore(
@@ -74,22 +127,21 @@ export async function bulkSetLiveApiForDomain(opts: {
       opts.mockDataPath
     );
     try {
-      const items = await store.list(scenarioName);
-      for (const { hash, mockData } of items) {
-        const endpoint = mockEndpointForMatch(mockData);
-        if (!endpointMatchesDomainPath(endpoint, prefix)) continue;
-        if (!opts.useLiveApi && mockData.responsePending === true) {
-          skippedPending += 1;
-          continue;
-        }
-        if (opts.useLiveApi) {
-          mockData.alwaysUseRealApi = true;
-        } else {
-          delete mockData.alwaysUseRealApi;
-        }
+      const catalogItems = await store.listCatalog(scenarioName);
+      const matching = catalogItems.filter((item) => {
+        const endpoint = mockEndpointForMatch(item.mockData);
+        if (!endpointMatchesDomainPath(endpoint, prefix)) return false;
+        return !catalogAlreadyInLiveApiMode(item.mockData, opts.useLiveApi);
+      });
+      await mapPool(matching, BULK_STORE_WRITE_CONCURRENCY, async ({ hash }) => {
+        const mockData = await store.getByHash(hash, scenarioName);
+        if (!mockData) return;
+        const before = snapshotReplayFlags(mockData);
+        applyMockReplayModeSetting(mockData, desiredMode);
+        if (replayFlagsEqual(before, snapshotReplayFlags(mockData))) return;
         await store.setByHashInScenario(hash, mockData, scenarioName);
         updated += 1;
-      }
+      });
     } finally {
       await store.close().catch(() => undefined);
     }
@@ -104,15 +156,9 @@ export async function bulkSetLiveApiForDomain(opts: {
       }
       const endpoint = mockEndpointForMatch(mockData);
       if (!endpointMatchesDomainPath(endpoint, prefix)) continue;
-      if (!opts.useLiveApi && mockData.responsePending === true) {
-        skippedPending += 1;
-        continue;
-      }
-      if (opts.useLiveApi) {
-        mockData.alwaysUseRealApi = true;
-      } else {
-        delete mockData.alwaysUseRealApi;
-      }
+      const before = snapshotReplayFlags(mockData);
+      applyMockReplayModeSetting(mockData, desiredMode);
+      if (replayFlagsEqual(before, snapshotReplayFlags(mockData))) continue;
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
       updated += 1;
     }
@@ -344,21 +390,23 @@ export async function bulkSetReplayModeForFilenames(opts: {
       opts.mockDataPath
     );
     try {
-      for (const job of jobs) {
+      await mapPool(jobs, BULK_STORE_WRITE_CONCURRENCY, async (job) => {
         const hash = parseRedisHashFromFilename(job.filename);
         if (!hash) {
           missing += 1;
-          continue;
+          return;
         }
         const mockData = await store.getByHash(hash, scenarioName);
         if (!mockData) {
           missing += 1;
-          continue;
+          return;
         }
+        const before = snapshotReplayFlags(mockData);
         const outcome = applyReplayModeToMock(mockData, job.mode);
+        if (replayFlagsEqual(before, snapshotReplayFlags(mockData))) return;
         await store.setByHashInScenario(hash, mockData, scenarioName);
         tallyReplayOutcome(outcome, counts);
-      }
+      });
     } finally {
       await store.close().catch(() => undefined);
     }
@@ -377,7 +425,9 @@ export async function bulkSetReplayModeForFilenames(opts: {
         missing += 1;
         continue;
       }
+      const before = snapshotReplayFlags(mockData);
       const outcome = applyReplayModeToMock(mockData, job.mode);
+      if (replayFlagsEqual(before, snapshotReplayFlags(mockData))) continue;
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2), 'utf-8');
       tallyReplayOutcome(outcome, counts);
     }
