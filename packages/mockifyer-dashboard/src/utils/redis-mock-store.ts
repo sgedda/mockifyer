@@ -1404,6 +1404,7 @@ export class RedisMockStore {
     }
 
     // Copy mocks by walking the index set.
+    // Do not use MULTI: mock/index/registry keys hash to different Redis Cluster slots (CROSSSLOT).
     const fromIndexKey = await this.indexKey(from);
     const hashes: string[] = await this.kv.smembers(fromIndexKey);
     if (hashes.length === 0) {
@@ -1415,17 +1416,16 @@ export class RedisMockStore {
     const fromKeys = await Promise.all(hashes.map((h) => this.dataKey(h, from)));
     const values: Array<string | null> = await this.kv.mget(fromKeys);
 
-    const multi = this.kv.multi();
-    let copied = 0;
+    const copiedHashes: string[] = [];
     const destCatalogItems: RedisMockListItem[] = [];
     for (let i = 0; i < hashes.length; i++) {
       const raw = values[i];
       if (!raw) continue;
       const hash = hashes[i];
-      const rewritten = rewriteClonedMockJson(raw) ?? raw;
+      const rewritten = rewriteClonedMockJson(raw, { pretty: false }) ?? raw;
       const toKey = await this.dataKey(hash, to);
-      multi.set(toKey, rewritten);
-      copied++;
+      await this.kv.set(toKey, rewritten);
+      copiedHashes.push(hash);
       try {
         const parsedMock = parseMockJsonForCatalog(rewritten);
         destCatalogItems.push({
@@ -1438,19 +1438,16 @@ export class RedisMockStore {
         // sidecar backfill on next listCatalog
       }
     }
-    if (copied > 0) {
+    if (copiedHashes.length > 0) {
       const toIndexKey = await this.indexKey(to);
-      for (const chunk of chunkArray(hashes)) {
-        multi.sadd(toIndexKey, ...chunk);
+      for (const chunk of chunkArray(copiedHashes)) {
+        await this.kv.sadd(toIndexKey, ...chunk);
       }
     }
-    // Registry + best-effort: ensures scenarios appear even if empty.
-    multi.sadd(this.scenarioRegistrySetKey, to);
-
-    await multi.exec();
+    await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
     await this.writeCatalogSidecarItems(to, destCatalogItems);
     this.invalidateCatalogCache(to);
-    return { mocksCopied: copied, dateConfigCopied };
+    return { mocksCopied: copiedHashes.length, dateConfigCopied };
   }
 
   /**

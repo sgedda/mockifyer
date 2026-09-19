@@ -252,60 +252,74 @@ router.post('/create', async (req: Request, res: Response) => {
     }
 
     // Filesystem / sqlite: create on-disk scenario folder. Redis: scenarios materialize on first write — do not mkdir mockDataPath.
+    const destFolder = path.join(mockDataPath, sanitized);
+    let createdFolder = false;
     if (!isCentralizedDashboardProvider(config.provider)) {
       createScenario(mockDataPath, sanitized);
+      createdFolder = true;
     }
 
-    // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
-    if (deriveFromScenario) {
+    let clonedIntoStore = false;
+    try {
+      // Optional: derive scenario data (copy mocks + date config) from an existing scenario.
+      // The picker always lists `default` / `_scratch` even when Redis has no registry entry
+      // and the filesystem folder does not exist yet — treat that as an empty source.
+      if (deriveFromScenario && !scenarios.includes(deriveFromScenario)) {
+        if (createdFolder) {
+          fs.rmSync(destFolder, { recursive: true, force: true });
+        }
+        return res.status(404).json({
+          error: `Base scenario "${deriveFromScenario}" does not exist`,
+        });
+      }
+
       if (isCentralizedDashboardProvider(config.provider)) {
         const store = createDashboardMockStore(config, mockDataPath);
         try {
-          const available = await store.listScenarios();
-          if (!available.includes(deriveFromScenario)) {
-            return res.status(404).json({
-              error: `Base scenario "${deriveFromScenario}" does not exist in Redis`,
-            });
+          if (deriveFromScenario) {
+            clonedIntoStore = true;
+            await store.cloneScenario(deriveFromScenario, sanitized);
           }
-          await store.cloneScenario(deriveFromScenario, sanitized);
+          await store.setActiveScenario(sanitized);
         } finally {
           await store.close().catch(() => undefined);
         }
       } else {
-        const available = listScenarios(mockDataPath);
-        if (!available.includes(deriveFromScenario)) {
-          return res.status(404).json({
-            error: `Base scenario "${deriveFromScenario}" does not exist`,
-          });
+        if (deriveFromScenario) {
+          const src = path.join(mockDataPath, deriveFromScenario);
+          if (fs.existsSync(src) && fs.statSync(src).isDirectory()) {
+            copyDirectoryRecursive(src, destFolder, {
+              skipFilenames: new Set([SCENARIO_META_FILENAME]),
+            });
+            resetReplayModesInScenarioFolder(destFolder);
+          }
         }
-        const src = path.join(mockDataPath, deriveFromScenario);
-        const dest = path.join(mockDataPath, sanitized);
-        copyDirectoryRecursive(src, dest, {
-          skipFilenames: new Set([SCENARIO_META_FILENAME]),
-        });
-        resetReplayModesInScenarioFolder(dest);
+        saveScenarioConfig(mockDataPath, sanitized);
       }
-    }
 
-    // Also set the scenario immediately, provider-aware.
-    if (isCentralizedDashboardProvider(config.provider)) {
-      const store = createDashboardMockStore(config, mockDataPath);
-      try {
-        await store.setActiveScenario(sanitized);
-      } finally {
-        await store.close().catch(() => undefined);
+      console.log(`[ScenarioConfigRoute] Created scenario: ${sanitized}`);
+      res.json({
+        success: true,
+        message: `Scenario "${sanitized}" created successfully`,
+        currentScenario: sanitized,
+        scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
+      });
+    } catch (deriveError: unknown) {
+      if (createdFolder) {
+        fs.rmSync(destFolder, { recursive: true, force: true });
       }
-    } else {
-      saveScenarioConfig(mockDataPath, sanitized);
+      if (clonedIntoStore && isCentralizedDashboardProvider(config.provider)) {
+        const store = createDashboardMockStore(config, mockDataPath);
+        try {
+          await store.deleteEntireScenario(sanitized);
+        } catch {
+          // best-effort cleanup of a partial Redis/SQLite clone
+        } finally {
+          await store.close().catch(() => undefined);
+        }
+      }
+      throw deriveError;
     }
-    
-    console.log(`[ScenarioConfigRoute] Created scenario: ${sanitized}`);
-    res.json({
-      success: true,
-      message: `Scenario "${sanitized}" created successfully`,
-      currentScenario: sanitized,
-      scenarios: Array.from(new Set([...scenarios, sanitized])).sort(),
-    });
   } catch (error: any) {
     console.error('[ScenarioConfigRoute] Create - Error:', error);
     res.status(500).json({ error: 'Failed to create scenario', details: error.message });

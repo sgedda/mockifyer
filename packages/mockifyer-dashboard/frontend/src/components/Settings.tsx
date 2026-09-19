@@ -137,9 +137,12 @@ export default function Settings({
         const createResult = await createScenario(newScenario, deriveFromScenario || null)
         // Update the available scenarios from the API response
         setAvailableScenarios(createResult.availableScenarios || [])
+        await onScenarioConfigRefresh?.()
         toast({
           title: 'Success',
-          description: `Scenario "${newScenario}" created`,
+          description: deriveFromScenario
+            ? `Scenario "${newScenario}" created from "${deriveFromScenario}"`
+            : `Scenario "${newScenario}" created`,
         })
       }
       // Then switch to it

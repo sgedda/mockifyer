@@ -275,6 +275,16 @@ export function listScenarios(mockDataPath: string): string[] {
     return [DEFAULT_SCENARIO, SCRATCH_SCENARIO];
   }
 
+  try {
+    const rootStat = fs.statSync(mockDataPath);
+    if (!rootStat.isDirectory()) {
+      // SQLite `--path file.db` is a file; do not scandir it.
+      return [DEFAULT_SCENARIO, SCRATCH_SCENARIO];
+    }
+  } catch {
+    return [DEFAULT_SCENARIO, SCRATCH_SCENARIO];
+  }
+
   const items = fs.readdirSync(mockDataPath, { withFileTypes: true });
   const scenarios: string[] = [];
   
