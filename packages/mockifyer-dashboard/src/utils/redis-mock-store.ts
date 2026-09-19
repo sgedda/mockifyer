@@ -1517,6 +1517,7 @@ export class RedisMockStore {
     if (scenario === null) {
       await this.kv.del(key);
       await this.kv.srem(this.clientLaneIdsSetKey, id);
+      await this.setLaneDateConfig(id, null);
       return;
     }
     assertNotReservedScenarioName(scenario, { allowScratch: true });
@@ -1542,6 +1543,51 @@ export class RedisMockStore {
       return;
     }
     await this.kv.set(key, String(groupId).trim());
+    await this.kv.sadd(this.clientLaneIdsSetKey, id);
+  }
+
+  private laneDateConfigRedisKey(clientId: string): string {
+    return `${this.keyPrefix}:client_date_config:${clientId.trim()}`;
+  }
+
+  /**
+   * Per-lane date manipulation. When effective, the dashboard proxy uses this instead of the scenario date config.
+   */
+  async getLaneDateConfig(clientId: string): Promise<{
+    dateManipulation: Record<string, unknown> | null;
+    updatedAt?: string;
+  } | null> {
+    const id = clientId.trim();
+    if (!id) return null;
+    const raw: string | null = await this.kv.get(this.laneDateConfigRedisKey(id));
+    if (raw === null || raw === '') return null;
+    try {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      const dm = o.dateManipulation;
+      return {
+        dateManipulation:
+          dm !== undefined && dm !== null && typeof dm === 'object'
+            ? (dm as Record<string, unknown>)
+            : null,
+        updatedAt: typeof o.updatedAt === 'string' ? o.updatedAt : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async setLaneDateConfig(
+    clientId: string,
+    payload: { dateManipulation: Record<string, unknown>; updatedAt: string } | null
+  ): Promise<void> {
+    const id = clientId.trim();
+    if (!id) throw new Error('clientId is required');
+    const key = this.laneDateConfigRedisKey(id);
+    if (payload === null) {
+      await this.kv.del(key);
+      return;
+    }
+    await this.kv.set(key, JSON.stringify(payload));
     await this.kv.sadd(this.clientLaneIdsSetKey, id);
   }
 
@@ -1660,7 +1706,13 @@ export class RedisMockStore {
   }
 
   async listClientLanes(): Promise<
-    Array<{ clientId: string; scenario: string; note: string | null; overrideGroupId: string | null }>
+    Array<{
+      clientId: string;
+      scenario: string;
+      note: string | null;
+      overrideGroupId: string | null;
+      fixedDate: string | null;
+    }>
   > {
     const scenarioKeyPrefix = `${this.keyPrefix}:client_scenario:`;
     const registryIds = await this.kv.smembers(this.clientLaneIdsSetKey).catch(() => [] as string[]);
@@ -1686,6 +1738,7 @@ export class RedisMockStore {
       scenario: string;
       note: string | null;
       overrideGroupId: string | null;
+      fixedDate: string | null;
     }> = [];
     for (let i = 0; i < allIds.length; i++) {
       const val = values[i];
@@ -1693,11 +1746,16 @@ export class RedisMockStore {
       const clientId = allIds[i];
       const note: string | null = await this.kv.hget(this.laneNoteHashKey, clientId);
       const overrideGroupId = await this.getLaneOverrideGroup(clientId);
+      const laneDate = await this.getLaneDateConfig(clientId);
+      const rawFixed = laneDate?.dateManipulation?.fixedDate;
+      const fixedDate =
+        typeof rawFixed === 'string' && rawFixed.trim() ? rawFixed.trim() : null;
       out.push({
         clientId,
         scenario: val.trim(),
         note: note && note.trim() ? note.trim() : null,
         overrideGroupId,
+        fixedDate,
       });
     }
     return out;
@@ -1722,6 +1780,7 @@ export class RedisMockStore {
     await this.setLaneScenario(id, null);
     await this.setLaneOverrideGroup(id, null);
     await this.setLaneNote(id, null);
+    await this.setLaneDateConfig(id, null);
     await this.setLaneOverrideSetId(id, null);
     await this.kv.zrem(this.laneLastSeenZSetKey, id).catch(() => undefined);
     await this.kv.del(this.laneDevicesZSetKey(id)).catch(() => undefined);

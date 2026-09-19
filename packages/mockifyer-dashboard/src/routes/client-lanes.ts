@@ -168,6 +168,57 @@ router.put('/:clientId/override-group', async (req: Request, res: Response) => {
   }
 });
 
+router.put('/:clientId/date', async (req: Request, res: Response) => {
+  try {
+    const { clientId } = req.params;
+    const { fixedDate } = req.body || {};
+    const { mockDataPath, config } = getDashboardContext(req);
+    if (!isCentralizedDashboardProvider(config.provider)) {
+      return res.status(400).json({ error: "client lanes require dashboard provider 'redis' or 'sqlite'." });
+    }
+    const canonicalClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    if (!canonicalClientId) return res.status(400).json({ error: 'clientId is required' });
+
+    const dateValue =
+      fixedDate === null || fixedDate === ''
+        ? null
+        : typeof fixedDate === 'string' && fixedDate.trim()
+          ? fixedDate.trim()
+          : undefined;
+    if (dateValue === undefined) {
+      return res.status(400).json({ error: 'fixedDate must be an ISO 8601 string or null' });
+    }
+    if (dateValue !== null) {
+      const parsed = new Date(dateValue);
+      if (Number.isNaN(parsed.getTime())) {
+        return res.status(400).json({
+          error: 'Invalid date format. Use ISO 8601 format (e.g., 2024-12-25T00:00:00.000Z)',
+        });
+      }
+    }
+
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      if (dateValue === null) {
+        await store.setLaneDateConfig(canonicalClientId, null);
+      } else {
+        await store.setLaneDateConfig(canonicalClientId, {
+          dateManipulation: { fixedDate: dateValue },
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      const lanes = await store.listClientLanes();
+      const globalScenario = await store.getActiveScenario();
+      return res.json({ success: true, lanes, globalScenario });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: any) {
+    console.error('[ClientLanesRoute] Set date - Error:', error);
+    return res.status(500).json({ error: 'Failed to set lane date', details: error.message });
+  }
+});
+
 
 router.delete('/:clientId', async (req: Request, res: Response) => {
   try {

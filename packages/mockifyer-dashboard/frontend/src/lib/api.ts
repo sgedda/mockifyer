@@ -593,6 +593,8 @@ export interface ClientLane {
   clientId: string
   scenario: string
   overrideGroupId?: string | null
+  /** ISO current date for this lane; when set, it overrides scenario Date Config. */
+  fixedDate?: string | null
   note: string | null
   lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
@@ -657,6 +659,20 @@ export async function setClientLaneOverrideGroup(
   )
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to set lane override group'))
+  }
+}
+
+export async function setClientLaneFixedDate(
+  clientId: string,
+  fixedDate: string | null
+): Promise<void> {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/date`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fixedDate }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set lane current date'))
   }
 }
 

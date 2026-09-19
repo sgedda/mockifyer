@@ -2,7 +2,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
-import { getCurrentDate, initializeDateManipulation, resetDateManipulation } from '@sgedda/mockifyer-core';
+import {
+  getCurrentDate,
+  initializeDateManipulation,
+  resetDateManipulation,
+  resolveExplicitDateManipulation,
+} from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
   const fixedBaseTime = new Date('2024-01-01T00:00:00.000Z').getTime();
@@ -387,4 +392,40 @@ describe('Date Manipulation', () => {
       }
     });
   });
-}); 
+
+  describe('resolveExplicitDateManipulation', () => {
+    const scenarioDoc = {
+      dateManipulation: { fixedDate: '2020-01-01T00:00:00.000Z' },
+    };
+
+    it('prefers an effective lane date over the scenario document', () => {
+      const resolved = resolveExplicitDateManipulation({
+        laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+        scenarioDateDoc: scenarioDoc,
+      });
+      expect(resolved).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
+      expect(
+        getCurrentDate({ explicitManipulation: resolved }).toISOString()
+      ).toBe('2025-06-15T12:00:00.000Z');
+    });
+
+    it('falls back to scenario date when the lane has no date', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: null,
+          scenarioDateDoc: scenarioDoc,
+        })
+      ).toEqual({ fixedDate: '2020-01-01T00:00:00.000Z' });
+    });
+
+    it('returns null when neither lane nor scenario has a document', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: {},
+          scenarioDateDoc: null,
+        })
+      ).toBeNull();
+    });
+  });
+});
+ 
