@@ -180,6 +180,57 @@ describe('RedisMockStore.list', () => {
       true
     );
   });
+
+  it('renameEntireScenario copies mock keys to the new name and remaps lanes', async () => {
+    const from = 'staging';
+    const to = 'staging-v2';
+    const liveHash = 'f'.repeat(64);
+    const mockPayload = JSON.stringify({
+      scenario: from,
+      request: { method: 'GET', url: 'https://api.example.com/users' },
+      response: { status: 200, data: { ok: true } },
+    });
+    const sets = new Map<string, Set<string>>([
+      [`mockifyer:v1:index:${from}`, new Set([liveHash])],
+      ['mockifyer:v1:scenarios', new Set([from])],
+    ]);
+    const strings = new Map<string, string>([[`mockifyer:v1:mock:${from}:${liveHash}`, mockPayload]]);
+    const store = new RedisMockStore({
+      kv: {
+        smembers: async (key: string) => Array.from(sets.get(key) ?? []),
+        scanKeys: async () => [],
+        mget: async (keys: string[]) => keys.map((key) => strings.get(key) ?? null),
+        get: async (key: string) => strings.get(key) ?? null,
+        set: async (key: string, value: string) => {
+          strings.set(key, value);
+        },
+        del: async (...keys: string[]) => {
+          for (const key of keys) strings.delete(key);
+        },
+        sadd: async (key: string, ...members: string[]) => {
+          const set = sets.get(key) ?? new Set<string>();
+          for (const member of members) set.add(member);
+          sets.set(key, set);
+        },
+        srem: async (key: string, ...members: string[]) => {
+          const set = sets.get(key);
+          if (!set) return;
+          for (const member of members) set.delete(member);
+        },
+        hgetall: async () => ({}),
+        hsetMany: async () => undefined,
+        hget: async () => null,
+      } as unknown as MockKvBackend,
+      mockDataPath: '/tmp/mockifyer-unused',
+    });
+
+    const result = await store.renameEntireScenario(from, to);
+    expect(result.mocksMoved).toBe(1);
+    expect(strings.has(`mockifyer:v1:mock:${to}:${liveHash}`)).toBe(true);
+    expect(JSON.parse(strings.get(`mockifyer:v1:mock:${to}:${liveHash}`) as string).scenario).toBe(to);
+    expect(sets.get('mockifyer:v1:scenarios')?.has(to)).toBe(true);
+    expect(sets.get('mockifyer:v1:scenarios')?.has(from)).toBe(false);
+  });
 });
 
 describe('RedisMockStore.listCatalog', () => {

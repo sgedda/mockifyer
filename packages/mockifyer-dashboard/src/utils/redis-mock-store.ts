@@ -127,6 +127,20 @@ export function mockHasListedResponseOverrides(mockData: MockData): boolean {
   return mockHasResponseFieldOverrides(mockData) || mockHasResponseDateOverrides(mockData);
 }
 
+/** Keep replay/overrides intact; only rewrite the stored scenario label. */
+function applyScenarioRenameToMockJson(raw: string, fromScenario: string, toScenario: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { scenario?: unknown };
+    if (parsed && typeof parsed === 'object' && parsed.scenario === fromScenario) {
+      parsed.scenario = toScenario;
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // leave raw
+  }
+  return raw;
+}
+
 /** Probe head+tail instead of pulling multi-MB values for mocks with no overlays. */
 const OVERRIDE_PROBE_TAIL_BYTES = 16_384;
 const OVERRIDE_PROBE_HEAD_BYTES = 4_096;
@@ -911,6 +925,123 @@ export class RedisMockStore {
     await this.kv.srem(this.scenarioRegistrySetKey, scenarioName).catch(() => undefined);
     this.invalidateCatalogCache(scenarioName);
     return { mocksRemoved, lanesUnassigned };
+  }
+
+  private async copyStringKey(fromKey: string, toKey: string): Promise<void> {
+    const raw = await this.kv.get(fromKey).catch(() => null);
+    if (raw == null || raw === '') return;
+    await this.kv.set(toKey, raw);
+  }
+
+  private async copySetKey(fromKey: string, toKey: string): Promise<void> {
+    const members = await this.kv.smembers(fromKey).catch(() => [] as string[]);
+    if (members.length === 0) return;
+    await saddChunked(this.kv, toKey, members);
+  }
+
+  /**
+   * Move a scenario to a new name: mocks (replay modes kept), date/proxy/lock, domain rules,
+   * override groups/sets, catalog, and path indexes. Lanes that pointed at the old name are
+   * remapped. Does not change the global active_scenario key.
+   */
+  async renameEntireScenario(
+    fromScenario: string,
+    toScenario: string
+  ): Promise<{ mocksMoved: number; lanesRemapped: number }> {
+    const from = fromScenario.trim();
+    const to = toScenario.trim();
+    if (!from) throw new Error('fromScenario is required');
+    if (!to) throw new Error('toScenario is required');
+    if (from === to) throw new Error('fromScenario and toScenario must differ');
+
+    const fromIndexKey = `${this.keyPrefix}:index:${from}`;
+    const hashes: string[] = await this.kv.smembers(fromIndexKey).catch(() => [] as string[]);
+    const fromKeys = hashes.map((hash) => this.mockDataKeyInScenario(hash, from));
+    const values: Array<string | null> = fromKeys.length > 0 ? await this.kv.mget(fromKeys) : [];
+    const destCatalogItems: RedisMockListItem[] = [];
+    let mocksMoved = 0;
+    const destIndexMembers: string[] = [];
+
+    for (let i = 0; i < hashes.length; i++) {
+      const raw = values[i];
+      if (!raw) continue;
+      const hash = hashes[i];
+      const rewritten = applyScenarioRenameToMockJson(raw, from, to);
+      const toKey = this.mockDataKeyInScenario(hash, to);
+      await this.kv.set(toKey, rewritten);
+      destIndexMembers.push(hash);
+      mocksMoved += 1;
+      try {
+        const parsedMock = parseMockJsonForCatalog(rewritten);
+        destCatalogItems.push({
+          hash,
+          mockData: parsedMock.mockData,
+          redisKey: toKey,
+          rawByteLength: parsedMock.rawByteLength,
+        });
+      } catch {
+        // sidecar backfill on next listCatalog
+      }
+    }
+    if (destIndexMembers.length > 0) {
+      await saddChunked(this.kv, `${this.keyPrefix}:index:${to}`, destIndexMembers);
+    }
+
+    const fromPathPrefix = `${this.keyPrefix}:path_index:${from}:`;
+    const pathIndexKeys = await this.kv.scanKeys(`${fromPathPrefix}*`).catch(() => [] as string[]);
+    for (const key of pathIndexKeys) {
+      const suffix = key.slice(fromPathPrefix.length);
+      if (!suffix) continue;
+      await this.copySetKey(key, `${this.keyPrefix}:path_index:${to}:${suffix}`);
+    }
+
+    await this.copySetKey(this.overrideIndexKey(from), this.overrideIndexKey(to));
+    await this.copyStringKey(this.overrideIndexReadyKey(from), this.overrideIndexReadyKey(to));
+
+    const catalogFields = await this.kv.hgetall(this.listCatalogSidecarKey(from)).catch(() => ({} as Record<string, string>));
+    if (catalogFields && Object.keys(catalogFields).length > 0) {
+      await this.kv.hsetMany(this.listCatalogSidecarKey(to), catalogFields).catch(() => undefined);
+    } else {
+      await this.writeCatalogSidecarItems(to, destCatalogItems);
+    }
+
+    await this.copyStringKey(this.dateConfigRedisKey(from), this.dateConfigRedisKey(to));
+    await this.copyStringKey(this.proxyConfigRedisKey(from), this.proxyConfigRedisKey(to));
+    await this.copyStringKey(this.domainPathRulesRedisKey(from), this.domainPathRulesRedisKey(to));
+    await this.copyStringKey(this.scenarioMetaRedisKey(from), this.scenarioMetaRedisKey(to));
+
+    const groups = await this.listOverrideGroups(from).catch(() => [] as MockOverrideGroup[]);
+    for (const group of groups) {
+      await this.putOverrideGroup(to, group).catch(() => undefined);
+    }
+    const groupConfig = await this.getOverrideGroupConfig(from).catch(() => null);
+    if (groupConfig) {
+      await this.setOverrideGroupConfig(to, groupConfig).catch(() => undefined);
+    }
+
+    const overrideSetIds = await this.kv.smembers(this.overrideSetIdsRedisKey(from)).catch(() => [] as string[]);
+    const setIds = [...new Set([DEFAULT_OVERRIDE_SET_ID, ...overrideSetIds.map((id) => String(id))])];
+    for (const rawId of setIds) {
+      const doc = await this.getOverrideSet(from, rawId).catch(() => null);
+      if (!doc) continue;
+      await this.putOverrideSet(to, doc).catch(() => undefined);
+    }
+
+    await this.kv.sadd(this.scenarioRegistrySetKey, to).catch(() => undefined);
+    this.invalidateCatalogCache(to);
+
+    let lanesRemapped = 0;
+    const lanes = await this.listClientLanes().catch(
+      () => [] as Array<{ clientId: string; scenario: string }>
+    );
+    for (const lane of lanes) {
+      if (lane.scenario !== from) continue;
+      await this.setLaneScenario(lane.clientId, to).catch(() => undefined);
+      lanesRemapped += 1;
+    }
+
+    await this.deleteEntireScenario(from);
+    return { mocksMoved, lanesRemapped };
   }
 
   async getByHashWithMeta(

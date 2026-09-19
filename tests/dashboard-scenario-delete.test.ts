@@ -162,3 +162,105 @@ describe('dashboard scenario delete API', () => {
     expect(fs.existsSync(path.join(mockDataPath, 'locked-one'))).toBe(true);
   });
 });
+
+describe('dashboard scenario rename API', () => {
+  let tmp: string;
+  let server: http.Server;
+  let mockDataPath: string;
+
+  beforeEach(async () => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mockifyer-scenario-rename-'));
+    const publicDir = path.join(tmp, 'public');
+    mockDataPath = path.join(tmp, 'mock-data');
+    fs.mkdirSync(publicDir, { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'default'), { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'staging'), { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'taken'), { recursive: true });
+    fs.mkdirSync(path.join(mockDataPath, 'locked-one'), { recursive: true });
+    fs.writeFileSync(
+      path.join(mockDataPath, 'scenario-config.json'),
+      JSON.stringify({ currentScenario: 'staging' })
+    );
+    fs.writeFileSync(
+      path.join(mockDataPath, 'staging', 'users.json'),
+      JSON.stringify(makeMockFile('https://api.example.com/users', 'staging'), null, 2)
+    );
+    fs.writeFileSync(
+      path.join(mockDataPath, 'locked-one', 'scenario-meta.json'),
+      JSON.stringify({ locked: true, updatedAt: MOCK_TIMESTAMP }, null, 2)
+    );
+
+    const app = createServer(publicDir, mockDataPath, { provider: 'filesystem' });
+    server = await new Promise<http.Server>((resolve) => {
+      const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    });
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('renames the active scenario and keeps mock data', async () => {
+    const res = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'staging', newName: 'staging-v2' },
+    });
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as {
+      success: boolean;
+      newName: string;
+      currentScenario: string;
+      scenarios: string[];
+      mocksMoved: number;
+    };
+    expect(body.success).toBe(true);
+    expect(body.newName).toBe('staging-v2');
+    expect(body.currentScenario).toBe('staging-v2');
+    expect(body.mocksMoved).toBe(1);
+    expect(body.scenarios).toContain('staging-v2');
+    expect(body.scenarios).not.toContain('staging');
+    expect(fs.existsSync(path.join(mockDataPath, 'staging'))).toBe(false);
+    const destMock = path.join(mockDataPath, 'staging-v2', 'users.json');
+    expect(JSON.parse(fs.readFileSync(destMock, 'utf-8')).scenario).toBe('staging-v2');
+    const config = JSON.parse(fs.readFileSync(path.join(mockDataPath, 'scenario-config.json'), 'utf-8')) as {
+      currentScenario: string;
+    };
+    expect(config.currentScenario).toBe('staging-v2');
+  });
+
+  it('rejects renaming default, scratch, locked, missing, and colliding names', async () => {
+    const defaultRes = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'default', newName: 'renamed-default' },
+    });
+    expect(defaultRes.status).toBe(400);
+
+    const scratchRes = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'staging', newName: '_scratch' },
+    });
+    expect(scratchRes.status).toBe(400);
+
+    const takenRes = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'staging', newName: 'taken' },
+    });
+    expect(takenRes.status).toBe(409);
+
+    const missingRes = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'does-not-exist', newName: 'fresh' },
+    });
+    expect(missingRes.status).toBe(404);
+
+    const lockedRes = await httpRequest(server, '/api/scenario-config/rename', {
+      method: 'POST',
+      body: { scenario: 'locked-one', newName: 'unlocked-name' },
+    });
+    expect(lockedRes.status).toBe(423);
+    expect(fs.existsSync(path.join(mockDataPath, 'locked-one'))).toBe(true);
+  });
+});

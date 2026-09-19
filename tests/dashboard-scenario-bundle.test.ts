@@ -6,6 +6,7 @@ import {
   applyScenarioImport,
   clearScenarioMocks,
   deleteEntireScenario,
+  renameEntireScenario,
   type ScenarioExportBundle,
 } from '../packages/mockifyer-dashboard/src/utils/scenario-bundle';
 
@@ -200,5 +201,35 @@ describe('deleteEntireScenario', () => {
     });
     expect(result.mocksRemoved).toBe(0);
     expect(result.folderRemoved).toBe(false);
+  });
+
+  it('renames the scenario folder and rewrites mock scenario labels', async () => {
+    const from = 'staging';
+    const to = 'staging-v2';
+    const fromDir = path.join(tmpDir, from);
+    fs.mkdirSync(fromDir, { recursive: true });
+    const mockPath = path.join(fromDir, 'users.json');
+    fs.writeFileSync(mockPath, JSON.stringify(makeMock('https://api.example.com/users', from), null, 2));
+    fs.writeFileSync(
+      path.join(fromDir, 'date-config.json'),
+      JSON.stringify({ dateManipulation: { offset: 60 }, updatedAt: EXPORT_TIMESTAMP }, null, 2)
+    );
+
+    const result = await renameEntireScenario({
+      mockDataPath: tmpDir,
+      scenario: from,
+      newName: to,
+      provider: 'filesystem',
+    });
+
+    expect(result.folderRenamed).toBe(true);
+    expect(result.mocksMoved).toBe(1);
+    expect(fs.existsSync(fromDir)).toBe(false);
+    const destMock = path.join(tmpDir, to, 'users.json');
+    expect(fs.existsSync(destMock)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(destMock, 'utf-8')).scenario).toBe(to);
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, to, 'date-config.json'), 'utf-8')).dateManipulation.offset).toBe(
+      60
+    );
   });
 });

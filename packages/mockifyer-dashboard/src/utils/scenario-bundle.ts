@@ -446,6 +446,103 @@ export async function deleteEntireScenario(
   return { mocksRemoved, lanesUnassigned: 0, folderRemoved };
 }
 
+export interface RenameEntireScenarioOptions extends ClearScenarioMocksOptions {
+  newName: string;
+}
+
+function rewriteScenarioFieldInFolder(scenarioFolder: string, fromScenario: string, toScenario: string): number {
+  if (!fs.existsSync(scenarioFolder)) return 0;
+  let rewritten = 0;
+  for (const filePath of getAllJsonFiles(scenarioFolder)) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (!isRecordedMockJson(raw)) continue;
+    try {
+      const data = JSON.parse(raw) as { scenario?: unknown };
+      if (data.scenario !== fromScenario) continue;
+      data.scenario = toScenario;
+      fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
+      rewritten += 1;
+    } catch {
+      // skip unreadable mock
+    }
+  }
+  return rewritten;
+}
+
+function renameFilesystemScenarioFolder(mockDataPath: string, fromScenario: string, toScenario: string): boolean {
+  const fromFolder = resolveScenarioFolderOrThrow(mockDataPath, fromScenario);
+  const toFolder = resolveScenarioFolderOrThrow(mockDataPath, toScenario);
+  if (!fs.existsSync(fromFolder)) {
+    return false;
+  }
+  if (fromFolder === toFolder) {
+    return true;
+  }
+  const caseOnlyChange = fromFolder.toLowerCase() === toFolder.toLowerCase();
+  if (!caseOnlyChange && fs.existsSync(toFolder)) {
+    throw new Error(`Scenario "${toScenario}" already exists`);
+  }
+  if (caseOnlyChange) {
+    const tempFolder = `${fromFolder}__rename_tmp`;
+    if (fs.existsSync(tempFolder)) {
+      throw new Error(`Scenario "${toScenario}" already exists`);
+    }
+    fs.renameSync(fromFolder, tempFolder);
+    fs.renameSync(tempFolder, toFolder);
+    return true;
+  }
+  fs.renameSync(fromFolder, toFolder);
+  return true;
+}
+
+/**
+ * Renames a scenario in place. Replay modes, lock, date/proxy settings, and override
+ * groups move with it. Client lanes that pointed at the old name are remapped.
+ */
+export async function renameEntireScenario(
+  opts: RenameEntireScenarioOptions
+): Promise<{ mocksMoved: number; lanesRemapped: number; folderRenamed: boolean }> {
+  const { mockDataPath, scenario, newName, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const result = await store.renameEntireScenario(scenario, newName);
+      let folderRenamed = false;
+      try {
+        folderRenamed = renameFilesystemScenarioFolder(mockDataPath, scenario, newName);
+        if (folderRenamed) {
+          rewriteScenarioFieldInFolder(getScenarioFolderPath(mockDataPath, newName), scenario, newName);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('already exists')) {
+          throw error;
+        }
+      }
+      return { ...result, folderRenamed };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const folderRenamed = renameFilesystemScenarioFolder(mockDataPath, scenario, newName);
+  const destFolder = getScenarioFolderPath(mockDataPath, newName);
+  const mocksMoved = rewriteScenarioFieldInFolder(destFolder, scenario, newName);
+  return { mocksMoved, lanesRemapped: 0, folderRenamed };
+}
+
 function writeDateConfigFilesystem(scenarioFolder: string, dateManipulation: Record<string, unknown> | null): void {
   const configPath = path.join(scenarioFolder, DATE_CONFIG_BASENAME);
   const noManipulation =

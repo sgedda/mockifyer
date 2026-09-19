@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { getScenarioConfig, setScenario, createScenario, setScenarioLock, exportScenarioBundle, importScenarioBundle, clearScenarioMocks, deleteScenario } from '@/lib/api'
+import { getScenarioConfig, setScenario, createScenario, setScenarioLock, exportScenarioBundle, importScenarioBundle, clearScenarioMocks, deleteScenario, renameScenario } from '@/lib/api'
 import type { ScenarioExportBundle } from '@/types'
-import { Save, Download, Upload, Trash2, Star } from 'lucide-react'
+import { Save, Download, Upload, Trash2, Star, Pencil } from 'lucide-react'
 import ClientLanes from './ClientLanes'
 import { favoriteListLabel, useMockFavorites } from '@/lib/favorites-context'
 import { DEFAULT_SCENARIO, isProtectedScenario, scenarioDisplayName } from '@/lib/scenario-display'
@@ -43,6 +43,9 @@ export default function Settings({
   const [clearingMocks, setClearingMocks] = useState(false)
   const [deletingScenario, setDeletingScenario] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(scenario)
+  const [renamingScenario, setRenamingScenario] = useState(false)
+  const [renameTarget, setRenameTarget] = useState(scenario)
+  const [renameTo, setRenameTo] = useState('')
   const [exportScenarioName, setExportScenarioName] = useState(scenario)
   const [importTarget, setImportTarget] = useState('')
   const [importReplace, setImportReplace] = useState(false)
@@ -84,6 +87,11 @@ export default function Settings({
     if (availableScenarios.includes(deleteTarget)) return
     setDeleteTarget(availableScenarios.includes(scenario) ? scenario : availableScenarios[0] || DEFAULT_SCENARIO)
   }, [availableScenarios, deleteTarget, scenario])
+
+  useEffect(() => {
+    if (availableScenarios.includes(renameTarget)) return
+    setRenameTarget(availableScenarios.includes(scenario) ? scenario : availableScenarios[0] || DEFAULT_SCENARIO)
+  }, [availableScenarios, renameTarget, scenario])
 
   useEffect(() => {
     if (availableScenariosFromParent?.length) {
@@ -300,6 +308,68 @@ export default function Settings({
     return null
   }
 
+  function scenarioRenameDisabledReason(from: string, to: string): string | null {
+    if (isProtectedScenario(from)) {
+      return from === DEFAULT_SCENARIO
+        ? 'Cannot rename the default scenario'
+        : 'Cannot rename the temporary unscoped scenario.'
+    }
+    if (scenarioLocks[from] === true) return `Unlock "${from}" before renaming it.`
+    const trimmed = to.trim()
+    if (!trimmed) return 'Enter a new scenario name'
+    if (trimmed === from) return 'New name must be different'
+    if (isProtectedScenario(trimmed)) {
+      return trimmed === DEFAULT_SCENARIO
+        ? 'Cannot rename to the default scenario'
+        : 'Cannot rename to the temporary unscoped scenario.'
+    }
+    const conflict = availableScenarios.find((s) => s.toLowerCase() === trimmed.toLowerCase() && s !== from)
+    if (conflict) return `Scenario "${conflict}" already exists`
+    return null
+  }
+
+  async function handleRenameScenario() {
+    const from = renameTarget.trim() || scenario
+    const to = renameTo.trim()
+    const blocked = scenarioRenameDisabledReason(from, to)
+    if (blocked) {
+      toast({
+        title: 'Cannot rename',
+        description: blocked,
+        variant: 'destructive',
+      })
+      return
+    }
+    const confirmed = window.confirm(
+      `Rename scenario "${from}" to "${to}"? Mocks, date settings, lock, domain rules, and lanes move with it.`
+    )
+    if (!confirmed) return
+    try {
+      setRenamingScenario(true)
+      const result = await renameScenario(from, to)
+      setAvailableScenarios(result.scenarios)
+      setRenameTarget(to)
+      setDeleteTarget((current) => (current === from ? to : current))
+      setRenameTo('')
+      if (result.currentScenario && result.currentScenario !== scenario) {
+        onScenarioChange(result.currentScenario)
+      } else if (from === scenario) {
+        onScenarioChange(to)
+      }
+      await onScenarioConfigRefresh?.()
+      await onMocksChanged?.()
+      toast({
+        title: 'Scenario renamed',
+        description: result.message,
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to rename scenario'
+      toast({ title: 'Rename failed', description: message, variant: 'destructive' })
+    } finally {
+      setRenamingScenario(false)
+    }
+  }
+
   async function handleDeleteScenario() {
     const name = deleteTarget.trim() || scenario
     const blocked = scenarioDeleteDisabledReason(name)
@@ -389,9 +459,9 @@ export default function Settings({
                     Lock current scenario (read-only mocks &amp; date config)
                   </label>
                   <p className="text-xs text-muted-foreground basis-full">
-                    While locked, the dashboard cannot save mock bodies, delete mocks, clear all mocks, delete the
-                    scenario, duplicate files, or change date manipulation; Redis proxy recording is also skipped for
-                    this scenario.
+                    While locked, the dashboard cannot save mock bodies, delete mocks, clear all mocks, rename or delete
+                    the scenario, duplicate files, or change date manipulation; Redis proxy recording is also skipped
+                    for this scenario.
                   </p>
                 </div>
               </div>
@@ -425,11 +495,67 @@ export default function Settings({
                     type="button"
                     variant="destructive"
                     onClick={() => void handleClearScenarioMocks()}
-                    disabled={loading || saving || clearingMocks || deletingScenario || scenarioLocks[scenario] === true}
+                    disabled={loading || saving || clearingMocks || deletingScenario || renamingScenario || scenarioLocks[scenario] === true}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     {clearingMocks ? 'Clearing…' : 'Clear mocks'}
                   </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Rename scenario</label>
+                <div className="space-y-2 rounded-md border border-border bg-muted/20 px-3 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    Change a scenario name. Mocks, date settings, lock, domain-path rules, override groups, proxy
+                    settings, and lane assignments move with it. Default and the temporary unscoped scenario cannot be
+                    renamed.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="flex h-10 min-w-[10rem] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                      value={renameTarget}
+                      onChange={(e) => setRenameTarget(e.target.value)}
+                      disabled={loading || saving || renamingScenario}
+                    >
+                      {availableScenarios.map((s) => (
+                        <option key={s} value={s}>
+                          {scenarioDisplayName(s)}
+                          {s === scenario ? ' (current)' : ''}
+                          {isProtectedScenario(s) ? ' — cannot rename' : ''}
+                          {scenarioLocks[s] === true ? ' — locked' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      className="font-mono min-w-[10rem] max-w-[16rem]"
+                      placeholder="New name"
+                      value={renameTo}
+                      onChange={(e) => setRenameTo(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !scenarioRenameDisabledReason(renameTarget, renameTo)) {
+                          void handleRenameScenario()
+                        }
+                      }}
+                      disabled={loading || saving || renamingScenario}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void handleRenameScenario()}
+                      disabled={
+                        loading ||
+                        saving ||
+                        clearingMocks ||
+                        deletingScenario ||
+                        renamingScenario ||
+                        Boolean(scenarioRenameDisabledReason(renameTarget, renameTo))
+                      }
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      {renamingScenario ? 'Renaming…' : 'Rename'}
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -446,7 +572,7 @@ export default function Settings({
                       className="flex h-10 min-w-[10rem] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                       value={deleteTarget}
                       onChange={(e) => setDeleteTarget(e.target.value)}
-                      disabled={loading || saving || deletingScenario}
+                      disabled={loading || saving || deletingScenario || renamingScenario}
                     >
                       {availableScenarios.map((s) => (
                         <option key={s} value={s}>
@@ -466,6 +592,7 @@ export default function Settings({
                         saving ||
                         clearingMocks ||
                         deletingScenario ||
+                        renamingScenario ||
                         Boolean(scenarioDeleteDisabledReason(deleteTarget))
                       }
                     >
