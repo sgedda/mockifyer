@@ -58,7 +58,8 @@ import {
   resolveNetworkLogScenario,
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
-  adoptStoredHopIdOnProxyLog,
+  resolveProxyHopIdentity,
+  applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 
 const router = express.Router();
@@ -163,8 +164,8 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   const inboundCorrelation = resolveProxyInboundCorrelation(req, req.body);
-
   const upperMethod = String(method || 'GET').toUpperCase();
+  let hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url);
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
   const normalizedRequestBody = normalizeProxyBodyForRequestKey(body);
@@ -209,7 +210,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (resolution.scenario === null) {
       const logScenario = resolveNetworkLogScenario(mockDataPath, null, bodyScenario);
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
 
       const effectiveAllowUpstream = typeof allowUpstream === 'boolean' ? allowUpstream : true;
       if (debugProxy) {
@@ -249,7 +250,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
       applyUpstreamRequestCorrelationHeaders(
         upstreamHeaders,
-        networkLogCtx ?? inboundCorrelation
+        networkLogCtx ?? hopIdentity
       );
 
       const upstreamBody = buildProxyUpstreamBodyInit(
@@ -313,12 +314,12 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         scenarioResolution: resolution,
         response,
-        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
+        ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       });
     }
 
     const resolvedScenarioName = resolution.scenario;
-    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, inboundCorrelation);
+    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, hopIdentity);
 
     const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
@@ -378,7 +379,13 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    adoptStoredHopIdOnProxyLog(networkLogCtx, mock as MockData | null);
+    hopIdentity = resolveProxyHopIdentity(
+      inboundCorrelation,
+      upperMethod,
+      url,
+      (mock as MockData | null)?.requestId
+    );
+    applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({
@@ -438,7 +445,7 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         response: responseWithOverrides,
         scenarioResolution: resolution,
-        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
+        ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       });
     }
     const shouldPersistLiveCapture = mock
@@ -506,7 +513,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (clientId) {
       upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
-    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? inboundCorrelation);
+    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
 
     const upstreamBody = buildProxyUpstreamBodyInit(
       body,
@@ -551,7 +558,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
+      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
@@ -620,7 +627,7 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
-        applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, inboundCorrelation);
+        applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, hopIdentity);
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {
           try {
@@ -666,7 +673,7 @@ router.post('/', async (req: Request, res: Response) => {
       scenarioResolution: resolution,
       response: clientResponse,
       recordedToStore: storedMockForClient != null,
-      ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
+      ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       ...(storedMockForClient ? { storedMock: storedMockForClient } : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),
     });
@@ -678,7 +685,7 @@ router.post('/', async (req: Request, res: Response) => {
       bodyScenario
     );
     if (!networkLogCtx && logScenario) {
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
     }
     await appendProxyNetworkEvent(networkLogCtx, {
       method: upperMethod,

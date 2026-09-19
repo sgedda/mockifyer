@@ -6,13 +6,13 @@ import {
   buildUniqueMockChainForest,
   chainHasRequestCorrelation,
   describeHopParentLink,
+  formatMockHopLabel,
   formatMockHopSubtitle,
   hopPathLabelSourceFromMock,
   formatShortCorrelationId,
   getChainRootRequestId,
   getMockHopTrafficMode,
   isEnrichedChainHop,
-  mockHopEndpointFingerprint,
   type MockServiceChain,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
@@ -37,13 +37,16 @@ function describeTreeParentLink(
   hop: MockFile,
   chainHops: MockFile[]
 ): string | null {
-  const parent = ancestors[ancestors.length - 1]
-  if (parent) {
-    const short = formatShortCorrelationId(parent.representative.requestId)
-    return `Parent: ${mockHopEndpointFingerprint(parent.representative)}${short ? ` (${short})` : ''}`
-  }
   const hopIndex = chainHops.findIndex((candidate) => candidate.filename === hop.filename)
-  return hopIndex >= 0 ? describeHopParentLink(chainHops, hopIndex) : null
+  if (hopIndex >= 0) {
+    const fromIds = describeHopParentLink(chainHops, hopIndex)
+    if (fromIds) return fromIds
+  }
+  const parent = ancestors[ancestors.length - 1]
+  if (!parent) return null
+  const parentHop = parent.representative
+  const short = formatShortCorrelationId(parentHop.requestId)
+  return `Parent: ${formatMockHopLabel(parentHop)}${short ? ` (${short})` : ''}`
 }
 
 export function MockServiceChainCard({
@@ -312,12 +315,8 @@ export function MockServiceChainCard({
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           Nested hops start collapsed. Expand a hop to see calls it triggered, or expand ×N to each
           underlying request. Lowest-level hops show a <span className="text-amber-200/90">leaf</span> badge
-          {' '}— parent hops include nested requests in their time and size
-          {hasEnrichedHops
-            ? '. Entry hops such as GET /aggregate are included when they were recorded in the same run (URL + time), even if parent-request-id links start at a later service.'
-            : chain.inferred
-              ? '. Inferred from mocks recorded in the same run (time + URL order). Exact parent links appear after re-recording with dashboard proxy.'
-              : '. Linked by Mockifyer hop ids — matches the Network tab call chain.'}
+          {' '}— parent hops include nested requests in their time and size. Linked only by Mockifyer
+          hop ids (this hop called that hop).
         </p>
       </div>
     </div>

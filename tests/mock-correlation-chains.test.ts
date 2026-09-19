@@ -141,7 +141,7 @@ describe('mock service chain display', () => {
     expect(chains[0].enrichedHopFilenames ?? []).toEqual([])
   })
 
-  it('still prepends a nearby gateway /aggregate hop onto an id-linked chain', () => {
+  it('does not prepend a nearby /aggregate hop without a parent-request-id link', () => {
     const aggregate = mock({
       filename: 'aggregate.json',
       endpoint: 'http://gateway:3000/aggregate',
@@ -163,12 +163,8 @@ describe('mock service chain display', () => {
 
     const chains = buildMockServiceChainsForDisplay([viaAxios, product, aggregate])
     expect(chains).toHaveLength(1)
-    expect(chains[0].hops.map((hop) => hop.filename)).toEqual([
-      'aggregate.json',
-      'via-axios.json',
-      'product.json',
-    ])
-    expect(chains[0].enrichedHopFilenames).toContain('aggregate.json')
+    expect(chains[0].hops.map((hop) => hop.filename)).toEqual(['via-axios.json', 'product.json'])
+    expect(chains[0].enrichedHopFilenames ?? []).toEqual([])
   })
 
   it('does not treat a parent id outside the chain as correlation with the root', () => {
@@ -431,7 +427,7 @@ describe('unique mock chain forest', () => {
     ])
   })
 
-  it('heals orphans that still point at a rewritten GraphQL request id', () => {
+  it('does not attach orphans to a nearby GraphQL hop just because they were recorded together', () => {
     const graphql = mock({
       filename: 'graphql.json',
       method: 'POST',
@@ -502,17 +498,71 @@ describe('unique mock chain forest', () => {
       ...tokens,
     ])
     expect(chains).toHaveLength(1)
-    expect(chains[0].hops[0].filename).toBe('graphql.json')
-    expect(chains[0].hops.some((hop) => hop.filename === 'myaccount.json')).toBe(true)
+    expect(chains[0].hops.some((hop) => hop.filename === 'graphql.json')).toBe(false)
+    expect(chains[0].hops[0].filename).toBe('myaccount.json')
+    expect(chains[0].hops.some((hop) => hop.filename === 'independent.json')).toBe(true)
     expect(chains[0].hops.some((hop) => hop.filename.startsWith('booking-repo-'))).toBe(true)
 
     const forest = buildUniqueMockChainForest(chains[0].hops)
     expect(forestOutline(forest)).toEqual([
+      'GET /v-2/myaccount/',
+      '  POST /IndependentService.asmx',
+      'GET /api/booking/:id×16',
+      'POST /api/token×8',
+    ])
+  })
+
+  it('nests hops only when parentRequestId matches the caller requestId', () => {
+    const graphql = mock({
+      filename: 'graphql.json',
+      method: 'POST',
+      endpoint: 'http://localhost:4000/graphql',
+      requestId: 'gql-live',
+      graphqlInfo: { query: 'query CurrentWeather { weather }', variables: null },
+    })
+    const myaccount = mock({
+      filename: 'myaccount.json',
+      endpoint: 'https://capi.example/v-2/myaccount/',
+      requestId: 'acct',
+      parentRequestId: 'gql-live',
+      modified: '2026-09-17T15:00:01.000Z',
+    })
+    const independent = mock({
+      filename: 'independent.json',
+      method: 'POST',
+      endpoint: 'https://independentws.example/IndependentService.asmx',
+      requestId: 'ind',
+      parentRequestId: 'acct',
+      modified: '2026-09-17T15:00:02.000Z',
+    })
+    const weather = mock({
+      filename: 'weather-api.json',
+      endpoint: 'https://weather.example/current',
+      requestId: 'wx',
+      parentRequestId: 'gql-live',
+      modified: '2026-09-17T15:00:03.000Z',
+    })
+    const foreignBooking = mock({
+      filename: 'other-booking.json',
+      endpoint: 'https://booking.example/api/booking/1',
+      requestId: 'book',
+      parentRequestId: 'someone-else',
+      modified: '2026-09-17T15:00:04.000Z',
+    })
+
+    const chains = buildMockServiceChainsForDisplay([
+      graphql,
+      myaccount,
+      independent,
+      weather,
+      foreignBooking,
+    ])
+    expect(chains).toHaveLength(1)
+    expect(forestOutline(buildUniqueMockChainForest(chains[0].hops))).toEqual([
       'POST /graphql',
       '  GET /v-2/myaccount/',
       '    POST /IndependentService.asmx',
-      '  GET /api/booking/:id×16',
-      '  POST /api/token×8',
+      '  GET /current',
     ])
   })
 })

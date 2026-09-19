@@ -1,5 +1,10 @@
 import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
+import {
+  registerHopOwner,
+  resolveRecordedHopIdentity,
+  type RecordedHopIdentity,
+} from '@sgedda/mockifyer-core';
 import { createNetworkLogStore, newRequestId, type NetworkLogStore } from './network-log-store';
 
 export interface ProxyNetworkLogContext {
@@ -124,6 +129,36 @@ function readCorrelationHeader(req: import('express').Request, name: string): st
   if (typeof raw !== 'string') return undefined;
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function resolveProxyHopIdentity(
+  inbound: ProxyNetworkLogCorrelation,
+  method: string,
+  url: string,
+  storedRequestId?: string | null
+): RecordedHopIdentity {
+  const identity = resolveRecordedHopIdentity({
+    inboundRequestId: inbound.requestId,
+    inboundParentRequestId: inbound.parentRequestId,
+    method,
+    url,
+    storedRequestId,
+  });
+  registerHopOwner({
+    requestId: identity.requestId,
+    method,
+    url,
+  });
+  return identity;
+}
+
+export function applyHopIdentityToProxyLog(
+  ctx: ProxyNetworkLogContext | null,
+  identity: RecordedHopIdentity
+): void {
+  if (!ctx) return;
+  ctx.requestId = identity.requestId;
+  ctx.parentRequestId = identity.parentRequestId ?? null;
 }
 
 export function resolveProxyInboundCorrelation(req: import('express').Request, body: unknown): ProxyNetworkLogCorrelation {

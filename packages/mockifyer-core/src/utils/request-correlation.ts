@@ -17,6 +17,7 @@ import {
   type MockifyerHopContext,
   type RequestCorrelationContext,
 } from './hop-context';
+import { registerHopOwner } from './hop-identity';
 export type {
   InlineTraceHopBufferItem,
   MockifyerHopContext,
@@ -466,7 +467,20 @@ function applyOutboundInlineTraceHeaders(config: { headers?: unknown }): void {
  * Strips any stale `X-Mockifyer-Request-Id` on the clone so each hop gets a fresh id.
  * When the active request opted into inline trace, also forwards include-trace headers.
  */
-export function applyOutboundRequestCorrelation(config: { headers?: unknown }): RequestCorrelationContext {
+function hopOwnerMetaFromConfig(config: { headers?: unknown; url?: unknown; method?: unknown }): {
+  method: string;
+  url: string;
+} {
+  const method = typeof config.method === 'string' && config.method.trim() ? config.method : 'GET';
+  const url = typeof config.url === 'string' ? config.url : '';
+  return { method, url };
+}
+
+export function applyOutboundRequestCorrelation(config: {
+  headers?: unknown;
+  url?: unknown;
+  method?: unknown;
+}): RequestCorrelationContext {
   isolateOutboundHopHeaderBag(config);
   applyInboundClientIdToOutboundHeaders(config);
   applyOutboundInlineTraceHeaders(config);
@@ -483,6 +497,7 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
   }
   config.headers = headers;
 
+  registerHopOwner({ requestId, ...hopOwnerMetaFromConfig(config) });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 
@@ -492,7 +507,7 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
  * (`parentRequestId`) detach from GraphQL / myaccount on the next run.
  */
 export function adoptStoredOutboundRequestId(
-  config: { headers?: unknown },
+  config: { headers?: unknown; url?: unknown; method?: unknown },
   storedRequestId: string | null | undefined
 ): RequestCorrelationContext | undefined {
   const requestId = storedRequestId?.trim();
@@ -501,6 +516,7 @@ export function adoptStoredOutboundRequestId(
   }
   const parentRequestId = getOutboundMockifyerParentRequestIdHeader(config.headers);
   config.headers = setOutboundHeader(config.headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
+  registerHopOwner({ requestId, ...hopOwnerMetaFromConfig(config) });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 

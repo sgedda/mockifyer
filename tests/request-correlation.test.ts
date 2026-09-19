@@ -26,6 +26,8 @@ import {
   resolveOutboundParentRequestId,
   runWithMockifyerHopContext,
   runWithRequestCorrelation,
+  resetHopOwnerRegistry,
+  resolveRecordedHopIdentity,
   type RequestCorrelationContext,
 } from '@sgedda/mockifyer-core';
 
@@ -119,6 +121,22 @@ describe('request-correlation', () => {
     expect(resolvePersistedHopIds(undefined, { requestId: 'live-gql' })).toEqual({
       requestId: 'live-gql',
     });
+  });
+
+  it('registers an outbound hop so a reused id on another endpoint becomes the parent', () => {
+    resetHopOwnerRegistry();
+    const graphql = applyOutboundRequestCorrelation({
+      url: 'http://localhost:4000/graphql',
+      method: 'POST',
+      headers: {},
+    });
+    const identity = resolveRecordedHopIdentity({
+      inboundRequestId: graphql.requestId,
+      method: 'GET',
+      url: 'https://capi.example/v-2/myaccount/',
+    });
+    expect(identity.parentRequestId).toBe(graphql.requestId);
+    expect(identity.requestId).not.toBe(graphql.requestId);
   });
 
   it('does not leak hop ids onto a shared header bag across sequential requests', () => {
