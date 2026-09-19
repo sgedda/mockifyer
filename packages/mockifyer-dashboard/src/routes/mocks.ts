@@ -36,6 +36,7 @@ import { RedisMockStore, rawJsonMightContainResponseOverrides } from '../utils/r
 import {
   bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
+  bulkSetReplayModeForFilenames,
 } from '../utils/bulk-domain-mocks';
 import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
@@ -1551,6 +1552,55 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: message || 'bulk-capture-responses failed' });
+  }
+});
+
+/** Bulk set stored mock vs live API for specific mock filenames (Hops source/BFF actions). */
+router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const { scenario, stored, passthrough } = req.body || {};
+    if (typeof scenario !== 'string' || !scenario.trim()) {
+      return res.status(400).json({ error: 'scenario is required' });
+    }
+    if (stored !== undefined && !Array.isArray(stored)) {
+      return res.status(400).json({ error: 'stored must be an array of filenames' });
+    }
+    if (passthrough !== undefined && !Array.isArray(passthrough)) {
+      return res.status(400).json({ error: 'passthrough must be an array of filenames' });
+    }
+    if ((stored?.length ?? 0) === 0 && (passthrough?.length ?? 0) === 0) {
+      return res.status(400).json({ error: 'stored or passthrough filenames are required' });
+    }
+
+    const scenarioName = scenario.trim();
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(scenarioName)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, scenarioName)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+
+    const result = await bulkSetReplayModeForFilenames({
+      provider: config.provider,
+      mockDataPath,
+      scenario: scenarioName,
+      stored,
+      passthrough,
+      redisUrl: config.redisUrl,
+      keyPrefix: config.keyPrefix,
+      redisCluster: config.redisCluster,
+    });
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: message || 'bulk-replay-mode failed' });
   }
 });
 

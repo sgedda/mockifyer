@@ -119,6 +119,9 @@ interface ServiceChainListProps {
   loading?: boolean
   searchQuery?: string
   hasOrphanParentIds?: boolean
+  scenario?: string
+  onReplayModeChange?: () => void
+  replayActionsDisabled?: boolean
 }
 
 export function ServiceChainList({
@@ -128,6 +131,9 @@ export function ServiceChainList({
   loading = false,
   searchQuery = '',
   hasOrphanParentIds = false,
+  scenario,
+  onReplayModeChange,
+  replayActionsDisabled = false,
 }: ServiceChainListProps) {
   const q = searchQuery.trim()
 
@@ -196,6 +202,9 @@ export function ServiceChainList({
               chain={chain}
               selectedFilename={selectedFilename}
               onSelectHop={onSelectHop}
+              scenario={scenario}
+              onReplayModeChange={onReplayModeChange}
+              replayActionsDisabled={replayActionsDisabled}
             />
           </div>
         )

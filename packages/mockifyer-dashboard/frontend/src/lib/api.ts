@@ -1021,6 +1021,29 @@ export async function bulkCaptureResponsesForDomain(payload: {
   return response.json()
 }
 
+export async function bulkSetReplayMode(payload: {
+  scenario: string
+  stored?: string[]
+  passthrough?: string[]
+}): Promise<{
+  ok: boolean
+  updatedStored: number
+  updatedLive: number
+  skippedPending: number
+  missing: number
+}> {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-replay-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error((err as { error?: string }).error || 'Failed to update hop replay mode')
+  }
+  return response.json()
+}
+
 export interface DomainPathRule {
   recordResponses: boolean
   autoMock?: boolean
