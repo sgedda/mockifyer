@@ -21,16 +21,35 @@ import {
 function describeBulkResult(result: {
   updatedStored: number
   updatedLive: number
-  skippedPending: number
+  queuedRefreshNext: number
 }): string {
-  const parts = [`${result.updatedStored} mock${result.updatedStored === 1 ? '' : 's'} on saved response`]
+  const parts: string[] = []
+  if (result.updatedStored > 0) {
+    parts.push(`${result.updatedStored} mock${result.updatedStored === 1 ? '' : 's'} on saved response`)
+  }
+  if (result.queuedRefreshNext > 0) {
+    parts.push(
+      `${result.queuedRefreshNext} will capture on next request, then replay`
+    )
+  }
   if (result.updatedLive > 0) {
     parts.push(`${result.updatedLive} parent hop${result.updatedLive === 1 ? '' : 's'} set to Live`)
   }
-  if (result.skippedPending > 0) {
-    parts.push(`${result.skippedPending} pending (capture a response first)`)
+  if (parts.length === 0) {
+    return 'No hops updated'
   }
   return parts.join('. ')
+}
+
+function bulkResultTitle(
+  target: ChainRoleReplayTarget,
+  result: { updatedStored: number; queuedRefreshNext: number }
+): string {
+  const capturingOnly = result.queuedRefreshNext > 0 && result.updatedStored === 0
+  if (target === 'bff') {
+    return capturingOnly ? 'BFF hops will capture on next request' : 'BFF hops using saved mocks'
+  }
+  return capturingOnly ? 'Source hops will capture on next request' : 'Source hops using saved mocks'
 }
 
 export function MockChainRoleReplayMenu({
@@ -65,7 +84,7 @@ export function MockChainRoleReplayMenu({
         passthrough: plan.passthrough,
       })
       toast({
-        title: target === 'bff' ? 'BFF hops using saved mocks' : 'Source hops using saved mocks',
+        title: bulkResultTitle(target, result),
         description: describeBulkResult(result),
       })
       onDone()
@@ -95,9 +114,9 @@ export function MockChainRoleReplayMenu({
           <ChevronDown className={compact ? 'h-3 w-3 opacity-70' : 'h-3.5 w-3.5 opacity-70'} />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72">
+      <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="font-normal text-muted-foreground">
-          Replay saved responses for a hop role
+          Replay saved responses for a hop role. Pending hops capture on the next matching request, then replay.
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem

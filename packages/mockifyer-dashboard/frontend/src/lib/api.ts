@@ -1029,6 +1029,7 @@ export async function bulkSetReplayMode(payload: {
   ok: boolean
   updatedStored: number
   updatedLive: number
+  queuedRefreshNext: number
   skippedPending: number
   missing: number
 }> {

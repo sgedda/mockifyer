@@ -51,6 +51,7 @@ describe('bulkSetReplayModeForFilenames', () => {
     expect(result).toMatchObject({
       updatedStored: 1,
       updatedLive: 1,
+      queuedRefreshNext: 0,
       skippedPending: 0,
       missing: 0,
     });
@@ -60,12 +61,20 @@ describe('bulkSetReplayModeForFilenames', () => {
     expect(bff.alwaysUseRealApi).toBe(true);
   });
 
-  it('skips pending stubs when switching to stored mock', async () => {
+  it('queues pending stubs as refresh-next so the next request captures then replays', async () => {
     const scenarioPath = path.join(tmpRoot, 'default');
     fs.mkdirSync(scenarioPath, { recursive: true });
     fs.writeFileSync(
       path.join(scenarioPath, 'pending.json'),
-      JSON.stringify(sampleMock({ responsePending: true }), null, 2)
+      JSON.stringify(
+        sampleMock({
+          responsePending: true,
+          alwaysUseRealApi: true,
+          response: { status: 0, data: null, headers: {} },
+        }),
+        null,
+        2
+      )
     );
 
     const result = await bulkSetReplayModeForFilenames({
@@ -75,9 +84,12 @@ describe('bulkSetReplayModeForFilenames', () => {
       stored: ['pending.json'],
     });
 
-    expect(result.skippedPending).toBe(1);
+    expect(result.queuedRefreshNext).toBe(1);
     expect(result.updatedStored).toBe(0);
+    expect(result.skippedPending).toBe(0);
     const pending = JSON.parse(fs.readFileSync(path.join(scenarioPath, 'pending.json'), 'utf-8')) as MockData;
-    expect(pending.responsePending).toBe(true);
+    expect(pending.responsePending).toBeUndefined();
+    expect(pending.alwaysUseRealApi).toBeUndefined();
+    expect(pending.refreshOnNextRequest).toBe(true);
   });
 });
