@@ -96,8 +96,9 @@ function parseProxyParentHop(body: unknown): { method: string; url: string } | u
 
 /**
  * When children arrive with a parentRequestId that was never recorded (GraphQL hit the
- * BFF without a proxy write, concurrent race, etc.), upsert a request-only stub so hops
- * UI can show the entry instead of "Missing entry".
+ * BFF without a proxy write, ALS gap, concurrent race, etc.), upsert a request-only stub
+ * so hops UI can show the entry instead of "Missing entry".
+ * `parentHop` is preferred when the client still had ALS; otherwise a synthetic URL is used.
  */
 async function ensureInboundParentStubInStore(
   store: ReturnType<typeof createDashboardMockStore>,
@@ -107,20 +108,29 @@ async function ensureInboundParentStubInStore(
   debugProxy: boolean
 ): Promise<void> {
   const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
-  if (!parentId || !parentHop?.url?.trim()) {
+  if (!parentId) {
     return;
   }
+  const hop = parentHop?.url?.trim()
+    ? {
+        method: parentHop.method?.trim() ? parentHop.method.trim().toUpperCase() : 'GET',
+        url: parentHop.url.trim(),
+      }
+    : {
+        method: 'POST',
+        url: `mockifyer://inbound-parent/${parentId}`,
+      };
   const stubHash = inboundParentStubHash(parentId);
   try {
     const existing = await store.getByHashInScenario(stubHash, scenarioName);
     if (existing?.requestId?.trim() === parentId) {
       return;
     }
-    const stub = buildInboundParentStubMock(parentId, parentHop);
+    const stub = buildInboundParentStubMock(parentId, hop);
     await store.setByHashInScenario(stubHash, stub, scenarioName);
     if (debugProxy) {
       console.log(
-        `[ProxyRoute] upserted inbound parent stub: ${parentHop.method} ${parentHop.url} (requestId=${parentId.slice(0, 8)}…)`
+        `[ProxyRoute] upserted inbound parent stub: ${hop.method} ${hop.url} (requestId=${parentId.slice(0, 8)}…)`
       );
     }
   } catch (err: any) {
