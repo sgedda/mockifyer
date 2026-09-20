@@ -4,6 +4,8 @@ import {
   parseMockJsonForCatalog,
   serializeCatalogSidecarEntry,
   stripMockResponsePayload,
+  applyReplayModeToRawMock,
+  patchTopLevelBooleanFlags,
 } from '../packages/mockifyer-dashboard/src/utils/mock-json-catalog';
 
 describe('stripMockResponsePayload', () => {
@@ -92,5 +94,88 @@ describe('compactMockDataForCatalog', () => {
     const raw = serializeCatalogSidecarEntry({ mockData, rawByteLength: 42 });
     expect(parseCatalogSidecarEntry(raw)).toEqual({ mockData, rawByteLength: 42 });
     expect(parseCatalogSidecarEntry(JSON.stringify({ mockData, rawByteLength: 42 }))).toBeNull();
+  });
+});
+
+describe('applyReplayModeToRawMock', () => {
+  const graphqlMarker = `query Huge { field("${'x'.repeat(2000)}") }`;
+
+  function prettyGraphqlLive(): string {
+    return JSON.stringify(
+      {
+        request: {
+          method: 'POST',
+          url: 'https://api.example.com/graphql',
+          headers: {},
+          data: { query: graphqlMarker, variables: { id: 1 } },
+        },
+        response: { status: 200, data: { bookings: graphqlMarker }, headers: {} },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        alwaysUseRealApi: true,
+      },
+      null,
+      2
+    );
+  }
+
+  it('adds refresh-next on a pending stub without rewriting the rest of the file', () => {
+    const raw = JSON.stringify(
+      {
+        request: { method: 'GET', url: 'https://api.example.com/pending', headers: {} },
+        response: { status: 0, data: null, headers: {} },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        alwaysUseRealApi: true,
+        responsePending: true,
+      },
+      null,
+      2
+    );
+    const patched = applyReplayModeToRawMock(raw, 'stored');
+    expect(patched?.changed).toBe(true);
+    expect(patched?.outcome).toBe('refresh-next');
+    const parsed = JSON.parse(patched!.raw) as {
+      refreshOnNextRequest?: boolean;
+      alwaysUseRealApi?: boolean;
+      responsePending?: boolean;
+    };
+    expect(parsed.refreshOnNextRequest).toBe(true);
+    expect(parsed.alwaysUseRealApi).toBeUndefined();
+    expect(parsed.responsePending).toBeUndefined();
+  });
+
+  it('does not re-serialize GraphQL request/response bodies', () => {
+    const raw = prettyGraphqlLive();
+    const bookingsPayload = raw.slice(raw.indexOf('"bookings":'), raw.indexOf('}', raw.indexOf('"bookings":')));
+    const patched = applyReplayModeToRawMock(raw, 'stored');
+    expect(patched?.changed).toBe(true);
+    expect(patched?.outcome).toBe('stored');
+    expect(patched!.raw).toContain(bookingsPayload);
+    const parsed = JSON.parse(patched!.raw) as { alwaysUseRealApi?: boolean; request: { data: { query: string } } };
+    expect(parsed.alwaysUseRealApi).toBeUndefined();
+    expect(parsed.request.data.query).toBe(graphqlMarker);
+  });
+
+  it('skips writes when flags already match', () => {
+    const raw = JSON.stringify({
+      request: { method: 'GET', url: 'https://api.example.com/ok' },
+      response: { status: 200, data: { ok: true }, headers: {} },
+      timestamp: '2026-01-01T00:00:00.000Z',
+    });
+    const patched = applyReplayModeToRawMock(raw, 'stored');
+    expect(patched?.changed).toBe(false);
+    expect(patched?.raw).toBe(raw);
+  });
+
+  it('inserts a flag into minified JSON', () => {
+    const raw = '{"request":{"method":"GET","url":"https://api.example.com/ok"},"response":{"status":200,"data":{}},"timestamp":"t"}';
+    const patched = patchTopLevelBooleanFlags(raw, {
+      alwaysUseRealApi: true,
+      refreshOnNextRequest: false,
+      alwaysRefreshFromLive: false,
+      responsePending: false,
+    });
+    expect(patched).toContain('"alwaysUseRealApi":true');
+    expect(JSON.parse(patched!).alwaysUseRealApi).toBe(true);
+    expect(JSON.parse(patched!).request.url).toBe('https://api.example.com/ok');
   });
 });

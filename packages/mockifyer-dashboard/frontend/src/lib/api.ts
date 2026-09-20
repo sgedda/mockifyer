@@ -997,30 +997,6 @@ export async function bulkSetLiveApiForDomain(payload: {
   return response.json()
 }
 
-export async function bulkCaptureResponsesForDomain(payload: {
-  scenario: string
-  domainPath: string
-  clientId?: string
-}): Promise<{
-  ok: boolean
-  captured: number
-  skippedAlready: number
-  failed: number
-  errors: Array<{ endpoint: string | null; message: string }>
-  domainPath: string
-}> {
-  const response = await fetchApi(`${API_BASE}/mocks/bulk-capture-responses`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error((err as { error?: string }).error || 'Failed to bulk capture responses')
-  }
-  return response.json()
-}
-
 export async function bulkSetReplayMode(payload: {
   scenario: string
   stored?: string[]

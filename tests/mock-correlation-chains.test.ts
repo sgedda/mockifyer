@@ -21,6 +21,7 @@ import {
   planChainRoleReplay,
   collectUpstreamDomainPathsForReplay,
   planDomainFolderReplay,
+  applyCatalogReplayModeFlags,
   describeBulkReplayModeResult,
   type MockUniqueChainNode,
 } from '@/lib/mock-correlation-chains'
@@ -695,7 +696,7 @@ describe('chain role replay plans', () => {
 })
 
 describe('domain folder replay plans', () => {
-  it('puts the folder on saved mocks and parent hops on Live', () => {
+  it('puts only the clicked folder on saved mocks', () => {
     const graphql = mock({
       filename: 'graphql.json',
       method: 'POST',
@@ -714,7 +715,7 @@ describe('domain folder replay plans', () => {
     expect(collectUpstreamDomainPathsForReplay([booking], catalog)).toEqual(['localhost:4000/graphql'])
     expect(planDomainFolderReplay(catalog, 'booking.example')).toEqual({
       stored: ['booking.json'],
-      passthrough: ['graphql.json'],
+      passthrough: [],
     })
   })
 
@@ -740,14 +741,40 @@ describe('domain folder replay plans', () => {
     })
   })
 
-  it('describes mixed stored, pending, and parent-live results', () => {
+  it('patches catalog flags in memory without touching other hosts', () => {
+    const booking = mock({
+      filename: 'booking.json',
+      endpoint: 'http://booking.example/api/booking/1',
+      alwaysUseRealApi: true,
+    })
+    const hub = mock({
+      filename: 'hub.json',
+      endpoint: 'http://hub.example/api',
+      alwaysUseRealApi: true,
+    })
+    const pending = mock({
+      filename: 'pending.json',
+      endpoint: 'http://booking.example/api/pending',
+      alwaysUseRealApi: true,
+      responsePending: true,
+    })
+    const patched = applyCatalogReplayModeFlags([booking, hub, pending], ['booking.json', 'pending.json'], [])
+    expect(patched[0].alwaysUseRealApi).toBeUndefined()
+    expect(patched[0].replayMode).toBe('stored')
+    expect(patched[1].alwaysUseRealApi).toBe(true)
+    expect(patched[2].refreshOnNextRequest).toBe(true)
+    expect(patched[2].responsePending).toBeUndefined()
+    expect(patched[2].replayMode).toBe('refresh-next')
+  })
+
+  it('describes mixed stored, pending, and live results', () => {
     expect(
       describeBulkReplayModeResult({
         updatedStored: 2,
         queuedRefreshNext: 1,
         updatedLive: 3,
       })
-    ).toBe('2 mocks on saved response. 1 will capture on next request, then replay. 3 parent hops set to Live')
+    ).toBe('2 mocks on saved response. 1 will capture on next request, then replay. 3 mocks set to Live')
   })
 })
 

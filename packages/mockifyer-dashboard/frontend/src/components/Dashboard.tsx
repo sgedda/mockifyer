@@ -33,6 +33,7 @@ import {
 } from '@/lib/scenario-display'
 import { buildSearch, DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 import { FavoritesProvider } from '@/lib/favorites-context'
+import { applyCatalogReplayModeFlags } from '@/lib/mock-correlation-chains'
 
 interface DashboardProps {
   scenario: string
@@ -85,6 +86,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
   const rejectedUrlScenarioRef = useRef<string | null>(null)
   const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
+
+  const applyCatalogReplayFlags = useCallback((stored: string[], passthrough: string[]) => {
+    const patch = (list: MockFile[]) => applyCatalogReplayModeFlags(list, stored, passthrough)
+    setAllMocks(patch)
+    setMocks(patch)
+  }, [])
 
   useEffect(() => {
     searchQueryRef.current = searchQuery
@@ -596,6 +603,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   onSearchChange={setSearchQuery}
                   onSelectMock={handleSelectMock}
                   onRefresh={loadMocks}
+                  onCatalogReplayApplied={applyCatalogReplayFlags}
                 />
               }
             />

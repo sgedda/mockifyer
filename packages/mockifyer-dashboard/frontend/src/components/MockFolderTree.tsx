@@ -20,11 +20,11 @@ import { sortFolderEntries } from '@/lib/mockFolderTree'
 import {
   aggregateLiveApiState,
   countMocksInDomainFolder,
+  endpointMatchesDomainPath,
   findEffectiveDomainPathRule,
   type LiveApiAggregate,
 } from '@/lib/domainTreeMatch'
 import {
-  bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
   bulkSetReplayMode,
   setDomainPathRule,
@@ -36,7 +36,6 @@ import { ChevronRight, ChevronDown, Folder } from 'lucide-react'
 
 const FOLDER_NEST_PAD_REM = 0.75
 const DOMAIN_RECORD_RESPONSE_BTN_WIDTH = '7.75rem'
-const DOMAIN_CAPTURE_BTN_WIDTH = '6.75rem'
 
 function folderHeaderInsetStyle(depth: number): CSSProperties {
   if (depth <= 0) {
@@ -106,6 +105,8 @@ export interface DomainTreeModeProps {
   pathRules: DomainPathRulesMap
   onPathRulesChange: (rules: DomainPathRulesMap) => void
   onRefresh: () => void
+  /** Patch in-memory catalog flags instead of reloading GET /mocks. */
+  onCatalogReplayApplied?: (stored: string[], passthrough: string[]) => void
 }
 
 interface MockFolderTreeProps {
@@ -198,7 +199,7 @@ function FolderSection({
   const bulkCtx = useContext(FolderTreeBulkContext)
   const { toast } = useToast()
   const [open, setOpen] = useState(defaultOpen)
-  const [busy, setBusy] = useState<'live' | 'mock' | 'capture' | 'auto' | null>(null)
+  const [busy, setBusy] = useState<'live' | 'mock' | 'auto' | null>(null)
 
   useEffect(() => {
     if (!bulkCtx || bulkCtx.bulkGeneration === 0) return
@@ -217,7 +218,7 @@ function FolderSection({
 
   const pendingCount = folderCounts?.pending ?? 0
   const recordedCount = folderCounts?.recorded ?? 0
-  const canReplay = recordedCount > 0
+  const canReplay = recordedCount > 0 || pendingCount > 0
 
   const effectivePathRule = useMemo(() => {
     if (!domainTreeMode || !domainPath) return null
@@ -232,6 +233,15 @@ function FolderSection({
     if (!domainTreeMode || !domainPath) return
     try {
       setBusy(useLiveApi ? 'live' : 'mock')
+      const catalog = domainTreeMode.actionMocks ?? domainTreeMode.catalogMocks
+      const filenames = catalog
+        .filter((mock) => endpointMatchesDomainPath(mock.endpoint ?? null, domainPath))
+        .map((mock) => mock.filename)
+      if (useLiveApi) {
+        domainTreeMode.onCatalogReplayApplied?.([], filenames)
+      } else {
+        domainTreeMode.onCatalogReplayApplied?.(filenames, [])
+      }
       const result = await bulkSetLiveApiForDomain({
         scenario: domainTreeMode.scenario,
         domainPath,
@@ -239,47 +249,18 @@ function FolderSection({
       })
       toast({
         title: useLiveApi ? 'Live API enabled' : 'Replay mocks enabled',
-        description:
-          result.skippedPending > 0
-            ? `Updated ${result.updated}; ${result.skippedPending} pending (capture responses first).`
-            : `Updated ${result.updated} mock(s) under ${domainPath}`,
+        description: `Updated ${result.updated} mock(s) under ${domainPath}`,
       })
-      domainTreeMode.onRefresh()
+      if (!domainTreeMode.onCatalogReplayApplied) {
+        domainTreeMode.onRefresh()
+      }
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Bulk update failed',
         variant: 'destructive',
       })
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function handleBulkCapture() {
-    if (!domainTreeMode || !domainPath) return
-    try {
-      setBusy('capture')
-      const result = await bulkCaptureResponsesForDomain({
-        scenario: domainTreeMode.scenario,
-        domainPath,
-      })
-      const errHint =
-        result.failed > 0 && result.errors[0]?.message
-          ? ` First error: ${result.errors[0].message}`
-          : ''
-      toast({
-        title: 'Capture complete',
-        description: `Captured ${result.captured}; skipped ${result.skippedAlready} already captured; ${result.failed} failed.${errHint}`,
-        variant: result.failed > 0 ? 'destructive' : 'default',
-      })
       domainTreeMode.onRefresh()
-    } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Bulk capture failed',
-        variant: 'destructive',
-      })
     } finally {
       setBusy(null)
     }
@@ -294,6 +275,7 @@ function FolderSection({
         domainPath
       )
       if (plan.stored.length === 0 && plan.passthrough.length === 0) return
+      domainTreeMode.onCatalogReplayApplied?.(plan.stored, plan.passthrough)
       const result = await bulkSetReplayMode({
         scenario: domainTreeMode.scenario,
         stored: plan.stored,
@@ -303,13 +285,16 @@ function FolderSection({
         title: 'Replay enabled',
         description: describeBulkReplayModeResult(result),
       })
-      domainTreeMode.onRefresh()
+      if (!domainTreeMode.onCatalogReplayApplied) {
+        domainTreeMode.onRefresh()
+      }
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Bulk update failed',
         variant: 'destructive',
       })
+      domainTreeMode.onRefresh()
     } finally {
       setBusy(null)
     }
@@ -412,20 +397,6 @@ function FolderSection({
             >
               {busy === 'auto' ? '…' : 'Record response'}
             </Button>
-            {pendingCount > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 text-xs"
-                style={{ width: DOMAIN_CAPTURE_BTN_WIDTH }}
-                disabled={busy !== null}
-                title="Fetch real responses for pending stubs under this path"
-                onClick={() => void handleBulkCapture()}
-              >
-                {busy === 'capture' ? '…' : `Capture (${pendingCount})`}
-              </Button>
-            )}
             <div
               className="inline-flex h-7 shrink-0 overflow-hidden rounded-md border border-border"
               title={
@@ -442,12 +413,12 @@ function FolderSection({
                 disabled={busy !== null || !canReplay}
                 title={
                   canReplay
-                    ? 'Replay saved responses. Pending stubs capture on the next matching request. Upstream hops switch to Live so traffic can reach this folder.'
-                    : 'Nothing to replay yet — capture a response first'
+                    ? 'Replay saved responses. Pending stubs capture on the next matching request, then replay.'
+                    : 'Nothing to replay yet'
                 }
                 onClick={() => void handleTrafficModeChange('replay')}
               >
-                {busy === 'mock' || busy === 'capture' ? '…' : 'Replay'}
+                {busy === 'mock' ? '…' : 'Replay'}
               </Button>
               <Button
                 type="button"

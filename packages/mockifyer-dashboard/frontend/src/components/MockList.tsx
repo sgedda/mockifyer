@@ -41,6 +41,7 @@ interface MockListProps {
   selectedMock?: MockData | null
   onSelectMock: (file: MockFile) => void
   onRefresh: () => void
+  onCatalogReplayApplied?: (stored: string[], passthrough: string[]) => void
 }
 
 export default function MockList(props: MockListProps) {
@@ -63,6 +64,7 @@ function MockListContent({
   selectedMock = null,
   onSelectMock,
   onRefresh,
+  onCatalogReplayApplied,
 }: MockListProps) {
   const { toast } = useToast()
   const { searchParams, patch } = useLocationQuery()
@@ -377,6 +379,7 @@ function MockListContent({
             scenario={scenario}
             chains={catalogServiceChains}
             onDone={onRefresh}
+            onCatalogReplayApplied={onCatalogReplayApplied}
             disabled={loading || scenarioLocked}
           />
         )}
@@ -615,6 +618,7 @@ function MockListContent({
                     pathRules: domainPathRules,
                     onPathRulesChange: setDomainPathRules,
                     onRefresh,
+                    onCatalogReplayApplied,
                   }
                 : undefined
             }
