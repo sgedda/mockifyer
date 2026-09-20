@@ -63,7 +63,7 @@ import {
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 import {
-  ensureInboundParentRecordInStore,
+  resolveInboundParentRequestIdForChild,
 } from '../utils/inbound-parent-record-store';
 
 const router = express.Router();
@@ -406,14 +406,21 @@ router.post('/', async (req: Request, res: Response) => {
       url,
       (mock as MockData | null)?.requestId
     );
-    applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
-    await ensureInboundParentRecordInStore(
+    const resolvedParentId = await resolveInboundParentRequestIdForChild(
       store,
       resolvedScenarioName,
       hopIdentity.parentRequestId,
       parentHopFromBody,
       debugProxy
     );
+    if (
+      resolvedParentId &&
+      hopIdentity.parentRequestId &&
+      resolvedParentId !== hopIdentity.parentRequestId
+    ) {
+      hopIdentity = { ...hopIdentity, parentRequestId: resolvedParentId };
+    }
+    applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({

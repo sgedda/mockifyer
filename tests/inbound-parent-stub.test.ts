@@ -2,7 +2,6 @@ import {
   applyOutboundRequestCorrelation,
   attachActiveInboundRequestBody,
   buildInboundParentStubMock,
-  createMockifyerInboundBodyCaptureMiddleware,
   getActiveInboundRequest,
   inboundParentStubHash,
   inboundParentStubRequestKey,
@@ -68,19 +67,15 @@ describe('inbound parent recording', () => {
     });
   });
 
-  it('body-capture middleware copies req.body onto ALS', () => {
-    const mw = createMockifyerInboundBodyCaptureMiddleware();
+  it('lazily reads body from stashed inboundHttpRequest', () => {
     const resolved = resolveInboundHopContext(
       {},
       { method: 'POST', url: 'http://localhost:4000/graphql' }
     );
+    const fakeReq = { body: { query: 'query X { y }' } };
+    resolved!.ctx.inboundHttpRequest = fakeReq;
     runWithMockifyerHopContext(resolved!.ctx, () => {
-      let called = false;
-      mw({ body: { query: '{ x }' } }, {}, () => {
-        called = true;
-      });
-      expect(called).toBe(true);
-      expect(getActiveInboundRequest()?.data).toEqual({ query: '{ x }' });
+      expect(getActiveInboundRequest()?.data).toEqual({ query: 'query X { y }' });
     });
   });
 });

@@ -260,9 +260,17 @@ export function getActiveInboundRequest(): {
   url: string;
   data?: unknown;
 } | undefined {
-  const inbound = getActiveMockifyerHopContext()?.inboundRequest;
+  const ctx = getActiveMockifyerHopContext();
+  const inbound = ctx?.inboundRequest;
   if (!inbound?.url?.trim()) {
     return undefined;
+  }
+  // Express/Apollo attach `body` on the same IncomingMessage after json parse — pull it lazily.
+  if (inbound.data === undefined && ctx?.inboundHttpRequest) {
+    const body = ctx.inboundHttpRequest.body;
+    if (body !== undefined) {
+      inbound.data = body;
+    }
   }
   return {
     method: inbound.method?.trim() ? inbound.method.trim().toUpperCase() : 'GET',
@@ -761,6 +769,9 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
           (req as { [MOCKIFYER_REQUEST_ID_REQ_PROP]?: string })[MOCKIFYER_REQUEST_ID_REQ_PROP] =
             resolved.traceId;
         }
+        if (req) {
+          resolved.ctx.inboundHttpRequest = req as { body?: unknown };
+        }
         maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
         return runWithMockifyerHopContext(resolved.ctx, () => {
           if (res) {
@@ -862,6 +873,7 @@ export function createMockifyerCorrelationMiddleware(
     if (resolved.traceId) {
       req[MOCKIFYER_REQUEST_ID_REQ_PROP] = resolved.traceId;
     }
+    resolved.ctx.inboundHttpRequest = req as { body?: unknown };
 
     const shouldEcho =
       options.echoTraceIdOnResponse !== undefined

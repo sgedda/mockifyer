@@ -48,6 +48,11 @@ export interface MockifyerHopContext {
     data?: unknown;
   };
   /**
+   * Raw Node/Express request for this ALS scope. Used to lazily read `body` after
+   * `express.json()` / Apollo parse without requiring a separate middleware mount.
+   */
+  inboundHttpRequest?: { body?: unknown };
+  /**
    * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
    * and can be wrapped into the HTTP response body (test/debug).
    */
