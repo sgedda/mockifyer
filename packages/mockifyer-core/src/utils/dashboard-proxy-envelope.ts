@@ -5,6 +5,8 @@ export function buildDashboardProxyEnvelope(params: {
   deviceId: string | undefined;
   requestId: string | undefined;
   parentRequestId: string | undefined;
+  /** Inbound hop that owns `parentRequestId` — dashboard upserts a stub if missing. */
+  parentHop?: { method: string; url: string } | undefined;
   headers: Record<string, string>;
   body: unknown;
   scenario: string | undefined;
@@ -20,6 +22,7 @@ export function buildDashboardProxyEnvelope(params: {
     deviceId,
     requestId,
     parentRequestId,
+    parentHop,
     headers,
     body,
     scenario,
@@ -42,6 +45,12 @@ export function buildDashboardProxyEnvelope(params: {
     strictLaneScenario,
     upstreamTlsInsecure,
   };
+  if (parentHop?.url?.trim() && parentRequestId) {
+    envelope.parentHop = {
+      method: parentHop.method?.trim() ? parentHop.method.trim().toUpperCase() : 'GET',
+      url: parentHop.url.trim(),
+    };
+  }
   if (typeof recordOnMiss === 'boolean') {
     envelope.record = recordOnMiss;
   }

@@ -40,6 +40,8 @@ import {
   resolveOverrideGroupIdForServe,
   MOCKIFYER_OVERRIDE_GROUP_HEADER,
   getScenarioFolderPath,
+  buildInboundParentStubMock,
+  inboundParentStubHash,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -75,6 +77,58 @@ function deriveFallbackDeviceId(req: Request): string | undefined {
   const raw = `${ip}|${ua}`.trim();
   if (!raw || raw === '|') return undefined;
   return `derived:${sha256Hex(raw).slice(0, 16)}`;
+}
+
+function parseProxyParentHop(body: unknown): { method: string; url: string } | undefined {
+  const raw = (body as { parentHop?: unknown } | null | undefined)?.parentHop;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const hop = raw as { method?: unknown; url?: unknown };
+  const url = typeof hop.url === 'string' ? hop.url.trim() : '';
+  if (!url) {
+    return undefined;
+  }
+  const method =
+    typeof hop.method === 'string' && hop.method.trim() ? hop.method.trim().toUpperCase() : 'GET';
+  return { method, url };
+}
+
+/**
+ * When children arrive with a parentRequestId that was never recorded (GraphQL hit the
+ * BFF without a proxy write, concurrent race, etc.), upsert a request-only stub so hops
+ * UI can show the entry instead of "Missing entry".
+ */
+async function ensureInboundParentStubInStore(
+  store: ReturnType<typeof createDashboardMockStore>,
+  scenarioName: string,
+  parentRequestId: string | undefined | null,
+  parentHop: { method: string; url: string } | undefined,
+  debugProxy: boolean
+): Promise<void> {
+  const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
+  if (!parentId || !parentHop?.url?.trim()) {
+    return;
+  }
+  const stubHash = inboundParentStubHash(parentId);
+  try {
+    const existing = await store.getByHashInScenario(stubHash, scenarioName);
+    if (existing?.requestId?.trim() === parentId) {
+      return;
+    }
+    const stub = buildInboundParentStubMock(parentId, parentHop);
+    await store.setByHashInScenario(stubHash, stub, scenarioName);
+    if (debugProxy) {
+      console.log(
+        `[ProxyRoute] upserted inbound parent stub: ${parentHop.method} ${parentHop.url} (requestId=${parentId.slice(0, 8)}…)`
+      );
+    }
+  } catch (err: any) {
+    console.error(
+      '[ProxyRoute] inbound parent stub upsert failed:',
+      err?.message ?? err
+    );
+  }
 }
 
 function toRecordStringHeaders(headers: unknown): Record<string, string> {
@@ -134,6 +188,7 @@ router.post('/', async (req: Request, res: Response) => {
     upstreamTlsInsecure: upstreamTlsInsecureFromBody,
     overrideGroup: overrideGroupFromBody,
   } = req.body || {};
+  const parentHopFromBody = parseProxyParentHop(req.body);
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
   const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest(upstreamTlsInsecureFromBody);
@@ -380,6 +435,13 @@ router.post('/', async (req: Request, res: Response) => {
       (mock as MockData | null)?.requestId
     );
     applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
+    await ensureInboundParentStubInStore(
+      store,
+      resolvedScenarioName,
+      hopIdentity.parentRequestId,
+      parentHopFromBody,
+      debugProxy
+    );
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({
