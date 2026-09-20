@@ -24,6 +24,7 @@ import {
   generateRequestKey as generateRequestKeyUtil,
   CachedMockData,
   initializeDateManipulation,
+  scheduleRuntimeDateSyncFromConfig,
   DatabaseProvider,
   createProvider,
   getCurrentScenario,
@@ -1761,6 +1762,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   
   initializeDateManipulation(resolvedConfig);
   initializeScenario(resolvedConfig);
+  scheduleRuntimeDateSyncFromConfig(resolvedConfig);
 
 
   const mockifyer = new MockifyerClass(resolvedConfig);

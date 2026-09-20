@@ -7,6 +7,7 @@ import {
   initializeDateManipulation,
   resetDateManipulation,
   resolveExplicitDateManipulation,
+  setRuntimeDateManipulation,
 } from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
@@ -425,6 +426,37 @@ describe('Date Manipulation', () => {
           scenarioDateDoc: null,
         })
       ).toBeNull();
+    });
+  });
+
+  describe('runtime Redis/dashboard cache', () => {
+    it('getCurrentDate() uses setRuntimeDateManipulation without explicit context', () => {
+      setRuntimeDateManipulation({ fixedDate: '2025-03-01T00:00:00.000Z' });
+      expect(getCurrentDate().toISOString()).toBe('2025-03-01T00:00:00.000Z');
+    });
+
+    it('runtime cache beats setupMockifyer dateManipulation and MOCKIFYER_DATE', () => {
+      process.env.MOCKIFYER_DATE = '2010-01-01T00:00:00.000Z';
+      setupMockifyer({
+        mockDataPath: './mock-data',
+        dateManipulation: { fixedDate: '2011-01-01T00:00:00.000Z' },
+      });
+      setRuntimeDateManipulation({ fixedDate: '2026-09-20T12:00:00.000Z' });
+      expect(getCurrentDate().toISOString()).toBe('2026-09-20T12:00:00.000Z');
+    });
+
+    it('empty runtime payload is a clear (real time), not a fallthrough to disk or env', () => {
+      process.env.MOCKIFYER_DATE = '2010-01-01T00:00:00.000Z';
+      setRuntimeDateManipulation({});
+      const result = getCurrentDate();
+      expect(Math.abs(result.getTime() - Date.now())).toBeLessThan(2000);
+    });
+
+    it('resetDateManipulation clears the runtime cache', () => {
+      setRuntimeDateManipulation({ fixedDate: '2025-03-01T00:00:00.000Z' });
+      resetDateManipulation();
+      const result = getCurrentDate();
+      expect(Math.abs(result.getTime() - Date.now())).toBeLessThan(2000);
     });
   });
 });

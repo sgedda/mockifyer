@@ -84,7 +84,7 @@ setupMockifyer({
 const response = await axios.get('https://api.example.com/data');
 ```
 
-**Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply.
+**Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply. With the dashboard Redis/SQLite proxy, that call follows the **active scenario’s Date Config** (a client-lane date wins). Switch scenarios or update the date in the dashboard and `getCurrentDate()` tracks it — no extra arguments.
 
 ## Features
 

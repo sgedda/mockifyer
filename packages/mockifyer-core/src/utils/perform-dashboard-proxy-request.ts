@@ -23,6 +23,7 @@ import {
   stripMockifyerTraceFromBody,
 } from './mockifyer-trace';
 import { logger } from './logger';
+import { applyRuntimeDateManipulationFromProxyPayload } from './runtime-date-sync';
 
 const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
 
@@ -148,6 +149,7 @@ export async function performDashboardProxyRequest(
     throw new Error(`[${logTag}] Proxy error: ${proxyResponse.status} ${txt}`);
   }
   const payload = (await proxyResponse.json()) as Record<string, unknown>;
+  applyRuntimeDateManipulationFromProxyPayload(payload);
   const outerProxyHeaders: Record<string, string> = {};
   proxyResponse.headers.forEach((value: string, key: string) => {
     outerProxyHeaders[key.toLowerCase()] = value;

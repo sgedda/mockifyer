@@ -358,15 +358,17 @@ router.post('/', async (req: Request, res: Response) => {
 
     const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
     const laneDateDoc = clientId ? await store.getLaneDateConfig(clientId).catch(() => null) : null;
+    const explicitManipulation = resolveExplicitDateManipulation({
+      laneManipulation: laneDateDoc?.dateManipulation ?? null,
+      scenarioDateDoc: redisDateDoc,
+    });
     const getNow = () =>
       getCurrentDate({
         mockDataPath,
         scenario: resolvedScenarioName,
-        explicitManipulation: resolveExplicitDateManipulation({
-          laneManipulation: laneDateDoc?.dateManipulation ?? null,
-          scenarioDateDoc: redisDateDoc,
-        }),
+        explicitManipulation,
       });
+    const proxyDateFields = { dateManipulation: explicitManipulation };
 
     let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
     let mockSource: 'redis' | 'disk' = 'redis';
@@ -480,6 +482,7 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         response: responseWithOverrides,
         scenarioResolution: resolution,
+        ...proxyDateFields,
         ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       });
     }
@@ -700,6 +703,7 @@ router.post('/', async (req: Request, res: Response) => {
       scenarioResolution: resolution,
       response: clientResponse,
       recordedToStore: storedMockForClient != null,
+      ...proxyDateFields,
       ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       ...(storedMockForClient ? { storedMock: storedMockForClient } : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),

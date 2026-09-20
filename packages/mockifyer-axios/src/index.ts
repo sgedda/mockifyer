@@ -13,6 +13,7 @@ import {
   StoredRequest,
   StoredResponse,
   initializeDateManipulation,
+  scheduleRuntimeDateSyncFromConfig,
   getCurrentScenario,
   getScenarioFolderPath,
   ensureScenarioFolder,
@@ -2308,6 +2309,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   setLogLevel(resolvedConfig.logging || 'info');
   initializeDateManipulation(resolvedConfig);
   initializeScenario(resolvedConfig);
+  scheduleRuntimeDateSyncFromConfig(resolvedConfig);
 
   const mockifyer = new MockifyerClass(resolvedConfig);
   const httpClient = mockifyer.getHTTPClient();

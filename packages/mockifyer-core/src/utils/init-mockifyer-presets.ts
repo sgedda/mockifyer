@@ -6,6 +6,7 @@ import { resolveStrictScenarioResolution } from './strict-proxy-scenario';
 import { logger } from './logger';
 import { registerMockifyerInstance, type MockifyerClientIdRuntime } from './runtime-client-id';
 import { createMockifyerInboundBodyCaptureMiddleware } from './request-correlation';
+import { syncRuntimeDateManipulationFromDashboard, scheduleRuntimeDateSyncFromConfig } from './runtime-date-sync';
 
 export { loadAxiosSetupMockifyer, loadFetchSetupMockifyer } from './load-sibling-setup';
 
@@ -434,7 +435,17 @@ export async function initMockifyerForDashboardProxy<T>(
 ): Promise<T> {
   mountInboundBodyCaptureIfRequested(options);
   const config = await buildDashboardProxyConfig(options);
-  return setupMockifyer(config);
+  const instance = setupMockifyer(config);
+  await syncRuntimeDateFromProxyConfig(config);
+  return instance;
+}
+
+async function syncRuntimeDateFromProxyConfig(config: MockifyerConfig): Promise<void> {
+  const options = scheduleRuntimeDateSyncFromConfig(config);
+  if (!options) {
+    return;
+  }
+  await syncRuntimeDateManipulationFromDashboard(options);
 }
 
 function mountInboundBodyCaptureIfRequested(options: InitMockifyerForDashboardProxyOptions): void {
@@ -482,6 +493,7 @@ export async function initMockifyerForDashboardProxyClients<TFetch, TAxios>(
   if (axiosConfig && setups.axios) {
     result.axios = setups.axios(axiosConfig);
   }
+  await syncRuntimeDateFromProxyConfig(shared);
   return result;
 }
 
