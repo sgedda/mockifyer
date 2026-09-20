@@ -1,6 +1,9 @@
 import {
   applyOutboundRequestCorrelation,
+  attachActiveInboundRequestBody,
   buildInboundParentStubMock,
+  createMockifyerInboundBodyCaptureMiddleware,
+  getActiveInboundRequest,
   inboundParentStubHash,
   inboundParentStubRequestKey,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
@@ -8,8 +11,8 @@ import {
   runWithMockifyerHopContext,
 } from '@sgedda/mockifyer-core';
 
-describe('inbound parent stub', () => {
-  it('builds a stable hash per parent request id', () => {
+describe('inbound parent recording', () => {
+  it('builds legacy stub helpers (hash stable per parent id)', () => {
     const a = inboundParentStubHash('parent-a');
     const b = inboundParentStubHash('parent-a');
     const c = inboundParentStubHash('parent-b');
@@ -18,59 +21,66 @@ describe('inbound parent stub', () => {
     expect(inboundParentStubRequestKey('parent-a')).toContain('parent-a');
   });
 
-  it('creates a request-only stub with synthetic URL and display metadata', () => {
+  it('legacy stub builder still uses synthetic URL (deprecated path)', () => {
     const stub = buildInboundParentStubMock('gql-als-1', {
       method: 'post',
       url: 'http://localhost:4000/graphql',
     });
     expect(stub.requestId).toBe('gql-als-1');
-    expect(stub.responsePending).toBe(true);
-    expect(stub.alwaysUseRealApi).toBe(true);
     expect(stub.inboundParentStub).toBe(true);
-    expect(stub.request.method).toBe('POST');
     expect(stub.request.url).toBe('mockifyer://inbound-parent/gql-als-1');
-    expect(stub.inboundParentDisplay).toEqual({
-      method: 'POST',
-      url: 'http://localhost:4000/graphql',
-    });
   });
 
-  it('stores inbound method/url on hop context for outbound parent stubs', () => {
+  it('attaches inbound body onto ALS for outbound parentHop stash', () => {
     const resolved = resolveInboundHopContext(
       { 'x-mockifyer-request-id': 'inbound-1' },
       { method: 'POST', url: 'http://localhost:4000/graphql' }
     );
     expect(resolved?.traceId).toBe('inbound-1');
-    expect(resolved?.ctx.inboundRequest).toEqual({
-      method: 'POST',
-      url: 'http://localhost:4000/graphql',
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      attachActiveInboundRequestBody({
+        query: 'query myAccount { id }',
+        variables: {},
+      });
+      expect(getActiveInboundRequest()).toEqual({
+        method: 'POST',
+        url: 'http://localhost:4000/graphql',
+        data: { query: 'query myAccount { id }', variables: {} },
+      });
+
+      const config: {
+        headers: Record<string, string>;
+        url: string;
+        method: string;
+        __mockifyer_parentHop?: { method: string; url: string; data?: unknown };
+      } = {
+        headers: {},
+        url: 'http://tokenws.example/TokenService.asmx',
+        method: 'POST',
+      };
+      applyOutboundRequestCorrelation(config);
+      expect(config.__mockifyer_parentHop).toEqual({
+        method: 'POST',
+        url: 'http://localhost:4000/graphql',
+        data: { query: 'query myAccount { id }', variables: {} },
+      });
+      expect(config.headers[MOCKIFYER_PARENT_REQUEST_ID_HEADER]).toBe('inbound-1');
     });
   });
 
-  it('stashes inbound parentHop on the outbound config for later proxy stub upsert', () => {
-    const config: {
-      headers: Record<string, string>;
-      url: string;
-      method: string;
-      __mockifyer_parentHop?: { method: string; url: string };
-    } = {
-      headers: {},
-      url: 'http://tokenws.example/TokenService.asmx',
-      method: 'POST',
-    };
-    runWithMockifyerHopContext(
-      {
-        correlation: { requestId: 'gql-als' },
-        inboundRequest: { method: 'POST', url: 'http://localhost:4000/graphql' },
-      },
-      () => {
-        applyOutboundRequestCorrelation(config);
-      }
+  it('body-capture middleware copies req.body onto ALS', () => {
+    const mw = createMockifyerInboundBodyCaptureMiddleware();
+    const resolved = resolveInboundHopContext(
+      {},
+      { method: 'POST', url: 'http://localhost:4000/graphql' }
     );
-    expect(config.__mockifyer_parentHop).toEqual({
-      method: 'POST',
-      url: 'http://localhost:4000/graphql',
+    runWithMockifyerHopContext(resolved!.ctx, () => {
+      let called = false;
+      mw({ body: { query: '{ x }' } }, {}, () => {
+        called = true;
+      });
+      expect(called).toBe(true);
+      expect(getActiveInboundRequest()?.data).toEqual({ query: '{ x }' });
     });
-    expect(config.headers[MOCKIFYER_PARENT_REQUEST_ID_HEADER]).toBe('gql-als');
   });
 });

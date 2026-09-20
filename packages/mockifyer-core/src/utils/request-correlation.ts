@@ -254,8 +254,12 @@ export function resolveInboundHopContext(
   return { ctx, traceId };
 }
 
-/** Active inbound HTTP method/URL for the current ALS hop (if capture recorded them). */
-export function getActiveInboundRequest(): { method: string; url: string } | undefined {
+/** Active inbound HTTP method/URL/body for the current ALS hop (if capture recorded them). */
+export function getActiveInboundRequest(): {
+  method: string;
+  url: string;
+  data?: unknown;
+} | undefined {
   const inbound = getActiveMockifyerHopContext()?.inboundRequest;
   if (!inbound?.url?.trim()) {
     return undefined;
@@ -263,6 +267,22 @@ export function getActiveInboundRequest(): { method: string; url: string } | und
   return {
     method: inbound.method?.trim() ? inbound.method.trim().toUpperCase() : 'GET',
     url: inbound.url.trim(),
+    ...(inbound.data !== undefined ? { data: inbound.data } : {}),
+  };
+}
+
+/**
+ * Attach a parsed inbound body onto the active ALS hop (call after `express.json()`).
+ * Enables outbound children to persist a real parent row with the GraphQL document.
+ */
+export function attachActiveInboundRequestBody(data: unknown): void {
+  const ctx = getActiveMockifyerHopContext();
+  if (!ctx?.inboundRequest?.url?.trim()) {
+    return;
+  }
+  ctx.inboundRequest = {
+    ...ctx.inboundRequest,
+    data,
   };
 }
 
@@ -523,7 +543,7 @@ export function applyOutboundRequestCorrelation(config: {
 
   // Capture inbound method/url now — ALS may be gone by the time /api/proxy runs (GraphQL resolvers).
   const cfg = config as {
-    __mockifyer_parentHop?: { method: string; url: string };
+    __mockifyer_parentHop?: { method: string; url: string; data?: unknown };
   };
   const inbound = getActiveInboundRequest();
   const activeId = getActiveRequestCorrelation()?.requestId;
@@ -597,6 +617,24 @@ export interface MockifyerCorrelationMiddlewareResponse {
   send?(body: unknown): unknown;
   status?(code: number): unknown;
   statusCode?: number;
+}
+
+/**
+ * Express middleware: after body parsers, copy `req.body` onto the active ALS inbound hop
+ * so outbound children can persist a real parent catalog row (GraphQL query/variables).
+ * Mount **after** `express.json()` / Apollo body parsing.
+ */
+export function createMockifyerInboundBodyCaptureMiddleware(): (
+  req: { body?: unknown },
+  _res: unknown,
+  next: () => void
+) => void {
+  return (req, _res, next) => {
+    if (req.body !== undefined) {
+      attachActiveInboundRequestBody(req.body);
+    }
+    next();
+  };
 }
 
 export interface MockifyerCorrelationMiddlewareOptions {

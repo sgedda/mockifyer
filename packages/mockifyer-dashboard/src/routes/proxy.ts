@@ -63,9 +63,8 @@ import {
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 import {
-  ensureInboundParentStubInStore,
-  removeInboundParentStubIfPresent,
-} from '../utils/inbound-parent-stub-store';
+  ensureInboundParentRecordInStore,
+} from '../utils/inbound-parent-record-store';
 
 const router = express.Router();
 
@@ -81,19 +80,27 @@ function deriveFallbackDeviceId(req: Request): string | undefined {
   return `derived:${sha256Hex(raw).slice(0, 16)}`;
 }
 
-function parseProxyParentHop(body: unknown): { method: string; url: string } | undefined {
+function parseProxyParentHop(body: unknown): {
+  method: string;
+  url: string;
+  data?: unknown;
+} | undefined {
   const raw = (body as { parentHop?: unknown } | null | undefined)?.parentHop;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return undefined;
   }
-  const hop = raw as { method?: unknown; url?: unknown };
+  const hop = raw as { method?: unknown; url?: unknown; data?: unknown };
   const url = typeof hop.url === 'string' ? hop.url.trim() : '';
   if (!url) {
     return undefined;
   }
   const method =
     typeof hop.method === 'string' && hop.method.trim() ? hop.method.trim().toUpperCase() : 'GET';
-  return { method, url };
+  return {
+    method,
+    url,
+    ...(hop.data !== undefined ? { data: hop.data } : {}),
+  };
 }
 
 function toRecordStringHeaders(headers: unknown): Record<string, string> {
@@ -400,7 +407,7 @@ router.post('/', async (req: Request, res: Response) => {
       (mock as MockData | null)?.requestId
     );
     applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
-    await ensureInboundParentStubInStore(
+    await ensureInboundParentRecordInStore(
       store,
       resolvedScenarioName,
       hopIdentity.parentRequestId,
@@ -573,12 +580,6 @@ router.post('/', async (req: Request, res: Response) => {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
-      await removeInboundParentStubIfPresent(
-        store,
-        resolvedScenarioName,
-        updatedMock.requestId ?? hopIdentity.requestId,
-        debugProxy
-      );
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
         try {
@@ -648,14 +649,6 @@ router.post('/', async (req: Request, res: Response) => {
 
         applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, hopIdentity);
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
-        if (wrote) {
-          await removeInboundParentStubIfPresent(
-            store,
-            resolvedScenarioName,
-            storedMockForClient.requestId ?? hopIdentity.requestId,
-            debugProxy
-          );
-        }
         if (wrote && redisDisk.mirrorWrites) {
           try {
             mirrorRecordedMockToDisk({

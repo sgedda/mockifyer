@@ -96,7 +96,7 @@ export async function performDashboardProxyRequest(
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
   const stashedParentHop = (
-    config as { __mockifyer_parentHop?: { method: string; url: string } }
+    config as { __mockifyer_parentHop?: { method: string; url: string; data?: unknown } }
   ).__mockifyer_parentHop;
   const activeCorrelation = getActiveRequestCorrelation();
   const liveParentHop =
@@ -112,6 +112,7 @@ export async function performDashboardProxyRequest(
             ? stashedParentHop.method.trim().toUpperCase()
             : 'GET',
           url: stashedParentHop.url.trim(),
+          ...(stashedParentHop.data !== undefined ? { data: stashedParentHop.data } : {}),
         }
       : liveParentHop;
   const proxyResponse = await fetchFn(proxyUrl, {

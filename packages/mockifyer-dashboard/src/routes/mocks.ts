@@ -47,7 +47,6 @@ import {
 } from '../utils/domain-path-rules-store';
 import { favoriteIdForMock } from '../utils/favorites-store';
 import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
-import { healMissingInboundParentStubs } from '../utils/inbound-parent-stub-store';
 
 const router = express.Router();
 
@@ -551,7 +550,7 @@ router.get('/', async (req: Request, res: Response) => {
       try {
         const compact = parseCompactListQuery(req.query.compact);
         const items = await store.listCatalog(scenario);
-        let files = items
+        const files = items
           .map(({ hash, mockData, redisKey, rawByteLength }) =>
             toMockListRow({
               filename: `redis/${hash}.json`,
@@ -562,24 +561,6 @@ router.get('/', async (req: Request, res: Response) => {
             })
           )
           .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());
-        const healed = await healMissingInboundParentStubs(store, scenario, files);
-        if (healed > 0) {
-          const refreshed = await store.listCatalog(scenario);
-          files = refreshed
-            .map(({ hash, mockData, redisKey, rawByteLength }) =>
-              toMockListRow({
-                filename: `redis/${hash}.json`,
-                filePath: `redis://${redisKey}`,
-                mockData,
-                size: rawByteLength ?? 0,
-                storageHash: hash,
-              })
-            )
-            .sort(
-              (a, b) =>
-                new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
-            );
-        }
         const similarExtras = finishMockListPayload(files, req, compact);
         return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
