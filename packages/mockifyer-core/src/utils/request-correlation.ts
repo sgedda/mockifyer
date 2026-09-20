@@ -521,6 +521,18 @@ export function applyOutboundRequestCorrelation(config: {
   }
   config.headers = headers;
 
+  // Capture inbound method/url now — ALS may be gone by the time /api/proxy runs (GraphQL resolvers).
+  const cfg = config as {
+    __mockifyer_parentHop?: { method: string; url: string };
+  };
+  const inbound = getActiveInboundRequest();
+  const activeId = getActiveRequestCorrelation()?.requestId;
+  if (parentRequestId && inbound && activeId && parentRequestId === activeId) {
+    cfg.__mockifyer_parentHop = inbound;
+  } else {
+    delete cfg.__mockifyer_parentHop;
+  }
+
   registerHopOwner({ requestId, ...hopOwnerMetaFromConfig(config) });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }

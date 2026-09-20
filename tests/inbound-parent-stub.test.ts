@@ -1,8 +1,11 @@
 import {
+  applyOutboundRequestCorrelation,
   buildInboundParentStubMock,
   inboundParentStubHash,
   inboundParentStubRequestKey,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   resolveInboundHopContext,
+  runWithMockifyerHopContext,
 } from '@sgedda/mockifyer-core';
 
 describe('inbound parent stub', () => {
@@ -37,5 +40,32 @@ describe('inbound parent stub', () => {
       method: 'POST',
       url: 'http://localhost:4000/graphql',
     });
+  });
+
+  it('stashes inbound parentHop on the outbound config for later proxy stub upsert', () => {
+    const config: {
+      headers: Record<string, string>;
+      url: string;
+      method: string;
+      __mockifyer_parentHop?: { method: string; url: string };
+    } = {
+      headers: {},
+      url: 'http://tokenws.example/TokenService.asmx',
+      method: 'POST',
+    };
+    runWithMockifyerHopContext(
+      {
+        correlation: { requestId: 'gql-als' },
+        inboundRequest: { method: 'POST', url: 'http://localhost:4000/graphql' },
+      },
+      () => {
+        applyOutboundRequestCorrelation(config);
+      }
+    );
+    expect(config.__mockifyer_parentHop).toEqual({
+      method: 'POST',
+      url: 'http://localhost:4000/graphql',
+    });
+    expect(config.headers[MOCKIFYER_PARENT_REQUEST_ID_HEADER]).toBe('gql-als');
   });
 });
