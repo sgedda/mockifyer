@@ -20,6 +20,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Root tests import dashboard source (createServer, Redis store, proxy).
+      # Those files resolve `express` / `undici` from the dashboard package, not root.
+      - name: Install dashboard dependencies (for tests)
+        run: |
+          npm --prefix packages/mockifyer-core install
+          npm --prefix packages/mockifyer-dashboard install
+
       - name: Run tests
         run: npm test
 

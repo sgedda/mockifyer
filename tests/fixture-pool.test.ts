@@ -435,7 +435,12 @@ describe('fixture-pool $pool refs', () => {
     meta: { total: 3 },
     trips: [
       { id: 'trip-rome', city: 'Rome', status: 'CONFIRMED' },
-      { id: 'trip-nyc', city: 'NYC', status: 'CONFIRMED' },
+      {
+        id: 'trip-nyc',
+        city: 'NYC',
+        status: 'CONFIRMED',
+        departureAt: '2020-01-01T00:00:00.000Z',
+      },
       { id: 'trip-tokyo', city: 'Tokyo', status: 'COMPLETED' },
     ],
   };
@@ -475,7 +480,12 @@ describe('fixture-pool $pool refs', () => {
       userId: 'alice',
       meta: { total: 3 },
       trips: [
-        { id: 'trip-nyc', city: 'NYC', status: 'CONFIRMED' },
+        {
+          id: 'trip-nyc',
+          city: 'NYC',
+          status: 'CONFIRMED',
+          departureAt: '2020-01-01T00:00:00.000Z',
+        },
         { id: 'trip-rome', city: 'Rome', status: 'CONFIRMED' },
       ],
     });

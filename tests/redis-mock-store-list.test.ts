@@ -1,6 +1,7 @@
 import type { MockData } from '@sgedda/mockifyer-core';
 import { RedisMockStore } from '../packages/mockifyer-dashboard/src/utils/redis-mock-store';
 import type { MockKvBackend } from '../packages/mockifyer-dashboard/src/utils/mock-kv-backend';
+import { serializeCatalogSidecarEntry } from '../packages/mockifyer-dashboard/src/utils/mock-json-catalog';
 
 const MOCK_PAYLOAD: MockData = {
   request: {
@@ -370,12 +371,9 @@ describe('RedisMockStore.listCatalog', () => {
     await kv.hset(
       sidecarKey,
       cachedHash,
-      JSON.stringify({
+      serializeCatalogSidecarEntry({
         rawByteLength: Buffer.byteLength(cachedPayload),
-        mockData: {
-          ...MOCK_PAYLOAD,
-          response: { status: 200, data: null, headers: {} },
-        },
+        mockData: MOCK_PAYLOAD,
       })
     );
 
