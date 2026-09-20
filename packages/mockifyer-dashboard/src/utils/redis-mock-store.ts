@@ -1072,6 +1072,42 @@ export class RedisMockStore {
     return JSON.parse(raw) as MockData;
   }
 
+  /** Raw stored mock JSON for an already-resolved scenario (no JSON.parse). */
+  async getRawByHashInScenario(hash: string, scenarioName: string): Promise<string | null> {
+    const id = scenarioName.trim();
+    if (!id) return null;
+    return this.kv.get(this.mockDataKeyInScenario(hash, id));
+  }
+
+  /**
+   * Overwrite an existing mock's JSON without a prior GET or re-index.
+   * Used for replay-flag patches so GraphQL bodies are not re-serialized.
+   */
+  async replaceRawMockInScenario(
+    hash: string,
+    scenarioName: string,
+    raw: string,
+    compactMockData: MockData,
+    options?: { invalidateCatalog?: boolean }
+  ): Promise<void> {
+    const id = scenarioName.trim();
+    if (!id) throw new Error('scenarioName is required');
+    const key = this.mockDataKeyInScenario(hash, id);
+    if (isScratchScenario(id)) {
+      await this.kv.set(key, raw, 'EX', getScratchScenarioTtlSec());
+    } else {
+      await this.kv.set(key, raw);
+      await this.upsertCatalogSidecarItem(id, hash, compactMockData, Buffer.byteLength(raw));
+    }
+    if (options?.invalidateCatalog !== false) {
+      this.invalidateCatalogCache(id);
+    }
+  }
+
+  clearCatalogCache(scenarioName?: string): void {
+    this.invalidateCatalogCache(scenarioName);
+  }
+
   /** Compute the canonical hash for a stored mock. */
   static hashForMock(mockData: MockData): string {
     const requestKey = generateRequestKey(mockData.request);

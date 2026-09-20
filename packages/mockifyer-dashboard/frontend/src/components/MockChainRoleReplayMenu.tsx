@@ -34,12 +34,14 @@ export function MockChainRoleReplayMenu({
   scenario,
   chains,
   onDone,
+  onCatalogReplayApplied,
   disabled = false,
   compact = false,
 }: {
   scenario: string
   chains: MockServiceChain[]
   onDone: () => void
+  onCatalogReplayApplied?: (stored: string[], passthrough: string[]) => void
   disabled?: boolean
   compact?: boolean
 }) {
@@ -56,6 +58,9 @@ export function MockChainRoleReplayMenu({
     if (plan.stored.length === 0 && plan.passthrough.length === 0) return
     try {
       setBusy(target)
+      if (onCatalogReplayApplied) {
+        onCatalogReplayApplied(plan.stored, plan.passthrough)
+      }
       const result = await bulkSetReplayMode({
         scenario,
         stored: plan.stored,
@@ -65,13 +70,16 @@ export function MockChainRoleReplayMenu({
         title: bulkResultTitle(target, result),
         description: describeBulkReplayModeResult(result),
       })
-      onDone()
+      if (!onCatalogReplayApplied) {
+        onDone()
+      }
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to update hop replay mode',
         variant: 'destructive',
       })
+      onDone()
     } finally {
       setBusy(null)
     }
