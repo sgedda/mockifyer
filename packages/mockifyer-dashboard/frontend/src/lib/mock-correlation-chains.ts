@@ -1100,34 +1100,59 @@ export interface DomainFolderReplayPlan {
 }
 
 /**
- * Filenames to put on saved-mock vs Live API when Replay is clicked for a domain-tree folder.
- * Parent hops on other domain paths go Live so traffic can reach this folder.
+ * Filenames to put on saved-mock replay when Replay is clicked for a domain-tree folder.
+ * Only this folder is changed — sibling hosts stay as they are.
  */
 export function planDomainFolderReplay(
   catalogMocks: MockFile[],
   domainPath: string
 ): DomainFolderReplayPlan {
   const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
-  const domainMocks = catalogMocks.filter((mock) =>
-    endpointMatchesDomainPath(mock.endpoint ?? null, normalizedPath)
-  )
-  const stored = domainMocks.map((mock) => mock.filename)
+  const stored = catalogMocks
+    .filter((mock) => endpointMatchesDomainPath(mock.endpoint ?? null, normalizedPath))
+    .map((mock) => mock.filename)
+  return { stored, passthrough: [] }
+}
+
+/**
+ * Apply bulk replay-mode flags to an in-memory catalog so the list can update
+ * without waiting for GET /mocks (similarGroups clustering).
+ */
+export function applyCatalogReplayModeFlags(
+  mocks: MockFile[],
+  stored: string[],
+  passthrough: string[]
+): MockFile[] {
+  if (stored.length === 0 && passthrough.length === 0) return mocks
   const storedSet = new Set(stored)
-  const upstreamDomains = collectUpstreamDomainPathsForReplay(domainMocks, catalogMocks).filter(
-    (path) => path !== normalizedPath
-  )
-  const passthrough: string[] = []
-  const seen = new Set<string>()
-  for (const mock of catalogMocks) {
-    if (storedSet.has(mock.filename) || seen.has(mock.filename)) continue
-    const matchesUpstream = upstreamDomains.some((path) =>
-      endpointMatchesDomainPath(mock.endpoint ?? null, path)
-    )
-    if (!matchesUpstream) continue
-    seen.add(mock.filename)
-    passthrough.push(mock.filename)
+  const liveSet = new Set(passthrough.filter((name) => !storedSet.has(name)))
+  if (storedSet.size === 0 && liveSet.size === 0) return mocks
+  return mocks.map((mock) => {
+    if (storedSet.has(mock.filename)) return applyReplayModeToCatalogMock(mock, 'stored')
+    if (liveSet.has(mock.filename)) return applyReplayModeToCatalogMock(mock, 'passthrough')
+    return mock
+  })
+}
+
+function applyReplayModeToCatalogMock(mock: MockFile, mode: 'stored' | 'passthrough'): MockFile {
+  const pendingWithoutBody = mock.responsePending === true
+  const resolved = mode === 'stored' && pendingWithoutBody ? 'refresh-next' : mode
+  const next: MockFile = {
+    ...mock,
+    alwaysUseRealApi: undefined,
+    refreshOnNextRequest: undefined,
+    alwaysRefreshFromLive: undefined,
+    replayMode: resolved === 'passthrough' ? 'passthrough' : resolved === 'refresh-next' ? 'refresh-next' : 'stored',
   }
-  return { stored, passthrough }
+  if (resolved !== 'passthrough' && pendingWithoutBody) {
+    next.responsePending = undefined
+  }
+  if (resolved === 'passthrough') {
+    next.alwaysUseRealApi = true
+  } else if (resolved === 'refresh-next') {
+    next.refreshOnNextRequest = true
+  }
+  return next
 }
 
 export function describeBulkReplayModeResult(result: {
@@ -1144,7 +1169,7 @@ export function describeBulkReplayModeResult(result: {
   }
   if (result.updatedLive > 0) {
     parts.push(
-      `${result.updatedLive} parent hop${result.updatedLive === 1 ? '' : 's'} set to Live`
+      `${result.updatedLive} mock${result.updatedLive === 1 ? '' : 's'} set to Live`
     )
   }
   if (parts.length === 0) {

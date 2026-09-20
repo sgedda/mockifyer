@@ -92,6 +92,36 @@ describe('bulkSetReplayModeForFilenames', () => {
     expect(pending.alwaysUseRealApi).toBeUndefined();
     expect(pending.refreshOnNextRequest).toBe(true);
   });
+
+  it('patches replay flags without pretty-reprinting a large GraphQL body', async () => {
+    const scenarioPath = path.join(tmpRoot, 'default');
+    fs.mkdirSync(scenarioPath, { recursive: true });
+    const marker = `query Q { ${'n'.repeat(4000)} }`;
+    const raw = [
+      '{',
+      '  "request": { "method": "POST", "url": "http://booking.example/graphql", "headers": {}, "data": { "query": ' +
+        JSON.stringify(marker) +
+        ' } },',
+      '  "response": { "status": 200, "data": { "q": ' + JSON.stringify(marker) + ' }, "headers": {} },',
+      '  "timestamp": "2026-01-01T00:00:00.000Z",',
+      '  "alwaysUseRealApi": true',
+      '}',
+    ].join('\n');
+    fs.writeFileSync(path.join(scenarioPath, 'graphql.json'), raw);
+
+    const result = await bulkSetReplayModeForFilenames({
+      provider: 'filesystem',
+      mockDataPath: tmpRoot,
+      scenario: 'default',
+      stored: ['graphql.json'],
+    });
+
+    expect(result.updatedStored).toBe(1);
+    const after = fs.readFileSync(path.join(scenarioPath, 'graphql.json'), 'utf-8');
+    expect(after).toContain('"request": { "method": "POST"');
+    expect(after).toContain(marker);
+    expect(after).not.toContain('alwaysUseRealApi');
+  });
 });
 
 describe('bulkSetLiveApiForDomain', () => {

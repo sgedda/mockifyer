@@ -34,7 +34,6 @@ import {
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
 import { RedisMockStore, rawJsonMightContainResponseOverrides } from '../utils/redis-mock-store';
 import {
-  bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
   bulkSetReplayModeForFilenames,
 } from '../utils/bulk-domain-mocks';
@@ -1520,38 +1519,6 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: message || 'bulk-live-api failed' });
-  }
-});
-
-/** Bulk capture upstream responses for pending mocks under a domain-tree path prefix. */
-router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
-  try {
-    const { mockDataPath, config } = getDashboardContext(req);
-    const { scenario, domainPath, clientId } = req.body || {};
-    if (typeof scenario !== 'string' || !scenario.trim()) {
-      return res.status(400).json({ error: 'scenario is required' });
-    }
-    if (typeof domainPath !== 'string' || !domainPath.trim()) {
-      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
-    }
-    if (clientId !== undefined && typeof clientId !== 'string') {
-      return res.status(400).json({ error: 'clientId must be a string when provided' });
-    }
-
-    const result = await bulkCaptureResponsesForDomain({
-      provider: config.provider,
-      mockDataPath,
-      scenario: scenario.trim(),
-      domainPath: domainPath.trim(),
-      clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
-      redisUrl: config.redisUrl,
-      keyPrefix: config.keyPrefix,
-      redisCluster: config.redisCluster,
-    });
-    return res.json(result);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: message || 'bulk-capture-responses failed' });
   }
 });
 
