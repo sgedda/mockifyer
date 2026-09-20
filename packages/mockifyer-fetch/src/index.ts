@@ -1076,7 +1076,12 @@ class MockifyerClass {
           };
 
           if (resolveShouldPersistLiveCapture(matchedMock.mockData, this.config)) {
-            await this.persistMatchedMockAfterLiveCapture(matchedMock, capturedResponse, durationMs);
+            await this.persistMatchedMockAfterLiveCapture(
+              matchedMock,
+              capturedResponse,
+              durationMs,
+              this.readRequestCorrelation(response.config)
+            );
           }
 
           const liveScenarioPath = path
@@ -1439,9 +1444,19 @@ class MockifyerClass {
   private async persistMatchedMockAfterLiveCapture(
     cachedMock: CachedMockData,
     capturedResponse: StoredResponse,
-    durationMs?: number
+    durationMs?: number,
+    liveCorrelation?: RequestCorrelationContext
   ): Promise<void> {
     const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
+    const hopIds = resolvePersistedHopIds(cachedMock.mockData, liveCorrelation);
+    if (hopIds.requestId) {
+      updated.requestId = hopIds.requestId;
+    }
+    if (hopIds.parentRequestId) {
+      updated.parentRequestId = hopIds.parentRequestId;
+    } else {
+      delete updated.parentRequestId;
+    }
 
     if (this.databaseProvider) {
       await this.databaseProvider.save(updated);

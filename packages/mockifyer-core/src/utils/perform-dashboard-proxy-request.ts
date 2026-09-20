@@ -164,6 +164,21 @@ export async function performDashboardProxyRequest(
     responseHeaders
   );
 
+  // Dashboard may have adopted a stored hop id (always-refresh / mock-hit). Prefer that
+  // over the client's pre-proxy mint so inline trace, stash, and catalog stay aligned.
+  const adoptedRequestId = mockifyerTrace?.requestId ?? requestId;
+  const adoptedParentRequestId =
+    mockifyerTrace != null ? mockifyerTrace.parentRequestId : parentRequestId;
+  if (adoptedRequestId) {
+    (config as { __mockifyer_requestId?: string }).__mockifyer_requestId = adoptedRequestId;
+  }
+  if (adoptedParentRequestId) {
+    (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
+      adoptedParentRequestId;
+  } else {
+    delete (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
+  }
+
   const scenarioResolution = payload?.scenarioResolution as { scenario?: string | null } | undefined;
   const scenarioName =
     typeof scenarioResolution?.scenario === 'string' && scenarioResolution.scenario.trim()
@@ -189,8 +204,8 @@ export async function performDashboardProxyRequest(
       status,
       source: networkSource,
       transport: 'proxy',
-      requestId: requestId ?? null,
-      parentRequestId: parentRequestId ?? null,
+      requestId: adoptedRequestId ?? null,
+      parentRequestId: adoptedParentRequestId ?? null,
       durationMs: Math.max(0, Date.now() - startedAt),
       clientId: lane ?? null,
       requestBody: body,
@@ -200,6 +215,14 @@ export async function performDashboardProxyRequest(
   data = unwrapAndMergeInlineTraceEnvelope(data);
   data = stripMockifyerTraceFromBody(data);
 
+  const effectiveTrace =
+    mockifyerTrace ??
+    (adoptedRequestId
+      ? adoptedParentRequestId
+        ? { requestId: adoptedRequestId, parentRequestId: adoptedParentRequestId }
+        : { requestId: adoptedRequestId }
+      : undefined);
+
   return {
     data,
     status,
@@ -207,6 +230,6 @@ export async function performDashboardProxyRequest(
     headers: responseHeaders,
     config,
     mockifyerProxyRecording,
-    ...(mockifyerTrace ? { mockifyerTrace } : {}),
+    ...(effectiveTrace ? { mockifyerTrace: effectiveTrace } : {}),
   };
 }

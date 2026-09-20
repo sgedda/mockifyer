@@ -135,7 +135,8 @@ export function resolveProxyHopIdentity(
   inbound: ProxyNetworkLogCorrelation,
   method: string,
   url: string,
-  storedRequestId?: string | null
+  storedRequestId?: string | null,
+  options?: { register?: boolean }
 ): RecordedHopIdentity {
   const identity = resolveRecordedHopIdentity({
     inboundRequestId: inbound.requestId,
@@ -144,11 +145,13 @@ export function resolveProxyHopIdentity(
     url,
     storedRequestId,
   });
-  registerHopOwner({
-    requestId: identity.requestId,
-    method,
-    url,
-  });
+  if (options?.register !== false) {
+    registerHopOwner({
+      requestId: identity.requestId,
+      method,
+      url,
+    });
+  }
   return identity;
 }
 
@@ -181,6 +184,8 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
 
 /** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
  * Existing ids stay put so always-refresh does not break parentRequestId links.
+ * Exception: if the stored requestId equals the live parent (caller id was stolen as this
+ * hop's id), replace it with the resolved hop identity so the chain can heal.
  * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
  */
 export function applyProxyCorrelationToMockData(
@@ -196,8 +201,11 @@ export function applyProxyCorrelationToMockData(
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()
       : undefined);
-  if (requestId && !mock.requestId?.trim()) {
-    mock.requestId = requestId;
+  const existingRequestId = mock.requestId?.trim();
+  if (requestId) {
+    if (!existingRequestId || (parentRequestId && existingRequestId === parentRequestId)) {
+      mock.requestId = requestId;
+    }
   }
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
@@ -241,19 +249,55 @@ export function resolveProxyTraceIds(
   };
 }
 
+const MOCKIFYER_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-request-id';
+const MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-parent-request-id';
+
+function isMockifyerHopIdHeaderName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower === MOCKIFYER_REQUEST_ID_HEADER_LOWER || lower === MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER
+  );
+}
+
+/**
+ * Copy caller headers onto the upstream fetch, but never hop-id headers — those must
+ * come only from {@link applyUpstreamRequestCorrelationHeaders} (resolved hop identity).
+ */
+export function copyProxyUpstreamHeadersWithoutHopIds(
+  upstreamHeaders: Headers,
+  headers: Record<string, string>
+): void {
+  for (const [k, v] of Object.entries(headers)) {
+    const lower = k.toLowerCase();
+    if (lower === 'host' || isMockifyerHopIdHeaderName(k)) continue;
+    upstreamHeaders.set(k, v);
+  }
+}
+
+/**
+ * Stamp the resolved hop identity on upstream. Clears stale parent when this hop has none
+ * so a reminted child cannot inherit the caller's parent header from the client bag.
+ */
 export function applyUpstreamRequestCorrelationHeaders(
   upstreamHeaders: Headers,
   correlation: ProxyNetworkLogCorrelation | ProxyNetworkLogContext
 ): void {
   const requestId =
-    'requestId' in correlation && typeof correlation.requestId === 'string' ? correlation.requestId : undefined;
+    'requestId' in correlation && typeof correlation.requestId === 'string'
+      ? correlation.requestId.trim()
+      : undefined;
+  const parentRaw = 'parentRequestId' in correlation ? correlation.parentRequestId : undefined;
   const parentRequestId =
-    'parentRequestId' in correlation ? correlation.parentRequestId ?? undefined : undefined;
+    typeof parentRaw === 'string' && parentRaw.trim() ? parentRaw.trim() : undefined;
 
   if (requestId) {
-    upstreamHeaders.set('x-mockifyer-request-id', requestId);
+    upstreamHeaders.set(MOCKIFYER_REQUEST_ID_HEADER_LOWER, requestId);
+  } else {
+    upstreamHeaders.delete(MOCKIFYER_REQUEST_ID_HEADER_LOWER);
   }
   if (parentRequestId) {
-    upstreamHeaders.set('x-mockifyer-parent-request-id', parentRequestId);
+    upstreamHeaders.set(MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER, parentRequestId);
+  } else {
+    upstreamHeaders.delete(MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER);
   }
 }

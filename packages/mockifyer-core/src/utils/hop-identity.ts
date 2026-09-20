@@ -137,8 +137,11 @@ export function resolveRecordedHopIdentity(
   const reusedCallerId = inboundHopIdBelongsToOtherEndpoint(inboundId, input.method, input.url);
 
   if (reusedCallerId && inboundId) {
+    // Never keep a stolen caller id as this hop's requestId (including when it was
+    // wrongly persisted earlier — storedId === inboundId would self-parent).
+    const requestId = storedId && storedId !== inboundId ? storedId : randomEventId();
     return {
-      requestId: storedId ?? randomEventId(),
+      requestId,
       parentRequestId: inboundId,
     };
   }

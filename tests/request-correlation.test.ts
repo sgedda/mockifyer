@@ -123,6 +123,16 @@ describe('request-correlation', () => {
     });
   });
 
+  it('remints when stored requestId equals live parent (stolen caller id)', () => {
+    const healed = resolvePersistedHopIds(
+      { requestId: 'gql-1', parentRequestId: 'stale' },
+      { requestId: 'gql-1', parentRequestId: 'gql-1' }
+    );
+    expect(healed.parentRequestId).toBe('gql-1');
+    expect(healed.requestId).toBeTruthy();
+    expect(healed.requestId).not.toBe('gql-1');
+  });
+
   it('registers an outbound hop so a reused id on another endpoint becomes the parent', () => {
     resetHopOwnerRegistry();
     const graphql = applyOutboundRequestCorrelation({

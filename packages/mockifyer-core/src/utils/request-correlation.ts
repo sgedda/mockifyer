@@ -524,13 +524,20 @@ export function adoptStoredOutboundRequestId(
  * Prefer hop ids already stored on a mock when refreshing/overwriting it.
  * `requestId` stays stable so children keep a valid parent; `parentRequestId`
  * follows the live caller so a stale link can heal on the next refresh.
+ * If the stored requestId equals the live parent (caller id was stolen), mint a
+ * fresh hop id so this hop no longer self-parents.
  */
 export function resolvePersistedHopIds(
   existing: { requestId?: string; parentRequestId?: string } | null | undefined,
   live?: { requestId?: string; parentRequestId?: string }
 ): { requestId?: string; parentRequestId?: string } {
-  const requestId = existing?.requestId?.trim() || live?.requestId?.trim();
+  const existingId = existing?.requestId?.trim();
+  const liveId = live?.requestId?.trim();
   const parentRequestId = live?.parentRequestId?.trim() || existing?.parentRequestId?.trim();
+  let requestId = existingId || liveId;
+  if (requestId && parentRequestId && requestId === parentRequestId) {
+    requestId = liveId && liveId !== parentRequestId ? liveId : randomEventId();
+  }
   return {
     ...(requestId ? { requestId } : {}),
     ...(parentRequestId ? { parentRequestId } : {}),
