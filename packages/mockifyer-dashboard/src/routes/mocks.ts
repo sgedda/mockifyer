@@ -24,6 +24,7 @@ import {
   setResponseDataValueAtPath,
   type PoolRef,
   formatGraphqlQueryForDisplay,
+  isInboundParentStubMock,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import {
@@ -257,8 +258,10 @@ function toMockListRow(params: {
   filePath: string;
   mockData: MockData;
   size: number;
+  /** Redis/disk storage hash when the filename is `redis/<hash>.json`. */
+  storageHash?: string;
 }): Record<string, unknown> {
-  const { filename, filePath, mockData, size } = params;
+  const { filename, filePath, mockData, size, storageHash } = params;
   const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
   let endpoint: string | null = null;
   let method: string | null = null;
@@ -282,8 +285,25 @@ function toMockListRow(params: {
   } catch {
     // ignore malformed request metadata
   }
-  const graphqlInfo = extractGraphqlListInfo(mockData);
   const correlation = extractMockCorrelationIds(mockData);
+  const resolvedStorageHash =
+    storageHash ??
+    (filename.startsWith('redis/') && filename.endsWith('.json')
+      ? filename.slice('redis/'.length, -'.json'.length)
+      : undefined);
+  const inboundParentStub = isInboundParentStubMock({
+    inboundParentStub: mockData.inboundParentStub,
+    request: mockData.request,
+    requestId: correlation.requestId ?? undefined,
+    storageHash: resolvedStorageHash,
+  });
+  if (inboundParentStub && mockData.inboundParentDisplay?.url?.trim()) {
+    endpoint = mockData.inboundParentDisplay.url.trim();
+    method = mockData.inboundParentDisplay.method?.trim()
+      ? mockData.inboundParentDisplay.method.trim().toUpperCase()
+      : method;
+  }
+  const graphqlInfo = inboundParentStub ? null : extractGraphqlListInfo(mockData);
   return {
     filename,
     filePath,
@@ -297,6 +317,7 @@ function toMockListRow(params: {
     requestId: correlation.requestId,
     parentRequestId: correlation.parentRequestId,
     requestHash: favoriteIdForMock(mockData),
+    inboundParentStub: inboundParentStub || undefined,
     ...activation,
     ...getMockOverrideListFields(mockData),
   };
@@ -536,6 +557,7 @@ router.get('/', async (req: Request, res: Response) => {
               filePath: `redis://${redisKey}`,
               mockData,
               size: rawByteLength ?? 0,
+              storageHash: hash,
             })
           )
           .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());

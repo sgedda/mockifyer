@@ -62,6 +62,9 @@ import {
   resolveProxyHopIdentity,
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
+import {
+  resolveInboundParentRequestIdForChild,
+} from '../utils/inbound-parent-record-store';
 
 const router = express.Router();
 
@@ -75,6 +78,29 @@ function deriveFallbackDeviceId(req: Request): string | undefined {
   const raw = `${ip}|${ua}`.trim();
   if (!raw || raw === '|') return undefined;
   return `derived:${sha256Hex(raw).slice(0, 16)}`;
+}
+
+function parseProxyParentHop(body: unknown): {
+  method: string;
+  url: string;
+  data?: unknown;
+} | undefined {
+  const raw = (body as { parentHop?: unknown } | null | undefined)?.parentHop;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
+  }
+  const hop = raw as { method?: unknown; url?: unknown; data?: unknown };
+  const url = typeof hop.url === 'string' ? hop.url.trim() : '';
+  if (!url) {
+    return undefined;
+  }
+  const method =
+    typeof hop.method === 'string' && hop.method.trim() ? hop.method.trim().toUpperCase() : 'GET';
+  return {
+    method,
+    url,
+    ...(hop.data !== undefined ? { data: hop.data } : {}),
+  };
 }
 
 function toRecordStringHeaders(headers: unknown): Record<string, string> {
@@ -134,6 +160,7 @@ router.post('/', async (req: Request, res: Response) => {
     upstreamTlsInsecure: upstreamTlsInsecureFromBody,
     overrideGroup: overrideGroupFromBody,
   } = req.body || {};
+  const parentHopFromBody = parseProxyParentHop(req.body);
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
   const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest(upstreamTlsInsecureFromBody);
@@ -379,6 +406,20 @@ router.post('/', async (req: Request, res: Response) => {
       url,
       (mock as MockData | null)?.requestId
     );
+    const resolvedParentId = await resolveInboundParentRequestIdForChild(
+      store,
+      resolvedScenarioName,
+      hopIdentity.parentRequestId,
+      parentHopFromBody,
+      debugProxy
+    );
+    if (
+      resolvedParentId &&
+      hopIdentity.parentRequestId &&
+      resolvedParentId !== hopIdentity.parentRequestId
+    ) {
+      hopIdentity = { ...hopIdentity, parentRequestId: resolvedParentId };
+    }
     applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);

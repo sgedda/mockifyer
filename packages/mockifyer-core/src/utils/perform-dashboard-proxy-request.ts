@@ -1,5 +1,7 @@
 import { MOCKIFYER_CLIENT_ID_HEADER, MOCKIFYER_DEVICE_ID_HEADER } from './activation-mode';
 import {
+  getActiveInboundRequest,
+  getActiveRequestCorrelation,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
 } from './request-correlation';
@@ -93,6 +95,26 @@ export async function performDashboardProxyRequest(
   const startedAt = Date.now();
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
+  const stashedParentHop = (
+    config as { __mockifyer_parentHop?: { method: string; url: string; data?: unknown } }
+  ).__mockifyer_parentHop;
+  const activeCorrelation = getActiveRequestCorrelation();
+  const liveParentHop =
+    parentRequestId &&
+    activeCorrelation?.requestId &&
+    parentRequestId === activeCorrelation.requestId
+      ? getActiveInboundRequest()
+      : undefined;
+  const parentHop =
+    stashedParentHop?.url?.trim() && parentRequestId
+      ? {
+          method: stashedParentHop.method?.trim()
+            ? stashedParentHop.method.trim().toUpperCase()
+            : 'GET',
+          url: stashedParentHop.url.trim(),
+          ...(stashedParentHop.data !== undefined ? { data: stashedParentHop.data } : {}),
+        }
+      : liveParentHop;
   const proxyResponse = await fetchFn(proxyUrl, {
     method: 'POST',
     headers: {
@@ -110,6 +132,7 @@ export async function performDashboardProxyRequest(
         deviceId,
         requestId,
         parentRequestId,
+        parentHop,
         headers,
         body: serializedBody,
         scenario,

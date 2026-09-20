@@ -19,6 +19,7 @@ export * from './utils/recording-exclusion';
 export * from './utils/mock-passthrough';
 export * from './utils/mock-replay-mode';
 export * from './utils/request-only-mock';
+export * from './utils/inbound-parent-stub';
 export * from './utils/domain-path-rules';
 export * from './utils/domain-path-rules-file';
 export * from './utils/domain-path-rules-session';

@@ -234,6 +234,15 @@ export function compactMockDataForCatalog(mockData: MockData): MockData {
   if (mockData.responsePending === true) compact.responsePending = true;
   if (mockData.refreshOnNextRequest === true) compact.refreshOnNextRequest = true;
   if (mockData.alwaysRefreshFromLive === true) compact.alwaysRefreshFromLive = true;
+  if (mockData.inboundParentStub === true) compact.inboundParentStub = true;
+  if (mockData.inboundParentDisplay?.url?.trim()) {
+    compact.inboundParentDisplay = {
+      method: mockData.inboundParentDisplay.method?.trim()
+        ? mockData.inboundParentDisplay.method.trim().toUpperCase()
+        : 'POST',
+      url: mockData.inboundParentDisplay.url.trim(),
+    };
+  }
   if (mockData.responseDateOverrides && mockData.responseDateOverrides.length > 0) {
     compact.responseDateOverrides = mockData.responseDateOverrides;
   }

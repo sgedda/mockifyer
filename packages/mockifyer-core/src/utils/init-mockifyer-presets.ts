@@ -5,6 +5,7 @@ import { resolveRecordResponses } from './request-only-mock';
 import { resolveStrictScenarioResolution } from './strict-proxy-scenario';
 import { logger } from './logger';
 import { registerMockifyerInstance, type MockifyerClientIdRuntime } from './runtime-client-id';
+import { createMockifyerInboundBodyCaptureMiddleware } from './request-correlation';
 
 export { loadAxiosSetupMockifyer, loadFetchSetupMockifyer } from './load-sibling-setup';
 
@@ -35,6 +36,12 @@ export interface InitMockifyerForDashboardProxyOptions {
   config?: Partial<MockifyerConfig>;
   skipDashboardRedisHealthCheck?: boolean;
   mirrorRecordedMocksToClient?: boolean;
+  /**
+   * Express app to mount {@link createMockifyerInboundBodyCaptureMiddleware} on
+   * (after JSON body parsers). Required for GraphQL inbound parents to be recorded
+   * with the ALS requestId that outbound children use.
+   */
+  expressApp?: { use: (...args: unknown[]) => unknown };
 }
 
 export interface InitMockifyerForLocalFilesystemOptions {
@@ -425,8 +432,19 @@ export async function initMockifyerForDashboardProxy<T>(
   options: InitMockifyerForDashboardProxyOptions,
   setupMockifyer: SetupMockifyerFn<T>
 ): Promise<T> {
+  mountInboundBodyCaptureIfRequested(options);
   const config = await buildDashboardProxyConfig(options);
   return setupMockifyer(config);
+}
+
+function mountInboundBodyCaptureIfRequested(options: InitMockifyerForDashboardProxyOptions): void {
+  if (!options.expressApp || typeof options.expressApp.use !== 'function') {
+    return;
+  }
+  options.expressApp.use(createMockifyerInboundBodyCaptureMiddleware());
+  logger.info(
+    '[Mockifyer] mounted inbound body capture middleware (GraphQL parents record under ALS requestId)'
+  );
 }
 
 /**
@@ -454,6 +472,7 @@ export async function initMockifyerForDashboardProxyClients<TFetch, TAxios>(
   }
 
   const shared = await buildDashboardProxyConfig(options, flags);
+  mountInboundBodyCaptureIfRequested(options);
   const { fetchConfig, axiosConfig } = splitDualClientConfigs(shared, flags);
 
   const result: DualClientInitResult<TFetch, TAxios> = {};

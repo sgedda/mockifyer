@@ -38,6 +38,21 @@ export interface MockifyerHopContext {
   /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
   correlation?: RequestCorrelationContext;
   /**
+   * HTTP method + URL (+ optional body) of the inbound request that established this ALS scope.
+   * Outbound recordings upsert a real catalog row for this hop when children arrive first.
+   */
+  inboundRequest?: {
+    method: string;
+    url: string;
+    /** Parsed body when Express (or similar) has run body parsers. */
+    data?: unknown;
+  };
+  /**
+   * Raw Node/Express request for this ALS scope. Used to lazily read `body` after
+   * `express.json()` / Apollo parse without requiring a separate middleware mount.
+   */
+  inboundHttpRequest?: { body?: unknown };
+  /**
    * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
    * and can be wrapped into the HTTP response body (test/debug).
    */
