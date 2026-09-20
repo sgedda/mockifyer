@@ -5,6 +5,7 @@ export * from './clients/base-http-client';
 export * from './utils/mock-matcher';
 export * from './utils/mock-body-similarity';
 export * from './utils/date';
+export * from './utils/runtime-date-sync';
 export * from './utils/mock-response-date-overrides';
 export * from './utils/scenario';
 export * from './utils/scenario-meta';

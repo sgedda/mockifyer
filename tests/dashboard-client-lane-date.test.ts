@@ -281,5 +281,30 @@ describe('RedisMockStore lane date', () => {
     expect(bob.status).toBe(200);
     const bobBody = (bob.json.response as { data: { expiresAt: string } }).data;
     expect(bobBody.expiresAt).toBe('2020-01-01T00:00:00.000Z');
+    expect(alice.json.dateManipulation).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
+    expect(bob.json.dateManipulation).toEqual({ fixedDate: '2020-01-01T00:00:00.000Z' });
+  });
+
+  it('GET /api/date-config?clientId= returns the lane date and lane-mapped scenario', async () => {
+    await httpJson(server, 'PUT', '/api/client-lanes/dev-alice/scenario', { scenario: 'default' });
+    await httpJson(server, 'POST', '/api/date-config', {
+      scenario: 'default',
+      fixedDate: '2020-01-01T00:00:00.000Z',
+    });
+    await httpJson(server, 'PUT', '/api/client-lanes/dev-alice/date', {
+      fixedDate: '2025-06-15T12:00:00.000Z',
+    });
+
+    const forLane = await httpJson(server, 'GET', '/api/date-config?clientId=dev-alice');
+    expect(forLane.status).toBe(200);
+    expect(forLane.json.scenario).toBe('default');
+    expect(forLane.json.configSource).toBe('lane');
+    expect(forLane.json.dateManipulation).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
+
+    const scenarioOnly = await httpJson(server, 'GET', '/api/date-config?scenario=default');
+    expect(scenarioOnly.json.configSource).toBe('redis');
+    expect(scenarioOnly.json.dateManipulation).toEqual({
+      fixedDate: '2020-01-01T00:00:00.000Z',
+    });
   });
 });

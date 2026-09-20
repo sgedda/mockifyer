@@ -42,6 +42,10 @@ describe('isMockifyerDashboardPlumbingApiUrl', () => {
     );
     expect(isMockifyerDashboardPlumbingApiUrl('http://localhost:3002/api/atlas/events')).toBe(true);
     expect(isMockifyerDashboardPlumbingApiUrl('https://host/mockifyer/api/atlas/usage')).toBe(true);
+    expect(isMockifyerDashboardPlumbingApiUrl('http://localhost:3002/api/date-config')).toBe(true);
+    expect(isMockifyerDashboardPlumbingApiUrl('https://host/mockifyer/api/date-config?scenario=beta')).toBe(
+      true
+    );
   });
 
   it('does not match unrelated dashboard or app urls', () => {

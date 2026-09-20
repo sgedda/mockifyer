@@ -39,6 +39,10 @@ function pathIsDashboardAtlas(path: string): boolean {
   return path === '/api/atlas' || path.endsWith('/api/atlas') || path.includes('/api/atlas/');
 }
 
+function pathIsDashboardDateConfig(path: string): boolean {
+  return path === '/api/date-config' || path.endsWith('/api/date-config');
+}
+
 /**
  * True when `url` targets the dashboard `/api/proxy` endpoint (Mockifyer plumbing).
  * These requests must never be mocked, recorded, or shown as user-visible hops.
@@ -56,7 +60,7 @@ export function isMockifyerDashboardProxyApiUrl(url: string | null | undefined):
 
 /**
  * True when `url` targets Mockifyer dashboard plumbing that must never be mocked or recorded:
- * `/api/proxy`, `/api/network-events`, `/api/atlas` (and subpaths).
+ * `/api/proxy`, `/api/network-events`, `/api/atlas`, `/api/date-config` (and subpaths).
  *
  * SDK observability POSTs use patched `fetch` in many apps; without this bypass those POSTs
  * get recorded as mocks and can flood Redis / the dashboard mock list.
@@ -70,10 +74,15 @@ export function isMockifyerDashboardPlumbingApiUrl(url: string | null | undefine
   }
   const path = normalizeDashboardApiPath(url);
   if (path) {
-    return pathIsDashboardNetworkEvents(path) || pathIsDashboardAtlas(path);
+    return (
+      pathIsDashboardNetworkEvents(path) ||
+      pathIsDashboardAtlas(path) ||
+      pathIsDashboardDateConfig(path)
+    );
   }
   return (
     /(?:^|\/)api\/network-events(?:\/|\?|#|$)/i.test(url) ||
-    /(?:^|\/)api\/atlas(?:\/|\?|#|$)/i.test(url)
+    /(?:^|\/)api\/atlas(?:\/|\?|#|$)/i.test(url) ||
+    /(?:^|\/)api\/date-config(?:\/|\?|#|$)/i.test(url)
   );
 }
