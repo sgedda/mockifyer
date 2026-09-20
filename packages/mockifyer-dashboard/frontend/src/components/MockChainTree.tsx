@@ -44,7 +44,10 @@ function CollapsibleChainTreeNode({
   const selectedBelow =
     !selectedHere && uniqueChainNodeContainsFilename(node, selectedFilename)
   const implicitExpanded = defaultCollapse
-    ? selectedBelow || (selectedHere && node.hops.length > 1)
+    ? selectedBelow ||
+      (selectedHere && node.hops.length > 1) ||
+      // Synthetic missing-parent roots have no mock rows — keep children visible.
+      (node.hops.length === 0 && node.children.length > 0)
     : true
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null)
   const expanded = hasChildren && (userExpanded ?? implicitExpanded)

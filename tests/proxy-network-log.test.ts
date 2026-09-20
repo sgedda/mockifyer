@@ -2,8 +2,10 @@ import {
   adoptStoredHopIdOnProxyLog,
   applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
+  resolveProxyHopIdentity,
   type ProxyNetworkLogContext,
 } from '../packages/mockifyer-dashboard/src/utils/proxy-network-log';
+import { resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
 import type { MockData } from '@sgedda/mockifyer-core';
 
 function mockData(partial: Partial<MockData> = {}): MockData {
@@ -59,5 +61,24 @@ describe('proxy hop id stability', () => {
     applyUpstreamRequestCorrelationHeaders(headers, ctx);
     expect(headers.get('x-mockifyer-request-id')).toBe('stored-hop');
     expect(headers.get('x-mockifyer-parent-request-id')).toBe('parent-hop');
+  });
+
+  it('treats a reused inbound hop id as the parent of a different endpoint', () => {
+    resetHopOwnerRegistry();
+    const graphqlInbound = { requestId: 'gql-1', parentRequestId: null };
+    const graphqlHop = resolveProxyHopIdentity(
+      graphqlInbound,
+      'POST',
+      'http://localhost:4000/graphql'
+    );
+    expect(graphqlHop.requestId).toBe('gql-1');
+
+    const child = resolveProxyHopIdentity(
+      { requestId: 'gql-1', parentRequestId: null },
+      'GET',
+      'https://capi.example/v-2/myaccount/',
+      'acct-stored'
+    );
+    expect(child).toEqual({ requestId: 'acct-stored', parentRequestId: 'gql-1' });
   });
 });

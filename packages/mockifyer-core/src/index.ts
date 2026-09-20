@@ -29,6 +29,7 @@ export * from './utils/launch-arguments-client-id';
 export * from './utils/activation-mode';
 export * from './utils/outbound-header';
 export * from './utils/request-correlation';
+export * from './utils/hop-identity';
 export * from './utils/inline-trace';
 export * from './utils/mockifyer-trace';
 export * from './utils/runtime-mode';
