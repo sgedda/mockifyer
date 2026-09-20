@@ -454,6 +454,14 @@ export interface MockData {
    * Implies live API until a response is stored and {@link alwaysUseRealApi} is cleared.
    */
   responsePending?: boolean;
+  /**
+   * Request-only placeholder so hops UI can show a `parentRequestId` that was never
+   * recorded (ALS gap / concurrent race). Storage URL is always synthetic
+   * (`mockifyer://inbound-parent/…`); see {@link inboundParentDisplay}.
+   */
+  inboundParentStub?: boolean;
+  /** Real inbound method/url for hops display when {@link inboundParentStub} is set. */
+  inboundParentDisplay?: { method: string; url: string };
 }
 
 // Environment variable names

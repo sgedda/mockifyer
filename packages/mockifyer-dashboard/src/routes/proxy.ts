@@ -42,6 +42,7 @@ import {
   getScenarioFolderPath,
   buildInboundParentStubMock,
   inboundParentStubHash,
+  findHopOwner,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -98,7 +99,7 @@ function parseProxyParentHop(body: unknown): { method: string; url: string } | u
  * When children arrive with a parentRequestId that was never recorded (GraphQL hit the
  * BFF without a proxy write, ALS gap, concurrent race, etc.), upsert a request-only stub
  * so hops UI can show the entry instead of "Missing entry".
- * `parentHop` is preferred when the client still had ALS; otherwise a synthetic URL is used.
+ * `parentHop` is preferred for display when the client still had ALS; storage URL is always synthetic.
  */
 async function ensureInboundParentStubInStore(
   store: ReturnType<typeof createDashboardMockStore>,
@@ -109,6 +110,11 @@ async function ensureInboundParentStubInStore(
 ): Promise<void> {
   const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
   if (!parentId) {
+    return;
+  }
+  // In-process: parent hop already minted a real endpoint — skip placeholder.
+  const owner = findHopOwner(parentId);
+  if (owner?.url?.trim() && !owner.url.startsWith('mockifyer://inbound-parent/')) {
     return;
   }
   const hop = parentHop?.url?.trim()
@@ -123,19 +129,48 @@ async function ensureInboundParentStubInStore(
   const stubHash = inboundParentStubHash(parentId);
   try {
     const existing = await store.getByHashInScenario(stubHash, scenarioName);
-    if (existing?.requestId?.trim() === parentId) {
+    if (existing?.requestId?.trim() === parentId && existing?.inboundParentStub === true) {
       return;
     }
     const stub = buildInboundParentStubMock(parentId, hop);
-    await store.setByHashInScenario(stubHash, stub, scenarioName);
+    const wrote = await store.setByHashInScenario(stubHash, stub, scenarioName, {
+      enforceWriteLimits: false,
+    });
     if (debugProxy) {
       console.log(
-        `[ProxyRoute] upserted inbound parent stub: ${hop.method} ${hop.url} (requestId=${parentId.slice(0, 8)}…)`
+        `[ProxyRoute] ${wrote ? 'upserted' : 'skipped'} inbound parent stub: ${hop.method} ${hop.url} (requestId=${parentId.slice(0, 8)}…)`
       );
     }
   } catch (err: any) {
     console.error(
       '[ProxyRoute] inbound parent stub upsert failed:',
+      err?.message ?? err
+    );
+  }
+}
+
+/** Drop the placeholder when a real hop is recorded under the same requestId. */
+async function removeInboundParentStubIfPresent(
+  store: ReturnType<typeof createDashboardMockStore>,
+  scenarioName: string,
+  requestId: string | undefined | null,
+  debugProxy: boolean
+): Promise<void> {
+  const id = typeof requestId === 'string' ? requestId.trim() : '';
+  if (!id) return;
+  const stubHash = inboundParentStubHash(id);
+  try {
+    const existing = await store.getByHashInScenario(stubHash, scenarioName);
+    if (!existing) return;
+    await store.deleteByHash(stubHash, scenarioName);
+    if (debugProxy) {
+      console.log(
+        `[ProxyRoute] removed inbound parent stub after real hop recorded (requestId=${id.slice(0, 8)}…)`
+      );
+    }
+  } catch (err: any) {
+    console.error(
+      '[ProxyRoute] inbound parent stub removal failed:',
       err?.message ?? err
     );
   }
@@ -618,6 +653,12 @@ router.post('/', async (req: Request, res: Response) => {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
       applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
+      await removeInboundParentStubIfPresent(
+        store,
+        resolvedScenarioName,
+        updatedMock.requestId ?? hopIdentity.requestId,
+        debugProxy
+      );
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
         try {
@@ -687,6 +728,14 @@ router.post('/', async (req: Request, res: Response) => {
 
         applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, hopIdentity);
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
+        if (wrote) {
+          await removeInboundParentStubIfPresent(
+            store,
+            resolvedScenarioName,
+            storedMockForClient.requestId ?? hopIdentity.requestId,
+            debugProxy
+          );
+        }
         if (wrote && redisDisk.mirrorWrites) {
           try {
             mirrorRecordedMockToDisk({

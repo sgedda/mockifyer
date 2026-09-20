@@ -18,7 +18,7 @@ describe('inbound parent stub', () => {
     expect(inboundParentStubRequestKey('parent-a')).toContain('parent-a');
   });
 
-  it('creates a request-only stub with the inbound method/url and parent requestId', () => {
+  it('creates a request-only stub with synthetic URL and display metadata', () => {
     const stub = buildInboundParentStubMock('gql-als-1', {
       method: 'post',
       url: 'http://localhost:4000/graphql',
@@ -26,8 +26,13 @@ describe('inbound parent stub', () => {
     expect(stub.requestId).toBe('gql-als-1');
     expect(stub.responsePending).toBe(true);
     expect(stub.alwaysUseRealApi).toBe(true);
+    expect(stub.inboundParentStub).toBe(true);
     expect(stub.request.method).toBe('POST');
-    expect(stub.request.url).toBe('http://localhost:4000/graphql');
+    expect(stub.request.url).toBe('mockifyer://inbound-parent/gql-als-1');
+    expect(stub.inboundParentDisplay).toEqual({
+      method: 'POST',
+      url: 'http://localhost:4000/graphql',
+    });
   });
 
   it('stores inbound method/url on hop context for outbound parent stubs', () => {

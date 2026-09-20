@@ -147,6 +147,26 @@ function isNonsensicalMockServiceChain(hops: MockFile[]): boolean {
   return sessionFanout || daisyChain
 }
 
+/** Prefer a real recorded hop over an inbound-parent placeholder for the same requestId. */
+export function isInboundParentStubHop(mock: MockFile): boolean {
+  if (mock.inboundParentStub === true) return true
+  const endpoint = mock.endpoint?.trim() ?? ''
+  if (endpoint.startsWith('mockifyer://inbound-parent/')) return true
+  return false
+}
+
+function preferMockForRequestId(existing: MockFile, candidate: MockFile): MockFile {
+  const existingStub = isInboundParentStubHop(existing)
+  const candidateStub = isInboundParentStubHop(candidate)
+  if (existingStub && !candidateStub) return candidate
+  if (!existingStub && candidateStub) return existing
+  // Prefer GraphQL op / captured body over empty pending twins.
+  if (!existing.graphqlInfo?.operationName && candidate.graphqlInfo?.operationName) {
+    return candidate
+  }
+  return existing
+}
+
 export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
   const byRequestId = new Map<string, MockFile>()
   const byFilename = new Map<string, MockFile>()
@@ -155,9 +175,11 @@ export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
   for (const mock of mocks) {
     byFilename.set(mock.filename, mock)
     if (mock.requestId) {
-      if (!byRequestId.has(mock.requestId)) {
-        byRequestId.set(mock.requestId, mock)
-      }
+      const existing = byRequestId.get(mock.requestId)
+      byRequestId.set(
+        mock.requestId,
+        existing ? preferMockForRequestId(existing, mock) : mock
+      )
     }
     if (mock.parentRequestId) {
       const siblings = childrenByParent.get(mock.parentRequestId) ?? []
@@ -648,6 +670,13 @@ export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
     if (!isMockChainRoot(mock, maps.byRequestId)) continue
     // Shared missing-parent families are grouped above (exact sibling links only).
     if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
+    // Prefer the canonical mock for this requestId (real hop over inbound stub twin).
+    if (
+      mock.requestId &&
+      maps.byRequestId.get(mock.requestId)?.filename !== mock.filename
+    ) {
+      continue
+    }
     if (!mockHasChainChildren(mock, maps.childrenByParent)) continue
     if (assigned.has(mock.filename)) continue
 

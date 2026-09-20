@@ -72,6 +72,8 @@ export interface MockFile {
   parentRequestId?: string | null
   /** SHA-256 of the canonical request key — stable identity across scenarios. */
   requestHash?: string | null
+  /** Placeholder row for a missing inbound parent (see hops Missing entry heal). */
+  inboundParentStub?: boolean
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).
