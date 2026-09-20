@@ -1,17 +1,17 @@
 /**
  * Dashboard upstream must never call global `fetch` — when the host process
  * patches fetch via useGlobalFetch, that would re-enter /api/proxy.
+ *
+ * Mock the same resolved module dashboard source imports (`packages/.../node_modules/undici`).
+ * A virtual `jest.mock('undici')` is ignored once the full suite has seen the real package.
  */
 const undiciFetchMock = jest.fn();
+const undiciMock = {
+  Agent: jest.fn().mockImplementation(() => ({})),
+  fetch: (...args: unknown[]) => undiciFetchMock(...args),
+};
 
-jest.mock(
-  'undici',
-  () => ({
-    Agent: jest.fn().mockImplementation(() => ({})),
-    fetch: (...args: unknown[]) => undiciFetchMock(...args),
-  }),
-  { virtual: true }
-);
+jest.mock('../packages/mockifyer-dashboard/node_modules/undici', () => undiciMock);
 
 import { fetchProxyUpstream } from '../packages/mockifyer-dashboard/src/utils/proxy-upstream-fetch';
 
