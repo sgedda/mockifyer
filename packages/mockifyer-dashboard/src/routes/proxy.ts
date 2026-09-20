@@ -40,9 +40,6 @@ import {
   resolveOverrideGroupIdForServe,
   MOCKIFYER_OVERRIDE_GROUP_HEADER,
   getScenarioFolderPath,
-  buildInboundParentStubMock,
-  inboundParentStubHash,
-  findHopOwner,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
@@ -65,6 +62,10 @@ import {
   resolveProxyHopIdentity,
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
+import {
+  ensureInboundParentStubInStore,
+  removeInboundParentStubIfPresent,
+} from '../utils/inbound-parent-stub-store';
 
 const router = express.Router();
 
@@ -93,87 +94,6 @@ function parseProxyParentHop(body: unknown): { method: string; url: string } | u
   const method =
     typeof hop.method === 'string' && hop.method.trim() ? hop.method.trim().toUpperCase() : 'GET';
   return { method, url };
-}
-
-/**
- * When children arrive with a parentRequestId that was never recorded (GraphQL hit the
- * BFF without a proxy write, ALS gap, concurrent race, etc.), upsert a request-only stub
- * so hops UI can show the entry instead of "Missing entry".
- * `parentHop` is preferred for display when the client still had ALS; storage URL is always synthetic.
- */
-async function ensureInboundParentStubInStore(
-  store: ReturnType<typeof createDashboardMockStore>,
-  scenarioName: string,
-  parentRequestId: string | undefined | null,
-  parentHop: { method: string; url: string } | undefined,
-  debugProxy: boolean
-): Promise<void> {
-  const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
-  if (!parentId) {
-    return;
-  }
-  // In-process: parent hop already minted a real endpoint — skip placeholder.
-  const owner = findHopOwner(parentId);
-  if (owner?.url?.trim() && !owner.url.startsWith('mockifyer://inbound-parent/')) {
-    return;
-  }
-  const hop = parentHop?.url?.trim()
-    ? {
-        method: parentHop.method?.trim() ? parentHop.method.trim().toUpperCase() : 'GET',
-        url: parentHop.url.trim(),
-      }
-    : {
-        method: 'POST',
-        url: `mockifyer://inbound-parent/${parentId}`,
-      };
-  const stubHash = inboundParentStubHash(parentId);
-  try {
-    const existing = await store.getByHashInScenario(stubHash, scenarioName);
-    if (existing?.requestId?.trim() === parentId && existing?.inboundParentStub === true) {
-      return;
-    }
-    const stub = buildInboundParentStubMock(parentId, hop);
-    const wrote = await store.setByHashInScenario(stubHash, stub, scenarioName, {
-      enforceWriteLimits: false,
-    });
-    if (debugProxy) {
-      console.log(
-        `[ProxyRoute] ${wrote ? 'upserted' : 'skipped'} inbound parent stub: ${hop.method} ${hop.url} (requestId=${parentId.slice(0, 8)}…)`
-      );
-    }
-  } catch (err: any) {
-    console.error(
-      '[ProxyRoute] inbound parent stub upsert failed:',
-      err?.message ?? err
-    );
-  }
-}
-
-/** Drop the placeholder when a real hop is recorded under the same requestId. */
-async function removeInboundParentStubIfPresent(
-  store: ReturnType<typeof createDashboardMockStore>,
-  scenarioName: string,
-  requestId: string | undefined | null,
-  debugProxy: boolean
-): Promise<void> {
-  const id = typeof requestId === 'string' ? requestId.trim() : '';
-  if (!id) return;
-  const stubHash = inboundParentStubHash(id);
-  try {
-    const existing = await store.getByHashInScenario(stubHash, scenarioName);
-    if (!existing) return;
-    await store.deleteByHash(stubHash, scenarioName);
-    if (debugProxy) {
-      console.log(
-        `[ProxyRoute] removed inbound parent stub after real hop recorded (requestId=${id.slice(0, 8)}…)`
-      );
-    }
-  } catch (err: any) {
-    console.error(
-      '[ProxyRoute] inbound parent stub removal failed:',
-      err?.message ?? err
-    );
-  }
 }
 
 function toRecordStringHeaders(headers: unknown): Record<string, string> {
