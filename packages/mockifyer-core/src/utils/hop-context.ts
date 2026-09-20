@@ -38,6 +38,14 @@ export interface MockifyerHopContext {
   /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
   correlation?: RequestCorrelationContext;
   /**
+   * HTTP method + URL of the inbound request that established this ALS scope.
+   * Used so outbound recordings can upsert a catalog stub for a missing parent hop.
+   */
+  inboundRequest?: {
+    method: string;
+    url: string;
+  };
+  /**
    * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
    * and can be wrapped into the HTTP response body (test/debug).
    */

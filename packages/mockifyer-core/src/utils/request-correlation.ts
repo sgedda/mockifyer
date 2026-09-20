@@ -206,6 +206,10 @@ export function resolveInboundHopContext(
     /** Collect outbound hops for an inline response-body trace (test/debug). */
     includeInlineTrace?: boolean;
     includeInlineTraceBodies?: boolean;
+    /** Inbound HTTP method (for parent-stub catalog entries). */
+    method?: string;
+    /** Inbound URL (for parent-stub catalog entries). */
+    url?: string;
   } = {}
 ): { ctx: MockifyerHopContext; traceId?: string } | undefined {
   const includeInlineTrace = options.includeInlineTrace === true;
@@ -223,6 +227,13 @@ export function resolveInboundHopContext(
     return undefined;
   }
 
+  const method =
+    typeof options.method === 'string' && options.method.trim()
+      ? options.method.trim().toUpperCase()
+      : 'GET';
+  const url = typeof options.url === 'string' ? options.url.trim() : '';
+  const inboundRequest = url ? { method, url } : undefined;
+
   const ctx: MockifyerHopContext = {
     inboundClientId: captured?.inboundClientId,
     correlation: traceId
@@ -230,6 +241,7 @@ export function resolveInboundHopContext(
         ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
         : { requestId: traceId }
       : captured?.correlation,
+    ...(inboundRequest ? { inboundRequest } : {}),
     ...(includeInlineTrace
       ? {
           includeInlineTrace: true,
@@ -240,6 +252,18 @@ export function resolveInboundHopContext(
   };
 
   return { ctx, traceId };
+}
+
+/** Active inbound HTTP method/URL for the current ALS hop (if capture recorded them). */
+export function getActiveInboundRequest(): { method: string; url: string } | undefined {
+  const inbound = getActiveMockifyerHopContext()?.inboundRequest;
+  if (!inbound?.url?.trim()) {
+    return undefined;
+  }
+  return {
+    method: inbound.method?.trim() ? inbound.method.trim().toUpperCase() : 'GET',
+    url: inbound.url.trim(),
+  };
 }
 
 function maybeEchoTraceIdOnResponse(
@@ -548,6 +572,8 @@ export interface MockifyerCorrelationMiddlewareRequest {
   header(name: string): string | undefined;
   query?: unknown;
   url?: string;
+  originalUrl?: string;
+  method?: string;
   /** Set by {@link createMockifyerCorrelationMiddleware} for error handlers. */
   mockifyerRequestId?: string;
 }
@@ -602,6 +628,35 @@ function markNodeInboundCaptureInstalled(): void {
   ] = true;
 }
 
+function resolveInboundRequestUrl(req: {
+  url?: string;
+  headers?: unknown;
+}): string | undefined {
+  const raw = typeof req.url === 'string' ? req.url.trim() : '';
+  if (!raw) {
+    return undefined;
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+  const headers = req.headers;
+  let host: string | undefined;
+  if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+    const h = headers as Record<string, unknown>;
+    const rawHost = h.host ?? h.Host;
+    if (typeof rawHost === 'string' && rawHost.trim()) {
+      host = rawHost.trim();
+    } else if (Array.isArray(rawHost) && typeof rawHost[0] === 'string') {
+      host = rawHost[0].trim();
+    }
+  }
+  if (!host) {
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  return `http://${host}${path}`;
+}
+
 function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => unknown }): void {
   const prototype = serverModule.Server.prototype as {
     emit: ((event: string, ...args: unknown[]) => boolean) & {
@@ -634,9 +689,22 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
         url: req?.url,
       });
       const resolved = req?.headers
-        ? resolveInboundHopContext(req.headers, { includeInlineTrace, includeInlineTraceBodies })
+        ? resolveInboundHopContext(req.headers, {
+            includeInlineTrace,
+            includeInlineTraceBodies,
+            method: (req as { method?: string }).method,
+            url: resolveInboundRequestUrl(req),
+          })
         : includeInlineTrace
-          ? resolveInboundHopContext({}, { includeInlineTrace, includeInlineTraceBodies })
+          ? resolveInboundHopContext(
+              {},
+              {
+                includeInlineTrace,
+                includeInlineTraceBodies,
+                method: (req as { method?: string } | undefined)?.method,
+                url: req ? resolveInboundRequestUrl(req) : undefined,
+              }
+            )
           : undefined;
       if (resolved) {
         if (req && resolved.traceId) {
@@ -732,6 +800,8 @@ export function createMockifyerCorrelationMiddleware(
       assignInboundTraceIdWhenMissing,
       includeInlineTrace,
       includeInlineTraceBodies,
+      method: req.method,
+      url: typeof req.originalUrl === 'string' ? req.originalUrl : req.url,
     });
 
     if (!resolved) {
