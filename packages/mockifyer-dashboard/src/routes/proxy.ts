@@ -54,6 +54,7 @@ import {
   applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
   closeProxyNetworkLog,
+  copyProxyUpstreamHeadersWithoutHopIds,
   openProxyNetworkLog,
   resolveNetworkLogScenario,
   resolveProxyInboundCorrelation,
@@ -165,7 +166,11 @@ router.post('/', async (req: Request, res: Response) => {
 
   const inboundCorrelation = resolveProxyInboundCorrelation(req, req.body);
   const upperMethod = String(method || 'GET').toUpperCase();
-  let hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url);
+  // Provisional identity for the network log only — do not register yet so a later
+  // stored-id adopt does not leave the fresh client mint as a second owner of this URL.
+  let hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, undefined, {
+    register: false,
+  });
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
   const normalizedRequestBody = normalizeProxyBodyForRequestKey(body);
@@ -240,32 +245,21 @@ router.post('/', async (req: Request, res: Response) => {
           error: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
         });
       }
+      const clientHeaderRecord = toRecordStringHeaders(headers);
       const upstreamHeaders = new Headers();
-      for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, clientHeaderRecord);
       if (clientId) {
         upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
       }
-      applyUpstreamRequestCorrelationHeaders(
-        upstreamHeaders,
-        networkLogCtx ?? hopIdentity
-      );
 
-      const upstreamBody = buildProxyUpstreamBodyInit(
-        body,
-        toRecordStringHeaders(headers),
-        upperMethod
-      );
+      const upstreamBody = buildProxyUpstreamBodyInit(body, clientHeaderRecord, upperMethod);
       const init: RequestInit = {
         method: upperMethod,
         headers: upstreamHeaders,
       };
-      for (const [k, v] of Object.entries(upstreamBody.headers)) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, upstreamBody.headers);
+      // Hop identity must win over any client/body header bag (always-refresh adopts stored id).
+      applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
       if (upstreamBody.body !== undefined) {
         init.body = upstreamBody.body as RequestInit['body'];
       }
@@ -302,7 +296,7 @@ router.post('/', async (req: Request, res: Response) => {
         source: 'upstream',
         status: upstreamRes.status,
         requestHash: hash,
-        requestHeaders: toRecordStringHeaders(headers),
+        requestHeaders: clientHeaderRecord,
         responseHeaders,
         ...proxyNetworkBodyFields(normalizedRequestBody, data),
       });
@@ -505,29 +499,21 @@ router.post('/', async (req: Request, res: Response) => {
         scenarioResolution: resolution,
       });
     }
+    const clientHeaderRecord = toRecordStringHeaders(headers);
     const upstreamHeaders = new Headers();
-    for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, clientHeaderRecord);
     if (clientId) {
       upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
-    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
 
-    const upstreamBody = buildProxyUpstreamBodyInit(
-      body,
-      toRecordStringHeaders(headers),
-      upperMethod
-    );
+    const upstreamBody = buildProxyUpstreamBodyInit(body, clientHeaderRecord, upperMethod);
     const init: RequestInit = {
       method: upperMethod,
       headers: upstreamHeaders,
     };
-    for (const [k, v] of Object.entries(upstreamBody.headers)) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, upstreamBody.headers);
+    // Hop identity must win over any client/body header bag (always-refresh adopts stored id).
+    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
     if (upstreamBody.body !== undefined) {
       init.body = upstreamBody.body as RequestInit['body'];
     }

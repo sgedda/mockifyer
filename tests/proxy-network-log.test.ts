@@ -2,6 +2,7 @@ import {
   adoptStoredHopIdOnProxyLog,
   applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
+  copyProxyUpstreamHeadersWithoutHopIds,
   resolveProxyHopIdentity,
   type ProxyNetworkLogContext,
 } from '../packages/mockifyer-dashboard/src/utils/proxy-network-log';
@@ -39,6 +40,16 @@ describe('proxy hop id stability', () => {
     expect(mock.parentRequestId).toBe('live-parent');
   });
 
+  it('repairs a stored requestId that equals the live parent (stolen caller id)', () => {
+    const mock = mockData({ requestId: 'gql-1', parentRequestId: 'stale' });
+    applyProxyCorrelationToMockData(mock, {
+      requestId: 'acct-new',
+      parentRequestId: 'gql-1',
+    } as ProxyNetworkLogContext);
+    expect(mock.requestId).toBe('acct-new');
+    expect(mock.parentRequestId).toBe('gql-1');
+  });
+
   it('stamps elapsed proxy time as duration for slowest-leaf stats', () => {
     jest.useFakeTimers();
     jest.setSystemTime(1_700_000_000_000);
@@ -61,6 +72,29 @@ describe('proxy hop id stability', () => {
     applyUpstreamRequestCorrelationHeaders(headers, ctx);
     expect(headers.get('x-mockifyer-request-id')).toBe('stored-hop');
     expect(headers.get('x-mockifyer-parent-request-id')).toBe('parent-hop');
+  });
+
+  it('does not let a fresh client mint overwrite the adopted GraphQL hop id on upstream', () => {
+    const clientHeaders = {
+      'content-type': 'application/json',
+      'x-mockifyer-request-id': 'fresh-client-mint',
+      'x-mockifyer-parent-request-id': 'should-not-leak',
+      authorization: 'Bearer tok',
+    };
+    const upstream = new Headers();
+    copyProxyUpstreamHeadersWithoutHopIds(upstream, clientHeaders);
+    // buildProxyUpstreamBodyInit used to re-merge the full client bag after hop identity —
+    // that overwrote the adopted stored id and orphaned downstream parentRequestId links.
+    copyProxyUpstreamHeadersWithoutHopIds(upstream, clientHeaders);
+    applyUpstreamRequestCorrelationHeaders(upstream, {
+      requestId: 'stored-graphql-hop',
+      parentRequestId: null,
+    });
+
+    expect(upstream.get('x-mockifyer-request-id')).toBe('stored-graphql-hop');
+    expect(upstream.get('x-mockifyer-parent-request-id')).toBeNull();
+    expect(upstream.get('content-type')).toBe('application/json');
+    expect(upstream.get('authorization')).toBe('Bearer tok');
   });
 
   it('treats a reused inbound hop id as the parent of a different endpoint', () => {

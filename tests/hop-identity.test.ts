@@ -85,4 +85,21 @@ describe('hop identity (exact parent links)', () => {
     });
     expect(identity).toEqual({ requestId: 'gql-1', parentRequestId: 'client-root' });
   });
+
+  it('remints when the stored hop id is the stolen caller id', () => {
+    registerHopOwner({
+      requestId: 'gql-1',
+      method: 'POST',
+      url: 'http://localhost:4000/graphql',
+    });
+    const identity = resolveRecordedHopIdentity({
+      inboundRequestId: 'gql-1',
+      method: 'GET',
+      url: 'https://capi.example/v-2/myaccount/',
+      storedRequestId: 'gql-1',
+    });
+    expect(identity.parentRequestId).toBe('gql-1');
+    expect(identity.requestId).toBeTruthy();
+    expect(identity.requestId).not.toBe('gql-1');
+  });
 });
