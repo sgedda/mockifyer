@@ -252,24 +252,38 @@ export function resolveProxyTraceIds(
 const MOCKIFYER_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-request-id';
 const MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-parent-request-id';
 
-function isMockifyerHopIdHeaderName(name: string): boolean {
-  const lower = name.toLowerCase();
-  return (
-    lower === MOCKIFYER_REQUEST_ID_HEADER_LOWER || lower === MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER
-  );
+/** Headers that must not be forwarded: hop-by-hop, hop ids, or length (we rebuild the body). */
+const SKIP_UPSTREAM_HEADER_NAMES = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'proxy-connection',
+  'transfer-encoding',
+  'te',
+  'trailer',
+  'upgrade',
+  'content-length',
+  'expect',
+  MOCKIFYER_REQUEST_ID_HEADER_LOWER,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER,
+]);
+
+function shouldSkipUpstreamHeaderName(name: string): boolean {
+  return SKIP_UPSTREAM_HEADER_NAMES.has(name.toLowerCase());
 }
 
 /**
  * Copy caller headers onto the upstream fetch, but never hop-id headers — those must
  * come only from {@link applyUpstreamRequestCorrelationHeaders} (resolved hop identity).
+ * Also strips hop-by-hop and `content-length` so a rebuilt body cannot mismatch.
  */
 export function copyProxyUpstreamHeadersWithoutHopIds(
   upstreamHeaders: Headers,
   headers: Record<string, string>
 ): void {
   for (const [k, v] of Object.entries(headers)) {
-    const lower = k.toLowerCase();
-    if (lower === 'host' || isMockifyerHopIdHeaderName(k)) continue;
+    if (shouldSkipUpstreamHeaderName(k)) continue;
+    if (v.length === 0 || v.includes('\r') || v.includes('\n')) continue;
     upstreamHeaders.set(k, v);
   }
 }

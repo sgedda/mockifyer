@@ -45,7 +45,8 @@ import {
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
+import { wrapProxyUpstreamFetchError } from '../utils/proxy-upstream-error';
+import { fetchProxyUpstreamAndReadText } from '../utils/proxy-upstream-fetch';
 import { shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
 import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
 import { loadMergedOverrideGroupState } from '../utils/override-group-persist';
@@ -291,9 +292,12 @@ router.post('/', async (req: Request, res: Response) => {
         init.body = upstreamBody.body as RequestInit['body'];
       }
 
-      const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
+      const { response: upstreamRes, rawText } = await fetchProxyUpstreamAndReadText(
+        url,
+        init,
+        upstreamTlsInsecure
+      );
       const contentType = upstreamRes.headers.get('content-type') || '';
-      const rawText = await upstreamRes.text();
 
       let data: any = rawText;
       if (contentType.includes('application/json')) {
@@ -562,9 +566,12 @@ router.post('/', async (req: Request, res: Response) => {
       init.body = upstreamBody.body as RequestInit['body'];
     }
 
-    const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
+    const { response: upstreamRes, rawText } = await fetchProxyUpstreamAndReadText(
+      url,
+      init,
+      upstreamTlsInsecure
+    );
     const contentType = upstreamRes.headers.get('content-type') || '';
-    const rawText = await upstreamRes.text();
 
     let data: any = rawText;
     if (contentType.includes('application/json')) {
@@ -718,6 +725,7 @@ router.post('/', async (req: Request, res: Response) => {
     if (!networkLogCtx && logScenario) {
       networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
     }
+    const proxyFailure = wrapProxyUpstreamFetchError(upperMethod, url, error);
     await appendProxyNetworkEvent(networkLogCtx, {
       method: upperMethod,
       url,
@@ -728,9 +736,14 @@ router.post('/', async (req: Request, res: Response) => {
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
       ...proxyNetworkBodyFields(body),
-      errorMessage: error?.message ?? String(error),
+      errorMessage: proxyFailure.message,
     });
-    return res.status(500).json({ error: 'Proxy failed', details: error.message });
+    return res.status(500).json({
+      error: 'Proxy failed',
+      details: proxyFailure.message,
+      url,
+      method: upperMethod,
+    });
   } finally {
     await closeProxyNetworkLog(networkLogCtx);
     await store.close().catch(() => undefined);
