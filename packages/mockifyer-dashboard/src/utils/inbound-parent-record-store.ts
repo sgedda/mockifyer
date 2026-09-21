@@ -40,8 +40,10 @@ function looksLikeGraphqlUrl(url: string): boolean {
  * Ensure children link to the real inbound hop.
  *
  * - If a catalog row already exists for this method/url/body, return its `requestId`
- *   (heal ALS orphans onto the recorded GraphQL id — do not steal that id).
- * - Otherwise upsert a request-only row under the ALS `parentRequestId`.
+ *   when present (heal ALS orphans onto the recorded GraphQL id — do not steal that id).
+ *   Never overwrite an existing recording — legacy mocks without `requestId` used to be
+ *   replaced with a request-only live stub, wiping captured GraphQL/HTTP bodies.
+ * - Otherwise insert a request-only row under the ALS `parentRequestId`.
  * - GraphQL without a body is skipped (empty-body keys collide across operations).
  *
  * @returns effective parent request id to stamp on the child, or the input id when unchanged/skipped.
@@ -82,14 +84,17 @@ export async function resolveInboundParentRequestIdForChild(
   const hash = sha256Hex(generateRequestKey(request));
   try {
     const existing = await store.getByHashInScenario(hash, scenarioName);
-    const existingId = existing?.requestId?.trim();
-    if (existingId) {
-      if (debugProxy && existingId !== parentId) {
+    // Never replace an existing recording (captured GraphQL/HTTP bodies, or a
+    // pending stub). Child hops used to overwrite legacy mocks that lacked
+    // `requestId` with a request-only `alwaysUseRealApi` stub.
+    if (existing) {
+      const existingId = existing.requestId?.trim();
+      if (debugProxy && existingId && existingId !== parentId) {
         console.log(
           `[InboundParentRecord] heal child parent ${parentId.slice(0, 8)}… → recorded ${existingId.slice(0, 8)}… (${method} ${url})`
         );
       }
-      return existingId;
+      return existingId || parentId;
     }
 
     const mock: MockData = {
