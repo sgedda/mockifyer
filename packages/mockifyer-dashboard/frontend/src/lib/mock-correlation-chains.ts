@@ -299,8 +299,38 @@ export function formatHopPathLabelWithCatalog(
   return formatHopPathLabel(hopPathLabelSourceWithCatalog(item, catalog))
 }
 
-export function formatMockHopLabel(mock: MockFile): string {
+export function formatMockHopLabel(
+  mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>
+): string {
   return formatHopPathLabel(hopPathLabelSourceFromMock(mock))
+}
+
+/**
+ * Human-readable mock names for pickers. Redis hashes stay as the option value,
+ * not the label; colliding method/path names get host+path appended.
+ */
+export function uniqueMockCatalogLabels(
+  mocks: Array<Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>>
+): Map<string, string> {
+  const labels = mocks.map((mock) => formatMockHopLabel(mock))
+  const counts = new Map<string, number>()
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
+
+  const result = new Map<string, string>()
+  for (let i = 0; i < mocks.length; i += 1) {
+    const mock = mocks[i]
+    const label = labels[i]
+    if (!mock || !label) continue
+    if ((counts.get(label) ?? 0) <= 1) {
+      result.set(mock.filename, label)
+      continue
+    }
+    const extra = formatMockHopSubtitle(mock)
+    const usableExtra =
+      extra && extra !== label && extra !== mock.filename && !isOpaqueMockFilename(extra)
+    result.set(mock.filename, usableExtra ? `${label} · ${extra}` : label)
+  }
+  return result
 }
 
 export function chainFirstLastHops(chain: MockServiceChain): { start: MockFile; end?: MockFile } | null {
@@ -458,7 +488,7 @@ export function planChainRoleReplay(
 }
 
 /** Short host + path line for chain step subtitles. */
-export function formatMockHopSubtitle(mock: MockFile): string {
+export function formatMockHopSubtitle(mock: Pick<MockFile, 'endpoint' | 'filename'>): string {
   if (!mock.endpoint) return mock.filename
   try {
     const url = new URL(mock.endpoint)
