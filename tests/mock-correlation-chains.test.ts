@@ -11,6 +11,7 @@ import {
   formatChainFirstLastLabel,
   formatHopPathLabel,
   formatHopPathLabelWithCatalog,
+  formatMockPickerLabel,
   uniqueMockCatalogLabels,
   hopPathLabelParts,
   filterMocksByHopTraffic,
@@ -805,6 +806,27 @@ describe('unique mock catalog labels', () => {
       }),
     ])
     expect([...labels.values()]).toEqual(['GET /v-2/myaccount/', 'POST Home'])
+    expect([...labels.values()].join(' ')).not.toMatch(/redis\//)
+  })
+
+  it('never shows a Redis catalog filename even when endpoint metadata is missing', () => {
+    const filename =
+      'redis/99a6a81ad758eda0664c9d240c42e047e3dde044ba33e9bf1294c190337806ad.json'
+    const labels = uniqueMockCatalogLabels([
+      mock({
+        filename,
+        method: 'POST',
+        endpoint: filename,
+        graphqlInfo: null,
+      }),
+    ])
+    expect(labels.get(filename)).toBe('POST')
+    expect(formatMockPickerLabel({
+      filename,
+      method: 'POST',
+      endpoint: filename,
+      graphqlInfo: null,
+    })).toBe('POST')
   })
 
   it('disambiguates colliding GraphQL operations with host + path', () => {
