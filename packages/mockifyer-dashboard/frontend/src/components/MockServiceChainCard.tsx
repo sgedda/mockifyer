@@ -19,7 +19,6 @@ import {
 } from '@/lib/mock-correlation-chains'
 import { ColoredHopLabel } from '@/components/ColoredHopLabel'
 import { ChainTreeToggle, CollapsibleChainTree, MockChainGroupedHopList } from '@/components/MockChainTree'
-import { MockChainRoleReplayMenu } from '@/components/MockChainRoleReplayMenu'
 
 function nodeHasReplay(node: MockUniqueChainNode): boolean {
   return node.hops.some((hop) => getMockHopTrafficMode(hop) === 'replay')
@@ -58,16 +57,10 @@ export function MockServiceChainCard({
   chain,
   selectedFilename,
   onSelectHop,
-  scenario,
-  onReplayModeChange,
-  replayActionsDisabled = false,
 }: {
   chain: MockServiceChain
   selectedFilename?: string | null
   onSelectHop: (mock: MockFile) => void
-  scenario?: string
-  onReplayModeChange?: () => void
-  replayActionsDisabled?: boolean
 }) {
   const recordedAt = new Date(chain.latestModified).toLocaleString()
   const forest = buildUniqueMockChainForest(chain.hops)
@@ -93,15 +86,6 @@ export function MockServiceChainCard({
           </Badge>
         )}
         <span className="text-[11px] text-muted-foreground ml-auto">{recordedAt}</span>
-        {scenario && onReplayModeChange && (
-          <MockChainRoleReplayMenu
-            scenario={scenario}
-            chains={[chain]}
-            onDone={onReplayModeChange}
-            disabled={replayActionsDisabled}
-            compact
-          />
-        )}
       </div>
 
       <div className="px-3 py-2 border-b border-border/40 bg-background/40 text-[11px] text-muted-foreground space-y-1">
@@ -351,8 +335,7 @@ export function MockServiceChainCard({
             A hop on <strong className="font-medium">Replay</strong> (use saved mock) returns its stored response
             and does not call the next service. Always refresh from live / Live API still hit upstream.
             To reach a downstream hop, set every upstream hop to{' '}
-            <strong className="font-medium">Live</strong> or <strong className="font-medium">Always refresh from live</strong>
-            {' '}(<strong className="font-medium">Use mock → All source hops</strong> does this automatically).
+            <strong className="font-medium">Live</strong> or <strong className="font-medium">Always refresh from live</strong>.
           </p>
         )}
         <p className="text-[11px] text-muted-foreground leading-relaxed">

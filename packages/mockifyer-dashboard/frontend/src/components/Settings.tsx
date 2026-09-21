@@ -19,6 +19,11 @@ interface SettingsProps {
   onScenarioConfigRefresh?: () => void | Promise<void>
   /** Reload mock list after clearing or other mock-store changes. */
   onMocksChanged?: () => void | Promise<void>
+  /** Redis proxy: whether unmatched requests may call the live API. Null when not using Redis. */
+  proxyRecordOnMiss?: boolean | null
+  proxyAllowUpstream?: boolean | null
+  proxySaving?: boolean
+  onSaveProxyConfig?: (next: { recordOnMiss: boolean; allowUpstream: boolean }) => void | Promise<void>
 }
 
 export default function Settings({
@@ -28,6 +33,10 @@ export default function Settings({
   availableScenarios: availableScenariosFromParent,
   onScenarioConfigRefresh,
   onMocksChanged,
+  proxyRecordOnMiss = null,
+  proxyAllowUpstream = null,
+  proxySaving = false,
+  onSaveProxyConfig,
 }: SettingsProps) {
   const [availableScenarios, setAvailableScenarios] = useState<string[]>(
     availableScenariosFromParent?.length ? availableScenariosFromParent : ['default']
@@ -428,8 +437,73 @@ export default function Settings({
     }
   }
 
+  const proxyConfigAvailable =
+    proxyRecordOnMiss !== null && proxyAllowUpstream !== null && Boolean(onSaveProxyConfig)
+
   return (
     <div className="space-y-6">
+      {proxyConfigAvailable ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Real API (upstream)</CardTitle>
+            <CardDescription>
+              Controls whether the dashboard proxy may call the live backend for this scenario.
+              Recorded mocks still replay either way.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              When a request already has a saved mock, Mockifyer returns that mock. This setting only
+              applies when there is no mock, or the mock is set to use the live API.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={proxyAllowUpstream ? 'default' : 'outline'}
+                disabled={proxySaving}
+                onClick={() => {
+                  if (!proxyAllowUpstream) {
+                    void onSaveProxyConfig?.({
+                      recordOnMiss: proxyRecordOnMiss,
+                      allowUpstream: true,
+                    })
+                  }
+                }}
+              >
+                Allow real API
+              </Button>
+              <Button
+                type="button"
+                variant={proxyAllowUpstream ? 'outline' : 'destructive'}
+                disabled={proxySaving}
+                onClick={() => {
+                  if (proxyAllowUpstream) {
+                    void onSaveProxyConfig?.({
+                      recordOnMiss: proxyRecordOnMiss,
+                      allowUpstream: false,
+                    })
+                  }
+                }}
+              >
+                Block real API
+              </Button>
+            </div>
+            {proxyAllowUpstream ? (
+              <p className="text-xs text-muted-foreground">
+                Unmatched requests are forwarded to the real server. Use this while recording new
+                mocks, or when some endpoints should stay live.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Offline mode: saved mocks still replay, but the real API is never called. Missing
+                mocks return HTTP 412 and show as blocked in the Network tab. Use this for CI,
+                demos, offline work, or to avoid hitting production, paid, or write APIs.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Scenarios</CardTitle>

@@ -1,3 +1,7 @@
+/**
+ * Future: bulk “Use mock” by hop role (all source hops vs all BFF hops).
+ * Not mounted — keep for a later Hops/Mocks control.
+ */
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'

@@ -1,3 +1,7 @@
+/**
+ * Future: Atlas auto-doc / session map UI.
+ * Not mounted — keep for a later dashboard control. APIs remain at /api/atlas.
+ */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, GanttChart, Map as MapIcon, Network as NetworkIcon, RefreshCw, Route, Trash2 } from 'lucide-react'
 import { getApiBase } from '@/lib/base-path'

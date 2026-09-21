@@ -1,16 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Routes, Route, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
 import MockList from './MockList'
 import MockEditorPage from './MockEditorPage'
 import StatsView from './StatsView'
 import HopsView from './HopsView'
 import Settings from './Settings'
-import Timeline from './Timeline'
-import Atlas from './Atlas'
 import Network from './Network'
 import DateConfig from './DateConfig'
-import FixturePool from './FixturePool'
 import OverridesView from './OverridesView'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
@@ -66,10 +63,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
     if (path === '/hops' || path.endsWith('/hops')) return 'hops'
     if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
-    if (path === '/timeline' || path.endsWith('/timeline')) return 'timeline'
-    if (path === '/atlas' || path.endsWith('/atlas')) return 'atlas'
     if (path === '/network' || path.endsWith('/network')) return 'network'
-    if (path === '/fixture-pool' || path.endsWith('/fixture-pool')) return 'fixture-pool'
     if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
     if (path === '/settings' || path.endsWith('/settings')) return 'settings'
     return 'stats'
@@ -264,10 +258,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       'mocks': '/mocks',
       'hops': '/hops',
       'overrides': '/overrides',
-      'timeline': '/timeline',
-      'atlas': '/atlas',
       'network': '/network',
-      'fixture-pool': '/fixture-pool',
       'stats': '/',
       'date-config': '/date-config',
       'settings': '/settings',
@@ -454,26 +445,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 >
                   Record: {proxyRecordOnMiss ? 'On' : 'Off'}
                 </Button>
-                <Button
-                  type="button"
-                  variant={proxyAllowUpstream ? 'outline' : 'destructive'}
-                  size="sm"
-                  className="h-9"
-                  disabled={proxySaving}
-                  title={
-                    proxyAllowUpstream
-                      ? 'Upstream calls allowed on miss.'
-                      : 'Offline mode: upstream calls blocked on miss.'
-                  }
-                  onClick={() =>
-                    saveProxyConfig({
-                      recordOnMiss: proxyRecordOnMiss,
-                      allowUpstream: !proxyAllowUpstream,
-                    })
-                  }
-                >
-                  Upstream: {proxyAllowUpstream ? 'Allow' : 'Block'}
-                </Button>
               </div>
             )}
             <span className="hidden sm:inline text-xs text-muted-foreground">Scenario</span>
@@ -617,8 +588,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 />
               }
             />
-            <Route path="/hops" element={<HopsView scenario={scenario} scenarioLocked={scenarioLocked} />} />
-            <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route path="/hops" element={<HopsView scenario={scenario} />} />
+            <Route
+              path="/timeline"
+              element={<Navigate to={{ pathname: '/network', search: location.search }} replace />}
+            />
             <Route
               path="/overrides"
               element={<OverridesView scenario={scenario} mocks={allMocks} />}
@@ -627,9 +601,12 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               path="/:mountPrefix/overrides"
               element={<OverridesView scenario={scenario} mocks={allMocks} />}
             />
-            <Route path="/atlas" element={<Atlas scenario={scenario} />} />
+            <Route path="/atlas" element={<Navigate to={{ pathname: '/network', search: location.search }} replace />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
-            <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />
+            <Route
+              path="/fixture-pool"
+              element={<Navigate to={{ pathname: '/mocks', search: location.search }} replace />}
+            />
             <Route path="/date-config" element={<DateConfig />} />
             <Route
               path="/settings"
@@ -638,6 +615,10 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   scenario={scenario}
                   availableScenarios={availableScenarios}
                   scenarioLocks={scenarioLocks}
+                  proxyRecordOnMiss={proxyRecordOnMiss}
+                  proxyAllowUpstream={proxyAllowUpstream}
+                  proxySaving={proxySaving}
+                  onSaveProxyConfig={saveProxyConfig}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)
                     setSearchParams(
