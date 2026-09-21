@@ -7,6 +7,9 @@ export * from './types/http-client';
 export * from './clients/base-http-client';
 export * from './utils/mock-matcher';
 export * from './utils/date';
+export * from './utils/runtime-date-sync';
+// `$pool` serve helpers used by fetch/axios on device. Node `runtime-cache.ts` is not in this barrel.
+export * from './utils/fixture-pool';
 export * from './utils/scenario';
 export * from './utils/scenario-meta';
 export * from './providers/rn';
