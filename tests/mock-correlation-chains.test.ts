@@ -11,6 +11,7 @@ import {
   formatChainFirstLastLabel,
   formatHopPathLabel,
   formatHopPathLabelWithCatalog,
+  uniqueMockCatalogLabels,
   hopPathLabelParts,
   filterMocksByHopTraffic,
   getChainRootRequestId,
@@ -784,6 +785,49 @@ describe('hop path labels', () => {
         catalog
       )
     ).toBe('GET /v-2/myaccount/')
+  })
+})
+
+describe('unique mock catalog labels', () => {
+  it('uses method + path instead of Redis hash filenames', () => {
+    const hash = '29348224605608adf7422ce28684fef8d85534ffc98611c86d797cfd29457a33'
+    const labels = uniqueMockCatalogLabels([
+      mock({
+        filename: `redis/${hash}.json`,
+        method: 'GET',
+        endpoint: 'http://localhost:4000/v-2/myaccount/',
+      }),
+      mock({
+        filename: 'redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json',
+        method: 'POST',
+        endpoint: 'http://localhost:4000/graphql',
+        graphqlInfo: { operationName: 'Home', query: null, variables: null },
+      }),
+    ])
+    expect([...labels.values()]).toEqual(['GET /v-2/myaccount/', 'POST Home'])
+  })
+
+  it('disambiguates colliding GraphQL operations with host + path', () => {
+    const labels = uniqueMockCatalogLabels([
+      mock({
+        filename: 'redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json',
+        method: 'POST',
+        endpoint: 'http://localhost:4000/graphql',
+        graphqlInfo: { operationName: 'Home', query: null, variables: null },
+      }),
+      mock({
+        filename: 'redis/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json',
+        method: 'POST',
+        endpoint: 'http://bff.example/graphql',
+        graphqlInfo: { operationName: 'Home', query: null, variables: null },
+      }),
+    ])
+    expect(labels.get('redis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json')).toBe(
+      'POST Home · localhost:4000/graphql'
+    )
+    expect(labels.get('redis/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json')).toBe(
+      'POST Home · bff.example/graphql'
+    )
   })
 })
 

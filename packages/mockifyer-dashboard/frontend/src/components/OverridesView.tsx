@@ -35,10 +35,30 @@ import {
   type FieldOverrideRow,
 } from '@/lib/field-overrides'
 import {
+  formatMockHopLabel,
+  uniqueMockCatalogLabels,
+} from '@/lib/mock-correlation-chains'
+import {
   countListOverrides,
   normalizeDateOverrideRow,
   sanitizeDateOverridesForSave,
 } from '@/lib/mock-overrides'
+
+type MockCatalogFields = Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>
+
+function mockMatchesFilter(mock: MockCatalogFields, query: string): boolean {
+  if (!query) return true
+  const haystack = [
+    formatMockHopLabel(mock),
+    mock.filename,
+    mock.endpoint ?? '',
+    mock.method ?? '',
+    mock.graphqlInfo?.operationName ?? '',
+  ]
+    .join('\n')
+    .toLowerCase()
+  return haystack.includes(query)
+}
 
 interface OverridesViewProps {
   scenario: string
@@ -241,6 +261,7 @@ export default function OverridesView({
     function toItem(mock: MockFile) {
       return {
         filename: mock.filename,
+        label: formatMockHopLabel(mock),
         method: mock.method,
         endpoint: mock.endpoint,
         graphqlInfo: mock.graphqlInfo,
@@ -254,15 +275,21 @@ export default function OverridesView({
 
     if (editingGroup && editGroup) {
       const byName = new Map(catalog.map((m) => [m.filename, m]))
-      return editGroup.entries
+      const items = editGroup.entries
         .map((entry) => {
           const mock = byName.get(entry.filename)
           const fieldCount = entry.responseFieldOverrides?.length ?? 0
           const dateCount = entry.responseDateOverrides?.length ?? 0
           return {
             filename: entry.filename,
-            method: mock?.method,
-            endpoint: mock?.endpoint,
+            label: formatMockHopLabel({
+              filename: entry.filename,
+              method: mock?.method ?? null,
+              endpoint: mock?.endpoint ?? null,
+              graphqlInfo: mock?.graphqlInfo ?? null,
+            }),
+            method: mock?.method ?? null,
+            endpoint: mock?.endpoint ?? null,
             graphqlInfo: mock?.graphqlInfo ?? null,
             fieldCount,
             dateCount,
@@ -271,15 +298,13 @@ export default function OverridesView({
             overrideCount: fieldCount + dateCount,
           }
         })
-        .filter((item) => {
-          if (!q) return true
-          return (
-            item.filename.toLowerCase().includes(q) ||
-            (item.endpoint ?? '').toLowerCase().includes(q) ||
-            (item.method ?? '').toLowerCase().includes(q)
-          )
-        })
-        .sort((a, b) => a.filename.localeCompare(b.filename))
+        .filter((item) => mockMatchesFilter(item, q))
+        .sort((a, b) => a.label.localeCompare(b.label) || a.filename.localeCompare(b.filename))
+      const labels = uniqueMockCatalogLabels(items)
+      return items.map((item) => ({
+        ...item,
+        label: labels.get(item.filename) ?? item.label,
+      }))
     }
 
     const withOverrides = overrideMocks
@@ -293,17 +318,34 @@ export default function OverridesView({
         : withOverrides
 
     return source
-      .filter((m) => {
-        if (!q) return true
-        return (
-          m.filename.toLowerCase().includes(q) ||
-          (m.endpoint ?? '').toLowerCase().includes(q) ||
-          (m.method ?? '').toLowerCase().includes(q)
-        )
-      })
+      .filter((m) => mockMatchesFilter(m, q))
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
       .map((m) => toItem(m))
   }, [editingGroup, editGroup, mocks, pickerMocks, overrideMocks, filter, urlFilename])
+
+  const pickerOptions = useMemo(() => {
+    const q = filter.trim().toLowerCase()
+    const inGroup =
+      editingGroup && editGroup
+        ? new Set(editGroup.entries.map((entry) => entry.filename))
+        : new Set<string>()
+    const selected = addMockFilename
+      ? pickerMocks.find((mock) => mock.filename === addMockFilename)
+      : undefined
+    let visible = pickerMocks.filter(
+      (mock) => !inGroup.has(mock.filename) && mockMatchesFilter(mock, q)
+    )
+    if (selected && !visible.some((mock) => mock.filename === selected.filename)) {
+      visible = [selected, ...visible]
+    }
+    const labels = uniqueMockCatalogLabels(visible)
+    return visible
+      .map((mock) => ({
+        filename: mock.filename,
+        label: labels.get(mock.filename) ?? formatMockHopLabel(mock),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label) || a.filename.localeCompare(b.filename))
+  }, [addMockFilename, editGroup, editingGroup, filter, pickerMocks])
 
   const selectedMeta = useMemo(
     () => listItems.find((m) => m.filename === selectedFilename) ?? null,
@@ -647,7 +689,9 @@ export default function OverridesView({
                 <option value={EDIT_MOCK_LEVEL}>Mock-level (always on)</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.label} ({g.id}) · {g.entryCount} entries
+                    {g.label}
+                    {g.label !== g.id ? ` (${g.id})` : ''} · {g.entryCount}{' '}
+                    {g.entryCount === 1 ? 'entry' : 'entries'}
                     {g.id === currentGroup ? ' · effective' : ''}
                   </option>
                 ))}
@@ -730,7 +774,7 @@ export default function OverridesView({
       </Card>
 
       <Input
-        placeholder="Filter by filename, endpoint, method…"
+        placeholder="Filter by method, path, GraphQL operation…"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         className="max-w-xl"
@@ -749,9 +793,9 @@ export default function OverridesView({
             <option value="">
               {pickerLoading ? 'Loading mocks…' : 'Select mock…'}
             </option>
-            {pickerMocks.map((m) => (
+            {pickerOptions.map((m) => (
               <option key={m.filename} value={m.filename}>
-                {m.filename}
+                {m.label}
               </option>
             ))}
           </select>
@@ -806,7 +850,9 @@ export default function OverridesView({
                       : 'border-border hover:bg-muted/50'
                   }`}
                 >
-                  <div className="truncate font-medium">{mock.filename}</div>
+                  <div className="truncate font-medium" title={mock.filename}>
+                    {mock.label}
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {mock.overrideCount > 0 ? (
                       <Badge variant="secondary">{mock.overrideCount} overlay{mock.overrideCount === 1 ? '' : 's'}</Badge>
@@ -837,8 +883,8 @@ export default function OverridesView({
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-              <span className="min-w-0 break-all">
-                {selectedFilename ? selectedFilename : 'Select a mock'}
+              <span className="min-w-0 break-all" title={selectedFilename ?? undefined}>
+                {selectedFilename ? (selectedMeta?.label ?? 'Mock') : 'Select a mock'}
               </span>
               {selectedFilename ? (
                 <Link
