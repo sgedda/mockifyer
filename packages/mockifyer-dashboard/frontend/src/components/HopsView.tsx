@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CopyPageLinkButton } from '@/components/CopyableText'
 import { ServiceChainList } from '@/components/ServiceChainList'
-import { MockChainRoleReplayMenu } from '@/components/MockChainRoleReplayMenu'
 import { useToast } from '@/components/ui/use-toast'
 import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 import { useLocationQuery } from '@/lib/use-location-query'
@@ -17,10 +16,9 @@ import {
 
 interface HopsViewProps {
   scenario: string
-  scenarioLocked?: boolean
 }
 
-export default function HopsView({ scenario, scenarioLocked = false }: HopsViewProps) {
+export default function HopsView({ scenario }: HopsViewProps) {
   const navigate = useNavigate()
   const { toast } = useToast()
   const { searchParams, patch } = useLocationQuery()
@@ -97,12 +95,6 @@ export default function HopsView({ scenario, scenarioLocked = false }: HopsViewP
             Search
           </button>
         </form>
-        <MockChainRoleReplayMenu
-          scenario={scenario}
-          chains={visibleChains}
-          onDone={() => void reload()}
-          disabled={scenarioLocked || loading}
-        />
         <Button
           onClick={() => void reload()}
           variant="outline"
@@ -124,9 +116,6 @@ export default function HopsView({ scenario, scenarioLocked = false }: HopsViewP
         searchQuery={searchQuery}
         selectedFilename={focusedHop}
         hasOrphanParentIds={hasOrphanParentIds}
-        scenario={scenario}
-        onReplayModeChange={() => void reload()}
-        replayActionsDisabled={scenarioLocked || loading}
         onSelectHop={(mock) => {
           navigate(
             mockEditorPath(mock.filename, {

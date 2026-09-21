@@ -94,17 +94,18 @@ export function networkPath(extras?: QueryUpdates): string {
   return `/network${buildSearch(extras ?? {})}`
 }
 
+/** Future Atlas page — not in nav. */
 export function atlasPath(extras?: QueryUpdates): string {
   return `/atlas${buildSearch(extras ?? {})}`
 }
 
+/** Future Fixture pool page — not in nav. */
 export function fixturePoolPath(extras?: QueryUpdates): string {
   return `/fixture-pool${buildSearch(extras ?? {})}`
 }
 
-export function timelinePath(extras?: QueryUpdates): string {
-  return `/timeline${buildSearch(extras ?? {})}`
-}
+/** Settings Client lanes card (`#client-lanes`). */
+export const CLIENT_LANES_SECTION_ID = 'client-lanes'
 
 export function pickPreservedQuery(
   params: URLSearchParams,

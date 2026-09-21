@@ -1,3 +1,7 @@
+/**
+ * Future: shared entity/response catalog UI (extract, promote, $pool refs).
+ * Not mounted — keep for a later dashboard control. APIs remain at /api/fixture-pool.
+ */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, Layers, RefreshCw } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'

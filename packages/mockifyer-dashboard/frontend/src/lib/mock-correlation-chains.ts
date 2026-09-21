@@ -440,6 +440,7 @@ export type ChainRoleReplayTarget = 'sources' | 'bff'
 /**
  * Filenames to put on stored mock vs Live API for a bulk role replay.
  * Source replay also flips ancestor/BFF hops to Live so traffic can reach them.
+ * Used by the unused MockChainRoleReplayMenu (future Hops/Mocks control).
  */
 export function planChainRoleReplay(
   chains: MockServiceChain[],

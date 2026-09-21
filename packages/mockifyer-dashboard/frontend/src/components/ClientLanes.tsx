@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +17,7 @@ import {
   type OverrideGroupSummary,
 } from '@/lib/api'
 import { datetimeLocalValueToIso, isoToDatetimeLocalValue } from '@/lib/datetime-local'
+import { CLIENT_LANES_SECTION_ID } from '@/lib/dashboard-urls'
 import { Calendar, Trash2 } from 'lucide-react'
 
 function LaneCurrentDateField({
@@ -112,6 +114,7 @@ function LaneCurrentDateField({
 }
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
+  const location = useLocation()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [enabled, setEnabled] = useState(true)
@@ -296,8 +299,27 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
     }
   }
 
+  useEffect(() => {
+    if (location.hash !== `#${CLIENT_LANES_SECTION_ID}`) return
+    let cancelled = false
+    const scroll = () => {
+      if (cancelled) return
+      document.getElementById(CLIENT_LANES_SECTION_ID)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }
+    const frame = window.requestAnimationFrame(scroll)
+    const retry = window.setTimeout(scroll, 200)
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(retry)
+    }
+  }, [location.hash, location.pathname, loading])
+
   return (
-    <Card>
+    <Card id={CLIENT_LANES_SECTION_ID} className="scroll-mt-4">
       <CardHeader>
         <CardTitle>Client lanes</CardTitle>
         <CardDescription>

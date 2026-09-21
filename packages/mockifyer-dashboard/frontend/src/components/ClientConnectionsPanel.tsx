@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { getClientLanes, type ClientConnectionRow, type ClientConnectionStatus } from '@/lib/api'
 import { ChevronDown, ChevronRight, Radio, Settings2 } from 'lucide-react'
-import { buildSearch } from '@/lib/dashboard-urls'
+import { CLIENT_LANES_SECTION_ID } from '@/lib/dashboard-urls'
 
 const POLL_MS = 15_000
 
@@ -73,7 +73,7 @@ function ConnectionRow({ row }: { row: ClientConnectionRow }) {
 }
 
 export default function ClientConnectionsPanel() {
-  const navigate = useNavigate()
+  const location = useLocation()
   const [loading, setLoading] = useState(true)
   const [enabled, setEnabled] = useState(true)
   const [disabledReason, setDisabledReason] = useState<string | null>(null)
@@ -119,7 +119,7 @@ export default function ClientConnectionsPanel() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              className="flex min-w-0 items-center gap-2 text-left"
               onClick={() => setCollapsed((c) => !c)}
             >
               {collapsed ? (
@@ -148,15 +148,18 @@ export default function ClientConnectionsPanel() {
                   Global scenario: <span className="font-mono">{globalScenario}</span>
                 </span>
               ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => navigate({ pathname: '/settings', search: buildSearch({ scenario: globalScenario ?? undefined }) })}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Manage lanes
+              <Button asChild variant="outline" size="sm" className="relative z-10 h-8 gap-1.5 text-xs">
+                <Link
+                  to={{
+                    pathname: '/settings',
+                    search: location.search,
+                    hash: `#${CLIENT_LANES_SECTION_ID}`,
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  Manage lanes
+                </Link>
               </Button>
             </div>
           </div>
