@@ -1,10 +1,13 @@
-import { generateRequestKey, registerHopOwner, resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
-import type { MockData } from '@sgedda/mockifyer-core';
+import { generateRequestKey, registerHopOwner, resetHopOwnerRegistry, type MockData } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
 import {
   resolveInboundParentRequestIdForChild,
   type InboundParentRecordStore,
 } from '../packages/mockifyer-dashboard/src/utils/inbound-parent-record-store';
+
+function sha256Hex(input: string): string {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
 
 function createMemoryStore(): InboundParentRecordStore & { rows: Map<string, MockData> } {
   const rows = new Map<string, MockData>();
@@ -147,5 +150,99 @@ describe('resolveInboundParentRequestIdForChild', () => {
         data,
       })
     ).resolves.toBe('recorded-graphql');
+  });
+
+  // Additional tests for PR #408: prevent overwriting existing mocks
+  it('does not overwrite a captured GraphQL mock that has no requestId', async () => {
+    const GRAPHQL_URL = 'http://localhost:4000/graphql';
+    const GRAPHQL_BODY = {
+      query: 'query myAccount { id }',
+      variables: {},
+    };
+    const captured: MockData = {
+      request: {
+        method: 'POST',
+        url: GRAPHQL_URL,
+        headers: {},
+        data: GRAPHQL_BODY,
+        queryParams: {},
+      },
+      response: { status: 200, data: { data: { myAccount: { id: 'acct-1' } } }, headers: {} },
+      timestamp: '2024-01-01T00:00:00.000Z',
+    };
+    const hash = sha256Hex(generateRequestKey(captured.request));
+    const store = createMemoryStore();
+    store.rows.set(hash, captured);
+
+    const parentId = await resolveInboundParentRequestIdForChild(
+      store,
+      'default',
+      'als-inbound-1',
+      { method: 'POST', url: GRAPHQL_URL, data: GRAPHQL_BODY }
+    );
+
+    expect(parentId).toBe('als-inbound-1');
+    const result = store.rows.get(hash);
+    expect(result?.response.data).toEqual({
+      data: { myAccount: { id: 'acct-1' } },
+    });
+    expect(result?.alwaysUseRealApi).toBeUndefined();
+    expect(result?.responsePending).toBeUndefined();
+  });
+
+  it('heals children onto an existing recording requestId without writing', async () => {
+    const GRAPHQL_URL = 'http://localhost:4000/graphql';
+    const GRAPHQL_BODY = {
+      query: 'query myAccount { id }',
+      variables: {},
+    };
+    const captured: MockData = {
+      request: {
+        method: 'POST',
+        url: GRAPHQL_URL,
+        headers: {},
+        data: GRAPHQL_BODY,
+        queryParams: {},
+      },
+      response: { status: 200, data: { data: { myAccount: { id: 'acct-1' } } }, headers: {} },
+      timestamp: '2024-01-01T00:00:00.000Z',
+      requestId: 'recorded-gql-1',
+    };
+    const hash = sha256Hex(generateRequestKey(captured.request));
+    const store = createMemoryStore();
+    store.rows.set(hash, captured);
+
+    const parentId = await resolveInboundParentRequestIdForChild(
+      store,
+      'default',
+      'als-inbound-1',
+      { method: 'POST', url: GRAPHQL_URL, data: GRAPHQL_BODY }
+    );
+
+    expect(parentId).toBe('recorded-gql-1');
+    expect(store.rows.size).toBe(1); // No new write
+  });
+
+  it('inserts a request-only stub only when the hash is missing', async () => {
+    const GRAPHQL_URL = 'http://localhost:4000/graphql';
+    const GRAPHQL_BODY = {
+      query: 'query myAccount { id }',
+      variables: {},
+    };
+    const store = createMemoryStore();
+    const parentId = await resolveInboundParentRequestIdForChild(
+      store,
+      'default',
+      'als-inbound-1',
+      { method: 'POST', url: GRAPHQL_URL, data: GRAPHQL_BODY }
+    );
+
+    expect(parentId).toBe('als-inbound-1');
+    expect(store.rows.size).toBe(1);
+    const written = Array.from(store.rows.values())[0];
+    expect(written.requestId).toBe('als-inbound-1');
+    expect(written.alwaysUseRealApi).toBe(true);
+    expect(written.responsePending).toBe(true);
+    expect(written.response.data).toBeNull();
   });
 });
