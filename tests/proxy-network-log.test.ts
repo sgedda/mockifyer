@@ -97,6 +97,40 @@ describe('proxy hop id stability', () => {
     expect(upstream.get('authorization')).toBe('Bearer tok');
   });
 
+  it('strips hop-by-hop and content-length so a rebuilt body cannot mismatch', () => {
+    const clientHeaders = {
+      'content-type': 'application/json',
+      'content-length': '12',
+      connection: 'keep-alive',
+      'transfer-encoding': 'chunked',
+      authorization: 'Bearer tok',
+    };
+    const upstream = new Headers();
+    copyProxyUpstreamHeadersWithoutHopIds(upstream, clientHeaders);
+
+    expect(upstream.get('content-type')).toBe('application/json');
+    expect(upstream.get('authorization')).toBe('Bearer tok');
+    expect(upstream.get('content-length')).toBeNull();
+    expect(upstream.get('connection')).toBeNull();
+    expect(upstream.get('transfer-encoding')).toBeNull();
+  });
+
+  it('does not forward empty header values from GraphQL login', () => {
+    const clientHeaders = {
+      'content-type': 'application/json',
+      authorization: '',
+      impersonatekey: '',
+      'nltg-api-key': 'test-key',
+    };
+    const upstream = new Headers();
+    copyProxyUpstreamHeadersWithoutHopIds(upstream, clientHeaders);
+
+    expect(upstream.get('content-type')).toBe('application/json');
+    expect(upstream.get('nltg-api-key')).toBe('test-key');
+    expect(upstream.get('authorization')).toBeNull();
+    expect(upstream.get('impersonatekey')).toBeNull();
+  });
+
   it('treats a reused inbound hop id as the parent of a different endpoint', () => {
     resetHopOwnerRegistry();
     const graphqlInbound = { requestId: 'gql-1', parentRequestId: null };
