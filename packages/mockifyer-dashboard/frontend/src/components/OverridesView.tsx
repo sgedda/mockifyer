@@ -28,6 +28,7 @@ import DateOverridesEditor from '@/components/DateOverridesEditor'
 import FieldOverridesEditor from '@/components/FieldOverridesEditor'
 import { OverrideArrayCollapseProvider } from '@/components/OverrideArrayCollapseContext'
 import GraphqlRequestPreview from '@/components/GraphqlRequestPreview'
+import MockCatalogSelect from '@/components/MockCatalogSelect'
 import { DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
 import {
   fieldOverridesToRows,
@@ -35,7 +36,7 @@ import {
   type FieldOverrideRow,
 } from '@/lib/field-overrides'
 import {
-  formatMockHopLabel,
+  formatMockPickerLabel,
   uniqueMockCatalogLabels,
 } from '@/lib/mock-correlation-chains'
 import {
@@ -49,7 +50,7 @@ type MockCatalogFields = Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'gr
 function mockMatchesFilter(mock: MockCatalogFields, query: string): boolean {
   if (!query) return true
   const haystack = [
-    formatMockHopLabel(mock),
+    formatMockPickerLabel(mock),
     mock.filename,
     mock.endpoint ?? '',
     mock.method ?? '',
@@ -261,7 +262,7 @@ export default function OverridesView({
     function toItem(mock: MockFile) {
       return {
         filename: mock.filename,
-        label: formatMockHopLabel(mock),
+        label: formatMockPickerLabel(mock),
         method: mock.method,
         endpoint: mock.endpoint,
         graphqlInfo: mock.graphqlInfo,
@@ -282,7 +283,7 @@ export default function OverridesView({
           const dateCount = entry.responseDateOverrides?.length ?? 0
           return {
             filename: entry.filename,
-            label: formatMockHopLabel({
+            label: formatMockPickerLabel({
               filename: entry.filename,
               method: mock?.method ?? null,
               endpoint: mock?.endpoint ?? null,
@@ -342,7 +343,7 @@ export default function OverridesView({
     return visible
       .map((mock) => ({
         filename: mock.filename,
-        label: labels.get(mock.filename) ?? formatMockHopLabel(mock),
+        label: labels.get(mock.filename) ?? formatMockPickerLabel(mock),
       }))
       .sort((a, b) => a.label.localeCompare(b.label) || a.filename.localeCompare(b.filename))
   }, [addMockFilename, editGroup, editingGroup, filter, pickerMocks])
@@ -785,20 +786,13 @@ export default function OverridesView({
           <span className="text-muted-foreground">
             {editingGroup ? 'Add mock to group' : 'Open mock for overlays'}
           </span>
-          <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          <MockCatalogSelect
+            options={pickerOptions}
             value={addMockFilename}
-            onChange={(e) => setAddMockFilename(e.target.value)}
-          >
-            <option value="">
-              {pickerLoading ? 'Loading mocks…' : 'Select mock…'}
-            </option>
-            {pickerOptions.map((m) => (
-              <option key={m.filename} value={m.filename}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+            onChange={setAddMockFilename}
+            loading={pickerLoading}
+            disabled={saving}
+          />
         </label>
         <Button
           type="button"

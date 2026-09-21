@@ -200,13 +200,16 @@ export function endpointHostname(endpoint?: string | null): string {
   }
 }
 
-const OPAQUE_MOCK_FILENAME = /^[a-f0-9]{32,}\.json$/i
+const OPAQUE_MOCK_STEM = /^[a-f0-9]{32,}$/i
 
 /** Redis catalog ids and other content-hash filenames — not useful as a hop label. */
 export function isOpaqueMockFilename(filename: string | null | undefined): boolean {
   if (!filename?.trim()) return false
-  const base = filename.includes('/') ? filename.split('/').pop() ?? filename : filename
-  return OPAQUE_MOCK_FILENAME.test(base)
+  const trimmed = filename.trim()
+  if (/^redis\/[a-f0-9]{32,}/i.test(trimmed)) return true
+  const base = trimmed.includes('/') ? trimmed.split('/').pop() ?? trimmed : trimmed
+  const stem = base.replace(/\.json$/i, '')
+  return OPAQUE_MOCK_STEM.test(stem)
 }
 
 function usableHopEndpoint(endpoint?: string | null): string | undefined {
@@ -305,6 +308,22 @@ export function formatMockHopLabel(
   return formatHopPathLabel(hopPathLabelSourceFromMock(mock))
 }
 
+function isOpaquePickerText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('redis/')) return true
+  return isOpaqueMockFilename(trimmed)
+}
+
+/** Label for mock pickers — never a Redis catalog hash. */
+export function formatMockPickerLabel(
+  mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>
+): string {
+  const label = formatMockHopLabel(mock)
+  if (!isOpaquePickerText(label)) return label
+  return (mock.method ?? 'GET').toUpperCase()
+}
+
 /**
  * Human-readable mock names for pickers. Redis hashes stay as the option value,
  * not the label; colliding method/path names get host+path appended.
@@ -312,7 +331,7 @@ export function formatMockHopLabel(
 export function uniqueMockCatalogLabels(
   mocks: Array<Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>>
 ): Map<string, string> {
-  const labels = mocks.map((mock) => formatMockHopLabel(mock))
+  const labels = mocks.map((mock) => formatMockPickerLabel(mock))
   const counts = new Map<string, number>()
   for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
 
@@ -327,7 +346,7 @@ export function uniqueMockCatalogLabels(
     }
     const extra = formatMockHopSubtitle(mock)
     const usableExtra =
-      extra && extra !== label && extra !== mock.filename && !isOpaqueMockFilename(extra)
+      extra && extra !== label && !isOpaquePickerText(extra)
     result.set(mock.filename, usableExtra ? `${label} · ${extra}` : label)
   }
   return result
