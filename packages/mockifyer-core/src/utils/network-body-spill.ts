@@ -2,6 +2,8 @@
  * Spill full network bodies so hops only keep short previews.
  * Texts are buffered in memory and flushed to `atlas-html/bodies/` on Render
  * (and best-effort async to disk/Metro during capture).
+ * Every non-empty captured body is spilled so Atlas hop detail can show the full
+ * payload; inline hop JSON still uses a short preview.
  */
 
 import { utf8ByteLength } from './crypto-digest';
@@ -20,8 +22,9 @@ try {
   pathMod = undefined;
 }
 
-/** Inline preview size kept on the hop (UTF-8 bytes). */
+/** Spill only starts above this size when `alwaysSpill` is false (legacy). Default always spills. */
 export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 2_048;
+
 
 /** Do not spill bodies larger than this (UTF-8 bytes). */
 export const NETWORK_BODY_SPILL_MAX_BYTES = 2_000_000;
@@ -302,7 +305,9 @@ function enqueueSpill(job: SpillJob): void {
 }
 
 /**
- * If a body exceeds the inline preview budget, buffer full text + return a relative ref.
+ * If a body is present, buffer full text + return a relative ref for Atlas HTML /
+ * MCP. Inline hop previews stay short ({@link NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES});
+ * `*Truncated` is true only when the preview is shorter than the spilled file.
  * Async disk/Metro write is best-effort; {@link flushNetworkBodySpillsToDir} on Render is authoritative.
  */
 export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): NetworkBodySpillRefs {
@@ -315,15 +320,16 @@ export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): 
   const maybeSpill = (side: 'req' | 'res', text: string | undefined): void => {
     if (!text) return;
     const len = utf8ByteLength(text);
-    if (len <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES) return;
-
+    // Always spill non-empty bodies so Atlas hop detail can load the full payload
+    // (inline previews stay capped separately in sanitizeNetworkEvent).
     const relativePath = `bodies/${key}-${side}.json`;
+    const previewTruncated = len > NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES;
     if (side === 'req') {
       refs.requestBodyRef = relativePath;
-      refs.requestBodyTruncated = true;
+      if (previewTruncated) refs.requestBodyTruncated = true;
     } else {
       refs.responseBodyRef = relativePath;
-      refs.responseBodyTruncated = true;
+      if (previewTruncated) refs.responseBodyTruncated = true;
     }
     rememberInBuffer(relativePath, text);
     enqueueSpill({
