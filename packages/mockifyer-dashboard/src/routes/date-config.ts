@@ -169,7 +169,6 @@ router.get('/', async (req: Request, res: Response) => {
             : redisDoc !== null
               ? ('redis' as const)
               : ('none' as const);
-        console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', configSource, 'clientId:', clientId || '—');
         return res.json({
           dateManipulation: resolvedManipulation,
           currentDate: currentDate.toISOString(),
@@ -188,8 +187,6 @@ router.get('/', async (req: Request, res: Response) => {
     const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, null);
     const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
     const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
-
-    console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source);
 
     res.json({
       dateManipulation,
