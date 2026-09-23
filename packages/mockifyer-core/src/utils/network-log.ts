@@ -390,6 +390,16 @@ export interface EmitMockifyerNetworkEventParams {
   responseBody?: unknown;
 }
 
+/** Read include-trace flags from Mockifyer config (RN / client outbound opt-in). */
+export function resolveNetworkLogIncludeTraceOptions(
+  config?: Pick<MockifyerConfig, 'networkLog'> | null
+): { includeInlineTrace: boolean; includeInlineTraceBodies: boolean } {
+  return {
+    includeInlineTrace: config?.networkLog?.includeTraceHeader === true,
+    includeInlineTraceBodies: config?.networkLog?.includeTraceBodies === true,
+  };
+}
+
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
 export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParams): void {
   const recorderConfig = resolveFlightRecorderConfig(params.config);
