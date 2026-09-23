@@ -242,6 +242,17 @@ export interface MockifyerConfig {
      * async to `atlas-html/bodies/` (Node or Metro) so Atlas can offer “Download full”.
      */
     spillBodies?: boolean;
+    /**
+     * When true, stamp `X-Mockifyer-Include-Trace: 1` on outbound hops so downstream
+     * Mockifyer services return `{ data, mockifyerTrace: { hops } }`. Child hops are
+     * re-emitted into the network log / Metro Atlas stream with `parentRequestId`.
+     */
+    includeTraceHeader?: boolean;
+    /**
+     * When true with {@link includeTraceHeader}, also request body previews on nested
+     * inline-trace hops (`X-Mockifyer-Include-Trace-Bodies: 1`).
+     */
+    includeTraceBodies?: boolean;
     /** In-process ring buffer for crash forensics (works without dashboard URL). */
     flightRecorder?: {
       enabled?: boolean;

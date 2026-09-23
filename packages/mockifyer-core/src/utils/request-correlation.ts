@@ -498,13 +498,20 @@ function applyInboundClientIdToOutboundHeaders(config: { headers?: unknown }): v
 }
 
 /** Forward include-trace opt-in so downstream services can return nested mockifyerTrace. */
-function applyOutboundInlineTraceHeaders(config: { headers?: unknown }): void {
+function applyOutboundInlineTraceHeaders(
+  config: { headers?: unknown },
+  options?: { includeInlineTrace?: boolean; includeInlineTraceBodies?: boolean }
+): void {
   const ctx = getActiveMockifyerHopContext();
-  if (!ctx?.includeInlineTrace) {
+  const includeInlineTrace =
+    ctx?.includeInlineTrace === true || options?.includeInlineTrace === true;
+  if (!includeInlineTrace) {
     return;
   }
   config.headers = setOutboundHeader(config.headers, MOCKIFYER_INCLUDE_TRACE_HEADER, '1');
-  if (ctx.includeInlineTraceBodies) {
+  const includeBodies =
+    ctx?.includeInlineTraceBodies === true || options?.includeInlineTraceBodies === true;
+  if (includeBodies) {
     config.headers = setOutboundHeader(
       config.headers,
       MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
@@ -517,7 +524,8 @@ function applyOutboundInlineTraceHeaders(config: { headers?: unknown }): void {
  * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
  * Clones the header bag first so shared `init.headers` / axios defaults are not mutated.
  * Strips any stale `X-Mockifyer-Request-Id` on the clone so each hop gets a fresh id.
- * When the active request opted into inline trace, also forwards include-trace headers.
+ * When the active request opted into inline trace (or {@link options} requests it),
+ * also forwards include-trace headers.
  */
 function hopOwnerMetaFromConfig(config: { headers?: unknown; url?: unknown; method?: unknown }): {
   method: string;
@@ -528,14 +536,17 @@ function hopOwnerMetaFromConfig(config: { headers?: unknown; url?: unknown; meth
   return { method, url };
 }
 
-export function applyOutboundRequestCorrelation(config: {
-  headers?: unknown;
-  url?: unknown;
-  method?: unknown;
-}): RequestCorrelationContext {
+export function applyOutboundRequestCorrelation(
+  config: {
+    headers?: unknown;
+    url?: unknown;
+    method?: unknown;
+  },
+  options?: { includeInlineTrace?: boolean; includeInlineTraceBodies?: boolean }
+): RequestCorrelationContext {
   isolateOutboundHopHeaderBag(config);
   applyInboundClientIdToOutboundHeaders(config);
-  applyOutboundInlineTraceHeaders(config);
+  applyOutboundInlineTraceHeaders(config, options);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
   const requestId = newRequestCorrelationId();
 

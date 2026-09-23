@@ -88,6 +88,8 @@ import {
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
   unwrapAndMergeInlineTraceEnvelope,
+  unwrapInlineTraceEnvelopeEmittingNetworkEvents,
+  resolveNetworkLogIncludeTraceOptions,
   toNetworkLogBodyPreview,
   getInlineTraceEnvelopeBusinessBody,
   configureFlightRecorder,
@@ -172,6 +174,36 @@ class MockifyerClass {
       baseUrl: this.config.baseUrl,
       getClientId: () => this.config.clientId,
     });
+  }
+
+  private unwrapResponseInlineTrace(response: {
+    data?: unknown;
+    config?: unknown;
+  }): void {
+    const correlation = this.readRequestCorrelation(response.config);
+    const parentRequestId = correlation?.requestId?.trim();
+    if (!parentRequestId) {
+      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      return;
+    }
+    const scenario =
+      this.config.proxy?.scenario?.trim() ||
+      getCurrentScenario(this.config.mockDataPath);
+    response.data = unwrapInlineTraceEnvelopeEmittingNetworkEvents(response.data, {
+      parentRequestId,
+      config: this.config,
+      scenario,
+      clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      transport: this.usesDashboardProxy() ? 'proxy' : 'axios',
+    });
+  }
+
+  private applyOutboundCorrelation(config: unknown): RequestCorrelationContext {
+    return applyOutboundRequestCorrelation(
+      config as { headers?: unknown; url?: unknown; method?: unknown },
+      resolveNetworkLogIncludeTraceOptions(this.config)
+    );
   }
 
   private logNetworkEvent(
@@ -780,7 +812,7 @@ class MockifyerClass {
         })
       ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
-        applyOutboundRequestCorrelation(config);
+        this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -794,7 +826,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      let correlation = applyOutboundRequestCorrelation(config);
+      let correlation = this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -1035,7 +1067,7 @@ class MockifyerClass {
         },
         this.readRequestCorrelation(response.config)
       );
-      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      this.unwrapResponseInlineTrace(response);
 
       return response;
     });
@@ -1106,7 +1138,7 @@ class MockifyerClass {
         })
       ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
-        applyOutboundRequestCorrelation(config);
+        this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -1117,7 +1149,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      let correlation = applyOutboundRequestCorrelation(config);
+      let correlation = this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -1648,7 +1680,7 @@ class MockifyerClass {
           },
           this.readRequestCorrelation(response.config)
         );
-        response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+        this.unwrapResponseInlineTrace(response);
 
         this.saveResponse(response as HTTPResponse);
         return response;
@@ -1833,7 +1865,7 @@ class MockifyerClass {
       },
       this.readRequestCorrelation(response.config)
     );
-    response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+    this.unwrapResponseInlineTrace(response);
 
     const capturedResponse: StoredResponse = {
       status: response.status,
