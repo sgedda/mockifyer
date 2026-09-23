@@ -901,6 +901,216 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     }
   );
 
+  server.registerTool(
+    'mockifyer_get_atlas_doc',
+    {
+      description:
+        'Atlas auto-doc map: screens, CMS pages, datasources, lastRequestIds. Default summary=true (compact). Join lastRequestId to network/mocks for response values. Live stream from /api/atlas — available before HTML generate.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        summary: z
+          .boolean()
+          .optional()
+          .describe('Compact projection (default true). Set false for full doc including props samples.'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getAtlasDoc({
+            scenario: args.scenario,
+            summary: args.summary,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_atlas_events',
+    {
+      description:
+        'List live Atlas prefetch/presentation events (screen/CMS semantics). Not HTTP hops — use mockifyer_list_network_events for wire traffic.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        sessionId: z.string().optional(),
+        clientId: z.string().optional(),
+        kind: z.enum(['prefetch', 'presentation']).optional(),
+        limit: z.number().int().min(1).max(5000).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.listAtlasEvents(args));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_atlas_usage',
+    {
+      description:
+        'List Atlas usage annotations (requestId → screen/component/CMS). Bridge from UI to network hops.',
+      inputSchema: {
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.listAtlasUsage(args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_atlas_sessions',
+    {
+      description: 'List Atlas session ids for a scenario (from live event log).',
+      inputSchema: {
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.listAtlasSessions(args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_atlas_tree',
+    {
+      description:
+        'CMS presentation tree for one Atlas session (nested by parentId) plus prefetch list.',
+      inputSchema: {
+        sessionId: z.string().describe('Atlas session id from mockifyer_list_atlas_sessions'),
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getAtlasTree({
+            sessionId: args.sessionId,
+            scenario: args.scenario,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_atlas_generated_status',
+    {
+      description:
+        'Whether Atlas HTML generate output exists under mock-data/atlas-html (index.html, atlas.har, atlas-events.json, bodies-search.json) and body-search entry counts. Call after Dev Menu / mockifyer-atlas render.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await client.getAtlasGeneratedStatus());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_atlas_generated_hops',
+    {
+      description:
+        'List hops from atlas-events.json after generate (method/url/status/source + hasBodySearchText). Prefer this before searching bodies. When bodies are missing, use mockifyer_get_mock for mock-hit hops.',
+      inputSchema: {
+        limit: z.number().int().min(1).max(5000).optional(),
+        onlyWithBodies: z
+          .boolean()
+          .optional()
+          .describe('If true, only hops present in bodies-search.json'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.listAtlasGeneratedHops({
+            limit: args.limit,
+            onlyWithBodies: args.onlyWithBodies,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_search_atlas_bodies',
+    {
+      description:
+        'Search Atlas-generated bodies-search.json (post-render payloads). Empty when captureBodies/spill was off at capture time — then use mockifyer_get_mock for recorded responses instead.',
+      inputSchema: {
+        q: z.string().describe('Substring to find in hop body text'),
+        limit: z.number().int().min(1).max(100).optional().describe('Max hits (default 25)'),
+        includeHop: z
+          .boolean()
+          .optional()
+          .describe('Attach hop metadata from atlas-events.json (default true)'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.searchAtlasGeneratedBodies({
+            q: args.q,
+            limit: args.limit,
+            includeHop: args.includeHop,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_get_atlas_hop_body',
+    {
+      description:
+        'Get generated body text for one Atlas hop id (from bodies-search.json and spill files). Requires prior Atlas generate with bodies captured.',
+      inputSchema: {
+        eventId: z.string().describe('Hop id from mockifyer_list_atlas_generated_hops or body search'),
+        maxChars: z
+          .number()
+          .int()
+          .min(1000)
+          .max(200_000)
+          .optional()
+          .describe('Truncate body text (default 32000)'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getAtlasGeneratedHopBody({
+            eventId: args.eventId,
+            maxChars: args.maxChars,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
   return server;
 }
 

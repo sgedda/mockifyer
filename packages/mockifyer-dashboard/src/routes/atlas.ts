@@ -2,6 +2,13 @@ import express, { Request, Response } from 'express';
 import { getCurrentScenario, type AtlasEvent, type AtlasUsageAnnotation } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { getAtlasStore, isAtlasPrefetchEvent } from '../utils/atlas-store';
+import {
+  getAtlasGeneratedHopBody,
+  getAtlasGeneratedStatus,
+  listAtlasGeneratedHops,
+  searchAtlasGeneratedBodies,
+  summarizeAtlasDoc,
+} from '../utils/atlas-generated';
 
 const router = express.Router();
 
@@ -36,6 +43,15 @@ router.get('/doc', (req: Request, res: Response) => {
   const { mockDataPath } = getDashboardContext(req);
   const scenario = resolveScenario(req, mockDataPath);
   const doc = getAtlasStore().getDoc(scenario);
+  const summary = req.query.summary === '1' || req.query.summary === 'true';
+  if (summary) {
+    return res.json({
+      scenario,
+      ephemeral: true,
+      summary: true,
+      doc: summarizeAtlasDoc(doc),
+    });
+  }
   return res.json({ scenario, ephemeral: true, doc });
 });
 
@@ -162,6 +178,61 @@ router.get('/tree', (req: Request, res: Response) => {
     presentationCount: events.length - prefetches.length,
     prefetchCount: prefetches.length,
   });
+});
+
+/**
+ * Atlas HTML generate status under mock-data/atlas-html
+ * (index.html, atlas.har, atlas-events.json, bodies-search.json).
+ */
+router.get('/generated', (req: Request, res: Response) => {
+  const { mockDataPath } = getDashboardContext(req);
+  return res.json(getAtlasGeneratedStatus(mockDataPath));
+});
+
+/** Slim hop list from atlas-events.json (+ which hops have body-search text). */
+router.get('/generated/hops', (req: Request, res: Response) => {
+  const { mockDataPath } = getDashboardContext(req);
+  const limit = parseLimit(req.query.limit, 200);
+  const onlyWithBodies =
+    req.query.onlyWithBodies === '1' || req.query.onlyWithBodies === 'true';
+  return res.json(listAtlasGeneratedHops(mockDataPath, { limit, onlyWithBodies }));
+});
+
+/**
+ * Search bodies-search.json from Atlas generate (full-ish payloads when capture/spill ran).
+ * Query: q (required), limit (default 25).
+ */
+router.get('/generated/bodies/search', (req: Request, res: Response) => {
+  const { mockDataPath } = getDashboardContext(req);
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  if (!q.trim()) {
+    return res.status(400).json({ error: 'q query parameter is required' });
+  }
+  const limit = parseLimit(req.query.limit, 25);
+  const includeHop = req.query.includeHop !== '0' && req.query.includeHop !== 'false';
+  return res.json(searchAtlasGeneratedBodies(mockDataPath, q, { limit, includeHop }));
+});
+
+/**
+ * Full body search text (+ spill files when present) for one generated hop id.
+ * Query: maxChars (default 32000).
+ */
+router.get('/generated/bodies/:eventId', (req: Request, res: Response) => {
+  const { mockDataPath } = getDashboardContext(req);
+  const eventId = String(req.params.eventId ?? '').trim();
+  if (!eventId) {
+    return res.status(400).json({ error: 'eventId is required' });
+  }
+  const maxCharsRaw = Number.parseInt(String(req.query.maxChars ?? ''), 10);
+  const maxChars = Number.isFinite(maxCharsRaw) ? maxCharsRaw : undefined;
+  const result = getAtlasGeneratedHopBody(mockDataPath, eventId, { maxChars });
+  if (!result.exists) {
+    return res.status(404).json(result);
+  }
+  if (!result.found) {
+    return res.status(404).json(result);
+  }
+  return res.json(result);
 });
 
 export { router as atlasRouter };
