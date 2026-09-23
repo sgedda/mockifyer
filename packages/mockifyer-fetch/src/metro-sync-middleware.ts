@@ -19,6 +19,7 @@
  * 15. POST /mockifyer-network-events/snapshot — write hops JSON/NDJSON under atlas-html/
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
+ * 18. Metro terminal key `a` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -61,12 +62,24 @@ import {
   createEmptyAtlasDocMap,
   buildAtlasHarJson,
 } from "@sgedda/mockifyer-core";
+import {
+  attachMetroAtlasKeyHandler,
+  notifyMetroAtlasStreamClientConnected,
+  notifyMetroAtlasStreamClientDisconnected,
+  type AtlasKeyOption,
+} from "./metro-atlas-key-handlers";
 
 export interface MetroSyncMiddlewareOptions {
   /** Project root directory (default: process.cwd()) */
   projectRoot?: string;
   /** Path to mock data directory relative to project root (default: 'mock-data') */
   mockDataPath?: string;
+  /**
+   * Metro terminal key that starts/stops Atlas capture (default `"a"`).
+   * Start clears the hop buffer; stop generates HTML (same as `POST /mockifyer-network-events/render`).
+   * Pass `false` to disable.
+   */
+  atlasKey?: AtlasKeyOption;
   /** Test generation configuration - tests are generated when mocks are saved to project folder */
   testGeneration?: {
     /** Enable automatic test generation when mocks are saved */
@@ -1249,6 +1262,31 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     `[MetroSyncMiddleware] Initialized with projectRoot: ${projectRoot}, mockDataPath: ${mockDataPath}`,
   );
 
+  attachMetroAtlasKeyHandler({
+    atlasKey: options?.atlasKey,
+    onSessionStart: () => {
+      getMetroNetworkEventBuffer().clear();
+    },
+    onSessionStop: () => {
+      const buffer = getMetroNetworkEventBuffer();
+      const events = [...buffer.list()].reverse();
+      const result = renderNetworkEventsAtlasHtml(
+        projectRoot,
+        mockDataPath,
+        events,
+      );
+      if (result.success) {
+        console.log(
+          `[Mockifyer] Atlas HTML (${result.hopCount} hop(s)) → ${result.indexPath}`,
+        );
+      } else {
+        console.error(
+          `[Mockifyer] Atlas render failed: ${result.error ?? "unknown"}`,
+        );
+      }
+    },
+  });
+
   return function mockSyncMiddleware(req: any, res: any, next: any) {
     const url = normalizeMiddlewarePathname(req.url || "");
 
@@ -1347,6 +1385,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
         qIndex >= 0 ? fullUrl.slice(qIndex + 1) : "",
       );
       const backlog = params.get("backlog") !== "0";
+      // First SSE client (e.g. mockifyer-atlas) auto-starts Metro Atlas capture.
+      // Must run before reading the buffer — start clears hops for a clean session.
+      notifyMetroAtlasStreamClientConnected();
       const buffer = getMetroNetworkEventBuffer();
       res.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -1384,6 +1425,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const onClose = () => {
         clearInterval(keepAlive);
         unsubscribe();
+        notifyMetroAtlasStreamClientDisconnected();
       };
       req.on("close", onClose);
       req.on("aborted", onClose);

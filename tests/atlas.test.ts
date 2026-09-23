@@ -741,17 +741,39 @@ describe('atlas-doc-html', () => {
           requestId: 'req-1',
           responseBodyPreview: '{"ok":true}',
         },
+        {
+          id: 'e2',
+          timestamp: '2026-09-06T10:00:01.000Z',
+          scenario: 'default',
+          transport: 'fetch' as const,
+          method: 'POST',
+          url: 'https://example.com/downstream',
+          path: '/downstream',
+          status: 200,
+          durationMs: 12,
+          source: 'upstream' as const,
+          requestId: 'req-2',
+          parentRequestId: 'req-1',
+        },
       ];
       const n = writeAtlasDocHtml(dir, map, events);
       expect(n).toBeGreaterThanOrEqual(3);
-      expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toContain('"pageId":"about"');
+      const index = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+      expect(index).toContain('"pageId":"about"');
+      expect(index).toContain('Call tree via requestId');
+      expect(index).toContain('data-trace-group');
+      expect(index).toContain('Open in Trace');
+      expect(index).toContain('parentRequestId');
+      // Trace builds the forest from the full filtered set, not unique reps.
+      expect(index).toContain('Unique filters do not drop hops from the call tree');
+      expect(index).toContain('buildForest(base)');
       const har = JSON.parse(fs.readFileSync(path.join(dir, 'atlas.har'), 'utf8'));
       expect(har.log.version).toBe('1.2');
       expect(har.log.creator.name).toBe('Mockifyer Atlas');
-      expect(har.log.entries).toHaveLength(1);
+      expect(har.log.entries).toHaveLength(2);
       expect(har.log.entries[0].request.url).toBe('https://example.com/api');
       expect(har.log.entries[0].response.content.text).toContain('ok');
-      expect(JSON.parse(fs.readFileSync(path.join(dir, 'atlas-events.json'), 'utf8'))).toHaveLength(1);
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'atlas-events.json'), 'utf8'))).toHaveLength(2);
       expect(fs.existsSync(path.join(dir, 'bodies-search.json'))).toBe(true);
     } finally {
       setAtlasDocHtmlOutputPath(undefined);

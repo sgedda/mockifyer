@@ -1,8 +1,8 @@
 import { randomEventId } from './crypto-digest';
 import { getOutboundHeaderValue } from './outbound-header';
 import { isMockifyerDashboardPlumbingApiUrl } from './join-proxy-dashboard-api-url';
-import { toNetworkLogBodyPreview } from './network-log';
 import type { NetworkEventSource, NetworkEventTransport } from './network-log';
+import { toNetworkLogBodyPreview, emitMockifyerNetworkEvent } from './network-log';
 import {
   getActiveMockifyerHopContext,
   type MockifyerHopContext,
@@ -288,6 +288,81 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
     });
   }
 
+  return body.data;
+}
+
+export interface UnwrapInlineTraceEmittingNetworkEventsParams {
+  /** Client hop id that triggered this response (fallback parent for nested hops). */
+  parentRequestId: string;
+  config: Parameters<typeof emitMockifyerNetworkEvent>[0]['config'];
+  scenario?: string;
+  clientId?: string;
+  sessionId?: string;
+  transport?: NetworkEventTransport;
+}
+
+/**
+ * When the response is `{ data, mockifyerTrace: { hops } }`, emit each nested hop as a
+ * {@link emitMockifyerNetworkEvent} (Metro stream + dashboard + Atlas HTML buffer) with
+ * `parentRequestId`, then return the business `data`. No-op for non-envelope bodies.
+ *
+ * Used on RN/client when `networkLog.includeTraceHeader` requested nested traces without
+ * an inbound ALS hop context.
+ */
+export function unwrapInlineTraceEnvelopeEmittingNetworkEvents(
+  body: unknown,
+  params: UnwrapInlineTraceEmittingNetworkEventsParams
+): unknown {
+  if (!isInlineTraceEnvelope(body)) {
+    return body;
+  }
+
+  const parentId = params.parentRequestId.trim();
+  const hops = body.mockifyerTrace.hops;
+  for (const hop of hops) {
+    if (!hop || typeof hop !== 'object') continue;
+    const url = typeof hop.url === 'string' ? hop.url : '';
+    if (!url || isMockifyerDashboardPlumbingApiUrl(url)) continue;
+
+    const hopRequestId =
+      typeof hop.requestId === 'string' && hop.requestId.trim() ? hop.requestId.trim() : null;
+    // Skip duplicate of the client hop already logged by the interceptor.
+    if (hopRequestId && parentId && hopRequestId === parentId) continue;
+
+    const hopParent =
+      (typeof hop.parentRequestId === 'string' && hop.parentRequestId.trim()
+        ? hop.parentRequestId.trim()
+        : null) ||
+      (parentId || null);
+
+    const method = typeof hop.method === 'string' && hop.method.trim() ? hop.method : 'GET';
+    emitMockifyerNetworkEvent({
+      config: params.config,
+      scenario: params.scenario,
+      clientId: params.clientId,
+      sessionId: params.sessionId,
+      event: {
+        method,
+        url,
+        status: typeof hop.status === 'number' ? hop.status : undefined,
+        source: (hop.source as NetworkEventSource) || 'upstream',
+        transport: (hop.transport as NetworkEventTransport) || params.transport || 'proxy',
+        durationMs: typeof hop.durationMs === 'number' ? hop.durationMs : undefined,
+        requestId: hopRequestId,
+        parentRequestId: hopParent,
+        clientId:
+          typeof hop.clientId === 'string' ? hop.clientId : params.clientId ?? null,
+        errorMessage: typeof hop.errorMessage === 'string' ? hop.errorMessage : undefined,
+        requestBodyPreview:
+          typeof hop.requestBodyPreview === 'string' ? hop.requestBodyPreview : undefined,
+        responseBodyPreview:
+          typeof hop.responseBodyPreview === 'string' ? hop.responseBodyPreview : undefined,
+      },
+    });
+  }
+
+  // Also merge into ALS buffer when an inbound collector is active.
+  unwrapAndMergeInlineTraceEnvelope(body);
   return body.data;
 }
 

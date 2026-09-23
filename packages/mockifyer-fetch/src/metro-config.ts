@@ -166,6 +166,8 @@ export interface ConfigureMetroOptions {
  *   syncMiddleware: {
  *     projectRoot: __dirname,
  *     mockDataPath: './mock-data',
+ *     // atlasKey: 'a' (default) — Metro terminal: start/stop Atlas capture (stop → HTML)
+ *     // atlasKey: false — disable
  *   },
  * });
  * ```
@@ -245,6 +247,7 @@ export function configureMetroForMockifyer(
         projectRoot: options.syncMiddleware.projectRoot || process.cwd(),
         mockDataPath: options.syncMiddleware.mockDataPath || 'mock-data',
         testGeneration: options.syncMiddleware.testGeneration,
+        atlasKey: options.syncMiddleware.atlasKey,
       });
 
       // Add middleware to server config

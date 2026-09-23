@@ -74,6 +74,8 @@ import {
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
   unwrapAndMergeInlineTraceEnvelope,
+  unwrapInlineTraceEnvelopeEmittingNetworkEvents,
+  resolveNetworkLogIncludeTraceOptions,
   toNetworkLogBodyPreview,
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
@@ -143,6 +145,36 @@ class MockifyerClass {
       }
       return this.currentSessionId;
     });
+  }
+
+  private unwrapResponseInlineTrace(response: {
+    data?: unknown;
+    config?: unknown;
+  }): void {
+    const correlation = this.readRequestCorrelation(response.config);
+    const parentRequestId = correlation?.requestId?.trim();
+    if (!parentRequestId) {
+      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      return;
+    }
+    const scenario =
+      this.config.proxy?.scenario?.trim() ||
+      getCurrentScenario(this.config.mockDataPath);
+    response.data = unwrapInlineTraceEnvelopeEmittingNetworkEvents(response.data, {
+      parentRequestId,
+      config: this.config,
+      scenario,
+      clientId: this.config.clientId,
+      sessionId: this.getRuntimeSessionId(),
+      transport: this.usesDashboardProxy() ? 'proxy' : 'fetch',
+    });
+  }
+
+  private applyOutboundCorrelation(config: unknown): RequestCorrelationContext {
+    return applyOutboundRequestCorrelation(
+      config as { headers?: unknown; url?: unknown; method?: unknown },
+      resolveNetworkLogIncludeTraceOptions(this.config)
+    );
   }
 
   /** Best-effort dashboard network log. */
@@ -764,7 +796,7 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
-        applyOutboundRequestCorrelation(config);
+        this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -777,7 +809,7 @@ class MockifyerClass {
         return config;
       }
 
-      let correlation = applyOutboundRequestCorrelation(config);
+      let correlation = this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       // Normalize empty params: treat {} the same as undefined for consistent matching
@@ -1068,7 +1100,7 @@ class MockifyerClass {
             },
             this.readRequestCorrelation(response.config)
           );
-          response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+          this.unwrapResponseInlineTrace(response);
 
           const capturedResponse: StoredResponse = {
             status: response.status,
@@ -1124,7 +1156,7 @@ class MockifyerClass {
           },
           this.readRequestCorrelation(response.config)
         );
-        response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+        this.unwrapResponseInlineTrace(response);
 
         // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
         // When proxy is configured, recording should happen on the proxy (e.g. dashboard → Redis).

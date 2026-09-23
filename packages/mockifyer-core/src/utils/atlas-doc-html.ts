@@ -276,6 +276,9 @@ nav.crumb { margin-bottom: 1rem; font-size: 0.9rem; }
 .panel.active { display: block; }
 .tree-row, .hop-row { display: flex; align-items: flex-start; gap: 0.35rem; padding: 0.35rem 0.25rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
 .tree-row:hover, .hop-row:hover { background: #eee; }
+.hop-tree-guide { flex: 0 0 auto; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; white-space: pre; user-select: none; line-height: 1.4; }
+.badge.orphan { color: #9a3412; border-color: #fdba74; background: #fff7ed; }
+.badge.reqid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; color: var(--muted); }
 .tree-row.map-selectable { cursor: pointer; }
 .tree-row.map-selectable.selected { background: #e8eefc; }
 .page-tree { border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin: 0.5rem 0 1.25rem; padding: 0.25rem 0; overflow: auto; }
@@ -1370,6 +1373,8 @@ function renderErrorPanelHtml(analysis, escFn) {
   var uniqueScope = 'global';
   var uniqueKeep = 'first';
   var expandedUniqueGroups = {};
+  /** When true, Trace groups call-forest roots by kind → domain (legacy layout). */
+  var traceGroupByKind = false;
   /** Selected journey strip step key (scrolls / highlights matching group). */
   var selectedJourneyStep = null;
   /** Scrub playhead offset from session t0 (ms). null = use end of span on first render. */
@@ -2442,9 +2447,18 @@ function renderErrorPanelHtml(analysis, escFn) {
 
   function buildForest(list) {
     var byId = {};
-    list.forEach(function (e) { byId[e.id] = { event: e, children: [] }; });
+    list.forEach(function (e) {
+      byId[e.id] = { event: e, children: [], orphan: false };
+    });
+    // Last-wins on duplicate requestId (prefer newer timestamp) — matches core/dashboard.
     var byReq = {};
-    list.forEach(function (e) { if (e.requestId) byReq[e.requestId] = e; });
+    list.forEach(function (e) {
+      if (!e.requestId) return;
+      var existing = byReq[e.requestId];
+      if (!existing || new Date(e.timestamp) > new Date(existing.timestamp)) {
+        byReq[e.requestId] = e;
+      }
+    });
     var attached = {};
     var roots = [];
     list.forEach(function (e) {
@@ -2455,7 +2469,13 @@ function renderErrorPanelHtml(analysis, escFn) {
       }
     });
     list.forEach(function (e) {
-      if (!attached[e.id]) roots.push(byId[e.id]);
+      if (attached[e.id]) return;
+      var node = byId[e.id];
+      // Parent id present but missing from this filtered set → orphan root.
+      if (e.parentRequestId && !byReq[e.parentRequestId]) {
+        node.orphan = true;
+      }
+      roots.push(node);
     });
     function sortRec(nodes) {
       nodes.sort(function (a, b) { return new Date(a.event.timestamp) - new Date(b.event.timestamp); });
@@ -2463,6 +2483,20 @@ function renderErrorPanelHtml(analysis, escFn) {
     }
     sortRec(roots);
     return roots;
+  }
+
+  function shortCorrelationId(id) {
+    if (!id) return '';
+    var s = String(id).trim();
+    if (!s) return '';
+    if (s.length <= 14) return s;
+    return s.slice(0, 10) + String.fromCharCode(8230);
+  }
+
+  function countOrphanRoots(forest) {
+    var n = 0;
+    forest.forEach(function (node) { if (node.orphan) n += 1; });
+    return n;
   }
 
   function shortHostLabel(host) {
@@ -2770,7 +2804,14 @@ function renderErrorPanelHtml(analysis, escFn) {
     function walk(nodes, depth) {
       nodes.forEach(function (n) {
         var has = n.children.length > 0;
-        rows.push({ event: n.event, depth: depth, hasChildren: has, childCount: n.children.length });
+        rows.push({
+          event: n.event,
+          depth: depth,
+          hasChildren: has,
+          childCount: n.children.length,
+          orphan: !!n.orphan,
+          isLast: false
+        });
         // Hop trees start collapsed (isCollapsed default true).
         if (has && !isCollapsed(n.event.id)) walk(n.children, depth + 1);
       });
@@ -2787,13 +2828,27 @@ function renderErrorPanelHtml(analysis, escFn) {
     return n;
   }
 
+  function hopTreeGuideHtml(depth) {
+    if (depth <= 0) return '';
+    var guide = '';
+    for (var i = 1; i < depth; i++) guide += '│  ';
+    guide += '└ ';
+    return '<span class="hop-tree-guide">' + guide + '</span>';
+  }
+
   function renderHopRows(forest, padBase, uniqueMeta) {
     var rows = flatten(forest);
     var html = '';
     rows.forEach(function (r) {
       var e = r.event;
-      var pad = (padBase || 8) + r.depth * 14;
-      html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" style="padding-left:' + pad + 'px" data-select="' + esc(e.id) + '">';
+      var pad = (padBase || 8) + r.depth * 16;
+      var titleParts = [];
+      if (e.requestId) titleParts.push('requestId ' + e.requestId);
+      if (e.parentRequestId) titleParts.push('parent ' + e.parentRequestId);
+      if (r.orphan) titleParts.push('orphan (parent missing from this view)');
+      var titleAttr = titleParts.length ? ' title="' + esc(titleParts.join(' · ')) + '"' : '';
+      html += '<div class="hop-row' + (selectedId === e.id ? ' selected' : '') + hopRowIssueClass(e) + '" style="padding-left:' + pad + 'px" data-select="' + esc(e.id) + '"' + titleAttr + '>';
+      html += hopTreeGuideHtml(r.depth);
       if (r.hasChildren) {
         html += '<button type="button" class="chev" data-collapse="' + esc(e.id) + '">' + (isCollapsed(e.id) ? '▶' : '▼') + '</button>';
       } else html += '<span class="chev"></span>';
@@ -2805,6 +2860,10 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += hopGuiAttributionBadgeHtml(e);
       html += hopContextBadgeHtml(e);
       html += repeatBadgeHtml(uniqueMeta, e);
+      if (r.orphan) html += ' <span class="badge orphan" title="parentRequestId not in this filtered set">orphan</span>';
+      if (e.requestId) {
+        html += ' <span class="badge reqid" title="' + esc(e.requestId) + '">' + esc(shortCorrelationId(e.requestId)) + '</span>';
+      }
       if (r.hasChildren) html += ' <span class="badge">' + r.childCount + ' nested</span>';
       if (e.responseBodyPreview) html += ' <span class="badge">body</span>';
       var us = usageList(e.usage);
@@ -3712,10 +3771,11 @@ function renderErrorPanelHtml(analysis, escFn) {
     if (totalRuns > chains.length) html += ' · <strong>' + totalRuns + '</strong> total executions';
     html += '</p>';
     chains.forEach(function (ch) {
+      var rootHop = ch.tree && ch.tree.root && ch.tree.root.hop ? ch.tree.root.hop : null;
       html += '<div class="chain-card">';
       html += '<div class="chain-h"><span><strong>' + esc(ch.title) + '</strong></span>';
       var hostPath = chainHostPath(ch.tree);
-      if (hostPath && hostPath.indexOf('→') >= 0) {
+      if (hostPath && hostPath.indexOf(String.fromCharCode(8594)) >= 0) {
         html += ' <span class="meta">' + esc(hostPath) + '</span>';
       }
       var kindSummary = chainKindSummary(ch.tree);
@@ -3723,22 +3783,19 @@ function renderErrorPanelHtml(analysis, escFn) {
       if (ch.context) html += ' <span class="meta">· ' + esc(ch.context) + '</span>';
       if (ch.count > 1) html += ' <span class="badge repeat" title="Same orchestration ran ' + ch.count + ' times">×' + ch.count + '</span>';
       html += '<span class="spacer meta">' + esc(formatWhen(ch.firstAt)) + '</span></div>';
+      if (rootHop && rootHop.id) {
+        html += '<div class="toolbar" style="margin:0.25rem 0 0.5rem">';
+        html += '<button type="button" data-view="trace" data-keep-select="' + esc(rootHop.id) + '">Open in Trace</button>';
+        html += '</div>';
+      }
       html += renderChainTree(ch.tree);
       html += '</div>';
     });
     el.innerHTML = html;
   }
 
-  function renderTrace(el, list, uniqueMeta) {
-    var base = applyKindFilter(filterEvents());
-    var html = renderListFilters(base, uniqueMeta);
-    var forest = buildForest(list);
-    if (!forest.length) {
-      html += '<p class="empty">No hops in the selected kinds. Toggle CMS / BFF / Backend / Noise above.</p>';
-      el.innerHTML = html;
-      return;
-    }
-    // Primary: traffic kind (CMS vs backend…) · Secondary: domain
+  function renderTraceForestGroupedByKind(forest, uniqueMeta) {
+    var html = '';
     var byKind = {};
     forest.forEach(function (node) {
       var k = hopKind(node.event);
@@ -3747,13 +3804,6 @@ function renderErrorPanelHtml(analysis, escFn) {
       if (!byKind[k][h]) byKind[k][h] = [];
       byKind[k][h].push(node);
     });
-    html += '<p class="meta">Grouped by kind → domain · nested trees collapsed by default</p>';
-    html += '<div class="toolbar">';
-    html += '<button type="button" data-domains="collapse">Collapse domains</button>';
-    html += '<button type="button" data-domains="expand">Expand domains</button>';
-    html += '<button type="button" data-trees="collapse">Collapse trees</button>';
-    html += '<button type="button" data-trees="expand">Expand trees</button>';
-    html += '</div>';
     KIND_ORDER.forEach(function (kind) {
       var domainsMap = byKind[kind];
       if (!domainsMap) return;
@@ -3779,6 +3829,49 @@ function renderErrorPanelHtml(analysis, escFn) {
         html += '</div>';
       });
     });
+    return html;
+  }
+
+  function renderTrace(el, list, uniqueMeta) {
+    // Call trees need the full filtered hop set so parentRequestId links stay
+    // intact. Unique mode only affects repeat badges — not forest membership.
+    // (Chains already uses applyKindFilter(filterEvents()) for the same reason.)
+    var base = applyKindFilter(filterEvents());
+    var html = renderListFilters(base, uniqueMeta);
+    var forest = buildForest(base);
+    if (!forest.length) {
+      html += '<p class="empty">No hops in the selected kinds. Toggle CMS / BFF / Backend / Noise above.</p>';
+      el.innerHTML = html;
+      return;
+    }
+    var hopCount = countForest(forest);
+    var orphanCount = countOrphanRoots(forest);
+    html += '<p class="meta">Call tree via requestId · <strong>' + forest.length + '</strong> root' + (forest.length === 1 ? '' : 's');
+    html += ' · <strong>' + hopCount + '</strong> hop' + (hopCount === 1 ? '' : 's');
+    if (orphanCount) {
+      html += ' · <strong>' + orphanCount + '</strong> orphan root' + (orphanCount === 1 ? '' : 's') + ' (parent missing)';
+    }
+    html += ' · nested trees collapsed by default — Expand trees or click ▶</p>';
+    if (uniqueMode !== 'off') {
+      html += '<p class="meta unique-hint">Unique filters do not drop hops from the call tree (they only add ×N badges). Switch Unique → All if you want every repeat as its own row.</p>';
+    }
+    html += '<div class="toolbar">';
+    html += '<button type="button" data-trees="collapse">Collapse trees</button>';
+    html += '<button type="button" data-trees="expand">Expand trees</button>';
+    html += '<button type="button" data-trace-group="' + (traceGroupByKind ? 'off' : 'on') + '">';
+    html += traceGroupByKind ? 'Call forest (ungrouped)' : 'Group roots by kind';
+    html += '</button>';
+    if (traceGroupByKind) {
+      html += '<button type="button" data-domains="collapse">Collapse domains</button>';
+      html += '<button type="button" data-domains="expand">Expand domains</button>';
+    }
+    html += '</div>';
+    if (traceGroupByKind) {
+      html += '<p class="meta">Grouped by kind → domain (legacy). Kind filters above still apply.</p>';
+      html += renderTraceForestGroupedByKind(forest, uniqueMeta);
+    } else {
+      html += renderHopRows(forest, 8, uniqueMeta);
+    }
     el.innerHTML = html;
   }
 
@@ -4530,6 +4623,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       t.getAttribute('data-select-node') ||
       t.getAttribute('data-domains') ||
       t.getAttribute('data-trees') ||
+      t.getAttribute('data-trace-group') ||
       t.getAttribute('data-kind-toggle') ||
       t.getAttribute('data-errors-only') ||
       t.getAttribute('data-slow-only') ||
@@ -4685,6 +4779,11 @@ function renderErrorPanelHtml(analysis, escFn) {
         });
       }
       walkMark(forest);
+      render();
+      return;
+    }
+    if (t.getAttribute('data-trace-group')) {
+      traceGroupByKind = t.getAttribute('data-trace-group') === 'on';
       render();
       return;
     }
@@ -4895,7 +4994,7 @@ function buildInteractiveAtlasBody(
   const json = JSON.stringify(payload).replace(/</g, '\\u003c');
   const body = `
 <div id="atlas-app">
-  <p class="meta">Living architecture doc (unique connections, screenshots, explanations). Session forensics: Map / Trace / Chains / Waterfall / Gantt / Journey / Scrub / Requests / Fields. Click a hop or chain box for bodies (when captureBodies is on).</p>
+  <p class="meta">Living architecture doc (unique connections, screenshots, explanations). Session forensics: Map / Trace (call tree via requestId) / Chains / Waterfall / Gantt / Journey / Scrub / Requests / Fields. Click a hop or chain box for bodies (when captureBodies is on).</p>
   <div class="tabs">
     <button type="button" class="active" data-view="architecture">Architecture</button>
     <button type="button" data-view="map">Map</button>
