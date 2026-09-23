@@ -8,12 +8,23 @@ import {
   notifyMetroAtlasStreamClientConnected,
   notifyMetroAtlasStreamClientDisconnected,
   resolveAtlasKeyOption,
+  resolveDashboardKeyOption,
+  resolveMetroDashboardUrl,
   DEFAULT_METRO_ATLAS_KEY,
+  DEFAULT_METRO_DASHBOARD_KEY,
+  DEFAULT_METRO_DASHBOARD_URL,
 } from '@sgedda/mockifyer-fetch/metro-atlas-key-handlers';
 
 describe('metro-atlas-key-handlers', () => {
+  const prevDashboardUrl = process.env.MOCKIFYER_DASHBOARD_URL;
+  const prevDashboardBase = process.env.MOCKIFYER_DASHBOARD_BASE;
+
   afterEach(() => {
     detachMetroAtlasKeyHandler();
+    if (prevDashboardUrl === undefined) delete process.env.MOCKIFYER_DASHBOARD_URL;
+    else process.env.MOCKIFYER_DASHBOARD_URL = prevDashboardUrl;
+    if (prevDashboardBase === undefined) delete process.env.MOCKIFYER_DASHBOARD_BASE;
+    else process.env.MOCKIFYER_DASHBOARD_BASE = prevDashboardBase;
   });
 
   describe('resolveAtlasKeyOption', () => {
@@ -31,6 +42,39 @@ describe('metro-atlas-key-handlers', () => {
     it('normalizes to a single lowercase char', () => {
       expect(resolveAtlasKeyOption('A')).toBe('a');
       expect(resolveAtlasKeyOption('x')).toBe('x');
+    });
+  });
+
+  describe('resolveDashboardKeyOption', () => {
+    it('defaults to m', () => {
+      expect(resolveDashboardKeyOption()).toBe(DEFAULT_METRO_DASHBOARD_KEY);
+    });
+
+    it('disables with false', () => {
+      expect(resolveDashboardKeyOption(false)).toBeNull();
+    });
+  });
+
+  describe('resolveMetroDashboardUrl', () => {
+    it('defaults to localhost:3002', () => {
+      delete process.env.MOCKIFYER_DASHBOARD_URL;
+      delete process.env.MOCKIFYER_DASHBOARD_BASE;
+      expect(resolveMetroDashboardUrl()).toBe(DEFAULT_METRO_DASHBOARD_URL);
+    });
+
+    it('uses explicit over env', () => {
+      process.env.MOCKIFYER_DASHBOARD_URL = 'http://env:9999';
+      expect(resolveMetroDashboardUrl('http://explicit:3002')).toBe(
+        'http://explicit:3002',
+      );
+    });
+
+    it('appends MOCKIFYER_DASHBOARD_BASE', () => {
+      delete process.env.MOCKIFYER_DASHBOARD_URL;
+      process.env.MOCKIFYER_DASHBOARD_BASE = '/dashboard';
+      expect(resolveMetroDashboardUrl('http://localhost:3002')).toBe(
+        'http://localhost:3002/dashboard',
+      );
     });
   });
 
@@ -75,6 +119,7 @@ describe('metro-atlas-key-handlers', () => {
 
       const attached = attachMetroAtlasKeyHandler({
         atlasKey: 'a',
+        dashboardKey: false,
         stdin: stdin as unknown as NodeJS.ReadStream,
         deferMs: 0,
         onSessionStart: () => {
@@ -100,6 +145,28 @@ describe('metro-atlas-key-handlers', () => {
       expect(getMetroAtlasSessionPhase()).toBe('idle');
     });
 
+    it('opens dashboard on m', () => {
+      const stdin = makeStdin();
+      const opened: string[] = [];
+
+      const attached = attachMetroAtlasKeyHandler({
+        atlasKey: false,
+        dashboardKey: 'm',
+        dashboardUrl: 'http://localhost:3002',
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        deferMs: 0,
+        openUrl: (url) => {
+          opened.push(url);
+        },
+      });
+
+      expect(attached.dashboardKey).toBe('m');
+      expect(attached.dashboardUrl).toBe('http://localhost:3002');
+
+      stdin.emit('keypress', 'm', { name: 'm' });
+      expect(opened).toEqual(['http://localhost:3002']);
+    });
+
     it('auto-starts when the hop stream connects', async () => {
       const stdin = makeStdin();
       let starts = 0;
@@ -107,6 +174,7 @@ describe('metro-atlas-key-handlers', () => {
 
       attachMetroAtlasKeyHandler({
         atlasKey: 'a',
+        dashboardKey: false,
         stdin: stdin as unknown as NodeJS.ReadStream,
         deferMs: 0,
         onSessionStart: () => {
@@ -122,7 +190,6 @@ describe('metro-atlas-key-handlers', () => {
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
       expect(getMetroAtlasStreamSubscriberCount()).toBe(1);
 
-      // Second subscriber does not re-start / clear
       notifyMetroAtlasStreamClientConnected();
       expect(starts).toBe(1);
       expect(getMetroAtlasStreamSubscriberCount()).toBe(2);
@@ -130,7 +197,6 @@ describe('metro-atlas-key-handlers', () => {
       notifyMetroAtlasStreamClientDisconnected();
       notifyMetroAtlasStreamClientDisconnected();
       expect(getMetroAtlasStreamSubscriberCount()).toBe(0);
-      // Still capturing until Metro key stop
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
 
       stdin.emit('keypress', 'a', { name: 'a' });
@@ -145,6 +211,7 @@ describe('metro-atlas-key-handlers', () => {
 
       attachMetroAtlasKeyHandler({
         atlasKey: 'a',
+        dashboardKey: false,
         stdin: stdin as unknown as NodeJS.ReadStream,
         deferMs: 0,
         onSessionStart: () => {
@@ -159,14 +226,16 @@ describe('metro-atlas-key-handlers', () => {
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
     });
 
-    it('does not attach when atlasKey is false', () => {
+    it('does not attach when both keys are false', () => {
       const attached = attachMetroAtlasKeyHandler({
         atlasKey: false,
+        dashboardKey: false,
         deferMs: 0,
         onSessionStart: () => undefined,
         onSessionStop: () => undefined,
       });
       expect(attached.key).toBeNull();
+      expect(attached.dashboardKey).toBeNull();
       notifyMetroAtlasStreamClientConnected();
       expect(getMetroAtlasSessionPhase()).toBe('idle');
     });

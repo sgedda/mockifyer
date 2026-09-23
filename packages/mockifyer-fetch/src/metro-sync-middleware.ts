@@ -20,6 +20,7 @@
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
  * 18. Metro terminal key `a` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable)
+ * 19. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -80,6 +81,16 @@ export interface MetroSyncMiddlewareOptions {
    * Pass `false` to disable.
    */
   atlasKey?: AtlasKeyOption;
+  /**
+   * Metro terminal key that opens the dashboard in the browser (default `"m"`).
+   * Pass `false` to disable.
+   */
+  dashboardKey?: AtlasKeyOption;
+  /**
+   * Dashboard URL for Metro `m` (default: `MOCKIFYER_DASHBOARD_URL` or `http://localhost:3002`).
+   * `MOCKIFYER_DASHBOARD_BASE` is appended when set.
+   */
+  dashboardUrl?: string;
   /** Test generation configuration - tests are generated when mocks are saved to project folder */
   testGeneration?: {
     /** Enable automatic test generation when mocks are saved */
@@ -1264,6 +1275,8 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
 
   attachMetroAtlasKeyHandler({
     atlasKey: options?.atlasKey,
+    dashboardKey: options?.dashboardKey,
+    dashboardUrl: options?.dashboardUrl,
     onSessionStart: () => {
       getMetroNetworkEventBuffer().clear();
     },
