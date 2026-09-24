@@ -26,6 +26,7 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
 | [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node dashboard + Redis/SQLite proxy) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
+| [`@sgedda/mockifyer-mcp`](./packages/mockifyer-mcp) | **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io) integration for Cursor and Claude Desktop (query/modify mocks via natural language) |
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
@@ -48,6 +49,25 @@ npx mockifyer-init-ai
 ```
 
 Installs `docs/mockifyer-ai/` (`INSTRUCTIONS.md` + reference). Docs ship with `@sgedda/mockifyer-core`.
+
+## AI Integration (MCP)
+
+**Model Context Protocol** support for Cursor and Claude Desktop allows you to interact with Mockifyer using natural language:
+
+```bash
+# Build the MCP server (first time)
+cd packages/mockifyer-mcp
+npm install && npm run build
+```
+
+The repository includes a pre-configured `.cursor/mcp.json` that works out of the box. Start the dashboard and restart Cursor to enable:
+
+- "List all mocks in the default scenario"
+- "Override the booking status to CONFIRMED"
+- "Create a new scenario from default"
+- "Trace the network call that returned 502"
+
+See [`.cursor/README.md`](./.cursor/README.md) and [`packages/mockifyer-mcp/README.md`](./packages/mockifyer-mcp/README.md) for details.
 
 ## Usage (fetch)
 

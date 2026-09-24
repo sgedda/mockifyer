@@ -29,6 +29,9 @@ coverage/
 *.swp
 *.swo
 
+# Local MCP configurations
+.cursor/mcp.json.local
+
 # OS specific files
 .DS_Store
 Thumbs.db

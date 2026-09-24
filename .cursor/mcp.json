@@ -1,0 +1,13 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema.json",
+  "mcpServers": {
+    "mockifyer": {
+      "command": "node",
+      "args": ["./packages/mockifyer-mcp/dist/cli.js"],
+      "env": {
+        "MOCKIFYER_DASHBOARD_URL": "http://localhost:3002",
+        "MOCKIFYER_DASHBOARD_BASE": ""
+      }
+    }
+  }
+}
