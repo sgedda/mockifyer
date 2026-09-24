@@ -41,12 +41,12 @@ The cleanest way to start Mockifyer disabled. Set `runtimeMode: 'manual'` to pat
 const result = await setupMockifyerForReactNative({
   isDev: __DEV__,
   mockDataPath: 'mock-data',
-  runtimeMode: 'manual', // 👈 Clean and explicit!
+  runtimeMode: 'manual', // first launch: off
+  persistRuntimeEnabled: true, // 👈 stay on after enable + app restart
 });
 
-// Mockifyer is initialized but disabled
-// All requests go directly to real APIs
-// Call instance.enableMockifyer() to turn it on
+// Mockifyer is initialized but disabled (unless user previously enabled)
+// Call instance.enableMockifyer() to turn it on — preference is saved
 ```
 
 **Available runtime modes:**
@@ -58,6 +58,24 @@ const result = await setupMockifyerForReactNative({
 **Aliases:** `'gui'` and `'toggle'` also map to `'manual'`
 
 **Environment variable:** Set `MOCKIFYER_MODE=manual` in `.env`
+
+#### `persistRuntimeEnabled` (recommended with manual)
+
+Without this, `enableMockifyer()` only lasts until the app process dies.
+
+```typescript
+persistRuntimeEnabled: true
+// → AsyncStorage on React Native, localStorage on web
+// Or pass your own { getItem, setItem }
+```
+
+Flow:
+1. First launch with `runtimeMode: 'manual'` → **off**
+2. User toggles on → saved to storage
+3. App restart → **still on**
+4. User toggles off → saved; next restart stays **off**
+
+Requires `@react-native-async-storage/async-storage` in RN apps (optional peer — if missing, toggle still works but does not persist).
 
 #### `startDisabled` (Legacy, Still Supported)
 
@@ -475,75 +493,24 @@ Even when disabled, these still work:
 
 ### State Persistence
 
-The toggle state is **NOT persisted** across app restarts. Each time your app launches:
-
-1. Mockifyer initializes based on `MOCKIFYER_MODE` / `runtimeMode` config
-2. Default state is determined by `startDisabled`:
-   - `startDisabled: false` (default) → starts **enabled**
-   - `startDisabled: true` → starts **disabled**
-3. You must call `disableMockifyer()` or `enableMockifyer()` again after each app restart to change the state
-
-To persist the user's preference across restarts:
+With **`persistRuntimeEnabled: true`**, the toggle **is** restored across app restarts:
 
 ```typescript
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const MOCKIFYER_ENABLED_KEY = '@mockifyer_enabled';
-
-// On app init
-async function initMockifyer() {
-  // Get saved preference (default to disabled for safety)
-  const savedEnabled = await AsyncStorage.getItem(MOCKIFYER_ENABLED_KEY);
-  const shouldStartEnabled = savedEnabled === 'true';
-
-  const result = await setupMockifyerForReactNative({
-    isDev: __DEV__,
-    mockDataPath: 'mock-data',
-    startDisabled: !shouldStartEnabled, // Start based on saved preference
-  });
-
-  if (isMockifyerReactNativeActive(result)) {
-    console.log(`Mockifyer started: ${shouldStartEnabled ? 'enabled' : 'disabled'}`);
-  }
-
-  return result;
-}
-
-// When user toggles
-async function handleToggle(instance: MockifyerInstance, enabled: boolean) {
-  if (enabled) {
-    instance.enableMockifyer();
-  } else {
-    instance.disableMockifyer();
-  }
-  
-  // Save preference for next restart
-  await AsyncStorage.setItem(MOCKIFYER_ENABLED_KEY, String(enabled));
-  console.log(`Preference saved: ${enabled ? 'enabled' : 'disabled'}`);
-}
+const result = await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  runtimeMode: 'manual',
+  persistRuntimeEnabled: true, // AsyncStorage (RN) / localStorage (web)
+});
 ```
 
-**Alternative: Always start disabled, let user enable:**
+| Launch | Behavior |
+|--------|----------|
+| First (no saved preference) | Follows `runtimeMode: 'manual'` → **off** |
+| After `enableMockifyer()` + restart | **on** |
+| After `disableMockifyer()` + restart | **off** |
 
-```typescript
-// Best for production/staging builds that ship with Mockifyer
-// but should use real APIs by default
-async function initMockifyer() {
-  const result = await setupMockifyerForReactNative({
-    isDev: __DEV__,
-    mockDataPath: 'mock-data',
-    startDisabled: true, // Always start disabled
-  });
-
-  // Only restore "enabled" preference if one exists
-  const savedEnabled = await AsyncStorage.getItem(MOCKIFYER_ENABLED_KEY);
-  if (savedEnabled === 'true' && isMockifyerReactNativeActive(result)) {
-    result.instance.enableMockifyer();
-  }
-
-  return result;
-}
-```
+Without `persistRuntimeEnabled`, the toggle resets on every restart to the `runtimeMode` / `startDisabled` default.
 
 ## Testing
 

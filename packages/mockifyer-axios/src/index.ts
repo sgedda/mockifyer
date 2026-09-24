@@ -68,6 +68,10 @@ import {
   setLogLevel,
   stripMockifyerTraceFromBody,
   ensureOverrideGroupRuntimeForScenarioPath,
+  resolveInitialRuntimeEnabled,
+  resolveRuntimeEnabledStorage,
+  savePersistedRuntimeEnabled,
+  type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -120,6 +124,8 @@ class MockifyerClass {
   private readonly domainPathRules: DomainPathRulesSession;
   /** Runtime toggle: when false, all Mockifyer logic is bypassed. */
   private runtimeEnabled: boolean;
+  /** Optional storage for persisting enable/disable across restarts. */
+  private readonly runtimeEnabledStorage?: MockifyerRuntimeEnabledStorage;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -397,14 +403,25 @@ class MockifyerClass {
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
 
-    const shouldStartDisabled =
-      config.startDisabled === true || config.runtimeMode === 'manual';
-    this.runtimeEnabled = !shouldStartDisabled;
-    if (shouldStartDisabled) {
+    this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
+    this.runtimeEnabled = resolveInitialRuntimeEnabled({
+      initialRuntimeEnabled: config.initialRuntimeEnabled,
+      startDisabled: config.startDisabled,
+      runtimeMode: config.runtimeMode,
+    });
+    if (!this.runtimeEnabled) {
       const reason =
-        config.runtimeMode === 'manual' ? 'runtimeMode: "manual"' : 'startDisabled: true';
+        typeof config.initialRuntimeEnabled === 'boolean'
+          ? 'persisted / initialRuntimeEnabled: false'
+          : config.runtimeMode === 'manual'
+            ? 'runtimeMode: "manual"'
+            : 'startDisabled: true';
       logger.info(
         `[Mockifyer-Axios] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
+      );
+    } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
+      logger.info(
+        '[Mockifyer-Axios] Starting with Mockifyer ENABLED (restored from persisted preference).'
       );
     }
 
@@ -2331,18 +2348,22 @@ class MockifyerClass {
 
   /**
    * Enable Mockifyer at runtime.
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
    */
   public enableMockifyer(): void {
     this.runtimeEnabled = true;
     logger.info('[Mockifyer-Axios] Mockifyer enabled at runtime');
+    void this.persistRuntimeEnabledState(true);
   }
 
   /**
    * Disable Mockifyer at runtime (no dashboard/Redis/proxy/mocks).
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
    */
   public disableMockifyer(): void {
     this.runtimeEnabled = false;
     logger.info('[Mockifyer-Axios] Mockifyer disabled at runtime - all requests will bypass');
+    void this.persistRuntimeEnabledState(false);
   }
 
   /**
@@ -2350,6 +2371,13 @@ class MockifyerClass {
    */
   public isMockifyerEnabled(): boolean {
     return this.runtimeEnabled;
+  }
+
+  private async persistRuntimeEnabledState(enabled: boolean): Promise<void> {
+    if (!this.runtimeEnabledStorage) {
+      return;
+    }
+    await savePersistedRuntimeEnabled(this.runtimeEnabledStorage, enabled);
   }
 
   /**

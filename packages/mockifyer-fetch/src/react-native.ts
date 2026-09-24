@@ -16,7 +16,10 @@ import {
   logMockifyerNotActivated,
   resolveRecordResponses,
   resolveStrictScenarioResolution,
+  resolveRuntimeEnabledStorage,
+  loadPersistedRuntimeEnabled,
   type MockifyerRuntimeMode,
+  type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
 
 // React Native package-root resolution points at this entry. Keep the root
@@ -81,6 +84,12 @@ export interface ReactNativeMockifyerConfig {
    * Default: false (starts enabled).
    */
   startDisabled?: boolean;
+  /**
+   * Persist enable/disable across app restarts (AsyncStorage when `true`).
+   * With `runtimeMode: 'manual'`, first launch is off; after the user enables,
+   * the next launch stays on.
+   */
+  persistRuntimeEnabled?: boolean | MockifyerRuntimeEnabledStorage;
   /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
@@ -230,6 +239,7 @@ export async function setupMockifyerForReactNative(
     bundledDataPath = './assets/mock-data',
     recordMode = false,
     startDisabled = false,
+    persistRuntimeEnabled,
     config: userConfig = {},
     proxyBaseUrl,
     proxyScenario,
@@ -256,9 +266,21 @@ export async function setupMockifyerForReactNative(
     configMode: runtimeModeOption ?? userConfig.runtimeMode,
   });
 
+  const persistOption = persistRuntimeEnabled ?? userConfig.persistRuntimeEnabled;
+  const runtimeEnabledStorage = resolveRuntimeEnabledStorage(persistOption);
+  let initialRuntimeEnabled: boolean | undefined = userConfig.initialRuntimeEnabled;
+  if (runtimeEnabledStorage && typeof initialRuntimeEnabled !== 'boolean') {
+    const saved = await loadPersistedRuntimeEnabled(runtimeEnabledStorage);
+    if (typeof saved === 'boolean') {
+      initialRuntimeEnabled = saved;
+    }
+  }
+
   const mergedConfig: typeof userConfig = {
     ...userConfig,
     runtimeMode: resolvedRuntimeMode,
+    ...(persistOption !== undefined ? { persistRuntimeEnabled: persistOption } : {}),
+    ...(typeof initialRuntimeEnabled === 'boolean' ? { initialRuntimeEnabled } : {}),
     ...(shouldApplyLaunchClientId
       ? {
           useLaunchArgumentsClientId: true as const,

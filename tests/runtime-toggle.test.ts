@@ -188,4 +188,60 @@ describe('Runtime Mockifyer Toggle', () => {
       expect(manualInstance.isMockifyerEnabled()).toBe(true);
     });
   });
+
+  describe('persistRuntimeEnabled', () => {
+    it('should restore enabled state from storage on next setup', async () => {
+      const store = new Map<string, string>();
+      const storage = {
+        getItem: async (key: string) => store.get(key) ?? null,
+        setItem: async (key: string, value: string) => {
+          store.set(key, value);
+        },
+      };
+
+      const first = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'manual',
+        persistRuntimeEnabled: storage,
+      });
+      expect(first.isMockifyerEnabled()).toBe(false);
+
+      first.enableMockifyer();
+      // Allow async persist to flush
+      await new Promise((r) => setTimeout(r, 10));
+      expect(store.get('@mockifyer/runtime-enabled')).toBe('true');
+
+      const second = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'manual',
+        persistRuntimeEnabled: storage,
+        initialRuntimeEnabled: true, // simulates async load done by RN helper
+      });
+      expect(second.isMockifyerEnabled()).toBe(true);
+    });
+
+    it('should restore disabled state from storage', async () => {
+      const store = new Map<string, string>([['@mockifyer/runtime-enabled', 'false']]);
+      const storage = {
+        getItem: async (key: string) => store.get(key) ?? null,
+        setItem: async (key: string, value: string) => {
+          store.set(key, value);
+        },
+      };
+
+      const instance = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'on',
+        persistRuntimeEnabled: storage,
+        initialRuntimeEnabled: false,
+      });
+      expect(instance.isMockifyerEnabled()).toBe(false);
+    });
+  });
 });

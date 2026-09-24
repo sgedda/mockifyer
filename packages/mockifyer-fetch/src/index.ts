@@ -92,6 +92,10 @@ import {
   DomainPathRulesSession,
   installNodeInboundRequestCorrelationCapture,
   stripMockifyerTraceFromBody,
+  resolveInitialRuntimeEnabled,
+  resolveRuntimeEnabledStorage,
+  savePersistedRuntimeEnabled,
+  type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -134,6 +138,8 @@ class MockifyerClass {
   private readonly domainPathRules: DomainPathRulesSession;
   /** Runtime toggle: when false, all Mockifyer logic is bypassed (no dashboard, Redis, proxy, or mock lookup). */
   private runtimeEnabled: boolean;
+  /** Optional storage for persisting enable/disable across restarts. */
+  private readonly runtimeEnabledStorage?: MockifyerRuntimeEnabledStorage;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -444,16 +450,27 @@ class MockifyerClass {
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
     
-    // Initialize runtime enabled state
-    // Default true unless startDisabled is set or runtimeMode is 'manual'
-    const shouldStartDisabled = config.startDisabled === true || config.runtimeMode === 'manual';
-    this.runtimeEnabled = !shouldStartDisabled;
+    this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
+    this.runtimeEnabled = resolveInitialRuntimeEnabled({
+      initialRuntimeEnabled: config.initialRuntimeEnabled,
+      startDisabled: config.startDisabled,
+      runtimeMode: config.runtimeMode,
+    });
     
-    if (shouldStartDisabled) {
-      const reason = config.runtimeMode === 'manual' 
-        ? 'runtimeMode: "manual"' 
-        : 'startDisabled: true';
-      logger.info(`[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`);
+    if (!this.runtimeEnabled) {
+      const reason =
+        typeof config.initialRuntimeEnabled === 'boolean'
+          ? 'persisted / initialRuntimeEnabled: false'
+          : config.runtimeMode === 'manual'
+            ? 'runtimeMode: "manual"'
+            : 'startDisabled: true';
+      logger.info(
+        `[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
+      );
+    } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
+      logger.info(
+        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (restored from persisted preference).'
+      );
     }
     
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
@@ -1729,19 +1746,23 @@ class MockifyerClass {
   /**
    * Enable Mockifyer at runtime. All subsequent requests will go through Mockifyer
    * (mock lookup, recording, dashboard/Redis proxy, etc.).
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
    */
   enableMockifyer(): void {
     this.runtimeEnabled = true;
     logger.info('[Mockifyer-Fetch] Mockifyer enabled at runtime');
+    void this.persistRuntimeEnabledState(true);
   }
 
   /**
    * Disable Mockifyer at runtime. All subsequent requests will bypass Mockifyer completely
    * (no dashboard, Redis, proxy, mock lookup, or recording).
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
    */
   disableMockifyer(): void {
     this.runtimeEnabled = false;
     logger.info('[Mockifyer-Fetch] Mockifyer disabled at runtime - all requests will bypass');
+    void this.persistRuntimeEnabledState(false);
   }
 
   /**
@@ -1749,6 +1770,13 @@ class MockifyerClass {
    */
   isMockifyerEnabled(): boolean {
     return this.runtimeEnabled;
+  }
+
+  private async persistRuntimeEnabledState(enabled: boolean): Promise<void> {
+    if (!this.runtimeEnabledStorage) {
+      return;
+    }
+    await savePersistedRuntimeEnabled(this.runtimeEnabledStorage, enabled);
   }
 
   getHTTPClient(): HTTPClient {

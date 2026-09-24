@@ -108,6 +108,27 @@ export interface MockifyerConfig {
    * This option remains for backwards compatibility.
    */
   startDisabled?: boolean;
+  /**
+   * Persist {@link enableMockifyer} / {@link disableMockifyer} across app restarts.
+   *
+   * - **`true`** — use AsyncStorage (React Native) or `localStorage` (web) when available
+   * - **custom storage** — any `{ getItem, setItem }` (e.g. your own AsyncStorage wrapper)
+   *
+   * With **`runtimeMode: 'manual'`**, first launch starts disabled; after the user enables once,
+   * the next launch restores **enabled**. Pair with {@link initialRuntimeEnabled} when you load
+   * storage yourself before `setupMockifyer` (sync APIs).
+   */
+  persistRuntimeEnabled?:
+    | boolean
+    | {
+        getItem(key: string): Promise<string | null> | string | null;
+        setItem(key: string, value: string): Promise<void> | void;
+      };
+  /**
+   * Explicit initial runtime enable state (overrides `startDisabled` / `runtimeMode: 'manual'`).
+   * Set after loading persisted preference in async setup (see `setupMockifyerForReactNative`).
+   */
+  initialRuntimeEnabled?: boolean;
   /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
   initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
