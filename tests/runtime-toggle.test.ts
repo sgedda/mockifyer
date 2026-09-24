@@ -250,8 +250,8 @@ describe('Runtime Mockifyer Toggle', () => {
       setScenarioLaunchOverride(null);
     });
 
-    it('should start enabled when scenario launch override is set (even in manual mode)', () => {
-      setScenarioLaunchOverride('e2e-smoke');
+    it('should start enabled when scenario launch override is from native args (even in manual mode)', () => {
+      setScenarioLaunchOverride('e2e-smoke', { fromLaunchArguments: true });
       const instance = setupMockifyer({
         mockDataPath: './mock-data',
         databaseProvider: { type: 'memory' },
@@ -261,8 +261,8 @@ describe('Runtime Mockifyer Toggle', () => {
       expect(instance.isMockifyerEnabled()).toBe(true);
     });
 
-    it('should prefer launch scenario over persisted disabled', () => {
-      setScenarioLaunchOverride('maestro-login');
+    it('should prefer native launch scenario over persisted disabled', () => {
+      setScenarioLaunchOverride('maestro-login', { fromLaunchArguments: true });
       const instance = setupMockifyer({
         mockDataPath: './mock-data',
         databaseProvider: { type: 'memory' },
@@ -271,6 +271,17 @@ describe('Runtime Mockifyer Toggle', () => {
         initialRuntimeEnabled: false,
       });
       expect(instance.isMockifyerEnabled()).toBe(true);
+    });
+
+    it('should NOT force enabled when override is only defaultScenario (not launch args)', () => {
+      setScenarioLaunchOverride('default'); // no fromLaunchArguments
+      const instance = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'manual',
+      });
+      expect(instance.isMockifyerEnabled()).toBe(false);
     });
   });
 });

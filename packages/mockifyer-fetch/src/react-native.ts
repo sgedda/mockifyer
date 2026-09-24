@@ -155,7 +155,7 @@ function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): b
   if (options.useLaunchArgumentsScenario !== false) {
     const scenarioFromLaunch = tryGetScenarioFromLaunchArguments();
     if (scenarioFromLaunch) {
-      setScenarioLaunchOverride(scenarioFromLaunch);
+      setScenarioLaunchOverride(scenarioFromLaunch, { fromLaunchArguments: true });
       appliedFromLaunchArgs = true;
     }
   }
@@ -163,8 +163,8 @@ function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): b
   if (!appliedFromLaunchArgs && options.defaultScenario !== undefined && options.defaultScenario !== null) {
     const t = String(options.defaultScenario).trim();
     if (t !== '') {
+      // App config default — not a native launch arg; do not force runtime toggle on.
       setScenarioLaunchOverride(t);
-      // defaultScenario is app config, not a launch arg — does not force runtime on
     }
   }
 
