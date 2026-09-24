@@ -12,8 +12,8 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  *
  * - **`off`** — never activate; launch arguments do **not** override (use for production builds that ship Mockifyer code but must not run it).
  * - **`on`** — always activate when the helper is called (starts enabled).
- * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`).
- * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle).
+ * - **`launch_client`** — activate when the Maestro/native launch client lane id **and/or** `scenario` is non-empty.
+ * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle). A launch `scenario` still starts enabled.
  *
  * Resolution: optional config **`runtimeMode`**, then env **`MOCKIFYER_MODE`**, else **`on`**. Set **`launch_client`** explicitly for E2E-only activation (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
  */

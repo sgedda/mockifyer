@@ -19,6 +19,7 @@ import {
   resolveStrictScenarioResolution,
   resolveRuntimeEnabledStorage,
   loadPersistedRuntimeEnabled,
+  shouldActivateMockifyerForReactNative,
   type MockifyerRuntimeMode,
   type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
@@ -308,15 +309,18 @@ export async function setupMockifyerForReactNative(
     return 'React Native dev · hybrid (device + Metro)';
   };
 
-  // Patch fetch for on / manual; launch_client only when lane id is present.
-  const isEnabled =
-    resolvedRuntimeMode === 'on' ||
-    resolvedRuntimeMode === 'manual' ||
-    (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
+  // Patch fetch unless mode is off.
+  // launch_client: activate when lane id OR launch scenario arg is present (E2E).
+  const isEnabled = shouldActivateMockifyerForReactNative({
+    runtimeMode: resolvedRuntimeMode,
+    hasLaunchClientId: Boolean(clientIdFromLaunchArgs),
+    hasLaunchScenario: launchScenarioApplied,
+  });
   if (!isEnabled) {
     logMockifyerNotActivated(resolvedRuntimeMode, {
       launchClientIdKey,
       hadLaunchClientId: Boolean(clientIdFromLaunchArgs),
+      hadLaunchScenario: launchScenarioApplied,
     });
     return { status: 'not_activated', instance: null } as const;
   }

@@ -2,7 +2,12 @@
  * Tests for runtime Mockifyer enable/disable toggle
  */
 
-import { setupMockifyer, MemoryProvider, setScenarioLaunchOverride } from '@sgedda/mockifyer-fetch';
+import {
+  setupMockifyer,
+  MemoryProvider,
+  setScenarioLaunchOverride,
+  shouldActivateMockifyerForReactNative,
+} from '@sgedda/mockifyer-fetch';
 import type { MockifyerInstance } from '@sgedda/mockifyer-fetch';
 
 describe('Runtime Mockifyer Toggle', () => {
@@ -282,6 +287,38 @@ describe('Runtime Mockifyer Toggle', () => {
         runtimeMode: 'manual',
       });
       expect(instance.isMockifyerEnabled()).toBe(false);
+    });
+  });
+
+  describe('shouldActivateMockifyerForReactNative', () => {
+    it('activates launch_client when scenario is present without client id', () => {
+      expect(
+        shouldActivateMockifyerForReactNative({
+          runtimeMode: 'launch_client',
+          hasLaunchClientId: false,
+          hasLaunchScenario: true,
+        })
+      ).toBe(true);
+    });
+
+    it('does not activate launch_client without client id or scenario', () => {
+      expect(
+        shouldActivateMockifyerForReactNative({
+          runtimeMode: 'launch_client',
+          hasLaunchClientId: false,
+          hasLaunchScenario: false,
+        })
+      ).toBe(false);
+    });
+
+    it('never activates when runtimeMode is off even with scenario', () => {
+      expect(
+        shouldActivateMockifyerForReactNative({
+          runtimeMode: 'off',
+          hasLaunchClientId: true,
+          hasLaunchScenario: true,
+        })
+      ).toBe(false);
     });
   });
 });
