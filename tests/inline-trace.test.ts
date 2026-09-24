@@ -509,7 +509,7 @@ describe('inline-trace', () => {
       });
 
       const nestedEnvelope = {
-        [MOCKIFYER_TRACE_DATA_KEY]: { token: 'abc' },
+        [MOCKIFYER_TRACE_DATA_KEY]: [1, 2, 3],
         [MOCKIFYER_TRACE_RESPONSE_KEY]: {
           requestId: 'member-root',
           hopCount: 2,
@@ -542,7 +542,7 @@ describe('inline-trace', () => {
       };
 
       const business = unwrapAndMergeInlineTraceEnvelope(nestedEnvelope);
-      expect(business).toEqual({ token: 'abc' });
+      expect(business).toEqual([1, 2, 3]);
 
       const trace = buildInlineRequestTrace();
       expect(trace!.hopCount).toBe(3);
@@ -558,7 +558,7 @@ describe('inline-trace', () => {
 
   it('does not unwrap nested envelopes when parent is not collecting inline trace', () => {
     const envelope = {
-      [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+      [MOCKIFYER_TRACE_DATA_KEY]: [1, 2, 3],
       [MOCKIFYER_TRACE_RESPONSE_KEY]: {
         requestId: 'x',
         hopCount: 1,
@@ -706,7 +706,7 @@ describe('inline-trace', () => {
         requestId: 'hop-1',
         parentRequestId: 'root',
         responseBody: {
-          [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-1' },
+          [MOCKIFYER_TRACE_DATA_KEY]: 'user-1',
           [MOCKIFYER_TRACE_RESPONSE_KEY]: {
             requestId: 'member',
             hopCount: 0,

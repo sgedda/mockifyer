@@ -243,11 +243,17 @@ function readInlineTrace(body: Record<string, unknown>): InlineRequestTrace | nu
  */
 function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
   const keys = Object.keys(body);
-  return (
-    keys.length === 2 &&
-    Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY) &&
-    readInlineTrace(body) != null
-  );
+  if (
+    keys.length !== 2 ||
+    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY) ||
+    readInlineTrace(body) == null
+  ) {
+    return false;
+  }
+  // Legacy envelopes wrap non-objects (arrays, scalars).
+  // If body.data is a plain object, this is a natural data field (e.g. GraphQL), not a wrap.
+  const data = body[MOCKIFYER_TRACE_DATA_KEY];
+  return !isRecord(data);
 }
 
 /**

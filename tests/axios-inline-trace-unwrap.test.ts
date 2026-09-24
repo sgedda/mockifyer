@@ -32,7 +32,7 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     upstream = new MockAdapter(axiosInstance);
 
     const nestedEnvelope = {
-      [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-1', name: 'Ada' },
+      [MOCKIFYER_TRACE_DATA_KEY]: ['user-1', 'Ada'],
       [MOCKIFYER_TRACE_RESPONSE_KEY]: {
         requestId: 'member-root',
         hopCount: 1,
@@ -72,7 +72,7 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
 
     expect(response.status).toBe(200);
-    expect(response.data).toEqual({ id: 'user-1', name: 'Ada' });
+    expect(response.data).toEqual(['user-1', 'Ada']);
     expect(response.data).not.toHaveProperty(MOCKIFYER_TRACE_RESPONSE_KEY);
 
     const trace = buildInlineRequestTrace(ctx);
@@ -89,7 +89,7 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     upstream = new MockAdapter(axiosInstance);
 
     const nestedEnvelope = {
-      [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-2', role: 'admin' },
+      [MOCKIFYER_TRACE_DATA_KEY]: 'user-2-admin',
       [MOCKIFYER_TRACE_RESPONSE_KEY]: {
         requestId: 'member-root',
         hopCount: 1,
@@ -129,7 +129,7 @@ describe('axios recordMode=false inline-trace unwrap', () => {
 
     const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
 
-    expect(response.data).toEqual({ id: 'user-2', role: 'admin' });
+    expect(response.data).toEqual('user-2-admin');
 
     const trace = buildInlineRequestTrace(ctx);
     expect(trace).not.toBeNull();
@@ -138,13 +138,13 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     expect(trace!.hops[1].responseBodyPreview).toBe('{"row":1}');
   });
 
-  it('leaves envelopes intact when parent is not collecting inline trace', async () => {
+  it('unwraps envelopes even when parent is not collecting inline trace', async () => {
     const url = 'https://api.example.test/member/plain';
     const axiosInstance = axios.create();
     upstream = new MockAdapter(axiosInstance);
 
     const envelope = {
-      [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+      [MOCKIFYER_TRACE_DATA_KEY]: 'ok',
       [MOCKIFYER_TRACE_RESPONSE_KEY]: {
         requestId: 'x',
         hopCount: 0,
@@ -164,6 +164,6 @@ describe('axios recordMode=false inline-trace unwrap', () => {
 
     const response = await client.get(url);
 
-    expect(response.data).toEqual(envelope);
+    expect(response.data).toEqual('ok');
   });
 });
