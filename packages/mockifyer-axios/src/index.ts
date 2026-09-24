@@ -176,6 +176,27 @@ class MockifyerClass {
     });
   }
 
+  /**
+   * Unwrap a live upstream body on global axios. Mock hits and bypasses keep their payload.
+   * Idempotent: a second call sees the business body and leaves it unchanged.
+   */
+  private unwrapLiveAxiosResponse(response: {
+    data?: unknown;
+    config?: unknown;
+    headers?: unknown;
+  }): void {
+    const config = response.config as
+      | { __mockifyer_bypass?: boolean; __mockifyer_isMock?: boolean }
+      | undefined;
+    if (config?.__mockifyer_bypass || config?.__mockifyer_isMock) {
+      return;
+    }
+    if (this.responseHasMockifyerMarker(response as HTTPResponse)) {
+      return;
+    }
+    this.unwrapResponseInlineTrace(response);
+  }
+
   private unwrapResponseInlineTrace(response: {
     data?: unknown;
     config?: unknown;
@@ -2418,6 +2439,25 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         console.warn('[Mockifyer] ⚠️ No request interceptors found! This might be why mocks are not working for global axios.');
       }
       
+      // useGlobalAxios never runs the instance response interceptors. Unwrap here so
+      // include-trace envelopes do not replace the business body (or get recorded as mocks).
+      // Safe to run twice: the second pass sees a non-envelope and is a no-op.
+      globalAxios.interceptors.response.use(
+        (axiosResponse: { data?: unknown; config?: unknown; headers?: unknown }) => {
+          mockifyer['unwrapLiveAxiosResponse'](axiosResponse);
+          return axiosResponse;
+        },
+        (error: { response?: { data?: unknown; config?: unknown; headers?: unknown }; config?: unknown }) => {
+          if (error?.response) {
+            if (!error.response.config && error.config) {
+              error.response.config = error.config;
+            }
+            mockifyer['unwrapLiveAxiosResponse'](error.response);
+          }
+          return Promise.reject(error);
+        }
+      );
+
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)
@@ -2434,6 +2474,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               if ((axiosResponse.config as any)?.__mockifyer_bypass) {
                 return axiosResponse;
               }
+
+              mockifyer['unwrapLiveAxiosResponse'](axiosResponse);
 
               // CRITICAL: Clean up processingRequests after request completes
               const requestKey = (axiosResponse.config as any).__mockifyer_requestKey;
@@ -2585,6 +2627,11 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug('[Mockifyer] Skipping recording - this is a mocked error response');
                 return mockifyer['rejectWithMockifyerRequestId'](error);
               }
+
+              if (!error.response.config && error.config) {
+                error.response.config = error.config;
+              }
+              mockifyer['unwrapLiveAxiosResponse'](error.response);
               
               // Convert Axios error response to HTTPResponse format
               const httpResponse: HTTPResponse = {
