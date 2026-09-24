@@ -427,7 +427,8 @@ function capturedBodyText(value: unknown, existingPreview: unknown): string | un
   const fromValue = serializeBodyForSpill(value);
   if (fromValue) return fromValue;
   if (typeof existingPreview === 'string') return serializeBodyForSpill(existingPreview);
-  return undefined;
+  // When body exceeds spill cap, build a truncated preview from the raw value
+  return truncatePreview(value, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES);
 }
 
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
