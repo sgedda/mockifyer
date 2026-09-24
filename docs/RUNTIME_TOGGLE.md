@@ -509,8 +509,9 @@ const result = await setupMockifyerForReactNative({
 | First (no saved preference) | Follows `runtimeMode: 'manual'` → **off** |
 | After `enableMockifyer()` + restart | **on** |
 | After `disableMockifyer()` + restart | **off** |
+| Launch arg `scenario=…` (Maestro/E2E) | **on** for that session (overrides persisted off) |
 
-Without `persistRuntimeEnabled`, the toggle resets on every restart to the `runtimeMode` / `startDisabled` default.
+Without `persistRuntimeEnabled`, the toggle resets on every restart to the `runtimeMode` / `startDisabled` default — except a launch **`scenario`** argument always starts **enabled**.
 
 ## Testing
 

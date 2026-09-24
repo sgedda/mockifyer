@@ -28,6 +28,7 @@ export * from './utils/record-passthrough-config';
 export * from './utils/client-id';
 export * from './utils/runtime-client-id';
 export * from './utils/launch-arguments-client-id';
+export * from './utils/launch-arguments-scenario';
 export * from './utils/activation-mode';
 export * from './utils/outbound-header';
 export * from './utils/request-correlation';

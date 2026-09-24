@@ -103,14 +103,21 @@ export async function savePersistedRuntimeEnabled(
 /**
  * Initial enabled flag after optional persistence + manual/startDisabled defaults.
  *
- * Precedence: explicit `initialRuntimeEnabled` → (caller already applied persistence) →
- * otherwise `!(startDisabled || runtimeMode === 'manual')`.
+ * Precedence:
+ * 1. Launch-arg scenario present → **enabled** (E2E wants mocks on)
+ * 2. Explicit `initialRuntimeEnabled` (incl. persisted preference loaded by caller)
+ * 3. Otherwise `!(startDisabled || runtimeMode === 'manual')`
  */
 export function resolveInitialRuntimeEnabled(input: {
   initialRuntimeEnabled?: boolean;
   startDisabled?: boolean;
   runtimeMode?: string;
+  /** When true, a native launch `scenario` argument was provided. */
+  launchScenarioPresent?: boolean;
 }): boolean {
+  if (input.launchScenarioPresent === true) {
+    return true;
+  }
   if (typeof input.initialRuntimeEnabled === 'boolean') {
     return input.initialRuntimeEnabled;
   }

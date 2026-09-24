@@ -18,6 +18,7 @@ import {
   getScenarioFolderPath,
   ensureScenarioFolder,
   initializeScenario,
+  getScenarioLaunchOverride,
   TestGenerator,
   TestGenerationOptions,
   checkRequestLimit,
@@ -408,6 +409,7 @@ class MockifyerClass {
       initialRuntimeEnabled: config.initialRuntimeEnabled,
       startDisabled: config.startDisabled,
       runtimeMode: config.runtimeMode,
+      launchScenarioPresent: Boolean(getScenarioLaunchOverride()),
     });
     if (!this.runtimeEnabled) {
       const reason =

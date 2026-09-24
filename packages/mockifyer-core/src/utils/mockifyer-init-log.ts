@@ -32,6 +32,12 @@ function describeRuntimeMode(mode: MockifyerRuntimeMode | undefined): { label: s
         meaning:
           'Mockifyer runs only when a launch argument client id is present (Maestro/E2E). Use runtimeMode "on" for everyday dev.',
       };
+    case 'manual':
+      return {
+        label: 'manual',
+        meaning:
+          'Mockifyer patches fetch but starts disabled until enableMockifyer() (or a launch scenario arg forces on).',
+      };
     case 'on':
     default:
       return {

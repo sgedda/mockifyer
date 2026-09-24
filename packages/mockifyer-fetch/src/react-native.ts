@@ -12,6 +12,7 @@ import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   tryGetClientIdFromLaunchArguments,
+  tryGetScenarioFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
   resolveRecordResponses,
@@ -93,6 +94,9 @@ export interface ReactNativeMockifyerConfig {
   /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
+   * When a launch `scenario` is present, Mockifyer also **starts enabled** (even with `runtimeMode: 'manual'`).
+   * Set to `false` to ignore launch scenario args entirely.
+   * Default: auto-detect when a non-empty launch `scenario` is present.
    */
   useLaunchArgumentsScenario?: boolean;
   /**
@@ -142,32 +146,29 @@ export interface ReactNativeMockifyerConfig {
 
 /**
  * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ * @returns `true` when a native launch-argument `scenario` was applied (forces runtime toggle on).
  */
-function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): void {
-  let applied = false;
-  if (options.useLaunchArgumentsScenario) {
-    try {
-      // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require(/* webpackIgnore: true */ 'react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
-      const LaunchArguments = mod.LaunchArguments;
-      const raw =
-        LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;
-      const scenario = raw?.scenario;
-      if (scenario !== undefined && scenario !== null && String(scenario).trim() !== '') {
-        setScenarioLaunchOverride(String(scenario).trim());
-        applied = true;
-      }
-    } catch {
-      // Package not installed or native module unavailable
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): boolean {
+  let appliedFromLaunchArgs = false;
+
+  // Auto-detect launch `scenario` when present (E2E). Opt out with useLaunchArgumentsScenario: false.
+  if (options.useLaunchArgumentsScenario !== false) {
+    const scenarioFromLaunch = tryGetScenarioFromLaunchArguments();
+    if (scenarioFromLaunch) {
+      setScenarioLaunchOverride(scenarioFromLaunch);
+      appliedFromLaunchArgs = true;
     }
   }
-  if (!applied && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+
+  if (!appliedFromLaunchArgs && options.defaultScenario !== undefined && options.defaultScenario !== null) {
     const t = String(options.defaultScenario).trim();
     if (t !== '') {
       setScenarioLaunchOverride(t);
+      // defaultScenario is app config, not a launch arg — does not force runtime on
     }
   }
+
+  return appliedFromLaunchArgs;
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -276,6 +277,16 @@ export async function setupMockifyerForReactNative(
     }
   }
 
+  // Apply scenario launch override early so we know if E2E forced a scenario.
+  const launchScenarioApplied = applyReactNativeScenarioOptions(options);
+  if (launchScenarioApplied) {
+    // Launch `scenario` arg → start enabled (wins over persisted off for this session).
+    initialRuntimeEnabled = true;
+    logger.info(
+      '[Mockifyer] Launch argument scenario present — starting with Mockifyer ENABLED'
+    );
+  }
+
   const mergedConfig: typeof userConfig = {
     ...userConfig,
     runtimeMode: resolvedRuntimeMode,
@@ -297,8 +308,10 @@ export async function setupMockifyerForReactNative(
     return 'React Native dev · hybrid (device + Metro)';
   };
 
+  // Patch fetch for on / manual; launch_client only when lane id is present.
   const isEnabled =
     resolvedRuntimeMode === 'on' ||
+    resolvedRuntimeMode === 'manual' ||
     (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
   if (!isEnabled) {
     logMockifyerNotActivated(resolvedRuntimeMode, {
@@ -307,8 +320,6 @@ export async function setupMockifyerForReactNative(
     });
     return { status: 'not_activated', instance: null } as const;
   }
-
-  applyReactNativeScenarioOptions(options);
 
   if (isDev === true) {
     const strictProxyEnabled = proxyBaseUrl

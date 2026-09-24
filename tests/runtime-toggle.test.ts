@@ -2,7 +2,7 @@
  * Tests for runtime Mockifyer enable/disable toggle
  */
 
-import { setupMockifyer, MemoryProvider } from '@sgedda/mockifyer-fetch';
+import { setupMockifyer, MemoryProvider, setScenarioLaunchOverride } from '@sgedda/mockifyer-fetch';
 import type { MockifyerInstance } from '@sgedda/mockifyer-fetch';
 
 describe('Runtime Mockifyer Toggle', () => {
@@ -242,6 +242,35 @@ describe('Runtime Mockifyer Toggle', () => {
         initialRuntimeEnabled: false,
       });
       expect(instance.isMockifyerEnabled()).toBe(false);
+    });
+  });
+
+  describe('launch scenario forces enabled', () => {
+    afterEach(() => {
+      setScenarioLaunchOverride(null);
+    });
+
+    it('should start enabled when scenario launch override is set (even in manual mode)', () => {
+      setScenarioLaunchOverride('e2e-smoke');
+      const instance = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'manual',
+      });
+      expect(instance.isMockifyerEnabled()).toBe(true);
+    });
+
+    it('should prefer launch scenario over persisted disabled', () => {
+      setScenarioLaunchOverride('maestro-login');
+      const instance = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: false,
+        runtimeMode: 'manual',
+        initialRuntimeEnabled: false,
+      });
+      expect(instance.isMockifyerEnabled()).toBe(true);
     });
   });
 });
