@@ -132,6 +132,8 @@ class MockifyerClass {
    */
   private readonly poolResponseCache = new Map<string, PoolResponseItem>();
   private readonly domainPathRules: DomainPathRulesSession;
+  /** Runtime toggle: when false, all Mockifyer logic is bypassed (no dashboard, Redis, proxy, or mock lookup). */
+  private runtimeEnabled: boolean;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -441,6 +443,19 @@ class MockifyerClass {
     }
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+    
+    // Initialize runtime enabled state
+    // Default true unless startDisabled is set or runtimeMode is 'manual'
+    const shouldStartDisabled = config.startDisabled === true || config.runtimeMode === 'manual';
+    this.runtimeEnabled = !shouldStartDisabled;
+    
+    if (shouldStartDisabled) {
+      const reason = config.runtimeMode === 'manual' 
+        ? 'runtimeMode: "manual"' 
+        : 'startDisabled: true';
+      logger.info(`[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`);
+    }
+    
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
     configureAtlas(this.config, {
       scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
@@ -771,6 +786,12 @@ class MockifyerClass {
 
   private setupMockResponses(): void {
     this.httpClient.interceptors.request.use(async (config: any) => {
+      // CRITICAL: Runtime toggle — if disabled, bypass all Mockifyer logic
+      if (!this.runtimeEnabled) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       // CRITICAL: Completely bypass Mockifyer interception for sync endpoints
       // This prevents any Mockifyer processing (mocking, saving, etc.) for these endpoints
       const url = config.url || '';
@@ -1705,6 +1726,31 @@ class MockifyerClass {
     return this.config.clientId;
   }
 
+  /**
+   * Enable Mockifyer at runtime. All subsequent requests will go through Mockifyer
+   * (mock lookup, recording, dashboard/Redis proxy, etc.).
+   */
+  enableMockifyer(): void {
+    this.runtimeEnabled = true;
+    logger.info('[Mockifyer-Fetch] Mockifyer enabled at runtime');
+  }
+
+  /**
+   * Disable Mockifyer at runtime. All subsequent requests will bypass Mockifyer completely
+   * (no dashboard, Redis, proxy, mock lookup, or recording).
+   */
+  disableMockifyer(): void {
+    this.runtimeEnabled = false;
+    logger.info('[Mockifyer-Fetch] Mockifyer disabled at runtime - all requests will bypass');
+  }
+
+  /**
+   * Check if Mockifyer is currently enabled at runtime.
+   */
+  isMockifyerEnabled(): boolean {
+    return this.runtimeEnabled;
+  }
+
   getHTTPClient(): HTTPClient {
     return this.httpClient;
   }
@@ -1751,6 +1797,9 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -1925,6 +1974,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
+  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
+  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
 
   registerMockifyerInstance(extendedClient);
 

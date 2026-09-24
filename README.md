@@ -34,6 +34,8 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
 
+**Runtime Toggle:** see **[docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md)** to enable/disable Mockifyer at runtime (completely bypass dashboard, Redis, and proxy with a button press).
+
 ## Installation
 
 ```bash

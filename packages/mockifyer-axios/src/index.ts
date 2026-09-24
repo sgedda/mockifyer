@@ -118,6 +118,8 @@ class MockifyerClass {
   private databaseProvider?: DatabaseProvider;
   private databaseProviderInitPromise?: Promise<void>;
   private readonly domainPathRules: DomainPathRulesSession;
+  /** Runtime toggle: when false, all Mockifyer logic is bypassed. */
+  private runtimeEnabled: boolean;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -394,6 +396,18 @@ class MockifyerClass {
 
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+
+    const shouldStartDisabled =
+      config.startDisabled === true || config.runtimeMode === 'manual';
+    this.runtimeEnabled = !shouldStartDisabled;
+    if (shouldStartDisabled) {
+      const reason =
+        config.runtimeMode === 'manual' ? 'runtimeMode: "manual"' : 'startDisabled: true';
+      logger.info(
+        `[Mockifyer-Axios] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
+      );
+    }
+
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
     configureAtlas(this.config, {
       scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
@@ -795,6 +809,11 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!this.runtimeEnabled) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
       const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
       if (bypassedEarly) {
@@ -1121,6 +1140,11 @@ class MockifyerClass {
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!this.runtimeEnabled) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
       const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
       if (bypassedEarly) {
@@ -2306,6 +2330,29 @@ class MockifyerClass {
   }
 
   /**
+   * Enable Mockifyer at runtime.
+   */
+  public enableMockifyer(): void {
+    this.runtimeEnabled = true;
+    logger.info('[Mockifyer-Axios] Mockifyer enabled at runtime');
+  }
+
+  /**
+   * Disable Mockifyer at runtime (no dashboard/Redis/proxy/mocks).
+   */
+  public disableMockifyer(): void {
+    this.runtimeEnabled = false;
+    logger.info('[Mockifyer-Axios] Mockifyer disabled at runtime - all requests will bypass');
+  }
+
+  /**
+   * Check if Mockifyer is currently enabled at runtime.
+   */
+  public isMockifyerEnabled(): boolean {
+    return this.runtimeEnabled;
+  }
+
+  /**
    * Reload mock data from the filesystem
    * No-op since we don't use cache (files are read on each request)
    */
@@ -2328,6 +2375,9 @@ export interface MockifyerInstance extends HTTPClient {
   clearStaleCacheEntries: () => number;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -2659,6 +2709,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
+  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
+  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
 
   registerMockifyerInstance(extendedClient);
 

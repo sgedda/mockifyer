@@ -31,6 +31,9 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 /**
@@ -69,6 +72,15 @@ export interface ReactNativeMockifyerConfig {
   bundledDataPath?: string;
   /** Enable recording mode (development only) */
   recordMode?: boolean;
+  /**
+   * When true, Mockifyer starts disabled (all requests bypass).
+   * Use `instance.enableMockifyer()` to turn it on via GUI.
+   * 
+   * **Prefer `runtimeMode: 'manual'`** for clearer intent.
+   * 
+   * Default: false (starts enabled).
+   */
+  startDisabled?: boolean;
   /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
@@ -111,7 +123,10 @@ export interface ReactNativeMockifyerConfig {
   launchArgumentClientIdKey?: string;
   /**
    * When Mockifyer may patch `fetch` at startup. Overrides **`MOCKIFYER_MODE`** env and `config.runtimeMode`.
-   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` (aliases e.g. `e2e`, `maestro` → `launch_client`).
+   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` | `manual`.
+   * 
+   * Use **`manual`** to patch but start disabled (enable via GUI toggle).
+   * Aliases: `e2e`, `maestro` → `launch_client`; `gui`, `toggle` → `manual`.
    */
   runtimeMode?: MockifyerRuntimeMode;
 }
@@ -214,6 +229,7 @@ export async function setupMockifyerForReactNative(
     mockDataPath = 'mock-data',
     bundledDataPath = './assets/mock-data',
     recordMode = false,
+    startDisabled = false,
     config: userConfig = {},
     proxyBaseUrl,
     proxyScenario,
@@ -330,6 +346,7 @@ export async function setupMockifyerForReactNative(
           : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
+      startDisabled,
       proxy:
         strictProxyEnabled && proxyBaseUrl
           ? {
@@ -400,6 +417,7 @@ export async function setupMockifyerForReactNative(
       },
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
+      startDisabled,
       proxy: proxyBaseUrl
         ? {
             baseUrl: proxyBaseUrl,
