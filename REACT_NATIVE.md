@@ -11,18 +11,24 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 | **Development** (`isDev: true`) | **Hybrid** | Writes mocks to the **device** (Expo FileSystem) **and** to the **project** `mock-data` folder via Metro HTTP endpoints. |
 | **Production** (`isDev: false`) | **Memory** | Loads mocks from a **bundled** module (e.g. `assets/mock-data.ts`). |
 
-- **`MOCKIFYER_MODE`** (preferred) — **`on`** always activates when `setupMockifyerForReactNative` runs (**default when unset**); **`launch_client`** activates only when Maestro/native launch **`mockifyerClientId`** is non-empty (set explicitly for E2E-only runs); **`off`** never activates (launch args ignored — use in store builds that must not run mocks). Aliases: `e2e` / `maestro` → `launch_client`, `disabled` → `off`, `enabled` → `on`.
+- **`MOCKIFYER_MODE`** (preferred) — when `setupMockifyerForReactNative` may patch `fetch`:
+  - **`on`** — always activate (**default when unset**); starts enabled
+  - **`manual`** (aliases: `gui`, `toggle`) — activate but **start disabled**; call `enableMockifyer()` from a GUI switch (pair with **`persistRuntimeEnabled: true`** so the choice survives app restart). A native launch **`scenario`** argument still starts **enabled** for that E2E session
+  - **`launch_client`** (aliases: `e2e`, `maestro`) — activate only when Maestro/native launch **`mockifyerClientId`** is non-empty
+  - **`off`** (aliases: `disabled`) — never activate (launch args ignored — use in store builds that must not run mocks)
 - **`isDev` / `__DEV__` alone does not enable** Mockifyer (use **`MOCKIFYER_MODE`** or a launch-arg lane).
+- **Runtime toggle** (when status is `active`): `instance.enableMockifyer()` / `disableMockifyer()` / `isMockifyerEnabled()` — completely bypasses mocks, dashboard, and Redis while disabled. See **[docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md)**.
+- **Launch `scenario`**: auto-applied when present on `react-native-launch-arguments` (opt out with `useLaunchArgumentsScenario: false`). Also forces the runtime toggle **on** for that session.
 - **Direct upstream `fetch`** (not the dashboard proxy POST) automatically adds **`X-Mockifyer-Client-Id`** / **`X-Mockifyer-Device-Id`** when missing, whenever Mockifyer has a resolved `clientId` / `deviceId` (same lane the library uses). Caller headers win if already set.
 - **Return value:** `setupMockifyerForReactNative` resolves to **`{ status, instance }`**. Use **`status`** instead of treating “no instance” as permanently disabled:
   - **`not_activated`** — nothing patched this run; you can still activate on a **later** launch with env or launch args.
-  - **`active`** — `global.fetch` patched; **`instance`** is the Mockifyer handle.
+  - **`active`** — `global.fetch` patched; **`instance`** is the Mockifyer handle (may still be runtime-disabled under `manual` until `enableMockifyer()`).
   - **`failed_no_bundled_mocks`** — activation was requested but the release bundle had no mock data module.
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
 - **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `GET/POST /mockifyer-domain-path-rules` (GET hydrates project rules onto the device at startup via `reloadMockData`).
 
-Example (local dev: unset or **`MOCKIFYER_MODE=on`**; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
+Example (local dev: unset or **`MOCKIFYER_MODE=on`**; GUI opt-in: **`MOCKIFYER_MODE=manual`** + persist; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
 
 ```typescript
 import {
@@ -38,13 +44,16 @@ export async function initializeMockifyer() {
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode,
+    // Optional GUI toggle (starts off; enableMockifyer persists across restarts):
+    // runtimeMode: 'manual',
+    // persistRuntimeEnabled: true,
     config: {
       logging: 'info',
     },
   });
 
   if (isMockifyerReactNativeActive(result)) {
-    // result.instance available
+    // result.instance.enableMockifyer() / disableMockifyer() / isMockifyerEnabled()
   }
   return result;
 }
@@ -56,11 +65,11 @@ In **`App`** / root layout, **`await initializeMockifyer()`** before other netwo
 
 To force a scenario **above** `MOCKIFYER_SCENARIO`, `config.scenarios.default`, Metro's `/mockifyer-scenario-config`, and `scenario-config.json`, use either:
 
-1. **`setupMockifyerForReactNative({ useLaunchArgumentsScenario: true, ... })`** — reads `scenario` from [`react-native-launch-arguments`](https://github.com/wix/react-native-launch-arguments) when that package is installed (`LaunchArguments.value().scenario`).
+1. **Auto-detect** — when `react-native-launch-arguments` is installed and `LaunchArguments.value().scenario` is non-empty, it is applied automatically (and the runtime toggle starts **enabled**). Opt out with **`useLaunchArgumentsScenario: false`**. Explicit **`useLaunchArgumentsScenario: true`** is still supported.
 
-2. **`setScenarioLaunchOverride('my-scenario')`** from `@sgedda/mockifyer-core` — call before or after setup if you read launch args yourself.
+2. **`setScenarioLaunchOverride('my-scenario', { fromLaunchArguments: true })`** from `@sgedda/mockifyer-core` — call before setup if you read launch args yourself. Pass **`fromLaunchArguments: true`** so `runtimeMode: 'manual'` still starts enabled for E2E.
 
-3. **`defaultScenario: 'smoke'`** on `setupMockifyerForReactNative` — same priority as (1) when launch args did not supply a non-empty `scenario`.
+3. **`defaultScenario: 'smoke'`** on `setupMockifyerForReactNative` — same scenario priority when launch args did not supply a scenario. Does **not** force the runtime toggle on (app config only).
 
 Clear with `setScenarioLaunchOverride(null)`.
 
@@ -180,13 +189,15 @@ Listing files in app code depends on your **expo-file-system** API (legacy `read
 Typical:
 
 ```bash
-MOCKIFYER_MODE=on        # or: launch_client | off (see table above)
+MOCKIFYER_MODE=on        # or: manual | launch_client | off (see table above)
 MOCKIFYER_RECORD=true    # recording mode when supported
 MOCKIFYER_SCENARIO=default
 METRO_PORT=8081          # if not default
 ```
 
 Use **`app.config` / Babel** / **metro `transform-inline-environment-variables`** for vars that must appear in the JS bundle (see example projects).
+
+For GUI opt-in that survives restart: `MOCKIFYER_MODE=manual` plus `persistRuntimeEnabled: true` (needs `@react-native-async-storage/async-storage`).
 
 ---
 

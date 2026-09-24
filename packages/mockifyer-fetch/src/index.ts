@@ -452,6 +452,12 @@ class MockifyerClass {
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
     
     this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
+    if (config.persistRuntimeEnabled === true && !this.runtimeEnabledStorage) {
+      logger.warn(
+        '[Mockifyer-Fetch] persistRuntimeEnabled: true but no storage found. ' +
+          'Install @react-native-async-storage/async-storage (RN) or use a custom { getItem, setItem }.'
+      );
+    }
     this.runtimeEnabled = resolveInitialRuntimeEnabled({
       initialRuntimeEnabled: config.initialRuntimeEnabled,
       startDisabled: config.startDisabled,
@@ -468,6 +474,10 @@ class MockifyerClass {
             : 'startDisabled: true';
       logger.info(
         `[Mockifyer-Fetch] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
+      );
+    } else if (isScenarioLaunchFromNativeArguments()) {
+      logger.info(
+        '[Mockifyer-Fetch] Starting with Mockifyer ENABLED (native launch scenario argument).'
       );
     } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
       logger.info(

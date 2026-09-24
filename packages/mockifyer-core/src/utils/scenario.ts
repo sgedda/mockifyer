@@ -422,6 +422,8 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
  */
 export function resetScenario(): void {
   currentConfig = null;
+  scenarioLaunchOverride = null;
+  scenarioLaunchFromNativeArguments = false;
 }
 
 /**
