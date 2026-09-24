@@ -229,24 +229,57 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function readInlineTrace(body: Record<string, unknown>): InlineRequestTrace | null {
+  const trace = body[MOCKIFYER_TRACE_RESPONSE_KEY];
+  if (!isRecord(trace) || !Array.isArray(trace.hops)) {
+    return null;
+  }
+  return trace as unknown as InlineRequestTrace;
+}
+
 /**
- * True when `body` looks like an inline-trace envelope `{ data, mockifyerTrace }`.
+ * Legacy wrap `{ data, mockifyerTrace }` with no other keys.
+ * Object payloads now keep their own fields and only add `mockifyerTrace`.
+ */
+function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body);
+  if (
+    keys.length !== 2 ||
+    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY) ||
+    readInlineTrace(body) == null
+  ) {
+    return false;
+  }
+  // Legacy envelopes wrap non-objects (arrays, scalars).
+  // If body.data is a plain object, this is a natural data field (e.g. GraphQL), not a wrap.
+  const data = body[MOCKIFYER_TRACE_DATA_KEY];
+  return !isRecord(data);
+}
+
+/**
+ * True when `body` is the legacy inline-trace envelope `{ data, mockifyerTrace }`.
+ * GraphQL `{ data, mockifyerTrace }` (trace added beside the original fields) is not an envelope.
  */
 export function isInlineTraceEnvelope(body: unknown): body is {
   data: unknown;
   mockifyerTrace: InlineRequestTrace;
 } {
-  if (!isRecord(body)) return false;
-  if (!Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY)) return false;
-  if (!Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_RESPONSE_KEY)) return false;
-  const trace = body[MOCKIFYER_TRACE_RESPONSE_KEY];
-  if (!isRecord(trace)) return false;
-  return Array.isArray(trace.hops);
+  return isRecord(body) && isPureInlineTraceEnvelope(body);
 }
 
-/** Business payload inside an envelope, or the body itself when not enveloped. */
+/**
+ * Business payload with inline trace removed.
+ * Pure envelopes yield `data`. Sibling traces yield the original object minus `mockifyerTrace`.
+ */
 export function getInlineTraceEnvelopeBusinessBody(body: unknown): unknown {
-  return isInlineTraceEnvelope(body) ? body.data : body;
+  if (!isRecord(body) || readInlineTrace(body) == null) {
+    return body;
+  }
+  if (isPureInlineTraceEnvelope(body)) {
+    return body[MOCKIFYER_TRACE_DATA_KEY];
+  }
+  const { [MOCKIFYER_TRACE_RESPONSE_KEY]: _removed, ...rest } = body;
+  return rest;
 }
 
 /**
@@ -254,7 +287,7 @@ export function getInlineTraceEnvelopeBusinessBody(body: unknown): unknown {
  * in-process buffer and return the unwrapped business `data`. Otherwise returns `body`.
  */
 export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
-  if (!isInlineTraceEnvelope(body)) {
+  if (!isRecord(body) || readInlineTrace(body) == null) {
     return body;
   }
 
@@ -264,7 +297,7 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
     return body;
   }
 
-  const childHops = body.mockifyerTrace.hops;
+  const childHops = readInlineTrace(body)!.hops;
   for (const hop of childHops) {
     if (!hop || typeof hop !== 'object') continue;
     const url = typeof hop.url === 'string' ? hop.url : '';
@@ -288,7 +321,7 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
     });
   }
 
-  return body.data;
+  return getInlineTraceEnvelopeBusinessBody(body);
 }
 
 export interface UnwrapInlineTraceEmittingNetworkEventsParams {
@@ -302,9 +335,9 @@ export interface UnwrapInlineTraceEmittingNetworkEventsParams {
 }
 
 /**
- * When the response is `{ data, mockifyerTrace: { hops } }`, emit each nested hop as a
+ * When the response carries `mockifyerTrace.hops`, emit each nested hop as a
  * {@link emitMockifyerNetworkEvent} (Metro stream + dashboard + Atlas HTML buffer) with
- * `parentRequestId`, then return the business `data`. No-op for non-envelope bodies.
+ * `parentRequestId`, then return the business payload. No-op when there is no inline trace.
  *
  * Used on RN/client when `networkLog.includeTraceHeader` requested nested traces without
  * an inbound ALS hop context.
@@ -313,12 +346,12 @@ export function unwrapInlineTraceEnvelopeEmittingNetworkEvents(
   body: unknown,
   params: UnwrapInlineTraceEmittingNetworkEventsParams
 ): unknown {
-  if (!isInlineTraceEnvelope(body)) {
+  if (!isRecord(body) || readInlineTrace(body) == null) {
     return body;
   }
 
   const parentId = params.parentRequestId.trim();
-  const hops = body.mockifyerTrace.hops;
+  const hops = readInlineTrace(body)!.hops;
   for (const hop of hops) {
     if (!hop || typeof hop !== 'object') continue;
     const url = typeof hop.url === 'string' ? hop.url : '';
@@ -363,7 +396,7 @@ export function unwrapInlineTraceEnvelopeEmittingNetworkEvents(
 
   // Also merge into ALS buffer when an inbound collector is active.
   unwrapAndMergeInlineTraceEnvelope(body);
-  return body.data;
+  return getInlineTraceEnvelopeBusinessBody(body);
 }
 
 export function buildInlineRequestTrace(
@@ -387,18 +420,11 @@ export function buildInlineRequestTrace(
 }
 
 /**
- * Wrap a business response as `{ data, mockifyerTrace }` when inline trace is active.
+ * Attach `mockifyerTrace` without moving existing fields.
+ * Object bodies keep their shape (`{ ...body, mockifyerTrace }`), so GraphQL `data`
+ * stays where clients already read it. Arrays and scalars still use `{ data, mockifyerTrace }`.
  * Returns the original body when not opted in.
  */
-function isAlreadyInlineTraceWrapped(body: unknown): boolean {
-  return (
-    body != null &&
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_RESPONSE_KEY)
-  );
-}
-
 export function wrapBodyWithInlineTrace(
   body: unknown,
   ctx: MockifyerHopContext | undefined = getActiveMockifyerHopContext()
@@ -407,11 +433,9 @@ export function wrapBodyWithInlineTrace(
   if (!trace) {
     return body;
   }
-  // Avoid nested { data: { data, mockifyerTrace }, mockifyerTrace } if wrap runs twice.
-  if (isAlreadyInlineTraceWrapped(body)) {
-    const existing = body as Record<string, unknown>;
+  if (isRecord(body)) {
     return {
-      [MOCKIFYER_TRACE_DATA_KEY]: existing[MOCKIFYER_TRACE_DATA_KEY],
+      ...body,
       [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
     };
   }

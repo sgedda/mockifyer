@@ -31,7 +31,7 @@ describe('inline-trace', () => {
     expect(isIncludeInlineTraceRequested({ headers: {} })).toBe(false);
   });
 
-  it('collects hops in ALS and wraps the body as data + mockifyerTrace', () => {
+  it('collects hops in ALS and adds mockifyerTrace beside the original fields', () => {
     const ctx: MockifyerHopContext = {
       correlation: { requestId: 'root-1' },
       includeInlineTrace: true,
@@ -62,7 +62,7 @@ describe('inline-trace', () => {
 
       const wrapped = wrapBodyWithInlineTrace({ ok: true });
       expect(wrapped).toEqual({
-        [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+        ok: true,
         [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
       });
     });
@@ -131,7 +131,7 @@ describe('inline-trace', () => {
 
     expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('client-root');
     expect(jsonBody).toMatchObject({
-      data: { hello: 'world' },
+      hello: 'world',
       mockifyerTrace: {
         requestId: 'client-root',
         hopCount: 1,
@@ -178,7 +178,8 @@ describe('inline-trace', () => {
     });
 
     const parsed = JSON.parse(ended!);
-    expect(parsed.data).toEqual({ data: { login: true } });
+    expect(parsed.data).toEqual({ login: true });
+    expect(parsed).not.toHaveProperty('data.data');
     expect(parsed.mockifyerTrace.hopCount).toBe(1);
     expect(parsed.mockifyerTrace.hops[0].url).toContain('/x');
     expect(headers['content-length']).toBe(String(Buffer.byteLength(ended!)));
@@ -278,7 +279,7 @@ describe('inline-trace', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.body).toMatchObject({
-      data: { error: 'x' },
+      error: 'x',
       mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
     });
   });
@@ -335,7 +336,7 @@ describe('inline-trace', () => {
     });
 
     expect(res.body).toMatchObject({
-      data: { ok: true },
+      ok: true,
       mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
     });
   });
@@ -376,7 +377,7 @@ describe('inline-trace', () => {
     });
 
     expect(res.body).toMatchObject({
-      data: { queued: false },
+      queued: false,
       mockifyerTrace: expect.objectContaining({ hopCount: 0 }),
     });
   });
@@ -422,15 +423,14 @@ describe('inline-trace', () => {
 
     const parsed = JSON.parse(ended!);
     expect(parsed).toEqual({
-      data: { data: { login: { token: 't' } } },
+      data: { login: { token: 't' } },
       mockifyerTrace: expect.objectContaining({
         hopCount: 1,
         hops: [expect.objectContaining({ url: 'https://member.example/graphql' })],
       }),
     });
-    // Nested envelope would look like data.data.data / data.mockifyerTrace.
+    expect(parsed.data).toEqual({ login: { token: 't' } });
     expect(parsed.data).not.toHaveProperty('mockifyerTrace');
-    expect(parsed.data.data).toEqual({ login: { token: 't' } });
   });
 
   it('wrapBodyWithInlineTrace does not nest when body is already enveloped', () => {
@@ -445,7 +445,12 @@ describe('inline-trace', () => {
       const first = wrapBodyWithInlineTrace({ ok: true }, ctx);
       const second = wrapBodyWithInlineTrace(first, ctx);
       expect(second).toEqual({
-        [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+        ok: true,
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: expect.objectContaining({ requestId: 'root-rewrap' }),
+      });
+      const graphql = wrapBodyWithInlineTrace({ data: { login: { token: 't' } } }, ctx);
+      expect(graphql).toEqual({
+        data: { login: { token: 't' } },
         [MOCKIFYER_TRACE_RESPONSE_KEY]: expect.objectContaining({ requestId: 'root-rewrap' }),
       });
     });
@@ -504,7 +509,7 @@ describe('inline-trace', () => {
       });
 
       const nestedEnvelope = {
-        [MOCKIFYER_TRACE_DATA_KEY]: { token: 'abc' },
+        [MOCKIFYER_TRACE_DATA_KEY]: [1, 2, 3],
         [MOCKIFYER_TRACE_RESPONSE_KEY]: {
           requestId: 'member-root',
           hopCount: 2,
@@ -537,7 +542,7 @@ describe('inline-trace', () => {
       };
 
       const business = unwrapAndMergeInlineTraceEnvelope(nestedEnvelope);
-      expect(business).toEqual({ token: 'abc' });
+      expect(business).toEqual([1, 2, 3]);
 
       const trace = buildInlineRequestTrace();
       expect(trace!.hopCount).toBe(3);
@@ -553,7 +558,7 @@ describe('inline-trace', () => {
 
   it('does not unwrap nested envelopes when parent is not collecting inline trace', () => {
     const envelope = {
-      [MOCKIFYER_TRACE_DATA_KEY]: { ok: true },
+      [MOCKIFYER_TRACE_DATA_KEY]: [1, 2, 3],
       [MOCKIFYER_TRACE_RESPONSE_KEY]: {
         requestId: 'x',
         hopCount: 1,
@@ -701,7 +706,7 @@ describe('inline-trace', () => {
         requestId: 'hop-1',
         parentRequestId: 'root',
         responseBody: {
-          [MOCKIFYER_TRACE_DATA_KEY]: { id: 'user-1' },
+          [MOCKIFYER_TRACE_DATA_KEY]: 'user-1',
           [MOCKIFYER_TRACE_RESPONSE_KEY]: {
             requestId: 'member',
             hopCount: 0,

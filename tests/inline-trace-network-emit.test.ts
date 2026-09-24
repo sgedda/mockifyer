@@ -43,7 +43,7 @@ describe('networkLog includeTraceHeader wiring', () => {
 
   it('unwrapInlineTraceEnvelopeEmittingNetworkEvents emits children with parentRequestId', () => {
     const body = {
-      data: { ok: true },
+      data: ['ok', true],
       mockifyerTrace: {
         requestId: 'client-hop',
         hopCount: 2,
@@ -83,7 +83,7 @@ describe('networkLog includeTraceHeader wiring', () => {
       transport: 'fetch',
     });
 
-    expect(unwrapped).toEqual({ ok: true });
+    expect(unwrapped).toEqual(['ok', true]);
     const hops = __flightRecorderBuffersForTests().network;
     expect(hops).toHaveLength(1);
     expect(hops[0].requestId).toBe('child-hop');
