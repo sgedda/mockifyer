@@ -291,27 +291,27 @@ describe('Runtime Mockifyer Toggle', () => {
   });
 
   describe('shouldActivateMockifyerForReactNative', () => {
-    it('activates launch_client when scenario is present without client id', () => {
+    it('does not activate launch_client when only scenario is present (client id required)', () => {
       expect(
         shouldActivateMockifyerForReactNative({
           runtimeMode: 'launch_client',
           hasLaunchClientId: false,
           hasLaunchScenario: true,
         })
-      ).toBe(true);
-    });
-
-    it('does not activate launch_client without client id or scenario', () => {
-      expect(
-        shouldActivateMockifyerForReactNative({
-          runtimeMode: 'launch_client',
-          hasLaunchClientId: false,
-          hasLaunchScenario: false,
-        })
       ).toBe(false);
     });
 
-    it('never activates when runtimeMode is off even with scenario', () => {
+    it('activates launch_client when client id is present', () => {
+      expect(
+        shouldActivateMockifyerForReactNative({
+          runtimeMode: 'launch_client',
+          hasLaunchClientId: true,
+          hasLaunchScenario: false,
+        })
+      ).toBe(true);
+    });
+
+    it('never activates when runtimeMode is off even with client id and scenario', () => {
       expect(
         shouldActivateMockifyerForReactNative({
           runtimeMode: 'off',

@@ -30,7 +30,7 @@ function describeRuntimeMode(mode: MockifyerRuntimeMode | undefined): { label: s
       return {
         label: 'launch_client',
         meaning:
-          'Mockifyer runs when a launch argument client id and/or scenario is present (Maestro/E2E). Use runtimeMode "on" for everyday dev, or "manual" for GUI toggle.',
+          'Mockifyer runs only when a launch argument client id is present (Maestro/E2E). A launch scenario turns the runtime toggle on after activation, but does not replace the client id requirement.',
       };
     case 'manual':
       return {
@@ -201,7 +201,6 @@ export function logMockifyerNotActivated(
   extra?: {
     launchClientIdKey?: string;
     hadLaunchClientId?: boolean;
-    hadLaunchScenario?: boolean;
   }
 ): void {
   const runtime = describeRuntimeMode(runtimeMode);
@@ -211,9 +210,8 @@ export function logMockifyerNotActivated(
     const key = extra?.launchClientIdKey ?? 'mockifyerClientId';
     logger.info(
       `[Mockifyer] No launch client id (key "${key}")` +
-        `${extra?.hadLaunchClientId === false ? ' was found' : ''}` +
-        `${extra?.hadLaunchScenario ? '' : ' and no launch scenario arg'}. ` +
-        `Pass mockifyerClientId and/or scenario from Maestro launchApp, or use runtimeMode: "on" / "manual".`
+        `${extra?.hadLaunchClientId === false ? ' was found' : ''}. ` +
+        `Pass mockifyerClientId from Maestro launchApp (scenario alone is not enough), or use runtimeMode: "on" / "manual".`
     );
   }
   logger.info('[Mockifyer] fetch is not patched; all HTTP goes to the real network.');

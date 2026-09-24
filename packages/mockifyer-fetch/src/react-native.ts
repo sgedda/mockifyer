@@ -309,8 +309,8 @@ export async function setupMockifyerForReactNative(
     return 'React Native dev · hybrid (device + Metro)';
   };
 
-  // Patch fetch unless mode is off.
-  // launch_client: activate when lane id OR launch scenario arg is present (E2E).
+  // Patch fetch for on / manual; launch_client only when lane id is present.
+  // Launch `scenario` forces runtime toggle on after activation — it does not replace client id.
   const isEnabled = shouldActivateMockifyerForReactNative({
     runtimeMode: resolvedRuntimeMode,
     hasLaunchClientId: Boolean(clientIdFromLaunchArgs),
@@ -320,7 +320,6 @@ export async function setupMockifyerForReactNative(
     logMockifyerNotActivated(resolvedRuntimeMode, {
       launchClientIdKey,
       hadLaunchClientId: Boolean(clientIdFromLaunchArgs),
-      hadLaunchScenario: launchScenarioApplied,
     });
     return { status: 'not_activated', instance: null } as const;
   }
