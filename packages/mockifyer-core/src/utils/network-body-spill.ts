@@ -91,9 +91,9 @@ export function resetNetworkBodySpillRuntime(): void {
 }
 
 /**
- * Serialize a request/response value for spill / preview (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Compact JSON text for a body. No size cap — callers decide what to keep.
  */
-export function serializeBodyForSpill(value: unknown): string | undefined {
+export function serializeBodyText(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
   if (typeof value === 'string') {
@@ -105,10 +105,17 @@ export function serializeBodyForSpill(value: unknown): string | undefined {
       text = String(value);
     }
   }
+  return text || undefined;
+}
+
+/**
+ * Serialize a request/response value for spill (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Oversized bodies return undefined so callers can keep a short preview without writing a stub file.
+ */
+export function serializeBodyForSpill(value: unknown): string | undefined {
+  const text = serializeBodyText(value);
   if (!text) return undefined;
-  const len = utf8ByteLength(text);
-  if (len <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
-  // Prefer spill failure over OOM — caller keeps truncated preview only.
+  if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
   return undefined;
 }
 

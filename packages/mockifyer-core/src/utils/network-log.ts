@@ -25,9 +25,11 @@ import { resolveUsageForNetworkEmit } from './atlas-usage';
 import { getAtlasUsageDashboardBaseUrl } from './atlas-usage';
 import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 import {
+  NETWORK_BODY_SPILL_MAX_BYTES,
   NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES,
   scheduleNetworkBodySpill,
   serializeBodyForSpill,
+  serializeBodyText,
   setNetworkBodySpillEnabled,
 } from './network-body-spill';
 import { prettyPrintJsonText } from './json-pretty';
@@ -423,12 +425,42 @@ function previewFromCapturedText(text: string | undefined): string | undefined {
   return prettyPrintJsonText(slice);
 }
 
-function capturedBodyText(value: unknown, existingPreview: unknown): string | undefined {
-  const fromValue = serializeBodyForSpill(value);
-  if (fromValue) return fromValue;
-  if (typeof existingPreview === 'string') return serializeBodyForSpill(existingPreview);
-  // When body exceeds spill cap, keep a truncated preview only
-  return truncatePreview(value, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES);
+const PREVIEW_TRUNCATION_MARKER = '…[truncated]';
+
+interface CapturedNetworkBody {
+  /** Compact text small enough to spill. Absent when the body exceeds the spill cap. */
+  spillText?: string;
+  /** Short hop preview when the body was too large to spill. */
+  oversizedPreview?: string;
+}
+
+/** Prefix that stays within the inline preview budget, including the truncation marker. */
+function inlinePreviewSlice(text: string): string {
+  if (utf8ByteLength(text) <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES) return text;
+  const markerBytes = utf8ByteLength(PREVIEW_TRUNCATION_MARKER);
+  const budget = Math.max(0, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES - markerBytes);
+  const bytes = new TextEncoder().encode(text);
+  const head = new TextDecoder().decode(bytes.slice(0, budget)).replace(/\uFFFD$/, '');
+  return `${head}${PREVIEW_TRUNCATION_MARKER}`;
+}
+
+/**
+ * One compact stringify. Bodies over the spill cap contribute a short preview only
+ * and are not passed to the spill writer.
+ */
+function captureNetworkBody(value: unknown, existingPreview: unknown): CapturedNetworkBody {
+  const text = serializeBodyText(value);
+  if (text) {
+    if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) {
+      return { spillText: text };
+    }
+    return { oversizedPreview: inlinePreviewSlice(text) };
+  }
+  if (typeof existingPreview === 'string') {
+    const fromPreview = serializeBodyForSpill(existingPreview);
+    if (fromPreview) return { spillText: fromPreview };
+  }
+  return {};
 }
 
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
@@ -460,20 +492,20 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
     });
 
   const eventId = params.event.id?.trim() || newEventId();
-  const requestBodyText = captureBodies
-    ? capturedBodyText(params.requestBody, params.event.requestBodyPreview)
-    : undefined;
-  const responseBodyText = captureBodies
-    ? capturedBodyText(params.responseBody, params.event.responseBodyPreview)
-    : undefined;
+  const requestCapture = captureBodies
+    ? captureNetworkBody(params.requestBody, params.event.requestBodyPreview)
+    : {};
+  const responseCapture = captureBodies
+    ? captureNetworkBody(params.responseBody, params.event.responseBodyPreview)
+    : {};
 
   const spillRefs =
     spillBodies && captureBodies
       ? scheduleNetworkBodySpill({
           eventId,
           requestId: params.event.requestId,
-          requestBodyText,
-          responseBodyText,
+          requestBodyText: requestCapture.spillText,
+          responseBodyText: responseCapture.spillText,
         })
       : {};
 
@@ -489,8 +521,12 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
       usage: params.event.usage ?? resolveUsageForNetworkEmit(),
-      requestBodyPreview: previewFromCapturedText(requestBodyText) ?? params.event.requestBodyPreview,
-      responseBodyPreview: previewFromCapturedText(responseBodyText) ?? params.event.responseBodyPreview,
+      requestBodyPreview:
+        previewFromCapturedText(requestCapture.spillText ?? requestCapture.oversizedPreview) ??
+        params.event.requestBodyPreview,
+      responseBodyPreview:
+        previewFromCapturedText(responseCapture.spillText ?? responseCapture.oversizedPreview) ??
+        params.event.responseBodyPreview,
       requestBodyRef: spillRefs.requestBodyRef ?? params.event.requestBodyRef,
       responseBodyRef: spillRefs.responseBodyRef ?? params.event.responseBodyRef,
       requestBodyTruncated: spillRefs.requestBodyTruncated ?? params.event.requestBodyTruncated,
