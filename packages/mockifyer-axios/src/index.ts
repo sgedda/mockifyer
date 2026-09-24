@@ -90,7 +90,6 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   resolveNetworkLogIncludeTraceOptions,
-  toNetworkLogBodyPreview,
   getInlineTraceEnvelopeBusinessBody,
   configureFlightRecorder,
   resolveFlightRecorderConfig,
@@ -249,12 +248,8 @@ class MockifyerClass {
         transport: eventPartial.transport ?? 'axios',
         requestId: correlation?.requestId ?? eventPartial.requestId,
         parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
-        requestBodyPreview:
-          eventPartial.requestBodyPreview ??
-          (requestBody !== undefined ? toNetworkLogBodyPreview(requestBody) : undefined),
-        responseBodyPreview:
-          eventPartial.responseBodyPreview ??
-          (responseBody !== undefined ? toNetworkLogBodyPreview(businessResponseBody) : undefined),
+        requestBodyPreview: eventPartial.requestBodyPreview,
+        responseBodyPreview: eventPartial.responseBodyPreview,
       },
     });
   }

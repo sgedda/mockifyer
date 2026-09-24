@@ -400,8 +400,44 @@ export function resolveNetworkLogIncludeTraceOptions(
   };
 }
 
+/**
+ * Run after the current response turn so body stringify does not delay the caller.
+ * `setImmediate` is a macrotask (Node). Browsers and React Native use `setTimeout(0)`.
+ */
+function scheduleAfterResponse(task: () => void): void {
+  const immediate = (globalThis as { setImmediate?: (fn: () => void) => void }).setImmediate;
+  if (typeof immediate === 'function') {
+    immediate(task);
+    return;
+  }
+  setTimeout(task, 0);
+}
+
+/** Pretty-print only the short slice kept on the hop, not the full captured text. */
+function previewFromCapturedText(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const slice =
+    utf8ByteLength(text) <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES
+      ? text
+      : truncateUtf8(text, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES);
+  return prettyPrintJsonText(slice);
+}
+
+function capturedBodyText(value: unknown, existingPreview: unknown): string | undefined {
+  const fromValue = serializeBodyForSpill(value);
+  if (fromValue) return fromValue;
+  if (typeof existingPreview === 'string') return serializeBodyForSpill(existingPreview);
+  return undefined;
+}
+
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
 export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParams): void {
+  scheduleAfterResponse(() => {
+    emitMockifyerNetworkEventNow(params);
+  });
+}
+
+function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): void {
   const recorderConfig = resolveFlightRecorderConfig(params.config);
   configureFlightRecorder(recorderConfig);
 
@@ -424,16 +460,10 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
 
   const eventId = params.event.id?.trim() || newEventId();
   const requestBodyText = captureBodies
-    ? serializeBodyForSpill(params.requestBody) ??
-      (typeof params.event.requestBodyPreview === 'string'
-        ? serializeBodyForSpill(params.event.requestBodyPreview)
-        : undefined)
+    ? capturedBodyText(params.requestBody, params.event.requestBodyPreview)
     : undefined;
   const responseBodyText = captureBodies
-    ? serializeBodyForSpill(params.responseBody) ??
-      (typeof params.event.responseBodyPreview === 'string'
-        ? serializeBodyForSpill(params.event.responseBodyPreview)
-        : undefined)
+    ? capturedBodyText(params.responseBody, params.event.responseBodyPreview)
     : undefined;
 
   const spillRefs =
@@ -458,8 +488,8 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
       usage: params.event.usage ?? resolveUsageForNetworkEmit(),
-      requestBodyPreview: requestBodyText ?? params.event.requestBodyPreview,
-      responseBodyPreview: responseBodyText ?? params.event.responseBodyPreview,
+      requestBodyPreview: previewFromCapturedText(requestBodyText) ?? params.event.requestBodyPreview,
+      responseBodyPreview: previewFromCapturedText(responseBodyText) ?? params.event.responseBodyPreview,
       requestBodyRef: spillRefs.requestBodyRef ?? params.event.requestBodyRef,
       responseBodyRef: spillRefs.responseBodyRef ?? params.event.responseBodyRef,
       requestBodyTruncated: spillRefs.requestBodyTruncated ?? params.event.requestBodyTruncated,
