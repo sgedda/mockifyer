@@ -76,7 +76,6 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   resolveNetworkLogIncludeTraceOptions,
-  toNetworkLogBodyPreview,
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
@@ -223,12 +222,8 @@ class MockifyerClass {
         transport: eventPartial.transport ?? 'fetch',
         requestId: correlation?.requestId ?? eventPartial.requestId,
         parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
-        requestBodyPreview:
-          eventPartial.requestBodyPreview ??
-          (requestBody !== undefined ? toNetworkLogBodyPreview(requestBody) : undefined),
-        responseBodyPreview:
-          eventPartial.responseBodyPreview ??
-          (responseBody !== undefined ? toNetworkLogBodyPreview(businessResponseBody) : undefined),
+        requestBodyPreview: eventPartial.requestBodyPreview,
+        responseBodyPreview: eventPartial.responseBodyPreview,
       },
     });
   }

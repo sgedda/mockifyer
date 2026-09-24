@@ -1,10 +1,14 @@
 import {
   buildNetworkEvent,
+  clearFlightRecorder,
+  configureFlightRecorder,
+  emitMockifyerNetworkEvent,
   redactHeaders,
   sanitizeQueryString,
   sanitizeNetworkEvent,
   sanitizeUrlString,
   toNetworkLogBodyPreview,
+  __flightRecorderBuffersForTests,
 } from '@sgedda/mockifyer-core';
 
 describe('network-log', () => {
@@ -65,6 +69,60 @@ describe('network-log', () => {
 
   it('toNetworkLogBodyPreview stringifies objects', () => {
     expect(toNetworkLogBodyPreview({ ok: true })).toContain('ok');
+  });
+
+  it('emitMockifyerNetworkEvent captures a short preview after the response turn', async () => {
+    configureFlightRecorder({ enabled: true, maxEvents: 20 });
+    clearFlightRecorder();
+    const payload = { data: 'x'.repeat(20_000) };
+    emitMockifyerNetworkEvent({
+      config: { networkLog: { enabled: true, captureBodies: true } },
+      scenario: 'default',
+      requestBody: payload,
+      responseBody: payload,
+      event: {
+        method: 'POST',
+        url: 'https://api.example.com/big',
+        source: 'upstream',
+        status: 200,
+        transport: 'fetch',
+      },
+    });
+    expect(__flightRecorderBuffersForTests().network).toHaveLength(0);
+    await new Promise((resolve) => setImmediate(resolve));
+    const [event] = __flightRecorderBuffersForTests().network;
+    expect(event?.responseBodyPreview).toContain('data');
+    expect((event?.responseBodyPreview ?? '').length).toBeLessThan(4_000);
+    expect(event?.responseBodyTruncated).toBe(true);
+    expect(event?.responseBodyRef).toContain('bodies/');
+  });
+
+  it('emitMockifyerNetworkEvent keeps a short preview and does not spill bodies over 2MB', async () => {
+    const { resetNetworkBodySpillRuntime, NETWORK_BODY_SPILL_MAX_BYTES } =
+      require('../packages/mockifyer-core/src/utils/network-body-spill') as typeof import('../packages/mockifyer-core/src/utils/network-body-spill');
+    resetNetworkBodySpillRuntime();
+    configureFlightRecorder({ enabled: true, maxEvents: 20 });
+    clearFlightRecorder();
+    const payload = { data: 'x'.repeat(NETWORK_BODY_SPILL_MAX_BYTES + 50) };
+    emitMockifyerNetworkEvent({
+      config: { networkLog: { enabled: true, captureBodies: true } },
+      scenario: 'default',
+      responseBody: payload,
+      event: {
+        method: 'GET',
+        url: 'https://api.example.com/oversize',
+        source: 'upstream',
+        status: 200,
+        transport: 'fetch',
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    const [event] = __flightRecorderBuffersForTests().network;
+    expect(event?.responseBodyPreview).toContain('data');
+    expect(event?.responseBodyPreview).toContain('[truncated]');
+    expect((event?.responseBodyPreview ?? '').length).toBeLessThan(4_000);
+    expect(event?.responseBodyRef).toBeUndefined();
+    expect(event?.responseBodyTruncated).toBeUndefined();
   });
 
   it('sanitizeNetworkEvent keeps truncated bodies when captureBodies is on', () => {

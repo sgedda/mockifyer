@@ -6,7 +6,6 @@
 
 import { utf8ByteLength } from './crypto-digest';
 import { getAtlasDocHtmlOutputPath } from './atlas-doc-html';
-import { prettyPrintJsonText } from './json-pretty';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 
 let fs: typeof import('fs') | undefined;
@@ -92,9 +91,9 @@ export function resetNetworkBodySpillRuntime(): void {
 }
 
 /**
- * Serialize a request/response value for spill / preview (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Compact JSON text for a body. No size cap — callers decide what to keep.
  */
-export function serializeBodyForSpill(value: unknown): string | undefined {
+export function serializeBodyText(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
   if (typeof value === 'string') {
@@ -106,10 +105,17 @@ export function serializeBodyForSpill(value: unknown): string | undefined {
       text = String(value);
     }
   }
+  return text || undefined;
+}
+
+/**
+ * Serialize a request/response value for spill (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Oversized bodies return undefined so callers can keep a short preview without writing a stub file.
+ */
+export function serializeBodyForSpill(value: unknown): string | undefined {
+  const text = serializeBodyText(value);
   if (!text) return undefined;
-  const len = utf8ByteLength(text);
-  if (len <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
-  // Prefer spill failure over OOM — caller keeps truncated preview only.
+  if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
   return undefined;
 }
 
@@ -160,14 +166,32 @@ function resolveMetroPort(explicit?: number): number {
   return DEFAULT_METRO_PORT;
 }
 
+function spillFilePath(outputDir: string, relativePath: string): string | undefined {
+  if (!pathMod) return undefined;
+  return pathMod.join(outputDir, relativePath);
+}
+
+/** Compact body on disk. Pretty-print happens later on the short hop preview, not the full file. */
 function writeSpillLocal(outputDir: string, relativePath: string, text: string): boolean {
   if (!fs || !pathMod) return false;
   try {
-    const abs = pathMod.join(outputDir, relativePath);
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
     fs.mkdirSync(pathMod.dirname(abs), { recursive: true });
-    // Pretty JSON on disk for browser tabs; extension is .json (same payload, readable).
-    const body = relativePath.endsWith('.json') ? prettyPrintJsonText(text) : text;
-    fs.writeFileSync(abs, body, 'utf8');
+    fs.writeFileSync(abs, text, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeSpillLocalAsync(outputDir: string, relativePath: string, text: string): Promise<boolean> {
+  if (!fs?.promises || !pathMod) return false;
+  try {
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
+    await fs.promises.mkdir(pathMod.dirname(abs), { recursive: true });
+    await fs.promises.writeFile(abs, text, 'utf8');
     return true;
   } catch {
     return false;
@@ -276,8 +300,8 @@ function pumpQueue(): void {
       try {
         const dir = job.outputDir?.trim() || getAtlasDocHtmlOutputPath()?.trim();
         let ok = false;
-        if (dir && fs) {
-          ok = writeSpillLocal(dir, job.relativePath, job.text);
+        if (dir && fs?.promises) {
+          ok = await writeSpillLocalAsync(dir, job.relativePath, job.text);
         }
         if (!ok) {
           await writeSpillViaMetro(job.relativePath, job.text, job.metroPort);
