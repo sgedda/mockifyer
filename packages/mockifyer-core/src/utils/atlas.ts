@@ -7,6 +7,7 @@ import {
   upsertAtlasDocFromPresentation,
 } from './atlas-doc';
 import { setAtlasDocHtmlOutputPath } from './atlas-doc-html';
+import { syncAtlasSessionSnapshot } from './atlas-session';
 import { resetAtlasScreenshotRuntime } from './atlas-screenshot';
 import {
   configureAtlasScreenshotCapture,
@@ -168,6 +169,10 @@ export function isAtlasEnabled(): boolean {
   return runtime.mode !== 'off';
 }
 
+function publishAtlasSessionSnapshot(): void {
+  syncAtlasSessionSnapshot({ mode: runtime.mode, sessionId: runtime.sessionId });
+}
+
 export function getAtlasMode(): AtlasMode {
   return runtime.mode;
 }
@@ -290,6 +295,7 @@ export function configureAtlas(
     runtime.sessionId = null;
   }
 
+  publishAtlasSessionSnapshot();
   return { ...runtime, events: [...runtime.events] };
 }
 
@@ -300,6 +306,7 @@ export function startAtlasSession(sessionId?: string): string {
     `atlas-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   runtime.sessionId = id;
   setAtlasUsageSessionId(id);
+  publishAtlasSessionSnapshot();
   return id;
 }
 
@@ -309,6 +316,7 @@ export function endAtlasSession(): { sessionId: string | null; events: AtlasEven
   const events = [...runtime.events];
   runtime.sessionId = null;
   setAtlasUsageSessionId(null);
+  publishAtlasSessionSnapshot();
   return { sessionId, events };
 }
 
@@ -331,6 +339,7 @@ export function resetAtlasRuntime(): void {
   resetAtlasUsageRuntime();
   resetAtlasDocRuntime();
   resetAtlasScreenshotRuntime();
+  publishAtlasSessionSnapshot();
 }
 
 function pushEvent(event: AtlasEvent): void {
