@@ -18,6 +18,7 @@ import {
   getScenarioFolderPath,
   ensureScenarioFolder,
   initializeScenario,
+  isScenarioLaunchFromNativeArguments,
   TestGenerator,
   TestGenerationOptions,
   checkRequestLimit,
@@ -68,6 +69,10 @@ import {
   setLogLevel,
   stripMockifyerTraceFromBody,
   ensureOverrideGroupRuntimeForScenarioPath,
+  resolveInitialRuntimeEnabled,
+  resolveRuntimeEnabledStorage,
+  savePersistedRuntimeEnabled,
+  type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -118,6 +123,10 @@ class MockifyerClass {
   private databaseProvider?: DatabaseProvider;
   private databaseProviderInitPromise?: Promise<void>;
   private readonly domainPathRules: DomainPathRulesSession;
+  /** Runtime toggle: when false, all Mockifyer logic is bypassed. */
+  private runtimeEnabled: boolean;
+  /** Optional storage for persisting enable/disable across restarts. */
+  private readonly runtimeEnabledStorage?: MockifyerRuntimeEnabledStorage;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -394,6 +403,40 @@ class MockifyerClass {
 
     this.activationMode = resolveActivationMode(this.config);
     this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+
+    this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
+    if (config.persistRuntimeEnabled === true && !this.runtimeEnabledStorage) {
+      logger.warn(
+        '[Mockifyer-Axios] persistRuntimeEnabled: true but no storage found. ' +
+          'Install @react-native-async-storage/async-storage (RN) or use a custom { getItem, setItem }.'
+      );
+    }
+    this.runtimeEnabled = resolveInitialRuntimeEnabled({
+      initialRuntimeEnabled: config.initialRuntimeEnabled,
+      startDisabled: config.startDisabled,
+      runtimeMode: config.runtimeMode,
+      launchScenarioPresent: isScenarioLaunchFromNativeArguments(),
+    });
+    if (!this.runtimeEnabled) {
+      const reason =
+        typeof config.initialRuntimeEnabled === 'boolean'
+          ? 'persisted / initialRuntimeEnabled: false'
+          : config.runtimeMode === 'manual'
+            ? 'runtimeMode: "manual"'
+            : 'startDisabled: true';
+      logger.info(
+        `[Mockifyer-Axios] Starting with Mockifyer DISABLED (${reason}). Call enableMockifyer() to activate.`
+      );
+    } else if (isScenarioLaunchFromNativeArguments()) {
+      logger.info(
+        '[Mockifyer-Axios] Starting with Mockifyer ENABLED (native launch scenario argument).'
+      );
+    } else if (typeof config.initialRuntimeEnabled === 'boolean' && config.initialRuntimeEnabled) {
+      logger.info(
+        '[Mockifyer-Axios] Starting with Mockifyer ENABLED (restored from persisted preference).'
+      );
+    }
+
     configureFlightRecorder(resolveFlightRecorderConfig(this.config));
     configureAtlas(this.config, {
       scenario: getCurrentScenario(this.config.mockDataPath, this.config.clientId),
@@ -795,6 +838,11 @@ class MockifyerClass {
   private setupMockResponses(): void {
     // Add request interceptor to handle mock responses
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!this.runtimeEnabled) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
       const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
       if (bypassedEarly) {
@@ -1121,6 +1169,11 @@ class MockifyerClass {
     // This allows re-recording when recordSameEndpoints is true
     // When recordSameEndpoints is false, use existing mocks to avoid unnecessary API calls
     this.httpClient.interceptors.request.use(async (config) => {
+      if (!this.runtimeEnabled) {
+        (config as any).__mockifyer_bypass = true;
+        return config;
+      }
+
       this.markBypassIfExcludedUrl(config as AxiosRequestConfig);
       const bypassedEarly = this.returnConfigIfBypassed(config as AxiosRequestConfig);
       if (bypassedEarly) {
@@ -2306,6 +2359,40 @@ class MockifyerClass {
   }
 
   /**
+   * Enable Mockifyer at runtime.
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   */
+  public enableMockifyer(): void {
+    this.runtimeEnabled = true;
+    logger.info('[Mockifyer-Axios] Mockifyer enabled at runtime');
+    void this.persistRuntimeEnabledState(true);
+  }
+
+  /**
+   * Disable Mockifyer at runtime (no dashboard/Redis/proxy/mocks).
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   */
+  public disableMockifyer(): void {
+    this.runtimeEnabled = false;
+    logger.info('[Mockifyer-Axios] Mockifyer disabled at runtime - all requests will bypass');
+    void this.persistRuntimeEnabledState(false);
+  }
+
+  /**
+   * Check if Mockifyer is currently enabled at runtime.
+   */
+  public isMockifyerEnabled(): boolean {
+    return this.runtimeEnabled;
+  }
+
+  private async persistRuntimeEnabledState(enabled: boolean): Promise<void> {
+    if (!this.runtimeEnabledStorage) {
+      return;
+    }
+    await savePersistedRuntimeEnabled(this.runtimeEnabledStorage, enabled);
+  }
+
+  /**
    * Reload mock data from the filesystem
    * No-op since we don't use cache (files are read on each request)
    */
@@ -2328,6 +2415,9 @@ export interface MockifyerInstance extends HTTPClient {
   clearStaleCacheEntries: () => number;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -2659,6 +2749,9 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
+  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
+  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
 
   registerMockifyerInstance(extendedClient);
 

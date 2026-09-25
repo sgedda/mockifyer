@@ -18,6 +18,9 @@ function normalizeRuntimeMode(raw: unknown): MockifyerRuntimeMode | undefined {
   if (t === 'launch_client' || t === 'launch-client' || t === 'e2e' || t === 'maestro') {
     return 'launch_client';
   }
+  if (t === 'manual' || t === 'gui' || t === 'toggle') {
+    return 'manual';
+  }
   return undefined;
 }
 
@@ -25,7 +28,8 @@ function normalizeRuntimeMode(raw: unknown): MockifyerRuntimeMode | undefined {
  * Resolves whether `setupMockifyerForReactNative` should patch `fetch`.
  *
  * Precedence: **`configMode`** (from app config / RN options) → **`MOCKIFYER_MODE`** env → default **`on`**
- * (patch `fetch` whenever `setupMockifyerForReactNative` runs). Use **`launch_client`** explicitly for Maestro-only activation.
+ * (patch `fetch` whenever `setupMockifyerForReactNative` runs). Use **`launch_client`** explicitly for Maestro-only activation,
+ * or **`manual`** to patch but start disabled (enable via GUI toggle).
  */
 export function resolveMockifyerRuntimeMode(input?: {
   configMode?: MockifyerRuntimeMode | string | undefined;
@@ -40,7 +44,7 @@ export function resolveMockifyerRuntimeMode(input?: {
   const fromEnv = normalizeRuntimeMode(rawMode);
   if (rawMode != null && String(rawMode).trim() !== '' && !fromEnv) {
     logger.warn(
-      `[Mockifyer] Unknown ${ENV_VARS.MOCK_RUNTIME_MODE}="${rawMode}"; expected off | on | launch_client (aliases: disabled, enabled, e2e, maestro, …). Using default on.`
+      `[Mockifyer] Unknown ${ENV_VARS.MOCK_RUNTIME_MODE}="${rawMode}"; expected off | on | launch_client | manual (aliases: disabled, enabled, e2e, maestro, gui, toggle, …). Using default on.`
     );
   }
   if (fromEnv) {
