@@ -161,6 +161,36 @@ describe('mockifyer-mcp dashboard-client', () => {
     }
   });
 
+  it('atlas generated + doc client URLs', async () => {
+    const calls: string[] = [];
+    const client = new DashboardApiClient({ apiBase: 'http://test/api' });
+    const originalFetch = global.fetch;
+    global.fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      await client.getAtlasDoc({ scenario: 'default' });
+      await client.getAtlasGeneratedStatus();
+      await client.listAtlasGeneratedHops({ onlyWithBodies: true, limit: 10 });
+      await client.searchAtlasGeneratedBodies({ q: 'CONFIRMED', limit: 5 });
+      await client.getAtlasGeneratedHopBody({ eventId: 'hop-1', maxChars: 1000 });
+      expect(calls).toEqual([
+        'http://test/api/atlas/doc?scenario=default&summary=1',
+        'http://test/api/atlas/generated',
+        'http://test/api/atlas/generated/hops?limit=10&onlyWithBodies=1',
+        'http://test/api/atlas/generated/bodies/search?q=CONFIRMED&limit=5',
+        'http://test/api/atlas/generated/bodies/hop-1?maxChars=1000',
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it('setScenario POSTs to scenario-config/set', async () => {
     const calls: Array<{ url: string; method?: string; body?: string }> = [];
     const client = new DashboardApiClient({ apiBase: 'http://test/api' });
