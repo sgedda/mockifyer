@@ -53,6 +53,7 @@ import {
   writeAtlasDocHtml,
   writeNetworkBodySpillMap,
   flushNetworkBodySpillsToDir,
+  getNetworkBodySpillSnapshot,
   prettyPrintJsonText,
   setAtlasDocMap,
   type AtlasDocMap,
@@ -1651,27 +1652,43 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const rels = resolveNetworkEventBodyRelPaths(event);
       const rel = side === "req" ? rels.req : rels.res;
       const abs = path.join(mockDataPath, "atlas-html", rel);
-      if (!fs.existsSync(abs)) {
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        const preview =
-          side === "req" ? event.requestBodyPreview : event.responseBodyPreview;
-        const text =
-          preview != null && String(preview).trim() !== ""
-            ? String(preview)
-            : JSON.stringify(
-                {
-                  note: "No body captured for this hop yet",
-                  id: event.id,
-                  side,
-                },
-                null,
-                2,
-              );
-        fs.writeFileSync(
-          abs,
-          text.endsWith("\n") ? text : `${text}\n`,
-          "utf8",
+      const outDir = path.join(mockDataPath, "atlas-html");
+      // Prefer real spill buffer / disk — never materialize the truncated Metro
+      // hop preview (often ~512 bytes) as the "full body" JSON page.
+      flushNetworkBodySpillsToDir(outDir);
+      const fromBuffer = getNetworkBodySpillSnapshot()[rel];
+      if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
+        const saved = saveAtlasBodySpill(
+          projectRoot,
+          mockDataPath,
+          rel,
+          fromBuffer,
         );
+        if (!saved.success) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: saved.error || "Failed to write full body spill",
+            }),
+          );
+          return;
+        }
+      } else if (!fs.existsSync(abs)) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            error:
+              "Full body not available on disk yet. Enable captureBodies / body spill, re-hit the endpoint, then open again. Refusing to write the truncated hop preview as the full body file.",
+            hopId: event.id,
+            side,
+            relativePath: rel,
+          }),
+        );
+        return;
       }
       res.statusCode = 302;
       res.setHeader(

@@ -33,12 +33,17 @@ try {
 
 const HTML_WRITE_DEBOUNCE_MS = 250;
 const MAX_HTML_NETWORK_EVENTS = 500;
-/** Cap body previews embedded in HTML to keep files openable. */
-const MAX_BODY_CHARS_IN_HTML = 12_000;
-/** Cap per-hop text in bodies-search.json (chars). */
-export const BODY_SEARCH_MAX_CHARS_PER_HOP = 32_000;
+/**
+ * Soft cap when embedding body previews into the HTML hop JSON.
+ * Full payloads load on click from spill files (`bodies/*`) when refs exist.
+ */
+const MAX_BODY_CHARS_IN_HTML = 48_000;
+
+/** Soft cap so spilled bodies stay searchable without huge HTML sidecars. */
+export const BODY_SEARCH_MAX_CHARS_PER_HOP = 512_000;
+
 /** Soft cap on total corpus chars so render stays responsive. */
-const BODY_SEARCH_MAX_TOTAL_CHARS = 2_000_000;
+const BODY_SEARCH_MAX_TOTAL_CHARS = 8_000_000;
 
 /**
  * Hop id → searchable body text (previews + spilled full bodies under atlas-html/bodies/).
@@ -2016,21 +2021,93 @@ function renderErrorPanelHtml(analysis, escFn) {
     return '<p class="meta"><a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a></p>';
   }
 
+  function normalizeBodyRef(ref) {
+    var href = String(ref || '');
+    while (href.charAt(0) === '/') href = href.slice(1);
+    return href;
+  }
+
+  /**
+   * Prefer spill files for hop detail so clicks show the full body (not the ~2KB preview).
+   * Falls back to embedded preview when the spill is missing.
+   */
+  function hydrateHopBodySlots(root) {
+    if (!root || typeof fetch !== 'function') return;
+    var slots = root.querySelectorAll('[data-body-spill-ref]');
+    for (var i = 0; i < slots.length; i++) {
+      (function (el) {
+        if (el.getAttribute('data-body-loaded') === '1') return;
+        var ref = normalizeBodyRef(el.getAttribute('data-body-spill-ref'));
+        if (!ref) return;
+        el.setAttribute('data-body-loaded', '1');
+        var hopId = el.getAttribute('data-hop-id') || '';
+        var side = el.getAttribute('data-body-side') || 'res';
+        var hop = hopId ? findEvent(hopId) : null;
+        var usedMap = null;
+        var dim = false;
+        if (side === 'res' && hop) {
+          var hasFieldUsage = hop.usedResponsePaths && hop.usedResponsePaths.length;
+          usedMap = highlightUsedFields && hasFieldUsage ? buildUsedPathMap(hop.usedResponsePaths) : null;
+          dim = !!(highlightUsedFields && dimUnusedFields && hasFieldUsage);
+        }
+        fetch(ref)
+          .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.text();
+          })
+          .then(function (text) {
+            var html = renderJsonPre(text, usedMap, dim);
+            html += renderBodyFullLink(ref, side === 'req' ? 'Open raw request body' : 'Open raw response body');
+            el.innerHTML = html;
+          })
+          .catch(function () {
+            var preview =
+              hop && side === 'req'
+                ? hop.requestBodyPreview
+                : hop
+                  ? hop.responseBodyPreview
+                  : null;
+            var html = '';
+            if (preview) {
+              html += '<p class="meta">Could not load full body file — showing preview.</p>';
+              html += renderJsonPre(preview, usedMap, dim);
+            } else {
+              html += '<p class="empty">Full body file missing.</p>';
+            }
+            html += renderBodyFullLink(ref, side === 'req' ? 'Open raw request body' : 'Open raw response body');
+            el.innerHTML = html;
+          });
+      })(slots[i]);
+    }
+  }
+
+  function renderHopBodySlot(e, side, usedMap, dimUnused) {
+    var ref = side === 'req' ? e.requestBodyRef : e.responseBodyRef;
+    var preview = side === 'req' ? e.requestBodyPreview : e.responseBodyPreview;
+    var truncated = side === 'req' ? e.requestBodyTruncated : e.responseBodyTruncated;
+    var label = side === 'req' ? 'request' : 'response';
+    if (ref) {
+      var html = '<div class="body-spill-slot" data-body-spill-ref="' + esc(normalizeBodyRef(ref)) + '"';
+      html += ' data-body-side="' + esc(side) + '" data-hop-id="' + esc(e.id) + '">';
+      html += '<p class="meta">Loading full ' + label + ' body…</p>';
+      if (preview && truncated) {
+        html += '<details class="body-preview-fallback"><summary>Inline preview (truncated)</summary>';
+        html += renderJsonPre(preview, side === 'res' ? usedMap : null, dimUnused);
+        html += '</details>';
+      }
+      html += '</div>';
+      return html;
+    }
+    if (preview) {
+      return renderJsonPre(preview, side === 'res' ? usedMap : null, dimUnused);
+    }
+    return '<p class="empty">No ' + label + ' body captured.</p>';
+  }
+
   function renderHopBodies(e) {
     var html = '';
     html += '<div class="body-label">Request body</div>';
-    if (e.requestBodyPreview) {
-      html += renderJsonPre(e.requestBodyPreview);
-      if (e.requestBodyTruncated || e.requestBodyRef) {
-        html += '<p class="meta">Preview truncated' + (e.requestBodyRef ? '' : '') + '.</p>';
-        html += renderBodyFullLink(e.requestBodyRef, 'Open full request body');
-      }
-    } else if (e.requestBodyRef) {
-      html += '<p class="empty">Request body omitted from hop preview (too large).</p>';
-      html += renderBodyFullLink(e.requestBodyRef, 'Open full request body');
-    } else {
-      html += '<p class="empty">No request body captured.</p>';
-    }
+    html += renderHopBodySlot(e, 'req', null, false);
     html += '<div class="body-label">Response body</div>';
     var hasFieldUsage = e.usedResponsePaths && e.usedResponsePaths.length;
     if (hasFieldUsage) {
@@ -2053,18 +2130,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += '<p class="meta">No props sample linked yet — capture presentation with shown props to highlight used response fields.</p>';
     }
     var usedMap = highlightUsedFields && hasFieldUsage ? buildUsedPathMap(e.usedResponsePaths) : null;
-    if (e.responseBodyPreview) {
-      html += renderJsonPre(e.responseBodyPreview, usedMap, dimUnusedFields);
-      if (e.responseBodyTruncated || e.responseBodyRef) {
-        html += '<p class="meta">Preview truncated.</p>';
-        html += renderBodyFullLink(e.responseBodyRef, 'Open full response body');
-      }
-    } else if (e.responseBodyRef) {
-      html += '<p class="empty">Response body omitted from hop preview (too large).</p>';
-      html += renderBodyFullLink(e.responseBodyRef, 'Open full response body');
-    } else {
-      html += '<p class="empty">No response body captured.</p>';
-    }
+    html += renderHopBodySlot(e, 'res', usedMap, dimUnusedFields);
     return html;
   }
 
@@ -2264,6 +2330,7 @@ function renderErrorPanelHtml(analysis, escFn) {
         htmlN += '<p class="empty">No linked network hop for this node yet.</p>';
       }
       el.innerHTML = htmlN;
+      hydrateHopBodySlots(el);
       return;
     }
     if (selectedMap && selectedMap.type === 'screen') {
@@ -2312,6 +2379,7 @@ function renderErrorPanelHtml(analysis, escFn) {
         htmlP += '<p class="empty">No hop matched yet. Prefetch capture often uses a synthetic id; matching uses collection path in the request body / operation name when available (Bodies must be on).</p>';
       }
       el.innerHTML = htmlP;
+      hydrateHopBodySlots(el);
       return;
     }
     var e = selectedId ? findEvent(selectedId) : null;
@@ -2328,6 +2396,7 @@ function renderErrorPanelHtml(analysis, escFn) {
     } else {
       el.innerHTML = renderHopSummary(e);
     }
+    hydrateHopBodySlots(el);
   }
 
   function sortByTs(list) {

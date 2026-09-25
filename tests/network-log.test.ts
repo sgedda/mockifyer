@@ -173,6 +173,35 @@ describe('network-body-spill', () => {
   const path = require('path') as typeof import('path');
   const os = require('os') as typeof import('os');
 
+  it('scheduleNetworkBodySpill spills small bodies without truncated flag', () => {
+    const {
+      scheduleNetworkBodySpill,
+      resetNetworkBodySpillRuntime,
+      flushNetworkBodySpillsToDir,
+      setNetworkBodySpillEnabled,
+    } = require('../packages/mockifyer-core/src/utils/network-body-spill') as typeof import('../packages/mockifyer-core/src/utils/network-body-spill');
+
+    resetNetworkBodySpillRuntime();
+    setNetworkBodySpillEnabled(true);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-body-small-'));
+    try {
+      const small = JSON.stringify({ ok: true, id: 'trip-1' });
+      const refs = scheduleNetworkBodySpill({
+        eventId: 'e-small',
+        requestId: 'req-small',
+        responseBodyText: small,
+      });
+      expect(refs.responseBodyRef).toBe('bodies/req-small-res.json');
+      expect(refs.responseBodyTruncated).toBeUndefined();
+      flushNetworkBodySpillsToDir(dir);
+      const onDisk = fs.readFileSync(path.join(dir, refs.responseBodyRef!), 'utf8');
+      expect(JSON.parse(onDisk)).toEqual({ ok: true, id: 'trip-1' });
+    } finally {
+      resetNetworkBodySpillRuntime();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('scheduleNetworkBodySpill writes oversized bodies and returns refs', async () => {
     const {
       scheduleNetworkBodySpill,
