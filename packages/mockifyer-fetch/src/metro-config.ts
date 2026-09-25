@@ -218,12 +218,29 @@ export function configureMetroForMockifyer(
     moduleName: string,
     platform: string | null
   ): { filePath: string; type: string } | null | undefined => {
-    // Handle Node built-ins and optional RN peers - return empty module stub
-    if (isMockifyerStubbedModule(moduleName)) {
+    // Always stub Node built-ins
+    if ((NODE_BUILTINS as readonly string[]).includes(moduleName)) {
       return {
         filePath: emptyModulePath,
         type: 'sourceFile',
       };
+    }
+
+    // Stub optional RN peers only when not installed
+    if ((OPTIONAL_RN_PEER_MODULES as readonly string[]).includes(moduleName)) {
+      // Try to resolve the module - if it exists, let Metro handle it normally
+      try {
+        const resolved = context.resolveRequest(context, moduleName, platform);
+        if (resolved) {
+          return resolved;
+        }
+      } catch {
+        // Module not installed - stub it
+        return {
+          filePath: emptyModulePath,
+          type: 'sourceFile',
+        };
+      }
     }
 
     const mockifyerCoreRn = resolveMockifyerCoreReactNativeEntry(moduleName, platform);
