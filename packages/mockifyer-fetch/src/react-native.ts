@@ -146,30 +146,51 @@ export interface ReactNativeMockifyerConfig {
 }
 
 /**
- * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
- * @returns `true` when a native launch-argument `scenario` was applied (forces runtime toggle on).
+ * Check if scenario options are present without applying them yet.
+ * @returns Object with `hasLaunchScenario` and the scenario values to apply later.
  */
-function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): boolean {
-  let appliedFromLaunchArgs = false;
+function checkReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): {
+  hasLaunchScenario: boolean;
+  scenarioFromLaunch?: string;
+  scenarioDefault?: string;
+} {
+  let scenarioFromLaunch: string | undefined;
+  let scenarioDefault: string | undefined;
 
   // Auto-detect launch `scenario` when present (E2E). Opt out with useLaunchArgumentsScenario: false.
   if (options.useLaunchArgumentsScenario !== false) {
-    const scenarioFromLaunch = tryGetScenarioFromLaunchArguments();
-    if (scenarioFromLaunch) {
-      setScenarioLaunchOverride(scenarioFromLaunch, { fromLaunchArguments: true });
-      appliedFromLaunchArgs = true;
+    const scenario = tryGetScenarioFromLaunchArguments();
+    if (scenario) {
+      scenarioFromLaunch = scenario;
     }
   }
 
-  if (!appliedFromLaunchArgs && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+  if (!scenarioFromLaunch && options.defaultScenario !== undefined && options.defaultScenario !== null) {
     const t = String(options.defaultScenario).trim();
     if (t !== '') {
-      // App config default — not a native launch arg; do not force runtime toggle on.
-      setScenarioLaunchOverride(t);
+      scenarioDefault = t;
     }
   }
 
-  return appliedFromLaunchArgs;
+  return {
+    hasLaunchScenario: Boolean(scenarioFromLaunch),
+    scenarioFromLaunch,
+    scenarioDefault,
+  };
+}
+
+/**
+ * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ */
+function applyReactNativeScenarioOptions(
+  scenarioFromLaunch?: string,
+  scenarioDefault?: string
+): void {
+  if (scenarioFromLaunch) {
+    setScenarioLaunchOverride(scenarioFromLaunch, { fromLaunchArguments: true });
+  } else if (scenarioDefault) {
+    setScenarioLaunchOverride(scenarioDefault);
+  }
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -278,14 +299,11 @@ export async function setupMockifyerForReactNative(
     }
   }
 
-  // Apply scenario launch override early so we know if E2E forced a scenario.
-  const launchScenarioApplied = applyReactNativeScenarioOptions(options);
-  if (launchScenarioApplied) {
+  // Check scenario options without applying them yet (defer until after activation gate).
+  const scenarioCheck = checkReactNativeScenarioOptions(options);
+  if (scenarioCheck.hasLaunchScenario) {
     // Launch `scenario` arg → start enabled (wins over persisted off for this session).
     initialRuntimeEnabled = true;
-    logger.info(
-      '[Mockifyer] Launch argument scenario present — starting with Mockifyer ENABLED'
-    );
   }
 
   const mergedConfig: typeof userConfig = {
@@ -314,7 +332,7 @@ export async function setupMockifyerForReactNative(
   const isEnabled = shouldActivateMockifyerForReactNative({
     runtimeMode: resolvedRuntimeMode,
     hasLaunchClientId: Boolean(clientIdFromLaunchArgs),
-    hasLaunchScenario: launchScenarioApplied,
+    hasLaunchScenario: scenarioCheck.hasLaunchScenario,
   });
   if (!isEnabled) {
     logMockifyerNotActivated(resolvedRuntimeMode, {
@@ -322,6 +340,14 @@ export async function setupMockifyerForReactNative(
       hadLaunchClientId: Boolean(clientIdFromLaunchArgs),
     });
     return { status: 'not_activated', instance: null } as const;
+  }
+
+  // Activation confirmed — now apply the scenario override to module-level state.
+  applyReactNativeScenarioOptions(scenarioCheck.scenarioFromLaunch, scenarioCheck.scenarioDefault);
+  if (scenarioCheck.hasLaunchScenario) {
+    logger.info(
+      '[Mockifyer] Launch argument scenario present — starting with Mockifyer ENABLED'
+    );
   }
 
   if (isDev === true) {
