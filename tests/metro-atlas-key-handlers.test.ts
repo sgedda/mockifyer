@@ -28,9 +28,10 @@ describe('metro-atlas-key-handlers', () => {
   });
 
   describe('resolveAtlasKeyOption', () => {
-    it('defaults to a', () => {
+    it('defaults to t (a is reserved for Android)', () => {
       expect(resolveAtlasKeyOption()).toBe(DEFAULT_METRO_ATLAS_KEY);
-      expect(resolveAtlasKeyOption(undefined)).toBe('a');
+      expect(resolveAtlasKeyOption(undefined)).toBe('t');
+      expect(DEFAULT_METRO_ATLAS_KEY).not.toBe('a');
     });
 
     it('disables with false or empty', () => {
@@ -224,6 +225,26 @@ describe('metro-atlas-key-handlers', () => {
       stdin.emit('keypress', 'r', { name: 'r' });
       expect(starts).toBe(1);
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
+    });
+
+    it('warns when atlasKey is reserved for Android', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const stdin = makeStdin();
+
+      const attached = attachMetroAtlasKeyHandler({
+        atlasKey: 'a',
+        dashboardKey: false,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        deferMs: 0,
+        onSessionStart: () => undefined,
+        onSessionStop: () => undefined,
+      });
+
+      expect(attached.key).toBe('a');
+      expect(warn).toHaveBeenCalledWith(
+        '[Mockifyer] atlasKey "a" is reserved for Android — pick another letter',
+      );
+      warn.mockRestore();
     });
 
     it('does not attach when both keys are false', () => {

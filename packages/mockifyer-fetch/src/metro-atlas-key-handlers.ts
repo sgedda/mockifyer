@@ -1,21 +1,32 @@
 /**
  * Metro terminal keys for Mockifyer:
- * - `a` (default): start/stop Atlas capture (stop generates HTML)
+ * - `t` (default): start/stop Atlas capture (stop generates HTML)
  * - `m` (default): open the Mockifyer dashboard in the browser
  *
  * Opening `mockifyer-atlas` (SSE `/mockifyer-network-events/stream`) auto-starts
- * capture when idle — then press `a` once to stop & generate.
+ * capture when idle — then press `t` once to stop & generate.
  *
+ * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
  * Disable Atlas with `atlasKey: false`, dashboard with `dashboardKey: false`.
  */
 import * as readline from "readline";
 import { spawn } from "child_process";
 import { logger } from "@sgedda/mockifyer-core";
 
-/** Keys already used by @react-native/community-cli-plugin (avoid stealing). */
-const RESERVED_METRO_KEYS = new Set(["r", "d", "j", "i"]);
+/**
+ * Keys already used by @react-native/community-cli-plugin (avoid stealing).
+ * Value is the short reason shown when a binding collides.
+ */
+const RESERVED_METRO_KEYS: ReadonlyMap<string, string> = new Map([
+  ["a", "Android"],
+  ["d", "the Dev Menu"],
+  ["i", "iOS"],
+  ["j", "DevTools"],
+  ["r", "reload"],
+]);
 
-export const DEFAULT_METRO_ATLAS_KEY = "a";
+/** `t` — `a` launches Android in the Metro / RN CLI. */
+export const DEFAULT_METRO_ATLAS_KEY = "t";
 export const DEFAULT_METRO_DASHBOARD_KEY = "m";
 export const DEFAULT_METRO_DASHBOARD_URL = "http://localhost:3002";
 
@@ -30,8 +41,8 @@ export type MetroAtlasSessionStartReason = "key" | "stream";
 
 export interface AttachMetroAtlasKeyHandlerOptions {
   /**
-   * Key that toggles Atlas capture (default `"a"`).
-   * Pass `false` to disable.
+   * Key that toggles Atlas capture (default `"t"`).
+   * Pass `false` to disable. `a` is reserved by Metro for Android.
    */
   atlasKey?: AtlasKeyOption;
   /**
@@ -102,7 +113,7 @@ export function resolveKeyOption(
 }
 
 /**
- * Normalize `atlasKey` option: default `"a"`, `false` → disabled, else single char.
+ * Normalize `atlasKey` option: default `"t"`, `false` → disabled, else single char.
  */
 export function resolveAtlasKeyOption(
   atlasKey?: AtlasKeyOption,
@@ -331,9 +342,10 @@ export function detachMetroAtlasKeyHandler(): void {
 }
 
 function warnIfReserved(key: string, label: string): void {
-  if (RESERVED_METRO_KEYS.has(key)) {
+  const reason = RESERVED_METRO_KEYS.get(key);
+  if (reason) {
     logger.warn(
-      `[Mockifyer] ${label} "${key}" conflicts with Metro/RN CLI — pick another letter`,
+      `[Mockifyer] ${label} "${key}" is reserved for ${reason} — pick another letter`,
     );
   }
 }
