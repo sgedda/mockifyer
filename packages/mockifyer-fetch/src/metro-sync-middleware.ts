@@ -19,7 +19,7 @@
  * 15. POST /mockifyer-network-events/snapshot — write hops JSON/NDJSON under atlas-html/
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
- * 18. Metro terminal key `a` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable)
+ * 18. Metro terminal key `t` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
  * 19. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
@@ -77,9 +77,9 @@ export interface MetroSyncMiddlewareOptions {
   /** Path to mock data directory relative to project root (default: 'mock-data') */
   mockDataPath?: string;
   /**
-   * Metro terminal key that starts/stops Atlas capture (default `"a"`).
+   * Metro terminal key that starts/stops Atlas capture (default `"t"`).
    * Start clears the hop buffer; stop generates HTML (same as `POST /mockifyer-network-events/render`).
-   * Pass `false` to disable.
+   * Pass `false` to disable. `a` is reserved by Metro for Android.
    */
   atlasKey?: AtlasKeyOption;
   /**

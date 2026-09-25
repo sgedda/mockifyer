@@ -171,7 +171,7 @@ export interface ConfigureMetroOptions {
  *   syncMiddleware: {
  *     projectRoot: __dirname,
  *     mockDataPath: './mock-data',
- *     // atlasKey: 'a' (default) — Metro terminal: start/stop Atlas capture (stop → HTML)
+ *     // atlasKey: 't' (default) — Metro terminal: start/stop Atlas capture (stop → HTML). `a` is Android.
  *     // dashboardKey: 'm' (default) — open dashboard in browser
  *     // dashboardUrl: 'http://localhost:3002' — or MOCKIFYER_DASHBOARD_URL
  *   },
