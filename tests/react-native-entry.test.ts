@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { ENV_VARS } from '@sgedda/mockifyer-core';
 import {
   arePoolRefsEnabled,
@@ -31,6 +33,20 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof arePoolRefsEnabled).toBe('function');
     expect(typeof containsPoolRefs).toBe('function');
     expect(typeof collectPoolRefIds).toBe('function');
+  });
+
+  it('keeps dynamic require() out of the Metro sibling-setup entry', () => {
+    const source = fs.readFileSync(
+      path.join(
+        __dirname,
+        '../packages/mockifyer-core/src/utils/load-sibling-setup.native.ts'
+      ),
+      'utf8'
+    );
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(code).not.toMatch(/require\s*\(\s*[A-Za-z_$]/);
+    expect(source).toContain("require(/* webpackIgnore: true */ '@sgedda/mockifyer-axios')");
+    expect(source).toContain("require(/* webpackIgnore: true */ '@sgedda/mockifyer-fetch')");
   });
 
   it('re-exports the helpers setupMockifyerForReactNative calls on device', () => {
