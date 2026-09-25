@@ -44,9 +44,9 @@ describe('mockifyer-fetch React Native entry', () => {
       'utf8'
     );
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(code).not.toMatch(/require\s*\(\s*[A-Za-z_$]/);
-    expect(source).toContain("require(/* webpackIgnore: true */ '@sgedda/mockifyer-axios')");
-    expect(source).toContain("require(/* webpackIgnore: true */ '@sgedda/mockifyer-fetch')");
+    expect(code).not.toMatch(/require\s*\(/);
+    expect(code).not.toContain('@sgedda/mockifyer-axios');
+    expect(code).not.toContain('@sgedda/mockifyer-fetch');
   });
 
   it('re-exports the helpers setupMockifyerForReactNative calls on device', () => {

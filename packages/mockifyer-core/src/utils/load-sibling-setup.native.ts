@@ -1,73 +1,28 @@
 import type { SetupMockifyerFn } from './init-mockifyer-presets';
 
-const AXIOS_PACKAGE = '@sgedda/mockifyer-axios';
-const FETCH_PACKAGE = '@sgedda/mockifyer-fetch';
-
 /**
  * Metro entry for sibling setup loaders.
  *
- * The Node file resolves optional siblings with a non-literal require so a
- * `file:`-linked core install can see the app cwd. Expo's transform rejects
- * that call. Metro prefers this `.native` file and only sees string-literal requires.
+ * The Node file resolves optional sibling packages at runtime. Metro follows
+ * every string-literal require, including ones marked webpackIgnore, and fails
+ * the bundle when the app does not depend on that package. This file is what
+ * Metro loads instead. It references neither sibling. Dual-client setup is a Node preset.
  */
-function requireKnownSibling(packageName: string): unknown {
-  try {
-    if (packageName === AXIOS_PACKAGE) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return require(/* webpackIgnore: true */ '@sgedda/mockifyer-axios');
-    }
-    if (packageName === FETCH_PACKAGE) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      return require(/* webpackIgnore: true */ '@sgedda/mockifyer-fetch');
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const missingPackage =
-      message.includes(`Cannot find module '${packageName}'`) ||
-      message.includes(`Cannot find module "${packageName}"`) ||
-      message.includes(`Cannot resolve module '${packageName}'`) ||
-      message.includes(`Cannot resolve module "${packageName}"`);
-    if (!missingPackage) {
-      throw error;
-    }
-  }
-
-  const missing = new Error(`Cannot find module '${packageName}'`) as NodeJS.ErrnoException;
-  missing.code = 'MODULE_NOT_FOUND';
-  throw missing;
+function siblingSetupUnavailable(packageLabel: string): SetupMockifyerFn<unknown> {
+  return () => {
+    throw new Error(
+      `${packageLabel} sibling setup is not available in the React Native bundle. ` +
+        'Use setupMockifyerForReactNative from the fetch package.'
+    );
+  };
 }
 
-function loadSetupMockifyer(
-  packageName: string,
-  missingMessage: string
-): SetupMockifyerFn<unknown> {
-  let mod: { setupMockifyer?: SetupMockifyerFn<unknown> };
-  try {
-    mod = requireKnownSibling(packageName) as { setupMockifyer?: SetupMockifyerFn<unknown> };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${missingMessage} (${detail})`);
-  }
-  if (typeof mod.setupMockifyer !== 'function') {
-    throw new Error(`${missingMessage} (setupMockifyer export missing)`);
-  }
-  return mod.setupMockifyer;
-}
-
-/** Lazily loads `setupMockifyer` from `@sgedda/mockifyer-axios` (optional install). */
+/** Node-only. Present so the Metro graph can load this module without axios. */
 export function loadAxiosSetupMockifyer(): SetupMockifyerFn<unknown> {
-  return loadSetupMockifyer(
-    AXIOS_PACKAGE,
-    `useGlobalAxios requires ${AXIOS_PACKAGE} to be installed (and axios). ` +
-      `Install with: npm install ${AXIOS_PACKAGE} axios.`
-  );
+  return siblingSetupUnavailable('Axios');
 }
 
-/** Lazily loads `setupMockifyer` from `@sgedda/mockifyer-fetch` (optional install). */
+/** Node-only. Present so the Metro graph can load this module without the fetch package. */
 export function loadFetchSetupMockifyer(): SetupMockifyerFn<unknown> {
-  return loadSetupMockifyer(
-    FETCH_PACKAGE,
-    `useGlobalFetch requires ${FETCH_PACKAGE} to be installed. ` +
-      `Install with: npm install ${FETCH_PACKAGE}.`
-  );
+  return siblingSetupUnavailable('Fetch');
 }

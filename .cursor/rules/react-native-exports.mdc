@@ -31,4 +31,4 @@ Metro resolves the `react-native` export condition. Typecheck and Jest do not. A
 
 - Assume `export *` on `src/index.ts` publishes to React Native.
 - Treat a passing typecheck or a Jest suite that imports `@sgedda/mockifyer-core` as proof the device entry exports the symbol.
-- Leave `require(someVariable)` in any file the React Native graph can reach (including a file only re-exported by a barrel). Expo Metro fails the bundle: `Invalid call: require(packageName)`. Optional packages use a string literal plus `webpackIgnore`. Node-only dynamic resolve stays in the `.ts` file; ship a `.native.ts` sibling so Metro never transforms the dynamic call.
+- Leave `require(someVariable)` in any file the React Native graph can reach (including a file only re-exported by a barrel). Expo Metro fails the bundle: `Invalid call: require(packageName)`. A string literal is not safe either: Metro resolves `require('@sgedda/mockifyer-axios')` even with `webpackIgnore` and fails when the app does not depend on that package. Node-only optional requires stay in the `.ts` file. The `.native.ts` sibling Metro prefers must not mention those packages.
