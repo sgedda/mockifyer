@@ -59,6 +59,7 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - **Git**: never commit/push unless the user asks.
 - **Versions**: when code under `packages/<pkg>/` changes, bump that package’s `version` (and every other changed package) before PR — see `.cursor/rules/release-pr-build-check.mdc`.
 - **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (same rule).
+- **Tests**: `npm test` from the repo root must pass before push or a new PR (same rule).
 - **Linear issues**: project `Mockifyer`, labels `feature` + `backlog` unless overridden.
 
 ## Quick tasks

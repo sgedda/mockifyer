@@ -292,6 +292,9 @@ describe('fetch proxy bypass', () => {
     expect(response.data).toEqual({ fromRedisMock: true });
     expect(response.headers['x-mockifyer']).toBe('true');
 
+    // emitMockifyerNetworkEvent records hops on setImmediate, after the response returns.
+    await new Promise((resolve) => setImmediate(resolve));
+
     const hops = getRecentFlightHops({ limit: 10 });
     expect(hops.length).toBeGreaterThanOrEqual(1);
     const hop = hops.find((h) => h.url.includes('/users'));
