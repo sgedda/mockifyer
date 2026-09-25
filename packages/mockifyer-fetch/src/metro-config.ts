@@ -91,6 +91,8 @@ const NODE_BUILTINS = [
 const OPTIONAL_RN_PEER_MODULES = [
   'react-native-launch-arguments',
   '@react-native-async-storage/async-storage',
+  '@sgedda/mockifyer-axios',
+  '@sgedda/mockifyer-fetch',
 ] as const;
 
 function isMockifyerStubbedModule(moduleName: string): boolean {
