@@ -1,0 +1,33 @@
+---
+description: Keep React Native package entries in sync with Node barrels before publish
+alwaysApply: true
+---
+
+# React Native exports — do not ship a Node-only barrel
+
+Metro resolves the `react-native` export condition. Typecheck and Jest do not. A symbol can exist on `dist/index.js` and in `dist/index.d.ts` and still be `undefined` on device (`undefined is not a function`). That has shipped more than once and only showed up after publish.
+
+## Why local checks miss it
+
+- `packages/mockifyer-core` and `packages/mockifyer-fetch` set `"types"` / `exports["."].types` to the **Node** `.d.ts`. TypeScript never typechecks the React Native file as the package root.
+- Root Jest maps `@sgedda/mockifyer-core` to `packages/mockifyer-core/src/index.ts` (same for fetch). Tests that import the package name never load the Metro entry.
+- Device and Metro load:
+  - `@sgedda/mockifyer-core` → `src/index.react-native.ts` → `dist/index.react-native.js`
+  - `@sgedda/mockifyer-core/react` → `src/react/index.native.ts` → `dist/react/index.native.js`
+  - `@sgedda/mockifyer-fetch` → `src/react-native.ts` → `dist/react-native.js`
+- `@sgedda/mockifyer-axios` uses one file for both conditions. A new axios export is on both.
+
+`packages/mockifyer-fetch/src/react-native.ts` imports helpers from `@sgedda/mockifyer-core`. On device that import hits core’s React Native barrel. If the helper is only on `src/index.ts`, setup throws even when the call is unconditional and the config flag is off.
+
+## When you add or call a public export
+
+1. If the symbol is imported by React Native setup (`packages/mockifyer-fetch/src/react-native.ts`, core `src/react/**`, or an RN example) **or** is a device-safe module newly re-exported from `src/index.ts`, add the same `export *` (or named export) to the matching React Native entry.
+2. Leave Node-only modules off the React Native entry: `fs`, `path`, `Buffer`, `ioredis`, sqlite, filesystem providers. Do not call those from RN setup. The split is intentional (`providers/rn` instead of `providers`, no `build-utils`, no `ai-context`).
+3. Same check for the other split entries: `src/react/index.ts` vs `src/react/index.native.ts`, and fetch `src/index.ts` vs `src/react-native.ts`. Re-exporting core from fetch does not fix a missing core barrel export — Metro still loads core’s `react-native` condition.
+4. Assert the new **runtime** export in `tests/react-native-entry.test.ts` by importing it from `packages/mockifyer-core/src/index.react-native` (or fetch `src/react-native.ts`). Do not import it only from `@sgedda/mockifyer-core`.
+5. Before push / publish, build the package and confirm the symbol is in the React Native dist (`dist/index.react-native.js` contains the `export` / `__exportStar`). A green Node build is not enough.
+
+## Do not
+
+- Assume `export *` on `src/index.ts` publishes to React Native.
+- Treat a passing typecheck or a Jest suite that imports `@sgedda/mockifyer-core` as proof the device entry exports the symbol.
