@@ -30,12 +30,16 @@ export * from './utils/mock-body-similarity';
 export * from './utils/client-id';
 export * from './utils/runtime-client-id';
 export * from './utils/launch-arguments-client-id';
+export * from './utils/launch-arguments-scenario';
 export * from './utils/activation-mode';
 export * from './utils/outbound-header';
 export * from './utils/request-correlation';
 export * from './utils/inline-trace';
 export * from './utils/mockifyer-trace';
 export * from './utils/runtime-mode';
+// setupMockifyerForReactNative calls these unconditionally; Metro only sees this barrel.
+export * from './utils/runtime-enabled-persist';
+export * from './utils/react-native-activation';
 export * from './utils/strict-proxy-scenario';
 export * from './utils/proxy-strict-lane-scenario';
 export * from './utils/proxy-upstream-tls-insecure';

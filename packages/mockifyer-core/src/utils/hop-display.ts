@@ -1,4 +1,4 @@
-import { formatUsageLabel } from './atlas-usage';
+import { formatUsageLabel } from './atlas-usage-annotations';
 import type { NetworkEvent, NetworkEventUsage } from './network-event-types';
 
 /** Normalize single or array usage on a hop. */

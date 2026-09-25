@@ -5,7 +5,7 @@
  */
 
 import { ENV_VARS } from '../types';
-import { getAtlasSessionId, isAtlasEnabled } from './atlas';
+import { getAtlasSessionId, isAtlasEnabled } from './atlas-session';
 import { resolveAtlasDocWriteScenario, setAtlasDocScreenshot } from './atlas-doc';
 import { getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';

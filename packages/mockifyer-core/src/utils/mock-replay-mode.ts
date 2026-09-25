@@ -9,7 +9,7 @@ import {
   activeOverrideGroupHasEntry,
   applyActiveOverrideGroupOverlays,
 } from './override-group-runtime';
-import { resolveRefreshPassthroughRecordings } from './record-passthrough-config';
+import { resolveRefreshPassthroughRecordings } from './record-passthrough-env';
 
 /** How a matched mock is served on the next outbound request. */
 export type MockReplayMode = 'stored' | 'refresh-next' | 'always-refresh' | 'passthrough';

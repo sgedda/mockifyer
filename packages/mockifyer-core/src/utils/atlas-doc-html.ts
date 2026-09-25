@@ -17,7 +17,7 @@ import {
 } from './hop-gui-attribution';
 import type { NetworkEvent } from './network-event-types';
 import { computeUsedResponsePaths } from './response-field-usage';
-import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage';
+import { getAtlasUsageAnnotations, mergeUsageOntoNetworkEvents } from './atlas-usage-annotations';
 import { prettyPrintJsonText } from './json-pretty';
 
 let fs: typeof import('fs') | undefined;

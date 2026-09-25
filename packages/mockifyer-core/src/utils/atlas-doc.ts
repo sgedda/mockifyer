@@ -8,6 +8,7 @@ import {
   resetAtlasDocHtmlRuntime,
   scheduleAtlasDocHtmlRewrite,
 } from './atlas-doc-html';
+import { registerAtlasDocUsageWriter } from './atlas-doc-usage-bridge';
 import {
   extractAtlasCmsLinkRefs,
   mergeAtlasCmsLinkRefs,
@@ -582,6 +583,8 @@ export function upsertAtlasDocFromUsage(input: UpsertDocUsageInput): AtlasDocMap
   scheduleAtlasDocHtmlRewrite(map);
   return map;
 }
+
+registerAtlasDocUsageWriter(upsertAtlasDocFromUsage);
 
 export interface SetAtlasDocScreenshotInput {
   scenario?: string;

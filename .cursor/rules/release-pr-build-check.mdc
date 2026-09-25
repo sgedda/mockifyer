@@ -31,6 +31,7 @@ In-repo `file:` dependencies do not replace a version bump: consumers still need
 - Run the package build(s) locally for each changed package (fast, fail-fast):
   - Prefer `npm --prefix packages/<pkg> run build` when a `build` script exists.
   - If the package has multiple build parts, run the minimal ones that catch type errors (e.g. `build:backend` / frontend `build`).
+- If the change adds or uses a public export from a package with a `react-native` entry (`mockifyer-core`, `mockifyer-fetch`), follow **`.cursor/rules/react-native-exports.mdc`**. Confirm the symbol is in the React Native dist, not only `dist/index.js`. Typecheck will not catch a missing Metro export.
 
 ### Mockifyer dashboard specifics
 

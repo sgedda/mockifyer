@@ -21,8 +21,7 @@ export type {
   TimelineEventKind,
 } from './network-event-types';
 import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
-import { resolveUsageForNetworkEmit } from './atlas-usage';
-import { getAtlasUsageDashboardBaseUrl } from './atlas-usage';
+import { resolveUsageForNetworkEmit, getAtlasUsageDashboardBaseUrl } from './atlas-usage-runtime';
 import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 import {
   NETWORK_BODY_SPILL_MAX_BYTES,
@@ -38,6 +37,9 @@ import {
   isGraphqlRequestBodyObject,
 } from './graphql-body-display';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
+import { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
+
+export { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
 import {
   joinMetroNetworkEventsUrl,
   resolveMetroNetworkStreamBaseUrl,
@@ -334,24 +336,6 @@ export function emitMetroNetworkStreamEvent(event: NetworkEvent): Promise<void> 
 /** Stable hash prefix for correlating proxy rows (optional display). */
 export function networkEventHashFromRequestKey(requestKey: string): string {
   return sha256Hex(requestKey).slice(0, 16);
-}
-
-/**
- * Resolves dashboard base URL for SDK network log POSTs.
- * Precedence: **`MOCKIFYER_DASHBOARD_URL`** → `networkLog.dashboardBaseUrl` → `proxy.baseUrl`.
- */
-export function resolveNetworkLogDashboardUrl(
-  config: Pick<MockifyerConfig, 'networkLog' | 'proxy'>
-): string | undefined {
-  if (config.networkLog?.enabled === false) return undefined;
-  const fromEnv =
-    typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_DASHBOARD_URL]?.trim() : undefined;
-  if (fromEnv) return fromEnv;
-  const fromConfig = config.networkLog?.dashboardBaseUrl?.trim();
-  if (fromConfig) return fromConfig;
-  const fromProxy = config.proxy?.baseUrl?.trim();
-  if (fromProxy) return fromProxy;
-  return undefined;
 }
 
 /**
