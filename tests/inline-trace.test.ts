@@ -6,12 +6,14 @@ import {
   MOCKIFYER_TRACE_RESPONSE_KEY,
   buildInlineRequestTrace,
   createMockifyerCorrelationMiddleware,
+  getInlineTraceEnvelopeBusinessBody,
   installInlineTraceBodyWrapper,
   isIncludeInlineTraceRequested,
   recordInlineTraceHopFromExchange,
   resolveInboundHopContext,
   runWithMockifyerHopContext,
   unwrapAndMergeInlineTraceEnvelope,
+  unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   wrapBodyWithInlineTrace,
   type MockifyerHopContext,
 } from '@sgedda/mockifyer-core';
@@ -63,7 +65,7 @@ describe('inline-trace', () => {
       const wrapped = wrapBodyWithInlineTrace({ ok: true });
       expect(wrapped).toEqual({
         ok: true,
-        [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: { ...trace, attachment: 'sibling' },
       });
     });
   });
@@ -454,6 +456,56 @@ describe('inline-trace', () => {
         [MOCKIFYER_TRACE_RESPONSE_KEY]: expect.objectContaining({ requestId: 'root-rewrap' }),
       });
     });
+  });
+
+  it('keeps list and scalar data envelopes when include-trace is attached beside them', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root-list' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    const listBody = { data: [{ id: 1 }, { id: 2 }] };
+    const nullDataBody = { data: null };
+    const scalarBody = { data: 'ok' };
+
+    const wrappedList = wrapBodyWithInlineTrace(listBody, ctx);
+    const wrappedNull = wrapBodyWithInlineTrace(nullDataBody, ctx);
+    const wrappedScalar = wrapBodyWithInlineTrace(scalarBody, ctx);
+    const wrappedArray = wrapBodyWithInlineTrace([{ id: 1 }], ctx);
+    const wrappedGraphql = wrapBodyWithInlineTrace({ data: { login: { token: 't' } } }, ctx);
+
+    expect(getInlineTraceEnvelopeBusinessBody(wrappedList)).toEqual(listBody);
+    expect(getInlineTraceEnvelopeBusinessBody(wrappedNull)).toEqual(nullDataBody);
+    expect(getInlineTraceEnvelopeBusinessBody(wrappedScalar)).toEqual(scalarBody);
+    expect(getInlineTraceEnvelopeBusinessBody(wrappedArray)).toEqual([{ id: 1 }]);
+    expect(getInlineTraceEnvelopeBusinessBody(wrappedGraphql)).toEqual({
+      data: { login: { token: 't' } },
+    });
+
+    const emitted = unwrapInlineTraceEnvelopeEmittingNetworkEvents(wrappedList, {
+      parentRequestId: 'root-list',
+      config: { networkLog: { enabled: true } },
+    });
+    expect(emitted).toEqual(listBody);
+
+    runWithMockifyerHopContext(ctx, () => {
+      expect(unwrapAndMergeInlineTraceEnvelope(wrappedNull)).toEqual(nullDataBody);
+    });
+  });
+
+  it('still peels unmarked legacy wraps of arrays', () => {
+    const legacy = {
+      [MOCKIFYER_TRACE_DATA_KEY]: [1, 2, 3],
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'old',
+        hopCount: 0,
+        incomplete: false,
+        hops: [],
+      },
+    };
+    expect(getInlineTraceEnvelopeBusinessBody(legacy)).toEqual([1, 2, 3]);
   });
 
   it('middleware does not wrap when include-trace is absent', () => {

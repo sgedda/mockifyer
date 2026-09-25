@@ -55,12 +55,31 @@ export interface InlineTraceHop {
   errorMessage?: string;
 }
 
+/**
+ * How `mockifyerTrace` was attached to the response.
+ * - `sibling`: added beside the original object fields. `data` is a business field.
+ * - `wrap`: a non-object body (array, scalar, null) was placed under `data`.
+ * Omitted on traces produced before this marker existed.
+ */
+export const INLINE_TRACE_ATTACHMENT = {
+  sibling: 'sibling',
+  wrap: 'wrap',
+} as const;
+
+export type InlineTraceAttachment =
+  (typeof INLINE_TRACE_ATTACHMENT)[keyof typeof INLINE_TRACE_ATTACHMENT];
+
 export interface InlineRequestTrace {
   requestId: string | null;
   hopCount: number;
   hops: InlineTraceHop[];
   /** Always false for in-process collection (no external store window). */
   incomplete: boolean;
+  /**
+   * Present on traces produced by {@link wrapBodyWithInlineTrace}.
+   * Clients use it so `{ data: [...] }` list envelopes are not peeled as legacy wraps.
+   */
+  attachment?: InlineTraceAttachment;
 }
 
 export type RecordInlineTraceHopInput = Omit<InlineTraceHop, 'index' | 'timestamp'> & {
@@ -238,20 +257,27 @@ function readInlineTrace(body: Record<string, unknown>): InlineRequestTrace | nu
 }
 
 /**
- * Legacy wrap `{ data, mockifyerTrace }` with no other keys.
- * Object payloads now keep their own fields and only add `mockifyerTrace`.
+ * Legacy wrap `{ data, mockifyerTrace }` with no other keys, or an explicit `attachment: 'wrap'`.
+ * Object payloads keep their own fields and only add `mockifyerTrace` (`attachment: 'sibling'`).
+ * A list envelope `{ data: [...] }` plus a sibling trace must not be peeled down to the array.
  */
 function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
+  const trace = readInlineTrace(body);
+  if (!trace) return false;
+  if (trace.attachment === INLINE_TRACE_ATTACHMENT.sibling) return false;
+  if (trace.attachment === INLINE_TRACE_ATTACHMENT.wrap) {
+    return Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY);
+  }
+
   const keys = Object.keys(body);
   if (
     keys.length !== 2 ||
-    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY) ||
-    readInlineTrace(body) == null
+    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY)
   ) {
     return false;
   }
-  // Legacy envelopes wrap non-objects (arrays, scalars).
-  // If body.data is a plain object, this is a natural data field (e.g. GraphQL), not a wrap.
+  // Unmarked traces (older builds): only non-object `data` was a wrap.
+  // Plain-object `data` is a natural field (GraphQL), not a wrap.
   const data = body[MOCKIFYER_TRACE_DATA_KEY];
   return !isRecord(data);
 }
@@ -436,12 +462,18 @@ export function wrapBodyWithInlineTrace(
   if (isRecord(body)) {
     return {
       ...body,
-      [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        ...trace,
+        attachment: INLINE_TRACE_ATTACHMENT.sibling,
+      },
     };
   }
   return {
     [MOCKIFYER_TRACE_DATA_KEY]: body,
-    [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+    [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+      ...trace,
+      attachment: INLINE_TRACE_ATTACHMENT.wrap,
+    },
   };
 }
 
