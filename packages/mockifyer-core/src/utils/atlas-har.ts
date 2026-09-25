@@ -3,7 +3,7 @@
  * @see https://w3c.github.io/web-performance/specs/HAR/Overview.html
  */
 
-import { formatUsageLabel } from './atlas-usage';
+import { formatUsageLabel } from './atlas-usage-annotations';
 import { usageListForHop } from './hop-display';
 import type { NetworkEvent } from './network-event-types';
 
