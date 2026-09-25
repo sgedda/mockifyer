@@ -88,7 +88,10 @@ const NODE_BUILTINS = [
  * Optional React Native peer dependencies — stubbed when not installed so
  * `tryGetClientIdFromLaunchArguments` and similar helpers no-op instead of crashing Metro.
  */
-const OPTIONAL_RN_PEER_MODULES = ['react-native-launch-arguments'] as const;
+const OPTIONAL_RN_PEER_MODULES = [
+  'react-native-launch-arguments',
+  '@react-native-async-storage/async-storage',
+] as const;
 
 function isMockifyerStubbedModule(moduleName: string): boolean {
   return (
