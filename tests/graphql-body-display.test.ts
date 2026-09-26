@@ -46,4 +46,24 @@ describe('graphql body display', () => {
     expect(isGraphqlRequestBodyObject({ query: '{ viewer { id } }' })).toBe(true);
     expect(formatGraphqlRequestBodyObject({ query: '{ viewer { id } }' })).toContain('viewer');
   });
+
+  it('restores wire JSON from GraphQL display text for Atlas curl / include-trace', () => {
+    const {
+      tryGraphqlDisplayTextToRequestJson,
+    } = require('../packages/mockifyer-core/src/utils/graphql-body-display') as typeof import('../packages/mockifyer-core/src/utils/graphql-body-display');
+
+    const display = formatGraphqlRequestBodyObject({
+      operationName: 'myAccountDeferredBookings',
+      query: sampleQuery,
+      variables: { timeFilter: 'CURRENT_AND_UPCOMING' },
+    });
+    expect(display).toContain('# operationName: myAccountDeferredBookings');
+
+    const restored = tryGraphqlDisplayTextToRequestJson(display);
+    expect(restored).toBeTruthy();
+    const parsed = JSON.parse(restored!);
+    expect(parsed.operationName).toBe('myAccountDeferredBookings');
+    expect(parsed.query).toContain('myAccountDeferredBookings');
+    expect(parsed.variables).toEqual({ timeFilter: 'CURRENT_AND_UPCOMING' });
+  });
 });

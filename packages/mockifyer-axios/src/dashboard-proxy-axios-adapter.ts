@@ -3,6 +3,7 @@ import {
   performDashboardProxyRequest,
   getActiveInboundClientId,
   getOutboundMockifyerClientIdHeader,
+  appendParamsToUrl,
   type HTTPRequestConfig,
   type HTTPResponse,
 } from '@sgedda/mockifyer-core';
@@ -67,17 +68,18 @@ export function resolveAxiosRequestUrl(config: AxiosRequestConfig, baseUrl?: str
     throw new Error('URL is required');
   }
 
-  if (config.params && Object.keys(config.params).length > 0) {
-    const urlObj = new URL(url);
-    Object.entries(config.params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        urlObj.searchParams.append(key, String(value));
-      }
-    });
-    url = urlObj.toString();
-  }
+  return appendAxiosParamsToUrl(url, config.params);
+}
 
-  return url;
+/** Append axios `params` onto a URL (absolute or relative). */
+export function appendAxiosParamsToUrl(
+  url: string,
+  params: AxiosRequestConfig['params'],
+): string {
+  return appendParamsToUrl(
+    url,
+    params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined,
+  );
 }
 
 function headersToRecord(headers: unknown): Record<string, string> {
