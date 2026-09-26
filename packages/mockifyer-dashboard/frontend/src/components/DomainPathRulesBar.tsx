@@ -7,25 +7,11 @@ import {
 } from '@/lib/domainTreeMatch'
 import {
   setDomainPathRule,
-  type DomainPathRule,
   type DomainPathRulesMap,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-
-function baseRuleFields(
-  exact: DomainPathRule | undefined,
-  effective: DomainPathRule | undefined
-): { recordResponses: boolean; autoMock: boolean } {
-  return {
-    recordResponses:
-      exact?.recordResponses === true ||
-      (exact == null && effective?.recordResponses === true),
-    autoMock:
-      exact?.autoMock === true || (exact == null && effective?.autoMock === true),
-  }
-}
 
 interface DomainPathRulesBarProps {
   scenario: string
@@ -54,12 +40,19 @@ export function DomainPathRulesBar({
 
   async function toggleAllowUpstream(host: string) {
     const exact = pathRules[host]
-    const effective = findEffectiveDomainPathRule(host, pathRules)?.rule
     const override = findEffectiveAllowUpstreamOverride(host, pathRules)
     const allowed = override?.allowUpstream !== false
-    const base = baseRuleFields(exact, effective)
 
-    let rule: { recordResponses: boolean; autoMock?: boolean; allowUpstream?: boolean }
+    // Only preserve recordResponses/autoMock if they were explicitly set on this exact rule
+    const base: { recordResponses?: boolean; autoMock?: boolean } = {}
+    if (typeof exact?.recordResponses === 'boolean') {
+      base.recordResponses = exact.recordResponses
+    }
+    if (typeof exact?.autoMock === 'boolean') {
+      base.autoMock = exact.autoMock
+    }
+
+    let rule: { recordResponses?: boolean; autoMock?: boolean; allowUpstream?: boolean }
     if (!allowed) {
       if (exact?.allowUpstream === false) {
         rule = { ...base }

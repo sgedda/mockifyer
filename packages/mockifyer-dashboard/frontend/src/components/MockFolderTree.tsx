@@ -29,7 +29,6 @@ import {
   bulkSetLiveApiForDomain,
   bulkSetReplayMode,
   setDomainPathRule,
-  type DomainPathRule,
   type DomainPathRulesMap,
 } from '@/lib/api'
 import { useToast } from '@/components/ui/use-toast'
@@ -39,19 +38,6 @@ import { ChevronRight, ChevronDown, Folder } from 'lucide-react'
 const FOLDER_NEST_PAD_REM = 0.75
 const DOMAIN_RECORD_RESPONSE_BTN_WIDTH = '7.75rem'
 const DOMAIN_ALLOW_UPSTREAM_BTN_WIDTH = '7.5rem'
-
-function baseRuleFieldsFromExisting(
-  exact: DomainPathRule | undefined,
-  effective: DomainPathRule | undefined
-): { recordResponses: boolean; autoMock: boolean } {
-  return {
-    recordResponses:
-      exact?.recordResponses === true ||
-      (exact == null && effective?.recordResponses === true),
-    autoMock:
-      exact?.autoMock === true || (exact == null && effective?.autoMock === true),
-  }
-}
 
 function folderHeaderInsetStyle(depth: number): CSSProperties {
   if (depth <= 0) {
@@ -404,8 +390,17 @@ function FolderSection({
     try {
       setBusy('upstream')
       const exact = domainTreeMode.pathRules[domainPath.trim()]
-      const base = baseRuleFieldsFromExisting(exact, effectivePathRule?.rule)
-      let rule: { recordResponses: boolean; autoMock?: boolean; allowUpstream?: boolean }
+      
+      // Only preserve recordResponses/autoMock if they were explicitly set on this exact rule
+      const base: { recordResponses?: boolean; autoMock?: boolean } = {}
+      if (typeof exact?.recordResponses === 'boolean') {
+        base.recordResponses = exact.recordResponses
+      }
+      if (typeof exact?.autoMock === 'boolean') {
+        base.autoMock = exact.autoMock
+      }
+
+      let rule: { recordResponses?: boolean; autoMock?: boolean; allowUpstream?: boolean }
 
       if (!upstreamAllowed) {
         if (upstreamBlockExact) {
