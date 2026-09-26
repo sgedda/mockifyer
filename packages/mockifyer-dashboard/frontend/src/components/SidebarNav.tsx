@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, BarChart3, Settings, Zap, GitFork, Calendar, Radio, SlidersHorizontal } from 'lucide-react'
+import { FileText, BarChart3, Settings, Zap, GitFork, Calendar, Radio, SlidersHorizontal, Braces } from 'lucide-react'
 import { buildSearch } from '@/lib/dashboard-urls'
 import {
   Sidebar,
@@ -29,6 +29,7 @@ export default function SidebarNav({ onTabChange, onNavigate, scenario }: Sideba
     { id: 'overrides', label: 'Overrides', icon: SlidersHorizontal, path: '/overrides' },
     { id: 'network', label: 'Network', icon: Radio, path: '/network' },
     { id: 'date-config', label: 'Date Config', icon: Calendar, path: '/date-config' },
+    { id: 'api', label: 'API', icon: Braces, path: '/api-reference' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ]
 

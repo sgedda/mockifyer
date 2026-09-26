@@ -146,7 +146,7 @@ export function createServer(
    * Keep page names in sync with frontend `DASHBOARD_PAGE_SUFFIXES` (includes `/mock`).
    */
   const spaPageAssetPrefix =
-    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|settings)\/assets\//;
+    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|api-reference|settings)\/assets\//;
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return next();

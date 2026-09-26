@@ -14,6 +14,7 @@ export const DASHBOARD_PAGE_SUFFIXES = [
   '/network',
   '/fixture-pool',
   '/date-config',
+  '/api-reference',
   '/settings',
 ] as const;
 
