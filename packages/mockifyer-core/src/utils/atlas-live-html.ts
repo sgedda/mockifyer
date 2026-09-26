@@ -743,6 +743,7 @@ kbd {
     var t = e.target;
     if (t && t.getAttribute && t.getAttribute("data-parent")) {
       e.preventDefault();
+      e.stopPropagation();
       toggleParent(t.getAttribute("data-parent"));
     }
   });
@@ -792,7 +793,7 @@ kbd {
   });
 
   document.addEventListener("keydown", function (e) {
-    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName)) return;
     var k = e.key;
     if (k === "e" || k === "E") {
       e.preventDefault();
@@ -834,7 +835,7 @@ kbd {
     es.addEventListener("hello", function () {
       streamState = "open";
       streamError = "";
-      updateStatus();
+      clearLocal();
     });
     es.addEventListener("hop", function (msg) {
       streamState = "open";

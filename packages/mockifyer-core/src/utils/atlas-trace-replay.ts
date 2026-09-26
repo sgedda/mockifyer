@@ -9,6 +9,7 @@ import {
   MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_TRACE_RESPONSE_KEY,
 } from './inline-trace';
+import { getNetworkBodySpillSnapshot } from './network-body-spill';
 
 export const ATLAS_TRACE_REPLAY_PATH = '/mockifyer-atlas-trace';
 
@@ -101,7 +102,17 @@ export async function replayNetworkEventWithIncludeTrace(
 
   const init: RequestInit = { method, headers };
   if (method !== 'GET' && method !== 'HEAD') {
-    const body = event.requestBodyPreview;
+    let body: string | undefined;
+    
+    if (event.requestBodyRef) {
+      const spillSnapshot = getNetworkBodySpillSnapshot();
+      body = spillSnapshot[event.requestBodyRef];
+    }
+    
+    if (!body) {
+      body = event.requestBodyPreview;
+    }
+    
     if (typeof body === 'string' && body.length > 0) {
       init.body = body;
       if (!headers['content-type'] && !headers['Content-Type']) {
