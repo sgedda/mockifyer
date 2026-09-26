@@ -449,6 +449,14 @@ kbd {
     var path = (ev.path && String(ev.path)) || "";
     var query = (ev.query && String(ev.query).trim()) || "";
     if (path) {
+      if (!query) {
+        // event.query missing — try parsing from event.url
+        var url = (ev.url && String(ev.url).trim()) || "";
+        var qIdx = url.indexOf("?");
+        if (qIdx >= 0) {
+          query = url.slice(qIdx);
+        }
+      }
       if (!query) return path;
       return path + (query.charAt(0) === "?" ? query : "?" + query);
     }
@@ -917,6 +925,20 @@ kbd {
     return total;
   }
 
+  /** True when the hop or any descendant is an error. */
+  function hasErrorInTree(ev, guard) {
+    if (isErrorHop(ev)) return true;
+    guard = guard || {};
+    var id = requestIdOf(ev);
+    if (!id || guard[id]) return false;
+    guard[id] = true;
+    var kids = childrenByParent.get(id) || [];
+    for (var i = 0; i < kids.length; i++) {
+      if (hasErrorInTree(kids[i], guard)) return true;
+    }
+    return false;
+  }
+
   function subtreeStats(children) {
     var stats = { total: 0, errors: 0, slow: 0, totalMs: 0, unique: 0 };
     var keys = {};
@@ -1018,10 +1040,7 @@ kbd {
     for (var r = 0; r < rootOrder.length; r++) {
       var event = eventsByRequestId.get(rootOrder[r]);
       if (!event) continue;
-      if (errorsOnly) {
-        var kids = childrenByParent.get(rootOrder[r]) || [];
-        if (!isErrorHop(event) && !kids.some(isErrorHop)) continue;
-      }
+      if (errorsOnly && !hasErrorInTree(event)) continue;
       roots.push(event);
     }
 
@@ -1205,6 +1224,7 @@ kbd {
     var t = e.target;
     if (t && t.getAttribute && t.getAttribute("data-parent")) {
       e.preventDefault();
+      e.stopPropagation();
       toggleParent(t.getAttribute("data-parent"));
     }
   });
@@ -1287,7 +1307,7 @@ kbd {
   }
 
   document.addEventListener("keydown", function (e) {
-    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName)) return;
     var k = e.key;
     if (k === "e" || k === "E") {
       e.preventDefault();
@@ -1332,6 +1352,10 @@ kbd {
     es.addEventListener("hello", function () {
       streamState = "open";
       streamError = "";
+      // Clear on reconnect so backlog replays safely (unless paused).
+      if (!paused) {
+        clearLocal();
+      }
       updateStatus();
     });
     es.addEventListener("hop", function (msg) {
