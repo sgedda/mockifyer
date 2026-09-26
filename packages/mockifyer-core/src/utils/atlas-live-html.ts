@@ -835,7 +835,9 @@ kbd {
     es.addEventListener("hello", function () {
       streamState = "open";
       streamError = "";
-      clearLocal();
+      if (!paused) {
+        clearLocal();
+      }
     });
     es.addEventListener("hop", function (msg) {
       streamState = "open";
