@@ -379,20 +379,17 @@ export interface EmitMockifyerNetworkEventParams {
 /**
  * Read include-trace flags from Mockifyer config (RN / client outbound opt-in).
  *
- * An active Metro hop stream (Atlas `t` capture) requests nested hops and body
- * previews unless the matching flag is explicitly `false`.
+ * On only when `networkLog.includeTraceHeader` is true. Atlas capture (`t`), Metro
+ * hop streaming, and `activationMode: client_id_header` do **not** stamp include-trace.
+ * Nested hops for a single request come from the live-page **trace** link (or an
+ * explicit `X-Mockifyer-Include-Trace` header on that call).
  */
 export function resolveNetworkLogIncludeTraceOptions(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): { includeInlineTrace: boolean; includeInlineTraceBodies: boolean } {
-  const metroAtlas = resolveMetroNetworkStreamBaseUrl() != null;
-  const includeInlineTrace =
-    config?.networkLog?.includeTraceHeader === true ||
-    (config?.networkLog?.includeTraceHeader !== false && metroAtlas);
+  const includeInlineTrace = config?.networkLog?.includeTraceHeader === true;
   const includeInlineTraceBodies =
-    includeInlineTrace &&
-    (config?.networkLog?.includeTraceBodies === true ||
-      (config?.networkLog?.includeTraceBodies !== false && metroAtlas));
+    includeInlineTrace && config?.networkLog?.includeTraceBodies === true;
   return { includeInlineTrace, includeInlineTraceBodies };
 }
 

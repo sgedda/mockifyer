@@ -720,4 +720,43 @@ describe('inline-trace', () => {
       expect(hop.responseBodyPreview).not.toContain('mockifyerTrace');
     });
   });
+  it('unwrap peels REST/HAL { data, mockifyerTrace } but keeps GraphQL data', () => {
+    const hops = {
+      requestId: 'member-root',
+      hopCount: 0,
+      incomplete: false,
+      hops: [] as [],
+    };
+    const halAuth = {
+      _links: { self: { href: '/authenticate' } },
+      refreshToken: 'r',
+      token: 't',
+      isAdmin: false,
+      authJwtToken: 'Bearer jwt',
+    };
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'graphql-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      expect(
+        unwrapAndMergeInlineTraceEnvelope({
+          [MOCKIFYER_TRACE_DATA_KEY]: halAuth,
+          [MOCKIFYER_TRACE_RESPONSE_KEY]: hops,
+        })
+      ).toEqual(halAuth);
+
+      expect(
+        unwrapAndMergeInlineTraceEnvelope({
+          data: { login: { authToken: { jwtToken: 'gql' } } },
+          [MOCKIFYER_TRACE_RESPONSE_KEY]: hops,
+        })
+      ).toEqual({ data: { login: { authToken: { jwtToken: 'gql' } } } });
+    });
+  });
+
+
 });

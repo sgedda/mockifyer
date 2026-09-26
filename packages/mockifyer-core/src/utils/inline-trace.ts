@@ -238,8 +238,24 @@ function readInlineTrace(body: Record<string, unknown>): InlineRequestTrace | nu
 }
 
 /**
+ * REST/HAL payloads often carry `_links` / tokens at the resource root. GraphQL
+ * `data` is an operation map and should keep its `data` key after sibling unwrap.
+ */
+function isRestOrHalResourcePayload(data: Record<string, unknown>): boolean {
+  if ('_links' in data || '_embedded' in data) {
+    return true;
+  }
+  if ('authJwtToken' in data) {
+    return true;
+  }
+  return 'token' in data && 'refreshToken' in data;
+}
+
+/**
  * Legacy wrap `{ data, mockifyerTrace }` with no other keys.
  * Object payloads now keep their own fields and only add `mockifyerTrace`.
+ * Still peel when `data` looks like a REST/HAL resource (accidental wrap of member
+ * authenticate, etc.) so clients that read `authJwtToken` at the top level keep working.
  */
 function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
   const keys = Object.keys(body);
@@ -250,10 +266,13 @@ function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
   ) {
     return false;
   }
-  // Legacy envelopes wrap non-objects (arrays, scalars).
-  // If body.data is a plain object, this is a natural data field (e.g. GraphQL), not a wrap.
   const data = body[MOCKIFYER_TRACE_DATA_KEY];
-  return !isRecord(data);
+  // Legacy envelopes wrap non-objects (arrays, scalars).
+  if (!isRecord(data)) {
+    return true;
+  }
+  // GraphQL `{ data, mockifyerTrace }` — keep `data`. REST/HAL accidental wraps — peel.
+  return isRestOrHalResourcePayload(data);
 }
 
 /**
