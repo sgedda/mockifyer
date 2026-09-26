@@ -2102,6 +2102,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
 
     // Generate-on-click for terminal OSC-8 links (terminals cannot hijack OSC-8).
     // GET /mockifyer-atlas-open?id=<hopId>&side=req|res|html
+    //
+    // req/res must stay fast: look up the hop + flush/serve the body spill only.
+    // Never rebuild the full Atlas HTML site here — that used to hang for seconds
+    // when the buffer was large (writeAtlasDocHtml for every hop).
     if (
       req.method === "GET" &&
       (url === "/mockifyer-atlas-open" || url.startsWith("/mockifyer-atlas-open?"))
@@ -2115,22 +2119,27 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
         sideParam === "req" || sideParam === "res" ? sideParam : "html";
 
       const buffer = getMetroNetworkEventBuffer();
-      // Buffer is newest-first; render expects chronological / display order.
-      const events = [...buffer.list()].reverse();
-      const rendered = renderNetworkEventsAtlasHtml(projectRoot, mockDataPath, events);
-      if (!rendered.success) {
-        res.statusCode = 500;
-        res.setHeader("Content-Type", "application/json");
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: rendered.error || "atlas render failed",
-          }),
-        );
-        return;
-      }
+      const listed = buffer.list();
 
       if (side === "html") {
+        // Full site rebuild only when opening the Atlas index (terminal / html link).
+        const events = [...listed].reverse();
+        const rendered = renderNetworkEventsAtlasHtml(
+          projectRoot,
+          mockDataPath,
+          events,
+        );
+        if (!rendered.success) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: rendered.error || "atlas render failed",
+            }),
+          );
+          return;
+        }
         res.statusCode = 302;
         res.setHeader("Location", "/atlas-html/index.html");
         res.end();
@@ -2139,8 +2148,8 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
 
       const event =
         (hopId
-          ? events.find((e) => e && (e.id === hopId || e.requestId === hopId))
-          : undefined) || events[0];
+          ? listed.find((e) => e && (e.id === hopId || e.requestId === hopId))
+          : undefined) || listed[0];
       if (!event) {
         res.statusCode = 404;
         res.setHeader("Content-Type", "application/json");
