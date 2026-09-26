@@ -23,6 +23,14 @@ const {
 const {
   writeAtlasDocHtml,
 } = require('../packages/mockifyer-core/dist/utils/atlas-doc-html.js');
+const {
+  buildAtlasLiveStreamHtml,
+  ATLAS_LIVE_STREAM_PATH,
+} = require('../packages/mockifyer-core/dist/utils/atlas-live-html.js');
+const {
+  replayNetworkEventWithIncludeTrace,
+  ATLAS_TRACE_REPLAY_PATH,
+} = require('../packages/mockifyer-core/dist/utils/atlas-trace-replay.js');
 
 const PORT = Number(process.env.METRO_PORT || process.env.PORT || 8081);
 const buffer = getMetroNetworkEventBuffer();
@@ -214,6 +222,32 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://localhost:${PORT}`);
   const pathname = url.pathname;
 
+  if (pathname === ATLAS_LIVE_STREAM_PATH || pathname === `${ATLAS_LIVE_STREAM_PATH}/`) {
+    if (req.method === 'GET') {
+      const html = buildAtlasLiveStreamHtml();
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-length': Buffer.byteLength(html),
+      });
+      res.end(html);
+      return;
+    }
+  }
+
+  if (pathname === ATLAS_TRACE_REPLAY_PATH && req.method === 'GET') {
+    const hopId = (url.searchParams.get('id') || '').trim();
+    const includeBodies = url.searchParams.get('bodies') !== '0';
+    if (!hopId) {
+      return sendJson(res, 400, { success: false, error: 'id query param required' });
+    }
+    const result = await replayNetworkEventWithIncludeTrace(buffer.list(), hopId, {
+      includeBodies,
+    });
+    const status = result.success ? 200 : result.error === 'hop not found' ? 404 : 502;
+    return sendJson(res, status, result);
+  }
+
   if (pathname === '/mockifyer-network-events' && req.method === 'GET') {
     const limit = url.searchParams.get('limit');
     const n = limit != null ? Number.parseInt(limit, 10) : undefined;
@@ -398,6 +432,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[demo-metro] http://localhost:${PORT}`);
+  console.log(`[demo-metro] live web UI → http://localhost:${PORT}${ATLAS_LIVE_STREAM_PATH}`);
   console.log(`[demo-metro] other terminal → node packages/mockifyer-core/dist/cli/atlas.js --port ${PORT}`);
   emitDemoBurst();
   setInterval(emitDemoBurst, 2500);

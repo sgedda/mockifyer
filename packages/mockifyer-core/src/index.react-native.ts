@@ -74,6 +74,8 @@ export * from './utils/atlas-cache';
 export * from './utils/atlas-cms-renderer';
 export * from './utils/atlas-doc';
 export * from './utils/atlas-doc-html';
+export * from './utils/atlas-live-html';
+export * from './utils/atlas-trace-replay';
 export * from './utils/atlas-doc-data';
 export * from './utils/atlas-har';
 export * from './utils/atlas-usage';
