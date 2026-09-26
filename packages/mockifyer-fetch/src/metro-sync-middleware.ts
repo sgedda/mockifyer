@@ -21,8 +21,8 @@
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
  * 18. GET /mockifyer-atlas-live — live hop stream web page (SSE + expand/collapse)
  * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace (`&format=html` opens a result tab)
- * 20. GET /mockifyer-atlas-capture — Atlas `t` capture session active flag
- * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream; stop ends capture; Render docs on the live page writes HTML; capture does not start until `t`; `atlasKey: false` to disable). `a` is reserved for Android.
+ * 20. GET /mockifyer-atlas-capture — Atlas `t` capture session (`active` plus `activateMockifyer` for the app)
+ * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream and signals enableMockifyer; stop ends capture; Render docs on the live page writes HTML; capture does not start until `t`; `atlasKey: false` to disable). `a` is reserved for Android.
  * 22. Optional Metro `dashboardKey` — open the dashboard in the browser (off unless set)
  * 23. On hop ingest / Atlas render — pull nested hops from dashboard `/api/network-events/trace` (remote BFF → dashboard → Atlas)
  *
@@ -83,6 +83,7 @@ import {
 } from "@sgedda/mockifyer-core";
 import {
   attachMetroAtlasKeyHandler,
+  getMetroAtlasSessionPhase,
   notifyMetroAtlasStreamClientConnected,
   notifyMetroAtlasStreamClientDisconnected,
   resolveMetroDashboardUrl,
@@ -96,8 +97,9 @@ export interface MetroSyncMiddlewareOptions {
   mockDataPath?: string;
   /**
    * Metro terminal key that starts/stops Atlas capture (default `"t"`).
-   * Start clears the hop buffer; stop ends capture. Write HTML via live page
-   * “Render docs” (`POST /mockifyer-network-events/render`) or the CLI.
+   * Start clears the hop buffer and signals the app to enable Mockifyer; stop ends
+   * capture. Write HTML via live page “Render docs” (`POST /mockifyer-network-events/render`)
+   * or the CLI.
    * Pass `false` to disable. `a` is reserved by Metro for Android.
    */
   atlasKey?: AtlasKeyOption;
@@ -1664,18 +1666,24 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
-    // Atlas `t` capture session flag — device / live page poll this for session UI.
+    // Atlas `t` capture session — device polls this for include-trace and enableMockifyer().
     if (
       (url === ATLAS_CAPTURE_SESSION_PATH ||
         url === `${ATLAS_CAPTURE_SESSION_PATH}/`) &&
       req.method === "GET"
     ) {
+      const phase = getMetroAtlasSessionPhase();
+      const capturing = phase === "capturing";
       res.setHeader("Content-Type", "application/json");
       res.setHeader("Cache-Control", "no-store");
       res.end(
         JSON.stringify({
           success: true,
           active: isMetroAtlasCaptureSessionActive(),
+          phase,
+          capturing,
+          /** App should call enableMockifyer() while capturing (runtimeMode: manual). */
+          activateMockifyer: capturing,
         }),
       );
       return;

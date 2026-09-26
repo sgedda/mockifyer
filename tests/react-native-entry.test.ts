@@ -11,6 +11,8 @@ import {
   resolveRuntimeEnabledStorage,
   scheduleRuntimeDateSyncFromConfig,
   shouldActivateMockifyerForReactNative,
+  startMetroAtlasRuntimeSync,
+  syncMockifyerFromMetroAtlasSession,
   tryGetScenarioFromLaunchArguments,
   buildAtlasLiveStreamHtml,
   ATLAS_LIVE_STREAM_PATH,
@@ -63,6 +65,8 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof selectNewDashboardDescendantHops).toBe('function');
     expect(typeof appendParamsToUrl).toBe('function');
     expect(typeof resolveNetworkEventReplayUrl).toBe('function');
+    expect(typeof startMetroAtlasRuntimeSync).toBe('function');
+    expect(typeof syncMockifyerFromMetroAtlasSession).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {
