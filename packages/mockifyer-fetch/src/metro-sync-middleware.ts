@@ -70,8 +70,10 @@ import {
   buildAtlasHarJson,
   buildAtlasLiveStreamHtml,
   buildAtlasTraceReplayHtml,
+  buildAtlasTracePendingHtml,
   ATLAS_LIVE_STREAM_PATH,
   ATLAS_TRACE_REPLAY_PATH,
+  ATLAS_TRACE_REPLAY_TIMEOUT_MS,
   ATLAS_CAPTURE_SESSION_PATH,
   replayNetworkEventWithIncludeTrace,
   setMetroAtlasCaptureSessionActive,
@@ -1235,16 +1237,16 @@ const BODY_SPILL_REL_PATTERN =
 
 /**
  * Locate a full body on disk or in the Metro spill buffer.
- * Writes buffer hits to disk so subsequent opens are stable.
+ * Writes a buffer hit for *this* hop only — never flushes the whole spill map
+ * (that blocked Metro for seconds on every req/res/trace click).
  */
 function findExistingBodyFile(options: {
   projectRoot: string;
   mockDataPath: string;
   event: NetworkEvent;
   side: "req" | "res";
-}): { abs: string; rel: string } | null {
+}): { abs: string; rel: string; text?: string } | null {
   const outDir = path.join(options.mockDataPath, "atlas-html");
-  flushNetworkBodySpillsToDir(outDir);
   const snapshot = getNetworkBodySpillSnapshot();
 
   for (const rel of candidateBodyRelPaths(options.event, options.side)) {
@@ -1257,8 +1259,13 @@ function findExistingBodyFile(options: {
         fromBuffer,
       );
       if (saved.success && saved.filePath) {
-        return { abs: saved.filePath, rel };
+        return { abs: saved.filePath, rel, text: fromBuffer };
       }
+      return {
+        abs: path.join(outDir, rel),
+        rel,
+        text: fromBuffer,
+      };
     }
     const abs = path.join(outDir, rel);
     if (fs.existsSync(abs)) {
@@ -1270,13 +1277,20 @@ function findExistingBodyFile(options: {
 
 /**
  * Read spilled request body text for a live include-trace re-call (optional).
- * Trace does not require spill — preview is used when the file is missing.
+ * Prefer in-memory spill; fall back to disk. Does not flush other hops.
  */
 function readSpilledRequestBodyText(
   projectRoot: string,
   mockDataPath: string,
   event: NetworkEvent,
 ): string | undefined {
+  const snapshot = getNetworkBodySpillSnapshot();
+  for (const rel of candidateBodyRelPaths(event, "req")) {
+    const fromBuffer = snapshot[rel];
+    if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
+      return fromBuffer;
+    }
+  }
   const found = findExistingBodyFile({
     projectRoot,
     mockDataPath,
@@ -1284,6 +1298,7 @@ function readSpilledRequestBodyText(
     side: "req",
   });
   if (!found) return undefined;
+  if (typeof found.text === "string") return found.text;
   try {
     return fs.readFileSync(found.abs, "utf8");
   } catch {
@@ -1746,6 +1761,30 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const event =
         events.find((e) => e && (e.id === hopId || e.requestId === hopId)) ??
         undefined;
+
+      // format=html without wait=1: return a shell immediately so the tab is not
+      // blank while the include-trace re-call runs (can be many seconds).
+      if (wantHtml && params.get("wait") !== "1") {
+        const waitParams = new URLSearchParams(params);
+        waitParams.set("format", "html");
+        waitParams.set("wait", "1");
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(
+          buildAtlasTracePendingHtml({
+            hopId,
+            method: event?.method,
+            url: event?.url,
+            resultUrl: `${ATLAS_TRACE_REPLAY_PATH}?${waitParams.toString()}`,
+            atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
+            dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+            timeoutMs: ATLAS_TRACE_REPLAY_TIMEOUT_MS,
+          }),
+        );
+        return;
+      }
+
       const spilledRequestBody = event
         ? readSpilledRequestBodyText(projectRoot, mockDataPath, event)
         : undefined;
@@ -1755,32 +1794,64 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       void replayNetworkEventWithIncludeTrace(events, hopId, {
         includeBodies,
         requestBody: spilledRequestBody,
-      }).then((result) => {
-        res.statusCode = result.success
-          ? 200
-          : result.error === "hop not found"
-            ? 404
-            : 502;
-        res.setHeader("Cache-Control", "no-store");
-        if (wantHtml) {
-          res.setHeader("Content-Type", "text/html; charset=utf-8");
-          res.end(
-            buildAtlasTraceReplayHtml(result, {
-              capturedLines,
-              atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
-              dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
-              requestBody:
-                spilledRequestBody ||
-                (typeof event?.requestBodyPreview === "string"
-                  ? event.requestBodyPreview
-                  : undefined),
-            }),
-          );
-        } else {
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(result));
-        }
-      });
+        timeoutMs: ATLAS_TRACE_REPLAY_TIMEOUT_MS,
+      })
+        .then((result) => {
+          if (res.writableEnded) return;
+          res.statusCode = result.success
+            ? 200
+            : result.error === "hop not found"
+              ? 404
+              : 502;
+          res.setHeader("Cache-Control", "no-store");
+          if (wantHtml) {
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.end(
+              buildAtlasTraceReplayHtml(result, {
+                capturedLines,
+                atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
+                dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+                requestBody:
+                  spilledRequestBody ||
+                  (typeof event?.requestBodyPreview === "string"
+                    ? event.requestBodyPreview
+                    : undefined),
+              }),
+            );
+          } else {
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(result));
+          }
+        })
+        .catch((error: unknown) => {
+          if (res.writableEnded) return;
+          const message =
+            error instanceof Error ? error.message : String(error);
+          res.statusCode = 500;
+          res.setHeader("Cache-Control", "no-store");
+          if (wantHtml) {
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.end(
+              buildAtlasTraceReplayHtml(
+                {
+                  success: false,
+                  hopId,
+                  method: event?.method || "",
+                  url: event?.url || "",
+                  error: message,
+                  requestHeaders: {},
+                },
+                {
+                  atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
+                  dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+                },
+              ),
+            );
+          } else {
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ success: false, hopId, error: message }));
+          }
+        });
       return;
     }
 
@@ -2164,6 +2235,34 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
         side,
       });
       if (found) {
+        // Serve the body directly — a 302 to /atlas-html/... is a second hop and
+        // used to queue behind other sync Atlas work in Metro.
+        let text = found.text;
+        if (typeof text !== "string") {
+          try {
+            text = fs.readFileSync(found.abs, "utf8");
+          } catch {
+            text = undefined;
+          }
+        }
+        if (typeof text === "string") {
+          const ext = path.extname(found.rel).toLowerCase();
+          res.statusCode = 200;
+          res.setHeader(
+            "Content-Type",
+            ext === ".json"
+              ? "application/json; charset=utf-8"
+              : "text/plain; charset=utf-8",
+          );
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("X-Mockifyer-Body-Source", "spill");
+          res.setHeader(
+            "X-Mockifyer-Body-Rel",
+            found.rel.split(path.sep).join("/"),
+          );
+          res.end(text);
+          return;
+        }
         res.statusCode = 302;
         res.setHeader(
           "Location",
