@@ -1,6 +1,6 @@
 import { ENV_VARS } from '../types';
 import { randomEventId } from './crypto-digest';
-import { getOutboundHeaderValue } from './outbound-header';
+import { getOutboundHeaderValue, outboundHeadersToRecord } from './outbound-header';
 import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
 import {
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
@@ -18,6 +18,11 @@ import {
   type RequestCorrelationContext,
 } from './hop-context';
 import { registerHopOwner } from './hop-identity';
+import {
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
+  resolveMetroNetworkStreamBaseUrl,
+  sanitizeAtlasMetroStreamBaseUrl,
+} from './metro-network-stream';
 export type {
   InlineTraceHopBufferItem,
   MockifyerHopContext,
@@ -179,12 +184,15 @@ export function getOutboundMockifyerParentRequestIdHeader(headers: unknown): str
 }
 
 /**
- * Reads inbound Mockifyer headers (lane + optional request correlation).
+ * Reads inbound Mockifyer headers (lane + optional request correlation + Atlas Metro bridge).
  */
 export function captureInboundMockifyerContext(headers: unknown): MockifyerHopContext | undefined {
   const inboundClientId = getOutboundMockifyerClientIdHeader(headers);
   const requestId = getOutboundMockifyerRequestIdHeader(headers);
   const parentRequestId = getOutboundMockifyerParentRequestIdHeader(headers);
+  const atlasMetroStreamBaseUrl = sanitizeAtlasMetroStreamBaseUrl(
+    getOutboundHeaderValue(headers, MOCKIFYER_METRO_STREAM_BASE_HEADER)
+  );
   if (!inboundClientId && !requestId) {
     return undefined;
   }
@@ -193,7 +201,11 @@ export function captureInboundMockifyerContext(headers: unknown): MockifyerHopCo
       ? { requestId, parentRequestId }
       : { requestId }
     : undefined;
-  return { inboundClientId, correlation };
+  return {
+    inboundClientId,
+    correlation,
+    ...(atlasMetroStreamBaseUrl ? { atlasMetroStreamBaseUrl } : {}),
+  };
 }
 
 /**
@@ -242,6 +254,9 @@ export function resolveInboundHopContext(
         : { requestId: traceId }
       : captured?.correlation,
     ...(inboundRequest ? { inboundRequest } : {}),
+    ...(captured?.atlasMetroStreamBaseUrl
+      ? { atlasMetroStreamBaseUrl: captured.atlasMetroStreamBaseUrl }
+      : {}),
     ...(includeInlineTrace
       ? {
           includeInlineTrace: true,
@@ -497,6 +512,25 @@ function applyInboundClientIdToOutboundHeaders(config: { headers?: unknown }): v
   }
 }
 
+/**
+ * Stamp the caller's Metro ingest base so downstream Mockifyer can POST child hops
+ * into the same Atlas buffer (correlation only — not include-trace).
+ */
+function applyOutboundAtlasMetroStreamHeader(config: { headers?: unknown }): void {
+  const fromCtx = sanitizeAtlasMetroStreamBaseUrl(
+    getActiveMockifyerHopContext()?.atlasMetroStreamBaseUrl
+  );
+  const fromLocal = sanitizeAtlasMetroStreamBaseUrl(resolveMetroNetworkStreamBaseUrl());
+  const fromHeader = sanitizeAtlasMetroStreamBaseUrl(
+    getOutboundHeaderValue(config.headers, MOCKIFYER_METRO_STREAM_BASE_HEADER)
+  );
+  const base = fromCtx ?? fromLocal ?? fromHeader;
+  if (!base) {
+    return;
+  }
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_METRO_STREAM_BASE_HEADER, base);
+}
+
 /** Forward include-trace opt-in so downstream services can return nested mockifyerTrace. */
 function applyOutboundInlineTraceHeaders(
   config: { headers?: unknown },
@@ -546,6 +580,7 @@ export function applyOutboundRequestCorrelation(
 ): RequestCorrelationContext {
   isolateOutboundHopHeaderBag(config);
   applyInboundClientIdToOutboundHeaders(config);
+  applyOutboundAtlasMetroStreamHeader(config);
   applyOutboundInlineTraceHeaders(config, options);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
   const requestId = newRequestCorrelationId();
@@ -572,7 +607,13 @@ export function applyOutboundRequestCorrelation(
     delete cfg.__mockifyer_parentHop;
   }
 
-  registerHopOwner({ requestId, ...hopOwnerMetaFromConfig(config) });
+  // Headers are captured after Mockifyer stamped its own, so Atlas can rebuild
+  // the exact outbound request (curl). Dashboard POSTs still redact.
+  registerHopOwner({
+    requestId,
+    ...hopOwnerMetaFromConfig(config),
+    requestHeaders: outboundHeadersToRecord(config.headers),
+  });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 
@@ -591,7 +632,11 @@ export function adoptStoredOutboundRequestId(
   }
   const parentRequestId = getOutboundMockifyerParentRequestIdHeader(config.headers);
   config.headers = setOutboundHeader(config.headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
-  registerHopOwner({ requestId, ...hopOwnerMetaFromConfig(config) });
+  registerHopOwner({
+    requestId,
+    ...hopOwnerMetaFromConfig(config),
+    requestHeaders: outboundHeadersToRecord(config.headers),
+  });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 

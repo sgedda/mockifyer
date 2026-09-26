@@ -5,6 +5,8 @@ import {
   clearFlightRecorder,
   configureFlightRecorder,
   resolveNetworkLogIncludeTraceOptions,
+  setMetroAtlasCaptureSessionActive,
+  isMetroAtlasCaptureSessionActive,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   __flightRecorderBuffersForTests,
 } from '../packages/mockifyer-core/src';
@@ -27,10 +29,10 @@ describe('networkLog includeTraceHeader wiring', () => {
     ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
   });
 
-  it('resolveNetworkLogIncludeTraceOptions ignores Metro Atlas stream / capture', () => {
-    const prev = process.env.MOCKIFYER_METRO_STREAM;
-    process.env.MOCKIFYER_METRO_STREAM = 'on';
+  it('resolveNetworkLogIncludeTraceOptions ignores Atlas capture sessions', () => {
+    const wasActive = isMetroAtlasCaptureSessionActive();
     try {
+      setMetroAtlasCaptureSessionActive(true);
       expect(resolveNetworkLogIncludeTraceOptions({})).toEqual({
         includeInlineTrace: false,
         includeInlineTraceBodies: false,
@@ -41,8 +43,7 @@ describe('networkLog includeTraceHeader wiring', () => {
         })
       ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
     } finally {
-      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
-      else process.env.MOCKIFYER_METRO_STREAM = prev;
+      setMetroAtlasCaptureSessionActive(wasActive);
     }
   });
 

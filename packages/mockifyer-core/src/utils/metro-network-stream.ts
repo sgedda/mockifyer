@@ -8,7 +8,8 @@ import { truncateUtf8, utf8ByteLength } from "./crypto-digest";
 
 export const DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS = 2_000;
 export const DEFAULT_METRO_NETWORK_STREAM_SLOW_MS = 3_000;
-export const DEFAULT_METRO_NETWORK_PREVIEW_BYTES = 512;
+/** Keep Atlas live / SSE previews aligned with hop inline budget (spill still holds the full body). */
+export const DEFAULT_METRO_NETWORK_PREVIEW_BYTES = 65_536;
 
 function trimTrailingSlashes(value: string): string {
   let end = value.length;
@@ -130,7 +131,7 @@ export function slimNetworkEventForMetroStream(
 
   return {
     ...event,
-    requestHeaders: undefined,
+    // Request headers stay: the live page rebuilds a runnable curl from them.
     responseHeaders: undefined,
     requestBodyPreview: slimPreview(event.requestBodyPreview),
     responseBodyPreview: slimPreview(event.responseBodyPreview),
@@ -410,4 +411,134 @@ function isLikelyReactNativeRuntime(): boolean {
 
 export function joinMetroNetworkEventsUrl(metroBaseUrl: string): string {
   return `${trimTrailingSlashes(metroBaseUrl)}/mockifyer-network-events`;
+}
+
+/**
+ * Outbound/inbound header: caller's Metro hop-ingest base URL (no path).
+ * Lets a BFF POST child hops into the same Atlas/Metro buffer as the device
+ * without wrapping `mockifyerTrace` into API bodies.
+ */
+export const MOCKIFYER_METRO_STREAM_BASE_HEADER = "x-mockifyer-metro-stream-base";
+
+const ATLAS_METRO_STREAM_ALLOWED_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "10.0.2.2",
+  "[::1]",
+  "::1",
+]);
+
+/**
+ * Accept only loopback / Android-emulator Metro origins (SSRF guard).
+ * Returns a trimmed base URL without a trailing slash, or undefined.
+ */
+export function sanitizeAtlasMetroStreamBaseUrl(
+  raw: string | null | undefined
+): string | undefined {
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return undefined;
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (!ATLAS_METRO_STREAM_ALLOWED_HOSTS.has(host)) {
+      return undefined;
+    }
+    parsed.hash = "";
+    parsed.search = "";
+    // Path must be empty or `/` — ingest joins `/mockifyer-network-events`.
+    if (parsed.pathname && parsed.pathname !== "/") {
+      return undefined;
+    }
+    return trimTrailingSlashes(parsed.origin);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Metro GET path for Atlas `t` capture session state (device polls this). */
+export const ATLAS_CAPTURE_SESSION_PATH = "/mockifyer-atlas-capture";
+
+export function joinMetroAtlasCaptureSessionUrl(metroBaseUrl: string): string {
+  return `${trimTrailingSlashes(metroBaseUrl)}${ATLAS_CAPTURE_SESSION_PATH}`;
+}
+
+const ATLAS_CAPTURE_SESSION_GLOBAL = Symbol.for(
+  "@sgedda/mockifyer-core.metroAtlasCaptureSession",
+);
+
+/** How often the device re-checks Metro for Atlas `t` capture state. */
+export const METRO_ATLAS_CAPTURE_SYNC_TTL_MS = 400;
+
+interface MetroAtlasCaptureSessionState {
+  /** True while Metro Atlas capture (`t`) is active, or last known from Metro. */
+  active: boolean;
+  lastSyncedAtMs: number;
+  /** Shared in-flight refresh so concurrent outbound calls wait for the same GET. */
+  refreshPromise?: Promise<void>;
+}
+
+function getMetroAtlasCaptureSessionState(): MetroAtlasCaptureSessionState {
+  const globalStore = globalThis as typeof globalThis & {
+    [ATLAS_CAPTURE_SESSION_GLOBAL]?: MetroAtlasCaptureSessionState;
+  };
+  if (!globalStore[ATLAS_CAPTURE_SESSION_GLOBAL]) {
+    globalStore[ATLAS_CAPTURE_SESSION_GLOBAL] = {
+      active: false,
+      lastSyncedAtMs: 0,
+    };
+  }
+  return globalStore[ATLAS_CAPTURE_SESSION_GLOBAL];
+}
+
+/** Metro middleware / device: mark whether an Atlas `t` capture session is running. */
+export function setMetroAtlasCaptureSessionActive(active: boolean): void {
+  const state = getMetroAtlasCaptureSessionState();
+  state.active = active === true;
+  state.lastSyncedAtMs = Date.now();
+}
+
+/**
+ * Whether an Atlas `t` capture session is active (Metro live buffer / UI).
+ * Does not enable include-trace — use the live-page **trace** link or
+ * `networkLog.includeTraceHeader` for nested hops.
+ */
+export function isMetroAtlasCaptureSessionActive(): boolean {
+  return getMetroAtlasCaptureSessionState().active === true;
+}
+
+/**
+ * Run `task` as the shared capture-session refresh (deduped while in flight).
+ * With `force: false`, skips when the last sync is within the TTL.
+ */
+export async function runMetroAtlasCaptureSessionRefresh(
+  task: () => Promise<void>,
+  options?: { force?: boolean; ttlMs?: number }
+): Promise<void> {
+  const state = getMetroAtlasCaptureSessionState();
+  if (state.refreshPromise) {
+    await state.refreshPromise;
+    return;
+  }
+  const ttlMs = options?.ttlMs ?? METRO_ATLAS_CAPTURE_SYNC_TTL_MS;
+  if (!options?.force && Date.now() - state.lastSyncedAtMs < ttlMs) {
+    return;
+  }
+  let pending!: Promise<void>;
+  pending = (async () => {
+    try {
+      await task();
+    } finally {
+      const current = getMetroAtlasCaptureSessionState();
+      if (current.refreshPromise === pending) {
+        current.refreshPromise = undefined;
+      }
+    }
+  })();
+  state.refreshPromise = pending;
+  await pending;
 }

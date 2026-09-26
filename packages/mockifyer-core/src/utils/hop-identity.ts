@@ -12,6 +12,11 @@ export interface HopOwnerRecord {
   requestId: string;
   method: string;
   url: string;
+  /**
+   * Outbound headers as sent (lowercased names). Kept so Atlas can rebuild a
+   * runnable request for this hop; never posted to the dashboard unredacted.
+   */
+  requestHeaders?: Record<string, string>;
 }
 
 export interface RecordedHopIdentity {
@@ -92,12 +97,20 @@ export function registerHopOwner(record: HopOwnerRecord): void {
     requestId,
     method: record.method || 'GET',
     url: record.url?.trim() ?? '',
+    ...(record.requestHeaders ? { requestHeaders: record.requestHeaders } : {}),
   });
   while (registry.size > MAX_HOP_OWNERS) {
     const oldest = registry.keys().next().value;
     if (oldest == null) break;
     registry.delete(oldest);
   }
+}
+
+/** Outbound headers recorded for a hop id (Atlas curl rebuild). */
+export function findHopRequestHeaders(
+  requestId: string | null | undefined
+): Record<string, string> | undefined {
+  return findHopOwner(requestId)?.requestHeaders;
 }
 
 /** Test helper — hop-id ownership is process-global. */
