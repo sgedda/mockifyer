@@ -49,8 +49,8 @@ export function shouldApplyMockifyer(
     return true;
   }
   // Services with client_id_header often call downstream without copying the header
-  // onto each client config. The inbound lane already opted this request in, so
-  // those hops stay in the inline trace (and the header is stamped before send).
+  // onto each client config. The inbound lane already opted this request in — activate
+  // Mockifyer so hops can be logged / mocked. This does not start an inline trace.
   const inboundLane = getActiveInboundClientId()?.trim();
   if (inboundLane) {
     return true;

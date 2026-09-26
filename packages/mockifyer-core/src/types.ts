@@ -2,7 +2,7 @@
  * When Mockifyer applies mock lookup / recording to an outbound HTTP request.
  *
  * - **`always`** — Every request (default; historical behavior).
- * - **`client_id_header`** — When the outbound request includes a non-empty `X-Mockifyer-Client-Id`, or the current inbound request already carried that header (so a service's own downstream calls stay on the trace).
+ * - **`client_id_header`** — When the outbound request includes a non-empty `X-Mockifyer-Client-Id`, or the current inbound request already carried that header (so a service's own downstream calls can be logged/mocked). This does not start an inline trace by itself.
  * - **`off`** — Never; passthrough with no mock lookup and no recording.
  */
 export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
@@ -85,7 +85,7 @@ export interface MockifyerConfig {
    * | Mode | Behavior |
    * |------|----------|
    * | `always` (default) | All requests use Mockifyer (still subject to `excludedUrls` and internal bypasses). |
-   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit the opt-in), **or** (fetch + dashboard proxy) a configured `proxy.baseUrl` and resolved `clientId`. |
+   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit activation), **or** (fetch + dashboard proxy) a configured `proxy.baseUrl` and resolved `clientId`. Activation alone does not turn on inline trace. |
    * | `off` | Mockifyer does not intercept; plain HTTP. |
    *
    * Env **`MOCKIFYER_ACTIVATION_MODE`** overrides this when set to `always`, `client_id_header`, or `off`.
@@ -275,10 +275,10 @@ export interface MockifyerConfig {
     spillBodies?: boolean;
     /**
      * When true, stamp `X-Mockifyer-Include-Trace: 1` on outbound hops so downstream
-     * Mockifyer services return `{ data, mockifyerTrace: { hops } }`. Child hops are
+     * Mockifyer services return nested `mockifyerTrace` hops. Child hops are
      * re-emitted into the network log / Metro Atlas stream with `parentRequestId`.
-     * When omitted, an active Metro hop stream (Atlas capture) turns this on.
-     * Set `false` to keep it off even while that stream is running.
+     * Off by default. Prefer the live-page **trace** link for one-off nested capture;
+     * do not enable for ordinary app traffic (breaks clients that unwrap poorly).
      */
     includeTraceHeader?: boolean;
     /**
