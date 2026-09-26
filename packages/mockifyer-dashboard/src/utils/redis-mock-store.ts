@@ -27,6 +27,8 @@ import {
   summarizeOverrideSetDocument,
   mockHasResponseFieldOverrides,
   mockHasResponseDateOverrides,
+  normalizeDomainPathRule,
+  parseDomainPathRules,
   OVERRIDE_GROUP_ID_PATTERN,
   normalizeMockOverrideGroup,
   validateMockOverrideGroup,
@@ -1354,19 +1356,7 @@ export class RedisMockStore {
     const raw: string | null = await this.kv.get(this.domainPathRulesRedisKey(scenario));
     if (raw === null || raw === '') return {};
     try {
-      const o = JSON.parse(raw) as Record<string, unknown>;
-      const out: DomainPathRulesMap = {};
-      for (const [path, val] of Object.entries(o)) {
-        if (!val || typeof val !== 'object') continue;
-        const r = val as Record<string, unknown>;
-        if (typeof r.recordResponses !== 'boolean') continue;
-        out[path] = {
-          recordResponses: r.recordResponses,
-          autoMock: r.autoMock === true,
-          updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
-        };
-      }
-      return out;
+      return parseDomainPathRules(JSON.parse(raw));
     } catch {
       return {};
     }
@@ -1375,7 +1365,7 @@ export class RedisMockStore {
   async setDomainPathRule(
     scenario: string,
     domainPath: string,
-    rule: { recordResponses: boolean; autoMock?: boolean } | null
+    rule: { recordResponses: boolean; autoMock?: boolean; allowUpstream?: boolean } | null
   ): Promise<DomainPathRulesMap> {
     const key = this.domainPathRulesRedisKey(scenario);
     const normalized = domainPath.trim().replace(/^\/+|\/+$/g, '');
@@ -1383,11 +1373,10 @@ export class RedisMockStore {
     if (rule === null) {
       delete rules[normalized];
     } else {
-      rules[normalized] = {
-        recordResponses: rule.recordResponses,
-        autoMock: rule.autoMock === true,
+      rules[normalized] = normalizeDomainPathRule({
+        ...rule,
         updatedAt: new Date().toISOString(),
-      };
+      });
     }
     if (Object.keys(rules).length === 0) {
       await this.kv.del(key);
