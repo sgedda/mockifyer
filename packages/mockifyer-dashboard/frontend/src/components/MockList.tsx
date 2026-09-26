@@ -16,6 +16,7 @@ import {
 import { HopsNavCard } from '@/components/ServiceChainList'
 import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
+import { DomainPathRulesBar } from '@/components/DomainPathRulesBar'
 import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
 import { Link } from 'react-router-dom'
@@ -588,6 +589,14 @@ function MockListContent({
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
               Refreshing mocks…
             </div>
+          )}
+          {groupBy === 'domains' && scenario && (
+            <DomainPathRulesBar
+              scenario={scenario}
+              mocks={allMocks}
+              pathRules={domainPathRules}
+              onPathRulesChange={setDomainPathRules}
+            />
           )}
           <MockFolderTree
             node={folderTree}
