@@ -1247,9 +1247,22 @@ function findExistingBodyFile(options: {
   side: "req" | "res";
 }): { abs: string; rel: string; text?: string } | null {
   const outDir = path.join(options.mockDataPath, "atlas-html");
+  const outDirResolved = path.resolve(outDir);
   const snapshot = getNetworkBodySpillSnapshot();
 
   for (const rel of candidateBodyRelPaths(options.event, options.side)) {
+    // Validate path: reject absolute paths, parent traversal, and paths outside atlas-html
+    if (!rel || rel.includes("..") || path.isAbsolute(rel)) {
+      continue;
+    }
+    const abs = path.resolve(outDir, rel);
+    const outDirPrefix = outDirResolved.endsWith(path.sep)
+      ? outDirResolved
+      : outDirResolved + path.sep;
+    if (abs !== outDirResolved && !abs.startsWith(outDirPrefix)) {
+      continue;
+    }
+
     const fromBuffer = snapshot[rel];
     if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
       const saved = saveAtlasBodySpill(
@@ -1262,12 +1275,11 @@ function findExistingBodyFile(options: {
         return { abs: saved.filePath, rel, text: fromBuffer };
       }
       return {
-        abs: path.join(outDir, rel),
+        abs,
         rel,
         text: fromBuffer,
       };
     }
-    const abs = path.join(outDir, rel);
     if (fs.existsSync(abs)) {
       return { abs, rel };
     }
