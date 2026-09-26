@@ -95,12 +95,14 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   resolveNetworkLogIncludeTraceOptions,
+  resolveNetworkLogIncludeTraceOptionsAsync,
   getInlineTraceEnvelopeBusinessBody,
   configureFlightRecorder,
   resolveFlightRecorderConfig,
   setFlightRecorderRuntimeContext,
   configureAtlas,
   resolveActiveMockifyerSessionId,
+  outboundHeadersToRecord,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -215,10 +217,10 @@ class MockifyerClass {
     });
   }
 
-  private applyOutboundCorrelation(config: unknown): RequestCorrelationContext {
+  private async applyOutboundCorrelation(config: unknown): Promise<RequestCorrelationContext> {
     return applyOutboundRequestCorrelation(
       config as { headers?: unknown; url?: unknown; method?: unknown },
-      resolveNetworkLogIncludeTraceOptions(this.config)
+      await resolveNetworkLogIncludeTraceOptionsAsync(this.config)
     );
   }
 
@@ -229,12 +231,16 @@ class MockifyerClass {
       requestBody?: unknown;
       responseBody?: unknown;
     },
-    correlation?: RequestCorrelationContext
+    correlation?: RequestCorrelationContext,
+    /** Final outbound header bag (after auth interceptors). */
+    requestHeadersSource?: unknown
   ): void {
     const { requestBody, responseBody, ...eventPartial } = partial;
     const requestId = correlation?.requestId ?? eventPartial.requestId ?? null;
     const parentRequestId = correlation?.parentRequestId ?? eventPartial.parentRequestId ?? null;
     const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
+    const requestHeaders =
+      eventPartial.requestHeaders ?? outboundHeadersToRecord(requestHeadersSource);
 
     if (!this.config.proxy?.baseUrl) {
       recordInlineTraceHopFromExchange({
@@ -265,6 +271,7 @@ class MockifyerClass {
         transport: eventPartial.transport ?? 'axios',
         requestId: correlation?.requestId ?? eventPartial.requestId,
         parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
+        requestHeaders,
         requestBodyPreview: eventPartial.requestBodyPreview,
         responseBodyPreview: eventPartial.responseBodyPreview,
       },
@@ -300,6 +307,25 @@ class MockifyerClass {
     if (shouldBypassMockifyerForUrl(url, this.config.excludedUrls)) {
       (config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass = true;
     }
+  }
+
+  /**
+   * Full outbound URL including axios `params` — hop logs / Atlas curl / include-trace
+   * must not drop the query string.
+   */
+  private resolveLoggedRequestUrl(
+    config?: AxiosRequestConfig | null,
+    fallbackUrl?: string,
+  ): string {
+    if (config) {
+      try {
+        return resolveAxiosRequestUrl(config, this.config.baseUrl);
+      } catch {
+        /* incomplete config — fall through */
+      }
+    }
+    const raw = (fallbackUrl || config?.url || '').trim();
+    return raw;
   }
 
   private returnConfigIfBypassed(config: AxiosRequestConfig): AxiosRequestConfig | null {
@@ -863,7 +889,7 @@ class MockifyerClass {
         })
       ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
-        this.applyOutboundCorrelation(config);
+        await this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -877,7 +903,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      let correlation = this.applyOutboundCorrelation(config);
+      let correlation = await this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -1011,14 +1037,15 @@ class MockifyerClass {
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
-            url: request.url,
+            url: this.resolveLoggedRequestUrl(config, request.url),
             source: 'mock-hit',
             status: mockData.response.status,
             requestHash: networkEventHashFromRequestKey(requestKey),
             requestBody: request.data,
             responseBody: mockResponseBody,
           },
-          correlation
+          correlation,
+          request.headers ?? config.headers
         );
         // Add mockifyer headers to indicate this is a mocked response
         const responseHeaders = {
@@ -1111,14 +1138,15 @@ class MockifyerClass {
       this.logNetworkEvent(
         {
           method: (response.config?.method || 'GET').toUpperCase(),
-          url: response.config?.url || '',
+          url: this.resolveLoggedRequestUrl(response.config),
           source: 'upstream',
           status: response.status,
           durationMs,
           requestBody: response.config?.data,
           responseBody: response.data,
         },
-        this.readRequestCorrelation(response.config)
+        this.readRequestCorrelation(response.config),
+        response.config?.headers
       );
       this.unwrapResponseInlineTrace(response);
 
@@ -1196,7 +1224,7 @@ class MockifyerClass {
         })
       ) {
         this.applyOutboundLaneHeadersToAxiosRequest(config);
-        this.applyOutboundCorrelation(config);
+        await this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -1207,7 +1235,7 @@ class MockifyerClass {
       }
 
       this.applyOutboundLaneHeadersToAxiosRequest(config);
-      let correlation = this.applyOutboundCorrelation(config);
+      let correlation = await this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       if (this.usesDashboardProxy()) {
@@ -1731,13 +1759,14 @@ class MockifyerClass {
         this.logNetworkEvent(
           {
             method: (response.config.method || 'GET').toUpperCase(),
-            url: response.config.url || '',
+            url: this.resolveLoggedRequestUrl(response.config),
             source: 'upstream',
             status: response.status,
             requestBody: response.config.data,
             responseBody: response.data,
           },
-          this.readRequestCorrelation(response.config)
+          this.readRequestCorrelation(response.config),
+          response.config.headers
         );
         this.unwrapResponseInlineTrace(response);
 
@@ -1754,14 +1783,15 @@ class MockifyerClass {
           this.logNetworkEvent(
             {
               method: (error.config?.method || 'GET').toUpperCase(),
-              url: errUrl,
+              url: this.resolveLoggedRequestUrl(error.config, errUrl),
               source: 'error',
               status: error.response?.status,
               errorMessage: error?.message ?? String(error),
               requestBody: error.config?.data,
               responseBody: error.response?.data,
             },
-            this.readRequestCorrelation(error.config)
+            this.readRequestCorrelation(error.config),
+            error.config?.headers
           );
         }
 
@@ -1915,14 +1945,15 @@ class MockifyerClass {
     this.logNetworkEvent(
       {
         method: (response.config?.method || 'GET').toUpperCase(),
-        url: response.config?.url || '',
+        url: this.resolveLoggedRequestUrl(response.config),
         source: 'upstream',
         status: response.status,
         durationMs,
         requestBody: response.config?.data,
         responseBody: response.data,
       },
-      this.readRequestCorrelation(response.config)
+      this.readRequestCorrelation(response.config),
+      response.config?.headers
     );
     this.unwrapResponseInlineTrace(response);
 

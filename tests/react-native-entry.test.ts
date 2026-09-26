@@ -16,6 +16,16 @@ import {
   ATLAS_LIVE_STREAM_PATH,
   replayNetworkEventWithIncludeTrace,
   ATLAS_TRACE_REPLAY_PATH,
+  isMetroAtlasCaptureSessionActive,
+  setMetroAtlasCaptureSessionActive,
+  ATLAS_CAPTURE_SESSION_PATH,
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
+  sanitizeAtlasMetroStreamBaseUrl,
+  normalizeDashboardBaseUrl,
+  pullDashboardDescendantsForParents,
+  selectNewDashboardDescendantHops,
+  appendParamsToUrl,
+  resolveNetworkEventReplayUrl,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -41,6 +51,18 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(ATLAS_LIVE_STREAM_PATH).toBe('/mockifyer-atlas-live');
     expect(typeof replayNetworkEventWithIncludeTrace).toBe('function');
     expect(ATLAS_TRACE_REPLAY_PATH).toBe('/mockifyer-atlas-trace');
+    expect(typeof isMetroAtlasCaptureSessionActive).toBe('function');
+    expect(typeof setMetroAtlasCaptureSessionActive).toBe('function');
+    expect(ATLAS_CAPTURE_SESSION_PATH).toBe('/mockifyer-atlas-capture');
+    expect(MOCKIFYER_METRO_STREAM_BASE_HEADER).toBe(
+      'x-mockifyer-metro-stream-base'
+    );
+    expect(typeof sanitizeAtlasMetroStreamBaseUrl).toBe('function');
+    expect(typeof normalizeDashboardBaseUrl).toBe('function');
+    expect(typeof pullDashboardDescendantsForParents).toBe('function');
+    expect(typeof selectNewDashboardDescendantHops).toBe('function');
+    expect(typeof appendParamsToUrl).toBe('function');
+    expect(typeof resolveNetworkEventReplayUrl).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {

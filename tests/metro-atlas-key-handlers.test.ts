@@ -9,11 +9,13 @@ import {
   notifyMetroAtlasStreamClientDisconnected,
   resolveAtlasKeyOption,
   resolveDashboardKeyOption,
+  resolveMetroAtlasLiveUrl,
   resolveMetroDashboardUrl,
   DEFAULT_METRO_ATLAS_KEY,
   DEFAULT_METRO_DASHBOARD_KEY,
   DEFAULT_METRO_DASHBOARD_URL,
 } from '@sgedda/mockifyer-fetch/metro-atlas-key-handlers';
+import { ATLAS_LIVE_STREAM_PATH } from '@sgedda/mockifyer-core';
 
 describe('metro-atlas-key-handlers', () => {
   const prevDashboardUrl = process.env.MOCKIFYER_DASHBOARD_URL;
@@ -79,6 +81,33 @@ describe('metro-atlas-key-handlers', () => {
     });
   });
 
+  describe('resolveMetroAtlasLiveUrl', () => {
+    const prevMetroUrl = process.env.MOCKIFYER_METRO_URL;
+    const prevMetroPort = process.env.METRO_PORT;
+
+    afterEach(() => {
+      if (prevMetroUrl === undefined) delete process.env.MOCKIFYER_METRO_URL;
+      else process.env.MOCKIFYER_METRO_URL = prevMetroUrl;
+      if (prevMetroPort === undefined) delete process.env.METRO_PORT;
+      else process.env.METRO_PORT = prevMetroPort;
+    });
+
+    it('defaults to localhost Metro + live path', () => {
+      delete process.env.MOCKIFYER_METRO_URL;
+      delete process.env.METRO_PORT;
+      expect(resolveMetroAtlasLiveUrl()).toBe(
+        `http://localhost:8081${ATLAS_LIVE_STREAM_PATH}`,
+      );
+    });
+
+    it('uses MOCKIFYER_METRO_URL when set', () => {
+      process.env.MOCKIFYER_METRO_URL = 'http://127.0.0.1:19000/';
+      expect(resolveMetroAtlasLiveUrl()).toBe(
+        `http://127.0.0.1:19000${ATLAS_LIVE_STREAM_PATH}`,
+      );
+    });
+  });
+
   describe('matchesAtlasKey', () => {
     it('matches name or str without modifiers', () => {
       expect(matchesAtlasKey('a', { name: 'a' }, 'a')).toBe(true);
@@ -117,12 +146,16 @@ describe('metro-atlas-key-handlers', () => {
       const stdin = makeStdin();
       let starts = 0;
       let stops = 0;
+      const opened: string[] = [];
 
       const attached = attachMetroAtlasKeyHandler({
         atlasKey: 'a',
         dashboardKey: false,
         stdin: stdin as unknown as NodeJS.ReadStream,
         deferMs: 0,
+        openUrl: (url) => {
+          opened.push(url);
+        },
         onSessionStart: () => {
           starts += 1;
         },
@@ -132,15 +165,19 @@ describe('metro-atlas-key-handlers', () => {
       });
 
       expect(attached.key).toBe('a');
+      expect(attached.liveUrl).toBe(resolveMetroAtlasLiveUrl());
       expect(getMetroAtlasSessionPhase()).toBe('idle');
 
       stdin.emit('keypress', 'a', { name: 'a' });
       expect(starts).toBe(1);
       expect(stops).toBe(0);
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
+      expect(opened).toEqual([resolveMetroAtlasLiveUrl()]);
+      expect(opened[0]).toContain(ATLAS_LIVE_STREAM_PATH);
 
       stdin.emit('keypress', 'a', { name: 'a' });
       expect(getMetroAtlasSessionPhase()).toBe('rendering');
+      expect(opened).toHaveLength(1);
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(stops).toBe(1);
       expect(getMetroAtlasSessionPhase()).toBe('idle');

@@ -61,6 +61,11 @@ export interface MockifyerHopContext {
   includeInlineTraceBodies?: boolean;
   /** Mutable in-process hop list for the active inbound request. */
   inlineHops?: InlineTraceHopBufferItem[];
+  /**
+   * Local Metro base URL from the caller (`X-Mockifyer-Metro-Stream-Base`).
+   * Downstream services POST correlated hops there so Atlas nests without include-trace.
+   */
+  atlasMetroStreamBaseUrl?: string;
 }
 
 /** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
