@@ -100,6 +100,9 @@ Usage:
 Streams raw traffic from Metro's in-memory hop buffer (POST /mockifyer-network-events).
 Does not require the dashboard GUI.
 
+Web (same SSE, expand/collapse in the browser):
+  open  http://localhost:<port>/mockifyer-atlas-live
+
 Keys:
   ${theme.info("click")}  Expand/collapse a ▸ nested row (Terminal / iTerm mouse)
   ${theme.info("e")}  Expand/collapse all nested groups
@@ -276,6 +279,9 @@ function bannerPaint(base: string, view: MetroAtlasStreamView): AtlasStreamPaint
   const coreVersion = require("../../package.json").version as string;
   const lines = [
     `${theme.bold("[atlas]")} ${theme.muted(`v${coreVersion}`)} streaming ${theme.info(`${base}/mockifyer-network-events/stream`)}`,
+    theme.muted(
+      `web live UI · ${base}/mockifyer-atlas-live (expand/collapse nested hops)`,
+    ),
     theme.muted(
       "mouse on · click req·res·html · m off to select/copy · ↑↓/PgUp scroll · e all · p pause · g/d/f · a/s/r/o · c · h · q",
     ),

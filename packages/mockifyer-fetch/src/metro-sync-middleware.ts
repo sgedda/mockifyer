@@ -19,8 +19,10 @@
  * 15. POST /mockifyer-network-events/snapshot — write hops JSON/NDJSON under atlas-html/
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
- * 18. Metro terminal key `t` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
- * 19. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
+ * 18. GET /mockifyer-atlas-live — live hop stream web page (SSE + expand/collapse)
+ * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace
+ * 20. Metro terminal key `t` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
+ * 21. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -63,6 +65,10 @@ import {
   analyzeMetroNetworkEvents,
   createEmptyAtlasDocMap,
   buildAtlasHarJson,
+  buildAtlasLiveStreamHtml,
+  ATLAS_LIVE_STREAM_PATH,
+  ATLAS_TRACE_REPLAY_PATH,
+  replayNetworkEventWithIncludeTrace,
 } from "@sgedda/mockifyer-core";
 import {
   attachMetroAtlasKeyHandler,
@@ -1312,6 +1318,51 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const result = clearMockFiles(mockDataPath);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(result));
+      return;
+    }
+
+    // Live Atlas hop stream page (browser EventSource → same SSE as mockifyer-atlas CLI)
+    if (
+      (url === ATLAS_LIVE_STREAM_PATH || url === `${ATLAS_LIVE_STREAM_PATH}/`) &&
+      req.method === "GET"
+    ) {
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(buildAtlasLiveStreamHtml());
+      return;
+    }
+
+    // Re-call a buffered hop with X-Mockifyer-Include-Trace (live page "trace" link)
+    if (req.method === "GET" && url === ATLAS_TRACE_REPLAY_PATH) {
+      const fullUrl = String(req.url || "");
+      const q = fullUrl.includes("?")
+        ? fullUrl.slice(fullUrl.indexOf("?") + 1)
+        : "";
+      const params = new URLSearchParams(q);
+      const hopId = (params.get("id") || "").trim();
+      const includeBodies = params.get("bodies") !== "0";
+      if (!hopId) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({ success: false, error: "id query param required" }),
+        );
+        return;
+      }
+      const buffer = getMetroNetworkEventBuffer();
+      const events = buffer.list();
+      void replayNetworkEventWithIncludeTrace(events, hopId, {
+        includeBodies,
+      }).then((result) => {
+        res.statusCode = result.success
+          ? 200
+          : result.error === "hop not found"
+            ? 404
+            : 502;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify(result));
+      });
       return;
     }
 

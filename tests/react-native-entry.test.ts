@@ -12,6 +12,10 @@ import {
   scheduleRuntimeDateSyncFromConfig,
   shouldActivateMockifyerForReactNative,
   tryGetScenarioFromLaunchArguments,
+  buildAtlasLiveStreamHtml,
+  ATLAS_LIVE_STREAM_PATH,
+  replayNetworkEventWithIncludeTrace,
+  ATLAS_TRACE_REPLAY_PATH,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -33,6 +37,10 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof arePoolRefsEnabled).toBe('function');
     expect(typeof containsPoolRefs).toBe('function');
     expect(typeof collectPoolRefIds).toBe('function');
+    expect(typeof buildAtlasLiveStreamHtml).toBe('function');
+    expect(ATLAS_LIVE_STREAM_PATH).toBe('/mockifyer-atlas-live');
+    expect(typeof replayNetworkEventWithIncludeTrace).toBe('function');
+    expect(ATLAS_TRACE_REPLAY_PATH).toBe('/mockifyer-atlas-trace');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {
