@@ -77,6 +77,7 @@ import {
   unwrapAndMergeInlineTraceEnvelope,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   resolveNetworkLogIncludeTraceOptions,
+  resolveNetworkLogIncludeTraceOptionsAsync,
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
   applyOutboundRequestCorrelation,
@@ -97,6 +98,8 @@ import {
   resolveRuntimeEnabledStorage,
   savePersistedRuntimeEnabled,
   type MockifyerRuntimeEnabledStorage,
+  outboundHeadersToRecord,
+  appendParamsToUrl,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -178,11 +181,24 @@ class MockifyerClass {
     });
   }
 
-  private applyOutboundCorrelation(config: unknown): RequestCorrelationContext {
+  private async applyOutboundCorrelation(config: unknown): Promise<RequestCorrelationContext> {
     return applyOutboundRequestCorrelation(
       config as { headers?: unknown; url?: unknown; method?: unknown },
-      resolveNetworkLogIncludeTraceOptions(this.config)
+      await resolveNetworkLogIncludeTraceOptionsAsync(this.config)
     );
+  }
+
+  /**
+   * Full outbound URL including `params` — hop logs / Atlas curl / include-trace
+   * must not drop the query string (fetch splits search into `config.params`).
+   */
+  private resolveLoggedRequestUrl(
+    config?: { url?: string; params?: Record<string, unknown> } | null,
+    fallbackUrl?: string,
+  ): string {
+    const raw = (fallbackUrl || config?.url || '').trim();
+    if (!raw) return '';
+    return appendParamsToUrl(raw, config?.params);
   }
 
   /** Best-effort dashboard network log. */
@@ -193,7 +209,9 @@ class MockifyerClass {
       requestBody?: unknown;
       responseBody?: unknown;
     },
-    correlation?: RequestCorrelationContext
+    correlation?: RequestCorrelationContext,
+    /** Final outbound header bag (after auth interceptors). */
+    requestHeadersSource?: unknown
   ): void {
     const scenario =
       this.config.proxy?.scenario?.trim() ||
@@ -201,6 +219,8 @@ class MockifyerClass {
 
     const { requestBody, responseBody, ...eventPartial } = partial;
     const businessResponseBody = getInlineTraceEnvelopeBusinessBody(responseBody);
+    const requestHeaders =
+      eventPartial.requestHeaders ?? outboundHeadersToRecord(requestHeadersSource);
 
     if (!this.config.proxy?.baseUrl) {
       recordInlineTraceHopFromExchange({
@@ -231,6 +251,7 @@ class MockifyerClass {
         transport: eventPartial.transport ?? 'fetch',
         requestId: correlation?.requestId ?? eventPartial.requestId,
         parentRequestId: correlation?.parentRequestId ?? eventPartial.parentRequestId,
+        requestHeaders,
         requestBodyPreview: eventPartial.requestBodyPreview,
         responseBodyPreview: eventPartial.responseBodyPreview,
       },
@@ -841,7 +862,7 @@ class MockifyerClass {
           useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
         })
       ) {
-        this.applyOutboundCorrelation(config);
+        await this.applyOutboundCorrelation(config);
         (config as any).__mockifyer_bypass = true;
         return config;
       }
@@ -854,7 +875,7 @@ class MockifyerClass {
         return config;
       }
 
-      let correlation = this.applyOutboundCorrelation(config);
+      let correlation = await this.applyOutboundCorrelation(config);
       this.stashRequestCorrelation(config, correlation);
 
       // Normalize empty params: treat {} the same as undefined for consistent matching
@@ -921,14 +942,15 @@ class MockifyerClass {
           this.logNetworkEvent(
             {
               method: (request.method || 'GET').toUpperCase(),
-              url: request.url,
+              url: this.resolveLoggedRequestUrl(config, request.url),
               source: 'mock-hit',
               status: mockData.response.status,
               requestHash: networkEventHashFromRequestKey(requestKey),
               requestBody: request.data,
               responseBody: mockResponseBody,
             },
-            correlation
+            correlation,
+            request.headers ?? config.headers
           );
           const responseHeaders = {
             ...mockData.response.headers,
@@ -1090,7 +1112,7 @@ class MockifyerClass {
           const shouldLogMockOrLimit =
             isLimitReached || (isMocked && this.usesDashboardProxy());
           if (shouldLogMockOrLimit) {
-            const reqUrl = response.config?.url || url;
+            const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
             const reqMethod = (response.config?.method || 'GET').toUpperCase();
             const startTime = (response.config as any).__mockifyer_startTime;
             const durationMs = startTime ? Date.now() - startTime : undefined;
@@ -1115,7 +1137,8 @@ class MockifyerClass {
                     }
                   : {}),
               },
-              this.readRequestCorrelation(response.config)
+              this.readRequestCorrelation(response.config),
+              response.config?.headers
             );
           }
           // Mock hits return before the upstream path. Still emit nested service
@@ -1133,9 +1156,9 @@ class MockifyerClass {
           const startTime = (response.config as any).__mockifyer_startTime;
           const durationMs = startTime ? Date.now() - startTime : undefined;
 
-          const reqUrl = response.config?.url || url;
+          const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
           const reqMethod = (response.config?.method || 'GET').toUpperCase();
-          // Parent hop first, then unwrap nested mockifyerTrace from downstream services.
+          // Parent hop first, then unwrap nested service hops from downstream services.
           this.logNetworkEvent(
             {
               method: reqMethod,
@@ -1146,7 +1169,8 @@ class MockifyerClass {
               requestBody: response.config?.data,
               responseBody: response.data,
             },
-            this.readRequestCorrelation(response.config)
+            this.readRequestCorrelation(response.config),
+            response.config?.headers
           );
           this.unwrapResponseInlineTrace(response);
 
@@ -1187,7 +1211,7 @@ class MockifyerClass {
           return response;
         }
 
-        const reqUrl = response.config?.url || url;
+        const reqUrl = this.resolveLoggedRequestUrl(response.config, url);
         const reqMethod = (response.config?.method || 'GET').toUpperCase();
         this.logNetworkEvent(
           {
@@ -1202,7 +1226,8 @@ class MockifyerClass {
             requestBody: response.config?.data,
             responseBody: response.data,
           },
-          this.readRequestCorrelation(response.config)
+          this.readRequestCorrelation(response.config),
+          response.config?.headers
         );
         this.unwrapResponseInlineTrace(response);
 
@@ -1219,7 +1244,7 @@ class MockifyerClass {
         if (requestKey) {
           this.processingRequests.delete(requestKey);
         }
-        const reqUrl = error.config?.url || '';
+        const reqUrl = this.resolveLoggedRequestUrl(error.config);
         if (reqUrl) {
           this.logNetworkEvent(
             {
@@ -1231,7 +1256,8 @@ class MockifyerClass {
               requestBody: error.config?.data,
               responseBody: error.response?.data,
             },
-            this.readRequestCorrelation(error.config)
+            this.readRequestCorrelation(error.config),
+            error.config?.headers
           );
         }
         this.throwWithMockifyerRequestId(error);

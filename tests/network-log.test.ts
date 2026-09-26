@@ -23,6 +23,30 @@ describe('network-log', () => {
     expect(out?.Cookie).toBe('[REDACTED]');
   });
 
+  it('sanitizeNetworkEvent keeps header values when redaction is off (local Atlas curl)', () => {
+    const input = {
+      id: 'e-hdr',
+      timestamp: '2026-09-26T13:00:00.000Z',
+      scenario: 'default',
+      transport: 'axios' as const,
+      method: 'POST',
+      url: 'https://api.example.test/v-2/authenticate',
+      source: 'upstream' as const,
+      requestHeaders: {
+        authorization: 'Bearer real-token',
+        'content-type': 'application/json',
+      },
+      responseHeaders: { 'set-cookie': 'a=b' },
+    };
+
+    const redacted = sanitizeNetworkEvent(input);
+    expect(redacted.requestHeaders?.authorization).toBe('[REDACTED]');
+
+    const kept = sanitizeNetworkEvent(input, { redactSensitiveHeaders: false });
+    expect(kept.requestHeaders?.authorization).toBe('Bearer real-token');
+    expect(kept.requestHeaders?.['content-type']).toBe('application/json');
+  });
+
   it('sanitizeQueryString redacts token-like params', () => {
     const redacted = sanitizeQueryString('?api_key=abc&page=1') ?? '';
     expect(decodeURIComponent(redacted)).toContain('[REDACTED]');
@@ -98,10 +122,43 @@ describe('network-log', () => {
     }
   });
 
-  it('emitMockifyerNetworkEvent captures a short preview after the response turn', async () => {
+  it('emitMockifyerNetworkEvent keeps final outbound headers for Atlas curl / include-trace', async () => {
+    const prev = process.env.MOCKIFYER_METRO_STREAM;
+    process.env.MOCKIFYER_METRO_STREAM = 'on';
     configureFlightRecorder({ enabled: true, maxEvents: 20 });
     clearFlightRecorder();
-    const payload = { data: 'x'.repeat(20_000) };
+    try {
+      emitMockifyerNetworkEvent({
+        config: { networkLog: { enabled: true, captureBodies: false } },
+        scenario: 'default',
+        event: {
+          method: 'GET',
+          url: 'https://api.example.com/me',
+          source: 'upstream',
+          status: 200,
+          transport: 'fetch',
+          requestHeaders: {
+            authorization: 'Bearer real-token',
+            'x-app-version': '1.2.3',
+          },
+        },
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      const [event] = __flightRecorderBuffersForTests().network;
+      expect(event?.requestHeaders?.authorization).toBe('Bearer real-token');
+      expect(event?.requestHeaders?.['x-app-version']).toBe('1.2.3');
+    } finally {
+      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
+      else process.env.MOCKIFYER_METRO_STREAM = prev;
+    }
+  });
+
+  it('emitMockifyerNetworkEvent captures a short preview after the response turn', async () => {
+    const { NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES } =
+      require('../packages/mockifyer-core/src/utils/network-body-spill') as typeof import('../packages/mockifyer-core/src/utils/network-body-spill');
+    configureFlightRecorder({ enabled: true, maxEvents: 20 });
+    clearFlightRecorder();
+    const payload = { data: 'x'.repeat(NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 8_000) };
     emitMockifyerNetworkEvent({
       config: { networkLog: { enabled: true, captureBodies: true } },
       scenario: 'default',
@@ -119,13 +176,16 @@ describe('network-log', () => {
     await new Promise((resolve) => setImmediate(resolve));
     const [event] = __flightRecorderBuffersForTests().network;
     expect(event?.responseBodyPreview).toContain('data');
-    expect((event?.responseBodyPreview ?? '').length).toBeLessThan(4_000);
+    expect((event?.responseBodyPreview ?? '').length).toBeLessThanOrEqual(
+      NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 32,
+    );
+    expect(event?.responseBodyPreview).toContain('[truncated]');
     expect(event?.responseBodyTruncated).toBe(true);
     expect(event?.responseBodyRef).toContain('bodies/');
   });
 
   it('emitMockifyerNetworkEvent keeps a short preview and does not spill bodies over 2MB', async () => {
-    const { resetNetworkBodySpillRuntime, NETWORK_BODY_SPILL_MAX_BYTES } =
+    const { resetNetworkBodySpillRuntime, NETWORK_BODY_SPILL_MAX_BYTES, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES } =
       require('../packages/mockifyer-core/src/utils/network-body-spill') as typeof import('../packages/mockifyer-core/src/utils/network-body-spill');
     resetNetworkBodySpillRuntime();
     configureFlightRecorder({ enabled: true, maxEvents: 20 });
@@ -147,7 +207,9 @@ describe('network-log', () => {
     const [event] = __flightRecorderBuffersForTests().network;
     expect(event?.responseBodyPreview).toContain('data');
     expect(event?.responseBodyPreview).toContain('[truncated]');
-    expect((event?.responseBodyPreview ?? '').length).toBeLessThan(4_000);
+    expect((event?.responseBodyPreview ?? '').length).toBeLessThanOrEqual(
+      NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 32,
+    );
     expect(event?.responseBodyRef).toBeUndefined();
     expect(event?.responseBodyTruncated).toBeUndefined();
   });
@@ -250,9 +312,13 @@ describe('network-body-spill', () => {
       });
       expect(refs.responseBodyRef).toBe('bodies/req-spill-1-res.json');
       expect(refs.responseBodyTruncated).toBe(true);
-      // Allow async write to finish
-      await new Promise((r) => setTimeout(r, 50));
-      const spilled = fs.readFileSync(path.join(dir, refs.responseBodyRef!), 'utf8');
+      // Poll for the async write — a fixed sleep flakes under full-suite load.
+      const spillPath = path.join(dir, refs.responseBodyRef!);
+      const deadline = Date.now() + 5_000;
+      while (!fs.existsSync(spillPath) && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      const spilled = fs.readFileSync(spillPath, 'utf8');
       expect(spilled).toBe(big);
       const {
         getNetworkBodySpillSnapshot,

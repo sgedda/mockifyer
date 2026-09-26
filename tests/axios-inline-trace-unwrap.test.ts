@@ -200,6 +200,35 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     expect(trace!.hops[0].parentRequestId).toBe('bff-root');
   });
 
+  it('skips tracing for client_id_header when include-trace is off even with an inbound lane', async () => {
+    const url = 'https://downstream.example/auth-token';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+    const liveBody = { authToken: { jwtToken: 'live-token' } };
+    upstream.onGet(url).reply(200, liveBody);
+
+    const client = setupMockifyer({
+      mockDataPath,
+      recordMode: false,
+      failOnMissingMock: false,
+      activationMode: 'client_id_header',
+      axiosInstance,
+      networkLog: { captureBodies: false },
+    });
+
+    const ctx: MockifyerHopContext = {
+      inboundClientId: 'lane-from-caller',
+      correlation: { requestId: 'bff-root' },
+      includeInlineTrace: false,
+      inlineHops: [],
+    };
+
+    const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
+
+    expect(response.data).toEqual(liveBody);
+    expect(buildInlineRequestTrace(ctx)).toBeNull();
+  });
+
   it('skips underlying hops for client_id_header when no inbound lane or header is present', async () => {
     const url = 'https://downstream.example/skipped';
     const axiosInstance = axios.create();

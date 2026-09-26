@@ -31,19 +31,22 @@ import {
   serializeBodyText,
   setNetworkBodySpillEnabled,
 } from './network-body-spill';
-import { prettyPrintJsonText } from './json-pretty';
-import {
-  formatGraphqlRequestBodyObject,
-  isGraphqlRequestBodyObject,
-} from './graphql-body-display';
+import { looksLikeGraphqlDisplayText } from './graphql-body-display';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 import { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
 
 export { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
 import {
+  joinMetroAtlasCaptureSessionUrl,
   joinMetroNetworkEventsUrl,
   resolveMetroNetworkStreamBaseUrl,
+  runMetroAtlasCaptureSessionRefresh,
+  sanitizeAtlasMetroStreamBaseUrl,
+  setMetroAtlasCaptureSessionActive,
 } from './metro-network-stream';
+import { getActiveMockifyerHopContext } from './hop-context';
+import { findHopRequestHeaders } from './hop-identity';
+import { normalizeDashboardBaseUrl } from './dashboard-network-trace-fetch';
 
 export { prettyPrintJsonText, softPrettyJsonText } from './json-pretty';
 
@@ -66,6 +69,10 @@ const DEFAULT_REDACT_HEADER_NAMES = [
 const SENSITIVE_QUERY_PARAMS = ['api_key', 'apikey', 'token', 'access_token', 'password', 'secret'];
 
 export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
+
+/** Event size budget when Atlas/Metro is capturing bodies (preview + headers + meta). */
+export const NETWORK_LOG_ATLAS_MAX_EVENT_BYTES =
+  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 32_768;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
 export const NETWORK_LOG_DEFAULT_TTL_SEC = 60 * 60 * 24;
 
@@ -152,14 +159,12 @@ function truncatePreview(value: unknown, maxBytes: number): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
   if (typeof value === 'string') {
-    text = prettyPrintJsonText(value);
+    // Keep wire-safe JSON for GraphQL requests. Display formatting (# operationName)
+    // is applied in Atlas HTML / UI — not on hop previews used for curl / include-trace.
+    text = wireSafeJsonPreviewText(value);
   } else {
     try {
-      if (isGraphqlRequestBodyObject(value)) {
-        text = formatGraphqlRequestBodyObject(value);
-      } else {
-        text = JSON.stringify(value, null, 2);
-      }
+      text = JSON.stringify(value, null, 2);
     } catch {
       text = String(value);
     }
@@ -168,10 +173,32 @@ function truncatePreview(value: unknown, maxBytes: number): string | undefined {
   return truncateUtf8(text, maxBytes);
 }
 
+/** Indent JSON when valid; leave GraphQL display / plain text unchanged. */
+function wireSafeJsonPreviewText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return text;
+  if (looksLikeGraphqlDisplayText(trimmed) && trimmed.charAt(0) !== '{') {
+    // Already display form from an older hop — leave as-is (replay restores it).
+    return text;
+  }
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 export interface SanitizeNetworkEventOptions {
   captureBodies?: boolean;
   maxEventBytes?: number;
   extraRedactHeaders?: string[];
+  /**
+   * Mask sensitive header values. Default **true**.
+   *
+   * Local Atlas / Metro hops set this to `false` so the recorded headers can
+   * rebuild a runnable request (curl). Dashboard POSTs always redact.
+   */
+  redactSensitiveHeaders?: boolean;
 }
 
 /** Apply privacy guardrails before persisting or POSTing an event. */
@@ -182,6 +209,11 @@ export function sanitizeNetworkEvent(
   const maxBytes = options.maxEventBytes ?? NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES;
   const captureBodies = options.captureBodies === true;
   const inlineBodyBytes = Math.min(NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES, maxBytes);
+  const keepHeaderValues = options.redactSensitiveHeaders === false;
+  const headers = (
+    input: Record<string, string> | undefined
+  ): Record<string, string> | undefined =>
+    keepHeaderValues ? input : redactHeaders(input, options.extraRedactHeaders);
 
   let host: string | undefined;
   let path: string | undefined;
@@ -203,8 +235,8 @@ export function sanitizeNetworkEvent(
     host: input.host ?? host,
     path: input.path ?? path,
     query: input.query !== undefined ? sanitizeQueryString(input.query) : query,
-    requestHeaders: redactHeaders(input.requestHeaders, options.extraRedactHeaders),
-    responseHeaders: redactHeaders(input.responseHeaders, options.extraRedactHeaders),
+    requestHeaders: headers(input.requestHeaders),
+    responseHeaders: headers(input.responseHeaders),
     requestBodyPreview: captureBodies
       ? truncatePreview(input.requestBodyPreview, inlineBodyBytes)
       : undefined,
@@ -223,9 +255,10 @@ export function sanitizeNetworkEvent(
   }
 
   // Prefer keeping short body previews + refs; drop bulky headers first.
+  // Local Atlas hops keep request headers — they are what makes curl runnable.
   const withoutHeaders: NetworkEvent = {
     ...event,
-    requestHeaders: undefined,
+    requestHeaders: keepHeaderValues ? event.requestHeaders : undefined,
     responseHeaders: undefined,
   };
   if (utf8ByteLength(JSON.stringify(withoutHeaders)) <= maxBytes) {
@@ -308,25 +341,46 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<
 
 /**
  * Best-effort POST of a hop to Metro `/mockifyer-network-events` for the live CLI stream.
- * Never throws. Enabled via {@link resolveMetroNetworkStreamBaseUrl}.
+ * Never throws. Enabled via {@link resolveMetroNetworkStreamBaseUrl}, or an explicit
+ * `metroBaseUrl` (inbound Atlas bridge header on a BFF hop).
+ *
+ * When `dashboardBaseUrl` is set, Metro can pull nested hops from the shared dashboard
+ * network log (remote BFF → dashboard → Atlas).
  */
-export function emitMetroNetworkStreamEvent(event: NetworkEvent): Promise<void> {
-  const base = resolveMetroNetworkStreamBaseUrl();
+export function emitMetroNetworkStreamEvent(
+  event: NetworkEvent,
+  options?: { metroBaseUrl?: string; dashboardBaseUrl?: string }
+): Promise<void> {
+  const base =
+    sanitizeAtlasMetroStreamBaseUrl(options?.metroBaseUrl) ??
+    resolveMetroNetworkStreamBaseUrl();
   if (!base) return Promise.resolve();
 
   const fetchFn = resolveUnpatchedFetch();
   if (!fetchFn) return Promise.resolve();
 
   const url = joinMetroNetworkEventsUrl(base);
-  const body = JSON.stringify({ event });
+  const dashboardBaseUrl = normalizeDashboardBaseUrl(options?.dashboardBaseUrl);
+  const body = JSON.stringify({
+    event,
+    ...(dashboardBaseUrl ? { dashboardBaseUrl } : {}),
+  });
 
   return (async (): Promise<void> => {
     try {
-      await fetchFn(url, {
+      const res = await fetchFn(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,
       });
+      try {
+        const json = (await res.json()) as { atlasCaptureActive?: unknown };
+        if (typeof json.atlasCaptureActive === 'boolean') {
+          setMetroAtlasCaptureSessionActive(json.atlasCaptureActive);
+        }
+      } catch {
+        // non-JSON ok body
+      }
     } catch {
       // ignore — Metro may be down; observability must not break app requests
     }
@@ -394,6 +448,45 @@ export function resolveNetworkLogIncludeTraceOptions(
 }
 
 /**
+ * Best-effort GET of Metro Atlas capture session state (for session UI / hop POST
+ * `atlasCaptureActive`). Does not enable include-trace.
+ */
+export async function refreshMetroAtlasCaptureSessionIfStale(
+  options?: { force?: boolean }
+): Promise<void> {
+  const base = resolveMetroNetworkStreamBaseUrl();
+  if (!base) return;
+
+  await runMetroAtlasCaptureSessionRefresh(async () => {
+    const fetchFn = resolveUnpatchedFetch();
+    if (!fetchFn) return;
+    try {
+      const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok) return;
+      const json = (await res.json()) as { active?: unknown };
+      if (typeof json.active === 'boolean') {
+        setMetroAtlasCaptureSessionActive(json.active);
+      }
+    } catch {
+      // Metro may be down
+    }
+  }, options);
+}
+
+/**
+ * Resolve include-trace flags from config only (no Atlas capture side effects).
+ * Kept async for interceptor call sites that already await correlation setup.
+ */
+export async function resolveNetworkLogIncludeTraceOptionsAsync(
+  config?: Pick<MockifyerConfig, 'networkLog'> | null
+): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
+  return resolveNetworkLogIncludeTraceOptions(config);
+}
+
+/**
  * Run after the current response turn so body stringify does not delay the caller.
  * `setImmediate` is a macrotask (Node). Browsers and React Native use `setTimeout(0)`.
  */
@@ -413,7 +506,7 @@ function previewFromCapturedText(text: string | undefined): string | undefined {
     utf8ByteLength(text) <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES
       ? text
       : truncateUtf8(text, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES);
-  return prettyPrintJsonText(slice);
+  return wireSafeJsonPreviewText(slice);
 }
 
 const PREVIEW_TRUNCATION_MARKER = '…[truncated]';
@@ -503,9 +596,30 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
         })
       : {};
 
+  /**
+   * Prefer Atlas/Metro whenever hops may land in a live buffer:
+   * local Metro URL, Atlas HTML dir, or inbound Metro stream bridge header.
+   */
+  const atlasMetroBridge = sanitizeAtlasMetroStreamBaseUrl(
+    getActiveMockifyerHopContext()?.atlasMetroStreamBaseUrl
+  );
+  const localAtlasCapture =
+    resolveMetroNetworkStreamBaseUrl() != null ||
+    getAtlasDocHtmlOutputPath() != null ||
+    atlasMetroBridge != null;
+  /**
+   * Final outbound headers from the interceptor (preferred) or the hop-owner
+   * snapshot taken at correlation. Correlation alone misses auth tokens added
+   * by later request interceptors — which breaks Atlas curl / include-trace.
+   */
+  const requestHeaders =
+    params.event.requestHeaders ??
+    findHopRequestHeaders(params.event.requestId);
+
   const built = buildNetworkEvent(
     {
       ...params.event,
+      requestHeaders,
       id: eventId,
       kind: params.event.kind ?? 'network',
       scenario: params.scenario ?? 'default',
@@ -526,7 +640,16 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
       requestBodyTruncated: spillRefs.requestBodyTruncated ?? params.event.requestBodyTruncated,
       responseBodyTruncated: spillRefs.responseBodyTruncated ?? params.event.responseBodyTruncated,
     },
-    { captureBodies }
+    // Keep real header values for Metro/Atlas curl + include-trace replay.
+    // Atlas/Metro needs a larger event budget so 64KB body previews aren't
+    // immediately re-truncated by the default 8KB event cap.
+    {
+      captureBodies,
+      redactSensitiveHeaders: !localAtlasCapture,
+      ...(localAtlasCapture
+        ? { maxEventBytes: NETWORK_LOG_ATLAS_MAX_EVENT_BYTES }
+        : {}),
+    }
   );
 
   if (recorderConfig.enabled !== false) {
@@ -537,10 +660,24 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
     rememberAtlasHtmlNetworkEvent(built);
   }
 
-  void emitMetroNetworkStreamEvent(built);
+  const localMetro = resolveMetroNetworkStreamBaseUrl();
+  const metroEmitOptions = {
+    metroBaseUrl: localMetro,
+    ...(dashboardBaseUrl ? { dashboardBaseUrl } : {}),
+  };
+  void emitMetroNetworkStreamEvent(built, metroEmitOptions);
+
+  // BFF / Node: also mirror into the caller's Atlas Metro buffer (header bridge).
+  if (atlasMetroBridge && atlasMetroBridge !== localMetro) {
+    void emitMetroNetworkStreamEvent(built, {
+      metroBaseUrl: atlasMetroBridge,
+      ...(dashboardBaseUrl ? { dashboardBaseUrl } : {}),
+    });
+  }
 
   if (!dashboardBaseUrl) return;
 
+  // emitNetworkLogEvent re-sanitizes with redaction (default) — do not POST Atlas secrets.
   emitNetworkLogEvent({
     dashboardBaseUrl,
     captureBodies: dashboardCaptureBodies,

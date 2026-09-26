@@ -54,7 +54,7 @@ describe('activation-mode', () => {
     expect(getOutboundMockifyerDeviceIdHeader(h)).toBe('ulid-xyz');
   });
 
-  it('shouldApplyMockifyer client_id_header requires header, inbound lane, or proxy lane', () => {
+  it('shouldApplyMockifyer client_id_header requires the outbound header, inbound lane, or a proxy lane', () => {
     expect(shouldApplyMockifyer('client_id_header', {})).toBe(false);
     expect(shouldApplyMockifyer('client_id_header', { 'x-mockifyer-client-id': 'x' })).toBe(true);
     expect(

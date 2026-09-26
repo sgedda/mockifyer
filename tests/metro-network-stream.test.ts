@@ -4,6 +4,7 @@ import {
   formatMetroNetworkHopLine,
   MetroNetworkEventBuffer,
   resolveMetroNetworkStreamBaseUrl,
+  sanitizeAtlasMetroStreamBaseUrl,
   slimNetworkEventForMetroStream,
   resetMetroNetworkEventBuffer,
   getMetroNetworkEventBuffer,
@@ -46,6 +47,14 @@ describe('metro-network-stream', () => {
     else process.env.MOCKIFYER_METRO_URL = prevUrl;
   });
 
+  it('sanitizeAtlasMetroStreamBaseUrl allows only loopback Metro origins', () => {
+    expect(sanitizeAtlasMetroStreamBaseUrl('http://localhost:8081/')).toBe('http://localhost:8081');
+    expect(sanitizeAtlasMetroStreamBaseUrl('http://127.0.0.1:8081')).toBe('http://127.0.0.1:8081');
+    expect(sanitizeAtlasMetroStreamBaseUrl('http://10.0.2.2:8081')).toBe('http://10.0.2.2:8081');
+    expect(sanitizeAtlasMetroStreamBaseUrl('http://evil.example:8081')).toBeUndefined();
+    expect(sanitizeAtlasMetroStreamBaseUrl('http://localhost:8081/extra')).toBeUndefined();
+  });
+
   it('ring buffer keeps newest first and notifies subscribers', () => {
     const buffer = new MetroNetworkEventBuffer(3);
     const seen: string[] = [];
@@ -60,20 +69,28 @@ describe('metro-network-stream', () => {
     expect(seen).toEqual(['1', '2', '3', '4']);
   });
 
-  it('slims large body previews and strips headers', () => {
-    const big = 'x'.repeat(2_000);
-    const slim = slimNetworkEventForMetroStream(
-      hop({
+  it('slims large body previews, keeps request headers, drops response headers', () => {
+    const { DEFAULT_METRO_NETWORK_PREVIEW_BYTES } =
+      require('../packages/mockifyer-core/src/utils/metro-network-stream') as typeof import('../packages/mockifyer-core/src/utils/metro-network-stream');
+    const big = 'x'.repeat(DEFAULT_METRO_NETWORK_PREVIEW_BYTES + 2_000);
+    const slim = slimNetworkEventForMetroStream({
+      ...hop({
         method: 'POST',
         url: 'https://a.test/gql',
         path: '/gql',
         source: 'upstream',
         requestBodyPreview: big,
         requestHeaders: { authorization: 'secret' },
-      })
-    );
-    expect(slim.requestHeaders).toBeUndefined();
+      }),
+      responseHeaders: { 'set-cookie': 'a=b' },
+    });
+    // Request headers make the live-page curl runnable.
+    expect(slim.requestHeaders).toEqual({ authorization: 'secret' });
+    expect(slim.responseHeaders).toBeUndefined();
     expect((slim.requestBodyPreview ?? '').length).toBeLessThan(big.length);
+    expect((slim.requestBodyPreview ?? '').length).toBeLessThanOrEqual(
+      DEFAULT_METRO_NETWORK_PREVIEW_BYTES + 32,
+    );
   });
 
   it('analyze counts errors and slow hops', () => {
