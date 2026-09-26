@@ -13,7 +13,7 @@ const dashboardVersion = JSON.parse(
 function devApiProxy() {
   if (base === '/' || base === './') {
     return {
-      '/api': {
+      '/api/': {
         target: 'http://localhost:3002',
         changeOrigin: true,
       },
@@ -21,7 +21,7 @@ function devApiProxy() {
   }
   const prefix = base.replace(/\/$/, '')
   return {
-    [`${prefix}/api`]: {
+    [`${prefix}/api/`]: {
       target: 'http://localhost:3002',
       changeOrigin: true,
       rewrite: (p: string) => p.slice(prefix.length) || '/',

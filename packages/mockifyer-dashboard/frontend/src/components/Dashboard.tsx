@@ -9,6 +9,7 @@ import Settings from './Settings'
 import Network from './Network'
 import DateConfig from './DateConfig'
 import OverridesView from './OverridesView'
+import ApiReference from './ApiReference'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
 import { getMocks, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
@@ -65,6 +66,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
     if (path === '/network' || path.endsWith('/network')) return 'network'
     if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
+    if (path === '/api-reference' || path.endsWith('/api-reference')) return 'api'
     if (path === '/settings' || path.endsWith('/settings')) return 'settings'
     return 'stats'
   }
@@ -261,6 +263,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
       'network': '/network',
       'stats': '/',
       'date-config': '/date-config',
+      'api': '/api-reference',
       'settings': '/settings',
     }
     navigate({
@@ -608,6 +611,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
               element={<Navigate to={{ pathname: '/mocks', search: location.search }} replace />}
             />
             <Route path="/date-config" element={<DateConfig />} />
+            <Route path="/api-reference" element={<ApiReference />} />
             <Route
               path="/settings"
               element={
