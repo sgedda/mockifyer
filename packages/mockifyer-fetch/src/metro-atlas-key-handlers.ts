@@ -264,11 +264,11 @@ export function startMetroAtlasSession(
 
   if (reason === "stream") {
     console.log(
-      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated. Press ${key} to stop, or Render docs on the live page.`,
+      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated (turns off again on stop if it was off). Press ${key} to stop, or Render docs on the live page.`,
     );
   } else {
     console.log(
-      `[Mockifyer] Atlas capture started — Mockifyer activated. Press ${key} again to stop, or Render docs on the live page.`,
+      `[Mockifyer] Atlas capture started — Mockifyer activated (turns off again on stop if it was off). Press ${key} again to stop, or Render docs on the live page.`,
     );
     openMetroAtlasLivePage();
   }
@@ -304,7 +304,9 @@ export function stopMetroAtlasSession(): boolean {
   const startedAt = sessionStartedAt ?? Date.now();
   const duration = formatSessionDuration(startedAt);
   sessionPhase = "rendering";
-  console.log(`[Mockifyer] Atlas capture stopped (${duration}).`);
+  console.log(
+    `[Mockifyer] Atlas capture stopped (${duration}) — Mockifyer turns off again if it was off before press t.`,
+  );
   Promise.resolve()
     .then(() => onSessionStop())
     .catch((err: unknown) => {
@@ -527,7 +529,7 @@ export function attachMetroAtlasKeyHandler(
     const parts: string[] = [];
     if (atlasKey) {
       parts.push(
-        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer; start opens live stream; Render docs on the page writes HTML)`,
+        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer if off, restores off on stop; start opens live stream; Render docs on the page writes HTML)`,
       );
     }
     if (parts.length > 0) {

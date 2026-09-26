@@ -2,6 +2,9 @@
  * When Metro Atlas capture is active (press `t` / stream connect), enable the
  * registered Mockifyer runtime toggle so hops are recorded even with
  * `runtimeMode: 'manual'` (starts disabled).
+ *
+ * If Mockifyer was off when capture started, it is turned off again when capture
+ * stops. If it was already on, stop leaves it on.
  */
 import { logger } from './logger';
 import {
@@ -24,31 +27,39 @@ export interface MetroAtlasSessionStatus {
   capturing: boolean;
 }
 
-let syncTimer: ReturnType<typeof setInterval> | null = null;
-/** Avoid re-logging / re-calling enable on every poll while capture stays active. */
-let lastActivatedForCapture = false;
-
-let registeredToggle: Pick<
+export type MetroAtlasRuntimeSyncToggle = Pick<
   MockifyerClientIdRuntime,
-  'enableMockifyer' | 'isMockifyerEnabled'
-> | null = null;
+  'enableMockifyer' | 'disableMockifyer' | 'isMockifyerEnabled'
+>;
+
+let syncTimer: ReturnType<typeof setInterval> | null = null;
+/**
+ * True after we have handled the current capture period (enable or leave-as-is).
+ * Resets when capture is no longer active.
+ */
+let captureSessionHandled = false;
+/**
+ * True when this capture session called enableMockifyer because Mockifyer was off.
+ * When set, stop capture calls disableMockifyer again.
+ */
+let autoEnabledForAtlasCapture = false;
+
+let registeredToggle: MetroAtlasRuntimeSyncToggle | null = null;
 
 /** Called from {@link registerMockifyerInstance} when enable APIs are present. */
 export function setRegisteredMockifyerRuntimeToggle(
-  instance: Pick<MockifyerClientIdRuntime, 'enableMockifyer' | 'isMockifyerEnabled'> | null
+  instance: MetroAtlasRuntimeSyncToggle | null
 ): void {
   registeredToggle = instance;
 }
 
-export function getRegisteredMockifyerRuntimeToggle(): Pick<
-  MockifyerClientIdRuntime,
-  'enableMockifyer' | 'isMockifyerEnabled'
-> | null {
+export function getRegisteredMockifyerRuntimeToggle(): MetroAtlasRuntimeSyncToggle | null {
   return registeredToggle;
 }
 
 export function clearMetroAtlasRuntimeSyncState(): void {
-  lastActivatedForCapture = false;
+  captureSessionHandled = false;
+  autoEnabledForAtlasCapture = false;
 }
 
 function clearSyncTimer(): void {
@@ -89,9 +100,31 @@ export function parseMetroAtlasSessionStatus(body: unknown): MetroAtlasSessionSt
   };
 }
 
+function maybeDisableAfterAtlasCapture(toggle: MetroAtlasRuntimeSyncToggle): boolean {
+  if (!autoEnabledForAtlasCapture) {
+    captureSessionHandled = false;
+    return false;
+  }
+  const disable = toggle.disableMockifyer;
+  autoEnabledForAtlasCapture = false;
+  captureSessionHandled = false;
+  if (typeof disable !== 'function') {
+    return false;
+  }
+  disable();
+  logger.info(
+    '[Mockifyer] Atlas capture stopped — Mockifyer disabled again (was off before press t)',
+  );
+  return true;
+}
+
 /**
- * Fetch Atlas session from Metro and enable Mockifyer when capture is active.
- * @returns true when enableMockifyer() was called this tick
+ * Fetch Atlas session from Metro and sync the runtime toggle:
+ * - capturing + was off → enableMockifyer
+ * - stop + we auto-enabled → disableMockifyer
+ * - was already on → leave enabled when capture stops
+ *
+ * @returns true when enable or disable was called this tick
  */
 export async function syncMockifyerFromMetroAtlasSession(options?: {
   metroBaseUrl?: string;
@@ -141,30 +174,32 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
   }
 
   if (!status?.activateMockifyer) {
-    lastActivatedForCapture = false;
+    return maybeDisableAfterAtlasCapture(toggle);
+  }
+
+  if (captureSessionHandled) {
     return false;
   }
 
   const isEnabled = toggle.isMockifyerEnabled;
   if (typeof isEnabled === 'function' && isEnabled()) {
-    lastActivatedForCapture = true;
-    return false;
-  }
-
-  if (lastActivatedForCapture) {
+    // Already on before / during this press — do not disable when capture stops.
+    captureSessionHandled = true;
+    autoEnabledForAtlasCapture = false;
     return false;
   }
 
   enable();
-  lastActivatedForCapture = true;
+  captureSessionHandled = true;
+  autoEnabledForAtlasCapture = true;
   logger.info(
-    '[Mockifyer] Atlas capture active — Mockifyer enabled (Metro press t started tracing)',
+    '[Mockifyer] Atlas capture active — Mockifyer enabled (Metro press t; will disable again when you stop)',
   );
   return true;
 }
 
 /**
- * Start background polling of Metro Atlas session → enableMockifyer when capturing.
+ * Start background polling of Metro Atlas session → enable/disable Mockifyer with capture.
  * No-op when Metro stream base URL is unset. Safe to call repeatedly.
  */
 export function startMetroAtlasRuntimeSync(options?: {

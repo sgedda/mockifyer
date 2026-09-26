@@ -9,6 +9,8 @@ export interface MockifyerClientIdRuntime {
   setClientId: (lane: string) => void;
   /** Optional — used by Metro Atlas (`t`) to auto-enable when capture starts. */
   enableMockifyer?: () => void;
+  /** Optional — restore off when Atlas stop ends a session that auto-enabled. */
+  disableMockifyer?: () => void;
   /** Optional — skip enable when already on. */
   isMockifyerEnabled?: () => boolean;
 }
