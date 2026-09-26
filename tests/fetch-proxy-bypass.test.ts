@@ -302,4 +302,62 @@ describe('fetch proxy bypass', () => {
     expect(hop!.source).toBe('mock-hit');
     expect(hop!.transport).toBe('proxy');
   });
+
+  it('re-emits underlying service hops from a proxy mock hit trace', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'redis',
+        hash: 'abc123def',
+        response: {
+          status: 200,
+          data: {
+            users: [{ id: 1 }],
+            mockifyerTrace: {
+              requestId: 'parent-hop',
+              hopCount: 1,
+              incomplete: false,
+              hops: [
+                {
+                  index: 0,
+                  requestId: 'child-hop',
+                  parentRequestId: 'parent-hop',
+                  method: 'GET',
+                  url: 'https://downstream.example/items',
+                  status: 200,
+                  source: 'upstream',
+                  transport: 'fetch',
+                  responseBodyPreview: '{"ok":true}',
+                },
+              ],
+            },
+          },
+          headers: { 'x-mockifyer': 'true' },
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      networkLog: { enabled: false, captureBodies: true, flightRecorder: { enabled: true } },
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/users');
+
+    expect(response.data).toEqual({ users: [{ id: 1 }] });
+    expect(response.data).not.toHaveProperty('mockifyerTrace');
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const hops = getRecentFlightHops({ limit: 10 });
+    const child = hops.find((h) => h.url.includes('downstream.example/items'));
+    expect(child).toBeDefined();
+    expect(child!.requestId).toBe('child-hop');
+    expect(child!.parentRequestId).toBe('parent-hop');
+    expect(child!.responseBodyPreview).toContain('ok');
+  });
 });

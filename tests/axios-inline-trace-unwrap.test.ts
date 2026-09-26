@@ -166,4 +166,64 @@ describe('axios recordMode=false inline-trace unwrap', () => {
 
     expect(response.data).toEqual('ok');
   });
+
+  it('records underlying hops when activationMode is client_id_header and the inbound lane opted in', async () => {
+    const url = 'https://downstream.example/items';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+    upstream.onGet(url).reply(200, { items: [{ id: 1 }] });
+
+    const client = setupMockifyer({
+      mockDataPath,
+      recordMode: false,
+      failOnMissingMock: false,
+      activationMode: 'client_id_header',
+      axiosInstance,
+      networkLog: { captureBodies: false },
+    });
+
+    const ctx: MockifyerHopContext = {
+      inboundClientId: 'lane-from-caller',
+      correlation: { requestId: 'bff-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: true,
+      inlineHops: [],
+    };
+
+    const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
+
+    expect(response.data).toEqual({ items: [{ id: 1 }] });
+    const trace = buildInlineRequestTrace(ctx);
+    expect(trace).not.toBeNull();
+    expect(trace!.hops.map((hop) => hop.url)).toEqual([url]);
+    expect(trace!.hops[0].responseBodyPreview).toContain('items');
+    expect(trace!.hops[0].parentRequestId).toBe('bff-root');
+  });
+
+  it('skips underlying hops for client_id_header when no inbound lane or header is present', async () => {
+    const url = 'https://downstream.example/skipped';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+    upstream.onGet(url).reply(200, { items: [] });
+
+    const client = setupMockifyer({
+      mockDataPath,
+      recordMode: false,
+      failOnMissingMock: false,
+      activationMode: 'client_id_header',
+      axiosInstance,
+    });
+
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'bff-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: true,
+      inlineHops: [],
+    };
+
+    const response = await runWithMockifyerHopContext(ctx, () => client.get(url));
+
+    expect(response.data).toEqual({ items: [] });
+    expect(buildInlineRequestTrace(ctx)?.hops ?? []).toEqual([]);
+  });
 });

@@ -1,4 +1,5 @@
 import { ENV_VARS, type MockifyerActivationMode, type MockifyerConfig } from '../types';
+import { getActiveInboundClientId } from './hop-context';
 import { getOutboundHeaderValue } from './outbound-header';
 
 /** Canonical outbound header: presence (non-empty) gates Mockifyer when `activationMode` is `client_id_header`. */
@@ -45,6 +46,13 @@ export function shouldApplyMockifyer(
     return true;
   }
   if (getOutboundMockifyerClientIdHeader(requestHeaders) !== undefined) {
+    return true;
+  }
+  // Services with client_id_header often call downstream without copying the header
+  // onto each client config. The inbound lane already opted this request in, so
+  // those hops stay in the inline trace (and the header is stamped before send).
+  const inboundLane = getActiveInboundClientId()?.trim();
+  if (inboundLane) {
     return true;
   }
   const lane = options?.useProxyLane;
