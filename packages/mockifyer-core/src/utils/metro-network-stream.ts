@@ -411,3 +411,8 @@ function isLikelyReactNativeRuntime(): boolean {
 export function joinMetroNetworkEventsUrl(metroBaseUrl: string): string {
   return `${trimTrailingSlashes(metroBaseUrl)}/mockifyer-network-events`;
 }
+
+/** Metro Atlas session status (phase / activateMockifyer) for app-side runtime sync. */
+export function joinMetroAtlasSessionUrl(metroBaseUrl: string): string {
+  return `${trimTrailingSlashes(metroBaseUrl)}/mockifyer-atlas-session`;
+}

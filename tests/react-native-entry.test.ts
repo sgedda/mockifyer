@@ -11,6 +11,8 @@ import {
   resolveRuntimeEnabledStorage,
   scheduleRuntimeDateSyncFromConfig,
   shouldActivateMockifyerForReactNative,
+  startMetroAtlasRuntimeSync,
+  syncMockifyerFromMetroAtlasSession,
   tryGetScenarioFromLaunchArguments,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
@@ -33,6 +35,8 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof arePoolRefsEnabled).toBe('function');
     expect(typeof containsPoolRefs).toBe('function');
     expect(typeof collectPoolRefIds).toBe('function');
+    expect(typeof startMetroAtlasRuntimeSync).toBe('function');
+    expect(typeof syncMockifyerFromMetroAtlasSession).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {

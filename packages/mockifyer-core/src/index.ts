@@ -68,6 +68,7 @@ export * from './utils/graphql-body-display';
 export * from './utils/network-body-spill';
 export * from './utils/network-trace';
 export * from './utils/metro-network-stream';
+export * from './utils/metro-atlas-runtime-sync';
 export * from './utils/metro-network-stream-tty';
 export * from './utils/hop-chain';
 export * from './utils/atlas';

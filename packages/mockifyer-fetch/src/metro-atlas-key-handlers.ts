@@ -1,10 +1,11 @@
 /**
  * Metro terminal keys for Mockifyer:
- * - `t` (default): start/stop Atlas capture (stop generates HTML)
+ * - `t` (default): start/stop Atlas capture (stop generates HTML) and activate Mockifyer
  * - `m` (default): open the Mockifyer dashboard in the browser
  *
  * Opening `mockifyer-atlas` (SSE `/mockifyer-network-events/stream`) auto-starts
  * capture when idle — then press `t` once to stop & generate.
+ * Starting capture also signals the app to call `enableMockifyer()` (for `runtimeMode: 'manual'`).
  *
  * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
  * Disable Atlas with `atlasKey: false`, dashboard with `dashboardKey: false`.
@@ -237,11 +238,11 @@ export function startMetroAtlasSession(
 
   if (reason === "stream") {
     console.log(
-      `[Mockifyer] Atlas capture started (stream connected) — press ${key} to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated. Press ${key} to stop & generate HTML.`,
     );
   } else {
     console.log(
-      `[Mockifyer] Atlas capture started — press ${key} again to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started — Mockifyer activated. Press ${key} again to stop & generate HTML.`,
     );
   }
   return true;
@@ -481,7 +482,7 @@ export function attachMetroAtlasKeyHandler(
     const parts: string[] = [];
     if (atlasKey) {
       parts.push(
-        `Press ${atlasKey} to start/stop Atlas capture (stop generates HTML; stream auto-starts)`,
+        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer; stop generates HTML; stream auto-starts)`,
       );
     }
     if (effectiveDashboardKey && dashboardUrl) {
