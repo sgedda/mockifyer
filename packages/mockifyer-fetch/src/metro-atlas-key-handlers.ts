@@ -238,11 +238,11 @@ export function startMetroAtlasSession(
 
   if (reason === "stream") {
     console.log(
-      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated. Press ${key} to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started (stream connected) — Mockifyer activated (turns off again on stop if it was off). Press ${key} to stop & generate HTML.`,
     );
   } else {
     console.log(
-      `[Mockifyer] Atlas capture started — Mockifyer activated. Press ${key} again to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started — Mockifyer activated (turns off again on stop if it was off). Press ${key} again to stop & generate HTML.`,
     );
   }
   return true;
@@ -261,7 +261,7 @@ export function stopMetroAtlasSession(): boolean {
   const duration = formatSessionDuration(startedAt);
   sessionPhase = "rendering";
   console.log(
-    `[Mockifyer] Atlas capture stopped (${duration}) — generating HTML…`,
+    `[Mockifyer] Atlas capture stopped (${duration}) — generating HTML… (Mockifyer turns off again if it was off before press t)`,
   );
   Promise.resolve()
     .then(() => onSessionStop())
@@ -482,7 +482,7 @@ export function attachMetroAtlasKeyHandler(
     const parts: string[] = [];
     if (atlasKey) {
       parts.push(
-        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer; stop generates HTML; stream auto-starts)`,
+        `Press ${atlasKey} to start/stop Atlas capture (activates Mockifyer if off, restores off on stop; stop generates HTML; stream auto-starts)`,
       );
     }
     if (effectiveDashboardKey && dashboardUrl) {
