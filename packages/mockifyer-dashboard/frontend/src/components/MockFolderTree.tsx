@@ -409,11 +409,12 @@ function FolderSection({
 
       if (!upstreamAllowed) {
         if (upstreamBlockExact) {
-          // Clear explicit block; if a parent still blocks, set explicit allow on this path.
-          if (
-            allowUpstreamOverride &&
-            allowUpstreamOverride.domainPath !== domainPath.trim()
-          ) {
+          // Clear explicit block; check if a parent would still block by simulating removal.
+          const rulesWithoutCurrent = { ...domainTreeMode.pathRules }
+          delete rulesWithoutCurrent[domainPath.trim()]
+          const parentOverride = findEffectiveAllowUpstreamOverride(domainPath, rulesWithoutCurrent)
+          // If a parent would still block, set explicit allow; otherwise just clear the block.
+          if (parentOverride?.allowUpstream === false) {
             rule = { ...base, allowUpstream: true }
           } else {
             rule = { ...base }

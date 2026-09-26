@@ -392,33 +392,45 @@ export function findLongestDomainPathAllowUpstreamOverride(
 ): { domainPath: string; allowUpstream: boolean } | null {
   if (!rules || typeof rules !== 'object') return null;
 
-  let requestPath: string | null;
+  let discoveryPath: string | null = null;
+  let exactPath: string | null = null;
   if (options?.treatAsFolderPath) {
-    requestPath = urlOrFolderPath.trim().replace(/^\/+|\/+$/g, '') || null;
+    discoveryPath = urlOrFolderPath.trim().replace(/^\/+|\/+$/g, '') || null;
   } else {
     const resolved = resolveOutboundUrl(urlOrFolderPath, null) ?? urlOrFolderPath.trim();
-    requestPath =
-      normalizeDomainPathForDiscovery(resolved, null) ?? endpointUrlToDomainPath(resolved);
+    discoveryPath = normalizeDomainPathForDiscovery(resolved, null);
+    exactPath = endpointUrlToDomainPath(resolved);
   }
-  if (!requestPath) return null;
 
-  const normalized = requestPath.trim().replace(/^\/+|\/+$/g, '');
-  if (!normalized) return null;
+  const findBest = (path: string | null) => {
+    if (!path) return null;
+    const normalized = path.trim().replace(/^\/+|\/+$/g, '');
+    if (!normalized) return null;
 
-  let best: { domainPath: string; allowUpstream: boolean; len: number } | null = null;
-  for (const [domainPath, rule] of Object.entries(rules)) {
-    if (!domainPath.trim() || !rule || typeof rule !== 'object') continue;
-    if (typeof rule.allowUpstream !== 'boolean') continue;
-    const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '');
-    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
-      if (!best || prefix.length > best.len) {
-        best = { domainPath: prefix, allowUpstream: rule.allowUpstream, len: prefix.length };
+    let best: { domainPath: string; allowUpstream: boolean; len: number } | null = null;
+    for (const [domainPath, rule] of Object.entries(rules)) {
+      if (!domainPath.trim() || !rule || typeof rule !== 'object') continue;
+      if (typeof rule.allowUpstream !== 'boolean') continue;
+      const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '');
+      if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+        if (!best || prefix.length > best.len) {
+          best = { domainPath: prefix, allowUpstream: rule.allowUpstream, len: prefix.length };
+        }
       }
     }
-  }
-  return best
-    ? { domainPath: best.domainPath, allowUpstream: best.allowUpstream }
-    : null;
+    return best;
+  };
+
+  const discoveryBest = findBest(discoveryPath);
+  const exactBest = findBest(exactPath);
+
+  if (!discoveryBest && !exactBest) return null;
+  if (!discoveryBest) return exactBest ? { domainPath: exactBest.domainPath, allowUpstream: exactBest.allowUpstream } : null;
+  if (!exactBest) return { domainPath: discoveryBest.domainPath, allowUpstream: discoveryBest.allowUpstream };
+
+  return discoveryBest.len >= exactBest.len
+    ? { domainPath: discoveryBest.domainPath, allowUpstream: discoveryBest.allowUpstream }
+    : { domainPath: exactBest.domainPath, allowUpstream: exactBest.allowUpstream };
 }
 
 /**
