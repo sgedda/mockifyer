@@ -1904,6 +1904,14 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
     const originalFetchForPatched = (global as any).__mockifyer_original_fetch || originalFetch;
     
     global.fetch = async function(input: string | Request | URL, init?: RequestInit): Promise<Response> {
+      // Disabled means the real network: do not rebuild the call. The interceptor
+      // bypass flag still runs FetchHTTPClient, which JSON.parses `{`/`[` bodies
+      // (throwing on invalid JSON), JSON.stringifies FormData/Blob/URLSearchParams,
+      // and drops credentials, abort signals, and Request-only method/headers/body.
+      if (!mockifyerInstance.isMockifyerEnabled()) {
+        return await originalFetchForPatched(input, init);
+      }
+
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method || 'GET';
       const headers = init?.headers || {};
