@@ -290,6 +290,75 @@ describe('Runtime Mockifyer Toggle', () => {
     });
   });
 
+  describe('disabled global fetch', () => {
+    const realOriginalFetch = global.fetch;
+
+    afterEach(() => {
+      (global as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+        realOriginalFetch;
+      global.fetch = realOriginalFetch;
+    });
+
+    it('forwards the original input and init without rewriting the body', async () => {
+      const calls: Array<{ input: unknown; init: unknown }> = [];
+      const original = jest.fn(async (input: unknown, init?: unknown) => {
+        calls.push({ input, init });
+        return new Response('upstream', { status: 200 });
+      });
+      (global as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+        original as unknown as typeof fetch;
+
+      const disabled = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: true,
+        startDisabled: true,
+      });
+      expect(disabled.isMockifyerEnabled()).toBe(false);
+
+      const init = {
+        method: 'POST',
+        body: '{not-json',
+        credentials: 'include' as const,
+        headers: { 'X-Test': '1' },
+      };
+      const response = await fetch('https://api.example.com/upload', init);
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('upstream');
+      expect(calls).toEqual([{ input: 'https://api.example.com/upload', init }]);
+    });
+
+    it('forwards a Request object unchanged, including after a runtime disable', async () => {
+      const calls: Array<{ input: unknown; init: unknown }> = [];
+      const original = jest.fn(async (input: unknown, init?: unknown) => {
+        calls.push({ input, init });
+        return new Response('ok', { status: 200 });
+      });
+      (global as { __mockifyer_original_fetch?: typeof fetch }).__mockifyer_original_fetch =
+        original as unknown as typeof fetch;
+
+      const instance = setupMockifyer({
+        mockDataPath: './mock-data',
+        databaseProvider: { type: 'memory' },
+        useGlobalFetch: true,
+      });
+      instance.disableMockifyer();
+
+      const request = new Request('https://api.example.com/items', {
+        method: 'PUT',
+        body: 'raw-body',
+        headers: { 'content-type': 'text/plain' },
+      });
+      const response = await fetch(request);
+
+      expect(response.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0].input).toBe(request);
+      expect(calls[0].init).toBeUndefined();
+    });
+  });
+
   describe('shouldActivateMockifyerForReactNative', () => {
     it('does not activate launch_client when only scenario is present (client id required)', () => {
       expect(
