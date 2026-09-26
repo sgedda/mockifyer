@@ -27,6 +27,25 @@ describe('networkLog includeTraceHeader wiring', () => {
     ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
   });
 
+  it('resolveNetworkLogIncludeTraceOptions follows an active Metro Atlas stream', () => {
+    const prev = process.env.MOCKIFYER_METRO_STREAM;
+    process.env.MOCKIFYER_METRO_STREAM = 'on';
+    try {
+      expect(resolveNetworkLogIncludeTraceOptions({})).toEqual({
+        includeInlineTrace: true,
+        includeInlineTraceBodies: true,
+      });
+      expect(
+        resolveNetworkLogIncludeTraceOptions({
+          networkLog: { includeTraceHeader: false },
+        })
+      ).toEqual({ includeInlineTrace: false, includeInlineTraceBodies: false });
+    } finally {
+      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
+      else process.env.MOCKIFYER_METRO_STREAM = prev;
+    }
+  });
+
   it('applyOutboundRequestCorrelation stamps include-trace headers from options', () => {
     const config: { headers: Record<string, string> } = { headers: {} };
     applyOutboundRequestCorrelation(config, {

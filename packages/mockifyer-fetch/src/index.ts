@@ -1118,6 +1118,9 @@ class MockifyerClass {
               this.readRequestCorrelation(response.config)
             );
           }
+          // Mock hits return before the upstream path. Still emit nested service
+          // hops and strip mockifyerTrace so the caller sees the business body.
+          this.unwrapResponseInlineTrace(response);
           return response;
         }
 

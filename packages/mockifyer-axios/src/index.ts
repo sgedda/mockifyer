@@ -184,6 +184,14 @@ class MockifyerClass {
     });
   }
 
+  /**
+   * Emit nested service hops from an inline trace and leave the business body
+   * on `response.data`. Used by the global axios interceptor (outside this class).
+   */
+  unwrapLoggedResponseTrace(response: { data?: unknown; config?: unknown }): void {
+    this.unwrapResponseInlineTrace(response);
+  }
+
   private unwrapResponseInlineTrace(response: {
     data?: unknown;
     config?: unknown;
@@ -1078,8 +1086,10 @@ class MockifyerClass {
         return response;
       }
 
-      // Adapter-served mocks already logged as mock-hit; nothing to unwrap.
+      // Adapter-served mocks are already logged as mock-hit. Still unwrap nested
+      // service hops that arrived on the body (proxy replay / include-trace).
       if (this.responseHasMockifyerMarker(response)) {
+        this.unwrapResponseInlineTrace(response);
         return response;
       }
 
@@ -1677,6 +1687,7 @@ class MockifyerClass {
         
         if (isMocked || isLimitReached) {
           logger.debug('[Mockifyer] ✅ Skipping recording - this is a mocked response' + (isLimitReached ? ' (limit reached)' : ''));
+          this.unwrapResponseInlineTrace(response);
           return response;
         } else {
           logger.warn('[Mockifyer] ⚠️ Response is NOT mocked, will record it');
@@ -2569,6 +2580,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               
               if (isMocked) {
                 logger.debug('[Mockifyer] ✅ Global axios interceptor: Skipping recording - this is a mocked response');
+                mockifyer.unwrapLoggedResponseTrace(axiosResponse);
                 return axiosResponse;
               }
               

@@ -376,14 +376,24 @@ export interface EmitMockifyerNetworkEventParams {
   responseBody?: unknown;
 }
 
-/** Read include-trace flags from Mockifyer config (RN / client outbound opt-in). */
+/**
+ * Read include-trace flags from Mockifyer config (RN / client outbound opt-in).
+ *
+ * An active Metro hop stream (Atlas `t` capture) requests nested hops and body
+ * previews unless the matching flag is explicitly `false`.
+ */
 export function resolveNetworkLogIncludeTraceOptions(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): { includeInlineTrace: boolean; includeInlineTraceBodies: boolean } {
-  return {
-    includeInlineTrace: config?.networkLog?.includeTraceHeader === true,
-    includeInlineTraceBodies: config?.networkLog?.includeTraceBodies === true,
-  };
+  const metroAtlas = resolveMetroNetworkStreamBaseUrl() != null;
+  const includeInlineTrace =
+    config?.networkLog?.includeTraceHeader === true ||
+    (config?.networkLog?.includeTraceHeader !== false && metroAtlas);
+  const includeInlineTraceBodies =
+    includeInlineTrace &&
+    (config?.networkLog?.includeTraceBodies === true ||
+      (config?.networkLog?.includeTraceBodies !== false && metroAtlas));
+  return { includeInlineTrace, includeInlineTraceBodies };
 }
 
 /**
@@ -458,8 +468,11 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
   const recorderConfig = resolveFlightRecorderConfig(params.config);
   configureFlightRecorder(recorderConfig);
 
-  const captureBodies = resolveNetworkLogCaptureBodies(params.config);
-  const spillBodies = resolveNetworkLogSpillBodies(params.config);
+  const dashboardCaptureBodies = resolveNetworkLogCaptureBodies(params.config);
+  /** Local Atlas/Metro stream keeps bodies even when the dashboard privacy flag is off. */
+  const captureBodies =
+    dashboardCaptureBodies || resolveMetroNetworkStreamBaseUrl() != null;
+  const spillBodies = captureBodies && params.config.networkLog?.spillBodies !== false;
   setNetworkBodySpillEnabled(spillBodies);
   const dashboardBaseUrl = resolveNetworkLogDashboardUrl(params.config);
 
@@ -533,7 +546,7 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
 
   emitNetworkLogEvent({
     dashboardBaseUrl,
-    captureBodies,
+    captureBodies: dashboardCaptureBodies,
     event: built,
   });
 }

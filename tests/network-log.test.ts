@@ -71,6 +71,33 @@ describe('network-log', () => {
     expect(toNetworkLogBodyPreview({ ok: true })).toContain('ok');
   });
 
+  it('emitMockifyerNetworkEvent keeps body previews for the Metro Atlas stream when dashboard capture is off', async () => {
+    const prev = process.env.MOCKIFYER_METRO_STREAM;
+    process.env.MOCKIFYER_METRO_STREAM = 'on';
+    configureFlightRecorder({ enabled: true, maxEvents: 20 });
+    clearFlightRecorder();
+    try {
+      emitMockifyerNetworkEvent({
+        config: { networkLog: { enabled: true, captureBodies: false } },
+        scenario: 'default',
+        responseBody: { users: [{ id: 1 }] },
+        event: {
+          method: 'GET',
+          url: 'https://api.example.com/users',
+          source: 'mock-hit',
+          status: 200,
+          transport: 'fetch',
+        },
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      const [event] = __flightRecorderBuffersForTests().network;
+      expect(event?.responseBodyPreview).toContain('users');
+    } finally {
+      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
+      else process.env.MOCKIFYER_METRO_STREAM = prev;
+    }
+  });
+
   it('emitMockifyerNetworkEvent captures a short preview after the response turn', async () => {
     configureFlightRecorder({ enabled: true, maxEvents: 20 });
     clearFlightRecorder();

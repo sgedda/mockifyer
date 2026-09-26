@@ -2,7 +2,7 @@
  * When Mockifyer applies mock lookup / recording to an outbound HTTP request.
  *
  * - **`always`** — Every request (default; historical behavior).
- * - **`client_id_header`** — Only when the outbound request includes a non-empty `X-Mockifyer-Client-Id` header (propagate from another service or set manually, e.g. Postman).
+ * - **`client_id_header`** — When the outbound request includes a non-empty `X-Mockifyer-Client-Id`, or the current inbound request already carried that header (so a service's own downstream calls stay on the trace).
  * - **`off`** — Never; passthrough with no mock lookup and no recording.
  */
 export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
@@ -85,7 +85,7 @@ export interface MockifyerConfig {
    * | Mode | Behavior |
    * |------|----------|
    * | `always` (default) | All requests use Mockifyer (still subject to `excludedUrls` and internal bypasses). |
-   * | `client_id_header` | Only if the request has a **non-empty** `X-Mockifyer-Client-Id` header, **or** (fetch + dashboard proxy only) a configured `proxy.baseUrl` and resolved `clientId` so the lane is sent on the proxy envelope. |
+   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit the opt-in), **or** (fetch + dashboard proxy) a configured `proxy.baseUrl` and resolved `clientId`. |
    * | `off` | Mockifyer does not intercept; plain HTTP. |
    *
    * Env **`MOCKIFYER_ACTIVATION_MODE`** overrides this when set to `always`, `client_id_header`, or `off`.
@@ -277,6 +277,8 @@ export interface MockifyerConfig {
      * When true, stamp `X-Mockifyer-Include-Trace: 1` on outbound hops so downstream
      * Mockifyer services return `{ data, mockifyerTrace: { hops } }`. Child hops are
      * re-emitted into the network log / Metro Atlas stream with `parentRequestId`.
+     * When omitted, an active Metro hop stream (Atlas capture) turns this on.
+     * Set `false` to keep it off even while that stream is running.
      */
     includeTraceHeader?: boolean;
     /**

@@ -678,23 +678,30 @@ export interface MockifyerErrorHandlerOptions {
   sendJsonResponse?: boolean;
 }
 
-const NODE_INBOUND_CAPTURE_INSTALLED = Symbol.for(
-  '@sgedda/mockifyer-core.nodeInboundCaptureInstalled'
-);
 const NODE_INBOUND_EMIT_PATCHED = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitPatched');
+const NODE_INBOUND_EMIT_OWNER = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitOwner');
+const NODE_INBOUND_EMIT_ORIGINAL = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitOriginal');
+/**
+ * Per module instance. Jest runs test files in separate realms that share
+ * `http.Server.prototype`, so a patch installed by another copy must be replaced
+ * or inbound AsyncLocalStorage never reaches that file's handlers.
+ */
+const inboundEmitPatchOwner = {};
 
-function isNodeInboundCaptureInstalled(): boolean {
-  return Boolean(
-    (globalThis as typeof globalThis & { [NODE_INBOUND_CAPTURE_INSTALLED]?: boolean })[
-      NODE_INBOUND_CAPTURE_INSTALLED
-    ]
-  );
-}
+type InboundPatchedEmit = ((event: string, ...args: unknown[]) => boolean) & {
+  [NODE_INBOUND_EMIT_PATCHED]?: boolean;
+  [NODE_INBOUND_EMIT_OWNER]?: object;
+  [NODE_INBOUND_EMIT_ORIGINAL]?: InboundPatchedEmit;
+};
 
-function markNodeInboundCaptureInstalled(): void {
-  (globalThis as typeof globalThis & { [NODE_INBOUND_CAPTURE_INSTALLED]?: boolean })[
-    NODE_INBOUND_CAPTURE_INSTALLED
-  ] = true;
+function unwrapInboundEmit(emitFn: InboundPatchedEmit | undefined): InboundPatchedEmit | undefined {
+  let current = emitFn;
+  const seen = new Set<unknown>();
+  while (current?.[NODE_INBOUND_EMIT_ORIGINAL] && !seen.has(current)) {
+    seen.add(current);
+    current = current[NODE_INBOUND_EMIT_ORIGINAL];
+  }
+  return current;
 }
 
 function resolveInboundRequestUrl(req: {
@@ -728,14 +735,13 @@ function resolveInboundRequestUrl(req: {
 
 function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => unknown }): void {
   const prototype = serverModule.Server.prototype as {
-    emit: ((event: string, ...args: unknown[]) => boolean) & {
-      [NODE_INBOUND_EMIT_PATCHED]?: boolean;
-    };
+    emit: InboundPatchedEmit;
   };
-  if (prototype.emit?.[NODE_INBOUND_EMIT_PATCHED]) {
+  const existing = prototype.emit;
+  if (existing?.[NODE_INBOUND_EMIT_OWNER] === inboundEmitPatchOwner) {
     return;
   }
-  const originalEmit = prototype.emit;
+  const originalEmit = unwrapInboundEmit(existing) ?? existing;
 
   const patchedServerEmit = function patchedServerEmit(
     this: unknown,
@@ -798,8 +804,11 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
     }
     return originalEmit.apply(this, [event, ...args]);
   };
-  patchedServerEmit[NODE_INBOUND_EMIT_PATCHED] = true;
-  prototype.emit = patchedServerEmit;
+  const patched = patchedServerEmit as InboundPatchedEmit;
+  patched[NODE_INBOUND_EMIT_PATCHED] = true;
+  patched[NODE_INBOUND_EMIT_OWNER] = inboundEmitPatchOwner;
+  patched[NODE_INBOUND_EMIT_ORIGINAL] = originalEmit;
+  prototype.emit = patched;
 }
 
 /**
@@ -812,9 +821,6 @@ function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => u
  * {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
  */
 export function installNodeInboundRequestCorrelationCapture(): boolean {
-  if (isNodeInboundCaptureInstalled()) {
-    return true;
-  }
   if (typeof process === 'undefined' || !process.versions?.node) {
     return false;
   }
@@ -833,7 +839,6 @@ export function installNodeInboundRequestCorrelationCapture(): boolean {
     } catch {
       // https optional
     }
-    markNodeInboundCaptureInstalled();
     return true;
   } catch {
     return false;
