@@ -30,6 +30,7 @@ import {
   applyCapturedResponse,
   mockHasCapturableResponse,
   resolveRecordResponsesForRequest,
+  resolveAllowUpstreamForRequest,
   toNetworkLogBodyPreview,
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
@@ -357,9 +358,6 @@ router.post('/', async (req: Request, res: Response) => {
     ) {
       effectiveRecord = false;
     }
-    const effectiveAllowUpstream =
-      typeof allowUpstream === 'boolean' ? allowUpstream : proxyConfig?.allowUpstream ?? true;
-
     const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
     const laneDateDoc = clientId ? await store.getLaneDateConfig(clientId).catch(() => null) : null;
     const explicitManipulation = resolveExplicitDateManipulation({
@@ -435,6 +433,13 @@ router.post('/', async (req: Request, res: Response) => {
       fromBody: typeof recordResponsesFromBody === 'boolean' ? recordResponsesFromBody : undefined,
       fromScenario: proxyConfig?.recordResponses,
     });
+    const allowResolution = resolveAllowUpstreamForRequest({
+      url,
+      pathRules,
+      fromBody: typeof allowUpstream === 'boolean' ? allowUpstream : undefined,
+      fromScenario: proxyConfig?.allowUpstream,
+    });
+    const effectiveAllowUpstream = allowResolution.allowUpstream;
 
     if (mock && mockShouldServeStoredBody(mock as MockData)) {
       const sanitizedMock: any =
@@ -520,9 +525,13 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (!effectiveAllowUpstream) {
+      const blockedByPath = allowResolution.pathAllowUpstream === false;
+      const blockError = blockedByPath
+        ? `Upstream calls are disabled for domain/path "${allowResolution.matchedDomainPath}" (domain-path rule).`
+        : 'Upstream calls are disabled for this scenario (offline mode).';
       if (debugProxy) {
         console.log(
-          `[ProxyRoute] upstream blocked: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+          `[ProxyRoute] upstream blocked${blockedByPath ? ' (path rule)' : ''}: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
       await appendProxyNetworkEvent(networkLogCtx, {
@@ -535,7 +544,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         ...proxyNetworkBodyFields(body),
-        errorMessage: 'Upstream calls are disabled for this scenario (offline mode).',
+        errorMessage: blockError,
       });
       return res.status(412).json({
         proxied: false,
@@ -543,8 +552,11 @@ router.post('/', async (req: Request, res: Response) => {
         hash,
         clientId: clientId || null,
         deviceId: deviceId || null,
-        error: 'Upstream calls are disabled for this scenario (offline mode).',
+        error: blockError,
         scenarioResolution: resolution,
+        ...(blockedByPath && allowResolution.matchedDomainPath
+          ? { blockedDomainPath: allowResolution.matchedDomainPath }
+          : {}),
       });
     }
     const clientHeaderRecord = toRecordStringHeaders(headers);

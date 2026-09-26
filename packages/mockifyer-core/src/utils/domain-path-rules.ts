@@ -9,6 +9,12 @@ export interface DomainPathRule {
   recordResponses: boolean;
   /** When true with full recording, new mocks replay immediately (no alwaysUseRealApi). */
   autoMock?: boolean;
+  /**
+   * When `false`, proxy cache misses under this prefix are blocked (412) even if the
+   * scenario allows upstream. When `true`, explicitly re-allow under a blocked parent.
+   * When omitted, inherit the nearest ancestor rule that sets this field, else scenario.
+   */
+  allowUpstream?: boolean;
   updatedAt?: string;
 }
 
@@ -198,11 +204,15 @@ export function upsertDiscoveredDomainPathRule(
     if (rules[pathKey]) {
       return;
     }
-    rules[pathKey] = {
+    const next: DomainPathRule = {
       recordResponses: defaults.recordResponses === true,
       autoMock: defaults.autoMock === true,
       updatedAt: defaults.updatedAt,
     };
+    if (typeof defaults.allowUpstream === 'boolean') {
+      next.allowUpstream = defaults.allowUpstream;
+    }
+    rules[pathKey] = next;
     upserted.push(pathKey);
   };
 
@@ -272,11 +282,15 @@ export function mergeDomainPathRuleUpserts(
     if (typeof rule.recordResponses !== 'boolean') {
       continue;
     }
-    rules[key] = {
+    const next: DomainPathRule = {
       recordResponses: rule.recordResponses === true,
       autoMock: rule.autoMock === true,
       updatedAt: typeof rule.updatedAt === 'string' ? rule.updatedAt : undefined,
     };
+    if (typeof rule.allowUpstream === 'boolean') {
+      next.allowUpstream = rule.allowUpstream;
+    }
+    rules[key] = next;
     changed = true;
   }
   return { rules, changed };
@@ -367,6 +381,99 @@ export function resolveRecordResponsesForRequest(input: {
   return { recordResponses: false, matchedPathRule: null, matchedDomainPath: null };
 }
 
+/**
+ * Among matching host/path prefixes, pick the longest rule that defines `allowUpstream`.
+ * Used so a host-level block still applies under a child path that only sets record flags.
+ */
+export function findLongestDomainPathAllowUpstreamOverride(
+  urlOrFolderPath: string,
+  rules: DomainPathRulesMap | null | undefined,
+  options?: { treatAsFolderPath?: boolean }
+): { domainPath: string; allowUpstream: boolean } | null {
+  if (!rules || typeof rules !== 'object') return null;
+
+  let requestPath: string | null;
+  if (options?.treatAsFolderPath) {
+    requestPath = urlOrFolderPath.trim().replace(/^\/+|\/+$/g, '') || null;
+  } else {
+    const resolved = resolveOutboundUrl(urlOrFolderPath, null) ?? urlOrFolderPath.trim();
+    requestPath =
+      normalizeDomainPathForDiscovery(resolved, null) ?? endpointUrlToDomainPath(resolved);
+  }
+  if (!requestPath) return null;
+
+  const normalized = requestPath.trim().replace(/^\/+|\/+$/g, '');
+  if (!normalized) return null;
+
+  let best: { domainPath: string; allowUpstream: boolean; len: number } | null = null;
+  for (const [domainPath, rule] of Object.entries(rules)) {
+    if (!domainPath.trim() || !rule || typeof rule !== 'object') continue;
+    if (typeof rule.allowUpstream !== 'boolean') continue;
+    const prefix = domainPath.trim().replace(/^\/+|\/+$/g, '');
+    if (normalized === prefix || normalized.startsWith(`${prefix}/`)) {
+      if (!best || prefix.length > best.len) {
+        best = { domainPath: prefix, allowUpstream: rule.allowUpstream, len: prefix.length };
+      }
+    }
+  }
+  return best
+    ? { domainPath: best.domainPath, allowUpstream: best.allowUpstream }
+    : null;
+}
+
+/**
+ * Effective proxy allowUpstream for a request.
+ *
+ * Precedence: request body → scenario proxy config → default true, then AND with
+ * path override (`false` blocks; `true`/omitted do not override a scenario offline).
+ */
+export function resolveAllowUpstreamForRequest(input: {
+  url: string;
+  pathRules?: DomainPathRulesMap | null;
+  fromBody?: boolean;
+  fromScenario?: boolean;
+}): {
+  allowUpstream: boolean;
+  matchedDomainPath: string | null;
+  pathAllowUpstream: boolean | undefined;
+} {
+  const baseAllow =
+    typeof input.fromBody === 'boolean'
+      ? input.fromBody
+      : typeof input.fromScenario === 'boolean'
+        ? input.fromScenario
+        : true;
+
+  const pathOverride = findLongestDomainPathAllowUpstreamOverride(input.url, input.pathRules);
+  const pathAllowUpstream = pathOverride?.allowUpstream;
+
+  return {
+    allowUpstream: baseAllow && pathAllowUpstream !== false,
+    matchedDomainPath: pathOverride?.domainPath ?? null,
+    pathAllowUpstream,
+  };
+}
+
+/** Normalize a rule object for persistence (Redis / JSON file / API). */
+export function normalizeDomainPathRule(rule: {
+  recordResponses: boolean;
+  autoMock?: boolean;
+  allowUpstream?: boolean;
+  updatedAt?: string;
+}): DomainPathRule {
+  const next: DomainPathRule = {
+    recordResponses: rule.recordResponses === true,
+    autoMock: rule.autoMock === true,
+  };
+  if (typeof rule.allowUpstream === 'boolean') {
+    next.allowUpstream = rule.allowUpstream;
+  }
+  if (typeof rule.updatedAt === 'string') {
+    next.updatedAt = rule.updatedAt;
+  }
+  return next;
+}
+
 /** Parse a JSON object into a {@link DomainPathRulesMap}. */
 export function parseDomainPathRules(raw: unknown): DomainPathRulesMap {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -377,11 +484,12 @@ export function parseDomainPathRules(raw: unknown): DomainPathRulesMap {
     if (!val || typeof val !== 'object') continue;
     const r = val as Record<string, unknown>;
     if (typeof r.recordResponses !== 'boolean') continue;
-    out[domainPath] = {
+    out[domainPath] = normalizeDomainPathRule({
       recordResponses: r.recordResponses,
       autoMock: r.autoMock === true,
+      allowUpstream: typeof r.allowUpstream === 'boolean' ? r.allowUpstream : undefined,
       updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
-    };
+    });
   }
   return out;
 }

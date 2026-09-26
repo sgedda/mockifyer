@@ -15,6 +15,8 @@ import {
   resolveDomainPathRulesMode,
   resolveDomainPathTrafficGate,
   resolveRecordResponsesForRequest,
+  resolveAllowUpstreamForRequest,
+  findLongestDomainPathAllowUpstreamOverride,
   envRecordResponsesOverride,
   upsertDiscoveredDomainPathRule,
   writeDomainPathRulesFile,
@@ -74,6 +76,99 @@ describe('domain-path-rules', () => {
       pathRules: {},
     });
     expect(resolved.recordResponses).toBe(false);
+  });
+});
+
+describe('domain-path allowUpstream', () => {
+  it('blocks when path rule sets allowUpstream false even if scenario allows', () => {
+    const resolved = resolveAllowUpstreamForRequest({
+      url: 'https://api.foo.com/v1/orders',
+      pathRules: {
+        'api.foo.com': { recordResponses: true, autoMock: true, allowUpstream: false },
+      },
+      fromScenario: true,
+    });
+    expect(resolved.allowUpstream).toBe(false);
+    expect(resolved.pathAllowUpstream).toBe(false);
+    expect(resolved.matchedDomainPath).toBe('api.foo.com');
+  });
+
+  it('keeps other hosts allowed when only one host is blocked', () => {
+    const rules: DomainPathRulesMap = {
+      'api.foo.com': { recordResponses: false, allowUpstream: false },
+      'graphql.bar.com': { recordResponses: true, autoMock: true },
+    };
+    expect(
+      resolveAllowUpstreamForRequest({
+        url: 'https://api.foo.com/x',
+        pathRules: rules,
+        fromScenario: true,
+      }).allowUpstream
+    ).toBe(false);
+    expect(
+      resolveAllowUpstreamForRequest({
+        url: 'https://graphql.bar.com/graphql',
+        pathRules: rules,
+        fromScenario: true,
+      }).allowUpstream
+    ).toBe(true);
+  });
+
+  it('host-level block applies under a child rule that only sets record flags', () => {
+    const override = findLongestDomainPathAllowUpstreamOverride(
+      'https://api.foo.com/v1/users/1',
+      {
+        'api.foo.com': { recordResponses: true, allowUpstream: false },
+        'api.foo.com/v1/users': { recordResponses: false, autoMock: false },
+      }
+    );
+    expect(override).toEqual({ domainPath: 'api.foo.com', allowUpstream: false });
+    expect(
+      resolveAllowUpstreamForRequest({
+        url: 'https://api.foo.com/v1/users/1',
+        pathRules: {
+          'api.foo.com': { recordResponses: true, allowUpstream: false },
+          'api.foo.com/v1/users': { recordResponses: false, autoMock: false },
+        },
+        fromScenario: true,
+      }).allowUpstream
+    ).toBe(false);
+  });
+
+  it('child allowUpstream true re-allows under a blocked parent host', () => {
+    const resolved = resolveAllowUpstreamForRequest({
+      url: 'https://api.foo.com/health',
+      pathRules: {
+        'api.foo.com': { recordResponses: false, allowUpstream: false },
+        'api.foo.com/health': { recordResponses: false, allowUpstream: true },
+      },
+      fromScenario: true,
+    });
+    expect(resolved.allowUpstream).toBe(true);
+    expect(resolved.pathAllowUpstream).toBe(true);
+    expect(resolved.matchedDomainPath).toBe('api.foo.com/health');
+  });
+
+  it('scenario offline still wins over path allowUpstream true', () => {
+    const resolved = resolveAllowUpstreamForRequest({
+      url: 'https://api.foo.com/x',
+      pathRules: {
+        'api.foo.com': { recordResponses: false, allowUpstream: true },
+      },
+      fromScenario: false,
+    });
+    expect(resolved.allowUpstream).toBe(false);
+  });
+
+  it('request body false still blocks even without path rule', () => {
+    expect(
+      resolveAllowUpstreamForRequest({
+        url: 'https://api.foo.com/x',
+        pathRules: {},
+        fromBody: false,
+        fromScenario: true,
+      }).allowUpstream
+    ).toBe(false);
   });
 });
 

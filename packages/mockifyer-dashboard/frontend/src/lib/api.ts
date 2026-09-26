@@ -1024,6 +1024,8 @@ export async function bulkSetReplayMode(payload: {
 export interface DomainPathRule {
   recordResponses: boolean
   autoMock?: boolean
+  /** When false, proxy blocks upstream for this host/path even if the scenario allows it. */
+  allowUpstream?: boolean
   updatedAt?: string
 }
 
@@ -1043,7 +1045,7 @@ export async function fetchDomainPathRules(scenario: string): Promise<DomainPath
 export async function setDomainPathRule(payload: {
   scenario: string
   domainPath: string
-  rule: { recordResponses: boolean; autoMock?: boolean } | null
+  rule: { recordResponses: boolean; autoMock?: boolean; allowUpstream?: boolean } | null
 }): Promise<DomainPathRulesMap> {
   const response = await fetchApi(`${API_BASE}/mocks/domain-path-rules`, {
     method: 'POST',

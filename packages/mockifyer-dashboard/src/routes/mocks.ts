@@ -25,6 +25,7 @@ import {
   type PoolRef,
   formatGraphqlQueryForDisplay,
   isInboundParentStubMock,
+  normalizeDomainPathRule,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import {
@@ -872,14 +873,29 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
     }
     if (rule !== null && (typeof rule !== 'object' || typeof rule.recordResponses !== 'boolean')) {
-      return res.status(400).json({ error: 'rule must be null or { recordResponses: boolean, autoMock?: boolean }' });
+      return res.status(400).json({
+        error:
+          'rule must be null or { recordResponses: boolean, autoMock?: boolean, allowUpstream?: boolean }',
+      });
+    }
+    if (
+      rule !== null &&
+      rule.allowUpstream !== undefined &&
+      typeof rule.allowUpstream !== 'boolean'
+    ) {
+      return res.status(400).json({ error: 'rule.allowUpstream must be a boolean when provided' });
     }
 
     const scenarioName = scenario.trim();
     const normalizedRule =
       rule === null
         ? null
-        : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true };
+        : normalizeDomainPathRule({
+            recordResponses: rule.recordResponses,
+            autoMock: rule.autoMock === true,
+            allowUpstream:
+              typeof rule.allowUpstream === 'boolean' ? rule.allowUpstream : undefined,
+          });
 
     let rules: DomainPathRulesMap;
 
