@@ -21,8 +21,8 @@ try {
   pathMod = undefined;
 }
 
-/** Spill only starts above this size when `alwaysSpill` is false (legacy). Default always spills. */
-export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 2_048;
+/** Inline hop body preview budget (UTF-8). Full payloads still spill when larger. */
+export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 65_536;
 
 
 /** Do not spill bodies larger than this (UTF-8 bytes). */

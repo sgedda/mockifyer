@@ -8,6 +8,7 @@ import {
   captureInboundRequestCorrelation,
   createMockifyerCorrelationMiddleware,
   createMockifyerErrorHandler,
+  findHopRequestHeaders,
   getActiveInboundClientId,
   getActiveRequestCorrelation,
   getMockifyerRequestIdFromError,
@@ -19,6 +20,7 @@ import {
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_ERROR_PROP,
   MOCKIFYER_REQUEST_ID_HEADER,
@@ -45,6 +47,49 @@ describe('request-correlation', () => {
       inboundClientId: 'lane-a',
       correlation: { requestId: 'req-a', parentRequestId: 'req-root' },
     });
+  });
+
+  it('records outbound headers on the hop so Atlas can rebuild a curl', () => {
+    const config = {
+      method: 'POST',
+      url: 'https://api.example.test/v-2/authenticate',
+      headers: {
+        Authorization: 'Bearer real-token',
+        'Content-Type': 'application/json',
+      },
+    };
+    const hop = applyOutboundRequestCorrelation(config);
+    const headers = findHopRequestHeaders(hop.requestId);
+
+    expect(headers?.authorization).toBe('Bearer real-token');
+    expect(headers?.['content-type']).toBe('application/json');
+    // Mockifyer's own correlation header is part of the reproducible request.
+    expect(headers?.[MOCKIFYER_REQUEST_ID_HEADER]).toBe(hop.requestId);
+  });
+
+  it('captures Atlas Metro stream base on inbound and forwards it outbound', () => {
+    const ctx = captureInboundMockifyerContext({
+      [MOCKIFYER_CLIENT_ID_HEADER]: 'lane-atlas',
+      [MOCKIFYER_REQUEST_ID_HEADER]: 'gql-hop',
+      [MOCKIFYER_METRO_STREAM_BASE_HEADER]: 'http://localhost:8081/',
+    });
+    expect(ctx?.atlasMetroStreamBaseUrl).toBe('http://localhost:8081');
+
+    runWithMockifyerHopContext(ctx, () => {
+      const config = { headers: {} as Record<string, string> };
+      applyOutboundRequestCorrelation(config);
+      expect(config.headers[MOCKIFYER_METRO_STREAM_BASE_HEADER]).toBe('http://localhost:8081');
+      expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('gql-hop');
+    });
+  });
+
+  it('rejects non-loopback Metro stream bases on inbound', () => {
+    const ctx = captureInboundMockifyerContext({
+      [MOCKIFYER_CLIENT_ID_HEADER]: 'lane-a',
+      [MOCKIFYER_REQUEST_ID_HEADER]: 'req-a',
+      [MOCKIFYER_METRO_STREAM_BASE_HEADER]: 'http://evil.example:8081',
+    });
+    expect(ctx?.atlasMetroStreamBaseUrl).toBeUndefined();
   });
 
   it('reads inbound correlation headers', () => {

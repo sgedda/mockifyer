@@ -11,8 +11,14 @@ import {
 /** Opt-in: include in-process hop trace on the HTTP response body (test/debug). */
 export const MOCKIFYER_INCLUDE_TRACE_HEADER = 'x-mockifyer-include-trace';
 
-/** Opt-in: include truncated request/response body previews on inline hops. */
+/** Opt-in: include request/response body previews on inline hops (large, for debug). */
 export const MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER = 'x-mockifyer-include-trace-bodies';
+
+/**
+ * UTF-8 budget for body previews embedded in include-trace hops.
+ * Higher than normal network-log previews — this path is opt-in and meant for debugging.
+ */
+export const INLINE_TRACE_BODY_PREVIEW_MAX_BYTES = 512_000;
 
 /** Query alias for {@link MOCKIFYER_INCLUDE_TRACE_HEADER} (e.g. `?trace-mockifyer=true`). */
 export const MOCKIFYER_INCLUDE_TRACE_QUERY = 'trace-mockifyer';
@@ -217,10 +223,10 @@ export function recordInlineTraceHopFromExchange(params: {
     clientId: params.clientId,
     errorMessage: params.errorMessage,
     requestBodyPreview: ctx.includeInlineTraceBodies
-      ? toNetworkLogBodyPreview(params.requestBody)
+      ? toNetworkLogBodyPreview(params.requestBody, INLINE_TRACE_BODY_PREVIEW_MAX_BYTES)
       : undefined,
     responseBodyPreview: ctx.includeInlineTraceBodies
-      ? toNetworkLogBodyPreview(businessBody)
+      ? toNetworkLogBodyPreview(businessBody, INLINE_TRACE_BODY_PREVIEW_MAX_BYTES)
       : undefined,
   });
 }

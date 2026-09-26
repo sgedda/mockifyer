@@ -20,9 +20,11 @@
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
  * 18. GET /mockifyer-atlas-live — live hop stream web page (SSE + expand/collapse)
- * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace
- * 20. Metro terminal key `t` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
- * 21. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
+ * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace (`&format=html` opens a result tab)
+ * 20. GET /mockifyer-atlas-capture — Atlas `t` capture session active flag
+ * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream; stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
+ * 22. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
+ * 23. On hop ingest / Atlas render — pull nested hops from dashboard `/api/network-events/trace` (remote BFF → dashboard → Atlas)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
  * Legacy polling-based sync is still available for backward compatibility.
@@ -62,18 +64,26 @@ import {
   type NetworkEvent,
   getMetroNetworkEventBuffer,
   resolveNetworkEventBodyRelPaths,
+  networkBodySpillRelPath,
   analyzeMetroNetworkEvents,
   createEmptyAtlasDocMap,
   buildAtlasHarJson,
   buildAtlasLiveStreamHtml,
+  buildAtlasTraceReplayHtml,
   ATLAS_LIVE_STREAM_PATH,
   ATLAS_TRACE_REPLAY_PATH,
+  ATLAS_CAPTURE_SESSION_PATH,
   replayNetworkEventWithIncludeTrace,
+  setMetroAtlasCaptureSessionActive,
+  isMetroAtlasCaptureSessionActive,
+  normalizeDashboardBaseUrl,
+  pullDashboardDescendantsForParents,
 } from "@sgedda/mockifyer-core";
 import {
   attachMetroAtlasKeyHandler,
   notifyMetroAtlasStreamClientConnected,
   notifyMetroAtlasStreamClientDisconnected,
+  resolveMetroDashboardUrl,
   type AtlasKeyOption,
 } from "./metro-atlas-key-handlers";
 
@@ -121,7 +131,172 @@ const DEFAULT_SCENARIO = "default";
 /** Atlas render POSTs can include many hops + body spills — avoid O(n²) string concat. */
 const MAX_METRO_POST_BODY_BYTES = 64 * 1024 * 1024;
 
+/**
+ * Debounce so a burst of hops triggers one dashboard read, and remote BFF children
+ * (logged slightly after the parent) have landed before we ask.
+ */
+const DASHBOARD_ENRICH_DEBOUNCE_MS = 1_500;
+
+/** Hard deadline for the enrichment on Atlas stop — `t` must never hang on a slow store. */
+const DASHBOARD_ENRICH_DEADLINE_MS = 4_000;
+
 let autoSyncInterval: NodeJS.Timeout | null = null;
+
+/** Last dashboard base seen on a hop POST (device proxy URL). */
+let lastHopDashboardBaseUrl: string | undefined;
+let dashboardEnrichTimer: ReturnType<typeof setTimeout> | null = null;
+let dashboardEnrichInFlight: Promise<number> | null = null;
+
+function clearDashboardTraceEnrichmentSchedules(): void {
+  if (dashboardEnrichTimer) {
+    clearTimeout(dashboardEnrichTimer);
+    dashboardEnrichTimer = null;
+  }
+  dashboardEnrichInFlight = null;
+}
+
+function resolveAtlasEnrichmentDashboardUrl(
+  middlewareDashboardUrl: string | undefined,
+  hopHint?: string,
+): string | undefined {
+  const fromHop = normalizeDashboardBaseUrl(hopHint);
+  if (fromHop) {
+    lastHopDashboardBaseUrl = fromHop;
+    return fromHop;
+  }
+  if (lastHopDashboardBaseUrl) {
+    return lastHopDashboardBaseUrl;
+  }
+  const hasExplicit =
+    Boolean(middlewareDashboardUrl?.trim()) ||
+    Boolean(
+      typeof process !== "undefined" &&
+        process.env.MOCKIFYER_DASHBOARD_URL?.trim(),
+    );
+  if (!hasExplicit) {
+    return undefined;
+  }
+  return normalizeDashboardBaseUrl(
+    resolveMetroDashboardUrl(middlewareDashboardUrl),
+  );
+}
+
+/**
+ * Merge remote-service children into the Metro buffer with a single dashboard read.
+ * Buffered hop ids are the parents; descendants are linked by `parentRequestId`.
+ * Returns how many new hops were appended. Never throws.
+ */
+async function enrichMetroBufferFromDashboard(options: {
+  dashboardBaseUrl: string;
+  mockDataPath: string;
+  timeoutMs?: number;
+}): Promise<number> {
+  if (!options.dashboardBaseUrl) {
+    return 0;
+  }
+  if (dashboardEnrichInFlight) {
+    return dashboardEnrichInFlight;
+  }
+
+  const flight = (async (): Promise<number> => {
+    const buffer = getMetroNetworkEventBuffer();
+    const existing = buffer.list();
+    const parentRequestIds = [
+      ...new Set(
+        existing
+          .map((event) => event.requestId?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (parentRequestIds.length === 0) {
+      return 0;
+    }
+
+    const children = await pullDashboardDescendantsForParents({
+      dashboardBaseUrl: options.dashboardBaseUrl,
+      parentRequestIds,
+      existing,
+      timeoutMs: options.timeoutMs,
+    });
+
+    let added = 0;
+    for (const child of children) {
+      const stored = buffer.append(child);
+      appendNetworkEventNdjson(options.mockDataPath, stored);
+      added += 1;
+    }
+    return added;
+  })();
+
+  dashboardEnrichInFlight = flight;
+  try {
+    return await flight;
+  } catch {
+    return 0;
+  } finally {
+    dashboardEnrichInFlight = null;
+  }
+}
+
+/**
+ * Render the current Metro hop buffer to Atlas HTML and log the outcome.
+ * Returns the hop count written (0 when the buffer is empty — the existing
+ * `index.html` is then left alone rather than overwritten with an empty doc).
+ */
+function renderBufferedAtlasHtml(options: {
+  projectRoot: string;
+  mockDataPath: string;
+  scenario?: string;
+}): number {
+  const events = [...getMetroNetworkEventBuffer().list()].reverse();
+  if (events.length === 0) {
+    console.warn(
+      `[Mockifyer] Atlas: 0 hops — keeping the existing ${path.join(options.mockDataPath, "atlas-html", "index.html")}`,
+    );
+    console.warn(
+      "[Mockifyer] Atlas: no hops reached Metro. Check that Mockifyer is enabled in the app " +
+        "(runtimeMode 'manual' needs the dev-menu switch), that the app made requests during the " +
+        "session, and that hops arrive: curl http://localhost:8081/mockifyer-network-events",
+    );
+    return 0;
+  }
+  const startedAt = Date.now();
+  const result = renderNetworkEventsAtlasHtml(
+    options.projectRoot,
+    options.mockDataPath,
+    events,
+    options.scenario,
+  );
+  if (result.success) {
+    const elapsedMs = Date.now() - startedAt;
+    console.log(
+      `[Mockifyer] Atlas HTML (${result.hopCount} hop(s), ${elapsedMs}ms) → ${result.indexPath}`,
+    );
+    return result.hopCount;
+  }
+  console.error(
+    `[Mockifyer] Atlas render failed: ${result.error ?? "unknown"}`,
+  );
+  return 0;
+}
+
+/** Coalesce hop-ingest bursts into one dashboard read. */
+function scheduleDashboardTraceEnrichment(options: {
+  dashboardBaseUrl: string;
+  mockDataPath: string;
+}): void {
+  if (!options.dashboardBaseUrl) {
+    return;
+  }
+  if (dashboardEnrichTimer) {
+    clearTimeout(dashboardEnrichTimer);
+  }
+  dashboardEnrichTimer = setTimeout(() => {
+    dashboardEnrichTimer = null;
+    void enrichMetroBufferFromDashboard(options);
+  }, DASHBOARD_ENRICH_DEBOUNCE_MS);
+  dashboardEnrichTimer.unref?.();
+}
 
 /**
  * Buffer an incoming request body with `Buffer.concat` (not `body += chunk`).
@@ -1030,8 +1205,132 @@ function saveAtlasScreenshot(
   }
 }
 
+/**
+ * Candidate relative body paths for a hop (refs first, then id / requestId variants).
+ * Spills key by requestId when present, but older captures / races can land under event.id.
+ */
+function candidateBodyRelPaths(
+  event: NetworkEvent,
+  side: "req" | "res",
+): string[] {
+  const preferred = resolveNetworkEventBodyRelPaths(event);
+  const out: string[] = [side === "req" ? preferred.req : preferred.res];
+  const push = (rel: string | undefined) => {
+    const trimmed = rel?.trim();
+    if (!trimmed || out.includes(trimmed)) return;
+    out.push(trimmed);
+  };
+  if (side === "req") push(event.requestBodyRef);
+  else push(event.responseBodyRef);
+  push(networkBodySpillRelPath(event.id, event.requestId, side));
+  push(networkBodySpillRelPath(event.id, null, side));
+  if (event.requestId?.trim()) {
+    push(networkBodySpillRelPath(event.requestId, event.requestId, side));
+  }
+  return out;
+}
+
 const BODY_SPILL_REL_PATTERN =
   /^bodies\/[A-Za-z0-9._-]+-(req|res)\.(json|txt)$/;
+
+/**
+ * Locate a full body on disk or in the Metro spill buffer.
+ * Writes buffer hits to disk so subsequent opens are stable.
+ */
+function findExistingBodyFile(options: {
+  projectRoot: string;
+  mockDataPath: string;
+  event: NetworkEvent;
+  side: "req" | "res";
+}): { abs: string; rel: string } | null {
+  const outDir = path.join(options.mockDataPath, "atlas-html");
+  flushNetworkBodySpillsToDir(outDir);
+  const snapshot = getNetworkBodySpillSnapshot();
+
+  for (const rel of candidateBodyRelPaths(options.event, options.side)) {
+    const fromBuffer = snapshot[rel];
+    if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
+      const saved = saveAtlasBodySpill(
+        options.projectRoot,
+        options.mockDataPath,
+        rel,
+        fromBuffer,
+      );
+      if (saved.success && saved.filePath) {
+        return { abs: saved.filePath, rel };
+      }
+    }
+    const abs = path.join(outDir, rel);
+    if (fs.existsSync(abs)) {
+      return { abs, rel };
+    }
+  }
+  return null;
+}
+
+/**
+ * Read spilled request body text for a live include-trace re-call (optional).
+ * Trace does not require spill — preview is used when the file is missing.
+ */
+function readSpilledRequestBodyText(
+  projectRoot: string,
+  mockDataPath: string,
+  event: NetworkEvent,
+): string | undefined {
+  const found = findExistingBodyFile({
+    projectRoot,
+    mockDataPath,
+    event,
+    side: "req",
+  });
+  if (!found) return undefined;
+  try {
+    return fs.readFileSync(found.abs, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Nested hops already in the Metro buffer for this request (shown on the
+ * include-trace HTML result page before the live re-call payload).
+ */
+function formatCapturedTraceLines(
+  events: readonly NetworkEvent[],
+  root: NetworkEvent,
+): string[] {
+  const byParent = new Map<string, NetworkEvent[]>();
+  for (const ev of events) {
+    const parent =
+      typeof ev.parentRequestId === "string" ? ev.parentRequestId.trim() : "";
+    if (!parent) continue;
+    const list = byParent.get(parent) ?? [];
+    list.push(ev);
+    byParent.set(parent, list);
+  }
+
+  const lines: string[] = [];
+  const guard = new Set<string>();
+  const walk = (ev: NetworkEvent, depth: number): void => {
+    const id =
+      (typeof ev.requestId === "string" && ev.requestId.trim()) ||
+      (typeof ev.id === "string" ? ev.id.trim() : "");
+    if (id && guard.has(id)) return;
+    if (id) guard.add(id);
+    const indent = depth > 0 ? `${"  ".repeat(depth)}` : "";
+    const status = ev.status != null ? String(ev.status) : "—";
+    const ms = ev.durationMs != null ? `${ev.durationMs}ms` : "";
+    lines.push(
+      `${indent}${(ev.method || "?").toUpperCase()}  ${status}  ${ms}  ${ev.url || ev.path || ""}`.trimEnd(),
+    );
+    if (!id) return;
+    for (const kid of byParent.get(id) || []) {
+      walk(kid, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return lines;
+}
 
 /**
  * Persist a full hop body spill from the device (RN) under atlas-html/bodies/.
@@ -1287,26 +1586,77 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     atlasKey: options?.atlasKey,
     dashboardKey: options?.dashboardKey,
     dashboardUrl: options?.dashboardUrl,
-    onSessionStart: () => {
-      getMetroNetworkEventBuffer().clear();
+    onSessionStart: (reason) => {
+      clearDashboardTraceEnrichmentSchedules();
+      // Explicit `t` starts a clean session. Live-stream connect must NOT wipe hops
+      // already in the buffer (that made the live page look empty and empty HTML on stop).
+      if (reason === "key") {
+        lastHopDashboardBaseUrl = undefined;
+        getMetroNetworkEventBuffer().clear();
+      }
+      setMetroAtlasCaptureSessionActive(true);
     },
-    onSessionStop: () => {
-      const buffer = getMetroNetworkEventBuffer();
-      const events = [...buffer.list()].reverse();
-      const result = renderNetworkEventsAtlasHtml(
-        projectRoot,
-        mockDataPath,
-        events,
+    onSessionStop: async () => {
+      setMetroAtlasCaptureSessionActive(false);
+
+      const hopCount = getMetroNetworkEventBuffer().list().length;
+      console.log(
+        `[Mockifyer] Atlas: writing HTML for ${hopCount} hop(s)…`,
       );
-      if (result.success) {
+      // Let Metro flush the stop logs before the sync HTML write blocks the loop.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Render local hops first so the HTML is usable immediately —
+      // a slow dashboard must never hold up the file.
+      if (renderBufferedAtlasHtml({ projectRoot, mockDataPath }) === 0) {
+        console.log("[Mockifyer] Atlas stop complete.");
+        return;
+      }
+
+      const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
+        options?.dashboardUrl,
+      );
+      if (!dashboardBaseUrl) {
+        console.log("[Mockifyer] Atlas stop complete.");
+        return;
+      }
+
+      const deadlineSec = Math.round(DASHBOARD_ENRICH_DEADLINE_MS / 1000);
+      console.log(
+        `[Mockifyer] Atlas: checking dashboard for nested hops (up to ${deadlineSec}s)…`,
+      );
+      const enrichStartedAt = Date.now();
+      const heartbeat = setInterval(() => {
+        const waitedSec = Math.round((Date.now() - enrichStartedAt) / 1000);
         console.log(
-          `[Mockifyer] Atlas HTML (${result.hopCount} hop(s)) → ${result.indexPath}`,
+          `[Mockifyer] Atlas: still waiting on dashboard… (${waitedSec}s)`,
         );
+      }, 1_500);
+      heartbeat.unref?.();
+
+      let added = 0;
+      try {
+        added = await enrichMetroBufferFromDashboard({
+          dashboardBaseUrl,
+          mockDataPath,
+          timeoutMs: DASHBOARD_ENRICH_DEADLINE_MS,
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
+
+      if (added > 0) {
+        console.log(
+          `[Mockifyer] Atlas: merged ${added} nested hop(s) from dashboard — re-rendering`,
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        renderBufferedAtlasHtml({ projectRoot, mockDataPath });
       } else {
-        console.error(
-          `[Mockifyer] Atlas render failed: ${result.error ?? "unknown"}`,
+        console.log(
+          "[Mockifyer] Atlas: no additional nested hops from dashboard",
         );
       }
+      console.log("[Mockifyer] Atlas stop complete.");
     },
   });
 
@@ -1321,6 +1671,23 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
+    // Atlas `t` capture session flag — device / live page poll this for session UI.
+    if (
+      (url === ATLAS_CAPTURE_SESSION_PATH ||
+        url === `${ATLAS_CAPTURE_SESSION_PATH}/`) &&
+      req.method === "GET"
+    ) {
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({
+          success: true,
+          active: isMetroAtlasCaptureSessionActive(),
+        }),
+      );
+      return;
+    }
+
     // Live Atlas hop stream page (browser EventSource → same SSE as mockifyer-atlas CLI)
     if (
       (url === ATLAS_LIVE_STREAM_PATH || url === `${ATLAS_LIVE_STREAM_PATH}/`) &&
@@ -1332,7 +1699,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
-    // Re-call a buffered hop with X-Mockifyer-Include-Trace (live page "trace" link)
+    // Re-call a buffered hop with X-Mockifyer-Include-Trace (live page "trace" link).
+    // Live HTTP only — nested hops come back on the response; no disk/Redis store required.
+    // `format=html` returns a result page (new browser tab); default remains JSON.
     if (req.method === "GET" && url === ATLAS_TRACE_REPLAY_PATH) {
       const fullUrl = String(req.url || "");
       const q = fullUrl.includes("?")
@@ -1341,27 +1710,76 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const params = new URLSearchParams(q);
       const hopId = (params.get("id") || "").trim();
       const includeBodies = params.get("bodies") !== "0";
+      const wantHtml =
+        params.get("format") === "html" ||
+        String(req.headers?.accept || "").includes("text/html");
       if (!hopId) {
         res.statusCode = 400;
-        res.setHeader("Content-Type", "application/json");
-        res.end(
-          JSON.stringify({ success: false, error: "id query param required" }),
-        );
+        if (wantHtml) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(
+            buildAtlasTraceReplayHtml(
+              {
+                success: false,
+                hopId: "",
+                method: "",
+                url: "",
+                error: "id query param required",
+                requestHeaders: {},
+              },
+              {
+                atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
+                dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+              },
+            ),
+          );
+        } else {
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({ success: false, error: "id query param required" }),
+          );
+        }
         return;
       }
       const buffer = getMetroNetworkEventBuffer();
       const events = buffer.list();
+      const event =
+        events.find((e) => e && (e.id === hopId || e.requestId === hopId)) ??
+        undefined;
+      const spilledRequestBody = event
+        ? readSpilledRequestBodyText(projectRoot, mockDataPath, event)
+        : undefined;
+      const capturedLines = event
+        ? formatCapturedTraceLines(events, event)
+        : undefined;
       void replayNetworkEventWithIncludeTrace(events, hopId, {
         includeBodies,
+        requestBody: spilledRequestBody,
       }).then((result) => {
         res.statusCode = result.success
           ? 200
           : result.error === "hop not found"
             ? 404
             : 502;
-        res.setHeader("Content-Type", "application/json");
         res.setHeader("Cache-Control", "no-store");
-        res.end(JSON.stringify(result));
+        if (wantHtml) {
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(
+            buildAtlasTraceReplayHtml(result, {
+              capturedLines,
+              atlasLiveUrl: ATLAS_LIVE_STREAM_PATH,
+              dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+              requestBody:
+                spilledRequestBody ||
+                (typeof event?.requestBodyPreview === "string"
+                  ? event.requestBodyPreview
+                  : undefined),
+            }),
+          );
+        } else {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(result));
+        }
       });
       return;
     }
@@ -1379,6 +1797,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           const parsed = JSON.parse(body) as {
             event?: NetworkEvent;
             events?: NetworkEvent[];
+            dashboardBaseUrl?: string;
           };
           const incoming: NetworkEvent[] = [];
           if (parsed.event && typeof parsed.event === "object") {
@@ -1406,6 +1825,13 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             appendNetworkEventNdjson(mockDataPath, stored);
             return stored;
           });
+          const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
+            options?.dashboardUrl,
+            parsed.dashboardBaseUrl,
+          );
+          if (dashboardBaseUrl) {
+            scheduleDashboardTraceEnrichment({ dashboardBaseUrl, mockDataPath });
+          }
           res.statusCode = 201;
           res.setHeader("Content-Type", "application/json");
           res.end(
@@ -1413,6 +1839,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
               success: true,
               count: saved.length,
               size: buffer.size,
+              atlasCaptureActive: isMetroAtlasCaptureSessionActive(),
             }),
           );
         } catch (error) {
@@ -1565,21 +1992,39 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
         }
         const buffer = getMetroNetworkEventBuffer();
-        const events = [...buffer.list()].reverse();
-        const result = renderNetworkEventsAtlasHtml(
-          projectRoot,
-          mockDataPath,
-          events,
-          scenario,
+        const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
+          options?.dashboardUrl,
         );
-        res.statusCode = result.success ? 201 : 500;
-        res.setHeader("Content-Type", "application/json");
-        res.end(JSON.stringify(result));
+        const finishRender = () => {
+          const events = [...buffer.list()].reverse();
+          const result = renderNetworkEventsAtlasHtml(
+            projectRoot,
+            mockDataPath,
+            events,
+            scenario,
+          );
+          res.statusCode = result.success ? 201 : 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(result));
+        };
+        if (!dashboardBaseUrl) {
+          finishRender();
+          return;
+        }
+        void enrichMetroBufferFromDashboard({
+          dashboardBaseUrl,
+          mockDataPath,
+          timeoutMs: DASHBOARD_ENRICH_DEADLINE_MS,
+        }).then(() => {
+          finishRender();
+        });
       });
       return;
     }
 
     if (url === "/mockifyer-network-events/clear" && req.method === "POST") {
+      clearDashboardTraceEnrichmentSchedules();
+      lastHopDashboardBaseUrl = undefined;
       const buffer = getMetroNetworkEventBuffer();
       buffer.clear();
       res.setHeader("Content-Type", "application/json");
@@ -1703,53 +2148,66 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
         return;
       }
 
-      const rels = resolveNetworkEventBodyRelPaths(event);
-      const rel = side === "req" ? rels.req : rels.res;
-      const abs = path.join(mockDataPath, "atlas-html", rel);
-      const outDir = path.join(mockDataPath, "atlas-html");
-      // Prefer real spill buffer / disk — never materialize the truncated Metro
-      // hop preview (often ~512 bytes) as the "full body" JSON page.
-      flushNetworkBodySpillsToDir(outDir);
-      const fromBuffer = getNetworkBodySpillSnapshot()[rel];
-      if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
-        const saved = saveAtlasBodySpill(
-          projectRoot,
-          mockDataPath,
-          rel,
-          fromBuffer,
+      const found = findExistingBodyFile({
+        projectRoot,
+        mockDataPath,
+        event,
+        side,
+      });
+      if (found) {
+        res.statusCode = 302;
+        res.setHeader(
+          "Location",
+          `/atlas-html/${found.rel.split(path.sep).join("/")}`,
         );
-        if (!saved.success) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json");
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: saved.error || "Failed to write full body spill",
-            }),
-          );
-          return;
-        }
-      } else if (!fs.existsSync(abs)) {
-        res.statusCode = 404;
-        res.setHeader("Content-Type", "application/json");
+        res.end();
+        return;
+      }
+
+      // Spill not on disk yet (race) or never uploaded — still return the captured
+      // preview so open/trace UX is usable. Do not write preview as the spill file.
+      const preview =
+        side === "req" ? event.requestBodyPreview : event.responseBodyPreview;
+      if (typeof preview === "string" && preview.length > 0) {
+        const preferred = resolveNetworkEventBodyRelPaths(event);
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("X-Mockifyer-Body-Source", "preview");
+        res.setHeader(
+          "X-Mockifyer-Body-Note",
+          "Full spill file missing; showing hop preview",
+        );
         res.end(
-          JSON.stringify({
-            success: false,
-            error:
-              "Full body not available on disk yet. Enable captureBodies / body spill, re-hit the endpoint, then open again. Refusing to write the truncated hop preview as the full body file.",
-            hopId: event.id,
-            side,
-            relativePath: rel,
-          }),
+          JSON.stringify(
+            {
+              success: true,
+              source: "preview",
+              hopId: event.id,
+              side,
+              relativePath: side === "req" ? preferred.req : preferred.res,
+              preview,
+            },
+            null,
+            2,
+          ),
         );
         return;
       }
-      res.statusCode = 302;
-      res.setHeader(
-        "Location",
-        `/atlas-html/${rel.split(path.sep).join("/")}`,
+
+      const preferred = resolveNetworkEventBodyRelPaths(event);
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      res.end(
+        JSON.stringify({
+          success: false,
+          error:
+            "No full body spill on disk and no hop preview. Re-hit the endpoint during Atlas capture, then open again.",
+          hopId: event.id,
+          side,
+          relativePath: side === "req" ? preferred.req : preferred.res,
+        }),
       );
-      res.end();
       return;
     }
 

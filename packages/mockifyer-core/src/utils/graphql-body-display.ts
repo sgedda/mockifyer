@@ -145,3 +145,84 @@ export function formatBodyPreviewForDisplay(text: string): string {
   if (gql != null) return gql;
   return text;
 }
+
+/**
+ * Reverse {@link formatGraphqlRequestBodyObject} back to a wire-safe GraphQL HTTP JSON body.
+ * Used when Atlas curl / include-trace accidentally hold the display form instead of JSON.
+ */
+export function tryGraphqlDisplayTextToRequestJson(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || !looksLikeGraphqlDisplayText(trimmed)) {
+    return null;
+  }
+  // Already valid JSON (e.g. anonymous `{ viewer { id } }` docs that look GraphQL-ish).
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (isGraphqlRequestBodyObject(parsed)) {
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // display form — continue
+  }
+
+  const lines = trimmed.replace(/\r\n/g, '\n').split('\n');
+  let operationName: string | undefined;
+  let mode: 'query' | 'variables' | 'extensions' | null = null;
+  const queryLines: string[] = [];
+  const variableLines: string[] = [];
+  const extensionLines: string[] = [];
+
+  for (const line of lines) {
+    const opMatch = /^#\s*operationName:\s*(.+)\s*$/i.exec(line);
+    if (opMatch) {
+      operationName = opMatch[1].trim();
+      continue;
+    }
+    if (/^#\s*Variables\s*$/i.test(line)) {
+      mode = 'variables';
+      continue;
+    }
+    if (/^#\s*Extensions\s*$/i.test(line)) {
+      mode = 'extensions';
+      continue;
+    }
+    if (mode === 'variables') {
+      variableLines.push(line);
+      continue;
+    }
+    if (mode === 'extensions') {
+      extensionLines.push(line);
+      continue;
+    }
+    if (!mode && queryLines.length === 0 && line.trim() === '') {
+      continue;
+    }
+    mode = 'query';
+    queryLines.push(line);
+  }
+
+  const query = queryLines.join('\n').trim();
+  if (!query) {
+    return null;
+  }
+
+  const body: GraphqlRequestBodyFields = { query };
+  if (operationName) {
+    body.operationName = operationName;
+  }
+  if (variableLines.length > 0) {
+    try {
+      body.variables = JSON.parse(variableLines.join('\n'));
+    } catch {
+      return null;
+    }
+  }
+  if (extensionLines.length > 0) {
+    try {
+      body.extensions = JSON.parse(extensionLines.join('\n'));
+    } catch {
+      return null;
+    }
+  }
+  return JSON.stringify(body);
+}
