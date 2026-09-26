@@ -149,6 +149,20 @@ describe('domain-path allowUpstream', () => {
     expect(resolved.matchedDomainPath).toBe('api.foo.com/health');
   });
 
+  it('exact ID path re-allows under a blocked wildcard :id rule', () => {
+    const resolved = resolveAllowUpstreamForRequest({
+      url: 'https://api.example.com/v1/users/99',
+      pathRules: {
+        'api.example.com/v1/users/:id': { recordResponses: true, allowUpstream: false },
+        'api.example.com/v1/users/99': { recordResponses: true, allowUpstream: true },
+      },
+      fromScenario: true,
+    });
+    expect(resolved.allowUpstream).toBe(true);
+    expect(resolved.pathAllowUpstream).toBe(true);
+    expect(resolved.matchedDomainPath).toBe('api.example.com/v1/users/99');
+  });
+
   it('scenario offline still wins over path allowUpstream true', () => {
     const resolved = resolveAllowUpstreamForRequest({
       url: 'https://api.foo.com/x',
