@@ -430,12 +430,20 @@ export function findLongestDomainPathAllowUpstreamOverride(
 
   // When both discovery and exact matches exist:
   // If discoveryPath differs from exactPath, an ID was normalized to :id.
-  // Always prefer the exact match in that case—it's a specific-ID rule that should
-  // override the wildcard, even if the :id key is longer.
+  // Check if exactBest is a parent/ancestor of discoveryBest. If so, discoveryBest
+  // is the more specific :id rule. Otherwise, exactBest is a sibling exact-ID rule
+  // that should override the :id wildcard.
   if (discoveryPath && exactPath && discoveryPath !== exactPath) {
-    // exactBest represents the specific-ID rule; discoveryBest may be the :id wildcard.
-    // The exact rule is more specific for this ID, so prefer it regardless of length.
-    return { domainPath: exactBest.domainPath, allowUpstream: exactBest.allowUpstream };
+    const exactIsParent =
+      discoveryBest.domainPath === exactBest.domainPath + '/:id' ||
+      discoveryBest.domainPath.startsWith(exactBest.domainPath + '/');
+    if (exactIsParent) {
+      // exactBest is a parent rule; prefer the more specific discoveryBest (:id rule).
+      return { domainPath: discoveryBest.domainPath, allowUpstream: discoveryBest.allowUpstream };
+    } else {
+      // exactBest is a sibling exact-ID rule; prefer it over the :id wildcard.
+      return { domainPath: exactBest.domainPath, allowUpstream: exactBest.allowUpstream };
+    }
   }
 
   // Both paths are the same (no ID normalization), so prefer the longer (more specific) prefix.
