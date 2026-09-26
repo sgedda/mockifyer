@@ -88,7 +88,12 @@ const NODE_BUILTINS = [
  * Optional React Native peer dependencies — stubbed when not installed so
  * `tryGetClientIdFromLaunchArguments` and similar helpers no-op instead of crashing Metro.
  */
-const OPTIONAL_RN_PEER_MODULES = ['react-native-launch-arguments'] as const;
+const OPTIONAL_RN_PEER_MODULES = [
+  'react-native-launch-arguments',
+  '@react-native-async-storage/async-storage',
+  '@sgedda/mockifyer-axios',
+  '@sgedda/mockifyer-fetch',
+] as const;
 
 function isMockifyerStubbedModule(moduleName: string): boolean {
   return (
@@ -166,7 +171,7 @@ export interface ConfigureMetroOptions {
  *   syncMiddleware: {
  *     projectRoot: __dirname,
  *     mockDataPath: './mock-data',
- *     // atlasKey: 'a' (default) — Metro terminal: start/stop Atlas capture (stop → HTML)
+ *     // atlasKey: 't' (default) — Metro terminal: start/stop Atlas capture (stop → HTML). `a` is Android.
  *     // dashboardKey: 'm' (default) — open dashboard in browser
  *     // dashboardUrl: 'http://localhost:3002' — or MOCKIFYER_DASHBOARD_URL
  *   },
@@ -215,12 +220,29 @@ export function configureMetroForMockifyer(
     moduleName: string,
     platform: string | null
   ): { filePath: string; type: string } | null | undefined => {
-    // Handle Node built-ins and optional RN peers - return empty module stub
-    if (isMockifyerStubbedModule(moduleName)) {
+    // Always stub Node built-ins
+    if ((NODE_BUILTINS as readonly string[]).includes(moduleName)) {
       return {
         filePath: emptyModulePath,
         type: 'sourceFile',
       };
+    }
+
+    // Stub optional RN peers only when not installed
+    if ((OPTIONAL_RN_PEER_MODULES as readonly string[]).includes(moduleName)) {
+      // Try to resolve the module - if it exists, let Metro handle it normally
+      try {
+        const resolved = context.resolveRequest(context, moduleName, platform);
+        if (resolved) {
+          return resolved;
+        }
+      } catch {
+        // Module not installed - stub it
+        return {
+          filePath: emptyModulePath,
+          type: 'sourceFile',
+        };
+      }
     }
 
     const mockifyerCoreRn = resolveMockifyerCoreReactNativeEntry(moduleName, platform);

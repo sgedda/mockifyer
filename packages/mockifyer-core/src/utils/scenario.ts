@@ -81,22 +81,37 @@ export function scratchScenarioDisplayName(): string {
 let scenarioLaunchOverride: string | null = null;
 
 /**
+ * True only when {@link setScenarioLaunchOverride} was set from native launch arguments
+ * (not from app `defaultScenario` / config). Used to force runtime toggle on for E2E.
+ */
+let scenarioLaunchFromNativeArguments = false;
+
+/**
  * Set a scenario that wins over env, config, scenario-config.json, and Metro-synced scenario.
  * Use for E2E (e.g. react-native-launch-arguments) so `args.scenario` always applies.
  * Pass null, undefined, or '' to clear.
+ *
+ * @param options.fromLaunchArguments - when true, marks this as a native launch-arg scenario
+ *   so Mockifyer starts enabled under `runtimeMode: 'manual'`.
  */
-export function setScenarioLaunchOverride(scenario: string | null | undefined): void {
+export function setScenarioLaunchOverride(
+  scenario: string | null | undefined,
+  options?: { fromLaunchArguments?: boolean }
+): void {
   if (scenario === null || scenario === undefined) {
     scenarioLaunchOverride = null;
+    scenarioLaunchFromNativeArguments = false;
     return;
   }
   const trimmed = String(scenario).trim();
   if (trimmed === '') {
     scenarioLaunchOverride = null;
+    scenarioLaunchFromNativeArguments = false;
     return;
   }
   assertNotReservedScenarioName(trimmed);
   scenarioLaunchOverride = trimmed;
+  scenarioLaunchFromNativeArguments = options?.fromLaunchArguments === true;
 }
 
 /**
@@ -104,6 +119,14 @@ export function setScenarioLaunchOverride(scenario: string | null | undefined): 
  */
 export function getScenarioLaunchOverride(): string | null {
   return scenarioLaunchOverride;
+}
+
+/**
+ * True when the active scenario override came from native launch arguments (E2E),
+ * not from app config `defaultScenario`.
+ */
+export function isScenarioLaunchFromNativeArguments(): boolean {
+  return scenarioLaunchFromNativeArguments && scenarioLaunchOverride != null;
 }
 
 /**
@@ -399,6 +422,8 @@ export function saveScenarioConfig(mockDataPath: string, scenario: string): void
  */
 export function resetScenario(): void {
   currentConfig = null;
+  scenarioLaunchOverride = null;
+  scenarioLaunchFromNativeArguments = false;
 }
 
 /**

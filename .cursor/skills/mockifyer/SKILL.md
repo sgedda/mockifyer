@@ -59,6 +59,7 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - **Git**: never commit/push unless the user asks.
 - **Versions**: when code under `packages/<pkg>/` changes, bump that package’s `version` (and every other changed package) before PR — see `.cursor/rules/release-pr-build-check.mdc`.
 - **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (same rule).
+- **Tests**: `npm test` from the repo root must pass before push or a new PR (same rule).
 - **Linear issues**: project `Mockifyer`, labels `feature` + `backlog` unless overridden.
 
 ## Quick tasks
@@ -69,7 +70,7 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 
 **Dashboard list / similar GraphQL groups** → `packages/mockifyer-dashboard/src/routes/mocks.ts`, `mock-body-similarity.ts` in core.
 
-**React Native** → [REACT_NATIVE.md](../../../REACT_NATIVE.md), Hybrid provider, Metro sync.
+**React Native** → [REACT_NATIVE.md](../../../REACT_NATIVE.md), Hybrid provider, Metro sync. New public exports used on device must also be re-exported from `packages/mockifyer-core/src/index.react-native.ts` (and fetch `src/react-native.ts` / `src/react/index.native.ts` when those entries apply). Typecheck and Jest import the Node barrel. See `.cursor/rules/react-native-exports.mdc`.
 
 **Why two GraphQL mocks?** Different `query` documents → different keys even if `operationName` and `variables` match. Dashboard `?similarGroups=1` clusters near-duplicates for review only.
 

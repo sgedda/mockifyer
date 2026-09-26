@@ -2,11 +2,12 @@
  * Spill full network bodies so hops only keep short previews.
  * Texts are buffered in memory and flushed to `atlas-html/bodies/` on Render
  * (and best-effort async to disk/Metro during capture).
+ * Every non-empty captured body is spilled so Atlas hop detail can show the full
+ * payload; inline hop JSON still uses a short preview.
  */
 
 import { utf8ByteLength } from './crypto-digest';
 import { getAtlasDocHtmlOutputPath } from './atlas-doc-html';
-import { prettyPrintJsonText } from './json-pretty';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 
 let fs: typeof import('fs') | undefined;
@@ -20,8 +21,9 @@ try {
   pathMod = undefined;
 }
 
-/** Inline preview size kept on the hop (UTF-8 bytes). */
+/** Spill only starts above this size when `alwaysSpill` is false (legacy). Default always spills. */
 export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 2_048;
+
 
 /** Do not spill bodies larger than this (UTF-8 bytes). */
 export const NETWORK_BODY_SPILL_MAX_BYTES = 2_000_000;
@@ -92,9 +94,9 @@ export function resetNetworkBodySpillRuntime(): void {
 }
 
 /**
- * Serialize a request/response value for spill / preview (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Compact JSON text for a body. No size cap — callers decide what to keep.
  */
-export function serializeBodyForSpill(value: unknown): string | undefined {
+export function serializeBodyText(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text: string;
   if (typeof value === 'string') {
@@ -106,10 +108,17 @@ export function serializeBodyForSpill(value: unknown): string | undefined {
       text = String(value);
     }
   }
+  return text || undefined;
+}
+
+/**
+ * Serialize a request/response value for spill (capped at {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ * Oversized bodies return undefined so callers can keep a short preview without writing a stub file.
+ */
+export function serializeBodyForSpill(value: unknown): string | undefined {
+  const text = serializeBodyText(value);
   if (!text) return undefined;
-  const len = utf8ByteLength(text);
-  if (len <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
-  // Prefer spill failure over OOM — caller keeps truncated preview only.
+  if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) return text;
   return undefined;
 }
 
@@ -160,14 +169,32 @@ function resolveMetroPort(explicit?: number): number {
   return DEFAULT_METRO_PORT;
 }
 
+function spillFilePath(outputDir: string, relativePath: string): string | undefined {
+  if (!pathMod) return undefined;
+  return pathMod.join(outputDir, relativePath);
+}
+
+/** Compact body on disk. Pretty-print happens later on the short hop preview, not the full file. */
 function writeSpillLocal(outputDir: string, relativePath: string, text: string): boolean {
   if (!fs || !pathMod) return false;
   try {
-    const abs = pathMod.join(outputDir, relativePath);
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
     fs.mkdirSync(pathMod.dirname(abs), { recursive: true });
-    // Pretty JSON on disk for browser tabs; extension is .json (same payload, readable).
-    const body = relativePath.endsWith('.json') ? prettyPrintJsonText(text) : text;
-    fs.writeFileSync(abs, body, 'utf8');
+    fs.writeFileSync(abs, text, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeSpillLocalAsync(outputDir: string, relativePath: string, text: string): Promise<boolean> {
+  if (!fs?.promises || !pathMod) return false;
+  try {
+    const abs = spillFilePath(outputDir, relativePath);
+    if (!abs) return false;
+    await fs.promises.mkdir(pathMod.dirname(abs), { recursive: true });
+    await fs.promises.writeFile(abs, text, 'utf8');
     return true;
   } catch {
     return false;
@@ -276,8 +303,8 @@ function pumpQueue(): void {
       try {
         const dir = job.outputDir?.trim() || getAtlasDocHtmlOutputPath()?.trim();
         let ok = false;
-        if (dir && fs) {
-          ok = writeSpillLocal(dir, job.relativePath, job.text);
+        if (dir && fs?.promises) {
+          ok = await writeSpillLocalAsync(dir, job.relativePath, job.text);
         }
         if (!ok) {
           await writeSpillViaMetro(job.relativePath, job.text, job.metroPort);
@@ -302,7 +329,9 @@ function enqueueSpill(job: SpillJob): void {
 }
 
 /**
- * If a body exceeds the inline preview budget, buffer full text + return a relative ref.
+ * If a body is present, buffer full text + return a relative ref for Atlas HTML /
+ * MCP. Inline hop previews stay short ({@link NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES});
+ * `*Truncated` is true only when the preview is shorter than the spilled file.
  * Async disk/Metro write is best-effort; {@link flushNetworkBodySpillsToDir} on Render is authoritative.
  */
 export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): NetworkBodySpillRefs {
@@ -315,15 +344,16 @@ export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): 
   const maybeSpill = (side: 'req' | 'res', text: string | undefined): void => {
     if (!text) return;
     const len = utf8ByteLength(text);
-    if (len <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES) return;
-
+    // Always spill non-empty bodies so Atlas hop detail can load the full payload
+    // (inline previews stay capped separately in sanitizeNetworkEvent).
     const relativePath = `bodies/${key}-${side}.json`;
+    const previewTruncated = len > NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES;
     if (side === 'req') {
       refs.requestBodyRef = relativePath;
-      refs.requestBodyTruncated = true;
+      if (previewTruncated) refs.requestBodyTruncated = true;
     } else {
       refs.responseBodyRef = relativePath;
-      refs.responseBodyTruncated = true;
+      if (previewTruncated) refs.responseBodyTruncated = true;
     }
     rememberInBuffer(relativePath, text);
     enqueueSpill({

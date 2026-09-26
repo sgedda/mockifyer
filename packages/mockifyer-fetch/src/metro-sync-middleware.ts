@@ -19,7 +19,7 @@
  * 15. POST /mockifyer-network-events/snapshot — write hops JSON/NDJSON under atlas-html/
  * 16. POST /mockifyer-network-events/render — render Atlas HTML from buffer hops
  * 17. POST /mockifyer-network-events/clear — clear ring buffer
- * 18. Metro terminal key `a` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable)
+ * 18. Metro terminal key `t` — start/stop Atlas capture (stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
  * 19. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
@@ -53,6 +53,7 @@ import {
   writeAtlasDocHtml,
   writeNetworkBodySpillMap,
   flushNetworkBodySpillsToDir,
+  getNetworkBodySpillSnapshot,
   prettyPrintJsonText,
   setAtlasDocMap,
   type AtlasDocMap,
@@ -76,9 +77,9 @@ export interface MetroSyncMiddlewareOptions {
   /** Path to mock data directory relative to project root (default: 'mock-data') */
   mockDataPath?: string;
   /**
-   * Metro terminal key that starts/stops Atlas capture (default `"a"`).
+   * Metro terminal key that starts/stops Atlas capture (default `"t"`).
    * Start clears the hop buffer; stop generates HTML (same as `POST /mockifyer-network-events/render`).
-   * Pass `false` to disable.
+   * Pass `false` to disable. `a` is reserved by Metro for Android.
    */
   atlasKey?: AtlasKeyOption;
   /**
@@ -1273,6 +1274,9 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     `[MetroSyncMiddleware] Initialized with projectRoot: ${projectRoot}, mockDataPath: ${mockDataPath}`,
   );
 
+  /** Last scenario announced at info. Polls of an unchanged scenario stay quiet. */
+  let announcedScenario: string | undefined;
+
   attachMetroAtlasKeyHandler({
     atlasKey: options?.atlasKey,
     dashboardKey: options?.dashboardKey,
@@ -1651,27 +1655,43 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const rels = resolveNetworkEventBodyRelPaths(event);
       const rel = side === "req" ? rels.req : rels.res;
       const abs = path.join(mockDataPath, "atlas-html", rel);
-      if (!fs.existsSync(abs)) {
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        const preview =
-          side === "req" ? event.requestBodyPreview : event.responseBodyPreview;
-        const text =
-          preview != null && String(preview).trim() !== ""
-            ? String(preview)
-            : JSON.stringify(
-                {
-                  note: "No body captured for this hop yet",
-                  id: event.id,
-                  side,
-                },
-                null,
-                2,
-              );
-        fs.writeFileSync(
-          abs,
-          text.endsWith("\n") ? text : `${text}\n`,
-          "utf8",
+      const outDir = path.join(mockDataPath, "atlas-html");
+      // Prefer real spill buffer / disk — never materialize the truncated Metro
+      // hop preview (often ~512 bytes) as the "full body" JSON page.
+      flushNetworkBodySpillsToDir(outDir);
+      const fromBuffer = getNetworkBodySpillSnapshot()[rel];
+      if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
+        const saved = saveAtlasBodySpill(
+          projectRoot,
+          mockDataPath,
+          rel,
+          fromBuffer,
         );
+        if (!saved.success) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: saved.error || "Failed to write full body spill",
+            }),
+          );
+          return;
+        }
+      } else if (!fs.existsSync(abs)) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: false,
+            error:
+              "Full body not available on disk yet. Enable captureBodies / body spill, re-hit the endpoint, then open again. Refusing to write the truncated hop preview as the full body file.",
+            hopId: event.id,
+            side,
+            relativePath: rel,
+          }),
+        );
+        return;
       }
       res.statusCode = 302;
       res.setHeader(
@@ -2067,59 +2087,53 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
 
     // Handle GET endpoint for scenario config
     if (url === "/mockifyer-scenario-config" && req.method === "GET") {
+      const writeScenarioResponse = (scenario: string): void => {
+        if (announcedScenario !== scenario) {
+          logger.info(`[MetroSyncMiddleware] Active scenario: ${scenario}`);
+          announcedScenario = scenario;
+        }
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({
+            success: true,
+            currentScenario: scenario,
+          }),
+        );
+      };
+
       try {
         // Check environment variable first (highest priority)
         if (process.env.MOCKIFYER_SCENARIO) {
-          logger.info(
+          logger.debug(
             `[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${process.env.MOCKIFYER_SCENARIO}`,
           );
-          res.setHeader("Content-Type", "application/json");
-          res.end(
-            JSON.stringify({
-              success: true,
-              currentScenario: process.env.MOCKIFYER_SCENARIO,
-            }),
-          );
+          writeScenarioResponse(process.env.MOCKIFYER_SCENARIO);
           return;
         }
 
         const configPath = path.join(mockDataPath, "scenario-config.json");
         const resolvedPath = path.resolve(configPath);
-        logger.info(
+        logger.debug(
           `[MetroSyncMiddleware] Reading scenario config from: ${resolvedPath}`,
         );
-        logger.info(
+        logger.debug(
           `[MetroSyncMiddleware] mockDataPath: ${mockDataPath}, projectRoot: ${projectRoot}`,
         );
 
         if (fs.existsSync(configPath)) {
           const fileContent = fs.readFileSync(configPath, "utf-8");
-          logger.info(`[MetroSyncMiddleware] File content: ${fileContent}`);
+          logger.debug(`[MetroSyncMiddleware] File content: ${fileContent}`);
           const config = JSON.parse(fileContent);
           const scenario = config.currentScenario || DEFAULT_SCENARIO;
-          logger.info(
+          logger.debug(
             `[MetroSyncMiddleware] Found scenario in config: ${scenario} (from file: ${JSON.stringify(config)})`,
           );
-
-          res.setHeader("Content-Type", "application/json");
-          // Return format expected by ExpoFileSystemProvider: { success: true, currentScenario: ... }
-          res.end(
-            JSON.stringify({
-              success: true,
-              currentScenario: scenario,
-            }),
-          );
+          writeScenarioResponse(scenario);
         } else {
-          logger.info(
+          logger.debug(
             `[MetroSyncMiddleware] Config file not found at ${resolvedPath}, returning default scenario`,
           );
-          res.setHeader("Content-Type", "application/json");
-          res.end(
-            JSON.stringify({
-              success: true,
-              currentScenario: DEFAULT_SCENARIO,
-            }),
-          );
+          writeScenarioResponse(DEFAULT_SCENARIO);
         }
       } catch (error) {
         logger.error(

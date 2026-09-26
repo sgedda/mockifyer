@@ -20,7 +20,8 @@ function parentDir(filePath: string): string | undefined {
  * cwd (and entry-point directory) as well.
  *
  * Avoid Node builtins (`path`, `module`) here: this file is reachable from the
- * React Native entry.
+ * React Native entry on Node resolution. Metro must load
+ * `load-sibling-setup.native.ts` instead — it rejects `require(packageName)`.
  */
 export function siblingPackageResolveDirectories(): string[] {
   const directories: string[] = [];

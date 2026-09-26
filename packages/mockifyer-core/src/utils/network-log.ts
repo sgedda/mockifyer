@@ -21,13 +21,14 @@ export type {
   TimelineEventKind,
 } from './network-event-types';
 import type { NetworkEvent, NetworkEventTransport } from './network-event-types';
-import { resolveUsageForNetworkEmit } from './atlas-usage';
-import { getAtlasUsageDashboardBaseUrl } from './atlas-usage';
+import { resolveUsageForNetworkEmit, getAtlasUsageDashboardBaseUrl } from './atlas-usage-runtime';
 import { rememberAtlasHtmlNetworkEvent, getAtlasDocHtmlOutputPath } from './atlas-doc-html';
 import {
+  NETWORK_BODY_SPILL_MAX_BYTES,
   NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES,
   scheduleNetworkBodySpill,
   serializeBodyForSpill,
+  serializeBodyText,
   setNetworkBodySpillEnabled,
 } from './network-body-spill';
 import { prettyPrintJsonText } from './json-pretty';
@@ -36,6 +37,9 @@ import {
   isGraphqlRequestBodyObject,
 } from './graphql-body-display';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
+import { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
+
+export { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
 import {
   joinMetroNetworkEventsUrl,
   resolveMetroNetworkStreamBaseUrl,
@@ -335,24 +339,6 @@ export function networkEventHashFromRequestKey(requestKey: string): string {
 }
 
 /**
- * Resolves dashboard base URL for SDK network log POSTs.
- * Precedence: **`MOCKIFYER_DASHBOARD_URL`** → `networkLog.dashboardBaseUrl` → `proxy.baseUrl`.
- */
-export function resolveNetworkLogDashboardUrl(
-  config: Pick<MockifyerConfig, 'networkLog' | 'proxy'>
-): string | undefined {
-  if (config.networkLog?.enabled === false) return undefined;
-  const fromEnv =
-    typeof process !== 'undefined' ? process.env[ENV_VARS.MOCK_DASHBOARD_URL]?.trim() : undefined;
-  if (fromEnv) return fromEnv;
-  const fromConfig = config.networkLog?.dashboardBaseUrl?.trim();
-  if (fromConfig) return fromConfig;
-  const fromProxy = config.proxy?.baseUrl?.trim();
-  if (fromProxy) return fromProxy;
-  return undefined;
-}
-
-/**
  * Dashboard origin for crash forensics links — includes runtime URL from {@link configureAtlas}
  * when ErrorBoundary config omits proxy / dashboardBaseUrl.
  */
@@ -400,8 +386,75 @@ export function resolveNetworkLogIncludeTraceOptions(
   };
 }
 
+/**
+ * Run after the current response turn so body stringify does not delay the caller.
+ * `setImmediate` is a macrotask (Node). Browsers and React Native use `setTimeout(0)`.
+ */
+function scheduleAfterResponse(task: () => void): void {
+  const immediate = (globalThis as { setImmediate?: (fn: () => void) => void }).setImmediate;
+  if (typeof immediate === 'function') {
+    immediate(task);
+    return;
+  }
+  setTimeout(task, 0);
+}
+
+/** Pretty-print only the short slice kept on the hop, not the full captured text. */
+function previewFromCapturedText(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const slice =
+    utf8ByteLength(text) <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES
+      ? text
+      : truncateUtf8(text, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES);
+  return prettyPrintJsonText(slice);
+}
+
+const PREVIEW_TRUNCATION_MARKER = '…[truncated]';
+
+interface CapturedNetworkBody {
+  /** Compact text small enough to spill. Absent when the body exceeds the spill cap. */
+  spillText?: string;
+  /** Short hop preview when the body was too large to spill. */
+  oversizedPreview?: string;
+}
+
+/** Prefix that stays within the inline preview budget, including the truncation marker. */
+function inlinePreviewSlice(text: string): string {
+  if (utf8ByteLength(text) <= NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES) return text;
+  const markerBytes = utf8ByteLength(PREVIEW_TRUNCATION_MARKER);
+  const budget = Math.max(0, NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES - markerBytes);
+  const bytes = new TextEncoder().encode(text);
+  const head = new TextDecoder().decode(bytes.slice(0, budget)).replace(/\uFFFD$/, '');
+  return `${head}${PREVIEW_TRUNCATION_MARKER}`;
+}
+
+/**
+ * One compact stringify. Bodies over the spill cap contribute a short preview only
+ * and are not passed to the spill writer.
+ */
+function captureNetworkBody(value: unknown, existingPreview: unknown): CapturedNetworkBody {
+  const text = serializeBodyText(value);
+  if (text) {
+    if (utf8ByteLength(text) <= NETWORK_BODY_SPILL_MAX_BYTES) {
+      return { spillText: text };
+    }
+    return { oversizedPreview: inlinePreviewSlice(text) };
+  }
+  if (typeof existingPreview === 'string') {
+    const fromPreview = serializeBodyForSpill(existingPreview);
+    if (fromPreview) return { spillText: fromPreview };
+  }
+  return {};
+}
+
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
 export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParams): void {
+  scheduleAfterResponse(() => {
+    emitMockifyerNetworkEventNow(params);
+  });
+}
+
+function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): void {
   const recorderConfig = resolveFlightRecorderConfig(params.config);
   configureFlightRecorder(recorderConfig);
 
@@ -423,26 +476,20 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
     });
 
   const eventId = params.event.id?.trim() || newEventId();
-  const requestBodyText = captureBodies
-    ? serializeBodyForSpill(params.requestBody) ??
-      (typeof params.event.requestBodyPreview === 'string'
-        ? serializeBodyForSpill(params.event.requestBodyPreview)
-        : undefined)
-    : undefined;
-  const responseBodyText = captureBodies
-    ? serializeBodyForSpill(params.responseBody) ??
-      (typeof params.event.responseBodyPreview === 'string'
-        ? serializeBodyForSpill(params.event.responseBodyPreview)
-        : undefined)
-    : undefined;
+  const requestCapture = captureBodies
+    ? captureNetworkBody(params.requestBody, params.event.requestBodyPreview)
+    : {};
+  const responseCapture = captureBodies
+    ? captureNetworkBody(params.responseBody, params.event.responseBodyPreview)
+    : {};
 
   const spillRefs =
     spillBodies && captureBodies
       ? scheduleNetworkBodySpill({
           eventId,
           requestId: params.event.requestId,
-          requestBodyText,
-          responseBodyText,
+          requestBodyText: requestCapture.spillText,
+          responseBodyText: responseCapture.spillText,
         })
       : {};
 
@@ -458,8 +505,12 @@ export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParam
       responseShape,
       anomalyFlags: anomalyFlags.length > 0 ? anomalyFlags : undefined,
       usage: params.event.usage ?? resolveUsageForNetworkEmit(),
-      requestBodyPreview: requestBodyText ?? params.event.requestBodyPreview,
-      responseBodyPreview: responseBodyText ?? params.event.responseBodyPreview,
+      requestBodyPreview:
+        previewFromCapturedText(requestCapture.spillText ?? requestCapture.oversizedPreview) ??
+        params.event.requestBodyPreview,
+      responseBodyPreview:
+        previewFromCapturedText(responseCapture.spillText ?? responseCapture.oversizedPreview) ??
+        params.event.responseBodyPreview,
       requestBodyRef: spillRefs.requestBodyRef ?? params.event.requestBodyRef,
       responseBodyRef: spillRefs.responseBodyRef ?? params.event.responseBodyRef,
       requestBodyTruncated: spillRefs.requestBodyTruncated ?? params.event.requestBodyTruncated,

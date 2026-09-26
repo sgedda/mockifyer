@@ -11,12 +11,13 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  * Whether `setupMockifyerForReactNative` patches `fetch` at startup (activation gate, not per-request {@link MockifyerActivationMode}).
  *
  * - **`off`** — never activate; launch arguments do **not** override (use for production builds that ship Mockifyer code but must not run it).
- * - **`on`** — always activate when the helper is called.
- * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`).
+ * - **`on`** — always activate when the helper is called (starts enabled).
+ * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`). A launch `scenario` does not replace this requirement.
+ * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle). A launch `scenario` still starts the runtime toggle enabled.
  *
  * Resolution: optional config **`runtimeMode`**, then env **`MOCKIFYER_MODE`**, else **`on`**. Set **`launch_client`** explicitly for E2E-only activation (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
  */
-export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
+export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client' | 'manual';
 
 /**
  * Hybrid/filesystem domain-path traffic policy (see `domain-path-rules.json`).
@@ -96,8 +97,38 @@ export interface MockifyerConfig {
   /**
    * React Native / `setupMockifyerForReactNative`: when Mockifyer may patch `fetch` at startup.
    * Prefer **`MOCKIFYER_MODE`** env; this field overrides env when set.
+   * Use **`runtimeMode: 'manual'`** to patch but start disabled (enable via GUI).
    */
   runtimeMode?: MockifyerRuntimeMode;
+  /**
+   * When true, Mockifyer starts disabled at runtime (all requests bypass).
+   * Use `enableMockifyer()` to turn it on. When false (default), Mockifyer starts enabled.
+   * 
+   * **Prefer `runtimeMode: 'manual'`** for the same behavior with clearer intent.
+   * This option remains for backwards compatibility.
+   */
+  startDisabled?: boolean;
+  /**
+   * Persist {@link enableMockifyer} / {@link disableMockifyer} across app restarts.
+   *
+   * - **`true`** — use AsyncStorage (React Native) or `localStorage` (web) when available
+   * - **custom storage** — any `{ getItem, setItem }` (e.g. your own AsyncStorage wrapper)
+   *
+   * With **`runtimeMode: 'manual'`**, first launch starts disabled; after the user enables once,
+   * the next launch restores **enabled**. Pair with {@link initialRuntimeEnabled} when you load
+   * storage yourself before `setupMockifyer` (sync APIs).
+   */
+  persistRuntimeEnabled?:
+    | boolean
+    | {
+        getItem(key: string): Promise<string | null> | string | null;
+        setItem(key: string, value: string): Promise<void> | void;
+      };
+  /**
+   * Explicit initial runtime enable state (overrides `startDisabled` / `runtimeMode: 'manual'`).
+   * Set after loading persisted preference in async setup (see `setupMockifyerForReactNative`).
+   */
+  initialRuntimeEnabled?: boolean;
   /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
   initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
@@ -477,7 +508,7 @@ export interface MockData {
 
 // Environment variable names
 export const ENV_VARS = {
-  /** `off` \| `on` \| `launch_client` — RN startup gate; unset defaults to **`on`** via {@link MockifyerRuntimeMode}. */
+  /** `off` \| `on` \| `launch_client` \| `manual` — RN startup gate; unset defaults to **`on`** via {@link MockifyerRuntimeMode}. */
   MOCK_RUNTIME_MODE: 'MOCKIFYER_MODE',
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
