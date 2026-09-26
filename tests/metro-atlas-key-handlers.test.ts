@@ -117,6 +117,7 @@ describe('metro-atlas-key-handlers', () => {
       const stdin = makeStdin();
       let starts = 0;
       let stops = 0;
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const attached = attachMetroAtlasKeyHandler({
         atlasKey: 'a',
@@ -138,12 +139,16 @@ describe('metro-atlas-key-handlers', () => {
       expect(starts).toBe(1);
       expect(stops).toBe(0);
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining('Mockifyer activated'),
+      );
 
       stdin.emit('keypress', 'a', { name: 'a' });
       expect(getMetroAtlasSessionPhase()).toBe('rendering');
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(stops).toBe(1);
       expect(getMetroAtlasSessionPhase()).toBe('idle');
+      log.mockRestore();
     });
 
     it('opens dashboard on m', () => {
