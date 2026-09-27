@@ -780,6 +780,37 @@ describe('atlas-doc-html', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('Trace forest keeps children under one row when fetch + proxy record the same requestId', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-html-twin-'));
+    try {
+      setAtlasDocHtmlOutputPath(dir);
+      writeAtlasDocHtml(dir, getAtlasDocMap('default'), []);
+      const index = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+      const source = index.match(/function buildForest\(list\) \{[\s\S]*?\n  \}\n/)?.[0];
+      expect(source).toBeDefined();
+      const buildForest = new Function(`${source}; return buildForest;`)() as (
+        list: Array<Record<string, unknown>>,
+      ) => Array<{ event: { id: string }; children: unknown[]; recordCount: number }>;
+
+      const forest = buildForest([
+        { id: 'root', timestamp: '2026-09-27T12:50:00.000Z', requestId: 'gql' },
+        { id: 'member-fetch', timestamp: '2026-09-27T12:50:01.000Z', requestId: 'm1', parentRequestId: 'gql' },
+        { id: 'member-proxy', timestamp: '2026-09-27T12:50:02.000Z', requestId: 'm1', parentRequestId: 'gql' },
+        { id: 'crm', timestamp: '2026-09-27T12:50:03.000Z', requestId: 'c1', parentRequestId: 'm1' },
+      ]);
+
+      expect(forest).toHaveLength(1);
+      expect(forest[0].children).toHaveLength(1);
+      const member = forest[0].children[0] as { event: { id: string }; children: unknown[]; recordCount: number };
+      expect(member.event.id).toBe('member-proxy');
+      expect(member.recordCount).toBe(2);
+      expect(member.children).toHaveLength(1);
+    } finally {
+      setAtlasDocHtmlOutputPath(undefined);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('atlas-har', () => {
