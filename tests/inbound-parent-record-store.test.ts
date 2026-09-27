@@ -111,6 +111,24 @@ describe('resolveInboundParentRequestIdForChild', () => {
     ).resolves.toBe('myaccount-recorded');
   });
 
+  it('stamps the parent id onto a captured row without one instead of replacing it', async () => {
+    const store = createMemoryStore();
+    const url = 'https://member.example/v-2/myaccount/';
+    const hash = requestHash('GET', url);
+    store.rows.set(hash, {
+      request: { method: 'GET', url, headers: {} },
+      response: { status: 200, data: { memberId: 'm-1' }, headers: {} },
+      timestamp: '2026-09-27T00:00:00.000Z',
+    } as MockData);
+    registerHopOwner({ requestId: 'myaccount-hop', method: 'GET', url });
+
+    await expect(
+      resolveInboundParentRequestIdForChild(store, 'default', 'myaccount-hop', { method: 'GET', url })
+    ).resolves.toBe('myaccount-hop');
+    expect(store.rows.get(hash)?.requestId).toBe('myaccount-hop');
+    expect(store.rows.get(hash)?.response.data).toEqual({ memberId: 'm-1' });
+  });
+
   it('still heals an unproxied inbound parent onto its recorded row', async () => {
     const store = createMemoryStore();
     const url = 'http://bff.internal/graphql';

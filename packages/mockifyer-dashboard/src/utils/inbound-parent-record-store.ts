@@ -78,21 +78,33 @@ function resolveParentRecordTarget(
   };
 }
 
-async function findRecordedParentRequestId(
+interface RecordedParentLookup {
+  /** `requestId` of the first recorded row for the parent request. */
+  requestId?: string;
+  /** Captured row without a `requestId` (older recordings) — stamp it, never overwrite it. */
+  unlinked?: { hash: string; mock: MockData };
+}
+
+async function findRecordedParent(
   store: InboundParentRecordStore,
   scenarioName: string,
   target: ParentRecordTarget
-): Promise<string | undefined> {
+): Promise<RecordedParentLookup> {
   const { request, lookupUrls } = target;
+  let unlinked: RecordedParentLookup['unlinked'];
   for (const url of lookupUrls) {
     const hash = sha256Hex(generateRequestKey({ ...request, url }));
     const existing = await store.getByHashInScenario(hash, scenarioName);
-    const existingId = existing?.requestId?.trim();
-    if (existingId) {
-      return existingId;
+    if (!existing) continue;
+    const requestId = existing.requestId?.trim();
+    if (requestId) {
+      return { requestId };
+    }
+    if (!unlinked && existing.response && !existing.responsePending) {
+      unlinked = { hash, mock: existing };
     }
   }
-  return undefined;
+  return { unlinked };
 }
 
 function looksLikeGraphqlUrl(url: string): boolean {
@@ -111,6 +123,7 @@ function looksLikeGraphqlUrl(url: string): boolean {
  *   {@link resolveParentRecordTarget}); otherwise by the downstream service's inbound URL.
  * - If a catalog row already exists for that request, return its `requestId`
  *   (heal ALS orphans onto the recorded id — the live id may predate a scenario clear).
+ *   A captured row without a `requestId` gets the ALS id stamped on instead of being replaced.
  * - Otherwise upsert a request-only row under the ALS `parentRequestId`, keyed like the
  *   parent's own recording so the proxy overwrites it instead of adding a duplicate.
  * - GraphQL without a body is skipped (empty-body keys collide across operations).
@@ -144,33 +157,29 @@ export async function resolveInboundParentRequestIdForChild(
   }
 
   try {
-    const existingId = await findRecordedParentRequestId(store, scenarioName, target);
-    if (existingId) {
-      if (debugProxy && existingId !== parentId) {
+    const recorded = await findRecordedParent(store, scenarioName, target);
+    if (recorded.requestId) {
+      if (debugProxy && recorded.requestId !== parentId) {
         console.log(
-          `[InboundParentRecord] heal child parent ${parentId.slice(0, 8)}… → recorded ${existingId.slice(0, 8)}… (${method} ${url})`
+          `[InboundParentRecord] heal child parent ${parentId.slice(0, 8)}… → recorded ${recorded.requestId.slice(0, 8)}… (${method} ${url})`
         );
       }
-      return existingId;
+      return recorded.requestId;
     }
 
-    // Check if any lookup URL has a complete recording (don't overwrite with placeholder)
-    for (const lookupUrl of target.lookupUrls) {
-      const checkHash = sha256Hex(generateRequestKey({ ...request, url: lookupUrl }));
-      const checkExisting = await store.getByHashInScenario(checkHash, scenarioName);
-      if (checkExisting && checkExisting.response && !checkExisting.responsePending) {
-        // Stamp parentId onto the existing record to link children properly
-        const updated: MockData = { ...checkExisting, requestId: parentId };
-        await store.setByHashInScenario(checkHash, updated, scenarioName, {
-          enforceWriteLimits: false,
-        });
-        if (debugProxy) {
-          console.log(
-            `[InboundParentRecord] stamped requestId onto complete recording (${method} ${url})`
-          );
-        }
-        return parentId;
+    if (recorded.unlinked) {
+      await store.setByHashInScenario(
+        recorded.unlinked.hash,
+        { ...recorded.unlinked.mock, requestId: parentId },
+        scenarioName,
+        { enforceWriteLimits: false }
+      );
+      if (debugProxy) {
+        console.log(
+          `[InboundParentRecord] stamped requestId onto complete recording (${method} ${url})`
+        );
       }
+      return parentId;
     }
 
     const mock: MockData = {
