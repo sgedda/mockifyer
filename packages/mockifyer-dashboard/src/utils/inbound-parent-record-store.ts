@@ -29,6 +29,7 @@ function sha256Hex(input: string): string {
 }
 
 const HTTP_SCHEME_PREFIX = /^http:\/\//i;
+const ABSOLUTE_HTTP_URL = /^https?:\/\//i;
 
 /**
  * Lookup order for an inbound parent URL. A service behind TLS termination sees
@@ -41,12 +42,49 @@ function inboundParentLookupUrls(url: string): string[] {
   return [url.replace(HTTP_SCHEME_PREFIX, 'https://'), url];
 }
 
+/** Catalog request for the parent hop, plus the URLs its recorded row may be keyed under. */
+interface ParentRecordTarget {
+  request: StoredRequest;
+  lookupUrls: string[];
+}
+
+/**
+ * Prefer the URL this process sent the parent hop to (hop-owner registry): that is the
+ * key its catalog row is written under. The downstream service's own inbound URL
+ * (http behind TLS termination, gateway rewrites) is only a fallback.
+ */
+function resolveParentRecordTarget(
+  parentId: string,
+  parentHop: InboundParentHopPayload | undefined
+): ParentRecordTarget | undefined {
+  const owner = findHopOwner(parentId);
+  const ownerUrl = owner?.url?.trim();
+  const ownedUrl = ownerUrl && ABSOLUTE_HTTP_URL.test(ownerUrl) ? ownerUrl : undefined;
+  const url = ownedUrl ?? parentHop?.url?.trim();
+  if (!url || url.startsWith('mockifyer://')) {
+    return undefined;
+  }
+  const rawMethod = ownedUrl ? owner?.method : parentHop?.method;
+  const data = parentHop?.data;
+  return {
+    request: {
+      method: rawMethod?.trim() ? rawMethod.trim().toUpperCase() : 'GET',
+      url,
+      headers: {},
+      data: data === undefined ? null : data,
+      queryParams: {},
+    },
+    lookupUrls: ownedUrl ? [ownedUrl] : inboundParentLookupUrls(url),
+  };
+}
+
 async function findRecordedParentRequestId(
   store: InboundParentRecordStore,
   scenarioName: string,
-  request: StoredRequest
+  target: ParentRecordTarget
 ): Promise<string | undefined> {
-  for (const url of inboundParentLookupUrls(request.url)) {
+  const { request, lookupUrls } = target;
+  for (const url of lookupUrls) {
     const hash = sha256Hex(generateRequestKey({ ...request, url }));
     const existing = await store.getByHashInScenario(hash, scenarioName);
     const existingId = existing?.requestId?.trim();
@@ -69,12 +107,12 @@ function looksLikeGraphqlUrl(url: string): boolean {
 /**
  * Ensure children link to the real inbound hop.
  *
- * - If this dashboard proxied the parent hop, keep its id. The inbound URL a downstream
- *   service sees (http behind TLS termination, gateway rewrites) rarely matches the
- *   proxied URL, so a URL-keyed lookup would detach children onto a duplicate row.
- * - If a catalog row already exists for this method/url/body, return its `requestId`
- *   (heal ALS orphans onto the recorded GraphQL id — do not steal that id).
- * - Otherwise upsert a request-only row under the ALS `parentRequestId`.
+ * - Key the parent by the URL this dashboard proxied it to when known (see
+ *   {@link resolveParentRecordTarget}); otherwise by the downstream service's inbound URL.
+ * - If a catalog row already exists for that request, return its `requestId`
+ *   (heal ALS orphans onto the recorded id — the live id may predate a scenario clear).
+ * - Otherwise upsert a request-only row under the ALS `parentRequestId`, keyed like the
+ *   parent's own recording so the proxy overwrites it instead of adding a duplicate.
  * - GraphQL without a body is skipped (empty-body keys collide across operations).
  *
  * @returns effective parent request id to stamp on the child, or the input id when unchanged/skipped.
@@ -90,16 +128,13 @@ export async function resolveInboundParentRequestIdForChild(
   if (!parentId) {
     return undefined;
   }
-  if (findHopOwner(parentId)) {
+  const target = resolveParentRecordTarget(parentId, parentHop);
+  if (!target) {
     return parentId;
   }
-  const url = parentHop?.url?.trim();
-  if (!url || url.startsWith('mockifyer://')) {
-    return parentId;
-  }
-  const method = parentHop?.method?.trim() ? parentHop.method.trim().toUpperCase() : 'GET';
-  const data = parentHop?.data;
-  if (looksLikeGraphqlUrl(url) && (data === undefined || data === null)) {
+  const { request } = target;
+  const { method, url } = request;
+  if (looksLikeGraphqlUrl(url) && request.data === null) {
     if (debugProxy) {
       console.log(
         `[InboundParentRecord] skip GraphQL parent without body (requestId=${parentId.slice(0, 8)}…)`
@@ -108,15 +143,8 @@ export async function resolveInboundParentRequestIdForChild(
     return parentId;
   }
 
-  const request: StoredRequest = {
-    method,
-    url,
-    headers: {},
-    data: data === undefined ? null : data,
-    queryParams: {},
-  };
   try {
-    const existingId = await findRecordedParentRequestId(store, scenarioName, request);
+    const existingId = await findRecordedParentRequestId(store, scenarioName, target);
     if (existingId) {
       if (debugProxy && existingId !== parentId) {
         console.log(

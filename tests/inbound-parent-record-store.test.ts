@@ -44,7 +44,26 @@ describe('resolveInboundParentRequestIdForChild', () => {
     });
 
     expect(parentId).toBe('myaccount-hop');
-    expect(store.rows.size).toBe(0);
+    const placeholder = store.rows.get(requestHash('GET', 'https://member.example/v-2/myaccount/'));
+    expect(placeholder?.requestId).toBe('myaccount-hop');
+    expect(store.rows.has(requestHash('GET', 'http://member.example/v-2/myaccount/'))).toBe(false);
+  });
+
+  it('heals a proxied parent onto its re-recorded row after the scenario was cleared', async () => {
+    const store = createMemoryStore();
+    const url = 'http://localhost:4000/graphql';
+    const data = { query: 'query myAccountBookingExtras { id }', variables: {} };
+    registerHopOwner({ requestId: 'gql-before-clear', method: 'POST', url });
+    store.rows.set(requestHash('POST', url, data), {
+      request: { method: 'POST', url, headers: {}, data },
+      response: { status: 0, data: null, headers: {} },
+      timestamp: '2026-09-27T00:00:00.000Z',
+      requestId: 'gql-after-clear',
+    } as MockData);
+
+    await expect(
+      resolveInboundParentRequestIdForChild(store, 'default', 'gql-before-clear', { method: 'POST', url, data })
+    ).resolves.toBe('gql-after-clear');
   });
 
   it('does not heal a proxied parent onto an older duplicate inbound row', async () => {
