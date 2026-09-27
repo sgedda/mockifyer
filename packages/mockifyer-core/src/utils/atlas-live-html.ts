@@ -1399,7 +1399,10 @@ kbd {
       childrenByParent.set(parentId, siblings);
     } else {
       // Newest roots at the top (SSE backlog is oldest→newest; live hops append).
-      rootOrder.unshift(rid);
+      // Avoid duplicate root IDs when requestId is reused (GraphQL operations, etc.).
+      if (rootOrder.indexOf(rid) === -1) {
+        rootOrder.unshift(rid);
+      }
       if (rootOrder.length > MAX_ROOTS) {
         rootOrder.length = MAX_ROOTS;
       }
