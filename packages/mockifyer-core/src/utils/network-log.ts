@@ -81,10 +81,10 @@ export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 
 /**
  * Event size budget when Atlas/Metro is capturing bodies (preview + headers + meta).
- * Headroom covers a bearer token and the other outbound headers beside a full preview.
+ * Headroom covers request and response previews (512KB each) plus headers and metadata.
  */
 export const NETWORK_LOG_ATLAS_MAX_EVENT_BYTES =
-  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 131_072;
+  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES * 2 + 200_000;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
 export const NETWORK_LOG_DEFAULT_TTL_SEC = 60 * 60 * 24;
 
@@ -645,9 +645,9 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
           requestId: params.event.requestId,
           requestBodyText: requestCapture.spillText,
           responseBodyText: responseCapture.spillText,
-          // Same origin the hop is posted to. localhost-only uploads miss when
-          // Metro is the bridge host (emulator 10.0.2.2 or MOCKIFYER_METRO_URL).
-          metroBaseUrl: atlasMetroBridge ?? localMetro,
+          // Same origin the hop is posted to. Include headerMetroBase so remote services
+          // with only the bridge header still upload to the correct Metro origin.
+          metroBaseUrl: atlasMetroBridge ?? headerMetroBase ?? localMetro,
         })
       : {};
 
