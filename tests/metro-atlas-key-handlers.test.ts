@@ -205,7 +205,7 @@ describe('metro-atlas-key-handlers', () => {
       expect(opened).toEqual(['http://localhost:3002']);
     });
 
-    it('auto-starts when the hop stream connects', async () => {
+    it('does not start capture when the hop stream connects', async () => {
       const stdin = makeStdin();
       let starts = 0;
       let stops = 0;
@@ -224,17 +224,21 @@ describe('metro-atlas-key-handlers', () => {
       });
 
       notifyMetroAtlasStreamClientConnected();
-      expect(starts).toBe(1);
-      expect(getMetroAtlasSessionPhase()).toBe('capturing');
+      expect(starts).toBe(0);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
       expect(getMetroAtlasStreamSubscriberCount()).toBe(1);
 
       notifyMetroAtlasStreamClientConnected();
-      expect(starts).toBe(1);
+      expect(starts).toBe(0);
       expect(getMetroAtlasStreamSubscriberCount()).toBe(2);
 
       notifyMetroAtlasStreamClientDisconnected();
       notifyMetroAtlasStreamClientDisconnected();
       expect(getMetroAtlasStreamSubscriberCount()).toBe(0);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
+
+      stdin.emit('keypress', 'a', { name: 'a' });
+      expect(starts).toBe(1);
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
 
       stdin.emit('keypress', 'a', { name: 'a' });

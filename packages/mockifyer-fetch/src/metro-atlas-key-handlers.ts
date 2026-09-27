@@ -4,9 +4,9 @@
  *   stop ends capture — generate HTML from the live page “Render docs” button)
  * - `m` (default): open the Mockifyer dashboard in the browser
  *
- * Opening `mockifyer-atlas` (SSE `/mockifyer-network-events/stream`) or the live
- * page auto-starts capture when idle — then press `t` once to stop, or use
- * Render docs on the live page without stopping.
+ * Capture starts only when `t` is pressed. Opening the live page or connecting
+ * the SSE stream does not start it. Press `t` again to stop, or use Render docs
+ * on the live page without stopping.
  *
  * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
  * Disable Atlas with `atlasKey: false`, dashboard with `dashboardKey: false`.
@@ -61,7 +61,7 @@ export interface AttachMetroAtlasKeyHandlerOptions {
    * Mount prefix from `MOCKIFYER_DASHBOARD_BASE` is appended when set.
    */
   dashboardUrl?: string;
-  /** Called on session start. `reason` is `key` (Metro `t`) or `stream` (live page connected). */
+  /** Called when capture starts. Only the Atlas key (`t`) starts a session. */
   onSessionStart?: (reason: MetroAtlasSessionStartReason) => void;
   /** Called on session stop — end capture (HTML is rendered from the live page). */
   onSessionStop?: () => void | Promise<void>;
@@ -333,17 +333,15 @@ export function openMetroDashboard(): boolean {
 }
 
 /**
- * First SSE client for `/mockifyer-network-events/stream` auto-starts capture.
+ * SSE client connected to `/mockifyer-network-events/stream`.
+ * Does not start capture — that happens only when the Atlas key (`t`) is pressed.
  */
 export function notifyMetroAtlasStreamClientConnected(): void {
   streamSubscriberCount += 1;
-  if (streamSubscriberCount === 1) {
-    startMetroAtlasSession("stream");
-  }
 }
 
 /**
- * SSE client disconnected — capture stays open until Metro `a` (or explicit stop).
+ * SSE client disconnected — capture stays open until the Atlas key is pressed again.
  */
 export function notifyMetroAtlasStreamClientDisconnected(): void {
   streamSubscriberCount = Math.max(0, streamSubscriberCount - 1);
@@ -528,9 +526,6 @@ export function attachMetroAtlasKeyHandler(
       parts.push(
         `Press ${atlasKey} to start/stop Atlas capture (start opens live stream; Render docs on the page writes HTML)`,
       );
-    }
-    if (effectiveDashboardKey && dashboardUrl) {
-      parts.push(`Press ${effectiveDashboardKey} to open dashboard (${dashboardUrl})`);
     }
     if (parts.length > 0) {
       console.log(`[Mockifyer] info ${parts.join(". ")}.`);
