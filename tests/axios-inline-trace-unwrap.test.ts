@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
 import {
+  INLINE_TRACE_ATTACHMENT,
   MOCKIFYER_TRACE_DATA_KEY,
   MOCKIFYER_TRACE_RESPONSE_KEY,
   buildInlineRequestTrace,
@@ -136,6 +137,52 @@ describe('axios recordMode=false inline-trace unwrap', () => {
     expect(trace!.hops[0].responseBodyPreview).toContain('user-2');
     expect(trace!.hops[0].responseBodyPreview).not.toContain('mockifyerTrace');
     expect(trace!.hops[1].responseBodyPreview).toBe('{"row":1}');
+  });
+
+  it('keeps sibling list and auth envelopes on the axios response', async () => {
+    const url = 'https://api.example.test/auth/session';
+    const axiosInstance = axios.create();
+    upstream = new MockAdapter(axiosInstance);
+
+    const listUrl = 'https://api.example.test/items';
+    const authBody = {
+      data: { token: 't', refreshToken: 'r', userId: 'u1' },
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'auth-root',
+        hopCount: 0,
+        incomplete: false,
+        attachment: INLINE_TRACE_ATTACHMENT.sibling,
+        hops: [],
+      },
+    };
+    const listBody = {
+      data: ['ok', true],
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        requestId: 'list-root',
+        hopCount: 0,
+        incomplete: false,
+        attachment: INLINE_TRACE_ATTACHMENT.sibling,
+        hops: [],
+      },
+    };
+
+    upstream.onGet(url).reply(200, authBody);
+    upstream.onGet(listUrl).reply(200, listBody);
+
+    const client = setupMockifyer({
+      mockDataPath,
+      recordMode: false,
+      failOnMissingMock: false,
+      axiosInstance,
+    });
+
+    const authResponse = await client.get(url);
+    const listResponse = await client.get(listUrl);
+
+    expect(authResponse.data).toEqual({
+      data: { token: 't', refreshToken: 'r', userId: 'u1' },
+    });
+    expect(listResponse.data).toEqual({ data: ['ok', true] });
   });
 
   it('unwraps envelopes even when parent is not collecting inline trace', async () => {
