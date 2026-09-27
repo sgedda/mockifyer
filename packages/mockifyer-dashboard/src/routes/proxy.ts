@@ -408,7 +408,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Live ids stay per call (network log, upstream headers, trace to the client); the stored
     // row keeps its own requestId and children heal onto it via the proxied URL.
-    hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url);
+    hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, mock?.requestId);
     const resolvedParentId = await resolveInboundParentRequestIdForChild(
       store,
       resolvedScenarioName,

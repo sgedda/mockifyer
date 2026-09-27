@@ -233,8 +233,8 @@ export function applyProxyCorrelationToMockData(
     mock.requestId = requestId;
   }
   const combinedCallers = [
-    ...readMockParentRequestIds(previous),
     ...readMockParentRequestIds(mock),
+    ...readMockParentRequestIds(previous),
   ];
   const parentRequestIds = mergeMockParentRequestIds(
     { parentRequestIds: combinedCallers },
