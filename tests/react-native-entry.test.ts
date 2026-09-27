@@ -32,6 +32,7 @@ import {
   applyPersistedHopIds,
   mergeMockParentRequestIds,
   readMockParentRequestIds,
+  INLINE_TRACE_ATTACHMENT,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -75,6 +76,7 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof applyPersistedHopIds).toBe('function');
     expect(typeof mergeMockParentRequestIds).toBe('function');
     expect(typeof readMockParentRequestIds).toBe('function');
+    expect(INLINE_TRACE_ATTACHMENT).toEqual({ sibling: 'sibling', wrap: 'wrap' });
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {
