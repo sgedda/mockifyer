@@ -64,6 +64,7 @@ export * from './utils/override-group-fs';
 export * from './utils/override-group-resolve';
 export * from './utils/mock-recording-sidecars';
 export * from './utils/network-log';
+export * from './utils/network-event-twins';
 export * from './utils/append-params-to-url';
 export * from './utils/dashboard-network-trace-fetch';
 export * from './utils/graphql-body-display';
