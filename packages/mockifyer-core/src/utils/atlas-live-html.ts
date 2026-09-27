@@ -169,10 +169,22 @@ body {
 }
 header {
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.header-top {
+  display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem 1.25rem;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: auto;
 }
 .brand {
   font-family: var(--mono);
@@ -214,6 +226,9 @@ html[data-theme="dark"] .brand span {
   font-weight: 600;
 }
 .menu-nav a:hover { text-decoration: underline; }
+#btn-render {
+  font-weight: 600;
+}
 .search-label {
   display: flex;
   align-items: center;
@@ -444,23 +459,27 @@ kbd {
 <body>
 <div class="shell">
   <header>
-    <div>
-      <div class="brand">Mockifyer <span>Atlas</span></div>
-      <p class="sub">Live hop stream from Metro — newest roots first (same SSE as <code>mockifyer-atlas</code>). Click ▸ rows to expand/collapse that level; nesting goes all the way down. <strong>curl</strong> (root hops) copies a runnable command with include-trace headers. <strong>trace</strong> re-calls that hop with <code>X-Mockifyer-Include-Trace</code> in a new tab. <strong>Render docs</strong> writes interactive Atlas HTML under <code>atlas-html/</code> (same as Metro <code>t</code> used to do on stop). Use <strong>Dark mode</strong> (or <kbd>n</kbd>) for the dark theme. Search uses exact contiguous match (case-insensitive) like saved Atlas HTML.</p>
+    <div class="header-top">
+      <div>
+        <div class="brand">Mockifyer <span>Atlas</span></div>
+        <p class="sub">Live Metro hop stream — newest first. Search filters the buffer; <strong>Render docs</strong> writes offline Atlas HTML.</p>
+      </div>
+      <div class="header-actions">
+        <nav class="menu-nav" aria-label="Mockifyer links">
+          <a href="${dashboardUrl}" target="_blank" rel="noopener">Dashboard</a>
+          <a href="${escapeHtml(atlasHtmlBrowsePath)}" target="_blank" rel="noopener" id="link-atlas-html" title="Open last generated Atlas HTML (if present)">Atlas HTML</a>
+        </nav>
+        <button type="button" id="btn-render" title="Explain and write Atlas HTML from the Metro hop buffer">Render docs</button>
+      </div>
     </div>
     <div class="toolbar" role="toolbar" aria-label="Atlas controls">
-      <nav class="menu-nav" aria-label="Mockifyer links">
-        <a href="${dashboardUrl}" target="_blank" rel="noopener">Dashboard</a>
-        <a href="${escapeHtml(atlasHtmlBrowsePath)}" target="_blank" rel="noopener" id="link-atlas-html" title="Open last generated Atlas HTML (if present)">Atlas HTML</a>
-      </nav>
       <label class="search-label" title="Exact contiguous match (case-insensitive). Longer query = fewer hits.">Search<input type="search" id="search" placeholder="path, body, requestId…" autocomplete="off" spellcheck="false"></label>
       <button type="button" id="btn-expand" title="Expand or collapse all nested groups (e)">Expand all</button>
       <button type="button" id="btn-pause" title="Pause / resume live hops (p / Space)">Pause</button>
       <button type="button" id="btn-errors" title="Errors only (f)">Errors</button>
       <button type="button" id="btn-dedupe" class="on" title="Group duplicate consecutive hops at every level (d)">Dedupe</button>
-      <button type="button" id="btn-render" title="Explain and write Atlas HTML from the Metro hop buffer">Render docs</button>
       <button type="button" id="btn-analyze" title="Analyze buffer (a)">Analyze</button>
-      <button type="button" id="btn-clear" title="Clear Metro hop buffer (c)">Clear</button>
+      <button type="button" id="btn-clear" title="Clear Metro hop buffer (Backspace)">Clear</button>
       <button type="button" id="btn-dark" title="Toggle dark mode (n)" aria-pressed="false">Dark mode</button>
     </div>
   </header>
@@ -1329,7 +1348,7 @@ kbd {
     }
     statusEl.innerHTML =
       bits.join(" · ") +
-      ' · newest first · <kbd>e</kbd> all · <kbd>p</kbd> pause · <kbd>f</kbd> errors · <kbd>d</kbd> dedupe · <kbd>c</kbd> clear';
+      ' · newest first · <kbd>e</kbd> all · <kbd>p</kbd> pause · <kbd>f</kbd> errors · <kbd>d</kbd> dedupe · <kbd>⌫</kbd> clear';
   }
 
   function ingest(ev) {
@@ -1742,7 +1761,7 @@ kbd {
       e.preventDefault();
       collapseDuplicates = !collapseDuplicates;
       render();
-    } else if (k === "c" || k === "C") {
+    } else if (k === "Backspace") {
       e.preventDefault();
       btnClear.click();
     } else if (k === "a" || k === "A") {

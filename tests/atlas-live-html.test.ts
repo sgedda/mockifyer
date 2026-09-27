@@ -128,6 +128,19 @@ describe('atlas-live-html', () => {
     expect(html).toContain('target="_blank"');
   });
 
+  it('places Render docs in the top-right header actions', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('class="header-top"');
+    expect(html).toContain('class="header-actions"');
+    expect(html).toMatch(
+      /header-actions[\s\S]*id="btn-render"[\s\S]*<\/div>\s*<div class="toolbar"/,
+    );
+    expect(html).not.toMatch(
+      /class="toolbar"[\s\S]*id="btn-render"/,
+    );
+  });
+
   it('offers Render docs from the live page (no auto-generate on Metro stop)', () => {
     const html = buildAtlasLiveStreamHtml();
 
@@ -143,6 +156,15 @@ describe('atlas-live-html', () => {
     expect(html).toContain('/atlas-html/index.html');
     expect(html).toContain('>Atlas HTML</a>');
     expect(html).toContain('Does <strong>not</strong> stop capture');
+  });
+
+  it('clears the hop buffer with Backspace (not c)', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('k === "Backspace"');
+    expect(html).toContain('Clear Metro hop buffer (Backspace)');
+    expect(html).not.toContain('k === "c" || k === "C"');
+    expect(html).toContain('Live Metro hop stream — newest first');
   });
 
   it('filters hops with exact contiguous search like Atlas HTML (no f shortcut)', () => {
