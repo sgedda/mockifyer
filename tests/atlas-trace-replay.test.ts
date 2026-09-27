@@ -1,7 +1,9 @@
 import {
   ATLAS_TRACE_REPLAY_PATH,
+  ATLAS_TRACE_REPLAY_TIMEOUT_MS,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  buildAtlasTracePendingHtml,
   buildAtlasTraceReplayHtml,
   buildPrettyCurlCommand,
   replayNetworkEventWithIncludeTrace,
@@ -306,5 +308,54 @@ describe('atlas-trace-replay', () => {
     expect(cmd).toContain("\\\n");
     expect(cmd).toContain("-H 'content-type: application/json'");
     expect(cmd).toContain("--data-raw '{\"query\":\"{ ping }\"}'");
+  });
+
+  it('builds a pending HTML shell that fetches wait=1', () => {
+    const html = buildAtlasTracePendingHtml({
+      hopId: 'hop-pending',
+      method: 'GET',
+      url: 'https://api.example.com/v1/home',
+      resultUrl: '/mockifyer-atlas-trace?id=hop-pending&format=html&wait=1',
+      timeoutMs: ATLAS_TRACE_REPLAY_TIMEOUT_MS,
+    });
+    expect(html).toContain('Re-calling with');
+    expect(html).toContain('X-Mockifyer-Include-Trace');
+    expect(html).toContain('/mockifyer-atlas-trace?id=hop-pending&format=html&wait=1');
+    expect(html).toContain('document.write');
+  });
+
+  it('times out a hung include-trace re-call', async () => {
+    const event = {
+      id: 'hop-hang',
+      timestamp: '2026-09-26T10:00:00.000Z',
+      scenario: 'default',
+      transport: 'fetch' as const,
+      method: 'GET',
+      url: 'https://api.example.com/v1/slow',
+      source: 'upstream' as const,
+    };
+    const result = await replayNetworkEventWithIncludeTrace([event], 'hop-hang', {
+      timeoutMs: 30,
+      fetchFn: ((_url, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) {
+            reject(new Error('expected AbortSignal'));
+            return;
+          }
+          const fail = () => {
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          };
+          if (signal.aborted) {
+            fail();
+            return;
+          }
+          signal.addEventListener('abort', fail, { once: true });
+        })) as typeof fetch,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/timed out after 30ms/);
   });
 });

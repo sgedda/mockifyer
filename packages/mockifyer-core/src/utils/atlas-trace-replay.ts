@@ -23,6 +23,12 @@ import {
 
 export const ATLAS_TRACE_REPLAY_PATH = '/mockifyer-atlas-trace';
 
+/**
+ * Max wait for the live include-trace re-call. Without this, a hung upstream
+ * leaves the browser tab spinning on `/mockifyer-atlas-trace?format=html`.
+ */
+export const ATLAS_TRACE_REPLAY_TIMEOUT_MS = 20_000;
+
 /** Hop headers that must not be copied onto the replay (hop-by-hop / framing). */
 const SKIP_REPLAY_REQUEST_HEADERS = new Set([
   'host',
@@ -66,6 +72,11 @@ export interface ReplayNetworkEventWithIncludeTraceOptions {
   requestBody?: string;
   /** Max characters retained for non-JSON text bodies. Default 64_000. */
   maxTextChars?: number;
+  /**
+   * Abort the re-call after this many ms. Default
+   * {@link ATLAS_TRACE_REPLAY_TIMEOUT_MS}. Set `0` to disable.
+   */
+  timeoutMs?: number;
 }
 
 function findHop(
@@ -182,6 +193,27 @@ export async function replayNetworkEventWithIncludeTrace(
   }
 
   const fetchFn = options?.fetchFn ?? fetch;
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number'
+      ? options.timeoutMs
+      : ATLAS_TRACE_REPLAY_TIMEOUT_MS;
+  const controller =
+    timeoutMs > 0 && typeof AbortController !== 'undefined'
+      ? new AbortController()
+      : null;
+  const timer =
+    controller != null
+      ? setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : null;
+  if (timer && typeof timer === 'object' && 'unref' in timer) {
+    (timer as NodeJS.Timeout).unref?.();
+  }
+  if (controller) {
+    init.signal = controller.signal;
+  }
+
   const started = Date.now();
   try {
     const res = await fetchFn(url, init);
@@ -213,15 +245,26 @@ export async function replayNetworkEventWithIncludeTrace(
       requestHeaders: headers,
     };
   } catch (error) {
+    const aborted =
+      (error instanceof Error && error.name === 'AbortError') ||
+      (typeof DOMException !== 'undefined' &&
+        error instanceof DOMException &&
+        error.name === 'AbortError');
     return {
       success: false,
       hopId: event.id,
       method,
       url,
       durationMs: Date.now() - started,
-      error: error instanceof Error ? error.message : String(error),
+      error: aborted
+        ? `include-trace re-call timed out after ${timeoutMs}ms (upstream hung or too slow)`
+        : error instanceof Error
+          ? error.message
+          : String(error),
       requestHeaders: headers,
     };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -405,6 +448,137 @@ export interface BuildAtlasTraceReplayHtmlOptions {
 
 const DEFAULT_TRACE_PAGE_DASHBOARD_URL = 'http://localhost:3002';
 const TRACE_PAGE_THEME_KEY = 'mockifyer-atlas-live-theme';
+
+export interface BuildAtlasTracePendingHtmlOptions {
+  hopId: string;
+  method?: string;
+  url?: string;
+  /** Absolute or same-origin path that returns the finished HTML (`wait=1`). */
+  resultUrl: string;
+  atlasLiveUrl?: string;
+  dashboardUrl?: string;
+  /** Shown in the pending copy. Default {@link ATLAS_TRACE_REPLAY_TIMEOUT_MS}. */
+  timeoutMs?: number;
+}
+
+/**
+ * Immediate shell for `format=html` so the browser is not blank while Metro
+ * re-calls the hop. Client JS then loads {@link BuildAtlasTracePendingHtmlOptions.resultUrl}.
+ */
+export function buildAtlasTracePendingHtml(
+  options: BuildAtlasTracePendingHtmlOptions,
+): string {
+  const hopId = escapeHtml(options.hopId || '');
+  const method = escapeHtml((options.method || '?').toUpperCase());
+  const url = escapeHtml(options.url || '');
+  const resultUrl = escapeHtml(options.resultUrl);
+  const resultUrlJs = JSON.stringify(options.resultUrl);
+  const atlasLiveUrl = escapeHtml(
+    options.atlasLiveUrl?.trim() || ATLAS_LIVE_STREAM_PATH,
+  );
+  const dashboardUrl = escapeHtml(
+    options.dashboardUrl?.trim() || DEFAULT_TRACE_PAGE_DASHBOARD_URL,
+  );
+  const timeoutMs =
+    typeof options.timeoutMs === 'number' && options.timeoutMs > 0
+      ? options.timeoutMs
+      : ATLAS_TRACE_REPLAY_TIMEOUT_MS;
+  const timeoutLabel = escapeHtml(String(Math.round(timeoutMs / 1000)));
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Atlas trace · pending · ${method} ${url || hopId}</title>
+<style>
+:root {
+  --bg: #f3f0e8; --panel: #fffdf8; --ink: #1c1914; --muted: #6b6458;
+  --line: #d9d2c4; --accent: #0f6b5c; --bad: #9b2c2c;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+html[data-theme="dark"] {
+  --bg: #050805; --panel: #0a120c; --ink: #c8ffd4; --muted: #5e8f6a;
+  --line: #1a3d24; --accent: #5dff9a; --bad: #ff6b6b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--sans); line-height: 1.45;
+}
+header {
+  padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+header h1 { margin: 0 0 0.35rem; font-size: 1rem; font-family: var(--mono); }
+.meta { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+.nav { margin-top: 0.5rem; display: flex; gap: 0.75rem; font-family: var(--mono); font-size: 0.8rem; }
+.nav a { color: var(--accent); text-decoration: none; font-weight: 600; }
+main { padding: 1.5rem 1.25rem; max-width: 52rem; }
+.spinner {
+  display: inline-block; width: 1rem; height: 1rem; border: 2px solid var(--line);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.7s linear infinite; vertical-align: -0.15em; margin-right: 0.45rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error { color: var(--bad); white-space: pre-wrap; font-family: var(--mono); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mockifyer Atlas · include-trace</h1>
+  <p class="meta">${method}  ${url || hopId}</p>
+  <nav class="nav" aria-label="Mockifyer links">
+    <a href="${atlasLiveUrl}">Atlas live</a>
+    <a href="${dashboardUrl}" target="_blank" rel="noopener">Dashboard</a>
+  </nav>
+</header>
+<main>
+  <p id="status"><span class="spinner" aria-hidden="true"></span>Re-calling with <code>X-Mockifyer-Include-Trace</code>…</p>
+  <p class="meta">Gives up after ${timeoutLabel}s if upstream hangs. Result replaces this page.</p>
+  <pre id="err" class="error" hidden></pre>
+</main>
+<script>
+(function () {
+  var statusEl = document.getElementById("status");
+  var errEl = document.getElementById("err");
+  var resultUrl = ${resultUrlJs};
+  var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  var timer = setTimeout(function () {
+    if (ctrl) ctrl.abort();
+  }, ${JSON.stringify(timeoutMs + 5_000)});
+  fetch(resultUrl, {
+    headers: { Accept: "text/html" },
+    credentials: "same-origin",
+    signal: ctrl ? ctrl.signal : undefined,
+  })
+    .then(function (res) {
+      return res.text().then(function (html) {
+        return { ok: res.ok, status: res.status, html: html };
+      });
+    })
+    .then(function (out) {
+      clearTimeout(timer);
+      document.open();
+      document.write(out.html);
+      document.close();
+    })
+    .catch(function (err) {
+      clearTimeout(timer);
+      if (statusEl) statusEl.textContent = "Trace failed";
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent =
+          err && err.name === "AbortError"
+            ? "Timed out waiting for include-trace re-call."
+            : String(err && err.message ? err.message : err);
+      }
+    });
+})();
+</script>
+</body>
+</html>`;
+}
 
 function shellQuote(value: string): string {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
