@@ -15,7 +15,7 @@ import {
   ATLAS_CODE_HIGHLIGHT_CSS,
   atlasSyntaxHighlightInlineScript,
 } from './atlas-syntax-highlight';
-import { isFetchProxyTwin, PROXY_TWIN_WINDOW_MS } from './network-event-twins';
+import { isFetchProxyTwin, NETWORK_EVENT_TWINNED_KEY } from './network-event-twins';
 
 export const ATLAS_LIVE_STREAM_PATH = '/mockifyer-atlas-live';
 
@@ -524,7 +524,7 @@ kbd {
   var BACKLOG = ${backlog ? "true" : "false"};
   var SLOW_MS = 3000;
   var MAX_ROOTS = 200;
-  var PROXY_TWIN_WINDOW_MS = ${PROXY_TWIN_WINDOW_MS};
+  var TWINNED_KEY = ${JSON.stringify(NETWORK_EVENT_TWINNED_KEY)};
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
 
   var hopsEl = document.getElementById("hops");
@@ -1363,7 +1363,7 @@ kbd {
   /** Index of the fetch/proxy twin of ev among its siblings, or -1. */
   function twinIndex(list, ev) {
     for (var i = list.length - 1; i >= 0; i--) {
-      if (isFetchProxyTwin(list[i], ev, PROXY_TWIN_WINDOW_MS)) return i;
+      if (isFetchProxyTwin(list[i], ev)) return i;
     }
     return -1;
   }
@@ -1380,10 +1380,13 @@ kbd {
     var parentId = parentIdOf(ev);
     var siblings = parentId ? childrenByParent.get(parentId) || [] : [];
     var twinAt = parentId ? twinIndex(siblings, ev) : -1;
-    var rootTwin = !parentId && isFetchProxyTwin(eventsByRequestId.get(rid) || {}, ev, PROXY_TWIN_WINDOW_MS);
+    var rootTwin = !parentId && isFetchProxyTwin(eventsByRequestId.get(rid) || {}, ev);
     if (twinAt >= 0 || rootTwin) {
-      // Same call seen by the service client and the dashboard proxy: keep the proxy record.
-      if (ev.transport === "proxy") {
+      // Same call seen by the service client and the dashboard proxy: keep the proxy record,
+      // marked so a later call reusing these hop ids is not folded into it.
+      var kept = ev.transport === "proxy" ? ev : parentId ? siblings[twinAt] : eventsByRequestId.get(rid);
+      kept[TWINNED_KEY] = true;
+      if (kept === ev) {
         if (twinAt >= 0) siblings[twinAt] = ev;
         eventsByRequestId.set(rid, ev);
         render();

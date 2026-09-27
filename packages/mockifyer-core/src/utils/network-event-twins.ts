@@ -1,43 +1,41 @@
 /**
  * One call through the dashboard proxy is recorded twice: by the service's own
- * HTTP client (`transport: 'fetch'` or `'axios'`, logged when the call returns)
- * and by the dashboard proxy (`transport: 'proxy'`, with duration). Both carry
- * the same hop ids. The proxy record is the call that actually reached the backend.
+ * HTTP client (`transport: 'fetch'` or `'axios'`) and by the dashboard proxy
+ * (`transport: 'proxy'`, with duration). Both carry the same hop ids. The proxy
+ * record is the call that actually reached the backend.
+ *
+ * Timestamps cannot pair them: the proxy record can land tens of seconds after the
+ * client's (store lookups before the upstream call are not in its duration). Each
+ * proxied call yields exactly one record of each kind, so callers pair them one-to-one
+ * and skip records that are already paired.
  */
 
-/** Slack between the two records of one call, on top of the proxy's own duration. */
-export const PROXY_TWIN_WINDOW_MS = 5000;
+/** Marks a record that already absorbed its client/proxy twin. */
+export const NETWORK_EVENT_TWINNED_KEY = '__mockifyerTwinned';
 
 export interface NetworkEventTwinFields {
   requestId?: string | null;
   parentRequestId?: string | null;
   transport?: string | null;
-  timestamp?: string | null;
-  durationMs?: number | null;
+  [NETWORK_EVENT_TWINNED_KEY]?: boolean;
 }
 
 /**
- * True when `a` and `b` are the fetch-side and proxy-side records of the same call.
- * Stored hop ids are reused across calls, so matching ids alone is not enough:
- * the records must also be close in time.
+ * True when `a` and `b` can be the client-side and proxy-side records of one call:
+ * same hop ids, one proxy record and one fetch/axios record, and neither already paired.
  *
  * Self-contained on purpose: the Atlas live page embeds this function's source.
  */
-export function isFetchProxyTwin(
-  a: NetworkEventTwinFields,
-  b: NetworkEventTwinFields,
-  windowMs: number
-): boolean {
+export function isFetchProxyTwin(a: NetworkEventTwinFields, b: NetworkEventTwinFields): boolean {
   const trim = (value: string | null | undefined): string => (value ? String(value).trim() : '');
+  const isClientSide = (transport: string | null | undefined): boolean =>
+    transport === 'fetch' || transport === 'axios';
+  if (a.__mockifyerTwinned || b.__mockifyerTwinned) return false;
   const requestId = trim(a.requestId);
   if (!requestId || requestId !== trim(b.requestId)) return false;
   if (trim(a.parentRequestId) !== trim(b.parentRequestId)) return false;
-  const proxy = a.transport === 'proxy' ? a : b.transport === 'proxy' ? b : null;
-  const fetchSide = proxy === a ? b : a;
-  if (!proxy || (fetchSide.transport !== 'fetch' && fetchSide.transport !== 'axios')) return false;
-  const proxyAt = Date.parse(String(proxy.timestamp || ''));
-  const fetchAt = Date.parse(String(fetchSide.timestamp || ''));
-  if (!Number.isFinite(proxyAt) || !Number.isFinite(fetchAt)) return false;
-  const duration = typeof proxy.durationMs === 'number' && proxy.durationMs > 0 ? proxy.durationMs : 0;
-  return Math.abs(proxyAt - fetchAt) <= duration + windowMs;
+  return (
+    (isClientSide(a.transport) && b.transport === 'proxy') ||
+    (a.transport === 'proxy' && isClientSide(b.transport))
+  );
 }
