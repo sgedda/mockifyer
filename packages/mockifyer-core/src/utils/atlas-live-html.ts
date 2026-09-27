@@ -1371,8 +1371,32 @@ kbd {
     };
   }
 
+  // Browsers cap HTTP/1.1 connections per host (Chrome: 6). Every open live tab
+  // holds one SSE to Metro, so background tabs release theirs or new Atlas
+  // requests (trace / open) queue forever.
+  function disconnect() {
+    if (!es) return;
+    try {
+      es.close();
+    } catch (_) {}
+    es = null;
+    streamState = "closed";
+    streamError = "";
+    updateStatus();
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      disconnect();
+    } else if (!es) {
+      connect();
+    }
+  });
+
   render();
-  connect();
+  if (!document.hidden) {
+    connect();
+  }
 })();
 </script>
 </body>

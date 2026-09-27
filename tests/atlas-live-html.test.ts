@@ -8,6 +8,14 @@ describe('atlas-live-html', () => {
     expect(ATLAS_LIVE_STREAM_PATH).toBe('/mockifyer-atlas-live');
   });
 
+  it('releases the SSE connection while the tab is hidden', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('addEventListener("visibilitychange"');
+    expect(html).toContain('function disconnect()');
+    expect(html).toContain('if (!document.hidden) {\n    connect();');
+  });
+
   it('builds a self-contained page that streams hops with expand/collapse', () => {
     const html = buildAtlasLiveStreamHtml();
 
