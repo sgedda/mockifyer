@@ -1337,7 +1337,8 @@ kbd {
     }
   });
 
-  function connect() {
+  function connect(opts) {
+    opts = opts || {};
     if (es) {
       try {
         es.close();
@@ -1346,14 +1347,16 @@ kbd {
     streamState = "connecting";
     streamError = "";
     updateStatus();
+    var requestBacklog = opts.backlog !== false && BACKLOG;
+    var shouldClearLocal = opts.clearLocal !== false;
     var url =
-      STREAM_PATH + "?backlog=" + (BACKLOG ? "1" : "0");
+      STREAM_PATH + "?backlog=" + (requestBacklog ? "1" : "0");
     es = new EventSource(url);
     es.addEventListener("hello", function () {
       streamState = "open";
       streamError = "";
       // Clear on reconnect so backlog replays safely (unless paused).
-      if (!paused) {
+      if (!paused && shouldClearLocal) {
         clearLocal();
       }
       updateStatus();
@@ -1389,7 +1392,7 @@ kbd {
     if (document.hidden) {
       disconnect();
     } else if (!es) {
-      connect();
+      connect({ backlog: false, clearLocal: false });
     }
   });
 
