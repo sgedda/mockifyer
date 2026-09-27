@@ -159,9 +159,14 @@ export async function resolveInboundParentRequestIdForChild(
       const checkHash = sha256Hex(generateRequestKey({ ...request, url: lookupUrl }));
       const checkExisting = await store.getByHashInScenario(checkHash, scenarioName);
       if (checkExisting && checkExisting.response && !checkExisting.responsePending) {
+        // Stamp parentId onto the existing record to link children properly
+        const updated: MockData = { ...checkExisting, requestId: parentId };
+        await store.setByHashInScenario(checkHash, updated, scenarioName, {
+          enforceWriteLimits: false,
+        });
         if (debugProxy) {
           console.log(
-            `[InboundParentRecord] skip placeholder - complete recording exists (${method} ${url})`
+            `[InboundParentRecord] stamped requestId onto complete recording (${method} ${url})`
           );
         }
         return parentId;
