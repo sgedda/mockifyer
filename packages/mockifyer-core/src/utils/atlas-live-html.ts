@@ -1024,9 +1024,15 @@ kbd {
     }
   }
 
-  /** Curl only on roots — nested hops rarely carry a full outbound header set. */
+  /**
+   * Curl on roots, and on nested hops once they carry outbound headers.
+   * Without headers a nested re-call cannot authenticate.
+   */
   function hopShowsCurl(ev) {
-    return !parentIdOf(ev);
+    if (!ev) return false;
+    if (!parentIdOf(ev)) return true;
+    var headers = ev.requestHeaders || {};
+    return Object.keys(headers).length > 0;
   }
 
   function copyTextToClipboard(text) {

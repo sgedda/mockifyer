@@ -5,11 +5,81 @@
 
 import type { NetworkEvent } from "./network-event-types";
 import { truncateUtf8, utf8ByteLength } from "./crypto-digest";
+import { NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES } from "./network-body-spill";
 
 export const DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS = 2_000;
 export const DEFAULT_METRO_NETWORK_STREAM_SLOW_MS = 3_000;
 /** Keep Atlas live / SSE previews aligned with hop inline budget (spill still holds the full body). */
-export const DEFAULT_METRO_NETWORK_PREVIEW_BYTES = 65_536;
+export const DEFAULT_METRO_NETWORK_PREVIEW_BYTES =
+  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES;
+
+const REDACTED_HEADER_VALUE = "[REDACTED]";
+
+function headerValueIsPlaceholder(value: string | undefined): boolean {
+  const text = value?.trim();
+  return !text || text === REDACTED_HEADER_VALUE;
+}
+
+function headersByLowerName(headers: Record<string, string> | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!headers) return out;
+  for (const [name, value] of Object.entries(headers)) {
+    const key = name.trim().toLowerCase();
+    if (!key || value == null) continue;
+    out.set(key, String(value));
+  }
+  return out;
+}
+
+function pickHeaderValue(previous: string | undefined, incoming: string | undefined): string | undefined {
+  if (!headerValueIsPlaceholder(incoming)) return incoming;
+  if (!headerValueIsPlaceholder(previous)) return previous;
+  return incoming ?? previous;
+}
+
+function pickBodyPreview(previous: string | undefined, incoming: string | undefined): string | undefined {
+  if (!incoming) return previous;
+  if (!previous) return incoming;
+  const incomingCut = incoming.includes("[truncated]");
+  const previousCut = previous.includes("[truncated]");
+  if (previousCut && !incomingCut) return incoming;
+  if (incomingCut && !previousCut) return previous;
+  return incoming.length >= previous.length ? incoming : previous;
+}
+
+/**
+ * Same hop posted twice (Metro, then a redacted dashboard enrich, or the reverse).
+ * Keep a real authorization token and the fuller request body so stream curl can run.
+ */
+export function mergeNetworkEventPreferRunnable(
+  previous: NetworkEvent,
+  incoming: NetworkEvent
+): NetworkEvent {
+  const previousHeaders = headersByLowerName(previous.requestHeaders);
+  const incomingHeaders = headersByLowerName(incoming.requestHeaders);
+  const names = new Set([...previousHeaders.keys(), ...incomingHeaders.keys()]);
+  const requestHeaders: Record<string, string> = {};
+  for (const name of names) {
+    const value = pickHeaderValue(previousHeaders.get(name), incomingHeaders.get(name));
+    if (value != null) requestHeaders[name] = value;
+  }
+  const requestBodyPreview = pickBodyPreview(
+    previous.requestBodyPreview,
+    incoming.requestBodyPreview
+  );
+  const responseBodyPreview = pickBodyPreview(
+    previous.responseBodyPreview,
+    incoming.responseBodyPreview
+  );
+  return {
+    ...incoming,
+    requestHeaders: Object.keys(requestHeaders).length > 0 ? requestHeaders : incoming.requestHeaders,
+    ...(requestBodyPreview != null ? { requestBodyPreview } : {}),
+    ...(responseBodyPreview != null ? { responseBodyPreview } : {}),
+    requestBodyRef: incoming.requestBodyRef ?? previous.requestBodyRef,
+    responseBodyRef: incoming.responseBodyRef ?? previous.responseBodyRef,
+  };
+}
 
 function trimTrailingSlashes(value: string): string {
   let end = value.length;
@@ -61,18 +131,40 @@ export class MetroNetworkEventBuffer {
   /** Append one hop (newest first). Notifies subscribers. */
   append(event: NetworkEvent): NetworkEvent {
     const slim = slimNetworkEventForMetroStream(event);
+    const requestId = slim.requestId?.trim();
+    if (requestId) {
+      const existingIndex = this.events.findIndex(
+        (existing) => existing.requestId?.trim() === requestId
+      );
+      if (existingIndex >= 0) {
+        const merged = slimNetworkEventForMetroStream(
+          mergeNetworkEventPreferRunnable(this.events[existingIndex], slim)
+        );
+        this.events.splice(existingIndex, 1);
+        this.events.unshift(merged);
+        if (this.events.length > this.maxEvents) {
+          this.events.length = this.maxEvents;
+        }
+        this.publish(merged);
+        return merged;
+      }
+    }
     this.events.unshift(slim);
     if (this.events.length > this.maxEvents) {
       this.events.length = this.maxEvents;
     }
+    this.publish(slim);
+    return slim;
+  }
+
+  private publish(event: NetworkEvent): void {
     for (const listener of this.listeners) {
       try {
-        listener(slim);
+        listener(event);
       } catch {
         // listener must not break ingest
       }
     }
-    return slim;
   }
 
   /** Newest-first snapshot. */

@@ -20,10 +20,12 @@ describe('network-log-store (memory)', () => {
       url: 'https://a.example/two',
       source: 'upstream',
       status: 201,
+      requestHeaders: { authorization: 'Bearer live-token', accept: 'application/json' },
     });
     const { events } = await store.list({ scenario, limit: 10 });
     expect(events).toHaveLength(2);
     expect(events[0].method).toBe('POST');
+    expect(events[0].requestHeaders?.authorization).toBe('Bearer live-token');
     expect(events[1].method).toBe('GET');
     expect(decodeURIComponent(events[1].url)).toContain('api_key=[REDACTED]');
     expect(events[1].url).not.toContain('secret');

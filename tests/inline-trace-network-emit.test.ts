@@ -93,6 +93,8 @@ describe('networkLog includeTraceHeader wiring', () => {
             source: 'upstream',
             transport: 'fetch',
             responseBodyPreview: '{"n":1}',
+            requestHeaders: { authorization: 'Bearer downstream', 'content-type': 'application/json' },
+            requestBodyPreview: '{"query":"{ me { id } }"}',
           },
         ],
         incomplete: false,
@@ -117,6 +119,8 @@ describe('networkLog includeTraceHeader wiring', () => {
     expect(hops[0].parentRequestId).toBe('client-hop');
     expect(hops[0].url).toBe('https://api.example/downstream');
     expect(hops[0].method).toBe('GET');
+    expect(hops[0].requestHeaders?.['content-type']).toBe('application/json');
+    expect(hops[0].requestBodyPreview).toContain('query');
   });
 
   it('leaves non-envelope bodies unchanged and emits nothing', () => {

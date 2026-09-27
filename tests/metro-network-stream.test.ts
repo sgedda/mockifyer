@@ -28,6 +28,7 @@ function hop(partial: Partial<NetworkEvent> & Pick<NetworkEvent, 'method' | 'url
     requestBodyPreview: partial.requestBodyPreview,
     responseBodyPreview: partial.responseBodyPreview,
     requestHeaders: partial.requestHeaders,
+    requestId: partial.requestId,
     usage: partial.usage,
   };
 }
@@ -67,6 +68,35 @@ describe('metro-network-stream', () => {
 
     expect(buffer.list().map((e) => e.id)).toEqual(['4', '3', '2']);
     expect(seen).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('keeps a real authorization when a redacted copy of the same hop arrives', () => {
+    const buffer = new MetroNetworkEventBuffer();
+    buffer.append(
+      hop({
+        id: 'live',
+        requestId: 'hop-1',
+        method: 'GET',
+        url: 'https://booking.example/api/booking/1',
+        source: 'upstream',
+        requestHeaders: { authorization: 'Bearer live-token', accept: 'application/json' },
+        requestBodyPreview: '{"query":"{ me { id } }"}',
+      })
+    );
+    buffer.append(
+      hop({
+        id: 'dash',
+        requestId: 'hop-1',
+        method: 'GET',
+        url: 'https://booking.example/api/booking/1',
+        source: 'upstream',
+        requestHeaders: { authorization: '[REDACTED]', accept: 'application/json' },
+      })
+    );
+    const [event] = buffer.list();
+    expect(buffer.size).toBe(1);
+    expect(event.requestHeaders?.authorization).toBe('Bearer live-token');
+    expect(event.requestBodyPreview).toContain('query');
   });
 
   it('slims large body previews, keeps request headers, drops response headers', () => {
