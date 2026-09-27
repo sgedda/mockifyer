@@ -2,6 +2,7 @@ import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
 import {
   mergeMockParentRequestIds,
+  readMockParentRequestIds,
   registerHopOwner,
   resolveRecordedHopIdentity,
   type RecordedHopIdentity,
@@ -229,7 +230,15 @@ export function applyProxyCorrelationToMockData(
       mock.requestId = requestId;
     }
   }
-  const parentRequestIds = mergeMockParentRequestIds(previous ?? mock, parentRequestId, mock.requestId);
+  const combinedCallers = [
+    ...readMockParentRequestIds(previous),
+    ...readMockParentRequestIds(mock),
+  ];
+  const parentRequestIds = mergeMockParentRequestIds(
+    { parentRequestIds: combinedCallers },
+    parentRequestId,
+    mock.requestId
+  );
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
   }
