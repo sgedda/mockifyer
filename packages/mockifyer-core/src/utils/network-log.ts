@@ -467,17 +467,24 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
     const fetchFn = resolveUnpatchedFetch();
     if (!fetchFn) return;
     try {
-      const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-      });
-      if (!res.ok) return;
-      const json = (await res.json()) as { active?: unknown };
-      if (typeof json.active === 'boolean') {
-        setMetroAtlasCaptureSessionActive(json.active);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      try {
+        const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { active?: unknown };
+        if (typeof json.active === 'boolean') {
+          setMetroAtlasCaptureSessionActive(json.active);
+        }
+      } finally {
+        clearTimeout(timeout);
       }
     } catch {
-      // Metro may be down
+      // Metro may be down — do nothing (lastSyncedAtMs stays stale)
     }
   }, options);
 }
@@ -489,7 +496,11 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
 export async function resolveNetworkLogIncludeTraceOptionsAsync(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
-  await refreshMetroAtlasCaptureSessionIfStale();
+  // Force refresh when session is currently inactive so we detect activation quickly,
+  // avoiding the race where hop POST replies keep lastSyncedAtMs fresh but the session
+  // just became active on Metro.
+  const force = !isMetroAtlasCaptureSessionActive();
+  await refreshMetroAtlasCaptureSessionIfStale({ force });
   return resolveNetworkLogIncludeTraceOptions(config);
 }
 

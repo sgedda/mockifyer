@@ -534,6 +534,10 @@ export async function runMetroAtlasCaptureSessionRefresh(
       await task();
     } finally {
       const current = getMetroAtlasCaptureSessionState();
+      // Update lastSyncedAtMs even on failure so the TTL prevents immediate retries
+      // when Metro is unreachable. Successful task calls setMetroAtlasCaptureSessionActive,
+      // which also updates this timestamp, but failures must update it too.
+      current.lastSyncedAtMs = Date.now();
       if (current.refreshPromise === pending) {
         current.refreshPromise = undefined;
       }
