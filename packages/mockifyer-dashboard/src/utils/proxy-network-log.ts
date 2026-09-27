@@ -201,7 +201,8 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
 }
 
 /** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
- * Existing ids stay put so always-refresh does not break parentRequestId links.
+ * The row's existing id (on `mock`, or on `previous` when the row is rebuilt) stays put so
+ * refreshes do not break parentRequestId links; live calls use a fresh id per call.
  * Exception: if the stored requestId equals the live parent (caller id was stolen as this
  * hop's id), replace it with the resolved hop identity so the chain can heal.
  * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
@@ -224,11 +225,12 @@ export function applyProxyCorrelationToMockData(
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()
       : undefined);
-  const existingRequestId = mock.requestId?.trim();
-  if (requestId) {
-    if (!existingRequestId || (parentRequestId && existingRequestId === parentRequestId)) {
-      mock.requestId = requestId;
-    }
+  const existingRequestId = mock.requestId?.trim() || previous?.requestId?.trim();
+  const existingIsStolenParent = Boolean(parentRequestId && existingRequestId === parentRequestId);
+  if (existingRequestId && !existingIsStolenParent) {
+    mock.requestId = existingRequestId;
+  } else if (requestId) {
+    mock.requestId = requestId;
   }
   const combinedCallers = [
     ...readMockParentRequestIds(previous),
