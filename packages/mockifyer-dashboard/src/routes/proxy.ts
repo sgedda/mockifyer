@@ -62,6 +62,7 @@ import {
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
   resolveProxyHopIdentity,
+  resolveCatalogHopIdentity,
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 import {
@@ -417,13 +418,7 @@ router.post('/', async (req: Request, res: Response) => {
       parentHopFromBody,
       debugProxy
     );
-    if (
-      resolvedParentId &&
-      hopIdentity.parentRequestId &&
-      resolvedParentId !== hopIdentity.parentRequestId
-    ) {
-      hopIdentity = { ...hopIdentity, parentRequestId: resolvedParentId };
-    }
+    const catalogHopIdentity = resolveCatalogHopIdentity(hopIdentity, resolvedParentId);
     applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
 
     const pathRules = await store.getDomainPathRules(resolvedScenarioName);
@@ -607,7 +602,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity);
+      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity, catalogHopIdentity);
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
@@ -676,7 +671,12 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
-        applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, hopIdentity);
+        applyProxyCorrelationToMockData(
+          storedMockForClient,
+          networkLogCtx,
+          hopIdentity,
+          catalogHopIdentity
+        );
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {
           try {
