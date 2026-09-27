@@ -2517,7 +2517,7 @@ function renderErrorPanelHtml(analysis, escFn) {
   function buildForest(list) {
     var byId = {};
     list.forEach(function (e) {
-      byId[e.id] = { event: e, children: [], orphan: false };
+      byId[e.id] = { event: e, children: [], orphan: false, recordCount: 1 };
     });
     // Last-wins on duplicate requestId (prefer newer timestamp) — matches core/dashboard.
     var byReq = {};
@@ -2528,9 +2528,20 @@ function renderErrorPanelHtml(analysis, escFn) {
         byReq[e.requestId] = e;
       }
     });
+    // One call seen by two recorders (service fetch + dashboard proxy) shares a
+    // requestId and parent. Keep one row so its children are not split off a twin.
+    var merged = {};
+    list.forEach(function (e) {
+      var canonical = e.requestId ? byReq[e.requestId] : null;
+      if (!canonical || canonical.id === e.id) return;
+      if ((canonical.parentRequestId || '') !== (e.parentRequestId || '')) return;
+      merged[e.id] = true;
+      byId[canonical.id].recordCount += 1;
+    });
     var attached = {};
     var roots = [];
     list.forEach(function (e) {
+      if (merged[e.id]) return;
       var parent = e.parentRequestId ? byReq[e.parentRequestId] : null;
       if (parent && byId[parent.id] && parent.id !== e.id) {
         byId[parent.id].children.push(byId[e.id]);
@@ -2538,7 +2549,7 @@ function renderErrorPanelHtml(analysis, escFn) {
       }
     });
     list.forEach(function (e) {
-      if (attached[e.id]) return;
+      if (attached[e.id] || merged[e.id]) return;
       var node = byId[e.id];
       // Parent id present but missing from this filtered set → orphan root.
       if (e.parentRequestId && !byReq[e.parentRequestId]) {
@@ -2879,6 +2890,7 @@ function renderErrorPanelHtml(analysis, escFn) {
           hasChildren: has,
           childCount: n.children.length,
           orphan: !!n.orphan,
+          recordCount: n.recordCount || 1,
           isLast: false
         });
         // Hop trees start collapsed (isCollapsed default true).
@@ -2930,6 +2942,9 @@ function renderErrorPanelHtml(analysis, escFn) {
       html += hopContextBadgeHtml(e);
       html += repeatBadgeHtml(uniqueMeta, e);
       if (r.orphan) html += ' <span class="badge orphan" title="parentRequestId not in this filtered set">orphan</span>';
+      if (r.recordCount > 1) {
+        html += ' <span class="badge dup" title="Same requestId recorded ' + r.recordCount + ' times (e.g. service fetch + dashboard proxy) — shown once">×' + r.recordCount + ' recorded</span>';
+      }
       if (e.requestId) {
         html += ' <span class="badge reqid" title="' + esc(e.requestId) + '">' + esc(shortCorrelationId(e.requestId)) + '</span>';
       }

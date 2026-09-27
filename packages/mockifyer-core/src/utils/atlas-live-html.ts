@@ -18,6 +18,9 @@ import {
 
 export const ATLAS_LIVE_STREAM_PATH = '/mockifyer-atlas-live';
 
+/** Default Mockifyer dashboard browse URL (same as Atlas trace pages). */
+export const ATLAS_LIVE_DEFAULT_DASHBOARD_URL = 'http://localhost:3002';
+
 export interface BuildAtlasLiveStreamHtmlOptions {
   /** Page title. Default `Mockifyer Atlas · live`. */
   title?: string;
@@ -37,6 +40,21 @@ export interface BuildAtlasLiveStreamHtmlOptions {
    * Default `/mockifyer-atlas-trace`.
    */
   tracePath?: string;
+  /**
+   * POST path that writes Atlas HTML from the Metro hop buffer.
+   * Default `/mockifyer-network-events/render`.
+   */
+  renderPath?: string;
+  /**
+   * Browse path for the generated Atlas HTML index (opened after render).
+   * Default `/atlas-html/index.html`.
+   */
+  atlasHtmlBrowsePath?: string;
+  /**
+   * Link to the Mockifyer dashboard (header menu).
+   * Default {@link ATLAS_LIVE_DEFAULT_DASHBOARD_URL}.
+   */
+  dashboardUrl?: string;
 }
 
 /**
@@ -50,7 +68,14 @@ export function buildAtlasLiveStreamHtml(
   const streamPath = options?.streamPath?.trim() || '/mockifyer-network-events/stream';
   const clearPath = options?.clearPath?.trim() || '/mockifyer-network-events/clear';
   const analyzePath = options?.analyzePath?.trim() || '/mockifyer-network-events/analyze';
+  const renderPath =
+    options?.renderPath?.trim() || '/mockifyer-network-events/render';
+  const atlasHtmlBrowsePath =
+    options?.atlasHtmlBrowsePath?.trim() || '/atlas-html/index.html';
   const tracePath = options?.tracePath?.trim() || '/mockifyer-atlas-trace';
+  const dashboardUrl = escapeHtml(
+    options?.dashboardUrl?.trim() || ATLAS_LIVE_DEFAULT_DASHBOARD_URL,
+  );
   const includeTraceHeader = MOCKIFYER_INCLUDE_TRACE_HEADER;
   const includeTraceBodiesHeader = MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER;
   const backlog = options?.backlog !== false;
@@ -144,10 +169,22 @@ body {
 }
 header {
   display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.header-top {
+  display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem 1.25rem;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: auto;
 }
 .brand {
   font-family: var(--mono);
@@ -175,6 +212,51 @@ html[data-theme="dark"] .brand span {
   gap: 0.4rem;
   align-items: center;
 }
+.menu-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.menu-nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.menu-nav a:hover { text-decoration: underline; }
+#btn-render {
+  font-weight: 600;
+}
+.search-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.search-label input[type="search"] {
+  min-width: 12rem;
+  flex: 1 1 14rem;
+  max-width: 22rem;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 0.35rem 0.55rem;
+}
+html[data-theme="dark"] .search-label input[type="search"] {
+  border-radius: 2px;
+}
+.search-label input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 button, .chip {
   font: inherit;
   font-family: var(--mono);
@@ -201,6 +283,61 @@ button.on {
   color: var(--accent);
 }
 button:disabled { opacity: 0.45; cursor: default; }
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(28, 25, 20, 0.45);
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.modal-backdrop.show { display: flex; }
+.modal {
+  width: min(34rem, 100%);
+  background: var(--bg-panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  padding: 1.1rem 1.2rem 1rem;
+  font-family: var(--sans);
+}
+html[data-theme="dark"] .modal {
+  border-radius: 2px;
+  box-shadow: 0 0 28px var(--glow);
+}
+.modal h2 {
+  margin: 0 0 0.55rem;
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.modal p {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.modal ul {
+  margin: 0 0 0.9rem;
+  padding-left: 1.15rem;
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.modal li { margin: 0.2rem 0; }
+.modal li code {
+  font-family: var(--mono);
+  font-size: 0.82em;
+}
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
 .status {
   font-family: var(--mono);
   font-size: 0.78rem;
@@ -322,17 +459,27 @@ kbd {
 <body>
 <div class="shell">
   <header>
-    <div>
-      <div class="brand">Mockifyer <span>Atlas</span></div>
-      <p class="sub">Live hop stream from Metro — newest roots first (same SSE as <code>mockifyer-atlas</code>). Click ▸ rows to expand/collapse that level; nesting goes all the way down. <strong>curl</strong> (root hops) copies a runnable command with include-trace headers. <strong>trace</strong> re-calls that hop with <code>X-Mockifyer-Include-Trace</code> in a new tab. Use <strong>Dark mode</strong> (or <kbd>n</kbd>) for the dark theme.</p>
+    <div class="header-top">
+      <div>
+        <div class="brand">Mockifyer <span>Atlas</span></div>
+        <p class="sub">Live Metro hop stream — newest first. Search filters the buffer; <strong>Render docs</strong> writes offline Atlas HTML.</p>
+      </div>
+      <div class="header-actions">
+        <nav class="menu-nav" aria-label="Mockifyer links">
+          <a href="${dashboardUrl}" target="_blank" rel="noopener">Dashboard</a>
+          <a href="${escapeHtml(atlasHtmlBrowsePath)}" target="_blank" rel="noopener" id="link-atlas-html" title="Open last generated Atlas HTML (if present)">Atlas HTML</a>
+        </nav>
+        <button type="button" id="btn-render" title="Explain and write Atlas HTML from the Metro hop buffer">Render docs</button>
+      </div>
     </div>
     <div class="toolbar" role="toolbar" aria-label="Atlas controls">
+      <label class="search-label" title="Exact contiguous match (case-insensitive). Longer query = fewer hits.">Search<input type="search" id="search" placeholder="path, body, requestId…" autocomplete="off" spellcheck="false"></label>
       <button type="button" id="btn-expand" title="Expand or collapse all nested groups (e)">Expand all</button>
       <button type="button" id="btn-pause" title="Pause / resume live hops (p / Space)">Pause</button>
       <button type="button" id="btn-errors" title="Errors only (f)">Errors</button>
       <button type="button" id="btn-dedupe" class="on" title="Group duplicate consecutive hops at every level (d)">Dedupe</button>
       <button type="button" id="btn-analyze" title="Analyze buffer (a)">Analyze</button>
-      <button type="button" id="btn-clear" title="Clear Metro hop buffer (c)">Clear</button>
+      <button type="button" id="btn-clear" title="Clear Metro hop buffer (Backspace)">Clear</button>
       <button type="button" id="btn-dark" title="Toggle dark mode (n)" aria-pressed="false">Dark mode</button>
     </div>
   </header>
@@ -342,6 +489,25 @@ kbd {
     <pre id="analyze"></pre>
   </div>
 </div>
+<div class="modal-backdrop" id="render-modal" role="dialog" aria-modal="true" aria-labelledby="render-modal-title" hidden>
+  <div class="modal">
+    <h2 id="render-modal-title">Render Atlas docs</h2>
+    <p>
+      This freezes the current Metro hop buffer into a standalone interactive HTML report
+      under <code>mock-data/atlas-html/</code> (same site Dev Menu / <code>mockifyer-atlas</code> <kbd>r</kbd> produce).
+    </p>
+    <ul>
+      <li>Writes <code>index.html</code>, hop snapshots, and body spills for offline browse + search.</li>
+      <li>Does <strong>not</strong> stop capture — live streaming keeps going.</li>
+      <li>May briefly enrich nested hops from the dashboard before writing.</li>
+      <li>Opens the generated page URL in a <strong>new window</strong> when finished.</li>
+    </ul>
+    <div class="modal-actions">
+      <button type="button" id="btn-render-cancel">Cancel</button>
+      <button type="button" id="btn-render-confirm" class="on">Generate &amp; open</button>
+    </div>
+  </div>
+</div>
 <script>
 (function () {
   "use strict";
@@ -349,6 +515,8 @@ kbd {
   var STREAM_PATH = ${JSON.stringify(streamPath)};
   var CLEAR_PATH = ${JSON.stringify(clearPath)};
   var ANALYZE_PATH = ${JSON.stringify(analyzePath)};
+  var RENDER_PATH = ${JSON.stringify(renderPath)};
+  var ATLAS_HTML_BROWSE = ${JSON.stringify(atlasHtmlBrowsePath)};
   var TRACE_PATH = ${JSON.stringify(tracePath)};
   var INCLUDE_TRACE_HEADER = ${JSON.stringify(includeTraceHeader)};
   var INCLUDE_TRACE_BODIES_HEADER = ${JSON.stringify(includeTraceBodiesHeader)};
@@ -363,9 +531,15 @@ kbd {
   var btnPause = document.getElementById("btn-pause");
   var btnErrors = document.getElementById("btn-errors");
   var btnDedupe = document.getElementById("btn-dedupe");
+  var btnRender = document.getElementById("btn-render");
   var btnAnalyze = document.getElementById("btn-analyze");
   var btnClear = document.getElementById("btn-clear");
   var btnDark = document.getElementById("btn-dark");
+  var searchInput = document.getElementById("search");
+  var renderModal = document.getElementById("render-modal");
+  var btnRenderCancel = document.getElementById("btn-render-cancel");
+  var btnRenderConfirm = document.getElementById("btn-render-confirm");
+  var renderingDocs = false;
 
   ${atlasSyntaxHighlightInlineScript()}
 
@@ -378,6 +552,7 @@ kbd {
   var collapseChildren = true;
   var collapseDuplicates = true;
   var errorsOnly = false;
+  var searchQuery = "";
   var paused = false;
   var skippedWhilePaused = 0;
   var streamState = "connecting";
@@ -495,8 +670,85 @@ kbd {
   }
 
   function visibleChildren(children) {
-    if (!errorsOnly) return children;
-    return children.filter(isErrorHop);
+    var list = children;
+    if (errorsOnly) {
+      list = list.filter(isErrorHop);
+    }
+    if (searchQuery) {
+      list = list.filter(function (c) {
+        return hasSearchMatchInTree(c);
+      });
+    }
+    return list;
+  }
+
+  /**
+   * Exact contiguous match haystack — same idea as saved Atlas HTML Requests search
+   * (path, ids, previews, usage). Live stream has no bodies-search.json sidecar.
+   */
+  function hopSearchHaystack(e) {
+    var parts = [
+      e.method,
+      e.path,
+      e.url,
+      e.query,
+      e.requestId,
+      e.parentRequestId,
+      e.id,
+      e.host,
+      hostOf(e),
+      pathWithQuery(e),
+      e.guiAttribution,
+      e.source,
+      e.kind,
+      e.errorMessage,
+      e.requestBodyPreview,
+      e.responseBodyPreview,
+      tsOf(e),
+    ];
+    if (typeof e.status === "number") parts.push(String(e.status));
+    if (typeof e.durationMs === "number") parts.push(String(e.durationMs));
+    var usage = e.usage;
+    if (Array.isArray(usage)) {
+      for (var i = 0; i < usage.length; i++) {
+        var u = usage[i];
+        if (!u) continue;
+        parts.push(u.screen, u.component, u.label, u.datasourceId);
+        if (u.cms) {
+          parts.push(u.cms.pageId, u.cms.nodeId, u.cms.type, u.cms.path);
+        }
+      }
+    } else if (usage && typeof usage === "object") {
+      parts.push(usage.screen, usage.component, usage.label, usage.datasourceId);
+      if (usage.cms) {
+        parts.push(usage.cms.pageId, usage.cms.nodeId, usage.cms.type, usage.cms.path);
+      }
+    }
+    return parts
+      .filter(function (p) {
+        return p != null && String(p).trim();
+      })
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function hopMatchesSearchQuery(e) {
+    if (!searchQuery) return true;
+    return hopSearchHaystack(e).indexOf(searchQuery) >= 0;
+  }
+
+  /** True when the hop or any descendant matches the search query. */
+  function hasSearchMatchInTree(ev, guard) {
+    if (hopMatchesSearchQuery(ev)) return true;
+    guard = guard || {};
+    var id = requestIdOf(ev);
+    if (!id || guard[id]) return false;
+    guard[id] = true;
+    var kids = childrenByParent.get(id) || [];
+    for (var i = 0; i < kids.length; i++) {
+      if (hasSearchMatchInTree(kids[i], guard)) return true;
+    }
+    return false;
   }
 
   function esc(s) {
@@ -1041,14 +1293,18 @@ kbd {
       var event = eventsByRequestId.get(rootOrder[r]);
       if (!event) continue;
       if (errorsOnly && !hasErrorInTree(event)) continue;
+      if (searchQuery && !hasSearchMatchInTree(event)) continue;
       roots.push(event);
     }
 
     var html = renderHopList(roots, 0);
 
     if (!html) {
-      html =
-        '<div class="empty">Waiting for hops… open the app with Atlas capture, or keep this tab open while traffic flows.</div>';
+      html = searchQuery
+        ? '<div class="empty">No hops match "' +
+          esc(searchQuery) +
+          '".</div>'
+        : '<div class="empty">Waiting for hops… open the app with Atlas capture, or keep this tab open while traffic flows.</div>';
     }
     var nearTop = hopsEl.scrollTop < 48;
     hopsEl.innerHTML = html;
@@ -1084,12 +1340,15 @@ kbd {
       errorsOnly ? "errors-only" : "all",
       streamBit,
     ];
+    if (searchQuery) {
+      bits.push("search=" + esc(searchQuery));
+    }
     if (streamError) {
       bits.push('<span class="err">' + esc(streamError) + "</span>");
     }
     statusEl.innerHTML =
       bits.join(" · ") +
-      ' · newest first · <kbd>e</kbd> all · <kbd>p</kbd> pause · <kbd>f</kbd> errors · <kbd>d</kbd> dedupe · <kbd>c</kbd> clear';
+      ' · newest first · <kbd>e</kbd> all · <kbd>p</kbd> pause · <kbd>f</kbd> errors · <kbd>d</kbd> dedupe · <kbd>⌫</kbd> clear';
   }
 
   function ingest(ev) {
@@ -1246,6 +1505,183 @@ kbd {
     collapseDuplicates = !collapseDuplicates;
     render();
   });
+  if (searchInput) {
+    searchInput.addEventListener("input", function () {
+      searchQuery = String(searchInput.value || "")
+        .trim()
+        .toLowerCase();
+      render();
+    });
+  }
+
+  function closeRenderModal() {
+    if (!renderModal) return;
+    renderModal.classList.remove("show");
+    renderModal.hidden = true;
+  }
+
+  function openRenderModal() {
+    if (!renderModal || renderingDocs) return;
+    renderModal.hidden = false;
+    renderModal.classList.add("show");
+    if (btnRenderConfirm) btnRenderConfirm.focus();
+  }
+
+  /**
+   * Open a real browser window synchronously (avoids popup blockers after fetch),
+   * show a short pending page, then navigate to the Atlas HTML URL.
+   */
+  function openAtlasHtmlWindow(initialMessage) {
+    var win = window.open("", "_blank");
+    if (!win) return null;
+    try {
+      win.opener = null;
+    } catch (err) {}
+    try {
+      var doc = win.document;
+      doc.open();
+      doc.write(
+        "<!DOCTYPE html><html><head><meta charset=\\"utf-8\\"/><title>Atlas docs…</title>" +
+          "<style>body{font:14px/1.45 system-ui,sans-serif;margin:2rem;color:#1c1914;background:#f3f0e8}" +
+          "code{font-family:ui-monospace,Menlo,monospace}</style></head><body>" +
+          "<p id=\\"msg\\">" +
+          String(initialMessage || "Generating Atlas docs…") +
+          "</p>" +
+          "<p style=\\"color:#6b6458\\">This window will open <code>" +
+          String(ATLAS_HTML_BROWSE) +
+          "</code> when Metro finishes writing files.</p>" +
+          "</body></html>"
+      );
+      doc.close();
+    } catch (err) {}
+    return win;
+  }
+
+  function setAtlasHtmlWindowMessage(win, message) {
+    if (!win || win.closed) return;
+    try {
+      var el = win.document && win.document.getElementById("msg");
+      if (el) el.textContent = message;
+    } catch (err) {}
+  }
+
+  function runRenderDocs() {
+    if (renderingDocs) return;
+    closeRenderModal();
+    renderingDocs = true;
+    if (btnRender) {
+      btnRender.disabled = true;
+      btnRender.classList.add("on");
+      btnRender.textContent = "Rendering…";
+    }
+    var resultWin = openAtlasHtmlWindow(
+      "Writing Atlas HTML from the Metro hop buffer…"
+    );
+    setAnalyzeContent(
+      "Writing Atlas HTML from Metro hop buffer (may enrich from dashboard)…" +
+        NL +
+        (resultWin
+          ? "Opened a new window for " + ATLAS_HTML_BROWSE
+          : "Popup blocked — allow popups, then retry or open " +
+            ATLAS_HTML_BROWSE +
+            " manually after render."),
+      "plain"
+    );
+    fetch(RENDER_PATH, {
+      method: "POST",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(function (r) {
+        return r.json().then(function (json) {
+          return { ok: r.ok, json: json };
+        });
+      })
+      .then(function (result) {
+        var json = result.json || {};
+        if (!result.ok || !json.success) {
+          var failMsg =
+            "Render failed: " + String(json.error || "unknown");
+          setAnalyzeContent(
+            failMsg + NL + JSON.stringify(json, null, 2),
+            "json"
+          );
+          setAtlasHtmlWindowMessage(resultWin, failMsg);
+          return;
+        }
+        var hopCount =
+          typeof json.hopCount === "number" ? json.hopCount : "?";
+        var outDir = json.outputDir || "atlas-html";
+        setAnalyzeContent(
+          "Rendered " +
+            hopCount +
+            " hop(s) → " +
+            outDir +
+            NL +
+            "Opening " +
+            ATLAS_HTML_BROWSE +
+            " in the new window…",
+          "plain"
+        );
+        if (resultWin && !resultWin.closed) {
+          try {
+            resultWin.location.href = ATLAS_HTML_BROWSE;
+          } catch (err) {
+            setAtlasHtmlWindowMessage(
+              resultWin,
+              "Rendered — open manually: " + ATLAS_HTML_BROWSE
+            );
+          }
+        } else {
+          setAnalyzeContent(
+            "Rendered " +
+              hopCount +
+              " hop(s) → " +
+              outDir +
+              NL +
+              "Popup blocked or window closed — open manually: " +
+              ATLAS_HTML_BROWSE,
+            "plain"
+          );
+        }
+      })
+      .catch(function (err) {
+        var msg = String(err && err.message ? err.message : err);
+        setAnalyzeContent(msg, "plain");
+        setAtlasHtmlWindowMessage(resultWin, "Render error: " + msg);
+      })
+      .then(function () {
+        renderingDocs = false;
+        if (btnRender) {
+          btnRender.disabled = false;
+          btnRender.classList.remove("on");
+          btnRender.textContent = "Render docs";
+        }
+      });
+  }
+
+  if (btnRender) {
+    btnRender.addEventListener("click", openRenderModal);
+  }
+  if (btnRenderCancel) {
+    btnRenderCancel.addEventListener("click", closeRenderModal);
+  }
+  if (btnRenderConfirm) {
+    btnRenderConfirm.addEventListener("click", runRenderDocs);
+  }
+  if (renderModal) {
+    renderModal.addEventListener("click", function (e) {
+      if (e.target === renderModal) closeRenderModal();
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (renderModal && renderModal.classList.contains("show")) {
+      e.preventDefault();
+      closeRenderModal();
+    }
+  });
   btnAnalyze.addEventListener("click", function () {
     fetch(ANALYZE_PATH, { cache: "no-store" })
       .then(function (r) {
@@ -1325,7 +1761,7 @@ kbd {
       e.preventDefault();
       collapseDuplicates = !collapseDuplicates;
       render();
-    } else if (k === "c" || k === "C") {
+    } else if (k === "Backspace") {
       e.preventDefault();
       btnClear.click();
     } else if (k === "a" || k === "A") {

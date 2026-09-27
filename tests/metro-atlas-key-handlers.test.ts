@@ -142,7 +142,7 @@ describe('metro-atlas-key-handlers', () => {
       return stdin;
     }
 
-    it('starts then stops and generates on second press', async () => {
+    it('starts then stops without implying HTML generation on keypress', async () => {
       const stdin = makeStdin();
       let starts = 0;
       let stops = 0;

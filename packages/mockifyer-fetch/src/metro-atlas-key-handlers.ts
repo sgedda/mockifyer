@@ -1,10 +1,12 @@
 /**
  * Metro terminal keys for Mockifyer:
- * - `t` (default): start/stop Atlas capture (start opens the live stream page; stop generates HTML)
+ * - `t` (default): start/stop Atlas capture (start opens the live stream page;
+ *   stop ends capture — generate HTML from the live page “Render docs” button)
  * - `m` (default): open the Mockifyer dashboard in the browser
  *
  * Opening `mockifyer-atlas` (SSE `/mockifyer-network-events/stream`) or the live
- * page auto-starts capture when idle — then press `t` once to stop & generate.
+ * page auto-starts capture when idle — then press `t` once to stop, or use
+ * Render docs on the live page without stopping.
  *
  * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
  * Disable Atlas with `atlasKey: false`, dashboard with `dashboardKey: false`.
@@ -61,7 +63,7 @@ export interface AttachMetroAtlasKeyHandlerOptions {
   dashboardUrl?: string;
   /** Called on session start. `reason` is `key` (Metro `t`) or `stream` (live page connected). */
   onSessionStart?: (reason: MetroAtlasSessionStartReason) => void;
-  /** Called on session stop — generate Atlas HTML. Required when Atlas key is enabled. */
+  /** Called on session stop — end capture (HTML is rendered from the live page). */
   onSessionStop?: () => void | Promise<void>;
   /** Override stdin (tests). */
   stdin?: NodeJS.ReadStream;
@@ -259,11 +261,11 @@ export function startMetroAtlasSession(
 
   if (reason === "stream") {
     console.log(
-      `[Mockifyer] Atlas capture started (stream connected) — press ${key} to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started (stream connected) — press ${key} to stop, or Render docs on the live page.`,
     );
   } else {
     console.log(
-      `[Mockifyer] Atlas capture started — press ${key} again to stop & generate HTML.`,
+      `[Mockifyer] Atlas capture started — press ${key} again to stop, or Render docs on the live page.`,
     );
     openMetroAtlasLivePage();
   }
@@ -288,8 +290,8 @@ export function openMetroAtlasLivePage(): boolean {
 }
 
 /**
- * Stop capture and generate Atlas HTML when capturing.
- * @returns true if stop/render was kicked off
+ * Stop capture when capturing (does not write Atlas HTML — use live page Render docs).
+ * @returns true if stop was kicked off
  */
 export function stopMetroAtlasSession(): boolean {
   if (!sessionCallbacks?.onSessionStop) return false;
@@ -299,15 +301,12 @@ export function stopMetroAtlasSession(): boolean {
   const startedAt = sessionStartedAt ?? Date.now();
   const duration = formatSessionDuration(startedAt);
   sessionPhase = "rendering";
-  // Log immediately so a slow HTML write / dashboard pull never looks like a hung keypress.
-  console.log(
-    `[Mockifyer] Atlas capture stopped (${duration}) — generating HTML…`,
-  );
+  console.log(`[Mockifyer] Atlas capture stopped (${duration}).`);
   Promise.resolve()
     .then(() => onSessionStop())
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`[Mockifyer] Atlas render failed: ${message}`);
+      console.error(`[Mockifyer] Atlas session stop failed: ${message}`);
     })
     .finally(() => {
       sessionPhase = "idle";
@@ -480,7 +479,7 @@ export function attachMetroAtlasKeyHandler(
     if (!atlasKey || !matchesAtlasKey(str, keyObj, atlasKey)) return;
 
     if (sessionPhase === "rendering") {
-      console.log("[Mockifyer] Atlas render already in progress…");
+      console.log("[Mockifyer] Atlas stop already in progress…");
       return;
     }
 
@@ -527,7 +526,7 @@ export function attachMetroAtlasKeyHandler(
     const parts: string[] = [];
     if (atlasKey) {
       parts.push(
-        `Press ${atlasKey} to start/stop Atlas capture (start opens live stream; stop generates HTML)`,
+        `Press ${atlasKey} to start/stop Atlas capture (start opens live stream; Render docs on the page writes HTML)`,
       );
     }
     if (effectiveDashboardKey && dashboardUrl) {

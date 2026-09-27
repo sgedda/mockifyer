@@ -22,7 +22,7 @@
  * 18. GET /mockifyer-atlas-live — live hop stream web page (SSE + expand/collapse)
  * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace (`&format=html` opens a result tab)
  * 20. GET /mockifyer-atlas-capture — Atlas `t` capture session active flag
- * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream; stop generates HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
+ * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream; stop ends capture; Render docs on the live page writes HTML; stream auto-starts; `atlasKey: false` to disable). `a` is reserved for Android.
  * 22. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
  * 23. On hop ingest / Atlas render — pull nested hops from dashboard `/api/network-events/trace` (remote BFF → dashboard → Atlas)
  *
@@ -96,7 +96,8 @@ export interface MetroSyncMiddlewareOptions {
   mockDataPath?: string;
   /**
    * Metro terminal key that starts/stops Atlas capture (default `"t"`).
-   * Start clears the hop buffer; stop generates HTML (same as `POST /mockifyer-network-events/render`).
+   * Start clears the hop buffer; stop ends capture. Write HTML via live page
+   * “Render docs” (`POST /mockifyer-network-events/render`) or the CLI.
    * Pass `false` to disable. `a` is reserved by Metro for Android.
    */
   atlasKey?: AtlasKeyOption;
@@ -242,25 +243,45 @@ async function enrichMetroBufferFromDashboard(options: {
 
 /**
  * Render the current Metro hop buffer to Atlas HTML and log the outcome.
- * Returns the hop count written (0 when the buffer is empty — the existing
- * `index.html` is then left alone rather than overwritten with an empty doc).
+ * Returns the same shape as {@link renderNetworkEventsAtlasHtml}. When the
+ * buffer is empty, leaves any existing `index.html` alone.
  */
 function renderBufferedAtlasHtml(options: {
   projectRoot: string;
   mockDataPath: string;
   scenario?: string;
-}): number {
+}): {
+  success: boolean;
+  written: number;
+  outputDir: string;
+  indexPath: string;
+  hopCount: number;
+  error?: string;
+} {
   const events = [...getMetroNetworkEventBuffer().list()].reverse();
+  const outDir = path.join(options.mockDataPath, "atlas-html");
+  const indexPath = path.join(outDir, "index.html");
+  const relativeFromRoot = path
+    .relative(options.projectRoot, outDir)
+    .split(path.sep)
+    .join("/");
   if (events.length === 0) {
     console.warn(
-      `[Mockifyer] Atlas: 0 hops — keeping the existing ${path.join(options.mockDataPath, "atlas-html", "index.html")}`,
+      `[Mockifyer] Atlas: 0 hops — keeping the existing ${indexPath}`,
     );
     console.warn(
       "[Mockifyer] Atlas: no hops reached Metro. Check that Mockifyer is enabled in the app " +
         "(runtimeMode 'manual' needs the dev-menu switch), that the app made requests during the " +
         "session, and that hops arrive: curl http://localhost:8081/mockifyer-network-events",
     );
-    return 0;
+    return {
+      success: false,
+      written: 0,
+      outputDir: relativeFromRoot,
+      indexPath,
+      hopCount: 0,
+      error: "0 hops — existing index.html left unchanged",
+    };
   }
   const startedAt = Date.now();
   const result = renderNetworkEventsAtlasHtml(
@@ -274,12 +295,12 @@ function renderBufferedAtlasHtml(options: {
     console.log(
       `[Mockifyer] Atlas HTML (${result.hopCount} hop(s), ${elapsedMs}ms) → ${result.indexPath}`,
     );
-    return result.hopCount;
+  } else {
+    console.error(
+      `[Mockifyer] Atlas render failed: ${result.error ?? "unknown"}`,
+    );
   }
-  console.error(
-    `[Mockifyer] Atlas render failed: ${result.error ?? "unknown"}`,
-  );
-  return 0;
+  return result;
 }
 
 /** Coalesce hop-ingest bursts into one dashboard read. */
@@ -1625,65 +1646,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     },
     onSessionStop: async () => {
       setMetroAtlasCaptureSessionActive(false);
-
       const hopCount = getMetroNetworkEventBuffer().list().length;
       console.log(
-        `[Mockifyer] Atlas: writing HTML for ${hopCount} hop(s)…`,
+        `[Mockifyer] Atlas: capture ended with ${hopCount} hop(s) in buffer — use live page “Render docs” (or POST /mockifyer-network-events/render) to write HTML.`,
       );
-      // Let Metro flush the stop logs before the sync HTML write blocks the loop.
-      await new Promise<void>((resolve) => setImmediate(resolve));
-
-      // Render local hops first so the HTML is usable immediately —
-      // a slow dashboard must never hold up the file.
-      if (renderBufferedAtlasHtml({ projectRoot, mockDataPath }) === 0) {
-        console.log("[Mockifyer] Atlas stop complete.");
-        return;
-      }
-
-      const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
-        options?.dashboardUrl,
-      );
-      if (!dashboardBaseUrl) {
-        console.log("[Mockifyer] Atlas stop complete.");
-        return;
-      }
-
-      const deadlineSec = Math.round(DASHBOARD_ENRICH_DEADLINE_MS / 1000);
-      console.log(
-        `[Mockifyer] Atlas: checking dashboard for nested hops (up to ${deadlineSec}s)…`,
-      );
-      const enrichStartedAt = Date.now();
-      const heartbeat = setInterval(() => {
-        const waitedSec = Math.round((Date.now() - enrichStartedAt) / 1000);
-        console.log(
-          `[Mockifyer] Atlas: still waiting on dashboard… (${waitedSec}s)`,
-        );
-      }, 1_500);
-      heartbeat.unref?.();
-
-      let added = 0;
-      try {
-        added = await enrichMetroBufferFromDashboard({
-          dashboardBaseUrl,
-          mockDataPath,
-          timeoutMs: DASHBOARD_ENRICH_DEADLINE_MS,
-        });
-      } finally {
-        clearInterval(heartbeat);
-      }
-
-      if (added > 0) {
-        console.log(
-          `[Mockifyer] Atlas: merged ${added} nested hop(s) from dashboard — re-rendering`,
-        );
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        renderBufferedAtlasHtml({ projectRoot, mockDataPath });
-      } else {
-        console.log(
-          "[Mockifyer] Atlas: no additional nested hops from dashboard",
-        );
-      }
-      console.log("[Mockifyer] Atlas stop complete.");
     },
   });
 
@@ -1722,7 +1688,11 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
     ) {
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(buildAtlasLiveStreamHtml());
+      res.end(
+        buildAtlasLiveStreamHtml({
+          dashboardUrl: resolveMetroDashboardUrl(options?.dashboardUrl),
+        }),
+      );
       return;
     }
 
@@ -2074,18 +2044,15 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             // empty / ignore
           }
         }
-        const buffer = getMetroNetworkEventBuffer();
         const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
           options?.dashboardUrl,
         );
         const finishRender = () => {
-          const events = [...buffer.list()].reverse();
-          const result = renderNetworkEventsAtlasHtml(
+          const result = renderBufferedAtlasHtml({
             projectRoot,
             mockDataPath,
-            events,
             scenario,
-          );
+          });
           res.statusCode = result.success ? 201 : 500;
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify(result));

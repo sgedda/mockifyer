@@ -117,6 +117,72 @@ describe('atlas-live-html', () => {
     expect(html).toContain('k === "n" || k === "N"');
   });
 
+  it('links to the Mockifyer dashboard from the toolbar menu', () => {
+    const html = buildAtlasLiveStreamHtml({
+      dashboardUrl: 'http://localhost:3002/mockifyer',
+    });
+
+    expect(html).toContain('aria-label="Mockifyer links"');
+    expect(html).toContain('href="http://localhost:3002/mockifyer"');
+    expect(html).toContain('>Dashboard</a>');
+    expect(html).toContain('target="_blank"');
+  });
+
+  it('places Render docs in the top-right header actions', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('class="header-top"');
+    expect(html).toContain('class="header-actions"');
+    expect(html).toMatch(
+      /header-actions[\s\S]*id="btn-render"[\s\S]*<\/div>\s*<div class="toolbar"/,
+    );
+    expect(html).not.toMatch(
+      /class="toolbar"[\s\S]*id="btn-render"/,
+    );
+  });
+
+  it('offers Render docs from the live page (no auto-generate on Metro stop)', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('id="btn-render"');
+    expect(html).toContain('>Render docs</button>');
+    expect(html).toContain('id="render-modal"');
+    expect(html).toContain('Generate &amp; open');
+    expect(html).toContain('function openRenderModal');
+    expect(html).toContain('function runRenderDocs');
+    expect(html).toContain('function openAtlasHtmlWindow');
+    expect(html).toContain('resultWin.location.href');
+    expect(html).toContain('/mockifyer-network-events/render');
+    expect(html).toContain('/atlas-html/index.html');
+    expect(html).toContain('>Atlas HTML</a>');
+    expect(html).toContain('Does <strong>not</strong> stop capture');
+  });
+
+  it('clears the hop buffer with Backspace (not c)', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('k === "Backspace"');
+    expect(html).toContain('Clear Metro hop buffer (Backspace)');
+    expect(html).not.toContain('k === "c" || k === "C"');
+    expect(html).toContain('Live Metro hop stream — newest first');
+  });
+
+  it('filters hops with exact contiguous search like Atlas HTML (no f shortcut)', () => {
+    const html = buildAtlasLiveStreamHtml();
+
+    expect(html).toContain('id="search"');
+    expect(html).toContain('function hopSearchHaystack');
+    expect(html).toContain('function hopMatchesSearchQuery');
+    expect(html).toContain('function hasSearchMatchInTree');
+    expect(html).toContain('Exact contiguous match');
+    expect(html).toContain('searchQuery');
+    // Errors keep f; search has no keyboard shortcut.
+    expect(html).toContain('k === "f" || k === "F"');
+    expect(html).toContain('errorsOnly = !errorsOnly');
+    expect(html).not.toContain('searchInput.focus');
+    expect(html).not.toContain('k === "/"');
+  });
+
   /**
    * The page script lives in a TS template literal, so an unescaped `\n` (or any
    * escape TS consumes) emits a literal newline inside a JS string and the whole
