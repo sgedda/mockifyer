@@ -1,4 +1,5 @@
 import {
+  INLINE_TRACE_ATTACHMENT,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
@@ -63,7 +64,10 @@ describe('inline-trace', () => {
       const wrapped = wrapBodyWithInlineTrace({ ok: true });
       expect(wrapped).toEqual({
         ok: true,
-        [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+        [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+          ...trace,
+          attachment: INLINE_TRACE_ATTACHMENT.sibling,
+        },
       });
     });
   });
@@ -453,6 +457,49 @@ describe('inline-trace', () => {
         data: { login: { token: 't' } },
         [MOCKIFYER_TRACE_RESPONSE_KEY]: expect.objectContaining({ requestId: 'root-rewrap' }),
       });
+    });
+  });
+
+  it('keeps business data wrappers that share a shape with legacy envelopes', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'list-root' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+    const listBody = { data: ['ok', true] };
+    const authBody = {
+      data: { token: 't', refreshToken: 'r', userId: 'u1' },
+    };
+    const halBody = {
+      _links: { self: { href: '/authenticate' } },
+      token: 't',
+      refreshToken: 'r',
+      authJwtToken: 'Bearer jwt',
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      recordInlineTraceHopFromExchange({
+        method: 'GET',
+        url: 'https://api.example/items',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-list',
+        parentRequestId: 'list-root',
+      });
+
+      const wrappedList = wrapBodyWithInlineTrace(listBody, ctx);
+      expect(unwrapAndMergeInlineTraceEnvelope(wrappedList)).toEqual(listBody);
+
+      const wrappedAuth = wrapBodyWithInlineTrace(authBody, ctx);
+      expect(unwrapAndMergeInlineTraceEnvelope(wrappedAuth)).toEqual(authBody);
+
+      const wrappedHal = wrapBodyWithInlineTrace(halBody, ctx);
+      expect(unwrapAndMergeInlineTraceEnvelope(wrappedHal)).toEqual(halBody);
+
+      const wrappedArray = wrapBodyWithInlineTrace([1, 2, 3], ctx);
+      expect(unwrapAndMergeInlineTraceEnvelope(wrappedArray)).toEqual([1, 2, 3]);
     });
   });
 

@@ -61,12 +61,30 @@ export interface InlineTraceHop {
   errorMessage?: string;
 }
 
+/**
+ * How `mockifyerTrace` was attached to a response.
+ * `sibling` keeps every original field (including a business `data` key).
+ * `wrap` stores an array, scalar, or null under `data`.
+ */
+export const INLINE_TRACE_ATTACHMENT = {
+  sibling: 'sibling',
+  wrap: 'wrap',
+} as const;
+
+export type InlineTraceAttachment =
+  (typeof INLINE_TRACE_ATTACHMENT)[keyof typeof INLINE_TRACE_ATTACHMENT];
+
 export interface InlineRequestTrace {
   requestId: string | null;
   hopCount: number;
   hops: InlineTraceHop[];
   /** Always false for in-process collection (no external store window). */
   incomplete: boolean;
+  /**
+   * Set by {@link wrapBodyWithInlineTrace}. Omitted on envelopes from older builds.
+   * Unwrap uses this so a business `{ data: [...] }` is not peeled as a legacy wrap.
+   */
+  attachment?: InlineTraceAttachment;
 }
 
 export type RecordInlineTraceHopInput = Omit<InlineTraceHop, 'index' | 'timestamp'> & {
@@ -258,26 +276,39 @@ function isRestOrHalResourcePayload(data: Record<string, unknown>): boolean {
 }
 
 /**
- * Legacy wrap `{ data, mockifyerTrace }` with no other keys.
- * Object payloads now keep their own fields and only add `mockifyerTrace`.
- * Still peel when `data` looks like a REST/HAL resource (accidental wrap of member
- * authenticate, etc.) so clients that read `authJwtToken` at the top level keep working.
+ * True when unwrap should return `body.data` instead of the object minus `mockifyerTrace`.
+ *
+ * Current wraps set `mockifyerTrace.attachment`:
+ * - `sibling` — object body, including `{ data: [...] }` and `{ data: { token, refreshToken } }`
+ * - `wrap` — the business body itself was an array, scalar, or null
+ *
+ * Unmarked traces (older builds) still peel non-object `data`, and REST/HAL resources
+ * that were accidentally stored under `data`, so clients reading `authJwtToken` at the
+ * top level keep working.
  */
 function isPureInlineTraceEnvelope(body: Record<string, unknown>): boolean {
+  const trace = readInlineTrace(body);
+  if (!trace) {
+    return false;
+  }
+  if (trace.attachment === INLINE_TRACE_ATTACHMENT.sibling) {
+    return false;
+  }
+  if (trace.attachment === INLINE_TRACE_ATTACHMENT.wrap) {
+    return Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY);
+  }
+
   const keys = Object.keys(body);
   if (
     keys.length !== 2 ||
-    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY) ||
-    readInlineTrace(body) == null
+    !Object.prototype.hasOwnProperty.call(body, MOCKIFYER_TRACE_DATA_KEY)
   ) {
     return false;
   }
   const data = body[MOCKIFYER_TRACE_DATA_KEY];
-  // Legacy envelopes wrap non-objects (arrays, scalars).
   if (!isRecord(data)) {
     return true;
   }
-  // GraphQL `{ data, mockifyerTrace }` — keep `data`. REST/HAL accidental wraps — peel.
   return isRestOrHalResourcePayload(data);
 }
 
@@ -461,12 +492,18 @@ export function wrapBodyWithInlineTrace(
   if (isRecord(body)) {
     return {
       ...body,
-      [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+      [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+        ...trace,
+        attachment: INLINE_TRACE_ATTACHMENT.sibling,
+      },
     };
   }
   return {
     [MOCKIFYER_TRACE_DATA_KEY]: body,
-    [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
+    [MOCKIFYER_TRACE_RESPONSE_KEY]: {
+      ...trace,
+      attachment: INLINE_TRACE_ATTACHMENT.wrap,
+    },
   };
 }
 
