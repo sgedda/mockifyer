@@ -7,6 +7,7 @@ import {
   resolveCatalogHopIdentity,
   resolveProxyHopIdentity,
   resolveProxyTraceIds,
+  readLatestRowForCallerMerge,
   type ProxyNetworkLogContext,
 } from '../packages/mockifyer-dashboard/src/utils/proxy-network-log';
 import { resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
@@ -49,6 +50,29 @@ describe('proxy hop id stability', () => {
     );
     expect(rewritten.parentRequestId).toBe('gql-extras');
     expect(rewritten.parentRequestIds).toEqual(['gql-deferred', 'gql-extras']);
+  });
+
+  it('keeps a caller added by a concurrent call while this one was upstream', async () => {
+    const rows = new Map<string, MockData>();
+    const store = { getByHashInScenario: async (hash: string) => rows.get(hash) ?? null };
+    const readAtStart = mockData({ requestId: 'myaccount', parentRequestIds: ['gql-account'] });
+    rows.set('h', readAtStart);
+
+    // Another GraphQL operation's call to the same request finished first.
+    rows.set('h', mockData({ requestId: 'myaccount', parentRequestIds: ['gql-account', 'gql-upcoming'] }));
+
+    const rewritten = mockData();
+    applyProxyCorrelationToMockData(
+      rewritten,
+      { requestId: 'myaccount', parentRequestId: 'gql-previous' } as ProxyNetworkLogContext,
+      undefined,
+      undefined,
+      await readLatestRowForCallerMerge(store, 'h', 'default', readAtStart)
+    );
+    expect(rewritten.parentRequestIds).toEqual(['gql-account', 'gql-upcoming', 'gql-previous']);
+
+    const failing = { getByHashInScenario: async () => Promise.reject(new Error('redis down')) };
+    await expect(readLatestRowForCallerMerge(failing, 'h', 'default', readAtStart)).resolves.toBe(readAtStart);
   });
 
   it('fills hop ids only when the mock has none', () => {

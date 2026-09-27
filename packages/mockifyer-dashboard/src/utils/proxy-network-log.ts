@@ -242,6 +242,28 @@ export function applyProxyCorrelationToMockData(
   }
 }
 
+export interface ProxyMockRowReader {
+  getByHashInScenario(hash: string, scenarioName: string): Promise<MockData | null | undefined>;
+}
+
+/**
+ * Row to merge callers from, read right before a write. The upstream call takes
+ * seconds; a concurrent call for the same request (e.g. two GraphQL operations that
+ * both call it) may have added its caller since the row was first read.
+ */
+export async function readLatestRowForCallerMerge(
+  store: ProxyMockRowReader,
+  hash: string,
+  scenarioName: string,
+  fallback: MockData | null | undefined
+): Promise<MockData | null | undefined> {
+  try {
+    return (await store.getByHashInScenario(hash, scenarioName)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Prefer the hop id already stored on a matched mock for this proxy request. */
 export function adoptStoredHopIdOnProxyLog(
   ctx: ProxyNetworkLogContext | null,

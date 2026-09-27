@@ -63,6 +63,7 @@ import {
   resolveProxyTraceIds,
   resolveProxyHopIdentity,
   resolveCatalogHopIdentity,
+  readLatestRowForCallerMerge,
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 import {
@@ -607,7 +608,7 @@ router.post('/', async (req: Request, res: Response) => {
         networkLogCtx,
         hopIdentity,
         catalogHopIdentity,
-        mock as MockData
+        await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData)
       );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
@@ -682,7 +683,7 @@ router.post('/', async (req: Request, res: Response) => {
           networkLogCtx,
           hopIdentity,
           catalogHopIdentity,
-          mock as MockData | null
+          await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null)
         );
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {
