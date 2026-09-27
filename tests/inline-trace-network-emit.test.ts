@@ -29,17 +29,22 @@ describe('networkLog includeTraceHeader wiring', () => {
     ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
   });
 
-  it('resolveNetworkLogIncludeTraceOptions ignores Atlas capture sessions', () => {
+  it('resolveNetworkLogIncludeTraceOptions stamps include-trace during Atlas t capture', () => {
     const wasActive = isMetroAtlasCaptureSessionActive();
     try {
       setMetroAtlasCaptureSessionActive(true);
       expect(resolveNetworkLogIncludeTraceOptions({})).toEqual({
-        includeInlineTrace: false,
+        includeInlineTrace: true,
         includeInlineTraceBodies: false,
       });
       expect(
         resolveNetworkLogIncludeTraceOptions({
-          networkLog: { includeTraceHeader: true, includeTraceBodies: true },
+          networkLog: { includeTraceHeader: false },
+        })
+      ).toEqual({ includeInlineTrace: false, includeInlineTraceBodies: false });
+      expect(
+        resolveNetworkLogIncludeTraceOptions({
+          networkLog: { includeTraceBodies: true },
         })
       ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
     } finally {

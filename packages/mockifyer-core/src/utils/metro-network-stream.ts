@@ -504,8 +504,8 @@ export function setMetroAtlasCaptureSessionActive(active: boolean): void {
 
 /**
  * Whether an Atlas `t` capture session is active (Metro live buffer / UI).
- * Does not enable include-trace — use the live-page **trace** link or
- * `networkLog.includeTraceHeader` for nested hops.
+ * While active, outbound hops stamp include-trace unless
+ * `networkLog.includeTraceHeader` is explicitly `false`.
  */
 export function isMetroAtlasCaptureSessionActive(): boolean {
   return getMetroAtlasCaptureSessionState().active === true;
