@@ -124,6 +124,25 @@ describe('stats rankings', () => {
     ]);
   });
 
+  it('treats every listed caller as a parent hop', () => {
+    const annotated = annotateLeafHops([
+      { filename: 'gql-a.json', endpoint: '', method: 'POST', size: 1, requestId: 'gql-a' },
+      { filename: 'gql-b.json', endpoint: '', method: 'POST', size: 1, requestId: 'gql-b' },
+      {
+        filename: 'shared.json',
+        endpoint: '',
+        method: 'GET',
+        size: 1,
+        requestId: 'shared',
+        parentRequestId: 'gql-b',
+        parentRequestIds: ['gql-a', 'gql-b'],
+      },
+    ]);
+    expect(annotated.find((row) => row.filename === 'gql-a.json')?.isLeaf).toBe(false);
+    expect(annotated.find((row) => row.filename === 'gql-b.json')?.isLeaf).toBe(false);
+    expect(annotated.find((row) => row.filename === 'shared.json')?.isLeaf).toBe(true);
+  });
+
   it('counts replay modes with pending winning over live flags', () => {
     expect(statsTrafficMode(mock({}))).toBe('replay');
     expect(statsTrafficMode(mock({ alwaysUseRealApi: true }))).toBe('live');

@@ -43,6 +43,60 @@ function mock(partial: Partial<MockFile> & Pick<MockFile, 'filename' | 'endpoint
   }
 }
 
+describe('shared hop with several callers', () => {
+  const extras = mock({
+    filename: 'gql-extras.json',
+    method: 'POST',
+    endpoint: 'https://bff.example/graphql',
+    graphqlInfo: { operationName: 'myAccountBookingExtras' } as MockFile['graphqlInfo'],
+    requestId: 'gql-extras',
+  })
+  const deferred = mock({
+    filename: 'gql-deferred.json',
+    method: 'POST',
+    endpoint: 'https://bff.example/graphql',
+    graphqlInfo: { operationName: 'myAccountDeferredBookings' } as MockFile['graphqlInfo'],
+    requestId: 'gql-deferred',
+  })
+  const myaccount = mock({
+    filename: 'myaccount.json',
+    endpoint: 'https://member.example/v-2/myaccount/',
+    requestId: 'myaccount',
+    parentRequestId: 'gql-extras',
+    parentRequestIds: ['gql-deferred', 'gql-extras'],
+  })
+  const token = mock({
+    filename: 'token.json',
+    method: 'POST',
+    endpoint: 'https://tokenws.example/TokenService.asmx',
+    requestId: 'token',
+    parentRequestId: 'myaccount',
+  })
+
+  it('nests the shared hop and its subtree under every GraphQL caller', () => {
+    const chains = buildMockServiceChainsForDisplay([extras, deferred, myaccount, token])
+    const byRoot = new Map(chains.map((chain) => [chain.hops[0].filename, chain.hops.map((h) => h.filename)]))
+    expect(byRoot.get('gql-extras.json')).toEqual(['gql-extras.json', 'myaccount.json', 'token.json'])
+    expect(byRoot.get('gql-deferred.json')).toEqual(['gql-deferred.json', 'myaccount.json', 'token.json'])
+
+    const forest = buildUniqueMockChainForest(byRoot.get('gql-deferred.json')!.map((name) =>
+      [extras, deferred, myaccount, token].find((hop) => hop.filename === name)!
+    ))
+    expect(forest).toHaveLength(1)
+    expect(forest[0].representative.filename).toBe('gql-deferred.json')
+    expect(forest[0].children[0].representative.filename).toBe('myaccount.json')
+    expect(forest[0].children[0].children[0].representative.filename).toBe('token.json')
+  })
+
+  it('does not recurse forever when stale ids form a caller cycle', () => {
+    const a = mock({ filename: 'a.json', endpoint: 'https://svc.example/a', requestId: 'a', parentRequestIds: ['b'], parentRequestId: 'b' })
+    const b = mock({ filename: 'b.json', endpoint: 'https://svc.example/b', requestId: 'b', parentRequestIds: ['root', 'a'], parentRequestId: 'a' })
+    const root = mock({ filename: 'root.json', method: 'POST', endpoint: 'https://bff.example/graphql', requestId: 'root' })
+    expect(() => buildMockServiceChainsForDisplay([root, a, b])).not.toThrow()
+    expect(() => buildUniqueMockChainForest([root, a, b])).not.toThrow()
+  })
+})
+
 describe('mock service chain display', () => {
   it('does not glue an Atlas client session onto one GraphQL chain as entry hops', () => {
     const graphql = mock({

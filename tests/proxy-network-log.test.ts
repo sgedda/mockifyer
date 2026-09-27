@@ -33,6 +33,24 @@ describe('proxy hop id stability', () => {
     expect(mock.parentRequestId).toBe('live-parent');
   });
 
+  it('keeps earlier callers when a pending row is rewritten from scratch', () => {
+    const previous = mockData({
+      requestId: 'myaccount',
+      parentRequestId: 'gql-deferred',
+      parentRequestIds: ['gql-deferred'],
+    });
+    const rewritten = mockData();
+    applyProxyCorrelationToMockData(
+      rewritten,
+      { requestId: 'myaccount', parentRequestId: 'gql-extras' } as ProxyNetworkLogContext,
+      undefined,
+      undefined,
+      previous
+    );
+    expect(rewritten.parentRequestId).toBe('gql-extras');
+    expect(rewritten.parentRequestIds).toEqual(['gql-deferred', 'gql-extras']);
+  });
+
   it('fills hop ids only when the mock has none', () => {
     const mock = mockData();
     applyProxyCorrelationToMockData(mock, {

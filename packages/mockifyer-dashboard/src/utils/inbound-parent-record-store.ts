@@ -1,5 +1,6 @@
 import {
   buildRequestOnlyMockData,
+  findHopOwner,
   generateRequestKey,
   type MockData,
   type StoredRequest,
@@ -27,6 +28,35 @@ function sha256Hex(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 
+const HTTP_SCHEME_PREFIX = /^http:\/\//i;
+
+/**
+ * Lookup order for an inbound parent URL. A service behind TLS termination sees
+ * `http://` for a hop its caller proxied as `https://`; prefer that recorded https row.
+ */
+function inboundParentLookupUrls(url: string): string[] {
+  if (!HTTP_SCHEME_PREFIX.test(url)) {
+    return [url];
+  }
+  return [url.replace(HTTP_SCHEME_PREFIX, 'https://'), url];
+}
+
+async function findRecordedParentRequestId(
+  store: InboundParentRecordStore,
+  scenarioName: string,
+  request: StoredRequest
+): Promise<string | undefined> {
+  for (const url of inboundParentLookupUrls(request.url)) {
+    const hash = sha256Hex(generateRequestKey({ ...request, url }));
+    const existing = await store.getByHashInScenario(hash, scenarioName);
+    const existingId = existing?.requestId?.trim();
+    if (existingId) {
+      return existingId;
+    }
+  }
+  return undefined;
+}
+
 function looksLikeGraphqlUrl(url: string): boolean {
   try {
     const path = new URL(url).pathname.toLowerCase();
@@ -39,6 +69,9 @@ function looksLikeGraphqlUrl(url: string): boolean {
 /**
  * Ensure children link to the real inbound hop.
  *
+ * - If this dashboard proxied the parent hop, keep its id. The inbound URL a downstream
+ *   service sees (http behind TLS termination, gateway rewrites) rarely matches the
+ *   proxied URL, so a URL-keyed lookup would detach children onto a duplicate row.
  * - If a catalog row already exists for this method/url/body, return its `requestId`
  *   (heal ALS orphans onto the recorded GraphQL id — do not steal that id).
  * - Otherwise upsert a request-only row under the ALS `parentRequestId`.
@@ -56,6 +89,9 @@ export async function resolveInboundParentRequestIdForChild(
   const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
   if (!parentId) {
     return undefined;
+  }
+  if (findHopOwner(parentId)) {
+    return parentId;
   }
   const url = parentHop?.url?.trim();
   if (!url || url.startsWith('mockifyer://')) {
@@ -79,10 +115,8 @@ export async function resolveInboundParentRequestIdForChild(
     data: data === undefined ? null : data,
     queryParams: {},
   };
-  const hash = sha256Hex(generateRequestKey(request));
   try {
-    const existing = await store.getByHashInScenario(hash, scenarioName);
-    const existingId = existing?.requestId?.trim();
+    const existingId = await findRecordedParentRequestId(store, scenarioName, request);
     if (existingId) {
       if (debugProxy && existingId !== parentId) {
         console.log(
@@ -98,6 +132,7 @@ export async function resolveInboundParentRequestIdForChild(
     };
     delete mock.inboundParentStub;
     delete mock.inboundParentDisplay;
+    const hash = sha256Hex(generateRequestKey(request));
     const wrote = await store.setByHashInScenario(hash, mock, scenarioName, {
       enforceWriteLimits: false,
     });

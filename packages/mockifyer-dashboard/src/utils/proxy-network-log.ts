@@ -1,6 +1,7 @@
 import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
 import {
+  mergeMockParentRequestIds,
   registerHopOwner,
   resolveRecordedHopIdentity,
   type RecordedHopIdentity,
@@ -204,12 +205,14 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
  * hop's id), replace it with the resolved hop identity so the chain can heal.
  * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
  * `catalog` (see {@link resolveCatalogHopIdentity}) overrides the live parent from `ctx`.
+ * Earlier callers on `previous` (the row being replaced) are kept in `parentRequestIds`.
  */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
   ctx: ProxyNetworkLogContext | null,
   inbound?: ProxyNetworkLogCorrelation,
-  catalog?: RecordedHopIdentity
+  catalog?: RecordedHopIdentity,
+  previous?: MockData | null
 ): void {
   const requestId =
     ctx?.requestId ??
@@ -226,8 +229,12 @@ export function applyProxyCorrelationToMockData(
       mock.requestId = requestId;
     }
   }
+  const parentRequestIds = mergeMockParentRequestIds(previous ?? mock, parentRequestId, mock.requestId);
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
+  }
+  if (parentRequestIds.length > 0) {
+    mock.parentRequestIds = parentRequestIds;
   }
   const durationMs = proxyNetworkElapsedMs(ctx);
   if (durationMs != null) {

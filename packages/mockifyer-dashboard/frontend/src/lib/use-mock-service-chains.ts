@@ -3,6 +3,7 @@ import { getMocks } from '@/lib/api'
 import {
   buildMockServiceChainsForDisplay,
   filterMockServiceChainsByFilenames,
+  getMockParentRequestIds,
   type MockServiceChain,
 } from '@/lib/mock-correlation-chains'
 import type { MockFile } from '@/types'
@@ -27,7 +28,7 @@ export function filterChainsBySearch(
           (mock.method ?? '').toLowerCase().includes(q) ||
           (mock.graphqlInfo?.operationName ?? '').toLowerCase().includes(q) ||
           (mock.requestId ?? '').toLowerCase().includes(q) ||
-          (mock.parentRequestId ?? '').toLowerCase().includes(q)
+          getMockParentRequestIds(mock).some((parentId) => parentId.toLowerCase().includes(q))
         )
       })
       .map((mock) => mock.filename)

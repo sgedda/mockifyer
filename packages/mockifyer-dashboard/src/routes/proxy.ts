@@ -602,7 +602,13 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity, catalogHopIdentity);
+      applyProxyCorrelationToMockData(
+        updatedMock,
+        networkLogCtx,
+        hopIdentity,
+        catalogHopIdentity,
+        mock as MockData
+      );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
@@ -675,7 +681,8 @@ router.post('/', async (req: Request, res: Response) => {
           storedMockForClient,
           networkLogCtx,
           hopIdentity,
-          catalogHopIdentity
+          catalogHopIdentity,
+          mock as MockData | null
         );
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {

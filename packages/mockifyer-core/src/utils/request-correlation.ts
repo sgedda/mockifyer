@@ -640,17 +640,72 @@ export function adoptStoredOutboundRequestId(
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
 }
 
+/** Callers remembered per recording, so a hot shared hop does not grow without bound. */
+export const MAX_MOCK_PARENT_REQUEST_IDS = 20;
+
+/** Hop ids persisted on a recording. */
+export interface PersistedHopIds {
+  requestId?: string;
+  parentRequestId?: string;
+  parentRequestIds?: string[];
+}
+
+interface MockParentRequestIdFields {
+  parentRequestId?: string | null;
+  parentRequestIds?: readonly (string | null | undefined)[] | null;
+}
+
+function trimmedIds(values: readonly unknown[]): string[] {
+  const ids: string[] = [];
+  for (const value of values) {
+    const id = typeof value === 'string' ? value.trim() : '';
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Every caller recorded on a mock, oldest first. Legacy recordings only carry
+ * `parentRequestId`; the most recent caller always ends the list.
+ */
+export function readMockParentRequestIds(mock: MockParentRequestIdFields | null | undefined): string[] {
+  if (!mock) return [];
+  const listed = Array.isArray(mock.parentRequestIds) ? mock.parentRequestIds : [];
+  const latest = typeof mock.parentRequestId === 'string' ? mock.parentRequestId.trim() : '';
+  const ids = trimmedIds(listed).filter((id) => id !== latest);
+  if (latest) ids.push(latest);
+  return ids;
+}
+
+/**
+ * Add `parentRequestId` as the most recent caller, keeping at most
+ * {@link MAX_MOCK_PARENT_REQUEST_IDS} callers and never listing the hop itself.
+ */
+export function mergeMockParentRequestIds(
+  existing: MockParentRequestIdFields | null | undefined,
+  parentRequestId: string | null | undefined,
+  selfRequestId?: string | null
+): string[] {
+  const merged = readMockParentRequestIds({
+    parentRequestIds: readMockParentRequestIds(existing),
+    parentRequestId,
+  });
+  const self = selfRequestId?.trim();
+  return merged.filter((id) => id !== self).slice(-MAX_MOCK_PARENT_REQUEST_IDS);
+}
+
 /**
  * Prefer hop ids already stored on a mock when refreshing/overwriting it.
  * `requestId` stays stable so children keep a valid parent; `parentRequestId`
- * follows the live caller so a stale link can heal on the next refresh.
+ * follows the live caller so a stale link can heal on the next refresh, and
+ * `parentRequestIds` keeps earlier callers so a shared hop nests under each one.
  * If the stored requestId equals the live parent (caller id was stolen), mint a
  * fresh hop id so this hop no longer self-parents.
  */
 export function resolvePersistedHopIds(
-  existing: { requestId?: string; parentRequestId?: string } | null | undefined,
+  existing: PersistedHopIds | null | undefined,
   live?: { requestId?: string; parentRequestId?: string }
-): { requestId?: string; parentRequestId?: string } {
+): PersistedHopIds {
   const existingId = existing?.requestId?.trim();
   const liveId = live?.requestId?.trim();
   const parentRequestId = live?.parentRequestId?.trim() || existing?.parentRequestId?.trim();
@@ -658,10 +713,29 @@ export function resolvePersistedHopIds(
   if (requestId && parentRequestId && requestId === parentRequestId) {
     requestId = liveId && liveId !== parentRequestId ? liveId : randomEventId();
   }
+  const parentRequestIds = mergeMockParentRequestIds(existing, parentRequestId, requestId);
   return {
     ...(requestId ? { requestId } : {}),
     ...(parentRequestId ? { parentRequestId } : {}),
+    ...(parentRequestIds.length > 0 ? { parentRequestIds } : {}),
   };
+}
+
+/** Write resolved hop ids onto a recording, clearing parent fields that no longer apply. */
+export function applyPersistedHopIds(mock: PersistedHopIds, hopIds: PersistedHopIds): void {
+  if (hopIds.requestId) {
+    mock.requestId = hopIds.requestId;
+  }
+  if (hopIds.parentRequestId) {
+    mock.parentRequestId = hopIds.parentRequestId;
+  } else {
+    delete mock.parentRequestId;
+  }
+  if (hopIds.parentRequestIds?.length) {
+    mock.parentRequestIds = hopIds.parentRequestIds;
+  } else {
+    delete mock.parentRequestIds;
+  }
 }
 
 export interface MockifyerCorrelationMiddlewareRequest {

@@ -475,8 +475,14 @@ export interface MockData {
   sessionId?: string; // Unique identifier for grouping related requests
   /** Unique id for this outbound hop (see request correlation headers). */
   requestId?: string;
-  /** Id of the outbound request that triggered this hop. */
+  /** Id of the outbound request that triggered this hop (most recent caller). */
   parentRequestId?: string;
+  /**
+   * Every caller seen for this recording, oldest first (includes {@link parentRequestId}).
+   * A shared downstream hop (e.g. one REST call made by several GraphQL operations) is
+   * stored once per request key, so it needs more than one parent to nest under each caller.
+   */
+  parentRequestIds?: string[];
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
   /** Optional: when serving this mock, replace field values at the given paths (overlay on stored body). */
