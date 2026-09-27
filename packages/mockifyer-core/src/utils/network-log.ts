@@ -496,11 +496,7 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
 export async function resolveNetworkLogIncludeTraceOptionsAsync(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
-  // Force refresh when session is currently inactive so we detect activation quickly,
-  // avoiding the race where hop POST replies keep lastSyncedAtMs fresh but the session
-  // just became active on Metro.
-  const force = !isMetroAtlasCaptureSessionActive();
-  await refreshMetroAtlasCaptureSessionIfStale({ force });
+  await refreshMetroAtlasCaptureSessionIfStale();
   return resolveNetworkLogIncludeTraceOptions(config);
 }
 
