@@ -24,6 +24,12 @@ describe('isFetchProxyTwin', () => {
     expect(isFetchProxyTwin(proxySide, fetchSide, PROXY_TWIN_WINDOW_MS)).toBe(true);
   });
 
+  it('pairs axios service-side and proxy-side records', () => {
+    const axiosSide = { ...fetchSide, transport: 'axios' };
+    expect(isFetchProxyTwin(axiosSide, proxySide, PROXY_TWIN_WINDOW_MS)).toBe(true);
+    expect(isFetchProxyTwin(proxySide, axiosSide, PROXY_TWIN_WINDOW_MS)).toBe(true);
+  });
+
   it('keeps separate calls that reuse a stored hop id', () => {
     const laterCall = { ...fetchSide, timestamp: '2026-09-27T20:18:40.000Z' };
     expect(isFetchProxyTwin(laterCall, proxySide, PROXY_TWIN_WINDOW_MS)).toBe(false);

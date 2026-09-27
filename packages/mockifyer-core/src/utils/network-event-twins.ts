@@ -1,8 +1,8 @@
 /**
  * One call through the dashboard proxy is recorded twice: by the service's own
- * HTTP client (`transport: 'fetch'`, logged when the call returns) and by the
- * dashboard proxy (`transport: 'proxy'`, with duration). Both carry the same hop
- * ids. The proxy record is the call that actually reached the backend.
+ * HTTP client (`transport: 'fetch'` or `'axios'`, logged when the call returns)
+ * and by the dashboard proxy (`transport: 'proxy'`, with duration). Both carry
+ * the same hop ids. The proxy record is the call that actually reached the backend.
  */
 
 /** Slack between the two records of one call, on top of the proxy's own duration. */
@@ -34,7 +34,7 @@ export function isFetchProxyTwin(
   if (trim(a.parentRequestId) !== trim(b.parentRequestId)) return false;
   const proxy = a.transport === 'proxy' ? a : b.transport === 'proxy' ? b : null;
   const fetchSide = proxy === a ? b : a;
-  if (!proxy || fetchSide.transport !== 'fetch') return false;
+  if (!proxy || (fetchSide.transport !== 'fetch' && fetchSide.transport !== 'axios')) return false;
   const proxyAt = Date.parse(String(proxy.timestamp || ''));
   const fetchAt = Date.parse(String(fetchSide.timestamp || ''));
   if (!Number.isFinite(proxyAt) || !Number.isFinite(fetchAt)) return false;
