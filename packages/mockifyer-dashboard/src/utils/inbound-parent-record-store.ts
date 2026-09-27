@@ -154,6 +154,20 @@ export async function resolveInboundParentRequestIdForChild(
       return existingId;
     }
 
+    // Check if any lookup URL has a complete recording (don't overwrite with placeholder)
+    for (const lookupUrl of target.lookupUrls) {
+      const checkHash = sha256Hex(generateRequestKey({ ...request, url: lookupUrl }));
+      const checkExisting = await store.getByHashInScenario(checkHash, scenarioName);
+      if (checkExisting && checkExisting.response && !checkExisting.responsePending) {
+        if (debugProxy) {
+          console.log(
+            `[InboundParentRecord] skip placeholder - complete recording exists (${method} ${url})`
+          );
+        }
+        return parentId;
+      }
+    }
+
     const mock: MockData = {
       ...buildRequestOnlyMockData(request, { alwaysUseRealApi: true }),
       requestId: parentId,
