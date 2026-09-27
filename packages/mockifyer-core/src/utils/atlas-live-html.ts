@@ -701,6 +701,9 @@ kbd {
       }
     } else if (usage && typeof usage === "object") {
       parts.push(usage.screen, usage.component, usage.label, usage.datasourceId);
+      if (usage.cms) {
+        parts.push(usage.cms.pageId, usage.cms.nodeId, usage.cms.type, usage.cms.path);
+      }
     }
     return parts
       .filter(function (p) {
