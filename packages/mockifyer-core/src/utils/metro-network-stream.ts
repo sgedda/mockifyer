@@ -504,8 +504,8 @@ export function setMetroAtlasCaptureSessionActive(active: boolean): void {
 
 /**
  * Whether an Atlas `t` capture session is active (Metro live buffer / UI).
- * Does not enable include-trace — use the live-page **trace** link or
- * `networkLog.includeTraceHeader` for nested hops.
+ * While active, outbound hops stamp include-trace unless
+ * `networkLog.includeTraceHeader` is explicitly `false`.
  */
 export function isMetroAtlasCaptureSessionActive(): boolean {
   return getMetroAtlasCaptureSessionState().active === true;
@@ -534,6 +534,10 @@ export async function runMetroAtlasCaptureSessionRefresh(
       await task();
     } finally {
       const current = getMetroAtlasCaptureSessionState();
+      // Update lastSyncedAtMs even on failure so the TTL prevents immediate retries
+      // when Metro is unreachable. Successful task calls setMetroAtlasCaptureSessionActive,
+      // which also updates this timestamp, but failures must update it too.
+      current.lastSyncedAtMs = Date.now();
       if (current.refreshPromise === pending) {
         current.refreshPromise = undefined;
       }

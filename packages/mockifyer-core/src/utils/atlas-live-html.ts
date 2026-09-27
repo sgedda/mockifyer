@@ -1337,7 +1337,8 @@ kbd {
     }
   });
 
-  function connect() {
+  function connect(opts) {
+    opts = opts || {};
     if (es) {
       try {
         es.close();
@@ -1346,14 +1347,16 @@ kbd {
     streamState = "connecting";
     streamError = "";
     updateStatus();
+    var requestBacklog = opts.backlog !== false && BACKLOG;
+    var shouldClearLocal = opts.clearLocal !== false;
     var url =
-      STREAM_PATH + "?backlog=" + (BACKLOG ? "1" : "0");
+      STREAM_PATH + "?backlog=" + (requestBacklog ? "1" : "0");
     es = new EventSource(url);
     es.addEventListener("hello", function () {
       streamState = "open";
       streamError = "";
       // Clear on reconnect so backlog replays safely (unless paused).
-      if (!paused) {
+      if (!paused && shouldClearLocal) {
         clearLocal();
       }
       updateStatus();
@@ -1371,8 +1374,32 @@ kbd {
     };
   }
 
+  // Browsers cap HTTP/1.1 connections per host (Chrome: 6). Every open live tab
+  // holds one SSE to Metro, so background tabs release theirs or new Atlas
+  // requests (trace / open) queue forever.
+  function disconnect() {
+    if (!es) return;
+    try {
+      es.close();
+    } catch (_) {}
+    es = null;
+    streamState = "closed";
+    streamError = "";
+    updateStatus();
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      disconnect();
+    } else if (!es) {
+      connect({ backlog: false, clearLocal: false });
+    }
+  });
+
   render();
-  connect();
+  if (!document.hidden) {
+    connect();
+  }
 })();
 </script>
 </body>

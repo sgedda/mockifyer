@@ -39,6 +39,7 @@ export { resolveNetworkLogDashboardUrl } from './network-log-dashboard-url';
 import {
   joinMetroAtlasCaptureSessionUrl,
   joinMetroNetworkEventsUrl,
+  isMetroAtlasCaptureSessionActive,
   resolveMetroNetworkStreamBaseUrl,
   runMetroAtlasCaptureSessionRefresh,
   sanitizeAtlasMetroStreamBaseUrl,
@@ -433,15 +434,20 @@ export interface EmitMockifyerNetworkEventParams {
 /**
  * Read include-trace flags from Mockifyer config (RN / client outbound opt-in).
  *
- * On only when `networkLog.includeTraceHeader` is true. Atlas capture (`t`), Metro
- * hop streaming, and `activationMode: client_id_header` do **not** stamp include-trace.
- * Nested hops for a single request come from the live-page **trace** link (or an
- * explicit `X-Mockifyer-Include-Trace` header on that call).
+ * Stamps `X-Mockifyer-Include-Trace: 1` when:
+ * - `networkLog.includeTraceHeader === true`, or
+ * - an Atlas `t` capture session is active (unless explicitly `includeTraceHeader: false`).
+ *
+ * Nested **body** previews stay opt-in only (`includeTraceBodies: true`) — the header alone
+ * is enough for Azure / BFF services to return `mockifyerTrace` hop lists.
  */
 export function resolveNetworkLogIncludeTraceOptions(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): { includeInlineTrace: boolean; includeInlineTraceBodies: boolean } {
-  const includeInlineTrace = config?.networkLog?.includeTraceHeader === true;
+  const explicit = config?.networkLog?.includeTraceHeader;
+  const atlasCapture = isMetroAtlasCaptureSessionActive();
+  const includeInlineTrace =
+    explicit === true || (explicit !== false && atlasCapture);
   const includeInlineTraceBodies =
     includeInlineTrace && config?.networkLog?.includeTraceBodies === true;
   return { includeInlineTrace, includeInlineTraceBodies };
@@ -449,7 +455,7 @@ export function resolveNetworkLogIncludeTraceOptions(
 
 /**
  * Best-effort GET of Metro Atlas capture session state (for session UI / hop POST
- * `atlasCaptureActive`). Does not enable include-trace.
+ * `atlasCaptureActive`).
  */
 export async function refreshMetroAtlasCaptureSessionIfStale(
   options?: { force?: boolean }
@@ -461,28 +467,36 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
     const fetchFn = resolveUnpatchedFetch();
     if (!fetchFn) return;
     try {
-      const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-      });
-      if (!res.ok) return;
-      const json = (await res.json()) as { active?: unknown };
-      if (typeof json.active === 'boolean') {
-        setMetroAtlasCaptureSessionActive(json.active);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      try {
+        const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { active?: unknown };
+        if (typeof json.active === 'boolean') {
+          setMetroAtlasCaptureSessionActive(json.active);
+        }
+      } finally {
+        clearTimeout(timeout);
       }
     } catch {
-      // Metro may be down
+      // Metro may be down — do nothing (lastSyncedAtMs stays stale)
     }
   }, options);
 }
 
 /**
- * Resolve include-trace flags from config only (no Atlas capture side effects).
- * Kept async for interceptor call sites that already await correlation setup.
+ * Resolve include-trace flags, refreshing Atlas `t` session state from Metro first
+ * so the device stamps include-trace soon after capture starts.
  */
 export async function resolveNetworkLogIncludeTraceOptionsAsync(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
+  await refreshMetroAtlasCaptureSessionIfStale();
   return resolveNetworkLogIncludeTraceOptions(config);
 }
 

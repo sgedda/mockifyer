@@ -155,6 +155,22 @@ export function resolveProxyHopIdentity(
   return identity;
 }
 
+/**
+ * Catalog form of a live hop identity. The recorded Mocks catalog links children to the
+ * healed inbound parent row (stable across refreshes). No live hop carries that id, so the
+ * network log, proxy response trace and upstream headers must keep the caller's live parent.
+ */
+export function resolveCatalogHopIdentity(
+  live: RecordedHopIdentity,
+  healedParentRequestId: string | undefined
+): RecordedHopIdentity {
+  const healed = healedParentRequestId?.trim();
+  if (!healed || !live.parentRequestId || healed === live.parentRequestId) {
+    return live;
+  }
+  return { ...live, parentRequestId: healed };
+}
+
 export function applyHopIdentityToProxyLog(
   ctx: ProxyNetworkLogContext | null,
   identity: RecordedHopIdentity
@@ -187,16 +203,19 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
  * Exception: if the stored requestId equals the live parent (caller id was stolen as this
  * hop's id), replace it with the resolved hop identity so the chain can heal.
  * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
+ * `catalog` (see {@link resolveCatalogHopIdentity}) overrides the live parent from `ctx`.
  */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
   ctx: ProxyNetworkLogContext | null,
-  inbound?: ProxyNetworkLogCorrelation
+  inbound?: ProxyNetworkLogCorrelation,
+  catalog?: RecordedHopIdentity
 ): void {
   const requestId =
     ctx?.requestId ??
     (typeof inbound?.requestId === 'string' && inbound.requestId.trim() ? inbound.requestId.trim() : undefined);
   const parentRequestId =
+    catalog?.parentRequestId ??
     ctx?.parentRequestId ??
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()

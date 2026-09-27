@@ -1,9 +1,12 @@
 import {
   adoptStoredHopIdOnProxyLog,
+  applyHopIdentityToProxyLog,
   applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
   copyProxyUpstreamHeadersWithoutHopIds,
+  resolveCatalogHopIdentity,
   resolveProxyHopIdentity,
+  resolveProxyTraceIds,
   type ProxyNetworkLogContext,
 } from '../packages/mockifyer-dashboard/src/utils/proxy-network-log';
 import { resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
@@ -148,5 +151,42 @@ describe('proxy hop id stability', () => {
       'acct-stored'
     );
     expect(child).toEqual({ requestId: 'acct-stored', parentRequestId: 'gql-1' });
+  });
+});
+
+describe('healed inbound parent (catalog vs live)', () => {
+  const live = { requestId: 'crm-hop', parentRequestId: 'member-live' };
+
+  it('keeps the live parent when heal is a no-op', () => {
+    expect(resolveCatalogHopIdentity(live, undefined)).toBe(live);
+    expect(resolveCatalogHopIdentity(live, 'member-live')).toBe(live);
+    expect(resolveCatalogHopIdentity({ requestId: 'root' }, 'recorded')).toEqual({
+      requestId: 'root',
+    });
+  });
+
+  it('points only the catalog at the recorded parent row', () => {
+    const catalog = resolveCatalogHopIdentity(live, 'member-recorded');
+    expect(catalog).toEqual({ requestId: 'crm-hop', parentRequestId: 'member-recorded' });
+    expect(live.parentRequestId).toBe('member-live');
+  });
+
+  it('stores the healed parent on the mock while the log and upstream keep the live one', () => {
+    const ctx = { requestId: 'crm-hop', parentRequestId: null } as ProxyNetworkLogContext;
+    applyHopIdentityToProxyLog(ctx, live);
+    const catalog = resolveCatalogHopIdentity(live, 'member-recorded');
+
+    const mock = mockData();
+    applyProxyCorrelationToMockData(mock, ctx, live, catalog);
+    expect(mock.requestId).toBe('crm-hop');
+    expect(mock.parentRequestId).toBe('member-recorded');
+
+    expect(resolveProxyTraceIds(ctx, live)).toEqual({
+      requestId: 'crm-hop',
+      parentRequestId: 'member-live',
+    });
+    const upstream = new Headers();
+    applyUpstreamRequestCorrelationHeaders(upstream, ctx);
+    expect(upstream.get('x-mockifyer-parent-request-id')).toBe('member-live');
   });
 });
