@@ -115,7 +115,7 @@ export function stopMetroAtlasRuntimeSync(): void {
 }
 
 /**
- * Parse Metro `/mockifyer-atlas-session` JSON.
+ * Parse Metro `GET /mockifyer-atlas-capture` JSON (`activateMockifyer` / `active`).
  */
 export function parseMetroAtlasSessionStatus(body: unknown): MetroAtlasSessionStatus | null {
   if (!body || typeof body !== 'object') return null;
@@ -125,14 +125,13 @@ export function parseMetroAtlasSessionStatus(body: unknown): MetroAtlasSessionSt
     phaseRaw === 'capturing' || phaseRaw === 'rendering' || phaseRaw === 'idle'
       ? phaseRaw
       : 'idle';
-  const activateMockifyer =
-    raw.activateMockifyer === true ||
-    raw.capturing === true ||
-    phase === 'capturing';
+  const capturing =
+    phase === 'capturing' || raw.capturing === true || raw.active === true;
+  const activateMockifyer = raw.activateMockifyer === true || capturing;
   return {
     phase,
     activateMockifyer,
-    capturing: phase === 'capturing' || raw.capturing === true,
+    capturing,
   };
 }
 
