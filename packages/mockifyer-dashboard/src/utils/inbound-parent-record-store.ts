@@ -188,7 +188,9 @@ export async function resolveInboundParentRequestIdForChild(
     };
     delete mock.inboundParentStub;
     delete mock.inboundParentDisplay;
-    const hash = sha256Hex(generateRequestKey(request));
+    // Use the first lookup URL (prefer https) so the placeholder key matches the recording
+    const placeholderUrl = target.lookupUrls[0];
+    const hash = sha256Hex(generateRequestKey({ ...request, url: placeholderUrl }));
     const wrote = await store.setByHashInScenario(hash, mock, scenarioName, {
       enforceWriteLimits: false,
     });
