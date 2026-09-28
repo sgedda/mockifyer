@@ -816,7 +816,7 @@ kbd {
   }
 
   function hopOpenUrl(ev, side) {
-    var id = encodeURIComponent(ev.id || requestIdOf(ev));
+    var id = encodeURIComponent(requestIdOf(ev));
     return "/mockifyer-atlas-open?id=" + id + "&side=" + side;
   }
 
@@ -1030,6 +1030,14 @@ kbd {
   }
 
   /**
+   * Include-trace re-call needs a URL. The link id is the hop request id,
+   * which still matches after a proxy/client merge replaces the event id.
+   */
+  function hopShowsTrace(ev) {
+    return !!(ev && hopUrl(ev));
+  }
+
+  /**
    * Curl on roots, and on nested hops once they carry outbound headers.
    * Without headers a nested re-call cannot authenticate.
    */
@@ -1114,7 +1122,9 @@ kbd {
     var repeatSuffix = opts.repeatSuffix || "";
     var err = isErrorHop(ev);
     var slow = isSlowHop(ev);
-    var hopId = ev.id || requestIdOf(ev);
+    // requestId survives a later merge that replaces event.id (proxy twin,
+    // dashboard enrich). Tracing the raw event id 404s as "hop not found".
+    var hopId = requestIdOf(ev);
     var prefix =
       depth > 0
         ? '<span class="tree">' + esc(treeIndent(depth, isLast)) + "</span>"
@@ -1150,7 +1160,9 @@ kbd {
           esc(hopId) +
           '" title="Copy root hop as curl (includes X-Mockifyer-Include-Trace)">curl</a>'
         : "") +
-      '<a href="' + TRACE_PATH + '?id=' + encodeURIComponent(hopId) + '&amp;format=html" class="trace-link" data-trace-id="' + esc(hopId) + '" target="_blank" rel="noopener" title="Re-call with X-Mockifyer-Include-Trace and open the result in a new tab">trace</a>' +
+      (hopShowsTrace(ev)
+        ? '<a href="' + TRACE_PATH + '?id=' + encodeURIComponent(hopId) + '&amp;format=html" class="trace-link" data-trace-id="' + esc(hopId) + '" target="_blank" rel="noopener" title="Re-call with X-Mockifyer-Include-Trace and open the result in a new tab">trace</a>'
+        : "") +
       "</span>";
     return (
       '<div class="' + rowClass + '" data-hop-id="' + esc(hopId) + '">' +
@@ -1370,6 +1382,27 @@ kbd {
     return -1;
   }
 
+  function indexOfRequestId(list, rid) {
+    for (var i = 0; i < list.length; i++) {
+      if (requestIdOf(list[i]) === rid) return i;
+    }
+    return -1;
+  }
+
+  /** Drop a hop from its old parent (or roots) when a re-post moves it. */
+  function detachFromParent(previous, rid) {
+    var oldParent = parentIdOf(previous);
+    if (!oldParent) {
+      var rootAt = rootOrder.indexOf(rid);
+      if (rootAt >= 0) rootOrder.splice(rootAt, 1);
+      return;
+    }
+    var list = childrenByParent.get(oldParent);
+    if (!list) return;
+    var at = indexOfRequestId(list, rid);
+    if (at >= 0) list.splice(at, 1);
+  }
+
   function ingest(ev) {
     if (!ev || typeof ev !== "object") return;
     if (paused) {
@@ -1395,6 +1428,11 @@ kbd {
       }
       return;
     }
+    // Metro merges a re-posted requestId into one hop (stable mock ids repeat on
+    // every call) and moves it to newest. Mirror that: drop the stale row so its
+    // old event id never reaches trace as "hop not found".
+    var previous = eventsByRequestId.get(rid);
+    if (previous) detachFromParent(previous, rid);
     eventsByRequestId.set(rid, ev);
     if (parentId) {
       siblings.push(ev);

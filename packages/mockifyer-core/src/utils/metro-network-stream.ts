@@ -168,6 +168,11 @@ export class MetroNetworkEventBuffer {
   private readonly listeners = new Set<MetroNetworkStreamListener>();
   private readonly patchListeners = new Set<MetroNetworkStreamListener>();
   private readonly maxEvents: number;
+  /**
+   * Event ids replaced when a later post of the same `requestId` wins.
+   * Live trace/open links may still carry the first id.
+   */
+  private readonly idAliases = new Map<string, string>();
 
   constructor(maxEvents: number = DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS) {
     this.maxEvents = Math.max(1, maxEvents);
@@ -182,9 +187,11 @@ export class MetroNetworkEventBuffer {
         (existing) => existing.requestId?.trim() === requestId
       );
       if (existingIndex >= 0) {
+        const previous = this.events[existingIndex];
         const merged = slimNetworkEventForMetroStream(
-          mergeNetworkEventPreferRunnable(this.events[existingIndex], slim)
+          mergeNetworkEventPreferRunnable(previous, slim)
         );
+        this.rememberReplacedEventId(previous.id, requestId, merged.id);
         this.events.splice(existingIndex, 1);
         this.events.unshift(merged);
         if (this.events.length > this.maxEvents) {
@@ -238,6 +245,50 @@ export class MetroNetworkEventBuffer {
     };
   }
 
+  /**
+   * Hop for a live trace/open id. Matches the current event id or `requestId`,
+   * then ids discarded when a later post of that `requestId` was merged in.
+   */
+  resolve(hopId: string): NetworkEvent | undefined {
+    const id = hopId.trim();
+    if (!id) return undefined;
+    const direct = this.findByIdOrRequestId(id);
+    if (direct) return direct;
+
+    let requestId = this.idAliases.get(id);
+    const seen = new Set<string>();
+    while (requestId && !seen.has(requestId)) {
+      seen.add(requestId);
+      const match = this.findByIdOrRequestId(requestId);
+      if (match) return match;
+      requestId = this.idAliases.get(requestId);
+    }
+    return undefined;
+  }
+
+  private findByIdOrRequestId(id: string): NetworkEvent | undefined {
+    return this.events.find(
+      (event) => event.id === id || event.requestId?.trim() === id
+    );
+  }
+
+  /** Keep the pre-merge event id resolvable via the stable `requestId`. */
+  private rememberReplacedEventId(
+    previousId: string | undefined,
+    requestId: string,
+    currentId: string | undefined
+  ): void {
+    const oldId = previousId?.trim();
+    if (!oldId || oldId === requestId || oldId === currentId?.trim()) return;
+    this.idAliases.set(oldId, requestId);
+    const cap = this.maxEvents * 4;
+    while (this.idAliases.size > cap) {
+      const oldest = this.idAliases.keys().next().value;
+      if (oldest == null) break;
+      this.idAliases.delete(oldest);
+    }
+  }
+
   /** Newest-first snapshot. */
   list(limit?: number): NetworkEvent[] {
     if (limit == null || limit >= this.events.length) {
@@ -248,6 +299,7 @@ export class MetroNetworkEventBuffer {
 
   clear(): void {
     this.events = [];
+    this.idAliases.clear();
   }
 
   get size(): number {

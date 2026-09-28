@@ -83,6 +83,37 @@ describe('atlas-trace-replay', () => {
     const result = await replayNetworkEventWithIncludeTrace([], 'missing');
     expect(result.success).toBe(false);
     expect(result.error).toBe('hop not found');
+    const html = buildAtlasTraceReplayHtml(result);
+    expect(html).toContain('hop not found');
+    expect(html).not.toContain('curl -i -X GET');
+    expect(html).not.toContain('sec-curl');
+  });
+
+  it('re-calls a nested hop by requestId after its event id was replaced', async () => {
+    const calls: Array<{ url: string }> = [];
+    const fetchFn = (async (url: RequestInfo | URL) => {
+      calls.push({ url: String(url) });
+      return new Response(JSON.stringify({ ok: true, mockifyerTrace: { hops: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const event = hop({
+      id: 'proxy-copy',
+      requestId: 'req-nested',
+      method: 'GET',
+      url: 'https://crmapi.example/Customerapi/api/v2/Booking/1',
+      path: '/Customerapi/api/v2/Booking/1',
+      source: 'upstream',
+    });
+
+    const result = await replayNetworkEventWithIncludeTrace([event], 'req-nested', {
+      fetchFn,
+    });
+    expect(result.success).toBe(true);
+    expect(result.url).toBe('https://crmapi.example/Customerapi/api/v2/Booking/1');
+    expect(calls[0]?.url).toBe('https://crmapi.example/Customerapi/api/v2/Booking/1');
   });
 
   it('re-calls with event.query when the stored url omitted params', async () => {

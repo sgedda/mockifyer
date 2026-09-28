@@ -51,6 +51,36 @@ describe('MetroNetworkEventBuffer.patchResponseBody', () => {
     expect(hops).not.toHaveBeenCalled();
   });
 
+  it('resolves a hop after a later post replaces its event id', () => {
+    const buffer = new MetroNetworkEventBuffer(10);
+    buffer.append(
+      hop({
+        id: 'client-copy',
+        requestId: 'req-nested',
+        method: 'GET',
+        url: 'https://crmapi.example/Customerapi/api/v2/Booking/1',
+        source: 'upstream',
+        transport: 'fetch',
+      })
+    );
+    buffer.append(
+      hop({
+        id: 'proxy-copy',
+        requestId: 'req-nested',
+        method: 'GET',
+        url: 'https://crmapi.example/Customerapi/api/v2/Booking/1',
+        source: 'upstream',
+        transport: 'proxy',
+      })
+    );
+
+    expect(buffer.list().map((event) => event.id)).toEqual(['proxy-copy']);
+    expect(buffer.resolve('req-nested')?.id).toBe('proxy-copy');
+    expect(buffer.resolve('proxy-copy')?.id).toBe('proxy-copy');
+    expect(buffer.resolve('client-copy')?.id).toBe('proxy-copy');
+    expect(buffer.resolve('missing')).toBeUndefined();
+  });
+
   it('falls back to requestId and ignores hops that are gone', () => {
     const buffer = new MetroNetworkEventBuffer(10);
     buffer.append(hop({ id: 'proxy-copy', requestId: 'req-a', method: 'GET', url: 'https://x.test/a', source: 'upstream' }));

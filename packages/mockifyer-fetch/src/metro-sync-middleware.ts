@@ -1751,9 +1751,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       }
       const buffer = getMetroNetworkEventBuffer();
       const events = buffer.list();
-      const event =
-        events.find((e) => e && (e.id === hopId || e.requestId === hopId)) ??
-        undefined;
+      // Same requestId can be posted twice (client + proxy). The buffer keeps
+      // the merged hop under a new event id; resolve() still accepts the first id.
+      const event = buffer.resolve(hopId);
+      const replayKey = event?.requestId?.trim() || event?.id || hopId;
 
       // format=html without wait=1: return a shell immediately so the tab is not
       // blank while the include-trace re-call runs (can be many seconds).
@@ -1784,7 +1785,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const capturedLines = event
         ? formatCapturedTraceLines(events, event)
         : undefined;
-      void replayNetworkEventWithIncludeTrace(events, hopId, {
+      void replayNetworkEventWithIncludeTrace(events, replayKey, {
         includeBodies,
         requestBody: spilledRequestBody,
         timeoutMs: ATLAS_TRACE_REPLAY_TIMEOUT_MS,
@@ -2254,9 +2255,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       }
 
       const event =
-        (hopId
-          ? listed.find((e) => e && (e.id === hopId || e.requestId === hopId))
-          : undefined) || listed[0];
+        (hopId ? buffer.resolve(hopId) : undefined) || listed[0];
       if (!event) {
         res.statusCode = 404;
         res.setHeader("Content-Type", "application/json");

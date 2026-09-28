@@ -717,43 +717,47 @@ export function buildAtlasTraceReplayHtml(
       sectionHtml('sec-error', 'Error', result.error, { error: true, lang: 'plain' }),
     );
   }
-  sections.push(sectionHtml('sec-curl', 'curl (include-trace)', curlText, { lang: 'curl' }));
-  if (captured) {
+  // A missed lookup has no URL. Don't invent `curl -i -X GET ''` or empty
+  // trace/body sections for a hop the buffer doesn't have.
+  if (result.url) {
+    sections.push(sectionHtml('sec-curl', 'curl (include-trace)', curlText, { lang: 'curl' }));
+    if (captured) {
+      sections.push(
+        sectionHtml('sec-captured', 'Captured hops (before re-call)', captured, {
+          lang: 'plain',
+        }),
+      );
+    }
     sections.push(
-      sectionHtml('sec-captured', 'Captured hops (before re-call)', captured, {
-        lang: 'plain',
+      sectionHtml('sec-trace', 'mockifyerTrace', treeSection, {
+        lang: treeHops ? 'plain' : 'json',
       }),
     );
-  }
-  sections.push(
-    sectionHtml('sec-trace', 'mockifyerTrace', treeSection, {
-      lang: treeHops ? 'plain' : 'json',
-    }),
-  );
-  sections.push(
-    sectionHtml('sec-body', 'Response body', bodyText, {
-      lang: 'json',
-      after: authHint,
-    }),
-  );
-  if (nestedBodies.length > 0) {
+    sections.push(
+      sectionHtml('sec-body', 'Response body', bodyText, {
+        lang: 'json',
+        after: authHint,
+      }),
+    );
+    if (nestedBodies.length > 0) {
+      sections.push(
+        sectionHtml(
+          'sec-nested',
+          'Nested hop body previews',
+          nestedBodies.join('\n\n—\n\n'),
+          { lang: 'json' },
+        ),
+      );
+    }
     sections.push(
       sectionHtml(
-        'sec-nested',
-        'Nested hop body previews',
-        nestedBodies.join('\n\n—\n\n'),
+        'sec-headers',
+        'Request headers sent',
+        prettyJson(result.requestHeaders || {}),
         { lang: 'json' },
       ),
     );
   }
-  sections.push(
-    sectionHtml(
-      'sec-headers',
-      'Request headers sent',
-      prettyJson(result.requestHeaders || {}),
-      { lang: 'json' },
-    ),
-  );
 
   return `<!DOCTYPE html>
 <html lang="en">
