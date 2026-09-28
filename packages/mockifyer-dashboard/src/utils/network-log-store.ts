@@ -194,7 +194,7 @@ class MemoryNetworkLogStore implements NetworkLogStore {
 
     const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.bufferKey(scenario) },
-      cfg.captureBodies
+      cfg.captureBodies || Boolean(partial.responseBodyPreview)
     );
 
     const key = this.bufferKey(scenario);

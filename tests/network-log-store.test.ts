@@ -146,7 +146,9 @@ describe('network-log-store (memory)', () => {
     };
     const off = await store.append(scenario, hop);
     expect(off?.requestBodyPreview).toContain('me');
-    expect(off?.responseBodyPreview).toBeUndefined();
+    // Filesystem provider preserves response bodies even when captureBodies is false,
+    // since it can't recover them from disk like Redis/SQLite can
+    expect(off?.responseBodyPreview).toContain('"me"');
 
     await store.setConfig(scenario, { captureBodies: true });
     const on = await store.append(scenario, hop);
