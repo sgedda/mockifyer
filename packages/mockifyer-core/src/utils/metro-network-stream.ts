@@ -638,3 +638,11 @@ export async function runMetroAtlasCaptureSessionRefresh(
   state.refreshPromise = pending;
   await pending;
 }
+
+/**
+ * Metro Atlas session status (phase / activateMockifyer) for app-side runtime sync.
+ * Same resource as {@link joinMetroAtlasCaptureSessionUrl}.
+ */
+export function joinMetroAtlasSessionUrl(metroBaseUrl: string): string {
+  return joinMetroAtlasCaptureSessionUrl(metroBaseUrl);
+}
