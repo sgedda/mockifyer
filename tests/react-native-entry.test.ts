@@ -20,6 +20,7 @@ import {
   ATLAS_TRACE_REPLAY_PATH,
   isMetroAtlasCaptureSessionActive,
   setMetroAtlasCaptureSessionActive,
+  onMetroAtlasCaptureSessionChange,
   ATLAS_CAPTURE_SESSION_PATH,
   MOCKIFYER_METRO_STREAM_BASE_HEADER,
   sanitizeAtlasMetroStreamBaseUrl,
@@ -58,6 +59,7 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(ATLAS_TRACE_REPLAY_PATH).toBe('/mockifyer-atlas-trace');
     expect(typeof isMetroAtlasCaptureSessionActive).toBe('function');
     expect(typeof setMetroAtlasCaptureSessionActive).toBe('function');
+    expect(typeof onMetroAtlasCaptureSessionChange).toBe('function');
     expect(ATLAS_CAPTURE_SESSION_PATH).toBe('/mockifyer-atlas-capture');
     expect(MOCKIFYER_METRO_STREAM_BASE_HEADER).toBe(
       'x-mockifyer-metro-stream-base'

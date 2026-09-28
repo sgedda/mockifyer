@@ -45,7 +45,15 @@ import {
   runMetroAtlasCaptureSessionRefresh,
   sanitizeAtlasMetroStreamBaseUrl,
   setMetroAtlasCaptureSessionActive,
+  onMetroAtlasCaptureSessionChange,
+  type NetworkEventResponseBodyPatch,
 } from './metro-network-stream';
+import {
+  clearDeferredAtlasResponseBodies,
+  deferAtlasResponseBody,
+  flushDeferredAtlasResponseBodies,
+  type DeferredResponseBody,
+} from './atlas-deferred-response-bodies';
 import { getActiveMockifyerHopContext } from './hop-context';
 import { findHopRequestHeaders } from './hop-identity';
 import { normalizeDashboardBaseUrl } from './dashboard-network-trace-fetch';
@@ -580,6 +588,63 @@ function captureNetworkBody(value: unknown, existingPreview: unknown): CapturedN
   return {};
 }
 
+/**
+ * App talking to its local Metro: keep response bodies off hop events. The live stream
+ * gets them after the `t` capture stops, and Trace re-fetches them on demand.
+ * Explicit dashboard body capture and Atlas HTML output keep inline bodies.
+ */
+function shouldDeferResponseBody(params: {
+  localMetro: string | undefined;
+  dashboardCaptureBodies: boolean;
+}): boolean {
+  return (
+    params.localMetro != null && !params.dashboardCaptureBodies && getAtlasDocHtmlOutputPath() == null
+  );
+}
+
+function buildDeferredResponseBodyPatch(
+  entry: DeferredResponseBody,
+  metroBaseUrl: string
+): NetworkEventResponseBodyPatch | undefined {
+  const capture = captureNetworkBody(entry.body, undefined);
+  const responseBodyPreview = previewFromCapturedText(capture.spillText ?? capture.oversizedPreview);
+  const refs = scheduleNetworkBodySpill({
+    eventId: entry.id,
+    requestId: entry.requestId,
+    responseBodyText: capture.spillText,
+    metroBaseUrl,
+  });
+  if (!responseBodyPreview && !refs.responseBodyRef) return undefined;
+  return {
+    id: entry.id,
+    requestId: entry.requestId,
+    responseBodyPreview,
+    responseBodyRef: refs.responseBodyRef,
+    responseBodyTruncated: refs.responseBodyTruncated,
+  };
+}
+
+let deferredResponseBodyMetroBase: string | undefined;
+let deferredResponseBodyUnsubscribe: (() => void) | undefined;
+
+/** Upload held bodies when Metro reports the capture stopped; drop leftovers when a new one starts. */
+function ensureDeferredResponseBodyFlush(metroBaseUrl: string): void {
+  deferredResponseBodyMetroBase = metroBaseUrl;
+  if (deferredResponseBodyUnsubscribe) return;
+  deferredResponseBodyUnsubscribe = onMetroAtlasCaptureSessionChange((active) => {
+    if (active) {
+      clearDeferredAtlasResponseBodies();
+      return;
+    }
+    const base = deferredResponseBodyMetroBase;
+    if (!base) return;
+    void flushDeferredAtlasResponseBodies({
+      metroBaseUrl: base,
+      toPatch: (entry) => buildDeferredResponseBodyPatch(entry, base),
+    });
+  });
+}
+
 /** Emit when Mockifyer config is available (fetch/axios interceptors). */
 export function emitMockifyerNetworkEvent(params: EmitMockifyerNetworkEventParams): void {
   scheduleAfterResponse(() => {
@@ -636,9 +701,19 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
   const requestCapture = captureBodies
     ? captureNetworkBody(params.requestBody, params.event.requestBodyPreview)
     : {};
-  const responseCapture = captureBodies
-    ? captureNetworkBody(params.responseBody, params.event.responseBodyPreview)
-    : {};
+  const deferResponseBody = shouldDeferResponseBody({ localMetro, dashboardCaptureBodies });
+  if (deferResponseBody && localMetro && isMetroAtlasCaptureSessionActive()) {
+    ensureDeferredResponseBodyFlush(localMetro);
+    deferAtlasResponseBody({
+      id: eventId,
+      requestId: params.event.requestId ?? undefined,
+      body: params.responseBody,
+    });
+  }
+  const responseCapture =
+    captureBodies && !deferResponseBody
+      ? captureNetworkBody(params.responseBody, params.event.responseBodyPreview)
+      : {};
 
   const spillRefs =
     spillBodies && captureBodies

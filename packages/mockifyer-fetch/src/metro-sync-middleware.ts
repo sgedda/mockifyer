@@ -80,6 +80,9 @@ import {
   isMetroAtlasCaptureSessionActive,
   normalizeDashboardBaseUrl,
   pullDashboardDescendantsForParents,
+  METRO_RESPONSE_BODY_PATCHES_PATH,
+  isNetworkEventResponseBodyPatch,
+  responseBodyPatchFromNetworkEvent,
 } from "@sgedda/mockifyer-core";
 import {
   attachMetroAtlasKeyHandler,
@@ -1845,6 +1848,40 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       return;
     }
 
+    // Response bodies the app held during an Atlas capture, uploaded after `t` stops.
+    if (url === METRO_RESPONSE_BODY_PATCHES_PATH && req.method === "POST") {
+      collectRequestBodyUtf8(req, (err, body) => {
+        res.setHeader("Content-Type", "application/json");
+        if (err) {
+          res.statusCode = 413;
+          res.end(JSON.stringify({ success: false, error: err.message }));
+          return;
+        }
+        try {
+          const parsed = JSON.parse(body) as { patches?: unknown };
+          const patches = Array.isArray(parsed.patches)
+            ? parsed.patches.filter(isNetworkEventResponseBodyPatch)
+            : [];
+          const buffer = getMetroNetworkEventBuffer();
+          const patched = patches.filter(
+            (patch) => buffer.patchResponseBody(patch) != null,
+          ).length;
+          res.end(
+            JSON.stringify({ success: true, patched, ignored: patches.length - patched }),
+          );
+        } catch (error) {
+          res.statusCode = 400;
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            }),
+          );
+        }
+      });
+      return;
+    }
+
     // Live hop ring buffer for `mockifyer-atlas` interactive CLI
     if (url === "/mockifyer-network-events" && req.method === "POST") {
       collectRequestBodyUtf8(req, (err, body) => {
@@ -1962,13 +1999,26 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
         }
       }
-      const unsubscribe = buffer.subscribe((event) => {
+      const unsubscribeHops = buffer.subscribe((event) => {
         try {
           res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
         } catch {
           unsubscribe();
         }
       });
+      const unsubscribePatches = buffer.subscribePatches((event) => {
+        try {
+          res.write(
+            `event: patch\ndata: ${JSON.stringify(responseBodyPatchFromNetworkEvent(event))}\n\n`,
+          );
+        } catch {
+          unsubscribe();
+        }
+      });
+      const unsubscribe = () => {
+        unsubscribeHops();
+        unsubscribePatches();
+      };
       const keepAlive = setInterval(() => {
         try {
           res.write(": ping\n\n");

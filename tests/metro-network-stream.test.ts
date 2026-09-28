@@ -33,6 +33,36 @@ function hop(partial: Partial<NetworkEvent> & Pick<NetworkEvent, 'method' | 'url
   };
 }
 
+describe('MetroNetworkEventBuffer.patchResponseBody', () => {
+  it('fills the body in place and notifies patch subscribers only', () => {
+    const buffer = new MetroNetworkEventBuffer(10);
+    buffer.append(hop({ id: 'a', requestId: 'req-a', method: 'GET', url: 'https://x.test/a', source: 'upstream' }));
+    buffer.append(hop({ id: 'b', requestId: 'req-b', method: 'GET', url: 'https://x.test/b', source: 'upstream' }));
+    const hops = jest.fn();
+    const patches = jest.fn();
+    buffer.subscribe(hops);
+    buffer.subscribePatches(patches);
+
+    const patched = buffer.patchResponseBody({ id: 'a', responseBodyPreview: '{"ok":true}' });
+
+    expect(patched?.responseBodyPreview).toBe('{"ok":true}');
+    expect(buffer.list().map((event) => event.id)).toEqual(['b', 'a']);
+    expect(patches).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }));
+    expect(hops).not.toHaveBeenCalled();
+  });
+
+  it('falls back to requestId and ignores hops that are gone', () => {
+    const buffer = new MetroNetworkEventBuffer(10);
+    buffer.append(hop({ id: 'proxy-copy', requestId: 'req-a', method: 'GET', url: 'https://x.test/a', source: 'upstream' }));
+
+    expect(
+      buffer.patchResponseBody({ id: 'app-copy', requestId: 'req-a', responseBodyRef: 'bodies/a-res.json' })
+        ?.responseBodyRef
+    ).toBe('bodies/a-res.json');
+    expect(buffer.patchResponseBody({ id: 'missing', responseBodyPreview: '{}' })).toBeUndefined();
+  });
+});
+
 describe('metro-network-stream', () => {
   const prevStream = process.env.MOCKIFYER_METRO_STREAM;
   const prevPort = process.env.METRO_PORT;

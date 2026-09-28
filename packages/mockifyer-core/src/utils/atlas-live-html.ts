@@ -526,6 +526,8 @@ kbd {
   var MAX_ROOTS = 200;
   var TWINNED_KEY = ${JSON.stringify(NETWORK_EVENT_TWINNED_KEY)};
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
+  /** Response-body patches arrive in bursts after capture stops; re-render once per burst. */
+  var PATCH_RENDER_DELAY_MS = 150;
 
   var hopsEl = document.getElementById("hops");
   var statusEl = document.getElementById("status");
@@ -1410,6 +1412,23 @@ kbd {
     render();
   }
 
+  var patchRenderTimer = null;
+
+  /** Response body uploaded after the capture stopped: update the existing row in place. */
+  function applyResponseBodyPatch(patch) {
+    if (!patch || typeof patch !== "object") return;
+    var target = patch.requestId ? eventsByRequestId.get(patch.requestId) : null;
+    if (!target) return;
+    if (patch.responseBodyPreview) target.responseBodyPreview = patch.responseBodyPreview;
+    if (patch.responseBodyRef) target.responseBodyRef = patch.responseBodyRef;
+    if (patch.responseBodyTruncated) target.responseBodyTruncated = true;
+    if (patchRenderTimer) return;
+    patchRenderTimer = setTimeout(function () {
+      patchRenderTimer = null;
+      render();
+    }, PATCH_RENDER_DELAY_MS);
+  }
+
   function toggleParent(parentId) {
     var children = childrenByParent.get(parentId) || [];
     if (!children.length) return;
@@ -1835,6 +1854,11 @@ kbd {
       streamState = "open";
       try {
         ingest(JSON.parse(msg.data));
+      } catch (_) {}
+    });
+    es.addEventListener("patch", function (msg) {
+      try {
+        applyResponseBodyPatch(JSON.parse(msg.data));
       } catch (_) {}
     });
     es.onerror = function () {

@@ -10,6 +10,7 @@ import { logger } from './logger';
 import {
   joinMetroAtlasSessionUrl,
   resolveMetroNetworkStreamBaseUrl,
+  setMetroAtlasCaptureSessionActive,
 } from './metro-network-stream';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 import type { MockifyerClientIdRuntime } from './runtime-client-id';
@@ -207,6 +208,10 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
     }
   } catch {
     return false;
+  }
+
+  if (status) {
+    setMetroAtlasCaptureSessionActive(status.capturing);
   }
 
   if (!status?.activateMockifyer) {
