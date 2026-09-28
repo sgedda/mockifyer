@@ -279,13 +279,15 @@ export interface MockifyerConfig {
      * re-emitted into the network log / Metro Atlas stream with `parentRequestId`.
      *
      * Also turns on automatically while an Atlas `t` capture session is active
-     * (header only — see {@link includeTraceBodies}). Set `false` to keep it off
+     * (response bodies stay opt-in — see {@link includeTraceBodies}). Set `false` to keep it off
      * even during capture. HAL/auth unwrap peels legacy envelopes so login stays safe.
+     * Nested hops include outbound headers and the request body so the live stream can re-call them.
      */
     includeTraceHeader?: boolean;
     /**
-     * When true with include-trace (config or Atlas `t`), also request body previews on
+     * When true with include-trace (config or Atlas `t`), also request response body previews on
      * nested hops (`X-Mockifyer-Include-Trace-Bodies: 1`). Off by default — heavier payloads.
+     * Request bodies are included whenever include-trace is on (needed to replay the hop).
      */
     includeTraceBodies?: boolean;
     /** In-process ring buffer for crash forensics (works without dashboard URL). */

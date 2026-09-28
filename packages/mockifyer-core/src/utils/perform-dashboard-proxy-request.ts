@@ -22,6 +22,7 @@ import {
   resolveMockifyerTraceFromProxyPayload,
   stripMockifyerTraceFromBody,
 } from './mockifyer-trace';
+import { outboundHeadersToRecord } from './outbound-header';
 import { logger } from './logger';
 import { applyRuntimeDateManipulationFromProxyPayload } from './runtime-date-sync';
 
@@ -233,6 +234,7 @@ export async function performDashboardProxyRequest(
       parentRequestId: adoptedParentRequestId ?? null,
       durationMs: Math.max(0, Date.now() - startedAt),
       clientId: lane ?? null,
+      requestHeaders: outboundHeadersToRecord(headers),
       requestBody: body,
       responseBody: data,
     });

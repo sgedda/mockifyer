@@ -4,9 +4,11 @@ import {
   configureFlightRecorder,
   emitMockifyerNetworkEvent,
   redactHeaders,
+  runWithMockifyerHopContext,
   sanitizeQueryString,
   sanitizeNetworkEvent,
   sanitizeUrlString,
+  setAtlasDocHtmlOutputPath,
   toNetworkLogBodyPreview,
   __flightRecorderBuffersForTests,
 } from '@sgedda/mockifyer-core';
@@ -150,6 +152,45 @@ describe('network-log', () => {
     } finally {
       if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
       else process.env.MOCKIFYER_METRO_STREAM = prev;
+    }
+  });
+
+  it('keeps the request body for a Metro bridge hop when dashboard captureBodies is off', async () => {
+    const prev = process.env.MOCKIFYER_METRO_STREAM;
+    process.env.MOCKIFYER_METRO_STREAM = 'off';
+    setAtlasDocHtmlOutputPath(undefined);
+    configureFlightRecorder({ enabled: true, maxEvents: 20 });
+    clearFlightRecorder();
+    try {
+      await runWithMockifyerHopContext(
+        { atlasMetroStreamBaseUrl: 'http://127.0.0.1:8081' },
+        async () => {
+          emitMockifyerNetworkEvent({
+            config: { networkLog: { enabled: true, captureBodies: false, spillBodies: false } },
+            scenario: 'default',
+            requestBody: { query: '{ me { id } }' },
+            event: {
+              method: 'POST',
+              url: 'https://api.example.com/graphql',
+              source: 'upstream',
+              status: 200,
+              transport: 'fetch',
+              requestHeaders: {
+                authorization: 'Bearer real-token',
+                'content-type': 'application/json',
+              },
+            },
+          });
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+      );
+      const [event] = __flightRecorderBuffersForTests().network;
+      expect(event?.requestHeaders?.authorization).toBe('Bearer real-token');
+      expect(event?.requestBodyPreview).toContain('me');
+    } finally {
+      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
+      else process.env.MOCKIFYER_METRO_STREAM = prev;
+      setAtlasDocHtmlOutputPath(undefined);
     }
   });
 

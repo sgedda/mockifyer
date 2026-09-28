@@ -3,6 +3,7 @@ import { getOutboundHeaderValue } from './outbound-header';
 import { isMockifyerDashboardPlumbingApiUrl } from './join-proxy-dashboard-api-url';
 import type { NetworkEventSource, NetworkEventTransport } from './network-log';
 import { toNetworkLogBodyPreview, emitMockifyerNetworkEvent } from './network-log';
+import { NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES } from './network-body-spill';
 import {
   getActiveMockifyerHopContext,
   type MockifyerHopContext,
@@ -44,6 +45,24 @@ function isTruthyFlag(raw: string | undefined | null): boolean {
   return TRUTHY.has(String(raw).trim().toLowerCase());
 }
 
+/** Keep a plain header map. Drops empty names and non-scalar values. */
+function copyRequestHeaders(
+  headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const name = key.trim();
+    if (!name || value == null) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    out[name] = text;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export interface InlineTraceHop {
   index: number;
   requestId: string | null;
@@ -56,6 +75,11 @@ export interface InlineTraceHop {
   durationMs?: number;
   transport: NetworkEventTransport;
   clientId?: string | null;
+  /**
+   * Outbound headers for this hop (auth, content-type, …).
+   * Include-trace is debug-only; Atlas uses these to re-call the hop from the live stream.
+   */
+  requestHeaders?: Record<string, string>;
   requestBodyPreview?: string;
   responseBodyPreview?: string;
   errorMessage?: string;
@@ -181,8 +205,17 @@ export function recordInlineTraceHop(input: RecordInlineTraceHopInput): void {
     errorMessage: input.errorMessage,
   };
 
-  if (ctx.includeInlineTraceBodies) {
+  const requestHeaders = copyRequestHeaders(input.requestHeaders);
+  if (requestHeaders) {
+    hop.requestHeaders = requestHeaders;
+  }
+
+  // Request body is what a later stream-web trace re-sends. Response previews
+  // stay behind the bodies opt-in.
+  if (typeof input.requestBodyPreview === 'string' && input.requestBodyPreview) {
     hop.requestBodyPreview = input.requestBodyPreview;
+  }
+  if (ctx.includeInlineTraceBodies && input.responseBodyPreview) {
     hop.responseBodyPreview = input.responseBodyPreview;
   }
 
@@ -202,6 +235,8 @@ export function recordInlineTraceHopFromExchange(params: {
   parentRequestId?: string | null;
   durationMs?: number;
   clientId?: string | null;
+  /** Final outbound headers (after auth interceptors). */
+  requestHeaders?: Record<string, string>;
   requestBody?: unknown;
   responseBody?: unknown;
   errorMessage?: string;
@@ -222,9 +257,13 @@ export function recordInlineTraceHopFromExchange(params: {
     durationMs: params.durationMs,
     clientId: params.clientId,
     errorMessage: params.errorMessage,
-    requestBodyPreview: ctx.includeInlineTraceBodies
-      ? toNetworkLogBodyPreview(params.requestBody, INLINE_TRACE_BODY_PREVIEW_MAX_BYTES)
-      : undefined,
+    requestHeaders: copyRequestHeaders(params.requestHeaders),
+    requestBodyPreview: toNetworkLogBodyPreview(
+      params.requestBody,
+      ctx.includeInlineTraceBodies
+        ? INLINE_TRACE_BODY_PREVIEW_MAX_BYTES
+        : NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES
+    ),
     responseBodyPreview: ctx.includeInlineTraceBodies
       ? toNetworkLogBodyPreview(businessBody, INLINE_TRACE_BODY_PREVIEW_MAX_BYTES)
       : undefined,
@@ -340,6 +379,7 @@ export function unwrapAndMergeInlineTraceEnvelope(body: unknown): unknown {
       durationMs: hop.durationMs,
       transport: (hop.transport as NetworkEventTransport) || 'proxy',
       clientId: hop.clientId,
+      requestHeaders: copyRequestHeaders(hop.requestHeaders),
       requestBodyPreview: hop.requestBodyPreview,
       responseBodyPreview: hop.responseBodyPreview,
       errorMessage: hop.errorMessage,
@@ -411,6 +451,7 @@ export function unwrapInlineTraceEnvelopeEmittingNetworkEvents(
         clientId:
           typeof hop.clientId === 'string' ? hop.clientId : params.clientId ?? null,
         errorMessage: typeof hop.errorMessage === 'string' ? hop.errorMessage : undefined,
+        requestHeaders: copyRequestHeaders(hop.requestHeaders),
         requestBodyPreview:
           typeof hop.requestBodyPreview === 'string' ? hop.requestBodyPreview : undefined,
         responseBodyPreview:

@@ -27,6 +27,8 @@ export interface InlineTraceHopBufferItem {
   durationMs?: number;
   transport: string;
   clientId?: string | null;
+  /** Outbound headers so a later Atlas trace can re-call this hop. */
+  requestHeaders?: Record<string, string>;
   requestBodyPreview?: string;
   responseBodyPreview?: string;
   errorMessage?: string;

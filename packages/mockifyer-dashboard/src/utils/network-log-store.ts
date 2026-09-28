@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import {
   buildNetworkEvent,
+  NETWORK_LOG_ATLAS_MAX_EVENT_BYTES,
   NETWORK_LOG_DEFAULT_MAX_EVENTS,
   NETWORK_LOG_DEFAULT_TTL_SEC,
   parseNetworkLogIntEnv,
@@ -12,6 +13,27 @@ import {
   buildDashboardRedisClientOptions,
   resolveDashboardSqlitePath,
 } from './create-dashboard-mock-store';
+
+/**
+ * Keep authorization and body previews. The live stream enriches from this store
+ * and rebuilds curl; redacting here makes those commands unusable.
+ * Query secrets in the URL are still masked by {@link buildNetworkEvent}.
+ */
+function buildStoredNetworkEvent(
+  partial: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'> & {
+    id?: string;
+    timestamp?: string;
+    scenario: string;
+  },
+  captureBodiesConfig: boolean
+): NetworkEvent {
+  const hasPreview = Boolean(partial.requestBodyPreview || partial.responseBodyPreview);
+  return buildNetworkEvent(partial, {
+    captureBodies: captureBodiesConfig || hasPreview,
+    redactSensitiveHeaders: false,
+    maxEventBytes: NETWORK_LOG_ATLAS_MAX_EVENT_BYTES,
+  });
+}
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -100,9 +122,9 @@ class MemoryNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.bufferKey(scenario) },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies
     );
 
     const key = this.bufferKey(scenario);
@@ -202,9 +224,9 @@ class RedisNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: scenario.trim() || 'default' },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies
     );
 
     const listKey = this.eventsKey(scenario);
@@ -369,9 +391,9 @@ class SqliteNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.eventsKey(scenario) },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies
     );
 
     const now = Date.now();

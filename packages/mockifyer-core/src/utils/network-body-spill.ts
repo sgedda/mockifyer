@@ -21,8 +21,12 @@ try {
   pathMod = undefined;
 }
 
-/** Inline hop body preview budget (UTF-8). Full payloads still spill when larger. */
-export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 65_536;
+/**
+ * Inline hop body preview budget (UTF-8).
+ * Large enough for typical GraphQL / JSON bodies the live stream re-sends.
+ * Full payloads still spill when larger (up to {@link NETWORK_BODY_SPILL_MAX_BYTES}).
+ */
+export const NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES = 512_000;
 
 
 /** Do not spill bodies larger than this (UTF-8 bytes). */
@@ -50,6 +54,12 @@ export interface ScheduleNetworkBodySpillInput {
   /** Override atlas-html root (Node). Default: {@link getAtlasDocHtmlOutputPath}. */
   outputDir?: string;
   metroPort?: number;
+  /**
+   * Metro origin that received the hop (`http://host:port`).
+   * Spills POST here so include-trace replay can read the full request body.
+   * Falls back to `http://localhost:{@link metroPort}` when omitted.
+   */
+  metroBaseUrl?: string;
 }
 
 interface SpillJob {
@@ -57,6 +67,7 @@ interface SpillJob {
   text: string;
   outputDir?: string;
   metroPort?: number;
+  metroBaseUrl?: string;
 }
 
 let spillEnabled = true;
@@ -261,15 +272,26 @@ export function writeNetworkBodySpillMap(
   return written;
 }
 
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 async function writeSpillViaMetro(
   relativePath: string,
   text: string,
-  metroPort?: number
+  metroPort?: number,
+  metroBaseUrl?: string
 ): Promise<boolean> {
   const fetchFn = resolveUnpatchedFetch();
   if (!fetchFn) return false;
-  const port = resolveMetroPort(metroPort);
-  const url = `http://localhost:${port}/mockifyer-atlas-body-spill`;
+  const base = metroBaseUrl?.trim();
+  const url = base
+    ? `${trimTrailingSlashes(base)}/mockifyer-atlas-body-spill`
+    : `http://localhost:${resolveMetroPort(metroPort)}/mockifyer-atlas-body-spill`;
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : undefined;
   const timeout =
     ctrl &&
@@ -307,7 +329,12 @@ function pumpQueue(): void {
           ok = await writeSpillLocalAsync(dir, job.relativePath, job.text);
         }
         if (!ok) {
-          await writeSpillViaMetro(job.relativePath, job.text, job.metroPort);
+          await writeSpillViaMetro(
+            job.relativePath,
+            job.text,
+            job.metroPort,
+            job.metroBaseUrl
+          );
         }
       } catch {
         // Observability must not break the app — buffer still held for Render flush
@@ -361,6 +388,7 @@ export function scheduleNetworkBodySpill(input: ScheduleNetworkBodySpillInput): 
       text,
       outputDir,
       metroPort: input.metroPort,
+      metroBaseUrl: input.metroBaseUrl,
     });
   };
 

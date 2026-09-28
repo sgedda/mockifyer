@@ -234,6 +234,7 @@ class MockifyerClass {
         durationMs: eventPartial.durationMs,
         clientId: this.config.clientId ?? eventPartial.clientId ?? null,
         errorMessage: eventPartial.errorMessage,
+        requestHeaders,
         requestBody,
         responseBody,
       });

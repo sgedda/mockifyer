@@ -40,6 +40,7 @@ import {
   joinMetroAtlasCaptureSessionUrl,
   joinMetroNetworkEventsUrl,
   isMetroAtlasCaptureSessionActive,
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
   resolveMetroNetworkStreamBaseUrl,
   runMetroAtlasCaptureSessionRefresh,
   sanitizeAtlasMetroStreamBaseUrl,
@@ -56,6 +57,13 @@ export interface NetworkLogEmitterOptions {
   dashboardBaseUrl: string;
   event: Omit<NetworkEvent, 'id' | 'timestamp'> & { id?: string; timestamp?: string };
   captureBodies?: boolean;
+  /**
+   * When false, keep authorization and other sensitive headers.
+   * The live stream rebuilds curl from these events (including dashboard enrichment).
+   */
+  redactSensitiveHeaders?: boolean;
+  /** Override the sanitize size cap. Atlas hops need room for the body preview plus headers. */
+  maxEventBytes?: number;
 }
 
 const DEFAULT_REDACT_HEADER_NAMES = [
@@ -71,9 +79,12 @@ const SENSITIVE_QUERY_PARAMS = ['api_key', 'apikey', 'token', 'access_token', 'p
 
 export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 
-/** Event size budget when Atlas/Metro is capturing bodies (preview + headers + meta). */
+/**
+ * Event size budget when Atlas/Metro is capturing bodies (preview + headers + meta).
+ * Headroom covers request and response previews (512KB each) plus headers and metadata.
+ */
 export const NETWORK_LOG_ATLAS_MAX_EVENT_BYTES =
-  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES + 32_768;
+  NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES * 2 + 200_000;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
 export const NETWORK_LOG_DEFAULT_TTL_SEC = 60 * 60 * 24;
 
@@ -197,7 +208,8 @@ export interface SanitizeNetworkEventOptions {
    * Mask sensitive header values. Default **true**.
    *
    * Local Atlas / Metro hops set this to `false` so the recorded headers can
-   * rebuild a runnable request (curl). Dashboard POSTs always redact.
+   * rebuild a runnable request (curl). Atlas hops posted to the dashboard
+   * stay unredacted too — the live stream enriches from that store.
    */
   redactSensitiveHeaders?: boolean;
 }
@@ -316,7 +328,11 @@ export function emitNetworkLogEvent(options: NetworkLogEmitterOptions): Promise<
       id: options.event.id,
       timestamp: options.event.timestamp,
     },
-    { captureBodies: options.captureBodies }
+    {
+      captureBodies: options.captureBodies,
+      redactSensitiveHeaders: options.redactSensitiveHeaders,
+      ...(options.maxEventBytes != null ? { maxEventBytes: options.maxEventBytes } : {}),
+    }
   );
 
   const url = joinDashboardNetworkEventsUrl(base);
@@ -438,8 +454,9 @@ export interface EmitMockifyerNetworkEventParams {
  * - `networkLog.includeTraceHeader === true`, or
  * - an Atlas `t` capture session is active (unless explicitly `includeTraceHeader: false`).
  *
- * Nested **body** previews stay opt-in only (`includeTraceBodies: true`) — the header alone
- * is enough for Azure / BFF services to return `mockifyerTrace` hop lists.
+ * Nested **response** body previews stay opt-in (`includeTraceBodies: true`).
+ * Request bodies are always kept on include-trace hops so the live stream can
+ * re-call POST / GraphQL services. The header alone still returns the hop list.
  */
 export function resolveNetworkLogIncludeTraceOptions(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
@@ -573,9 +590,30 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
   configureFlightRecorder(recorderConfig);
 
   const dashboardCaptureBodies = resolveNetworkLogCaptureBodies(params.config);
-  /** Local Atlas/Metro stream keeps bodies even when the dashboard privacy flag is off. */
-  const captureBodies =
-    dashboardCaptureBodies || resolveMetroNetworkStreamBaseUrl() != null;
+  /**
+   * Prefer Atlas/Metro whenever hops may land in a live buffer:
+   * local Metro URL, Atlas HTML dir, or inbound Metro stream bridge header.
+   */
+  const atlasMetroBridge = sanitizeAtlasMetroStreamBaseUrl(
+    getActiveMockifyerHopContext()?.atlasMetroStreamBaseUrl
+  );
+  const localMetro = resolveMetroNetworkStreamBaseUrl();
+  const headerMetroBase = metroStreamBaseFromHeaders(
+    params.event.requestHeaders ?? findHopRequestHeaders(params.event.requestId)
+  );
+  const localAtlasCapture =
+    localMetro != null ||
+    getAtlasDocHtmlOutputPath() != null ||
+    atlasMetroBridge != null ||
+    headerMetroBase != null;
+  /**
+   * Dashboard privacy can omit bodies, but the live stream must keep them.
+   * Include-trace replay sends the captured request body; headers alone cannot
+   * repeat a POST or GraphQL hop. Downstream services often have only the
+   * Metro bridge header (no local `MOCKIFYER_METRO_STREAM`), which used to
+   * drop the body.
+   */
+  const captureBodies = dashboardCaptureBodies || localAtlasCapture;
   const spillBodies = captureBodies && params.config.networkLog?.spillBodies !== false;
   setNetworkBodySpillEnabled(spillBodies);
   const dashboardBaseUrl = resolveNetworkLogDashboardUrl(params.config);
@@ -607,20 +645,12 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
           requestId: params.event.requestId,
           requestBodyText: requestCapture.spillText,
           responseBodyText: responseCapture.spillText,
+          // Same origin the hop is posted to. Include headerMetroBase so remote services
+          // with only the bridge header still upload to the correct Metro origin.
+          metroBaseUrl: atlasMetroBridge ?? headerMetroBase ?? localMetro,
         })
       : {};
 
-  /**
-   * Prefer Atlas/Metro whenever hops may land in a live buffer:
-   * local Metro URL, Atlas HTML dir, or inbound Metro stream bridge header.
-   */
-  const atlasMetroBridge = sanitizeAtlasMetroStreamBaseUrl(
-    getActiveMockifyerHopContext()?.atlasMetroStreamBaseUrl
-  );
-  const localAtlasCapture =
-    resolveMetroNetworkStreamBaseUrl() != null ||
-    getAtlasDocHtmlOutputPath() != null ||
-    atlasMetroBridge != null;
   /**
    * Final outbound headers from the interceptor (preferred) or the hop-owner
    * snapshot taken at correlation. Correlation alone misses auth tokens added
@@ -674,7 +704,6 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
     rememberAtlasHtmlNetworkEvent(built);
   }
 
-  const localMetro = resolveMetroNetworkStreamBaseUrl();
   const metroEmitOptions = {
     metroBaseUrl: localMetro,
     ...(dashboardBaseUrl ? { dashboardBaseUrl } : {}),
@@ -682,19 +711,35 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
   void emitMetroNetworkStreamEvent(built, metroEmitOptions);
 
   // BFF / Node: also mirror into the caller's Atlas Metro buffer (header bridge).
-  if (atlasMetroBridge && atlasMetroBridge !== localMetro) {
+  const streamBridge = atlasMetroBridge ?? headerMetroBase;
+  if (streamBridge && streamBridge !== localMetro) {
     void emitMetroNetworkStreamEvent(built, {
-      metroBaseUrl: atlasMetroBridge,
+      metroBaseUrl: streamBridge,
       ...(dashboardBaseUrl ? { dashboardBaseUrl } : {}),
     });
   }
 
   if (!dashboardBaseUrl) return;
 
-  // emitNetworkLogEvent re-sanitizes with redaction (default) — do not POST Atlas secrets.
+  // Atlas hops stay unredacted here. The live stream enriches remote children from this log.
   emitNetworkLogEvent({
     dashboardBaseUrl,
-    captureBodies: dashboardCaptureBodies,
+    // Remote services cannot POST to the dev Metro. The stream pulls their hops
+    // back from this dashboard log, so the copy must stay runnable (auth + body).
+    captureBodies: dashboardCaptureBodies || localAtlasCapture,
+    redactSensitiveHeaders: !localAtlasCapture,
+    ...(localAtlasCapture ? { maxEventBytes: NETWORK_LOG_ATLAS_MAX_EVENT_BYTES } : {}),
     event: built,
   });
+}
+
+function metroStreamBaseFromHeaders(
+  headers: Record<string, string> | undefined
+): string | undefined {
+  if (!headers) return undefined;
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() !== MOCKIFYER_METRO_STREAM_BASE_HEADER) continue;
+    return sanitizeAtlasMetroStreamBaseUrl(value);
+  }
+  return undefined;
 }

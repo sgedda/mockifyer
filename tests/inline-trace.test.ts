@@ -59,12 +59,45 @@ describe('inline-trace', () => {
       expect(trace!.hops[0].url).toContain('/api/profile');
       expect(trace!.hops[0].parentRequestId).toBe('root-1');
       expect(trace!.hops[0].requestBodyPreview).toBeUndefined();
+      expect(trace!.hops[0].responseBodyPreview).toBeUndefined();
 
       const wrapped = wrapBodyWithInlineTrace({ ok: true });
       expect(wrapped).toEqual({
         ok: true,
         [MOCKIFYER_TRACE_RESPONSE_KEY]: trace,
       });
+    });
+  });
+
+  it('keeps outbound headers and the request body without the bodies opt-in', () => {
+    const ctx: MockifyerHopContext = {
+      correlation: { requestId: 'root-hdr' },
+      includeInlineTrace: true,
+      includeInlineTraceBodies: false,
+      inlineHops: [],
+    };
+
+    runWithMockifyerHopContext(ctx, () => {
+      recordInlineTraceHopFromExchange({
+        method: 'POST',
+        url: 'https://member.example/graphql',
+        status: 200,
+        source: 'upstream',
+        transport: 'axios',
+        requestId: 'hop-hdr',
+        parentRequestId: 'root-hdr',
+        requestHeaders: {
+          authorization: 'Bearer live-token',
+          'content-type': 'application/json',
+        },
+        requestBody: { query: '{ me { id } }' },
+        responseBody: { data: { me: { id: '1' } } },
+      });
+      const hop = buildInlineRequestTrace()!.hops[0];
+      expect(hop.requestHeaders?.authorization).toBe('Bearer live-token');
+      expect(hop.requestHeaders?.['content-type']).toBe('application/json');
+      expect(hop.requestBodyPreview).toContain('me');
+      expect(hop.responseBodyPreview).toBeUndefined();
     });
   });
 
