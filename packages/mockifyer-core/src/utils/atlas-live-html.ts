@@ -16,6 +16,7 @@ import {
   atlasSyntaxHighlightInlineScript,
 } from './atlas-syntax-highlight';
 import { isFetchProxyTwin, NETWORK_EVENT_TWINNED_KEY } from './network-event-twins';
+import { graphqlOperationNameFromBodyText } from './graphql-body-display';
 
 export const ATLAS_LIVE_STREAM_PATH = '/mockifyer-atlas-live';
 
@@ -395,6 +396,7 @@ html[data-theme="dark"] .row { border-radius: 0; }
 .source { color: var(--muted); }
 .host { color: var(--accent); }
 .path { color: var(--ink); }
+.gql-op { color: var(--warn); font-weight: 600; }
 .badge {
   display: inline-block;
   margin-left: 0.35rem;
@@ -526,6 +528,9 @@ kbd {
   var MAX_ROOTS = 200;
   var TWINNED_KEY = ${JSON.stringify(NETWORK_EVENT_TWINNED_KEY)};
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
+  var graphqlOperationNameFromBodyText = ${graphqlOperationNameFromBodyText.toString()};
+  /** Response-body patches arrive in bursts after capture stops; re-render once per burst. */
+  var PATCH_RENDER_DELAY_MS = 150;
 
   var hopsEl = document.getElementById("hops");
   var statusEl = document.getElementById("status");
@@ -657,11 +662,26 @@ kbd {
     return path || "";
   }
 
+  /**
+   * Operation name for GraphQL hops (one /graphql path serves every operation).
+   * Gated on a GraphQL-looking hop so REST bodies mentioning "query" stay blank.
+   */
+  function graphqlOperationOf(ev) {
+    var body = typeof ev.requestBodyPreview === "string" ? ev.requestBodyPreview : "";
+    if (!body) return "";
+    var looksGraphql =
+      /graphql/i.test(hopUrl(ev)) ||
+      body.indexOf('"query"') >= 0 ||
+      body.indexOf("operationName") >= 0;
+    return looksGraphql ? graphqlOperationNameFromBodyText(body) : "";
+  }
+
   function duplicateKey(ev) {
     return [
       (ev.method || "").toUpperCase(),
       hostOf(ev),
       pathWithQuery(ev),
+      graphqlOperationOf(ev),
       ev.status == null ? "" : String(ev.status),
       ev.source || "",
     ].join("|");
@@ -701,6 +721,7 @@ kbd {
       e.host,
       hostOf(e),
       pathWithQuery(e),
+      graphqlOperationOf(e),
       e.guiAttribution,
       e.source,
       e.kind,
@@ -814,7 +835,7 @@ kbd {
   }
 
   function hopOpenUrl(ev, side) {
-    var id = encodeURIComponent(ev.id || requestIdOf(ev));
+    var id = encodeURIComponent(requestIdOf(ev));
     return "/mockifyer-atlas-open?id=" + id + "&side=" + side;
   }
 
@@ -1028,6 +1049,14 @@ kbd {
   }
 
   /**
+   * Include-trace re-call needs a URL. The link id is the hop request id,
+   * which still matches after a proxy/client merge replaces the event id.
+   */
+  function hopShowsTrace(ev) {
+    return !!(ev && hopUrl(ev));
+  }
+
+  /**
    * Curl on roots, and on nested hops once they carry outbound headers.
    * Without headers a nested re-call cannot authenticate.
    */
@@ -1112,7 +1141,10 @@ kbd {
     var repeatSuffix = opts.repeatSuffix || "";
     var err = isErrorHop(ev);
     var slow = isSlowHop(ev);
-    var hopId = ev.id || requestIdOf(ev);
+    // requestId survives a later merge that replaces event.id (proxy twin,
+    // dashboard enrich). Tracing the raw event id 404s as "hop not found".
+    var hopId = requestIdOf(ev);
+    var gqlOp = graphqlOperationOf(ev);
     var prefix =
       depth > 0
         ? '<span class="tree">' + esc(treeIndent(depth, isLast)) + "</span>"
@@ -1148,7 +1180,9 @@ kbd {
           esc(hopId) +
           '" title="Copy root hop as curl (includes X-Mockifyer-Include-Trace)">curl</a>'
         : "") +
-      '<a href="' + TRACE_PATH + '?id=' + encodeURIComponent(hopId) + '&amp;format=html" class="trace-link" data-trace-id="' + esc(hopId) + '" target="_blank" rel="noopener" title="Re-call with X-Mockifyer-Include-Trace and open the result in a new tab">trace</a>' +
+      (hopShowsTrace(ev)
+        ? '<a href="' + TRACE_PATH + '?id=' + encodeURIComponent(hopId) + '&amp;format=html" class="trace-link" data-trace-id="' + esc(hopId) + '" target="_blank" rel="noopener" title="Re-call with X-Mockifyer-Include-Trace and open the result in a new tab">trace</a>'
+        : "") +
       "</span>";
     return (
       '<div class="' + rowClass + '" data-hop-id="' + esc(hopId) + '">' +
@@ -1161,6 +1195,7 @@ kbd {
       '<span class="source">' + esc(pad(ev.source || "", 10)) + "</span>  " +
       '<span class="host">' + esc(fit(hostOf(ev) || "-", 22)) + "</span> " +
       '<span class="path">' + esc(pathWithQuery(ev)) + "</span>" +
+      (gqlOp ? ' <span class="gql-op" title="GraphQL operation">' + esc(gqlOp) + "</span>" : "") +
       badges +
       "</div>" +
       links +
@@ -1368,6 +1403,27 @@ kbd {
     return -1;
   }
 
+  function indexOfRequestId(list, rid) {
+    for (var i = 0; i < list.length; i++) {
+      if (requestIdOf(list[i]) === rid) return i;
+    }
+    return -1;
+  }
+
+  /** Drop a hop from its old parent (or roots) when a re-post moves it. */
+  function detachFromParent(previous, rid) {
+    var oldParent = parentIdOf(previous);
+    if (!oldParent) {
+      var rootAt = rootOrder.indexOf(rid);
+      if (rootAt >= 0) rootOrder.splice(rootAt, 1);
+      return;
+    }
+    var list = childrenByParent.get(oldParent);
+    if (!list) return;
+    var at = indexOfRequestId(list, rid);
+    if (at >= 0) list.splice(at, 1);
+  }
+
   function ingest(ev) {
     if (!ev || typeof ev !== "object") return;
     if (paused) {
@@ -1393,6 +1449,11 @@ kbd {
       }
       return;
     }
+    // Metro merges a re-posted requestId into one hop (stable mock ids repeat on
+    // every call) and moves it to newest. Mirror that: drop the stale row so its
+    // old event id never reaches trace as "hop not found".
+    var previous = eventsByRequestId.get(rid);
+    if (previous) detachFromParent(previous, rid);
     eventsByRequestId.set(rid, ev);
     if (parentId) {
       siblings.push(ev);
@@ -1408,6 +1469,23 @@ kbd {
       }
     }
     render();
+  }
+
+  var patchRenderTimer = null;
+
+  /** Response body uploaded after the capture stopped: update the existing row in place. */
+  function applyResponseBodyPatch(patch) {
+    if (!patch || typeof patch !== "object") return;
+    var target = patch.requestId ? eventsByRequestId.get(patch.requestId) : null;
+    if (!target) return;
+    if (patch.responseBodyPreview) target.responseBodyPreview = patch.responseBodyPreview;
+    if (patch.responseBodyRef) target.responseBodyRef = patch.responseBodyRef;
+    if (patch.responseBodyTruncated) target.responseBodyTruncated = true;
+    if (patchRenderTimer) return;
+    patchRenderTimer = setTimeout(function () {
+      patchRenderTimer = null;
+      render();
+    }, PATCH_RENDER_DELAY_MS);
   }
 
   function toggleParent(parentId) {
@@ -1835,6 +1913,11 @@ kbd {
       streamState = "open";
       try {
         ingest(JSON.parse(msg.data));
+      } catch (_) {}
+    });
+    es.addEventListener("patch", function (msg) {
+      try {
+        applyResponseBodyPatch(JSON.parse(msg.data));
       } catch (_) {}
     });
     es.onerror = function () {

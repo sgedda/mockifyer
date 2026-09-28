@@ -5,22 +5,40 @@
  *
  * If Mockifyer was off when capture started, it is turned off again when capture
  * stops. If it was already on, stop leaves it on.
+ *
+ * These switches are transient: they never overwrite the user's saved launch preference. When the
+ * user switches Mockifyer themselves during a capture, Atlas stops managing it until capture ends —
+ * including across app restarts, so an explicit "off" is not undone on the next launch. A capture
+ * that is already running when the app starts also leaves a saved off alone, unless Atlas already
+ * owns it (`'true'` persisted). That owner is what survives a Metro reload: `sawCaptureIdle` resets
+ * with the process, and the saved preference is still off because the enable was transient.
  */
 import { logger } from './logger';
 import {
+  isMetroAtlasCaptureSessionActive,
   joinMetroAtlasSessionUrl,
   resolveMetroNetworkStreamBaseUrl,
+  setMetroAtlasCaptureSessionActive,
 } from './metro-network-stream';
 import { resolveUnpatchedFetch } from './unpatched-global-fetch';
 import type { MockifyerClientIdRuntime } from './runtime-client-id';
-import { tryGetDefaultRuntimeEnabledStorage } from './runtime-enabled-persist';
+import {
+  loadPersistedRuntimeEnabled,
+  tryGetDefaultRuntimeEnabledStorage,
+} from './runtime-enabled-persist';
 
 /** How often the app polls Metro for Atlas capture → runtime enable. */
 export const METRO_ATLAS_RUNTIME_SYNC_INTERVAL_MS = 1_000;
 const FETCH_TIMEOUT_MS = 800;
 
-/** Storage key to track if Atlas auto-enabled Mockifyer (survives Metro reload). */
+/** Storage key to track who owns the toggle for the current capture (survives Metro reload). */
 const ATLAS_AUTO_ENABLED_STORAGE_KEY = '@mockifyer/atlas-auto-enabled';
+
+/**
+ * Persisted per capture: `'true'` — Atlas turned Mockifyer on and turns it off at stop;
+ * `'user'` — the user switched it during capture, so Atlas leaves it alone; `'false'` — neither.
+ */
+type AtlasCaptureOwner = 'true' | 'user' | 'false';
 
 export type MetroAtlasSessionPhase = 'idle' | 'capturing' | 'rendering';
 
@@ -49,36 +67,63 @@ let captureSessionHandled = false;
  */
 let autoEnabledForAtlasCapture = false;
 
+/**
+ * True when the user switched Mockifyer during the current capture. In memory as well as persisted,
+ * so it holds when storage is unavailable.
+ */
+let userOwnsCaptureToggle = false;
+/**
+ * The persisted owner may still name a capture that has since ended (the app was not running when it
+ * stopped), so the first idle poll clears it.
+ */
+let persistedOwnerMayBeStale = true;
+/**
+ * True after this process has seen Metro idle. A capture that is already running at launch
+ * must not undo a saved "off" — only a capture that starts while the app is up does.
+ */
+let sawCaptureIdle = false;
+
 let registeredToggle: MetroAtlasRuntimeSyncToggle | null = null;
 
 /**
- * Persist Atlas auto-enable flag so it survives Metro reloads.
+ * Persist who owns the toggle for this capture so it survives Metro reloads and app restarts.
  */
-async function persistAtlasAutoEnabled(enabled: boolean): Promise<void> {
+async function persistAtlasCaptureOwner(owner: AtlasCaptureOwner): Promise<void> {
+  persistedOwnerMayBeStale = owner !== 'false';
   const storage = tryGetDefaultRuntimeEnabledStorage();
   if (!storage) return;
   try {
-    await Promise.resolve(
-      storage.setItem(ATLAS_AUTO_ENABLED_STORAGE_KEY, enabled ? 'true' : 'false')
-    );
+    await Promise.resolve(storage.setItem(ATLAS_AUTO_ENABLED_STORAGE_KEY, owner));
   } catch (error) {
     logger.warn('[Mockifyer] Failed to persist Atlas auto-enabled flag:', error);
   }
 }
 
 /**
- * Load persisted Atlas auto-enable flag to restore state after Metro reload.
+ * Load the persisted toggle owner to restore state after a Metro reload or app restart.
  */
-async function loadAtlasAutoEnabled(): Promise<boolean> {
+async function loadAtlasCaptureOwner(): Promise<AtlasCaptureOwner> {
   const storage = tryGetDefaultRuntimeEnabledStorage();
-  if (!storage) return false;
+  if (!storage) return 'false';
   try {
     const raw = await Promise.resolve(storage.getItem(ATLAS_AUTO_ENABLED_STORAGE_KEY));
-    return raw === 'true';
+    return raw === 'true' || raw === 'user' ? raw : 'false';
   } catch (error) {
     logger.warn('[Mockifyer] Failed to load Atlas auto-enabled flag:', error);
-    return false;
+    return 'false';
   }
+}
+
+/**
+ * Called when the user (not Atlas) switches Mockifyer on or off. During a capture that hands the
+ * toggle back to the user: Atlas neither re-enables it on the next launch nor disables it at stop.
+ */
+export function noteMockifyerToggledByUser(): void {
+  autoEnabledForAtlasCapture = false;
+  if (!isMetroAtlasCaptureSessionActive()) return;
+  userOwnsCaptureToggle = true;
+  captureSessionHandled = true;
+  void persistAtlasCaptureOwner('user');
 }
 
 /** Called from {@link registerMockifyerInstance} when enable APIs are present. */
@@ -95,7 +140,9 @@ export function getRegisteredMockifyerRuntimeToggle(): MetroAtlasRuntimeSyncTogg
 export function clearMetroAtlasRuntimeSyncState(): void {
   captureSessionHandled = false;
   autoEnabledForAtlasCapture = false;
-  void persistAtlasAutoEnabled(false);
+  userOwnsCaptureToggle = false;
+  sawCaptureIdle = false;
+  void persistAtlasCaptureOwner('false');
 }
 
 function clearSyncTimer(): void {
@@ -136,18 +183,22 @@ export function parseMetroAtlasSessionStatus(body: unknown): MetroAtlasSessionSt
 }
 
 function maybeDisableAfterAtlasCapture(toggle: MetroAtlasRuntimeSyncToggle): boolean {
+  userOwnsCaptureToggle = false;
   if (!autoEnabledForAtlasCapture) {
     captureSessionHandled = false;
+    if (persistedOwnerMayBeStale) {
+      void persistAtlasCaptureOwner('false');
+    }
     return false;
   }
   const disable = toggle.disableMockifyer;
   autoEnabledForAtlasCapture = false;
   captureSessionHandled = false;
-  void persistAtlasAutoEnabled(false);
+  void persistAtlasCaptureOwner('false');
   if (typeof disable !== 'function') {
     return false;
   }
-  disable();
+  disable({ transient: true });
   logger.info(
     '[Mockifyer] Atlas capture stopped — Mockifyer disabled again (was off before press t)',
   );
@@ -209,7 +260,12 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
     return false;
   }
 
+  if (status) {
+    setMetroAtlasCaptureSessionActive(status.capturing);
+  }
+
   if (!status?.activateMockifyer) {
+    sawCaptureIdle = true;
     return maybeDisableAfterAtlasCapture(toggle);
   }
 
@@ -217,11 +273,35 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
     return false;
   }
 
+  const owner = userOwnsCaptureToggle ? 'user' : await loadAtlasCaptureOwner();
+  if (owner === 'user') {
+    // The user switched Mockifyer during this capture (possibly before a restart) — leave it be.
+    userOwnsCaptureToggle = true;
+    captureSessionHandled = true;
+    autoEnabledForAtlasCapture = false;
+    return false;
+  }
+
+  if (!sawCaptureIdle && owner !== 'true') {
+    // Capture was already active when this process started, and Atlas does not own it.
+    // A saved off must stay off. Owner `'true'` is a Metro reload of a capture Atlas
+    // already enabled transiently — the preference is still off, but recording resumes.
+    const storage = tryGetDefaultRuntimeEnabledStorage();
+    const saved = storage ? await loadPersistedRuntimeEnabled(storage) : undefined;
+    if (saved === false) {
+      captureSessionHandled = true;
+      autoEnabledForAtlasCapture = false;
+      logger.info(
+        '[Mockifyer] Atlas capture already active at launch — keeping Mockifyer disabled (saved preference)'
+      );
+      return false;
+    }
+  }
+
   const isEnabled = toggle.isMockifyerEnabled;
   if (typeof isEnabled === 'function' && isEnabled()) {
     // Mockifyer is enabled — check if Atlas auto-enabled it before a reload.
-    const wasAutoEnabled = await loadAtlasAutoEnabled();
-    if (wasAutoEnabled) {
+    if (owner === 'true') {
       // Restore: Atlas enabled it, so we should disable when capture stops.
       autoEnabledForAtlasCapture = true;
       captureSessionHandled = true;
@@ -233,10 +313,10 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
     return false;
   }
 
-  enable();
+  enable({ transient: true });
   captureSessionHandled = true;
   autoEnabledForAtlasCapture = true;
-  void persistAtlasAutoEnabled(true);
+  void persistAtlasCaptureOwner('true');
   logger.info(
     '[Mockifyer] Atlas capture active — Mockifyer enabled (Metro press t; will disable again when you stop)',
   );

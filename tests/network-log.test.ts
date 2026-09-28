@@ -11,7 +11,13 @@ import {
   setAtlasDocHtmlOutputPath,
   toNetworkLogBodyPreview,
   __flightRecorderBuffersForTests,
+  setMetroAtlasCaptureSessionActive,
+  METRO_RESPONSE_BODY_PATCHES_PATH,
 } from '@sgedda/mockifyer-core';
+import {
+  clearDeferredAtlasResponseBodies,
+  deferredAtlasResponseBodyCount,
+} from '../packages/mockifyer-core/src/utils/atlas-deferred-response-bodies';
 
 describe('network-log', () => {
   it('redactHeaders masks sensitive names', () => {
@@ -97,31 +103,80 @@ describe('network-log', () => {
     expect(toNetworkLogBodyPreview({ ok: true })).toContain('ok');
   });
 
-  it('emitMockifyerNetworkEvent keeps body previews for the Metro Atlas stream when dashboard capture is off', async () => {
-    const prev = process.env.MOCKIFYER_METRO_STREAM;
-    process.env.MOCKIFYER_METRO_STREAM = 'on';
-    configureFlightRecorder({ enabled: true, maxEvents: 20 });
-    clearFlightRecorder();
-    try {
+  describe('response bodies with a local Metro stream', () => {
+    const prevStream = process.env.MOCKIFYER_METRO_STREAM;
+    const globals = globalThis as { __mockifyer_original_fetch?: typeof fetch };
+    let posts: Array<{ url: string; body: string }>;
+
+    const settle = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
+    const emitUsersHop = (id: string) =>
       emitMockifyerNetworkEvent({
         config: { networkLog: { enabled: true, captureBodies: false } },
         scenario: 'default',
+        requestBody: { query: '{ users { id } }' },
         responseBody: { users: [{ id: 1 }] },
         event: {
-          method: 'GET',
-          url: 'https://api.example.com/users',
-          source: 'mock-hit',
+          id,
+          requestId: `req-${id}`,
+          method: 'POST',
+          url: 'https://api.example.com/graphql',
+          source: 'upstream',
           status: 200,
           transport: 'fetch',
         },
       });
-      await new Promise((resolve) => setImmediate(resolve));
+
+    beforeEach(() => {
+      process.env.MOCKIFYER_METRO_STREAM = 'on';
+      posts = [];
+      globals.__mockifyer_original_fetch = jest.fn(async (url: unknown, init?: { body?: unknown }) => {
+        posts.push({ url: String(url), body: String(init?.body ?? '') });
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      }) as unknown as typeof fetch;
+      configureFlightRecorder({ enabled: true, maxEvents: 20 });
+      clearFlightRecorder();
+      setMetroAtlasCaptureSessionActive(false);
+      clearDeferredAtlasResponseBodies();
+    });
+
+    afterEach(() => {
+      setMetroAtlasCaptureSessionActive(false);
+      delete globals.__mockifyer_original_fetch;
+      if (prevStream === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
+      else process.env.MOCKIFYER_METRO_STREAM = prevStream;
+    });
+
+    it('keeps the request body but not the response body outside a capture', async () => {
+      emitUsersHop('hop-idle');
+      await settle();
       const [event] = __flightRecorderBuffersForTests().network;
-      expect(event?.responseBodyPreview).toContain('users');
-    } finally {
-      if (prev === undefined) delete process.env.MOCKIFYER_METRO_STREAM;
-      else process.env.MOCKIFYER_METRO_STREAM = prev;
-    }
+      expect(event?.requestBodyPreview).toContain('users');
+      expect(event?.responseBodyPreview).toBeUndefined();
+      expect(deferredAtlasResponseBodyCount()).toBe(0);
+    });
+
+    it('holds response bodies during a capture and uploads them when it stops', async () => {
+      setMetroAtlasCaptureSessionActive(true);
+      emitUsersHop('hop-live');
+      await settle();
+      expect(__flightRecorderBuffersForTests().network[0]?.responseBodyPreview).toBeUndefined();
+      expect(deferredAtlasResponseBodyCount()).toBe(1);
+      expect(posts.some((post) => post.url.endsWith(METRO_RESPONSE_BODY_PATCHES_PATH))).toBe(false);
+
+      setMetroAtlasCaptureSessionActive(false);
+      await settle();
+
+      const upload = posts.find((post) => post.url.endsWith(METRO_RESPONSE_BODY_PATCHES_PATH));
+      expect(upload).toBeDefined();
+      const { patches } = JSON.parse(upload!.body) as {
+        patches: Array<{ id: string; requestId?: string; responseBodyPreview?: string }>;
+      };
+      expect(patches).toEqual([
+        expect.objectContaining({ id: 'hop-live', requestId: 'req-hop-live' }),
+      ]);
+      expect(patches[0].responseBodyPreview).toContain('users');
+      expect(deferredAtlasResponseBodyCount()).toBe(0);
+    });
   });
 
   it('emitMockifyerNetworkEvent keeps final outbound headers for Atlas curl / include-trace', async () => {

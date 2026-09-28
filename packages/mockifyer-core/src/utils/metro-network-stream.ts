@@ -91,6 +91,50 @@ function trimTrailingSlashes(value: string): string {
 
 export type MetroNetworkStreamListener = (event: NetworkEvent) => void;
 
+/** Response body filled in after an Atlas capture stops (the app defers it while capturing). */
+export interface NetworkEventResponseBodyPatch {
+  /** Hop `id` the app emitted. */
+  id: string;
+  /** Fallback match when the buffered copy was merged under a different `id`. */
+  requestId?: string;
+  responseBodyPreview?: string;
+  responseBodyRef?: string;
+  responseBodyTruncated?: boolean;
+}
+
+/** Validate one entry of a Metro `response-bodies` POST. */
+export function isNetworkEventResponseBodyPatch(value: unknown): value is NetworkEventResponseBodyPatch {
+  if (!value || typeof value !== "object") return false;
+  const patch = value as Record<string, unknown>;
+  return (
+    typeof patch.id === "string" &&
+    patch.id.trim() !== "" &&
+    (patch.responseBodyPreview === undefined || typeof patch.responseBodyPreview === "string") &&
+    (patch.responseBodyRef === undefined || typeof patch.responseBodyRef === "string")
+  );
+}
+
+/** The fields a live page needs to update an existing hop row. */
+export function responseBodyPatchFromNetworkEvent(event: NetworkEvent): NetworkEventResponseBodyPatch {
+  return {
+    id: event.id,
+    requestId: event.requestId ?? undefined,
+    responseBodyPreview: event.responseBodyPreview,
+    responseBodyRef: event.responseBodyRef,
+    responseBodyTruncated: event.responseBodyTruncated,
+  };
+}
+
+function notifyListeners<T>(listeners: Set<(value: T) => void>, value: T): void {
+  for (const listener of listeners) {
+    try {
+      listener(value);
+    } catch {
+      // listener must not break ingest
+    }
+  }
+}
+
 export interface MetroNetworkStreamAnalysis {
   hopCount: number;
   errorCount: number;
@@ -122,7 +166,13 @@ export interface MetroNetworkStreamAnalysis {
 export class MetroNetworkEventBuffer {
   private events: NetworkEvent[] = [];
   private readonly listeners = new Set<MetroNetworkStreamListener>();
+  private readonly patchListeners = new Set<MetroNetworkStreamListener>();
   private readonly maxEvents: number;
+  /**
+   * Event ids replaced when a later post of the same `requestId` wins.
+   * Live trace/open links may still carry the first id.
+   */
+  private readonly idAliases = new Map<string, string>();
 
   constructor(maxEvents: number = DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS) {
     this.maxEvents = Math.max(1, maxEvents);
@@ -137,9 +187,11 @@ export class MetroNetworkEventBuffer {
         (existing) => existing.requestId?.trim() === requestId
       );
       if (existingIndex >= 0) {
+        const previous = this.events[existingIndex];
         const merged = slimNetworkEventForMetroStream(
-          mergeNetworkEventPreferRunnable(this.events[existingIndex], slim)
+          mergeNetworkEventPreferRunnable(previous, slim)
         );
+        this.rememberReplacedEventId(previous.id, requestId, merged.id);
         this.events.splice(existingIndex, 1);
         this.events.unshift(merged);
         if (this.events.length > this.maxEvents) {
@@ -158,12 +210,82 @@ export class MetroNetworkEventBuffer {
   }
 
   private publish(event: NetworkEvent): void {
-    for (const listener of this.listeners) {
-      try {
-        listener(event);
-      } catch {
-        // listener must not break ingest
-      }
+    notifyListeners(this.listeners, event);
+  }
+
+  /**
+   * Fill in a buffered hop's response body in place (keeps its position).
+   * Notifies patch subscribers, not hop subscribers, so live pages update the
+   * existing row instead of adding a duplicate. Returns undefined when the hop is gone.
+   */
+  patchResponseBody(patch: NetworkEventResponseBodyPatch): NetworkEvent | undefined {
+    const requestId = patch.requestId?.trim();
+    let index = this.events.findIndex((event) => event.id === patch.id);
+    if (index < 0 && requestId) {
+      index = this.events.findIndex((event) => event.requestId?.trim() === requestId);
+    }
+    if (index < 0) return undefined;
+
+    const current = this.events[index];
+    const next = slimNetworkEventForMetroStream({
+      ...current,
+      responseBodyPreview: pickBodyPreview(current.responseBodyPreview, patch.responseBodyPreview),
+      responseBodyRef: patch.responseBodyRef ?? current.responseBodyRef,
+      responseBodyTruncated: patch.responseBodyTruncated ?? current.responseBodyTruncated,
+    });
+    this.events[index] = next;
+    notifyListeners(this.patchListeners, next);
+    return next;
+  }
+
+  subscribePatches(listener: MetroNetworkStreamListener): () => void {
+    this.patchListeners.add(listener);
+    return () => {
+      this.patchListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Hop for a live trace/open id. Matches the current event id or `requestId`,
+   * then ids discarded when a later post of that `requestId` was merged in.
+   */
+  resolve(hopId: string): NetworkEvent | undefined {
+    const id = hopId.trim();
+    if (!id) return undefined;
+    const direct = this.findByIdOrRequestId(id);
+    if (direct) return direct;
+
+    let requestId = this.idAliases.get(id);
+    const seen = new Set<string>();
+    while (requestId && !seen.has(requestId)) {
+      seen.add(requestId);
+      const match = this.findByIdOrRequestId(requestId);
+      if (match) return match;
+      requestId = this.idAliases.get(requestId);
+    }
+    return undefined;
+  }
+
+  private findByIdOrRequestId(id: string): NetworkEvent | undefined {
+    return this.events.find(
+      (event) => event.id === id || event.requestId?.trim() === id
+    );
+  }
+
+  /** Keep the pre-merge event id resolvable via the stable `requestId`. */
+  private rememberReplacedEventId(
+    previousId: string | undefined,
+    requestId: string,
+    currentId: string | undefined
+  ): void {
+    const oldId = previousId?.trim();
+    if (!oldId || oldId === requestId || oldId === currentId?.trim()) return;
+    this.idAliases.set(oldId, requestId);
+    const cap = this.maxEvents * 4;
+    while (this.idAliases.size > cap) {
+      const oldest = this.idAliases.keys().next().value;
+      if (oldest == null) break;
+      this.idAliases.delete(oldest);
     }
   }
 
@@ -177,6 +299,7 @@ export class MetroNetworkEventBuffer {
 
   clear(): void {
     this.events = [];
+    this.idAliases.clear();
   }
 
   get size(): number {
@@ -505,6 +628,13 @@ export function joinMetroNetworkEventsUrl(metroBaseUrl: string): string {
   return `${trimTrailingSlashes(metroBaseUrl)}/mockifyer-network-events`;
 }
 
+/** Metro POST path for response bodies the app deferred during an Atlas capture. */
+export const METRO_RESPONSE_BODY_PATCHES_PATH = "/mockifyer-network-events/response-bodies";
+
+export function joinMetroResponseBodyPatchesUrl(metroBaseUrl: string): string {
+  return `${trimTrailingSlashes(metroBaseUrl)}${METRO_RESPONSE_BODY_PATCHES_PATH}`;
+}
+
 /**
  * Outbound/inbound header: caller's Metro hop-ingest base URL (no path).
  * Lets a BFF POST child hops into the same Atlas/Metro buffer as the device
@@ -572,6 +702,8 @@ interface MetroAtlasCaptureSessionState {
   lastSyncedAtMs: number;
   /** Shared in-flight refresh so concurrent outbound calls wait for the same GET. */
   refreshPromise?: Promise<void>;
+  /** Called when `active` flips (capture started or stopped). */
+  listeners?: Set<(active: boolean) => void>;
 }
 
 function getMetroAtlasCaptureSessionState(): MetroAtlasCaptureSessionState {
@@ -590,8 +722,23 @@ function getMetroAtlasCaptureSessionState(): MetroAtlasCaptureSessionState {
 /** Metro middleware / device: mark whether an Atlas `t` capture session is running. */
 export function setMetroAtlasCaptureSessionActive(active: boolean): void {
   const state = getMetroAtlasCaptureSessionState();
-  state.active = active === true;
+  const next = active === true;
+  const changed = state.active !== next;
+  state.active = next;
   state.lastSyncedAtMs = Date.now();
+  if (changed && state.listeners) {
+    notifyListeners(state.listeners, next);
+  }
+}
+
+/** Subscribe to Atlas `t` capture start / stop as last seen from Metro. */
+export function onMetroAtlasCaptureSessionChange(listener: (active: boolean) => void): () => void {
+  const state = getMetroAtlasCaptureSessionState();
+  state.listeners ??= new Set();
+  state.listeners.add(listener);
+  return () => {
+    state.listeners?.delete(listener);
+  };
 }
 
 /**

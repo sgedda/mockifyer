@@ -73,7 +73,9 @@ import {
   resolveInitialRuntimeEnabled,
   resolveRuntimeEnabledStorage,
   savePersistedRuntimeEnabled,
+  noteMockifyerToggledByUser,
   type MockifyerRuntimeEnabledStorage,
+  type MockifyerRuntimeToggleOptions,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -2397,22 +2399,24 @@ class MockifyerClass {
 
   /**
    * Enable Mockifyer at runtime.
-   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch —
+   * unless `transient` is set (Metro Atlas capture), which leaves the saved preference alone.
    */
-  public enableMockifyer(): void {
+  public enableMockifyer(options?: MockifyerRuntimeToggleOptions): void {
     this.runtimeEnabled = true;
     logger.info('[Mockifyer-Axios] Mockifyer enabled at runtime');
-    void this.persistRuntimeEnabledState(true);
+    this.recordRuntimeToggle(true, options);
   }
 
   /**
    * Disable Mockifyer at runtime (no dashboard/Redis/proxy/mocks).
-   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
+   * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch —
+   * unless `transient` is set (Metro Atlas capture), which leaves the saved preference alone.
    */
-  public disableMockifyer(): void {
+  public disableMockifyer(options?: MockifyerRuntimeToggleOptions): void {
     this.runtimeEnabled = false;
     logger.info('[Mockifyer-Axios] Mockifyer disabled at runtime - all requests will bypass');
-    void this.persistRuntimeEnabledState(false);
+    this.recordRuntimeToggle(false, options);
   }
 
   /**
@@ -2420,6 +2424,12 @@ class MockifyerClass {
    */
   public isMockifyerEnabled(): boolean {
     return this.runtimeEnabled;
+  }
+
+  private recordRuntimeToggle(enabled: boolean, options?: MockifyerRuntimeToggleOptions): void {
+    if (options?.transient) return;
+    noteMockifyerToggledByUser();
+    void this.persistRuntimeEnabledState(enabled);
   }
 
   private async persistRuntimeEnabledState(enabled: boolean): Promise<void> {
@@ -2452,8 +2462,8 @@ export interface MockifyerInstance extends HTTPClient {
   clearStaleCacheEntries: () => number;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
-  enableMockifyer: () => void;
-  disableMockifyer: () => void;
+  enableMockifyer: (options?: MockifyerRuntimeToggleOptions) => void;
+  disableMockifyer: (options?: MockifyerRuntimeToggleOptions) => void;
   isMockifyerEnabled: () => boolean;
 }
 
@@ -2787,8 +2797,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearStaleCacheEntries = () => mockifyer.clearStaleCacheEntries();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
-  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
-  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.enableMockifyer = (options) => mockifyer.enableMockifyer(options);
+  extendedClient.disableMockifyer = (options) => mockifyer.disableMockifyer(options);
   extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
 
   registerMockifyerInstance(extendedClient);

@@ -4,13 +4,22 @@ import {
   stopMetroAtlasRuntimeSync,
 } from './metro-atlas-runtime-sync';
 
+/** Options for {@link MockifyerClientIdRuntime.enableMockifyer} / `disableMockifyer`. */
+export interface MockifyerRuntimeToggleOptions {
+  /**
+   * A temporary switch made on the user's behalf (Metro Atlas `t` capture): it is not saved as the
+   * launch preference, and is not read as the user choosing on/off.
+   */
+  transient?: boolean;
+}
+
 export interface MockifyerClientIdRuntime {
   getClientId: () => string | undefined;
   setClientId: (lane: string) => void;
   /** Optional — used by Metro Atlas (`t`) to auto-enable when capture starts. */
-  enableMockifyer?: () => void;
+  enableMockifyer?: (options?: MockifyerRuntimeToggleOptions) => void;
   /** Optional — restore off when Atlas stop ends a session that auto-enabled. */
-  disableMockifyer?: () => void;
+  disableMockifyer?: (options?: MockifyerRuntimeToggleOptions) => void;
   /** Optional — skip enable when already on. */
   isMockifyerEnabled?: () => boolean;
 }

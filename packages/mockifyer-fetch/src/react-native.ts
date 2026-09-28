@@ -22,6 +22,7 @@ import {
   shouldActivateMockifyerForReactNative,
   type MockifyerRuntimeMode,
   type MockifyerRuntimeEnabledStorage,
+  type MockifyerRuntimeToggleOptions,
 } from '@sgedda/mockifyer-core';
 
 // React Native package-root resolution points at this entry. Keep the root
@@ -36,8 +37,8 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
-  enableMockifyer: () => void;
-  disableMockifyer: () => void;
+  enableMockifyer: (options?: MockifyerRuntimeToggleOptions) => void;
+  disableMockifyer: (options?: MockifyerRuntimeToggleOptions) => void;
   isMockifyerEnabled: () => boolean;
 }
 
@@ -88,14 +89,15 @@ export interface ReactNativeMockifyerConfig {
   startDisabled?: boolean;
   /**
    * Persist enable/disable across app restarts (AsyncStorage when `true`).
-   * With `runtimeMode: 'manual'`, first launch is off; after the user enables,
-   * the next launch stays on.
+   * Default: `true`. First launch follows `runtimeMode`; after the user turns
+   * Mockifyer off or on, the next launch keeps that choice (including over a
+   * launch `scenario` argument). Pass `false` to reset to the mode default every start.
    */
   persistRuntimeEnabled?: boolean | MockifyerRuntimeEnabledStorage;
   /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
-   * When a launch `scenario` is present, Mockifyer also **starts enabled** (even with `runtimeMode: 'manual'`).
+   * When a launch `scenario` is present and there is no saved on/off preference, Mockifyer **starts enabled** (even with `runtimeMode: 'manual'`). A saved off stays off.
    * Set to `false` to ignore launch scenario args entirely.
    * Default: auto-detect when a non-empty launch `scenario` is present.
    */
@@ -147,7 +149,7 @@ export interface ReactNativeMockifyerConfig {
 
 /**
  * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
- * @returns `true` when a native launch-argument `scenario` was applied (forces runtime toggle on).
+ * @returns `true` when a native launch-argument `scenario` was applied (starts enabled only if nothing was saved).
  */
 function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): boolean {
   let appliedFromLaunchArgs = false;
@@ -268,10 +270,12 @@ export async function setupMockifyerForReactNative(
     configMode: runtimeModeOption ?? userConfig.runtimeMode,
   });
 
-  const persistOption = persistRuntimeEnabled ?? userConfig.persistRuntimeEnabled;
+  // Default on so disableMockifyer() survives the next app start. Pass false to opt out.
+  const persistOption = persistRuntimeEnabled ?? userConfig.persistRuntimeEnabled ?? true;
   const runtimeEnabledStorage = resolveRuntimeEnabledStorage(persistOption);
   let initialRuntimeEnabled: boolean | undefined = userConfig.initialRuntimeEnabled;
-  if (runtimeEnabledStorage && typeof initialRuntimeEnabled !== 'boolean') {
+  const hadExplicitInitial = typeof initialRuntimeEnabled === 'boolean';
+  if (runtimeEnabledStorage && !hadExplicitInitial) {
     const saved = await loadPersistedRuntimeEnabled(runtimeEnabledStorage);
     if (typeof saved === 'boolean') {
       initialRuntimeEnabled = saved;
@@ -280,11 +284,16 @@ export async function setupMockifyerForReactNative(
 
   // Apply scenario launch override early so we know if E2E forced a scenario.
   const launchScenarioApplied = applyReactNativeScenarioOptions(options);
-  if (launchScenarioApplied) {
-    // Launch `scenario` arg → start enabled (wins over persisted off for this session).
+  const hasSavedRuntimePreference = typeof initialRuntimeEnabled === 'boolean';
+  if (launchScenarioApplied && !hasSavedRuntimePreference) {
+    // No saved on/off yet — E2E launch `scenario` starts enabled for this session.
     initialRuntimeEnabled = true;
     logger.info(
       '[Mockifyer] Launch argument scenario present — starting with Mockifyer ENABLED'
+    );
+  } else if (launchScenarioApplied && initialRuntimeEnabled === false) {
+    logger.info(
+      '[Mockifyer] Launch argument scenario present — keeping Mockifyer DISABLED (saved preference)'
     );
   }
 
@@ -310,7 +319,7 @@ export async function setupMockifyerForReactNative(
   };
 
   // Patch fetch for on / manual; launch_client only when lane id is present.
-  // Launch `scenario` forces runtime toggle on after activation — it does not replace client id.
+  // A launch `scenario` starts the runtime toggle on only when nothing was saved — it does not replace client id.
   const isEnabled = shouldActivateMockifyerForReactNative({
     runtimeMode: resolvedRuntimeMode,
     hasLaunchClientId: Boolean(clientIdFromLaunchArgs),

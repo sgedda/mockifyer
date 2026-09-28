@@ -80,6 +80,9 @@ import {
   isMetroAtlasCaptureSessionActive,
   normalizeDashboardBaseUrl,
   pullDashboardDescendantsForParents,
+  METRO_RESPONSE_BODY_PATCHES_PATH,
+  isNetworkEventResponseBodyPatch,
+  responseBodyPatchFromNetworkEvent,
 } from "@sgedda/mockifyer-core";
 import {
   attachMetroAtlasKeyHandler,
@@ -1748,9 +1751,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       }
       const buffer = getMetroNetworkEventBuffer();
       const events = buffer.list();
-      const event =
-        events.find((e) => e && (e.id === hopId || e.requestId === hopId)) ??
-        undefined;
+      // Same requestId can be posted twice (client + proxy). The buffer keeps
+      // the merged hop under a new event id; resolve() still accepts the first id.
+      const event = buffer.resolve(hopId);
+      const replayKey = event?.requestId?.trim() || event?.id || hopId;
 
       // format=html without wait=1: return a shell immediately so the tab is not
       // blank while the include-trace re-call runs (can be many seconds).
@@ -1781,7 +1785,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const capturedLines = event
         ? formatCapturedTraceLines(events, event)
         : undefined;
-      void replayNetworkEventWithIncludeTrace(events, hopId, {
+      void replayNetworkEventWithIncludeTrace(events, replayKey, {
         includeBodies,
         requestBody: spilledRequestBody,
         timeoutMs: ATLAS_TRACE_REPLAY_TIMEOUT_MS,
@@ -1842,6 +1846,40 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             res.end(JSON.stringify({ success: false, hopId, error: message }));
           }
         });
+      return;
+    }
+
+    // Response bodies the app held during an Atlas capture, uploaded after `t` stops.
+    if (url === METRO_RESPONSE_BODY_PATCHES_PATH && req.method === "POST") {
+      collectRequestBodyUtf8(req, (err, body) => {
+        res.setHeader("Content-Type", "application/json");
+        if (err) {
+          res.statusCode = 413;
+          res.end(JSON.stringify({ success: false, error: err.message }));
+          return;
+        }
+        try {
+          const parsed = JSON.parse(body) as { patches?: unknown };
+          const patches = Array.isArray(parsed.patches)
+            ? parsed.patches.filter(isNetworkEventResponseBodyPatch)
+            : [];
+          const buffer = getMetroNetworkEventBuffer();
+          const patched = patches.filter(
+            (patch) => buffer.patchResponseBody(patch) != null,
+          ).length;
+          res.end(
+            JSON.stringify({ success: true, patched, ignored: patches.length - patched }),
+          );
+        } catch (error) {
+          res.statusCode = 400;
+          res.end(
+            JSON.stringify({
+              success: false,
+              error: `Invalid JSON: ${(error as Error).message}`,
+            }),
+          );
+        }
+      });
       return;
     }
 
@@ -1962,13 +2000,26 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
         }
       }
-      const unsubscribe = buffer.subscribe((event) => {
+      const unsubscribeHops = buffer.subscribe((event) => {
         try {
           res.write(`event: hop\ndata: ${JSON.stringify(event)}\n\n`);
         } catch {
           unsubscribe();
         }
       });
+      const unsubscribePatches = buffer.subscribePatches((event) => {
+        try {
+          res.write(
+            `event: patch\ndata: ${JSON.stringify(responseBodyPatchFromNetworkEvent(event))}\n\n`,
+          );
+        } catch {
+          unsubscribe();
+        }
+      });
+      const unsubscribe = () => {
+        unsubscribeHops();
+        unsubscribePatches();
+      };
       const keepAlive = setInterval(() => {
         try {
           res.write(": ping\n\n");
@@ -2204,9 +2255,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       }
 
       const event =
-        (hopId
-          ? listed.find((e) => e && (e.id === hopId || e.requestId === hopId))
-          : undefined) || listed[0];
+        (hopId ? buffer.resolve(hopId) : undefined) || listed[0];
       if (!event) {
         res.statusCode = 404;
         res.setHeader("Content-Type", "application/json");
