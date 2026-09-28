@@ -453,9 +453,13 @@ export function resolveNetworkLogIncludeTraceOptions(
   return { includeInlineTrace, includeInlineTraceBodies };
 }
 
+/** Background Metro GET cap. Abort alone is not enough — some RN fetch stacks ignore it. */
+const METRO_ATLAS_CAPTURE_POLL_TIMEOUT_MS = 2_000;
+
 /**
  * Best-effort GET of Metro Atlas capture session state (for session UI / hop POST
- * `atlasCaptureActive`).
+ * `atlasCaptureActive`). Never call this from the request interceptor without
+ * detaching it — a hung Metro GET is shared by every in-flight refresh waiter.
  */
 export async function refreshMetroAtlasCaptureSessionIfStale(
   options?: { force?: boolean }
@@ -466,37 +470,51 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
   await runMetroAtlasCaptureSessionRefresh(async () => {
     const fetchFn = resolveUnpatchedFetch();
     if (!fetchFn) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Metro Atlas capture session poll timed out'));
+      }, METRO_ATLAS_CAPTURE_POLL_TIMEOUT_MS);
+    });
+    // Promise.race settles on the first result; the loser can still reject later.
+    timeoutPromise.catch(() => undefined);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000);
-      try {
-        const res = await fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
+      const res = await Promise.race([
+        fetchFn(joinMetroAtlasCaptureSessionUrl(base), {
           method: 'GET',
           headers: { accept: 'application/json' },
           signal: controller.signal,
-        });
-        if (!res.ok) return;
-        const json = (await res.json()) as { active?: unknown };
-        if (typeof json.active === 'boolean') {
-          setMetroAtlasCaptureSessionActive(json.active);
-        }
-      } finally {
-        clearTimeout(timeout);
+        }),
+        timeoutPromise,
+      ]);
+      if (!res.ok) return;
+      const json = (await res.json()) as { active?: unknown };
+      if (typeof json.active === 'boolean') {
+        setMetroAtlasCaptureSessionActive(json.active);
       }
     } catch {
-      // Metro may be down — do nothing (lastSyncedAtMs stays stale)
+      // Metro may be down. The session runner still bumps lastSyncedAtMs so the
+      // TTL suppresses an immediate retry.
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }, options);
 }
 
 /**
- * Resolve include-trace flags, refreshing Atlas `t` session state from Metro first
- * so the device stamps include-trace soon after capture starts.
+ * Resolve include-trace flags from the last known Atlas `t` session.
+ *
+ * Metro state is refreshed in the background. Awaiting that GET here stalls
+ * every axios/fetch call that shares the in-flight poll (up to 2s, and longer
+ * when abort is ignored) whenever the 400ms TTL has elapsed — including when
+ * capture is off. The next outbound call sees the updated session flag.
  */
 export async function resolveNetworkLogIncludeTraceOptionsAsync(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
-  await refreshMetroAtlasCaptureSessionIfStale();
+  void refreshMetroAtlasCaptureSessionIfStale().catch(() => undefined);
   return resolveNetworkLogIncludeTraceOptions(config);
 }
 
