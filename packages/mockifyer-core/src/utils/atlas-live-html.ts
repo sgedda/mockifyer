@@ -16,6 +16,7 @@ import {
   atlasSyntaxHighlightInlineScript,
 } from './atlas-syntax-highlight';
 import { isFetchProxyTwin, NETWORK_EVENT_TWINNED_KEY } from './network-event-twins';
+import { pickHopOccurrenceIndex } from './hop-occurrences';
 
 export const ATLAS_LIVE_STREAM_PATH = '/mockifyer-atlas-live';
 
@@ -526,6 +527,8 @@ kbd {
   var MAX_ROOTS = 200;
   var TWINNED_KEY = ${JSON.stringify(NETWORK_EVENT_TWINNED_KEY)};
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
+  var pickHopOccurrenceIndex = ${pickHopOccurrenceIndex.toString()};
+  var NODE_KEY = "__atlasNodeKey";
 
   var hopsEl = document.getElementById("hops");
   var statusEl = document.getElementById("status");
@@ -548,7 +551,14 @@ kbd {
 
   var NL = String.fromCharCode(10);
   var THEME_KEY = "mockifyer-atlas-live-theme";
-  var eventsByRequestId = new Map();
+  /** One tree node per call. Calls that reuse a stored requestId get their own node key. */
+  var eventsByKey = new Map();
+  /** requestId → calls with that id, sorted by start: [{ key, startMs, ev }]. */
+  var occurrencesByRid = new Map();
+  var occurrenceSeq = 0;
+  /** requestId → record ingested last (a client/proxy twin pairs with it). */
+  var lastIngestedByRid = new Map();
+  /** Parent node key → child hops. */
   var childrenByParent = new Map();
   var rootOrder = [];
   var expandOverride = new Map();
@@ -573,6 +583,75 @@ kbd {
 
   function parentIdOf(ev) {
     return (ev.parentRequestId && String(ev.parentRequestId).trim()) || "";
+  }
+
+  function nodeKeyOf(ev) {
+    return ev[NODE_KEY] || requestIdOf(ev);
+  }
+
+  function startMsOf(ev) {
+    return ev.timestamp ? new Date(ev.timestamp).getTime() : NaN;
+  }
+
+  /**
+   * Node key of the parent call a child hop belongs to. With no parent call seen yet,
+   * the bare requestId, which the first call with that id takes as its key.
+   */
+  function parentKeyFor(parentId, childStartMs) {
+    var occ = occurrencesByRid.get(parentId) || [];
+    var starts = occ.map(function (o) {
+      return o.startMs;
+    });
+    var at = pickHopOccurrenceIndex(starts, childStartMs);
+    return at >= 0 ? occ[at].key : parentId;
+  }
+
+  /** Re-file children of every call sharing this requestId after a new call joined. */
+  function redistributeChildren(rid) {
+    var occ = occurrencesByRid.get(rid) || [];
+    var moved = [];
+    for (var i = 0; i < occ.length; i++) {
+      moved = moved.concat(childrenByParent.get(occ[i].key) || []);
+      childrenByParent.delete(occ[i].key);
+    }
+    moved.sort(function (a, b) {
+      return (startMsOf(a) || 0) - (startMsOf(b) || 0);
+    });
+    for (var j = 0; j < moved.length; j++) {
+      var key = parentKeyFor(rid, startMsOf(moved[j]));
+      var list = childrenByParent.get(key) || [];
+      list.push(moved[j]);
+      childrenByParent.set(key, list);
+    }
+  }
+
+  /** Register a new call for its requestId and return its node key. */
+  function addOccurrence(rid, ev) {
+    var occ = occurrencesByRid.get(rid) || [];
+    var key = occ.length === 0 ? rid : rid + "#" + ++occurrenceSeq;
+    var entry = { key: key, startMs: startMsOf(ev), ev: ev };
+    var at = occ.length;
+    while (at > 0 && !(occ[at - 1].startMs <= entry.startMs)) at -= 1;
+    occ.splice(at, 0, entry);
+    occurrencesByRid.set(rid, occ);
+    ev[NODE_KEY] = key;
+    eventsByKey.set(key, ev);
+    lastIngestedByRid.set(rid, ev);
+    if (occ.length > 1) redistributeChildren(rid);
+    return key;
+  }
+
+  /** Put next in place of prev (same call, proxy record wins over the client record). */
+  function replaceOccurrenceEvent(prev, next) {
+    var key = nodeKeyOf(prev);
+    var rid = requestIdOf(prev);
+    next[NODE_KEY] = key;
+    eventsByKey.set(key, next);
+    if (lastIngestedByRid.get(rid) === prev) lastIngestedByRid.set(rid, next);
+    var occ = occurrencesByRid.get(rid) || [];
+    for (var i = 0; i < occ.length; i++) {
+      if (occ[i].ev === prev) occ[i].ev = next;
+    }
   }
 
   function isErrorHop(ev) {
@@ -744,7 +823,7 @@ kbd {
   function hasSearchMatchInTree(ev, guard) {
     if (hopMatchesSearchQuery(ev)) return true;
     guard = guard || {};
-    var id = requestIdOf(ev);
+    var id = nodeKeyOf(ev);
     if (!id || guard[id]) return false;
     guard[id] = true;
     var kids = childrenByParent.get(id) || [];
@@ -1169,13 +1248,13 @@ kbd {
   }
 
   function childrenOf(ev) {
-    return childrenByParent.get(requestIdOf(ev)) || [];
+    return childrenByParent.get(nodeKeyOf(ev)) || [];
   }
 
   /** Whole subtree size (not just direct children) for collapsed summaries. */
   function countDescendants(ev, guard) {
     guard = guard || {};
-    var id = requestIdOf(ev);
+    var id = nodeKeyOf(ev);
     if (!id || guard[id]) return 0;
     guard[id] = true;
     var kids = childrenByParent.get(id) || [];
@@ -1190,7 +1269,7 @@ kbd {
   function hasErrorInTree(ev, guard) {
     if (isErrorHop(ev)) return true;
     guard = guard || {};
-    var id = requestIdOf(ev);
+    var id = nodeKeyOf(ev);
     if (!id || guard[id]) return false;
     guard[id] = true;
     var kids = childrenByParent.get(id) || [];
@@ -1279,7 +1358,7 @@ kbd {
         repeatSuffix: streakCount > 1 ? "×" + streakCount : "",
       });
       if (kids.length) {
-        html += childrenBlockHtml(requestIdOf(ev), kids, depth + 1);
+        html += childrenBlockHtml(nodeKeyOf(ev), kids, depth + 1);
       }
     }
     return html;
@@ -1299,7 +1378,7 @@ kbd {
   function render() {
     var roots = [];
     for (var r = 0; r < rootOrder.length; r++) {
-      var event = eventsByRequestId.get(rootOrder[r]);
+      var event = eventsByKey.get(rootOrder[r]);
       if (!event) continue;
       if (errorsOnly && !hasErrorInTree(event)) continue;
       if (searchQuery && !hasSearchMatchInTree(event)) continue;
@@ -1343,7 +1422,7 @@ kbd {
     var bits = [
       '<span class="' + (paused ? "paused" : "live") + '">' + pauseBit + "</span>",
       "roots=" + rootOrder.length,
-      "hops=" + eventsByRequestId.size,
+      "hops=" + eventsByKey.size,
       collapseChildren ? "collapse=on" : "collapse=off",
       collapseDuplicates ? "dedupe=on" : "dedupe=off",
       errorsOnly ? "errors-only" : "all",
@@ -1378,31 +1457,35 @@ kbd {
     var rid = requestIdOf(ev);
     if (!rid) return;
     var parentId = parentIdOf(ev);
-    var siblings = parentId ? childrenByParent.get(parentId) || [] : [];
-    var twinAt = parentId ? twinIndex(siblings, ev) : -1;
-    var rootTwin = !parentId && isFetchProxyTwin(eventsByRequestId.get(rid) || {}, ev);
+    var parentKey = parentId ? parentKeyFor(parentId, startMsOf(ev)) : "";
+    var siblings = parentKey ? childrenByParent.get(parentKey) || [] : [];
+    var twinAt = parentKey ? twinIndex(siblings, ev) : -1;
+    var lastForRid = lastIngestedByRid.get(rid);
+    var rootTwin = !parentId && isFetchProxyTwin(lastForRid || {}, ev);
     if (twinAt >= 0 || rootTwin) {
       // Same call seen by the service client and the dashboard proxy: keep the proxy record,
       // marked so a later call reusing these hop ids is not folded into it.
-      var kept = ev.transport === "proxy" ? ev : parentId ? siblings[twinAt] : eventsByRequestId.get(rid);
+      var prev = parentKey ? siblings[twinAt] : lastForRid;
+      var kept = ev.transport === "proxy" ? ev : prev;
       kept[TWINNED_KEY] = true;
       if (kept === ev) {
         if (twinAt >= 0) siblings[twinAt] = ev;
-        eventsByRequestId.set(rid, ev);
+        replaceOccurrenceEvent(prev, ev);
         render();
       }
       return;
     }
-    eventsByRequestId.set(rid, ev);
-    if (parentId) {
+    var key = addOccurrence(rid, ev);
+    if (parentKey) {
+      // addOccurrence may have re-filed this parent's children; pick the list again.
+      parentKey = parentKeyFor(parentId, startMsOf(ev));
+      siblings = childrenByParent.get(parentKey) || [];
       siblings.push(ev);
-      childrenByParent.set(parentId, siblings);
+      childrenByParent.set(parentKey, siblings);
     } else {
       // Newest roots at the top (SSE backlog is oldest→newest; live hops append).
-      // Avoid duplicate root IDs when requestId is reused (GraphQL operations, etc.).
-      if (rootOrder.indexOf(rid) === -1) {
-        rootOrder.unshift(rid);
-      }
+      // A call reusing a stored requestId is its own root with its own children.
+      rootOrder.unshift(key);
       if (rootOrder.length > MAX_ROOTS) {
         rootOrder.length = MAX_ROOTS;
       }
@@ -1432,7 +1515,10 @@ kbd {
   }
 
   function clearLocal() {
-    eventsByRequestId.clear();
+    eventsByKey.clear();
+    occurrencesByRid.clear();
+    lastIngestedByRid.clear();
+    occurrenceSeq = 0;
     childrenByParent.clear();
     rootOrder.length = 0;
     expandOverride.clear();
@@ -1444,7 +1530,7 @@ kbd {
 
   function findHopById(hopId) {
     var found = null;
-    eventsByRequestId.forEach(function (ev) {
+    eventsByKey.forEach(function (ev) {
       if (found) return;
       if (ev.id === hopId || requestIdOf(ev) === hopId) found = ev;
     });
