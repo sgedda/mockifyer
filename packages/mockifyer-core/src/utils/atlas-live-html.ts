@@ -1473,6 +1473,13 @@ kbd {
         }
       }
     }
+    // Check fallback key (bare parentId) for children that arrived before parent
+    var fallbackSiblings = childrenByParent.get(parentId) || [];
+    for (var i = 0; i < fallbackSiblings.length; i++) {
+      if (isFetchProxyTwin(fallbackSiblings[i], ev)) {
+        return { parentKey: parentId, index: i };
+      }
+    }
     return null;
   }
 
