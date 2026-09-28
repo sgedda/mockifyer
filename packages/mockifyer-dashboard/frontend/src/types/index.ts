@@ -68,8 +68,10 @@ export interface MockFile {
   responsePending?: boolean
   /** Hop id from `X-Mockifyer-Request-Id` when recorded with correlation. */
   requestId?: string | null
-  /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (upstream caller). */
+  /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (most recent upstream caller). */
   parentRequestId?: string | null
+  /** Every caller recorded for this hop, oldest first (includes `parentRequestId`). */
+  parentRequestIds?: string[]
   /** SHA-256 of the canonical request key — stable identity across scenarios. */
   requestHash?: string | null
   /** Placeholder row for a missing inbound parent (see hops Missing entry heal). */

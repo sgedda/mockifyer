@@ -63,6 +63,8 @@ import {
   resolveProxyTraceIds,
   resolveProxyHopIdentity,
   resolveCatalogHopIdentity,
+  readLatestRowForCallerMerge,
+  proxyNetworkElapsedMs,
   applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
 import {
@@ -220,27 +222,40 @@ router.post('/', async (req: Request, res: Response) => {
 
   const redisDisk = resolveRedisDiskMirrorOptions(config);
   let networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>> = null;
+  /** Bookkeeping and network-log writes the response does not wait on; settled in `finally`. */
+  const backgroundWork: Array<Promise<unknown>> = [];
+  const runInBackground = (work: Promise<unknown>): void => {
+    backgroundWork.push(work.catch(() => undefined));
+  };
+  const logNetworkEvent = (partial: Parameters<typeof appendProxyNetworkEvent>[1]): void => {
+    runInBackground(
+      appendProxyNetworkEvent(networkLogCtx, {
+        ...partial,
+        durationMs: partial.durationMs ?? proxyNetworkElapsedMs(networkLogCtx),
+      })
+    );
+  };
 
   try {
     if (clientId) {
-      await store.recordLaneSeen(clientId).catch(() => undefined);
+      runInBackground(store.recordLaneSeen(clientId));
     }
-    if (clientId && deviceId) await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
+    if (clientId && deviceId) runInBackground(store.recordLaneDeviceSeen(clientId, deviceId));
 
     const resolution = await store.resolveProxyScenario(bodyScenario, clientId, {
       strictLaneScenario: requestStrictLane,
     });
 
     if (resolution.scenario !== null) {
-      await store
-        .recordProxyEffectiveObservation({
+      runInBackground(
+        store.recordProxyEffectiveObservation({
           clientId: clientId || null,
           deviceId: deviceId || null,
           effectiveScenario: resolution.scenario,
           resolutionSource: resolution.resolutionSource,
           clientBodyScenarioOverride: resolution.hadBodyScenarioOverride,
         })
-        .catch(() => undefined);
+      );
     }
 
     if (resolution.scenario === null) {
@@ -254,7 +269,7 @@ router.post('/', async (req: Request, res: Response) => {
         );
       }
       if (!effectiveAllowUpstream) {
-        await appendProxyNetworkEvent(networkLogCtx, {
+        logNetworkEvent({
           method: upperMethod,
           url,
           clientId: clientId || null,
@@ -321,7 +336,7 @@ router.post('/', async (req: Request, res: Response) => {
         headers: responseHeaders,
       };
 
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -348,7 +363,17 @@ router.post('/', async (req: Request, res: Response) => {
     const resolvedScenarioName = resolution.scenario;
     networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, hopIdentity);
 
-    const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
+    const [proxyConfig, redisDateDoc, laneDateDoc, storedMock, laneOverrideGroup, mergedGroups, pathRules] =
+      await Promise.all([
+        store.getProxyConfig(resolvedScenarioName),
+        store.getDateConfig(resolvedScenarioName),
+        clientId ? store.getLaneDateConfig(clientId).catch(() => null) : null,
+        store.getByHashInScenario(hash, resolvedScenarioName),
+        clientId ? store.getLaneOverrideGroup(clientId).catch(() => null) : null,
+        loadMergedOverrideGroupState(store, resolvedScenarioName, scenarioPath),
+        store.getDomainPathRules(resolvedScenarioName),
+      ]);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
     const proxyRecordingExclusions = parseRecordingExclusionsEnv();
     if (
@@ -359,8 +384,6 @@ router.post('/', async (req: Request, res: Response) => {
     ) {
       effectiveRecord = false;
     }
-    const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
-    const laneDateDoc = clientId ? await store.getLaneDateConfig(clientId).catch(() => null) : null;
     const explicitManipulation = resolveExplicitDateManipulation({
       laneManipulation: laneDateDoc?.dateManipulation ?? null,
       scenarioDateDoc: redisDateDoc,
@@ -373,19 +396,10 @@ router.post('/', async (req: Request, res: Response) => {
       });
     const proxyDateFields = { dateManipulation: explicitManipulation };
 
-    let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
+    let mock = storedMock;
     let mockSource: 'redis' | 'disk' = 'redis';
     let mockFilename = mirroredMockRelativePath(hash);
 
-    const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
-    const laneOverrideGroup = clientId
-      ? await store.getLaneOverrideGroup(clientId).catch(() => null)
-      : null;
-    const mergedGroups = await loadMergedOverrideGroupState(
-      store,
-      resolvedScenarioName,
-      scenarioPath
-    );
     const overrideGroupHydrate = {
       clientId,
       explicitGroupId: explicitOverrideGroup,
@@ -405,23 +419,21 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    hopIdentity = resolveProxyHopIdentity(
-      inboundCorrelation,
-      upperMethod,
-      url,
-      (mock as MockData | null)?.requestId
-    );
-    const resolvedParentId = await resolveInboundParentRequestIdForChild(
+    // Live ids stay per call (network log, upstream headers, trace to the client); the stored
+    // row keeps its own requestId and children heal onto it via the proxied URL.
+    hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, mock?.requestId);
+    const liveHopIdentity = hopIdentity;
+    // Only recordings need the healed parent id; a mock hit responds without waiting on the lookup.
+    const catalogHopIdentityPromise = resolveInboundParentRequestIdForChild(
       store,
       resolvedScenarioName,
-      hopIdentity.parentRequestId,
+      liveHopIdentity.parentRequestId,
       parentHopFromBody,
       debugProxy
-    );
-    const catalogHopIdentity = resolveCatalogHopIdentity(hopIdentity, resolvedParentId);
+    ).then((resolvedParentId) => resolveCatalogHopIdentity(liveHopIdentity, resolvedParentId));
+    runInBackground(catalogHopIdentityPromise);
     applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
 
-    const pathRules = await store.getDomainPathRules(resolvedScenarioName);
     const recordResolution = resolveRecordResponsesForRequest({
       url,
       pathRules,
@@ -466,7 +478,7 @@ router.post('/', async (req: Request, res: Response) => {
             : `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -529,7 +541,7 @@ router.post('/', async (req: Request, res: Response) => {
           `[ProxyRoute] upstream blocked${blockedByPath ? ' (path rule)' : ''}: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -602,7 +614,15 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, hopIdentity, catalogHopIdentity);
+      // Re-read immediately before write to minimize race window with concurrent callers
+      const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData);
+      applyProxyCorrelationToMockData(
+        updatedMock,
+        networkLogCtx,
+        hopIdentity,
+        await catalogHopIdentityPromise,
+        latestRow
+      );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
@@ -671,11 +691,14 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
+        // Re-read immediately before write to minimize race window with concurrent callers
+        const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null);
         applyProxyCorrelationToMockData(
           storedMockForClient,
           networkLogCtx,
           hopIdentity,
-          catalogHopIdentity
+          await catalogHopIdentityPromise,
+          latestRow
         );
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {
@@ -701,7 +724,7 @@ router.post('/', async (req: Request, res: Response) => {
         `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
       );
     }
-    await appendProxyNetworkEvent(networkLogCtx, {
+    logNetworkEvent({
       method: upperMethod,
       url,
       clientId: clientId || null,
@@ -738,7 +761,7 @@ router.post('/', async (req: Request, res: Response) => {
       networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
     }
     const proxyFailure = wrapProxyUpstreamFetchError(upperMethod, url, error);
-    await appendProxyNetworkEvent(networkLogCtx, {
+    logNetworkEvent({
       method: upperMethod,
       url,
       clientId: clientId || null,
@@ -757,6 +780,7 @@ router.post('/', async (req: Request, res: Response) => {
       method: upperMethod,
     });
   } finally {
+    await Promise.all(backgroundWork);
     await closeProxyNetworkLog(networkLogCtx);
     await store.close().catch(() => undefined);
   }

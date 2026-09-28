@@ -223,6 +223,7 @@ export function compactMockDataForCatalog(mockData: MockData): MockData {
   if (mockData.sessionId) compact.sessionId = mockData.sessionId;
   if (mockData.requestId) compact.requestId = mockData.requestId;
   if (mockData.parentRequestId) compact.parentRequestId = mockData.parentRequestId;
+  if (mockData.parentRequestIds?.length) compact.parentRequestIds = mockData.parentRequestIds;
   if (typeof mockData.duration === 'number' && Number.isFinite(mockData.duration) && mockData.duration > 0) {
     compact.duration = mockData.duration;
   }

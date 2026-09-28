@@ -1,6 +1,8 @@
 import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
 import {
+  mergeMockParentRequestIds,
+  readMockParentRequestIds,
   registerHopOwner,
   resolveRecordedHopIdentity,
   type RecordedHopIdentity,
@@ -199,17 +201,20 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
 }
 
 /** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
- * Existing ids stay put so always-refresh does not break parentRequestId links.
+ * The row's existing id (on `mock`, or on `previous` when the row is rebuilt) stays put so
+ * refreshes do not break parentRequestId links; live calls use a fresh id per call.
  * Exception: if the stored requestId equals the live parent (caller id was stolen as this
  * hop's id), replace it with the resolved hop identity so the chain can heal.
  * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
  * `catalog` (see {@link resolveCatalogHopIdentity}) overrides the live parent from `ctx`.
+ * Earlier callers on `previous` (the row being replaced) are kept in `parentRequestIds`.
  */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
   ctx: ProxyNetworkLogContext | null,
   inbound?: ProxyNetworkLogCorrelation,
-  catalog?: RecordedHopIdentity
+  catalog?: RecordedHopIdentity,
+  previous?: MockData | null
 ): void {
   const requestId =
     ctx?.requestId ??
@@ -220,18 +225,53 @@ export function applyProxyCorrelationToMockData(
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()
       : undefined);
-  const existingRequestId = mock.requestId?.trim();
-  if (requestId) {
-    if (!existingRequestId || (parentRequestId && existingRequestId === parentRequestId)) {
-      mock.requestId = requestId;
-    }
+  const existingRequestId = mock.requestId?.trim() || previous?.requestId?.trim();
+  const existingIsStolenParent = Boolean(parentRequestId && existingRequestId === parentRequestId);
+  if (existingRequestId && !existingIsStolenParent) {
+    mock.requestId = existingRequestId;
+  } else if (requestId) {
+    mock.requestId = requestId;
   }
+  const combinedCallers = [
+    ...readMockParentRequestIds(mock),
+    ...readMockParentRequestIds(previous),
+  ];
+  const parentRequestIds = mergeMockParentRequestIds(
+    { parentRequestIds: combinedCallers },
+    parentRequestId,
+    mock.requestId
+  );
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
+  }
+  if (parentRequestIds.length > 0) {
+    mock.parentRequestIds = parentRequestIds;
   }
   const durationMs = proxyNetworkElapsedMs(ctx);
   if (durationMs != null) {
     mock.duration = durationMs;
+  }
+}
+
+export interface ProxyMockRowReader {
+  getByHashInScenario(hash: string, scenarioName: string): Promise<MockData | null | undefined>;
+}
+
+/**
+ * Row to merge callers from, read right before a write. The upstream call takes
+ * seconds; a concurrent call for the same request (e.g. two GraphQL operations that
+ * both call it) may have added its caller since the row was first read.
+ */
+export async function readLatestRowForCallerMerge(
+  store: ProxyMockRowReader,
+  hash: string,
+  scenarioName: string,
+  fallback: MockData | null | undefined
+): Promise<MockData | null | undefined> {
+  try {
+    return (await store.getByHashInScenario(hash, scenarioName)) ?? fallback;
+  } catch {
+    return fallback;
   }
 }
 

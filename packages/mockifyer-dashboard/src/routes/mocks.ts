@@ -26,6 +26,7 @@ import {
   formatGraphqlQueryForDisplay,
   isInboundParentStubMock,
   normalizeDomainPathRule,
+  readMockParentRequestIds,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
 import {
@@ -56,22 +57,30 @@ const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be ed
 
 type OverridePreview = { path: string; summary: string };
 
+interface MockCorrelationIdFields {
+  requestId?: unknown;
+  parentRequestId?: unknown;
+  parentRequestIds?: unknown;
+}
+
 function extractMockCorrelationIds(mockData: unknown): {
   requestId: string | null;
   parentRequestId: string | null;
+  parentRequestIds: string[];
 } {
-  const m = mockData as {
-    requestId?: unknown;
-    parentRequestId?: unknown;
-    data?: { requestId?: unknown; parentRequestId?: unknown };
-  };
+  const m = mockData as MockCorrelationIdFields & { data?: MockCorrelationIdFields };
   const requestIdRaw = m.requestId ?? m.data?.requestId;
   const parentRaw = m.parentRequestId ?? m.data?.parentRequestId;
+  const listRaw = m.parentRequestIds ?? m.data?.parentRequestIds;
   const requestId =
     typeof requestIdRaw === 'string' && requestIdRaw.trim() ? requestIdRaw.trim() : null;
   const parentRequestId =
     typeof parentRaw === 'string' && parentRaw.trim() ? parentRaw.trim() : null;
-  return { requestId, parentRequestId };
+  const parentRequestIds = readMockParentRequestIds({
+    parentRequestId,
+    parentRequestIds: Array.isArray(listRaw) ? (listRaw as unknown[]).filter((id): id is string => typeof id === 'string') : null,
+  });
+  return { requestId, parentRequestId, parentRequestIds };
 }
 
 function extractMockActivationFlags(mockData: unknown): {
@@ -317,6 +326,7 @@ function toMockListRow(params: {
     sessionId,
     requestId: correlation.requestId,
     parentRequestId: correlation.parentRequestId,
+    parentRequestIds: correlation.parentRequestIds,
     requestHash: favoriteIdForMock(mockData),
     inboundParentStub: inboundParentStub || undefined,
     ...activation,
@@ -593,6 +603,7 @@ router.get('/', async (req: Request, res: Response) => {
         let overrideFields = getMockOverrideListFields({});
         let requestId: string | null = null;
         let parentRequestId: string | null = null;
+        let parentRequestIds: string[] = [];
         let requestHash: string | null = null;
         try {
           const raw = fs.readFileSync(filePath, 'utf-8');
@@ -600,6 +611,7 @@ router.get('/', async (req: Request, res: Response) => {
           const correlation = extractMockCorrelationIds(mockData);
           requestId = correlation.requestId;
           parentRequestId = correlation.parentRequestId;
+          parentRequestIds = correlation.parentRequestIds;
           requestHash = favoriteIdForMock(mockData);
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
@@ -640,6 +652,7 @@ router.get('/', async (req: Request, res: Response) => {
           sessionId,
           requestId,
           parentRequestId,
+          parentRequestIds,
           requestHash,
           ...activation,
           ...overrideFields,
@@ -811,6 +824,7 @@ router.get('/search', async (req: Request, res: Response) => {
           sessionId: null,
           requestId: null,
           parentRequestId: null,
+          parentRequestIds: [],
           requestHash: null,
           ...extractMockActivationFlags({}),
           ...getMockOverrideListFields({}),

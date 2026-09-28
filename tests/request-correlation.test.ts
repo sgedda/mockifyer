@@ -3,6 +3,10 @@ import {
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
+  applyPersistedHopIds,
+  mergeMockParentRequestIds,
+  readMockParentRequestIds,
+  MAX_MOCK_PARENT_REQUEST_IDS,
   attachMockifyerRequestIdToError,
   captureInboundMockifyerContext,
   captureInboundRequestCorrelation,
@@ -162,10 +166,44 @@ describe('request-correlation', () => {
         { requestId: 'stored-gql', parentRequestId: 'stale-parent' },
         { requestId: 'live-gql', parentRequestId: 'live-parent' }
       )
-    ).toEqual({ requestId: 'stored-gql', parentRequestId: 'live-parent' });
+    ).toEqual({
+      requestId: 'stored-gql',
+      parentRequestId: 'live-parent',
+      parentRequestIds: ['stale-parent', 'live-parent'],
+    });
     expect(resolvePersistedHopIds(undefined, { requestId: 'live-gql' })).toEqual({
       requestId: 'live-gql',
     });
+  });
+
+  it('keeps every caller of a shared hop, newest last and capped', () => {
+    const existing = { requestId: 'myaccount', parentRequestIds: ['gql-deferred', 'gql-extras'], parentRequestId: 'gql-extras' };
+    expect(
+      resolvePersistedHopIds(existing, { requestId: 'live', parentRequestId: 'gql-deferred' })
+    ).toEqual({
+      requestId: 'myaccount',
+      parentRequestId: 'gql-deferred',
+      parentRequestIds: ['gql-extras', 'gql-deferred'],
+    });
+
+    const many = Array.from({ length: MAX_MOCK_PARENT_REQUEST_IDS + 5 }, (_, i) => `gql-${i}`);
+    const capped = mergeMockParentRequestIds({ parentRequestIds: many }, 'gql-new');
+    expect(capped).toHaveLength(MAX_MOCK_PARENT_REQUEST_IDS);
+    expect(capped[capped.length - 1]).toBe('gql-new');
+    expect(mergeMockParentRequestIds({ parentRequestId: 'self' }, 'caller', 'self')).toEqual(['caller']);
+  });
+
+  it('reads legacy single-parent recordings and clears stale parent fields', () => {
+    expect(readMockParentRequestIds({ parentRequestId: 'only' })).toEqual(['only']);
+    expect(readMockParentRequestIds(undefined)).toEqual([]);
+
+    const mock: { requestId?: string; parentRequestId?: string; parentRequestIds?: string[] } = {
+      requestId: 'a',
+      parentRequestId: 'stale',
+      parentRequestIds: ['stale'],
+    };
+    applyPersistedHopIds(mock, { requestId: 'a' });
+    expect(mock).toEqual({ requestId: 'a' });
   });
 
   it('remints when stored requestId equals live parent (stolen caller id)', () => {

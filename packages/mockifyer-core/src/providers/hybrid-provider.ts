@@ -99,13 +99,12 @@ export class HybridProvider implements DatabaseProvider {
       throw error; // Re-throw device save errors
     }
 
-    // Sync back to project folder only when this save originated on device (not Metro pull)
+    // Sync back to project folder only when this save originated on device (not Metro pull).
+    // Not awaited: the device copy is what replay reads, so the app response must not wait on Metro.
     if (!options?.relativePath) {
-      try {
-        await this.saveToProjectFolder(mockData);
-      } catch (error) {
+      this.saveToProjectFolder(mockData).catch((error) => {
         console.warn('[HybridProvider] Failed to save to project folder via Metro:', error);
-      }
+      });
     }
   }
 

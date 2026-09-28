@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMocks } from '@/lib/api'
 import {
   buildMockServiceChainsForDisplay,
   filterMockServiceChainsByFilenames,
+  getMockParentRequestIds,
   type MockServiceChain,
 } from '@/lib/mock-correlation-chains'
 import type { MockFile } from '@/types'
@@ -27,7 +28,7 @@ export function filterChainsBySearch(
           (mock.method ?? '').toLowerCase().includes(q) ||
           (mock.graphqlInfo?.operationName ?? '').toLowerCase().includes(q) ||
           (mock.requestId ?? '').toLowerCase().includes(q) ||
-          (mock.parentRequestId ?? '').toLowerCase().includes(q)
+          getMockParentRequestIds(mock).some((parentId) => parentId.toLowerCase().includes(q))
         )
       })
       .map((mock) => mock.filename)
@@ -39,17 +40,22 @@ export function useMockServiceChains(scenario: string) {
   const [mocks, setMocks] = useState<MockFile[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // The scenario switches right after mount (server default → URL scenario). A slower
+  // response for the previous scenario must not overwrite the current one.
+  const latestRequestRef = useRef(0)
 
   const reload = useCallback(async () => {
+    const requestId = ++latestRequestRef.current
+    const isLatest = () => requestId === latestRequestRef.current
     try {
       setLoading(true)
       setError(null)
       const data = await getMocks(scenario, { compact: true })
-      setMocks(data.files)
+      if (isLatest()) setMocks(data.files)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load hops')
+      if (isLatest()) setError(err instanceof Error ? err.message : 'Failed to load hops')
     } finally {
-      setLoading(false)
+      if (isLatest()) setLoading(false)
     }
   }, [scenario])
 

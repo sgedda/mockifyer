@@ -39,6 +39,7 @@ import {
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
+  applyPersistedHopIds,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   type RequestCorrelationContext,
@@ -1998,15 +1999,7 @@ class MockifyerClass {
     liveCorrelation?: RequestCorrelationContext
   ): Promise<void> {
     const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
-    const hopIds = resolvePersistedHopIds(cachedMock.mockData, liveCorrelation);
-    if (hopIds.requestId) {
-      updated.requestId = hopIds.requestId;
-    }
-    if (hopIds.parentRequestId) {
-      updated.parentRequestId = hopIds.parentRequestId;
-    } else {
-      delete updated.parentRequestId;
-    }
+    applyPersistedHopIds(updated, resolvePersistedHopIds(cachedMock.mockData, liveCorrelation));
     if (cachedMock.filePath) {
       fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
       logger.info(`[Mockifyer] Refreshed mock from live API: ${cachedMock.filename}`);
@@ -2250,6 +2243,7 @@ class MockifyerClass {
             : this.currentSessionId,
         requestId: hopIds.requestId,
         parentRequestId: hopIds.parentRequestId,
+        parentRequestIds: hopIds.parentRequestIds,
         ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 

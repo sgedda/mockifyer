@@ -7,9 +7,12 @@ import {
   resolveCatalogHopIdentity,
   resolveProxyHopIdentity,
   resolveProxyTraceIds,
+  readLatestRowForCallerMerge,
   type ProxyNetworkLogContext,
 } from '../packages/mockifyer-dashboard/src/utils/proxy-network-log';
-import { resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
+import { createHash } from 'crypto';
+import { generateRequestKey, resetHopOwnerRegistry } from '@sgedda/mockifyer-core';
+import { resolveInboundParentRequestIdForChild } from '../packages/mockifyer-dashboard/src/utils/inbound-parent-record-store';
 import type { MockData } from '@sgedda/mockifyer-core';
 
 function mockData(partial: Partial<MockData> = {}): MockData {
@@ -31,6 +34,85 @@ describe('proxy hop id stability', () => {
     );
     expect(mock.requestId).toBe('stored-hop');
     expect(mock.parentRequestId).toBe('live-parent');
+  });
+
+  it('keeps earlier callers when a pending row is rewritten from scratch', () => {
+    const previous = mockData({
+      requestId: 'myaccount',
+      parentRequestId: 'gql-deferred',
+      parentRequestIds: ['gql-deferred'],
+    });
+    const rewritten = mockData();
+    applyProxyCorrelationToMockData(
+      rewritten,
+      { requestId: 'myaccount', parentRequestId: 'gql-extras' } as ProxyNetworkLogContext,
+      undefined,
+      undefined,
+      previous
+    );
+    expect(rewritten.parentRequestId).toBe('gql-extras');
+    expect(rewritten.parentRequestIds).toEqual(['gql-deferred', 'gql-extras']);
+  });
+
+  it('keeps a caller added by a concurrent call while this one was upstream', async () => {
+    const rows = new Map<string, MockData>();
+    const store = { getByHashInScenario: async (hash: string) => rows.get(hash) ?? null };
+    const readAtStart = mockData({ requestId: 'myaccount', parentRequestIds: ['gql-account'] });
+    rows.set('h', readAtStart);
+
+    // Another GraphQL operation's call to the same request finished first.
+    rows.set('h', mockData({ requestId: 'myaccount', parentRequestIds: ['gql-account', 'gql-upcoming'] }));
+
+    const rewritten = mockData();
+    applyProxyCorrelationToMockData(
+      rewritten,
+      { requestId: 'myaccount', parentRequestId: 'gql-previous' } as ProxyNetworkLogContext,
+      undefined,
+      undefined,
+      await readLatestRowForCallerMerge(store, 'h', 'default', readAtStart)
+    );
+    expect(rewritten.parentRequestIds).toEqual(['gql-account', 'gql-upcoming', 'gql-previous']);
+
+    const failing = { getByHashInScenario: async () => Promise.reject(new Error('redis down')) };
+    await expect(readLatestRowForCallerMerge(failing, 'h', 'default', readAtStart)).resolves.toBe(readAtStart);
+  });
+
+  it('keeps the stored row id when a fresh live call rewrites the row', () => {
+    const previous = mockData({ requestId: 'myaccount-row', parentRequestIds: ['gql-row'] });
+    const rewritten = mockData();
+    applyProxyCorrelationToMockData(
+      rewritten,
+      { requestId: 'live-call-2', parentRequestId: 'gql-live-2' } as ProxyNetworkLogContext,
+      undefined,
+      { requestId: 'live-call-2', parentRequestId: 'gql-row' },
+      previous
+    );
+    expect(rewritten.requestId).toBe('myaccount-row');
+    expect(rewritten.parentRequestId).toBe('gql-row');
+  });
+
+  it('gives each proxied call its own live id and heals children onto the stored row', async () => {
+    resetHopOwnerRegistry();
+    const url = 'https://member.example/v-2/myaccount/';
+    const rows = new Map<string, MockData>();
+    const store = {
+      getByHashInScenario: async (hash: string) => rows.get(hash) ?? null,
+      setByHashInScenario: async (hash: string, mock: MockData) => {
+        rows.set(hash, mock);
+        return true;
+      },
+    };
+    const key = generateRequestKey({ method: 'GET', url, headers: {}, data: null, queryParams: {} });
+    rows.set(createHash('sha256').update(key).digest('hex'), mockData({ requestId: 'myaccount-row' }));
+
+    const first = resolveProxyHopIdentity({ requestId: 'client-mint-1', parentRequestId: 'gql' }, 'GET', url);
+    const second = resolveProxyHopIdentity({ requestId: 'client-mint-2', parentRequestId: 'gql' }, 'GET', url);
+    expect(first.requestId).toBe('client-mint-1');
+    expect(second.requestId).toBe('client-mint-2');
+
+    await expect(
+      resolveInboundParentRequestIdForChild(store, 'default', second.requestId, { method: 'GET', url })
+    ).resolves.toBe('myaccount-row');
   });
 
   it('fills hop ids only when the mock has none', () => {

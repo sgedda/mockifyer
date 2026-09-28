@@ -1,4 +1,4 @@
-import { resolveMockReplayMode, type MockData } from '@sgedda/mockifyer-core';
+import { readMockParentRequestIds, resolveMockReplayMode, type MockData } from '@sgedda/mockifyer-core';
 
 /** Same four buckets as hop Replay / Live / Pending / Refresh badges. */
 export type StatsTrafficMode = 'replay' | 'refresh' | 'pending' | 'live';
@@ -77,6 +77,8 @@ export interface RankedResponseStat {
   size: number;
   requestId?: string | null;
   parentRequestId?: string | null;
+  /** Every caller recorded for this hop (see `MockData.parentRequestIds`). */
+  parentRequestIds?: string[];
   /** True when no other recording lists this hop as its parent (lowest-level call). */
   isLeaf?: boolean;
   /** Same buckets as hop Replay / Live / Pending / Refresh badges. */
@@ -153,6 +155,7 @@ export function toRankedResponseStat(params: {
     size,
     requestId: trimId(mockData.requestId),
     parentRequestId: trimId(mockData.parentRequestId),
+    parentRequestIds: readMockParentRequestIds(mockData),
     trafficMode: statsTrafficMode(mockData),
   };
 }
@@ -164,8 +167,9 @@ export function toRankedResponseStat(params: {
 export function annotateLeafHops(items: RankedResponseStat[]): RankedResponseStat[] {
   const usedAsParent = new Set<string>();
   for (const item of items) {
-    const parentId = trimId(item.parentRequestId);
-    if (parentId) usedAsParent.add(parentId);
+    for (const parentId of readMockParentRequestIds(item)) {
+      usedAsParent.add(parentId);
+    }
   }
   return items.map((item) => {
     const id = trimId(item.requestId);

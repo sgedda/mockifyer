@@ -507,13 +507,15 @@ export async function refreshMetroAtlasCaptureSessionIfStale(
 }
 
 /**
- * Resolve include-trace flags, refreshing Atlas `t` session state from Metro first
- * so the device stamps include-trace soon after capture starts.
+ * Resolve include-trace flags from the last known Atlas `t` session state and refresh
+ * it from Metro in the background. Runs before every outbound call, so it must not wait
+ * on Metro: a slow or unreachable Metro would otherwise delay each request (up to the 2s timeout).
+ * Capture start is picked up by requests after the refresh lands.
  */
 export async function resolveNetworkLogIncludeTraceOptionsAsync(
   config?: Pick<MockifyerConfig, 'networkLog'> | null
 ): Promise<{ includeInlineTrace: boolean; includeInlineTraceBodies: boolean }> {
-  await refreshMetroAtlasCaptureSessionIfStale();
+  void refreshMetroAtlasCaptureSessionIfStale();
   return resolveNetworkLogIncludeTraceOptions(config);
 }
 

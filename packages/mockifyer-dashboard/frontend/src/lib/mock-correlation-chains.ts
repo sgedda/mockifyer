@@ -58,6 +58,30 @@ export function mockHopEndpointFingerprint(mock: MockFile): string {
   return `${method} ${normalized}`
 }
 
+/**
+ * Every caller recorded for a hop. The list API already includes the primary
+ * `parentRequestId`; older payloads only carry that single field.
+ */
+export function getMockParentRequestIds(mock: Pick<MockFile, 'parentRequestId' | 'parentRequestIds'>): string[] {
+  if (mock.parentRequestIds?.length) return mock.parentRequestIds
+  const parentId = mock.parentRequestId?.trim()
+  return parentId ? [parentId] : []
+}
+
+/** Callers of `mock` that are present in `byRequestId` (and in `inChain`, when given). */
+function knownParents(
+  mock: MockFile,
+  byRequestId: Map<string, MockFile>,
+  inChain?: ReadonlySet<string>
+): MockFile[] {
+  const parents: MockFile[] = []
+  for (const parentId of getMockParentRequestIds(mock)) {
+    const parent = byRequestId.get(parentId)
+    if (parent && (!inChain || inChain.has(parent.filename))) parents.push(parent)
+  }
+  return parents
+}
+
 function mockHopHostKey(mock: MockFile): string {
   const { host, path } = parseEndpointParts(mock.endpoint)
   return host ? host.toLowerCase() : path
@@ -181,10 +205,10 @@ export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
         existing ? preferMockForRequestId(existing, mock) : mock
       )
     }
-    if (mock.parentRequestId) {
-      const siblings = childrenByParent.get(mock.parentRequestId) ?? []
+    for (const parentId of getMockParentRequestIds(mock)) {
+      const siblings = childrenByParent.get(parentId) ?? []
       siblings.push(mock)
-      childrenByParent.set(mock.parentRequestId, siblings)
+      childrenByParent.set(parentId, siblings)
     }
   }
 
@@ -555,8 +579,7 @@ export function mockChainDepth(
 }
 
 export function isMockChainRoot(mock: MockFile, byRequestId: Map<string, MockFile>): boolean {
-  if (!mock.parentRequestId) return true
-  return !byRequestId.has(mock.parentRequestId)
+  return knownParents(mock, byRequestId).length === 0
 }
 
 export function mockHasChainChildren(mock: MockFile, childrenByParent: Map<string, MockFile[]>): boolean {
@@ -576,13 +599,18 @@ export function mockIsInServiceChain(
 function orderHopsFromRoot(root: MockFile, chainMocks: MockFile[], maps: MockChainMaps): MockFile[] {
   const inChain = new Set(chainMocks.map((m) => m.filename))
   const ordered: MockFile[] = [root]
+  const visited = new Set<string>([root.filename])
 
   const visit = (parentRequestId: string) => {
-    const children = (maps.childrenByParent.get(parentRequestId) ?? []).filter((c) => inChain.has(c.filename))
+    const children = (maps.childrenByParent.get(parentRequestId) ?? []).filter(
+      (c) => inChain.has(c.filename) && !visited.has(c.filename)
+    )
     children.sort(
       (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
     )
     for (const child of children) {
+      if (visited.has(child.filename)) continue
+      visited.add(child.filename)
       ordered.push(child)
       if (child.requestId) visit(child.requestId)
     }
@@ -621,7 +649,7 @@ function sharesMissingParentWithSiblings(
   byRequestId: Map<string, MockFile>
 ): boolean {
   const parentId = mock.parentRequestId?.trim()
-  if (!parentId || byRequestId.has(parentId)) return false
+  if (!parentId || !isMockChainRoot(mock, byRequestId)) return false
   return mocks.some(
     (other) => other.filename !== mock.filename && other.parentRequestId?.trim() === parentId
   )
@@ -640,7 +668,7 @@ function buildMissingParentSiblingChains(
   for (const mock of mocks) {
     if (assigned.has(mock.filename)) continue
     const parentId = mock.parentRequestId?.trim()
-    if (!parentId || maps.byRequestId.has(parentId)) continue
+    if (!parentId || !isMockChainRoot(mock, maps.byRequestId)) continue
     const list = orphansByMissingParent.get(parentId) ?? []
     list.push(mock)
     orphansByMissingParent.set(parentId, list)
@@ -684,6 +712,7 @@ function orderHopsFromRoots(roots: MockFile[], chainMocks: MockFile[], maps: Moc
       .filter((c) => inChain.has(c.filename) && !seen.has(c.filename))
       .sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
     for (const child of children) {
+      if (seen.has(child.filename)) continue
       ordered.push(child)
       seen.add(child.filename)
       if (child.requestId) visit(child.requestId)
@@ -756,7 +785,7 @@ export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
     if (assigned.has(mock.filename)) continue
     if (!mock.parentRequestId) continue
     if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
-    if (!maps.byRequestId.has(mock.parentRequestId)) {
+    if (isMockChainRoot(mock, maps.byRequestId)) {
       const chainMocks: MockFile[] = [mock]
       collectDescendants(mock, maps, chainMocks)
       if (chainMocks.length < 2) continue
@@ -1084,11 +1113,15 @@ export function describeHopParentLink(chain: MockFile[], hopIndex: number): stri
   const hop = chain[hopIndex]
   if (hopIndex < 0 || !hop?.parentRequestId?.trim()) return null
 
-  const parentId = hop.parentRequestId.trim()
-  const parentHop = chain.find((candidate) => candidate.requestId === parentId)
-  const shortParent = formatShortCorrelationId(parentId)
+  const parentIds = getMockParentRequestIds(hop)
+  const parentHop = chain.find(
+    (candidate) => Boolean(candidate.requestId) && parentIds.includes(candidate.requestId!)
+  )
+  const shortParent = formatShortCorrelationId(parentHop?.requestId ?? hop.parentRequestId)
+  const otherCallers = parentIds.length - 1
+  const sharedSuffix = otherCallers > 0 ? ` · also called by ${otherCallers} other hop${otherCallers === 1 ? '' : 's'}` : ''
   if (parentHop) {
-    return `Parent: ${formatMockHopLabel(parentHop)}${shortParent ? ` (${shortParent})` : ''}`
+    return `Parent: ${formatMockHopLabel(parentHop)}${shortParent ? ` (${shortParent})` : ''}${sharedSuffix}`
   }
   return shortParent ? `Parent request id: ${shortParent} (missing from catalog)` : 'Parent request id linked'
 }
@@ -1102,12 +1135,7 @@ export function getSharedMissingParentId(hops: MockFile[]): string | null {
   if (hops.length === 0) return null
   const maps = buildMockChainMaps(hops)
   const inChain = new Set(hops.map((hop) => hop.filename))
-  const roots = hops.filter((hop) => {
-    const parentId = hop.parentRequestId?.trim()
-    if (!parentId) return true
-    const parent = maps.byRequestId.get(parentId)
-    return !parent || !inChain.has(parent.filename)
-  })
+  const roots = hops.filter((hop) => knownParents(hop, maps.byRequestId, inChain).length === 0)
   if (roots.length === 0) return null
 
   const parentIds = new Set(
@@ -1124,10 +1152,7 @@ export function chainHasRequestCorrelation(chain: MockFile[]): boolean {
   const requestIds = new Set(
     chain.map((hop) => hop.requestId?.trim()).filter((id): id is string => Boolean(id))
   )
-  return chain.some((hop) => {
-    const parentId = hop.parentRequestId?.trim()
-    return Boolean(parentId && requestIds.has(parentId))
-  })
+  return chain.some((hop) => getMockParentRequestIds(hop).some((parentId) => requestIds.has(parentId)))
 }
 
 export function getChainRootRequestId(chain: MockFile[]): string | null {
@@ -1190,17 +1215,22 @@ function groupSiblingsByFingerprint(children: MockFile[]): MockUniqueChainNode[]
   })
 }
 
+/**
+ * `ancestors` holds hop filenames on the current path. A hop with several callers can
+ * otherwise loop (stale ids make A → B → A) and recurse forever.
+ */
 function uniqueChildrenOf(
   parents: MockFile[],
   maps: MockChainMaps,
-  inChain: Set<string>
+  inChain: Set<string>,
+  ancestors: ReadonlySet<string> = new Set(parents.map((parent) => parent.filename))
 ): MockUniqueChainNode[] {
   const kids: MockFile[] = []
   const seen = new Set<string>()
   for (const parent of parents) {
     if (!parent.requestId) continue
     for (const child of maps.childrenByParent.get(parent.requestId) ?? []) {
-      if (!inChain.has(child.filename) || seen.has(child.filename)) continue
+      if (!inChain.has(child.filename) || seen.has(child.filename) || ancestors.has(child.filename)) continue
       seen.add(child.filename)
       kids.push(child)
     }
@@ -1208,7 +1238,9 @@ function uniqueChildrenOf(
   kids.sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
   const grouped = groupSiblingsByFingerprint(kids)
   for (const node of grouped) {
-    node.children = uniqueChildrenOf(node.hops, maps, inChain)
+    const path = new Set(ancestors)
+    for (const hop of node.hops) path.add(hop.filename)
+    node.children = uniqueChildrenOf(node.hops, maps, inChain, path)
   }
   return grouped
 }
@@ -1273,11 +1305,7 @@ export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNod
   const hasParentLinks = hops.some((h) => Boolean(h.parentRequestId?.trim()))
 
   if (hasParentLinks) {
-    const roots = hops.filter((h) => {
-      if (!h.parentRequestId?.trim()) return true
-      const parent = maps.byRequestId.get(h.parentRequestId.trim())
-      return !parent || !inChain.has(parent.filename)
-    })
+    const roots = hops.filter((h) => knownParents(h, maps.byRequestId, inChain).length === 0)
     const grouped = groupSiblingsByFingerprint(roots)
     for (const node of grouped) {
       node.children = uniqueChildrenOf(node.hops, maps, inChain)

@@ -2,6 +2,7 @@ import path from 'path';
 import type { DashboardContextConfig } from './dashboard-context';
 import { RedisMockStore, type RedisMockStoreConfig } from './redis-mock-store';
 import { isCentralizedDashboardProvider } from './dashboard-provider';
+import { createSharedStoreCache } from './shared-store-cache';
 
 export type DashboardRedisConfig = Pick<
   DashboardContextConfig,
@@ -42,12 +43,7 @@ export function resolveDashboardSqlitePath(mockDataPath: string, config: Dashboa
   return path.resolve(mockDataPath, 'mockifyer-dashboard.db');
 }
 
-interface CachedDashboardMockStore {
-  store: RedisMockStore;
-  dispose: () => Promise<void>;
-}
-
-const dashboardMockStoreCache = new Map<string, CachedDashboardMockStore>();
+const dashboardMockStoreCache = createSharedStoreCache<RedisMockStore>();
 
 /** Stable cache key so /api/mocks does not open a new Redis/SQLite client per request. */
 export function dashboardMockStoreCacheKey(
@@ -100,22 +96,12 @@ export function createDashboardMockStore(
     throw new Error(`createDashboardMockStore requires redis or sqlite provider, got: ${config.provider}`);
   }
 
-  const key = dashboardMockStoreCacheKey(config, mockDataPath);
-  const cached = dashboardMockStoreCache.get(key);
-  if (cached) return cached.store;
-
-  const store = instantiateDashboardMockStore(config, mockDataPath);
-  const dispose = store.close.bind(store);
-  store.close = async () => undefined;
-  dashboardMockStoreCache.set(key, { store, dispose });
-  return store;
+  return dashboardMockStoreCache.getOrCreate(dashboardMockStoreCacheKey(config, mockDataPath), () =>
+    instantiateDashboardMockStore(config, mockDataPath)
+  );
 }
 
 /** Close cached stores (tests / process shutdown). */
 export async function closeCachedDashboardMockStores(): Promise<void> {
-  const entries = [...dashboardMockStoreCache.values()];
-  dashboardMockStoreCache.clear();
-  for (const entry of entries) {
-    await entry.dispose().catch(() => undefined);
-  }
+  await dashboardMockStoreCache.closeAll();
 }

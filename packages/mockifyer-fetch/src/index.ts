@@ -83,6 +83,7 @@ import {
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
+  applyPersistedHopIds,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   configureFlightRecorder,
@@ -1492,6 +1493,7 @@ class MockifyerClass {
             : this.currentSessionId,
         requestId: hopIds.requestId,
         parentRequestId: hopIds.parentRequestId,
+        parentRequestIds: hopIds.parentRequestIds,
         ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 
@@ -1556,15 +1558,7 @@ class MockifyerClass {
     liveCorrelation?: RequestCorrelationContext
   ): Promise<void> {
     const updated = buildMockDataAfterLiveCapture(cachedMock.mockData, capturedResponse, durationMs);
-    const hopIds = resolvePersistedHopIds(cachedMock.mockData, liveCorrelation);
-    if (hopIds.requestId) {
-      updated.requestId = hopIds.requestId;
-    }
-    if (hopIds.parentRequestId) {
-      updated.parentRequestId = hopIds.parentRequestId;
-    } else {
-      delete updated.parentRequestId;
-    }
+    applyPersistedHopIds(updated, resolvePersistedHopIds(cachedMock.mockData, liveCorrelation));
 
     if (this.databaseProvider) {
       await this.databaseProvider.save(updated);
