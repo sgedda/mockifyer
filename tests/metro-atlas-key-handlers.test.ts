@@ -49,8 +49,10 @@ describe('metro-atlas-key-handlers', () => {
   });
 
   describe('resolveDashboardKeyOption', () => {
-    it('defaults to m', () => {
-      expect(resolveDashboardKeyOption()).toBe(DEFAULT_METRO_DASHBOARD_KEY);
+    it('is off unless a key is set', () => {
+      expect(resolveDashboardKeyOption()).toBeNull();
+      expect(resolveDashboardKeyOption(undefined)).toBeNull();
+      expect(resolveDashboardKeyOption('m')).toBe(DEFAULT_METRO_DASHBOARD_KEY);
     });
 
     it('disables with false', () => {
@@ -205,7 +207,27 @@ describe('metro-atlas-key-handlers', () => {
       expect(opened).toEqual(['http://localhost:3002']);
     });
 
-    it('auto-starts when the hop stream connects', async () => {
+    it('does not open the dashboard when m is pressed and dashboardKey is unset', () => {
+      const stdin = makeStdin();
+      const opened: string[] = [];
+
+      const attached = attachMetroAtlasKeyHandler({
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        deferMs: 0,
+        openUrl: (url) => {
+          opened.push(url);
+        },
+        onSessionStart: () => undefined,
+        onSessionStop: () => undefined,
+      });
+
+      expect(attached.dashboardKey).toBeNull();
+      stdin.emit('keypress', 'm', { name: 'm' });
+      expect(opened).toEqual([]);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
+    });
+
+    it('does not start capture when the hop stream connects', async () => {
       const stdin = makeStdin();
       let starts = 0;
       let stops = 0;
@@ -224,17 +246,21 @@ describe('metro-atlas-key-handlers', () => {
       });
 
       notifyMetroAtlasStreamClientConnected();
-      expect(starts).toBe(1);
-      expect(getMetroAtlasSessionPhase()).toBe('capturing');
+      expect(starts).toBe(0);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
       expect(getMetroAtlasStreamSubscriberCount()).toBe(1);
 
       notifyMetroAtlasStreamClientConnected();
-      expect(starts).toBe(1);
+      expect(starts).toBe(0);
       expect(getMetroAtlasStreamSubscriberCount()).toBe(2);
 
       notifyMetroAtlasStreamClientDisconnected();
       notifyMetroAtlasStreamClientDisconnected();
       expect(getMetroAtlasStreamSubscriberCount()).toBe(0);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
+
+      stdin.emit('keypress', 'a', { name: 'a' });
+      expect(starts).toBe(1);
       expect(getMetroAtlasSessionPhase()).toBe('capturing');
 
       stdin.emit('keypress', 'a', { name: 'a' });
