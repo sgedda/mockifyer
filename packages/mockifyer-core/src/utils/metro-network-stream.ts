@@ -100,6 +100,8 @@ export interface NetworkEventResponseBodyPatch {
   responseBodyPreview?: string;
   responseBodyRef?: string;
   responseBodyTruncated?: boolean;
+  /** Capture generation to reject patches from a previous session. */
+  generation?: number;
 }
 
 /** Validate one entry of a Metro `response-bodies` POST. */
@@ -173,6 +175,11 @@ export class MetroNetworkEventBuffer {
    * Live trace/open links may still carry the first id.
    */
   private readonly idAliases = new Map<string, string>();
+  /**
+   * Incremented when the buffer is cleared (new capture).
+   * Used to reject response body patches from a previous session.
+   */
+  private generation = 0;
 
   constructor(maxEvents: number = DEFAULT_METRO_NETWORK_STREAM_MAX_EVENTS) {
     this.maxEvents = Math.max(1, maxEvents);
@@ -219,6 +226,9 @@ export class MetroNetworkEventBuffer {
    * existing row instead of adding a duplicate. Returns undefined when the hop is gone.
    */
   patchResponseBody(patch: NetworkEventResponseBodyPatch): NetworkEvent | undefined {
+    if (patch.generation != null && patch.generation !== this.generation) {
+      return undefined;
+    }
     const requestId = patch.requestId?.trim();
     let index = this.events.findIndex((event) => event.id === patch.id);
     if (index < 0 && requestId) {
@@ -300,10 +310,15 @@ export class MetroNetworkEventBuffer {
   clear(): void {
     this.events = [];
     this.idAliases.clear();
+    this.generation += 1;
   }
 
   get size(): number {
     return this.events.length;
+  }
+
+  getGeneration(): number {
+    return this.generation;
   }
 
   subscribe(listener: MetroNetworkStreamListener): () => void {

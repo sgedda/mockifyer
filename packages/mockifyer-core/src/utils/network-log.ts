@@ -52,6 +52,7 @@ import {
   clearDeferredAtlasResponseBodies,
   deferAtlasResponseBody,
   flushDeferredAtlasResponseBodies,
+  getDeferredAtlasResponseBodyGeneration,
   type DeferredResponseBody,
 } from './atlas-deferred-response-bodies';
 import { getActiveMockifyerHopContext } from './hop-context';
@@ -621,6 +622,7 @@ function buildDeferredResponseBodyPatch(
     responseBodyPreview,
     responseBodyRef: refs.responseBodyRef,
     responseBodyTruncated: refs.responseBodyTruncated,
+    generation: entry.generation,
   };
 }
 
@@ -702,12 +704,14 @@ function emitMockifyerNetworkEventNow(params: EmitMockifyerNetworkEventParams): 
     ? captureNetworkBody(params.requestBody, params.event.requestBodyPreview)
     : {};
   const deferResponseBody = shouldDeferResponseBody({ localMetro, dashboardCaptureBodies });
-  if (deferResponseBody && localMetro && isMetroAtlasCaptureSessionActive()) {
+  if (deferResponseBody && localMetro) {
     ensureDeferredResponseBodyFlush(localMetro);
+    const generation = getDeferredAtlasResponseBodyGeneration();
     deferAtlasResponseBody({
       id: eventId,
       requestId: params.event.requestId ?? undefined,
       body: params.responseBody,
+      generation,
     });
   }
   const responseCapture =

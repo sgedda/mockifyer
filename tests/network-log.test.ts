@@ -146,13 +146,13 @@ describe('network-log', () => {
       else process.env.MOCKIFYER_METRO_STREAM = prevStream;
     });
 
-    it('keeps the request body but not the response body outside a capture', async () => {
+    it('keeps the request body and defers the response body when local Metro is available', async () => {
       emitUsersHop('hop-idle');
       await settle();
       const [event] = __flightRecorderBuffersForTests().network;
       expect(event?.requestBodyPreview).toContain('users');
       expect(event?.responseBodyPreview).toBeUndefined();
-      expect(deferredAtlasResponseBodyCount()).toBe(0);
+      expect(deferredAtlasResponseBodyCount()).toBe(1);
     });
 
     it('holds response bodies during a capture and uploads them when it stops', async () => {

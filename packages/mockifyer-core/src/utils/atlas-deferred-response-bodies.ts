@@ -22,6 +22,8 @@ export interface DeferredResponseBody {
   requestId?: string;
   /** Raw response body as the app received it. */
   body: unknown;
+  /** Capture generation to match Metro buffer. */
+  generation?: number;
 }
 
 export type DeferredResponseBodyToPatch = (
@@ -31,6 +33,7 @@ export type DeferredResponseBodyToPatch = (
 interface DeferredResponseBodiesState {
   pending: Map<string, DeferredResponseBody>;
   flush?: Promise<void>;
+  generation: number;
 }
 
 const DEFERRED_RESPONSE_BODIES_GLOBAL = Symbol.for(
@@ -41,7 +44,7 @@ function getState(): DeferredResponseBodiesState {
   const globalStore = globalThis as typeof globalThis & {
     [DEFERRED_RESPONSE_BODIES_GLOBAL]?: DeferredResponseBodiesState;
   };
-  globalStore[DEFERRED_RESPONSE_BODIES_GLOBAL] ??= { pending: new Map() };
+  globalStore[DEFERRED_RESPONSE_BODIES_GLOBAL] ??= { pending: new Map(), generation: 0 };
   return globalStore[DEFERRED_RESPONSE_BODIES_GLOBAL];
 }
 
@@ -63,7 +66,13 @@ export function deferredAtlasResponseBodyCount(): number {
 
 /** Drop held bodies (new capture started, or tests). */
 export function clearDeferredAtlasResponseBodies(): void {
-  getState().pending.clear();
+  const state = getState();
+  state.pending.clear();
+  state.generation += 1;
+}
+
+export function getDeferredAtlasResponseBodyGeneration(): number {
+  return getState().generation;
 }
 
 function waitForIdle(): Promise<void> {
@@ -121,7 +130,13 @@ export function flushDeferredAtlasResponseBodies(options: {
   toPatch: DeferredResponseBodyToPatch;
 }): Promise<void> {
   const state = getState();
-  if (state.flush) return state.flush;
+  if (state.flush) {
+    return state.flush.then(() => {
+      if (state.pending.size > 0) {
+        return flushDeferredAtlasResponseBodies(options);
+      }
+    });
+  }
 
   const entries = [...state.pending.values()];
   state.pending.clear();
