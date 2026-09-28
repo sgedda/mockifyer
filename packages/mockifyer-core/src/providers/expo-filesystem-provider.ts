@@ -111,6 +111,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   private currentScenario: string = DEFAULT_SCENARIO;
   /** Lazily built index of the current scenario folder; dropped when files change outside {@link save}. */
   private mockFileIndexPromise: Promise<MockFileIndex> | null = null;
+  /** Timestamp of last file change check to avoid excessive checks on rapid lookups */
+  private lastFileCheckMs: number = 0;
+  /** Minimum ms between file change checks (only check when index exists and might be stale) */
+  private readonly minFileCheckIntervalMs: number = 100;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
@@ -479,6 +483,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         this.fileCache.clear();
         this.fileModTimes.clear();
         this.mockFileIndexPromise = null;
+        this.lastFileCheckMs = Date.now();
 
         // Update modification times for current files
         const scenarioPath = this.getScenarioPath();
@@ -533,6 +538,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     this.fileCache.clear();
     this.fileModTimes.clear();
     this.mockFileIndexPromise = null;
+    this.lastFileCheckMs = Date.now();
 
     // Force refresh of file modification times by re-reading directory
     // This ensures that synced files are detected on next request
@@ -649,10 +655,11 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
   /** Keep a built (or building) index current without rescanning the folder. */
   private indexSavedMockFile(scenarioPath: string, file: string, mockData: MockData): void {
-    const pending = this.mockFileIndexPromise;
-    if (!pending || !mockData?.request || typeof mockData.request !== 'object') {
+    if (!mockData?.request || typeof mockData.request !== 'object') {
       return;
     }
+    // If no index exists, trigger a build so this file is included
+    const pending = this.mockFileIndexPromise ?? this.getMockFileIndex();
     this.mockFileIndexPromise = pending.then((index) => {
       if (index.scenarioPath === scenarioPath) {
         index.upsert(file, mockData.request);
@@ -674,6 +681,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const mockData = await this.readMockFile(scenarioPath, file);
         if (mockData) {
           index.upsert(file, mockData.request);
+        }
+        // Cache modification time to avoid false-positive change detection
+        const filePath = this.joinFsUri(scenarioPath, file);
+        const info = await this.fsGetInfo(filePath);
+        if (info.exists && info.modificationTime !== undefined) {
+          this.fileModTimes.set(file, info.modificationTime);
         }
       } catch (error) {
         logger.warn(`[Mockifyer] Failed to index mock file ${file}:`, error);
@@ -836,6 +849,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
     const scenarioPath = this.getScenarioPath();
     
+    // Check for file changes only if enough time has passed and index exists (catches Metro sync, external writes)
+    const now = Date.now();
+    if (this.mockFileIndexPromise && now - this.lastFileCheckMs >= this.minFileCheckIntervalMs) {
+      this.lastFileCheckMs = now;
+      await this.checkForFileChanges();
+    }
+    
     // Hydrate override groups for this scenario before matching
     await this.loadOverrideGroupsForScenario();
     
@@ -969,6 +989,13 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       return [];
     }
 
+    // Check for file changes only if enough time has passed and index exists (catches Metro sync, external writes)
+    const now = Date.now();
+    if (this.mockFileIndexPromise && now - this.lastFileCheckMs >= this.minFileCheckIntervalMs) {
+      this.lastFileCheckMs = now;
+      await this.checkForFileChanges();
+    }
+    
     const index = await this.getMockFileIndex();
     const scenarioPath = this.getScenarioPath();
     

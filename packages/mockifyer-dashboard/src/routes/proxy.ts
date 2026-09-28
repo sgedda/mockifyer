@@ -614,12 +614,14 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
+      // Re-read immediately before write to minimize race window with concurrent callers
+      const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData);
       applyProxyCorrelationToMockData(
         updatedMock,
         networkLogCtx,
         hopIdentity,
         await catalogHopIdentityPromise,
-        await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData)
+        latestRow
       );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
       mock = updatedMock;
@@ -689,12 +691,14 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
+        // Re-read immediately before write to minimize race window with concurrent callers
+        const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null);
         applyProxyCorrelationToMockData(
           storedMockForClient,
           networkLogCtx,
           hopIdentity,
           await catalogHopIdentityPromise,
-          await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null)
+          latestRow
         );
         const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
         if (wrote && redisDisk.mirrorWrites) {
