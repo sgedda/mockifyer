@@ -13,7 +13,7 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  * - **`off`** — never activate; launch arguments do **not** override (use for production builds that ship Mockifyer code but must not run it).
  * - **`on`** — always activate when the helper is called (starts enabled).
  * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`). A launch `scenario` does not replace this requirement.
- * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle). A launch `scenario` still starts the runtime toggle enabled.
+ * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle). A launch `scenario` starts the runtime toggle enabled only when there is no saved on/off preference.
  *
  * Resolution: optional config **`runtimeMode`**, then env **`MOCKIFYER_MODE`**, else **`on`**. Set **`launch_client`** explicitly for E2E-only activation (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
  */
@@ -114,9 +114,11 @@ export interface MockifyerConfig {
    * - **`true`** — use AsyncStorage (React Native) or `localStorage` (web) when available
    * - **custom storage** — any `{ getItem, setItem }` (e.g. your own AsyncStorage wrapper)
    *
-   * With **`runtimeMode: 'manual'`**, first launch starts disabled; after the user enables once,
-   * the next launch restores **enabled**. Pair with {@link initialRuntimeEnabled} when you load
+   * With **`runtimeMode: 'manual'`**, first launch starts disabled; after the user enables or
+   * disables, the next launch restores that choice. A saved **off** stays off even when a launch
+   * `scenario` argument is present. Pair with {@link initialRuntimeEnabled} when you load
    * storage yourself before `setupMockifyer` (sync APIs).
+   * `setupMockifyerForReactNative` defaults this to `true`.
    */
   persistRuntimeEnabled?:
     | boolean

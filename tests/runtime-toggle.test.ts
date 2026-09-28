@@ -266,7 +266,7 @@ describe('Runtime Mockifyer Toggle', () => {
       expect(instance.isMockifyerEnabled()).toBe(true);
     });
 
-    it('should prefer native launch scenario over persisted disabled', () => {
+    it('should keep a saved off when a native launch scenario is present', () => {
       setScenarioLaunchOverride('maestro-login', { fromLaunchArguments: true });
       const instance = setupMockifyer({
         mockDataPath: './mock-data',
@@ -275,7 +275,7 @@ describe('Runtime Mockifyer Toggle', () => {
         runtimeMode: 'manual',
         initialRuntimeEnabled: false,
       });
-      expect(instance.isMockifyerEnabled()).toBe(true);
+      expect(instance.isMockifyerEnabled()).toBe(false);
     });
 
     it('should NOT force enabled when override is only defaultScenario (not launch args)', () => {
