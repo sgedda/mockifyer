@@ -9,7 +9,9 @@
  * These switches are transient: they never overwrite the user's saved launch preference. When the
  * user switches Mockifyer themselves during a capture, Atlas stops managing it until capture ends —
  * including across app restarts, so an explicit "off" is not undone on the next launch. A capture
- * that is already running when the app starts also leaves a saved off alone.
+ * that is already running when the app starts also leaves a saved off alone, unless Atlas already
+ * owns it (`'true'` persisted). That owner is what survives a Metro reload: `sawCaptureIdle` resets
+ * with the process, and the saved preference is still off because the enable was transient.
  */
 import { logger } from './logger';
 import {
@@ -280,8 +282,10 @@ export async function syncMockifyerFromMetroAtlasSession(options?: {
     return false;
   }
 
-  if (!sawCaptureIdle) {
-    // Capture was already active when the app started. A saved off must stay off.
+  if (!sawCaptureIdle && owner !== 'true') {
+    // Capture was already active when this process started, and Atlas does not own it.
+    // A saved off must stay off. Owner `'true'` is a Metro reload of a capture Atlas
+    // already enabled transiently — the preference is still off, but recording resumes.
     const storage = tryGetDefaultRuntimeEnabledStorage();
     const saved = storage ? await loadPersistedRuntimeEnabled(storage) : undefined;
     if (saved === false) {

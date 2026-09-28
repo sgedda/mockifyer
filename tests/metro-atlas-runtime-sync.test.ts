@@ -250,6 +250,79 @@ describe('metro-atlas-runtime-sync', () => {
       }
     });
 
+    it('re-enables after a Metro reload during a capture Atlas owns, even when the saved preference is off', async () => {
+      const store = new Map<string, string>([['@mockifyer/runtime-enabled', 'false']]);
+      const g = globalThis as { localStorage?: unknown };
+      g.localStorage = {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+      };
+      try {
+        type SyncModule = typeof import('@sgedda/mockifyer-core');
+        const launch = (): SyncModule => {
+          let mod: SyncModule | undefined;
+          jest.isolateModules(() => {
+            mod = require('@sgedda/mockifyer-core') as SyncModule;
+          });
+          return mod as SyncModule;
+        };
+
+        let enabled = false;
+        const enableMockifyer = jest.fn(() => {
+          enabled = true;
+        });
+        const disableMockifyer = jest.fn(() => {
+          enabled = false;
+        });
+        const toggle = {
+          enableMockifyer,
+          disableMockifyer,
+          isMockifyerEnabled: () => enabled,
+        };
+
+        const first = launch();
+        first.setRegisteredMockifyerRuntimeToggle(toggle);
+        // App is up and has seen Metro idle, so pressing `t` enables transiently.
+        await first.syncMockifyerFromMetroAtlasSession({
+          metroBaseUrl: 'http://localhost:8081',
+          fetchImpl: idleFetch(),
+        });
+        const started = await first.syncMockifyerFromMetroAtlasSession({
+          metroBaseUrl: 'http://localhost:8081',
+          fetchImpl: capturingFetch(),
+        });
+        expect(started).toBe(true);
+        expect(enableMockifyer).toHaveBeenCalledWith({ transient: true });
+        expect(store.get('@mockifyer/runtime-enabled')).toBe('false');
+        expect(store.get('@mockifyer/atlas-auto-enabled')).toBe('true');
+
+        // Metro reload resets in-memory flags. Mockifyer is off again; capture is still active.
+        enabled = false;
+        const second = launch();
+        second.setRegisteredMockifyerRuntimeToggle(toggle);
+        const resumed = await second.syncMockifyerFromMetroAtlasSession({
+          metroBaseUrl: 'http://localhost:8081',
+          fetchImpl: capturingFetch(),
+        });
+        expect(resumed).toBe(true);
+        expect(enableMockifyer).toHaveBeenCalledTimes(2);
+        expect(enabled).toBe(true);
+        expect(store.get('@mockifyer/runtime-enabled')).toBe('false');
+
+        const stopped = await second.syncMockifyerFromMetroAtlasSession({
+          metroBaseUrl: 'http://localhost:8081',
+          fetchImpl: idleFetch(),
+        });
+        expect(stopped).toBe(true);
+        expect(disableMockifyer).toHaveBeenCalledWith({ transient: true });
+        expect(enabled).toBe(false);
+      } finally {
+        delete g.localStorage;
+      }
+    });
+
     it('does not turn Mockifyer back on at launch when the user saved off and capture is already active', async () => {
       const store = new Map<string, string>([['@mockifyer/runtime-enabled', 'false']]);
       const g = globalThis as { localStorage?: unknown };
