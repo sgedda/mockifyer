@@ -51,7 +51,7 @@ describe('atlas-live-html', () => {
 
     // Recursion: children render through the same list renderer at depth + 1.
     expect(html).toContain('function renderHopList');
-    expect(html).toContain('childrenBlockHtml(requestIdOf(ev), kids, depth + 1)');
+    expect(html).toContain('childrenBlockHtml(nodeKeyOf(ev), kids, depth + 1)');
     // Dedupe is no longer limited to root hops.
     expect(html).toContain('collapseDuplicates && kids.length === 0');
     // Collapsed summaries count the whole subtree, not just direct children.
