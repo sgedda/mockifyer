@@ -13,6 +13,7 @@ import {
   buildDashboardRedisClientOptions,
   resolveDashboardSqlitePath,
 } from './create-dashboard-mock-store';
+import { createSharedStoreCache } from './shared-store-cache';
 
 /**
  * Keep authorization and body previews. The live stream enriches from this store
@@ -483,6 +484,13 @@ class SqliteNetworkLogStore implements NetworkLogStore {
   }
 }
 
+const networkLogStoreCache = createSharedStoreCache<NetworkLogStore>();
+
+/**
+ * Process-wide network log store for the dashboard provider.
+ * Redis/SQLite stores are cached per connection settings: the proxy logs every hop,
+ * and opening a client per request adds a connect round trip to each proxied call.
+ */
 export function createNetworkLogStore(config: DashboardContextConfig): NetworkLogStore {
   if (config.provider === 'redis') {
     const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
@@ -490,14 +498,27 @@ export function createNetworkLogStore(config: DashboardContextConfig): NetworkLo
       throw new Error('Redis provider requires redisUrl or MOCKIFYER_REDIS_URL');
     }
     const redisOptions = buildDashboardRedisClientOptions(config);
-    return new RedisNetworkLogStore(redisUrl, config.keyPrefix, redisOptions);
+    const cluster = redisOptions?.cluster;
+    const key = `redis:${redisUrl}:${cluster ?? 'auto'}:${config.keyPrefix || ''}`;
+    return networkLogStoreCache.getOrCreate(
+      key,
+      () => new RedisNetworkLogStore(redisUrl, config.keyPrefix, redisOptions)
+    );
   }
   if (config.provider === 'sqlite') {
     const dataPath = config.mockDataPath || process.env.MOCKIFYER_PATH || './mock-data';
     const dbPath = resolveDashboardSqlitePath(dataPath, config);
-    return new SqliteNetworkLogStore(dbPath, config.keyPrefix);
+    return networkLogStoreCache.getOrCreate(
+      `sqlite:${dbPath}:${config.keyPrefix || ''}`,
+      () => new SqliteNetworkLogStore(dbPath, config.keyPrefix)
+    );
   }
   return memorySingleton;
+}
+
+/** Close cached Redis/SQLite network log stores (tests / process shutdown). */
+export async function closeCachedNetworkLogStores(): Promise<void> {
+  await networkLogStoreCache.closeAll();
 }
 
 export function newRequestId(): string {

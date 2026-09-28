@@ -351,6 +351,44 @@ describe('ExpoFileSystemProvider', () => {
     });
   });
 
+  describe('mock file index', () => {
+    it('reads scenario files once for repeated misses and serves a saved mock without rescanning', async () => {
+      const other: MockData = {
+        request: { method: 'GET', url: 'https://api.example.com/other', headers: {}, queryParams: {} },
+        response: { status: 200, data: {}, headers: {} },
+        timestamp: new Date().toISOString(),
+      };
+      const text = jest.fn().mockResolvedValue(JSON.stringify(other));
+      const scenarioDir = makeMockDir({ exists: true, listResult: [makeListItem('a.json'), makeListItem('b.json')] });
+      mockFileSystem.Directory = jest.fn().mockImplementation((uri: string) =>
+        String(uri).endsWith('/default') ? scenarioDir : makeMockDir({ exists: true })
+      );
+      mockFileSystem.File = jest.fn().mockImplementation((uri: string) =>
+        /\/(a|b|new[^/]*)\.json$/.test(String(uri)) || String(uri).includes('api.example.com')
+          ? { ...makeMockFile({ exists: true }), text }
+          : makeMockFile({ exists: false })
+      );
+      mockFileSystem.Paths.info = jest.fn().mockImplementation((uri: string) =>
+        String(uri).includes('override') ? { exists: false } : { exists: true, isDirectory: true, modificationTime: 1 }
+      );
+      await provider.initialize();
+
+      const request: StoredRequest = { method: 'GET', url: 'https://api.example.com/new', headers: {}, queryParams: {} };
+      const requestKey = generateRequestKey(request);
+      expect(await provider.findExactMatch(request, requestKey)).toBeUndefined();
+      expect(await provider.findExactMatch(request, requestKey)).toBeUndefined();
+      expect(await provider.findAllForSimilarMatch(request)).toEqual([]);
+      expect(text).toHaveBeenCalledTimes(2);
+
+      const saved: MockData = { request, response: { status: 200, data: { id: 'new' }, headers: {} }, timestamp: new Date().toISOString() };
+      await provider.save(saved);
+      text.mockResolvedValue(JSON.stringify(saved));
+      const hit = await provider.findExactMatch(request, requestKey);
+      expect(hit?.mockData.response.data).toEqual({ id: 'new' });
+      expect(text).toHaveBeenCalledTimes(3);
+    });
+  });
+
   describe('reload', () => {
     it('should clear cache and refresh file list', async () => {
       const dir = makeMockDir({ exists: true, listResult: [] });

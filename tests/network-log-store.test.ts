@@ -1,7 +1,32 @@
 import { createNetworkLogStore } from '../packages/mockifyer-dashboard/src/utils/network-log-store';
+import { createSharedStoreCache } from '../packages/mockifyer-dashboard/src/utils/shared-store-cache';
 import type { DashboardContextConfig } from '../packages/mockifyer-dashboard/src/utils/dashboard-context';
 
 const fsConfig: DashboardContextConfig = { provider: 'filesystem' };
+
+describe('shared-store-cache', () => {
+  function fakeStore() {
+    const dispose = jest.fn(async () => undefined);
+    return { store: { close: dispose }, dispose };
+  }
+
+  it('reuses one store per key and keeps it open across route close()', async () => {
+    const cache = createSharedStoreCache<{ close(): Promise<void> }>();
+    const { store, dispose } = fakeStore();
+    const create = jest.fn(() => store);
+
+    const first = cache.getOrCreate('redis:a', create);
+    await first.close();
+    expect(cache.getOrCreate('redis:a', create)).toBe(first);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(dispose).not.toHaveBeenCalled();
+
+    await cache.closeAll();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    const { store: next } = fakeStore();
+    expect(cache.getOrCreate('redis:a', () => next)).toBe(next);
+  });
+});
 
 describe('network-log-store (memory)', () => {
   it('append and list events in LIFO order', async () => {
