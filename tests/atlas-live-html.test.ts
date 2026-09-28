@@ -3,6 +3,96 @@ import {
   buildAtlasLiveStreamHtml,
 } from '@sgedda/mockifyer-core';
 
+interface FakeElement {
+  innerHTML: string;
+  textContent: string;
+  value: string;
+  hidden: boolean;
+  scrollTop: number;
+  classList: { add(): void; remove(): void; toggle(): void; contains(): boolean };
+  addEventListener(type: string, fn: (e: unknown) => void): void;
+  setAttribute(): void;
+  removeAttribute(): void;
+  getAttribute(): null;
+  focus(): void;
+  click(): void;
+  listeners: Record<string, (e: unknown) => void>;
+}
+
+function fakeElement(): FakeElement {
+  const listeners: Record<string, (e: unknown) => void> = {};
+  return {
+    innerHTML: '',
+    textContent: '',
+    value: '',
+    hidden: false,
+    scrollTop: 0,
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    addEventListener(type, fn) {
+      listeners[type] = fn;
+    },
+    setAttribute() {},
+    removeAttribute() {},
+    getAttribute: () => null,
+    focus() {},
+    click() {
+      listeners.click?.({ preventDefault() {} });
+    },
+    listeners,
+  };
+}
+
+/** Run the live page script against stub DOM + EventSource; returns hooks. */
+function runLivePageScript() {
+  const html = buildAtlasLiveStreamHtml();
+  const script = html.slice(html.indexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
+  const elements = new Map<string, FakeElement>();
+  const byId = (id: string) => {
+    if (!elements.has(id)) elements.set(id, fakeElement());
+    return elements.get(id)!;
+  };
+  const sources: Array<{ listeners: Record<string, (msg: { data: string }) => void> }> = [];
+  class FakeEventSource {
+    listeners: Record<string, (msg: { data: string }) => void> = {};
+    constructor() {
+      sources.push(this);
+    }
+    addEventListener(type: string, fn: (msg: { data: string }) => void) {
+      this.listeners[type] = fn;
+    }
+    close() {}
+  }
+  const documentStub = {
+    hidden: false,
+    documentElement: fakeElement(),
+    body: fakeElement(),
+    getElementById: byId,
+    addEventListener() {},
+    createElement: fakeElement,
+  };
+  const windowStub = { open: () => ({}), confirm: () => true, matchMedia: () => ({ matches: false }) };
+  const storage = { getItem: () => null, setItem() {} };
+  new Function('document', 'window', 'EventSource', 'localStorage', 'navigator', 'fetch', script)(
+    documentStub,
+    windowStub,
+    FakeEventSource,
+    storage,
+    {},
+    () => new Promise(() => {}),
+  );
+  const source = sources[0];
+  source.listeners.hello?.({ data: '{}' });
+  return {
+    emit(type: string, payload: unknown) {
+      source.listeners[type]?.({ data: JSON.stringify(payload) });
+    },
+    expandAll() {
+      byId('btn-expand').click();
+    },
+    hopsHtml: () => byId('hops').innerHTML,
+  };
+}
+
 describe('atlas-live-html', () => {
   it('exposes the Metro live path constant', () => {
     expect(ATLAS_LIVE_STREAM_PATH).toBe('/mockifyer-atlas-live');
@@ -199,6 +289,27 @@ describe('atlas-live-html', () => {
     expect(script.length).toBeGreaterThan(1000);
     // Compiles without executing — throws SyntaxError on a malformed script.
     expect(() => new Function(script)).not.toThrow();
+  });
+
+  it('shows the GraphQL operation name and keeps different operations apart', () => {
+    const page = runLivePageScript();
+    const gql = (id: string, operationName: string) => ({
+      id,
+      requestId: id,
+      method: 'POST',
+      url: 'http://localhost:4000/graphql',
+      path: '/graphql',
+      source: 'upstream',
+      requestBodyPreview: JSON.stringify({ operationName, query: `query ${operationName} { a }` }),
+    });
+
+    page.emit('hop', gql('g1', 'myAccountDeferredBookings'));
+    page.emit('hop', gql('g2', 'homePage'));
+
+    const html = page.hopsHtml();
+    expect(html).toContain('<span class="gql-op" title="GraphQL operation">myAccountDeferredBookings</span>');
+    expect(html).toContain('<span class="gql-op" title="GraphQL operation">homePage</span>');
+    expect(html).not.toContain('×2');
   });
 
   it('honors custom stream/clear paths', () => {
