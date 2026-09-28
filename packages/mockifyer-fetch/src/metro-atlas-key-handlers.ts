@@ -2,14 +2,14 @@
  * Metro terminal keys for Mockifyer:
  * - `t` (default): start/stop Atlas capture (start opens the live stream page;
  *   stop ends capture — generate HTML from the live page “Render docs” button)
- * - `m` (default): open the Mockifyer dashboard in the browser
+ * - dashboard key is off unless `dashboardKey` is set (for example `"m"`)
  *
  * Capture starts only when `t` is pressed. Opening the live page or connecting
  * the SSE stream does not start it. Press `t` again to stop, or use Render docs
  * on the live page without stopping.
  *
  * `a` is reserved by Metro for Android (`i` iOS, `r` reload, `d` Dev Menu, `j` DevTools).
- * Disable Atlas with `atlasKey: false`, dashboard with `dashboardKey: false`.
+ * Disable Atlas with `atlasKey: false`.
  */
 import * as readline from "readline";
 import { spawn } from "child_process";
@@ -52,8 +52,8 @@ export interface AttachMetroAtlasKeyHandlerOptions {
    */
   atlasKey?: AtlasKeyOption;
   /**
-   * Key that opens the dashboard in the browser (default `"m"`).
-   * Pass `false` to disable.
+   * Key that opens the dashboard in the browser.
+   * Off unless set (for example `"m"`). Pass `false` to keep it off.
    */
   dashboardKey?: AtlasKeyOption;
   /**
@@ -131,11 +131,13 @@ export function resolveAtlasKeyOption(
 }
 
 /**
- * Normalize `dashboardKey` option: default `"m"`, `false` → disabled.
+ * Normalize `dashboardKey`. Omitted or `false` → disabled.
+ * An explicit letter (for example `"m"`) opens the dashboard.
  */
 export function resolveDashboardKeyOption(
   dashboardKey?: AtlasKeyOption,
 ): string | null {
+  if (dashboardKey === undefined || dashboardKey === false) return null;
   return resolveKeyOption(dashboardKey, DEFAULT_METRO_DASHBOARD_KEY);
 }
 

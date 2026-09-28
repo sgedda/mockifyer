@@ -23,7 +23,7 @@
  * 19. GET /mockifyer-atlas-trace?id= — re-call a hop with X-Mockifyer-Include-Trace (`&format=html` opens a result tab)
  * 20. GET /mockifyer-atlas-capture — Atlas `t` capture session active flag
  * 21. Metro terminal key `t` — start/stop Atlas capture (start opens live stream; stop ends capture; Render docs on the live page writes HTML; capture does not start until `t`; `atlasKey: false` to disable). `a` is reserved for Android.
- * 22. Metro terminal key `m` — open Mockifyer dashboard in the browser (`dashboardKey: false` to disable)
+ * 22. Optional Metro `dashboardKey` — open the dashboard in the browser (off unless set)
  * 23. On hop ingest / Atlas render — pull nested hops from dashboard `/api/network-events/trace` (remote BFF → dashboard → Atlas)
  *
  * The Hybrid Provider (recommended) uses POST /mockifyer-save for instant file sync.
@@ -102,8 +102,8 @@ export interface MetroSyncMiddlewareOptions {
    */
   atlasKey?: AtlasKeyOption;
   /**
-   * Metro terminal key that opens the dashboard in the browser (default `"m"`).
-   * Pass `false` to disable.
+   * Metro terminal key that opens the dashboard in the browser.
+   * Off unless set (for example `"m"`).
    */
   dashboardKey?: AtlasKeyOption;
   /**

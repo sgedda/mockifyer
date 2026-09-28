@@ -49,8 +49,10 @@ describe('metro-atlas-key-handlers', () => {
   });
 
   describe('resolveDashboardKeyOption', () => {
-    it('defaults to m', () => {
-      expect(resolveDashboardKeyOption()).toBe(DEFAULT_METRO_DASHBOARD_KEY);
+    it('is off unless a key is set', () => {
+      expect(resolveDashboardKeyOption()).toBeNull();
+      expect(resolveDashboardKeyOption(undefined)).toBeNull();
+      expect(resolveDashboardKeyOption('m')).toBe(DEFAULT_METRO_DASHBOARD_KEY);
     });
 
     it('disables with false', () => {
@@ -203,6 +205,26 @@ describe('metro-atlas-key-handlers', () => {
 
       stdin.emit('keypress', 'm', { name: 'm' });
       expect(opened).toEqual(['http://localhost:3002']);
+    });
+
+    it('does not open the dashboard when m is pressed and dashboardKey is unset', () => {
+      const stdin = makeStdin();
+      const opened: string[] = [];
+
+      const attached = attachMetroAtlasKeyHandler({
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        deferMs: 0,
+        openUrl: (url) => {
+          opened.push(url);
+        },
+        onSessionStart: () => undefined,
+        onSessionStop: () => undefined,
+      });
+
+      expect(attached.dashboardKey).toBeNull();
+      stdin.emit('keypress', 'm', { name: 'm' });
+      expect(opened).toEqual([]);
+      expect(getMetroAtlasSessionPhase()).toBe('idle');
     });
 
     it('does not start capture when the hop stream connects', async () => {
