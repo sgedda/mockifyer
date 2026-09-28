@@ -172,7 +172,7 @@ export interface ConfigureMetroOptions {
  *     projectRoot: __dirname,
  *     mockDataPath: './mock-data',
  *     // atlasKey: 't' (default) — Metro terminal: start/stop Atlas (start opens live stream; stop → HTML). `a` is Android.
- *     // dashboardKey: 'm' (default) — open dashboard in browser
+ *     // dashboardKey: 'm' — optional; off unless set. Opens the dashboard in the browser
  *     // dashboardUrl: 'http://localhost:3002' — or MOCKIFYER_DASHBOARD_URL
  *   },
  * });
