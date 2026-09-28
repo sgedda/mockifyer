@@ -16,6 +16,7 @@ import {
   atlasSyntaxHighlightInlineScript,
 } from './atlas-syntax-highlight';
 import { isFetchProxyTwin, NETWORK_EVENT_TWINNED_KEY } from './network-event-twins';
+import { graphqlOperationNameFromBodyText } from './graphql-body-display';
 
 export const ATLAS_LIVE_STREAM_PATH = '/mockifyer-atlas-live';
 
@@ -395,6 +396,7 @@ html[data-theme="dark"] .row { border-radius: 0; }
 .source { color: var(--muted); }
 .host { color: var(--accent); }
 .path { color: var(--ink); }
+.gql-op { color: var(--warn); font-weight: 600; }
 .badge {
   display: inline-block;
   margin-left: 0.35rem;
@@ -526,6 +528,7 @@ kbd {
   var MAX_ROOTS = 200;
   var TWINNED_KEY = ${JSON.stringify(NETWORK_EVENT_TWINNED_KEY)};
   var isFetchProxyTwin = ${isFetchProxyTwin.toString()};
+  var graphqlOperationNameFromBodyText = ${graphqlOperationNameFromBodyText.toString()};
   /** Response-body patches arrive in bursts after capture stops; re-render once per burst. */
   var PATCH_RENDER_DELAY_MS = 150;
 
@@ -659,11 +662,26 @@ kbd {
     return path || "";
   }
 
+  /**
+   * Operation name for GraphQL hops (one /graphql path serves every operation).
+   * Gated on a GraphQL-looking hop so REST bodies mentioning "query" stay blank.
+   */
+  function graphqlOperationOf(ev) {
+    var body = typeof ev.requestBodyPreview === "string" ? ev.requestBodyPreview : "";
+    if (!body) return "";
+    var looksGraphql =
+      /graphql/i.test(hopUrl(ev)) ||
+      body.indexOf('"query"') >= 0 ||
+      body.indexOf("operationName") >= 0;
+    return looksGraphql ? graphqlOperationNameFromBodyText(body) : "";
+  }
+
   function duplicateKey(ev) {
     return [
       (ev.method || "").toUpperCase(),
       hostOf(ev),
       pathWithQuery(ev),
+      graphqlOperationOf(ev),
       ev.status == null ? "" : String(ev.status),
       ev.source || "",
     ].join("|");
@@ -703,6 +721,7 @@ kbd {
       e.host,
       hostOf(e),
       pathWithQuery(e),
+      graphqlOperationOf(e),
       e.guiAttribution,
       e.source,
       e.kind,
@@ -1125,6 +1144,7 @@ kbd {
     // requestId survives a later merge that replaces event.id (proxy twin,
     // dashboard enrich). Tracing the raw event id 404s as "hop not found".
     var hopId = requestIdOf(ev);
+    var gqlOp = graphqlOperationOf(ev);
     var prefix =
       depth > 0
         ? '<span class="tree">' + esc(treeIndent(depth, isLast)) + "</span>"
@@ -1175,6 +1195,7 @@ kbd {
       '<span class="source">' + esc(pad(ev.source || "", 10)) + "</span>  " +
       '<span class="host">' + esc(fit(hostOf(ev) || "-", 22)) + "</span> " +
       '<span class="path">' + esc(pathWithQuery(ev)) + "</span>" +
+      (gqlOp ? ' <span class="gql-op" title="GraphQL operation">' + esc(gqlOp) + "</span>" : "") +
       badges +
       "</div>" +
       links +

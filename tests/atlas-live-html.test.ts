@@ -321,6 +321,27 @@ describe('atlas-live-html', () => {
     expect(html).not.toContain('first-post');
   });
 
+  it('shows the GraphQL operation name and keeps different operations apart', () => {
+    const page = runLivePageScript();
+    const gql = (id: string, operationName: string) => ({
+      id,
+      requestId: id,
+      method: 'POST',
+      url: 'http://localhost:4000/graphql',
+      path: '/graphql',
+      source: 'upstream',
+      requestBodyPreview: JSON.stringify({ operationName, query: `query ${operationName} { a }` }),
+    });
+
+    page.emit('hop', gql('g1', 'myAccountDeferredBookings'));
+    page.emit('hop', gql('g2', 'homePage'));
+
+    const html = page.hopsHtml();
+    expect(html).toContain('<span class="gql-op" title="GraphQL operation">myAccountDeferredBookings</span>');
+    expect(html).toContain('<span class="gql-op" title="GraphQL operation">homePage</span>');
+    expect(html).not.toContain('×2');
+  });
+
   it('honors custom stream/clear paths', () => {
     const html = buildAtlasLiveStreamHtml({
       title: 'Custom Atlas',

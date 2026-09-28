@@ -2,6 +2,7 @@ import { prettyPrintJsonText } from '../packages/mockifyer-core/src/utils/json-p
 import {
   formatGraphqlQueryForDisplay,
   formatGraphqlRequestBodyObject,
+  graphqlOperationNameFromBodyText,
   isGraphqlRequestBodyObject,
   looksLikeGraphqlDisplayText,
   tryFormatGraphqlRequestBodyText,
@@ -10,6 +11,26 @@ import {
 describe('graphql body display', () => {
   const sampleQuery =
     'query myAccountDeferredBookings($limit: Int) {\n  myAccount {\n    customerId\n  }\n}';
+
+  it('reads the operation name from wire JSON, display form, and truncated previews', () => {
+    expect(
+      graphqlOperationNameFromBodyText(
+        JSON.stringify({ operationName: 'myAccountDeferredBookings', query: sampleQuery })
+      )
+    ).toBe('myAccountDeferredBookings');
+    expect(
+      graphqlOperationNameFromBodyText(
+        formatGraphqlRequestBodyObject({ operationName: 'homePage', query: '{ home { id } }' })
+      )
+    ).toBe('homePage');
+    // No operationName field: fall back to the document name, even when cut off.
+    expect(
+      graphqlOperationNameFromBodyText('{"query":"query bookingDetails($id: ID!) { booking(id: $id) { ... [truncated]')
+    ).toBe('bookingDetails');
+    expect(graphqlOperationNameFromBodyText('{"query":"{ viewer { id } }"}')).toBe('');
+    expect(graphqlOperationNameFromBodyText('{"query":"search text"}')).toBe('');
+    expect(graphqlOperationNameFromBodyText(undefined)).toBe('');
+  });
 
   it('formats GraphQL JSON so the query has real newlines', () => {
     const raw = JSON.stringify({
