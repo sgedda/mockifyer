@@ -78,6 +78,9 @@ export function mergeNetworkEventPreferRunnable(
     ...(responseBodyPreview != null ? { responseBodyPreview } : {}),
     requestBodyRef: incoming.requestBodyRef ?? previous.requestBodyRef,
     responseBodyRef: incoming.responseBodyRef ?? previous.responseBodyRef,
+    parentRequestId: incoming.parentRequestId ?? previous.parentRequestId,
+    durationMs: incoming.durationMs ?? previous.durationMs,
+    status: incoming.status ?? previous.status,
   };
 }
 
