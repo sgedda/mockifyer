@@ -590,7 +590,13 @@ kbd {
   }
 
   function startMsOf(ev) {
-    return ev.timestamp ? new Date(ev.timestamp).getTime() : NaN;
+    if (!ev.timestamp) return NaN;
+    var endMs = new Date(ev.timestamp).getTime();
+    if (!isFinite(endMs)) return NaN;
+    if (typeof ev.durationMs === "number" && isFinite(ev.durationMs)) {
+      return endMs - ev.durationMs;
+    }
+    return endMs;
   }
 
   /**
@@ -1447,6 +1453,29 @@ kbd {
     return -1;
   }
 
+  /** Find twin among all occurrences for this requestId. Returns the twin event or null. */
+  function findRootTwin(rid, ev) {
+    var occ = occurrencesByRid.get(rid) || [];
+    for (var i = 0; i < occ.length; i++) {
+      if (isFetchProxyTwin(occ[i].ev, ev)) return occ[i].ev;
+    }
+    return null;
+  }
+
+  /** Find twin among all children under all parent occurrences. Returns {parent, index} or null. */
+  function findChildTwin(parentId, ev) {
+    var parentOcc = occurrencesByRid.get(parentId) || [];
+    for (var p = 0; p < parentOcc.length; p++) {
+      var siblings = childrenByParent.get(parentOcc[p].key) || [];
+      for (var i = 0; i < siblings.length; i++) {
+        if (isFetchProxyTwin(siblings[i], ev)) {
+          return { parentKey: parentOcc[p].key, index: i };
+        }
+      }
+    }
+    return null;
+  }
+
   function ingest(ev) {
     if (!ev || typeof ev !== "object") return;
     if (paused) {
@@ -1458,18 +1487,18 @@ kbd {
     if (!rid) return;
     var parentId = parentIdOf(ev);
     var parentKey = parentId ? parentKeyFor(parentId, startMsOf(ev)) : "";
-    var siblings = parentKey ? childrenByParent.get(parentKey) || [] : [];
-    var twinAt = parentKey ? twinIndex(siblings, ev) : -1;
-    var lastForRid = lastIngestedByRid.get(rid);
-    var rootTwin = !parentId && isFetchProxyTwin(lastForRid || {}, ev);
-    if (twinAt >= 0 || rootTwin) {
+    var childTwin = parentKey ? findChildTwin(parentId, ev) : null;
+    var rootTwin = !parentId ? findRootTwin(rid, ev) : null;
+    if (childTwin || rootTwin) {
       // Same call seen by the service client and the dashboard proxy: keep the proxy record,
       // marked so a later call reusing these hop ids is not folded into it.
-      var prev = parentKey ? siblings[twinAt] : lastForRid;
+      var prev = childTwin ? childrenByParent.get(childTwin.parentKey)[childTwin.index] : rootTwin;
       var kept = ev.transport === "proxy" ? ev : prev;
       kept[TWINNED_KEY] = true;
       if (kept === ev) {
-        if (twinAt >= 0) siblings[twinAt] = ev;
+        if (childTwin) {
+          childrenByParent.get(childTwin.parentKey)[childTwin.index] = ev;
+        }
         replaceOccurrenceEvent(prev, ev);
         render();
       }
@@ -1479,7 +1508,7 @@ kbd {
     if (parentKey) {
       // addOccurrence may have re-filed this parent's children; pick the list again.
       parentKey = parentKeyFor(parentId, startMsOf(ev));
-      siblings = childrenByParent.get(parentKey) || [];
+      var siblings = childrenByParent.get(parentKey) || [];
       siblings.push(ev);
       childrenByParent.set(parentKey, siblings);
     } else {
