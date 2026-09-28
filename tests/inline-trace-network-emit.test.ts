@@ -1,3 +1,4 @@
+import http from 'http';
 import {
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
@@ -5,11 +6,24 @@ import {
   clearFlightRecorder,
   configureFlightRecorder,
   resolveNetworkLogIncludeTraceOptions,
+  resolveNetworkLogIncludeTraceOptionsAsync,
   setMetroAtlasCaptureSessionActive,
   isMetroAtlasCaptureSessionActive,
   unwrapInlineTraceEnvelopeEmittingNetworkEvents,
   __flightRecorderBuffersForTests,
 } from '../packages/mockifyer-core/src';
+
+const ATLAS_CAPTURE_SESSION_KEY = Symbol.for(
+  '@sgedda/mockifyer-core.metroAtlasCaptureSession'
+);
+
+/** Force the next capture-session refresh to run (TTL starts at 0, no in-flight poll). */
+function resetAtlasCaptureSessionCache(): void {
+  (globalThis as Record<symbol, unknown>)[ATLAS_CAPTURE_SESSION_KEY] = {
+    active: false,
+    lastSyncedAtMs: 0,
+  };
+}
 
 describe('networkLog includeTraceHeader wiring', () => {
   beforeEach(() => {
@@ -49,6 +63,70 @@ describe('networkLog includeTraceHeader wiring', () => {
       ).toEqual({ includeInlineTrace: true, includeInlineTraceBodies: true });
     } finally {
       setMetroAtlasCaptureSessionActive(wasActive);
+    }
+  });
+
+  it('resolveNetworkLogIncludeTraceOptionsAsync does not wait on a hung Metro poll', async () => {
+    const previousStream = process.env.MOCKIFYER_METRO_STREAM;
+    const previousUrl = process.env.MOCKIFYER_METRO_URL;
+    let requestReceived = false;
+    const server = http.createServer((_req, res) => {
+      requestReceived = true;
+      void res;
+      // Never respond — models Metro blocked or a blackholed localhost:8081.
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('test server failed to bind');
+      }
+      process.env.MOCKIFYER_METRO_STREAM = 'on';
+      process.env.MOCKIFYER_METRO_URL = `http://127.0.0.1:${address.port}`;
+      resetAtlasCaptureSessionCache();
+
+      const started = Date.now();
+      const result = await resolveNetworkLogIncludeTraceOptionsAsync({});
+      const elapsedMs = Date.now() - started;
+
+      expect(result).toEqual({
+        includeInlineTrace: false,
+        includeInlineTraceBodies: false,
+      });
+      expect(elapsedMs).toBeLessThan(250);
+
+      const sawPoll = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(requestReceived), 1_000);
+        if (requestReceived) {
+          clearTimeout(timer);
+          resolve(true);
+          return;
+        }
+        server.once('request', () => {
+          clearTimeout(timer);
+          resolve(true);
+        });
+      });
+      expect(sawPoll).toBe(true);
+    } finally {
+      if (previousStream === undefined) {
+        delete process.env.MOCKIFYER_METRO_STREAM;
+      } else {
+        process.env.MOCKIFYER_METRO_STREAM = previousStream;
+      }
+      if (previousUrl === undefined) {
+        delete process.env.MOCKIFYER_METRO_URL;
+      } else {
+        process.env.MOCKIFYER_METRO_URL = previousUrl;
+      }
+      setMetroAtlasCaptureSessionActive(false);
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
     }
   });
 
