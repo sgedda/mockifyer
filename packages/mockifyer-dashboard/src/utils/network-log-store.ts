@@ -1,9 +1,10 @@
 import * as crypto from 'crypto';
 import {
   buildNetworkEvent,
-  NETWORK_LOG_ATLAS_MAX_EVENT_BYTES,
   NETWORK_LOG_DEFAULT_MAX_EVENTS,
   NETWORK_LOG_DEFAULT_TTL_SEC,
+  NETWORK_LOG_STORE_MAX_EVENT_BYTES,
+  NETWORK_LOG_STORE_MAX_LIST_BYTES,
   parseNetworkLogIntEnv,
   ResilientIoRedisClient,
   type NetworkEvent,
@@ -16,9 +17,12 @@ import {
 import { createSharedStoreCache } from './shared-store-cache';
 
 /**
- * Keep authorization and body previews. The live stream enriches from this store
- * and rebuilds curl; redacting here makes those commands unusable.
+ * Keep authorization and the request body preview so the live stream can rebuild curl.
+ * Response bodies are stored only when the scenario enables `captureBodies`; otherwise
+ * readers resolve them from the recorded mock by `requestHash`.
  * Query secrets in the URL are still masked by {@link buildNetworkEvent}.
+ * Request headers are never truncated. Over the ring budget, body previews shrink
+ * and response headers are dropped first.
  */
 function buildStoredNetworkEvent(
   partial: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'> & {
@@ -28,12 +32,70 @@ function buildStoredNetworkEvent(
   },
   captureBodiesConfig: boolean
 ): NetworkEvent {
-  const hasPreview = Boolean(partial.requestBodyPreview || partial.responseBodyPreview);
-  return buildNetworkEvent(partial, {
-    captureBodies: captureBodiesConfig || hasPreview,
-    redactSensitiveHeaders: false,
-    maxEventBytes: NETWORK_LOG_ATLAS_MAX_EVENT_BYTES,
-  });
+  const responseBody = captureBodiesConfig
+    ? {}
+    : {
+        responseBodyPreview: undefined,
+        responseBodyRef: undefined,
+        responseBodyTruncated: undefined,
+      };
+  return buildNetworkEvent(
+    { ...partial, ...responseBody },
+    {
+      captureBodies: captureBodiesConfig || Boolean(partial.requestBodyPreview),
+      redactSensitiveHeaders: false,
+      maxEventBytes: NETWORK_LOG_STORE_MAX_EVENT_BYTES,
+    }
+  );
+}
+
+/** Newest-first trim by count and approximate JSON payload bytes. */
+function trimNewestFirst(
+  events: NetworkEvent[],
+  maxCount: number,
+  maxBytes: number
+): NetworkEvent[] {
+  const kept: NetworkEvent[] = [];
+  let used = 0;
+  for (const event of events) {
+    if (kept.length >= maxCount) break;
+    const size = Buffer.byteLength(JSON.stringify(event), 'utf8');
+    if (kept.length > 0 && used + size > maxBytes) break;
+    kept.push(event);
+    used += size;
+  }
+  return kept;
+}
+
+/** How many oldest rows one append may drop. Traffic drains a full list across requests. */
+const REDIS_LIST_TRIM_POPS_PER_APPEND = 64;
+
+/**
+ * Drop oldest list entries until Redis `MEMORY USAGE` is within `maxBytes`.
+ * No-op when the command is unavailable. Existing fat rows shrink on the next appends.
+ */
+async function trimRedisListToByteBudget(
+  redis: {
+    call: (command: string, ...args: string[]) => Promise<unknown>;
+    rpop: (key: string) => Promise<string | null>;
+  },
+  listKey: string,
+  maxBytes: number,
+  maxPops: number
+): Promise<void> {
+  if (maxBytes <= 0 || maxPops <= 0) return;
+  for (let i = 0; i < maxPops; i++) {
+    let usage: unknown;
+    try {
+      usage = await redis.call('MEMORY', 'USAGE', listKey);
+    } catch {
+      return;
+    }
+    const bytes = typeof usage === 'number' ? usage : Number(usage);
+    if (!Number.isFinite(bytes) || bytes <= maxBytes) return;
+    const removed = await redis.rpop(listKey);
+    if (removed == null) return;
+  }
 }
 
 export interface NetworkLogScenarioConfig {
@@ -73,6 +135,13 @@ function maxEvents(): number {
 
 function ttlSec(): number {
   return parseNetworkLogIntEnv(process.env.MOCKIFYER_NETWORK_LOG_TTL_SEC, NETWORK_LOG_DEFAULT_TTL_SEC);
+}
+
+function maxListBytes(): number {
+  return parseNetworkLogIntEnv(
+    process.env.MOCKIFYER_NETWORK_LOG_MAX_LIST_BYTES,
+    NETWORK_LOG_STORE_MAX_LIST_BYTES
+  );
 }
 
 function filterSince(events: NetworkEvent[], since?: string): NetworkEvent[] {
@@ -131,10 +200,7 @@ class MemoryNetworkLogStore implements NetworkLogStore {
     const key = this.bufferKey(scenario);
     const buf = this.buffers.get(key) ?? [];
     buf.unshift(event);
-    if (buf.length > this.max) {
-      buf.length = this.max;
-    }
-    this.buffers.set(key, buf);
+    this.buffers.set(key, trimNewestFirst(buf, this.max, maxListBytes()));
     return event;
   }
 
@@ -232,14 +298,16 @@ class RedisNetworkLogStore implements NetworkLogStore {
 
     const listKey = this.eventsKey(scenario);
     const payload = JSON.stringify(event);
-    await this.holder.run((redis) =>
-      redis
+    const listBudget = maxListBytes();
+    await this.holder.run(async (redis) => {
+      await redis
         .multi()
         .lpush(listKey, payload)
         .ltrim(listKey, 0, this.max - 1)
         .expire(listKey, this.ttl)
-        .exec()
-    );
+        .exec();
+      await trimRedisListToByteBudget(redis, listKey, listBudget, REDIS_LIST_TRIM_POPS_PER_APPEND);
+    });
 
     return event;
   }
@@ -411,10 +479,29 @@ class SqliteNetworkLogStore implements NetworkLogStore {
          SELECT id FROM network_log_events WHERE scenario = ? ORDER BY id DESC LIMIT ?
        )`
     );
+    const listBudget = maxListBytes();
+    const oversized = this.db.prepare(
+      `SELECT id, length(cast(payload as blob)) AS n
+       FROM network_log_events WHERE scenario = ? ORDER BY id DESC`
+    );
+    const dropOne = this.db.prepare(`DELETE FROM network_log_events WHERE id = ?`);
     const run = this.db.transaction(() => {
       purge.run(sc, minTs);
       insert.run(sc, JSON.stringify(event), now);
       trim.run(sc, sc, this.max);
+      const rows = oversized.all(sc) as Array<{ id: number; n: number }>;
+      let used = 0;
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        const size = typeof row.n === 'number' ? row.n : 0;
+        if (index > 0 && used + size > listBudget) {
+          for (let drop = index; drop < rows.length; drop++) {
+            dropOne.run(rows[drop].id);
+          }
+          break;
+        }
+        used += size;
+      }
     });
     run();
     return event;
