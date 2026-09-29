@@ -248,6 +248,28 @@ export function flushNetworkBodySpillsToDir(atlasHtmlDir: string): number {
   return written;
 }
 
+/** Normalized `bodies/<name>.json|txt` path, or undefined when unsafe. */
+function normalizeSpillRelPath(relativePath: string): string | undefined {
+  const rel = relativePath.trim().replace(/^\/+/, '').replace(/\\/g, '/');
+  if (!rel || rel.includes('..') || !rel.startsWith('bodies/') || !/\.(json|txt)$/.test(rel)) {
+    return undefined;
+  }
+  return rel;
+}
+
+/**
+ * Keep a body in the in-memory spill buffer without touching disk.
+ * Metro uses this for device uploads so hops never write into the watched
+ * project tree; {@link flushNetworkBodySpillsToDir} persists them on Render.
+ * @returns the normalized relative path, or undefined when the path is unsafe
+ */
+export function bufferNetworkBodySpill(relativePath: string, text: string): string | undefined {
+  const rel = normalizeSpillRelPath(relativePath);
+  if (!rel || typeof text !== 'string' || !text) return undefined;
+  rememberInBuffer(rel, text);
+  return rel;
+}
+
 /**
  * Apply a spill map onto disk (Metro render payload).
  */
@@ -259,10 +281,8 @@ export function writeNetworkBodySpillMap(
   if (!root || !spills || !fs || !pathMod) return 0;
   let written = 0;
   for (const [relativePath, text] of Object.entries(spills)) {
-    const rel = relativePath.trim().replace(/^\/+/, '').replace(/\\/g, '/');
-    if (!rel || rel.includes('..') || !rel.startsWith('bodies/') || !/\.(json|txt)$/.test(rel)) {
-      continue;
-    }
+    const rel = normalizeSpillRelPath(relativePath);
+    if (!rel) continue;
     if (typeof text !== 'string') continue;
     if (writeSpillLocal(root, rel, text)) {
       written += 1;

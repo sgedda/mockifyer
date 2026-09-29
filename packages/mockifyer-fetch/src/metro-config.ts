@@ -58,6 +58,7 @@ export interface MetroConfig {
     ) => { filePath: string; type: string } | null | undefined;
     extraNodeModules?: Record<string, string>;
     nodeModulesPaths?: string[];
+    blockList?: RegExp | RegExp[];
   };
   watchFolders?: string[];
   transformer?: any;
@@ -119,6 +120,33 @@ function resolveMockifyerCoreReactNativeEntry(
   } catch {
     return null;
   }
+}
+
+const ATLAS_HTML_DIR_NAME = 'atlas-html';
+const DEFAULT_MOCK_DATA_PATH = 'mock-data';
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Regex for `<projectRoot>/<mockDataPath>/atlas-html/…`. Atlas renders and snapshots
+ * write there; without the block every write makes Metro send a fast-refresh update.
+ */
+export function atlasHtmlBlockListPattern(projectRoot: string, mockDataPath: string): RegExp {
+  const path = require('path') as typeof import('path');
+  const dir = path.resolve(projectRoot, mockDataPath, ATLAS_HTML_DIR_NAME);
+  const separators = '[\\\\/]';
+  const body = dir.split(/[\\/]+/).map(escapeRegExp).join(separators);
+  return new RegExp(`^${body}${separators}.*$`);
+}
+
+function appendBlockList(
+  existing: RegExp | RegExp[] | undefined,
+  pattern: RegExp
+): RegExp[] {
+  if (!existing) return [pattern];
+  return [...(Array.isArray(existing) ? existing : [existing]), pattern];
 }
 
 /**
@@ -268,7 +296,7 @@ export function configureMetroForMockifyer(
       const { createMockSyncMiddleware } = require('./metro-sync-middleware');
       const syncMiddleware = createMockSyncMiddleware({
         projectRoot: options.syncMiddleware.projectRoot || process.cwd(),
-        mockDataPath: options.syncMiddleware.mockDataPath || 'mock-data',
+        mockDataPath: options.syncMiddleware.mockDataPath || DEFAULT_MOCK_DATA_PATH,
         testGeneration: options.syncMiddleware.testGeneration,
         atlasKey: options.syncMiddleware.atlasKey,
         dashboardKey: options.syncMiddleware.dashboardKey,
@@ -311,7 +339,7 @@ export function configureMetroForMockifyer(
       const { startAutoSync } = require('./metro-sync-middleware');
       const intervalMs = options.autoSync.intervalMs || 5000;
       const projectRoot = options.autoSync.projectRoot || process.cwd();
-      const mockDataPath = options.autoSync.mockDataPath || 'mock-data';
+      const mockDataPath = options.autoSync.mockDataPath || DEFAULT_MOCK_DATA_PATH;
 
       startAutoSync(intervalMs, {
         projectRoot,
@@ -323,11 +351,23 @@ export function configureMetroForMockifyer(
     }
   }
 
+  const syncOptions = options?.syncMiddleware;
+  const blockList = syncOptions
+    ? appendBlockList(
+        existingResolver.blockList,
+        atlasHtmlBlockListPattern(
+          syncOptions.projectRoot || process.cwd(),
+          syncOptions.mockDataPath || DEFAULT_MOCK_DATA_PATH
+        )
+      )
+    : existingResolver.blockList;
+
   // Merge config with new resolver
   return {
     ...config,
     resolver: {
       ...existingResolver,
+      ...(blockList ? { blockList } : {}),
       resolveRequest: newResolveRequest,
     },
   };
