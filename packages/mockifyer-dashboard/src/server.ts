@@ -16,6 +16,7 @@ import { fixturePoolRouter } from './routes/fixture-pool';
 import { atlasRouter } from './routes/atlas';
 import overrideGroupsRouter from './routes/override-groups';
 import { favoritesRouter } from './routes/favorites';
+import { memoryRouter } from './routes/memory';
 import { dashboardApiNoCache } from './utils/api-no-cache';
 import {
   attachDashboardContext,
@@ -106,10 +107,11 @@ export function createServer(
   app.use('/api/atlas', atlasRouter);
   app.use('/api/override-groups', overrideGroupsRouter);
   app.use('/api/favorites', favoritesRouter);
+  app.use('/api/memory', memoryRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites, /api/memory'
   );
 
   // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
@@ -146,7 +148,7 @@ export function createServer(
    * Keep page names in sync with frontend `DASHBOARD_PAGE_SUFFIXES` (includes `/mock`).
    */
   const spaPageAssetPrefix =
-    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|api-reference|settings)\/assets\//;
+    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|api-reference|settings|memory)\/assets\//;
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return next();

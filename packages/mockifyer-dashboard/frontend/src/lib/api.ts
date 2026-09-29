@@ -945,11 +945,12 @@ export async function getNetworkEvents(params: {
   return response.json()
 }
 
-export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<void> {
+export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<{ ok: boolean; removed: number }> {
   const qs = new URLSearchParams({ scenario })
   if (clientId) qs.set('clientId', clientId)
   const response = await fetchApi(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
   if (!response.ok) throw new Error('Failed to clear network events')
+  return response.json()
 }
 
 export async function getNetworkLogConfig(scenario: string): Promise<NetworkLogConfig & { scenario: string }> {
@@ -1182,6 +1183,17 @@ export async function promoteFixturePoolResponse(body: {
   })
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Failed to promote response'))
+  }
+  return response.json()
+}
+
+export async function getMemoryStats(scenario?: string): Promise<import('@/types').MemoryStats> {
+  const url = scenario
+    ? `${API_BASE}/memory?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/memory`
+  const response = await fetchApi(url, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load memory statistics'))
   }
   return response.json()
 }
