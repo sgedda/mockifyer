@@ -401,6 +401,30 @@ describe('network-body-spill', () => {
     }
   });
 
+  it('bufferNetworkBodySpill keeps bodies in memory until flush', () => {
+    const {
+      bufferNetworkBodySpill,
+      flushNetworkBodySpillsToDir,
+      getNetworkBodySpillSnapshot,
+      resetNetworkBodySpillRuntime,
+    } = require('../packages/mockifyer-core/src/utils/network-body-spill') as typeof import('../packages/mockifyer-core/src/utils/network-body-spill');
+
+    resetNetworkBodySpillRuntime();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-body-buffer-'));
+    try {
+      expect(bufferNetworkBodySpill('/bodies/hop-1-res.json', '{"a":1}')).toBe('bodies/hop-1-res.json');
+      expect(bufferNetworkBodySpill('bodies/../escape-res.json', '{}')).toBeUndefined();
+      expect(bufferNetworkBodySpill('other/hop-res.json', '{}')).toBeUndefined();
+      expect(getNetworkBodySpillSnapshot()['bodies/hop-1-res.json']).toBe('{"a":1}');
+      expect(fs.existsSync(path.join(dir, 'bodies'))).toBe(false);
+      expect(flushNetworkBodySpillsToDir(dir)).toBe(1);
+      expect(fs.readFileSync(path.join(dir, 'bodies/hop-1-res.json'), 'utf8')).toBe('{"a":1}');
+    } finally {
+      resetNetworkBodySpillRuntime();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('prettyPrintJsonText indents compact and soft-pretties truncated JSON', () => {
     const { prettyPrintJsonText } =
       require('../packages/mockifyer-core/src/utils/json-pretty') as typeof import('../packages/mockifyer-core/src/utils/json-pretty');

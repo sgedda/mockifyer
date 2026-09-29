@@ -12,7 +12,7 @@
  * 8. GET /atlas-html[/…] (legacy: /mockifyer-atlas-html[/…]) — serve atlas-html static files (index.html, pages, incidents, screenshots)
  * 9. POST /mockifyer-atlas-screenshot — write screen image (png/jpg/webp) under mock-data/atlas-html/screenshots/
  * 10. POST /mockifyer-atlas-render — write full interactive Atlas HTML under mock-data/atlas-html/
- * 11. POST /mockifyer-atlas-body-spill — write full hop body text under mock-data/atlas-html/bodies/
+ * 11. POST /mockifyer-atlas-body-spill — hold full hop body text in Metro memory (written to mock-data/atlas-html/bodies/ on Render)
  * 12. POST/GET /mockifyer-network-events — live hop ring buffer for `mockifyer-atlas` CLI
  * 13. GET /mockifyer-network-events/stream — SSE hop stream
  * 14. GET /mockifyer-network-events/analyze — hop summary JSON
@@ -55,10 +55,9 @@ import {
   flushAtlasDocHtmlRewrite,
   setAtlasDocHtmlOutputPath,
   writeAtlasDocHtml,
-  writeNetworkBodySpillMap,
+  bufferNetworkBodySpill,
   flushNetworkBodySpillsToDir,
   getNetworkBodySpillSnapshot,
-  prettyPrintJsonText,
   setAtlasDocMap,
   type AtlasDocMap,
   type NetworkEvent,
@@ -226,8 +225,7 @@ async function enrichMetroBufferFromDashboard(options: {
 
     let added = 0;
     for (const child of children) {
-      const stored = buffer.append(child);
-      appendNetworkEventNdjson(options.mockDataPath, stored);
+      buffer.append(child);
       added += 1;
     }
     return added;
@@ -1259,9 +1257,8 @@ const BODY_SPILL_REL_PATTERN =
   /^bodies\/[A-Za-z0-9._-]+-(req|res)\.(json|txt)$/;
 
 /**
- * Locate a full body on disk or in the Metro spill buffer.
- * Writes a buffer hit for *this* hop only — never flushes the whole spill map
- * (that blocked Metro for seconds on every req/res/trace click).
+ * Locate a full body in the Metro spill buffer or on disk (after a Render).
+ * Never writes: files under the project tree trigger Metro fast refresh.
  */
 function findExistingBodyFile(options: {
   projectRoot: string;
@@ -1288,20 +1285,7 @@ function findExistingBodyFile(options: {
 
     const fromBuffer = snapshot[rel];
     if (typeof fromBuffer === "string" && fromBuffer.length > 0) {
-      const saved = saveAtlasBodySpill(
-        options.projectRoot,
-        options.mockDataPath,
-        rel,
-        fromBuffer,
-      );
-      if (saved.success && saved.filePath) {
-        return { abs: saved.filePath, rel, text: fromBuffer };
-      }
-      return {
-        abs,
-        rel,
-        text: fromBuffer,
-      };
+      return { abs, rel, text: fromBuffer };
     }
     if (fs.existsSync(abs)) {
       return { abs, rel };
@@ -1383,21 +1367,19 @@ function formatCapturedTraceLines(
 }
 
 /**
- * Persist a full hop body spill from the device (RN) under atlas-html/bodies/.
+ * Hold a full hop body from the device (RN) in Metro memory.
+ * Written under atlas-html/bodies/ only when Atlas HTML is rendered.
  */
-function saveAtlasBodySpill(
-  projectRoot: string,
-  mockDataPath: string,
+export function bufferAtlasBodySpill(
   relativePath: string,
   text: string,
 ): {
   success: boolean;
-  filePath?: string;
   relativePath?: string;
   error?: string;
 } {
   const rel = relativePath.trim().replace(/^\/+/, "").replace(/\\/g, "/");
-  if (!rel || typeof text !== "string") {
+  if (!rel || typeof text !== "string" || !text) {
     return { success: false, error: "relativePath and text are required" };
   }
   if (rel.includes("..") || !BODY_SPILL_REL_PATTERN.test(rel)) {
@@ -1407,20 +1389,11 @@ function saveAtlasBodySpill(
         "relativePath must be bodies/<id>-req.json or bodies/<id>-res.json",
     };
   }
-  try {
-    const filePath = path.join(mockDataPath, "atlas-html", rel);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const body = rel.endsWith(".json") ? prettyPrintJsonText(text) : text;
-    fs.writeFileSync(filePath, body, "utf8");
-    const relativeFromRoot = path.relative(projectRoot, filePath);
-    return {
-      success: true,
-      filePath,
-      relativePath: relativeFromRoot.split(path.sep).join("/"),
-    };
-  } catch (error) {
-    return { success: false, error: (error as Error).message };
+  const buffered = bufferNetworkBodySpill(rel, text);
+  if (!buffered) {
+    return { success: false, error: "body could not be buffered" };
   }
+  return { success: true, relativePath: buffered };
 }
 
 const ATLAS_HTML_CONTENT_TYPES: Record<string, string> = {
@@ -1520,21 +1493,6 @@ function serveAtlasHtmlStatic(
   res.setHeader("Cache-Control", "no-cache");
   res.end(fs.readFileSync(filePath));
   return true;
-}
-
-const NETWORK_STREAM_NDJSON_REL = path.join("atlas-html", "atlas.ndjson");
-
-function appendNetworkEventNdjson(
-  mockDataPath: string,
-  event: NetworkEvent,
-): void {
-  try {
-    const filePath = path.join(mockDataPath, NETWORK_STREAM_NDJSON_REL);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.appendFileSync(filePath, `${JSON.stringify(event)}\n`, "utf8");
-  } catch {
-    // disk append is best-effort
-  }
 }
 
 function writeNetworkEventsSnapshot(
@@ -1881,11 +1839,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             return;
           }
           const buffer = getMetroNetworkEventBuffer();
-          const saved = incoming.map((e) => {
-            const stored = buffer.append(e);
-            appendNetworkEventNdjson(mockDataPath, stored);
-            return stored;
-          });
+          const saved = incoming.map((e) => buffer.append(e));
           const dashboardBaseUrl = resolveAtlasEnrichmentDashboardUrl(
             options?.dashboardUrl,
             parsed.dashboardBaseUrl,
@@ -2430,12 +2384,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           const relativePath =
             typeof parsed.relativePath === "string" ? parsed.relativePath : "";
           const text = typeof parsed.text === "string" ? parsed.text : "";
-          const result = saveAtlasBodySpill(
-            projectRoot,
-            mockDataPath,
-            relativePath,
-            text,
-          );
+          const result = bufferAtlasBodySpill(relativePath, text);
           res.setHeader("Content-Type", "application/json");
           res.statusCode = result.success ? 201 : 400;
           res.end(JSON.stringify(result));
@@ -2497,10 +2446,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
           setAtlasDocMap(doc);
           setAtlasDocHtmlOutputPath(outDir);
-          const spillWritten = writeNetworkBodySpillMap(
-            outDir,
-            parsed.bodySpills,
-          );
+          for (const [rel, text] of Object.entries(parsed.bodySpills ?? {})) {
+            if (typeof text === "string") bufferNetworkBodySpill(rel, text);
+          }
+          const spillWritten = flushNetworkBodySpillsToDir(outDir);
           const events = Array.isArray(parsed.events) ? parsed.events : [];
           const written = writeAtlasDocHtml(outDir, doc, events);
           const relativeFromRoot = path
