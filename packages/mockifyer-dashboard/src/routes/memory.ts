@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentScenario, getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, getScenarioFolderPath, listScenarios } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
@@ -126,13 +126,7 @@ router.get('/', async (req: Request, res: Response) => {
         await store.close().catch(() => undefined);
       }
     } else {
-      if (fs.existsSync(mockDataPath)) {
-        const entries = fs.readdirSync(mockDataPath, { withFileTypes: true });
-        scenarios = entries
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name)
-          .filter((name) => !name.startsWith('.'));
-      }
+      scenarios = listScenarios(mockDataPath);
     }
 
     const scenarioStats: ScenarioMemoryStats[] = [];
