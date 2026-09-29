@@ -57,6 +57,7 @@ import {
   writeAtlasDocHtml,
   bufferNetworkBodySpill,
   flushNetworkBodySpillsToDir,
+  writeNetworkBodySpillMap,
   getNetworkBodySpillSnapshot,
   setAtlasDocMap,
   type AtlasDocMap,
@@ -2446,10 +2447,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
           setAtlasDocMap(doc);
           setAtlasDocHtmlOutputPath(outDir);
-          for (const [rel, text] of Object.entries(parsed.bodySpills ?? {})) {
-            if (typeof text === "string") bufferNetworkBodySpill(rel, text);
-          }
-          const spillWritten = flushNetworkBodySpillsToDir(outDir);
+          const spillWritten = writeNetworkBodySpillMap(outDir, parsed.bodySpills);
           const events = Array.isArray(parsed.events) ? parsed.events : [];
           const written = writeAtlasDocHtml(outDir, doc, events);
           const relativeFromRoot = path
