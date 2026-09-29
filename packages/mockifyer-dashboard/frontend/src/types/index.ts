@@ -339,3 +339,24 @@ export interface NetworkEventsResponse {
   events: NetworkEvent[]
 }
 
+export interface ScenarioMemoryStats {
+  scenario: string
+  mocksCount: number
+  mocksSize: number
+  networkEventsCount: number
+  networkEventsSize: number
+  totalSize: number
+}
+
+export interface MemoryStats {
+  currentScenario: string
+  scenarios: ScenarioMemoryStats[]
+  summary: {
+    totalMocksCount: number
+    totalMocksSize: number
+    totalNetworkEventsCount: number
+    totalNetworkEventsSize: number
+    totalSize: number
+  }
+}
+
