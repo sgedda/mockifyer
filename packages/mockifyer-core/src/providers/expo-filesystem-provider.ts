@@ -658,8 +658,9 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     if (!mockData?.request || typeof mockData.request !== 'object') {
       return;
     }
-    // If no index exists, trigger a build so this file is included
-    const pending = this.mockFileIndexPromise ?? this.getMockFileIndex();
+    // Chain onto the raw build promise. Do not await the read-side follower:
+    // that follower waits for this chain, and awaiting it here would deadlock.
+    const pending = this.ensureMockFileIndex();
     this.mockFileIndexPromise = pending.then((index) => {
       if (index.scenarioPath === scenarioPath) {
         index.upsert(file, mockData.request);
@@ -668,9 +669,30 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     });
   }
 
-  private getMockFileIndex(): Promise<MockFileIndex> {
+  /** Start (or return) the in-flight index build. Callers that serve traffic use {@link readSettledMockFileIndex}. */
+  private ensureMockFileIndex(): Promise<MockFileIndex> {
     this.mockFileIndexPromise ??= this.buildMockFileIndex();
     return this.mockFileIndexPromise;
+  }
+
+  /**
+   * Index to serve a lookup from. A save that lands while the folder scan is in
+   * flight chains an upsert onto the build promise; a lookup that already awaited
+   * the build would otherwise miss that file and call the real API.
+   * File-change checks can also drop the promise; follow the replacement.
+   */
+  private async readSettledMockFileIndex(): Promise<MockFileIndex> {
+    let pending = this.ensureMockFileIndex();
+    for (;;) {
+      const index = await pending;
+      const latest = this.mockFileIndexPromise;
+      if (latest === pending) return index;
+      if (!latest) {
+        pending = this.ensureMockFileIndex();
+        continue;
+      }
+      pending = latest;
+    }
   }
 
   private async buildMockFileIndex(): Promise<MockFileIndex> {
@@ -905,7 +927,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       return undefined;
     }
 
-    const index = await this.getMockFileIndex();
+    const index = await this.readSettledMockFileIndex();
 
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
@@ -996,7 +1018,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       await this.checkForFileChanges();
     }
     
-    const index = await this.getMockFileIndex();
+    const index = await this.readSettledMockFileIndex();
     const scenarioPath = this.getScenarioPath();
     
     // Hydrate override groups for this scenario before matching
