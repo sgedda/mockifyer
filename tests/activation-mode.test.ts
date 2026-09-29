@@ -54,7 +54,7 @@ describe('activation-mode', () => {
     expect(getOutboundMockifyerDeviceIdHeader(h)).toBe('ulid-xyz');
   });
 
-  it('shouldApplyMockifyer client_id_header requires the outbound header, inbound lane, or a proxy lane', () => {
+  it('shouldApplyMockifyer client_id_header requires the outbound header or an inbound lane', () => {
     expect(shouldApplyMockifyer('client_id_header', {})).toBe(false);
     expect(shouldApplyMockifyer('client_id_header', { 'x-mockifyer-client-id': 'x' })).toBe(true);
     expect(
@@ -66,16 +66,6 @@ describe('activation-mode', () => {
       runWithMockifyerHopContext({ inboundClientId: '   ' }, () =>
         shouldApplyMockifyer('client_id_header', {})
       )
-    ).toBe(false);
-    expect(
-      shouldApplyMockifyer('client_id_header', {}, {
-        useProxyLane: { proxyBaseUrl: 'http://localhost:3002', resolvedClientId: 'rn-lane' },
-      })
-    ).toBe(true);
-    expect(
-      shouldApplyMockifyer('client_id_header', {}, {
-        useProxyLane: { proxyBaseUrl: 'http://localhost:3002', resolvedClientId: '   ' },
-      })
     ).toBe(false);
   });
 
