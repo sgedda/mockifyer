@@ -30,6 +30,24 @@ export function looksLikeGraphqlDisplayText(text: string): boolean {
   return /^(#\s*operationName:|(query|mutation|subscription)\b)/.test(t);
 }
 
+/**
+ * GraphQL operation name from a request body preview: wire JSON, display form
+ * (`# operationName: X`), or a truncated preview that no longer parses. Falls
+ * back to the name in the query document. Empty string when there is none.
+ *
+ * Self-contained on purpose: the Atlas live page embeds this function's source.
+ */
+export function graphqlOperationNameFromBodyText(text: string | null | undefined): string {
+  const body = typeof text === 'string' ? text : '';
+  if (!body) return '';
+  const explicit =
+    /"operationName"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"/.exec(body) ||
+    /^\s*#\s*operationName:\s*([A-Za-z_][A-Za-z0-9_]*)/m.exec(body);
+  if (explicit) return explicit[1];
+  const fromDocument = /(?:^|[\s"{])(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(body);
+  return fromDocument ? fromDocument[2] : '';
+}
+
 /** Soft-indent a single-line GraphQL document for display (brace-based only). */
 export function softIndentGraphqlQuery(query: string): string {
   let out = '';
