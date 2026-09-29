@@ -85,7 +85,7 @@ export interface MockifyerConfig {
    * | Mode | Behavior |
    * |------|----------|
    * | `always` (default) | All requests use Mockifyer (still subject to `excludedUrls` and internal bypasses). |
-   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit activation), **or** (fetch + dashboard proxy) a configured `proxy.baseUrl` and resolved `clientId`. Activation alone does not turn on inline trace. |
+   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit activation). The service's own `clientId` / `proxy.baseUrl` never activates it; requests without the header go out untouched (no `X-Mockifyer-*` headers). Activation alone does not turn on inline trace. |
    * | `off` | Mockifyer does not intercept; plain HTTP. |
    *
    * Env **`MOCKIFYER_ACTIVATION_MODE`** overrides this when set to `always`, `client_id_header`, or `off`.

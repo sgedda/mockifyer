@@ -337,6 +337,18 @@ class MockifyerClass {
     return null;
   }
 
+  /**
+   * Marks the request bypassed when {@link MockifyerConfig.activationMode} does not opt it in.
+   * A bypassed request goes out untouched: no Mockifyer headers, so downstream services stay off too.
+   */
+  private markBypassUnlessActivated(config: AxiosRequestConfig): AxiosRequestConfig | null {
+    if (shouldApplyMockifyer(this.activationMode, config.headers)) {
+      return null;
+    }
+    (config as { __mockifyer_bypass?: boolean }).__mockifyer_bypass = true;
+    return config;
+  }
+
   private readRequestCorrelation(config: unknown): RequestCorrelationContext | undefined {
     const requestId = (config as { __mockifyer_requestId?: string }).__mockifyer_requestId;
     if (!requestId) return undefined;
@@ -885,15 +897,9 @@ class MockifyerClass {
         return bypassedEarly;
       }
 
-      if (
-        !shouldApplyMockifyer(this.activationMode, config.headers, {
-          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
-        })
-      ) {
-        this.applyOutboundLaneHeadersToAxiosRequest(config);
-        await this.applyOutboundCorrelation(config);
-        (config as any).__mockifyer_bypass = true;
-        return config;
+      const notActivated = this.markBypassUnlessActivated(config as AxiosRequestConfig);
+      if (notActivated) {
+        return notActivated;
       }
 
       if (!isExplicitProxyScenarioContext(this.config)) {
@@ -1220,15 +1226,9 @@ class MockifyerClass {
         return bypassedEarly;
       }
 
-      if (
-        !shouldApplyMockifyer(this.activationMode, config.headers, {
-          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
-        })
-      ) {
-        this.applyOutboundLaneHeadersToAxiosRequest(config);
-        await this.applyOutboundCorrelation(config);
-        (config as any).__mockifyer_bypass = true;
-        return config;
+      const notActivated = this.markBypassUnlessActivated(config as AxiosRequestConfig);
+      if (notActivated) {
+        return notActivated;
       }
 
       if (!isExplicitProxyScenarioContext(this.config)) {

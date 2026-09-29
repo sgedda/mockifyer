@@ -223,7 +223,7 @@ When there is **no proxy** (e.g. Hybrid / filesystem-only dev), or strict mode i
 
 #### 4. **`MOCKIFYER_ACTIVATION_MODE`** — **per-request** slice
 
-Yet another axis: e.g. **`client_id_header`** only runs Mockifyer when **`X-Mockifyer-Client-Id`** is present (unless proxy lane rules opt traffic in). See **`README.md`** and **`activationMode`** on **`MockifyerConfig`**.
+Yet another axis: e.g. **`client_id_header`** only runs Mockifyer when **`X-Mockifyer-Client-Id`** is present on the outbound request or on the inbound request being served. Everything else passes through untouched. See **`README.md`** and **`activationMode`** on **`MockifyerConfig`**.
 
 ---
 

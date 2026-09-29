@@ -22,23 +22,14 @@ export function getOutboundMockifyerDeviceIdHeader(headers: unknown): string | u
   return getOutboundHeaderValue(headers, MOCKIFYER_DEVICE_ID_HEADER);
 }
 
-export interface ShouldApplyMockifyerOptions {
-  /**
-   * When `activationMode` is `client_id_header`, requests routed through the dashboard proxy
-   * with a resolved lane id still opt in: the client sends `X-Mockifyer-Client-Id` on the proxy
-   * POST, not necessarily on per-URL headers inside the body.
-   */
-  useProxyLane?: {
-    proxyBaseUrl?: string;
-    resolvedClientId?: string;
-  };
-}
-
-export function shouldApplyMockifyer(
-  mode: MockifyerActivationMode,
-  requestHeaders: unknown,
-  options?: ShouldApplyMockifyerOptions
-): boolean {
+/**
+ * Whether Mockifyer handles this outbound request.
+ *
+ * With `client_id_header`, only the caller opts a request in: a non-empty `X-Mockifyer-Client-Id`
+ * on the outbound request, or on the inbound request being served. The service's own
+ * `clientId` / `proxy.baseUrl` never does — otherwise every request would be intercepted.
+ */
+export function shouldApplyMockifyer(mode: MockifyerActivationMode, requestHeaders: unknown): boolean {
   if (mode === 'off') {
     return false;
   }
@@ -51,19 +42,7 @@ export function shouldApplyMockifyer(
   // Services with client_id_header often call downstream without copying the header
   // onto each client config. The inbound lane already opted this request in — activate
   // Mockifyer so hops can be logged / mocked. This does not start an inline trace.
-  const inboundLane = getActiveInboundClientId()?.trim();
-  if (inboundLane) {
-    return true;
-  }
-  const lane = options?.useProxyLane;
-  if (
-    lane?.proxyBaseUrl &&
-    typeof lane.resolvedClientId === 'string' &&
-    lane.resolvedClientId.trim().length > 0
-  ) {
-    return true;
-  }
-  return false;
+  return Boolean(getActiveInboundClientId()?.trim());
 }
 
 /**

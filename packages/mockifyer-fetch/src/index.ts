@@ -859,12 +859,7 @@ class MockifyerClass {
         return config;
       }
 
-      if (
-        !shouldApplyMockifyer(this.activationMode, config.headers, {
-          useProxyLane: { proxyBaseUrl: this.config.proxy?.baseUrl, resolvedClientId: this.config.clientId },
-        })
-      ) {
-        await this.applyOutboundCorrelation(config);
+      if (!shouldApplyMockifyer(this.activationMode, config.headers)) {
         (config as any).__mockifyer_bypass = true;
         return config;
       }
