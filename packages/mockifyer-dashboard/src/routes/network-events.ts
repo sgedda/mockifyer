@@ -12,6 +12,7 @@ import {
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
+import { hydrateResponsePreviewsForDashboard } from '../utils/network-event-response-hydration';
 import { getAtlasStore, mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-store';
 
 const router = express.Router();
@@ -104,7 +105,8 @@ router.get('/trace', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events } = await store.list({ scenario, clientId, limit: scanLimit });
+    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
     const trace = resolveNetworkRequestTrace(events, {
       by: requestId ? 'requestId' : 'eventId',
       value: requestId || eventId,
@@ -155,7 +157,8 @@ router.get('/explain', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events } = await store.list({ scenario, clientId, limit: scanLimit });
+    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
     const context = explainIncidentFromEvents(events, {
       incidentId: incidentId || undefined,
       sessionId,
@@ -196,7 +199,8 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
-    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, events).map(polishNetworkEventBodies);
+    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario);
+    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, hydrated).map(polishNetworkEventBodies);
     return res.json({
       scenario,
       provider: config.provider,

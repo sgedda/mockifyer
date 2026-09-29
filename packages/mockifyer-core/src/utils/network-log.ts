@@ -86,7 +86,21 @@ export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 export const NETWORK_LOG_ATLAS_MAX_EVENT_BYTES =
   NETWORK_LOG_INLINE_BODY_PREVIEW_BYTES * 2 + 200_000;
 export const NETWORK_LOG_DEFAULT_MAX_EVENTS = 5_000;
-export const NETWORK_LOG_DEFAULT_TTL_SEC = 60 * 60 * 24;
+/** Hop ring TTL (refreshed on each append). Override with `MOCKIFYER_NETWORK_LOG_TTL_SEC`. */
+export const NETWORK_LOG_DEFAULT_TTL_SEC = 60 * 60;
+
+/**
+ * Serialized size cap for one hop in the dashboard ring (Redis, sqlite, memory).
+ * Atlas/Metro capture keeps the larger {@link NETWORK_LOG_ATLAS_MAX_EVENT_BYTES} budget
+ * locally; the ring must stay small enough that a full scenario cannot fill Redis.
+ */
+export const NETWORK_LOG_STORE_MAX_EVENT_BYTES = 16_384;
+
+/**
+ * Total payload budget for one scenario's hop ring.
+ * Override with `MOCKIFYER_NETWORK_LOG_MAX_LIST_BYTES` (positive integer).
+ */
+export const NETWORK_LOG_STORE_MAX_LIST_BYTES = 16 * 1024 * 1024;
 
 export function parseNetworkLogIntEnv(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === '') return fallback;
