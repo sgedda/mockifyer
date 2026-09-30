@@ -387,6 +387,7 @@ router.post('/', async (req: Request, res: Response) => {
     const explicitManipulation = resolveExplicitDateManipulation({
       laneManipulation: laneDateDoc?.dateManipulation ?? null,
       scenarioDateDoc: redisDateDoc,
+      scenario: resolvedScenarioName,
     });
     const getNow = () =>
       getCurrentDate({

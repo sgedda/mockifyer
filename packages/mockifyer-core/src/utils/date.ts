@@ -1,6 +1,6 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { logger } from './logger';
-import { getCurrentScenario, getScenarioFolderPath } from './scenario';
+import { getCurrentScenario, getScenarioFolderPath, isScratchScenario } from './scenario';
 import {
   getRuntimeDateManipulation,
   stopRuntimeDateSync,
@@ -56,11 +56,17 @@ export function dateManipulationHasEffect(
  * Date manipulation the dashboard proxy should pass as `explicitManipulation`.
  * An effective **client-lane** payload wins over the scenario Redis/sqlite document.
  * When the scenario document is missing (`null`), returns `null` so Redis mode does not fall back to disk.
+ * When the resolved scenario is `_scratch` (no scenario selected), returns `{}` (real time) so a lane
+ * date never follows unscoped traffic — e.g. devices that accidentally share a clientId.
  */
 export function resolveExplicitDateManipulation(options: {
   laneManipulation?: Record<string, unknown> | null;
   scenarioDateDoc: { dateManipulation: Record<string, unknown> | null } | null;
+  scenario?: string | null;
 }): Record<string, unknown> | null {
+  if (isScratchScenario(options.scenario)) {
+    return {};
+  }
   if (dateManipulationHasEffect(options.laneManipulation)) {
     return options.laneManipulation as Record<string, unknown>;
   }

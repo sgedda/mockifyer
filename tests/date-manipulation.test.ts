@@ -8,6 +8,7 @@ import {
   resetDateManipulation,
   resolveExplicitDateManipulation,
   setRuntimeDateManipulation,
+  SCRATCH_SCENARIO,
 } from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
@@ -426,6 +427,27 @@ describe('Date Manipulation', () => {
           scenarioDateDoc: null,
         })
       ).toBeNull();
+    });
+
+    it('ignores lane and scenario dates when no scenario is selected (_scratch)', () => {
+      const resolved = resolveExplicitDateManipulation({
+        laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+        scenarioDateDoc: scenarioDoc,
+        scenario: SCRATCH_SCENARIO,
+      });
+      expect(resolved).toEqual({});
+      const now = getCurrentDate({ explicitManipulation: resolved });
+      expect(Math.abs(now.getTime() - Date.now())).toBeLessThan(2000);
+    });
+
+    it('still applies the lane date for a named scenario', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+          scenarioDateDoc: scenarioDoc,
+          scenario: 'checkout',
+        })
+      ).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
     });
   });
 

@@ -285,6 +285,44 @@ describe('RedisMockStore lane date', () => {
     expect(bob.json.dateManipulation).toEqual({ fixedDate: '2020-01-01T00:00:00.000Z' });
   });
 
+  it('ignores the lane date while the lane resolves to no scenario (_scratch)', async () => {
+    await httpJson(server, 'PUT', '/api/client-lanes/dev-alice/scenario', { scenario: '_scratch' });
+    await httpJson(server, 'PUT', '/api/client-lanes/dev-alice/date', {
+      fixedDate: '2025-06-15T12:00:00.000Z',
+    });
+
+    const forLane = await httpJson(server, 'GET', '/api/date-config?clientId=dev-alice');
+    expect(forLane.status).toBe(200);
+    expect(forLane.json.scenario).toBe('_scratch');
+    expect(forLane.json.configSource).toBe('none');
+    expect(forLane.json.dateManipulation).toEqual({});
+
+    const mockData: MockData = {
+      request: { method: 'GET', url: BOOKING_URL, headers: {}, queryParams: {} },
+      response: { status: 200, data: { expiresAt: '2019-01-01T00:00:00.000Z' }, headers: {} },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      responseDateOverrides: [{ path: 'expiresAt' }],
+    };
+    const hash = sha256Hex(
+      generateRequestKey({ method: 'GET', url: BOOKING_URL, headers: {}, data: undefined, queryParams: undefined })
+    );
+    const store = createDashboardMockStore({ provider: 'sqlite' }, dbPath);
+    await store.setByHashInScenario(hash, mockData, '_scratch');
+
+    const proxied = await httpJson(server, 'POST', '/api/proxy', {
+      url: BOOKING_URL,
+      method: 'GET',
+      headers: {},
+      clientId: 'dev-alice',
+      record: false,
+      allowUpstream: false,
+    });
+    expect(proxied.status).toBe(200);
+    expect(proxied.json.dateManipulation).toEqual({});
+    const served = (proxied.json.response as { data: { expiresAt: string } }).data;
+    expect(Math.abs(new Date(served.expiresAt).getTime() - Date.now())).toBeLessThan(5000);
+  });
+
   it('GET /api/date-config?clientId= returns the lane date and lane-mapped scenario', async () => {
     await httpJson(server, 'PUT', '/api/client-lanes/dev-alice/scenario', { scenario: 'default' });
     await httpJson(server, 'POST', '/api/date-config', {
