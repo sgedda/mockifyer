@@ -44,7 +44,7 @@ export interface MockifyerInstance extends HTTPClient {
 /**
  * Outcome of {@link setupMockifyerForReactNative}.
  *
- * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane).
+ * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane or scenario).
  *   Not the same as “permanently off” unless mode is **`off`** (then launch args do not activate).
  * - **`active`** — Mockifyer initialized and patched `global.fetch`.
  * - **`failed_no_bundled_mocks`** — Activation criteria were met and `isDev` was false, but bundled mock data was missing or empty.
@@ -95,7 +95,9 @@ export interface ReactNativeMockifyerConfig {
   /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
-   * When a launch `scenario` is present, Mockifyer also **starts enabled** (even with `runtimeMode: 'manual'`).
+   * When a launch `scenario` is present, Mockifyer **activates** (also under `launch_client`, no lane needed),
+   * **starts enabled** (even with `runtimeMode: 'manual'`), and sends it as the dashboard proxy scenario
+   * (unless `proxyScenario` is set). `runtimeMode: 'off'` still wins.
    * Set to `false` to ignore launch scenario args entirely.
    * Default: auto-detect when a non-empty launch `scenario` is present.
    */
@@ -147,21 +149,20 @@ export interface ReactNativeMockifyerConfig {
 
 /**
  * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
- * @returns `true` when a native launch-argument `scenario` was applied (forces runtime toggle on).
+ * @returns The native launch-argument `scenario` when one was applied (activates Mockifyer, forces runtime toggle on,
+ *   and is sent as the proxy scenario); otherwise `undefined`.
  */
-function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): boolean {
-  let appliedFromLaunchArgs = false;
-
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): string | undefined {
   // Auto-detect launch `scenario` when present (E2E). Opt out with useLaunchArgumentsScenario: false.
   if (options.useLaunchArgumentsScenario !== false) {
     const scenarioFromLaunch = tryGetScenarioFromLaunchArguments();
     if (scenarioFromLaunch) {
       setScenarioLaunchOverride(scenarioFromLaunch, { fromLaunchArguments: true });
-      appliedFromLaunchArgs = true;
+      return scenarioFromLaunch;
     }
   }
 
-  if (!appliedFromLaunchArgs && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+  if (options.defaultScenario !== undefined && options.defaultScenario !== null) {
     const t = String(options.defaultScenario).trim();
     if (t !== '') {
       // App config default — not a native launch arg; do not force runtime toggle on.
@@ -169,7 +170,7 @@ function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): b
     }
   }
 
-  return appliedFromLaunchArgs;
+  return undefined;
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -279,7 +280,11 @@ export async function setupMockifyerForReactNative(
   }
 
   // Apply scenario launch override early so we know if E2E forced a scenario.
-  const launchScenarioApplied = applyReactNativeScenarioOptions(options);
+  const launchScenario = applyReactNativeScenarioOptions(options);
+  const launchScenarioApplied = launchScenario !== undefined;
+  // Launch `scenario` travels on every dashboard proxy request (body override wins over lane / global scenario),
+  // so E2E does not need a lane mapped in the dashboard. An explicit `proxyScenario` still wins.
+  const effectiveProxyScenario = proxyScenario ?? launchScenario;
   if (launchScenarioApplied) {
     // Launch `scenario` arg → start enabled (wins over persisted off for this session).
     initialRuntimeEnabled = true;
@@ -309,8 +314,7 @@ export async function setupMockifyerForReactNative(
     return 'React Native dev · hybrid (device + Metro)';
   };
 
-  // Patch fetch for on / manual; launch_client only when lane id is present.
-  // Launch `scenario` forces runtime toggle on after activation — it does not replace client id.
+  // Patch fetch for on / manual; launch_client when a launch lane id or launch scenario is present.
   const isEnabled = shouldActivateMockifyerForReactNative({
     runtimeMode: resolvedRuntimeMode,
     hasLaunchClientId: Boolean(clientIdFromLaunchArgs),
@@ -387,7 +391,7 @@ export async function setupMockifyerForReactNative(
         strictProxyEnabled && proxyBaseUrl
           ? {
               baseUrl: proxyBaseUrl,
-              scenario: proxyScenario,
+              scenario: effectiveProxyScenario,
               recordOnMiss: proxyShouldRecordOnMiss,
               recordResponses: proxyShouldRecordResponses,
             }
@@ -457,7 +461,7 @@ export async function setupMockifyerForReactNative(
       proxy: proxyBaseUrl
         ? {
             baseUrl: proxyBaseUrl,
-            scenario: proxyScenario,
+            scenario: effectiveProxyScenario,
             recordOnMiss: proxyShouldRecordOnMiss,
             recordResponses: proxyShouldRecordResponses,
           }
