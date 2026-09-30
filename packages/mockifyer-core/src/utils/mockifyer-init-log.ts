@@ -2,6 +2,7 @@ import type { MockifyerConfig, MockifyerRuntimeMode } from '../types';
 import { newRecordingUsesAlwaysUseRealApi } from './recording-default-always-live';
 import { resolveActivationMode } from './activation-mode';
 import { logger } from './logger';
+import { MOCKIFYER_LAUNCH_ARGUMENT_SCENARIO_KEY } from './launch-arguments-scenario';
 import { resolveRecordingExclusions } from './recording-exclusion';
 import { resolveProxyStrictLaneScenario } from './proxy-strict-lane-scenario';
 import {
@@ -30,7 +31,7 @@ function describeRuntimeMode(mode: MockifyerRuntimeMode | undefined): { label: s
       return {
         label: 'launch_client',
         meaning:
-          'Mockifyer runs only when a launch argument client id is present (Maestro/E2E). A launch scenario turns the runtime toggle on after activation, but does not replace the client id requirement.',
+          'Mockifyer runs only when a launch argument client id or scenario is present (Maestro/E2E). A launch scenario also turns the runtime toggle on and is sent as the dashboard proxy scenario.',
       };
     case 'manual':
       return {
@@ -209,9 +210,9 @@ export function logMockifyerNotActivated(
   if (runtimeMode === 'launch_client') {
     const key = extra?.launchClientIdKey ?? 'mockifyerClientId';
     logger.info(
-      `[Mockifyer] No launch client id (key "${key}")` +
+      `[Mockifyer] No launch client id (key "${key}") or launch scenario (key "${MOCKIFYER_LAUNCH_ARGUMENT_SCENARIO_KEY}")` +
         `${extra?.hadLaunchClientId === false ? ' was found' : ''}. ` +
-        `Pass mockifyerClientId from Maestro launchApp (scenario alone is not enough), or use runtimeMode: "on" / "manual".`
+        `Pass mockifyerClientId or scenario from Maestro launchApp, or use runtimeMode: "on" / "manual".`
     );
   }
   logger.info('[Mockifyer] fetch is not patched; all HTTP goes to the real network.');

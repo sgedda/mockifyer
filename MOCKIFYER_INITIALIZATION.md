@@ -195,7 +195,7 @@ Controls whether **`global.fetch` is patched at all** when your init runs. It do
 |------|---------|
 | **`on`** | Activate Mockifyer when the RN helper runs (patch `fetch`). |
 | **`off`** | Do **not** activate; **`not_activated`**; native launch args do **not** bypass this (use for store builds that ship SDK code but must never intercept). |
-| **`launch_client`** | Activate **only if** native launch arguments include a non-empty **`mockifyerClientId`** (or custom **`launchArgumentClientIdKey`**) via optional peer **`react-native-launch-arguments`** — typical **Maestro / XCTest**. |
+| **`launch_client`** | Activate **only if** native launch arguments include a non-empty **`mockifyerClientId`** (or custom **`launchArgumentClientIdKey`**) **or** **`scenario`** via optional peer **`react-native-launch-arguments`** — typical **Maestro / XCTest**. A launch `scenario` is sent on every dashboard proxy request, so no lane mapping is needed. |
 
 **Aliases** (normalized in **`resolveMockifyerRuntimeMode`**): `disabled` \| `none` → **`off`**; `enabled` \| `always` → **`on`**; `e2e` \| `maestro` \| `launch-client` → **`launch_client`**.
 

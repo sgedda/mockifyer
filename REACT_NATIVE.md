@@ -14,11 +14,11 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 - **`MOCKIFYER_MODE`** (preferred) — when `setupMockifyerForReactNative` may patch `fetch`:
   - **`on`** — always activate (**default when unset**); starts enabled
   - **`manual`** (aliases: `gui`, `toggle`) — activate but **start disabled**; call `enableMockifyer()` from a GUI switch (pair with **`persistRuntimeEnabled: true`** so the choice survives app restart). A native launch **`scenario`** argument still starts the runtime toggle **enabled** for that E2E session (client must already be activated)
-  - **`launch_client`** (aliases: `e2e`, `maestro`) — activate only when Maestro/native launch **`mockifyerClientId`** is non-empty (a `scenario` arg alone is not enough)
+  - **`launch_client`** (aliases: `e2e`, `maestro`) — activate only when Maestro/native launch **`mockifyerClientId`** or **`scenario`** is non-empty
   - **`off`** (aliases: `disabled`) — never activate (launch args ignored — use in store builds that must not run mocks)
 - **`isDev` / `__DEV__` alone does not enable** Mockifyer (use **`MOCKIFYER_MODE`** or a launch-arg lane).
 - **Runtime toggle** (when status is `active`): `instance.enableMockifyer()` / `disableMockifyer()` / `isMockifyerEnabled()` — completely bypasses mocks, dashboard, and Redis while disabled. See **[docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md)**.
-- **Launch `scenario`**: auto-applied when present on `react-native-launch-arguments` (opt out with `useLaunchArgumentsScenario: false`). When Mockifyer is already activated, forces the runtime toggle **on** for that session.
+- **Launch `scenario`**: auto-applied when present on `react-native-launch-arguments` (opt out with `useLaunchArgumentsScenario: false`). Activates Mockifyer (unless mode is **`off`**), forces the runtime toggle **on** for that session, and is sent as the scenario on every dashboard proxy request — no lane has to be mapped in the dashboard. An explicit `proxyScenario` still wins.
 - **Direct upstream `fetch`** (not the dashboard proxy POST) automatically adds **`X-Mockifyer-Client-Id`** / **`X-Mockifyer-Device-Id`** when missing, whenever Mockifyer has a resolved `clientId` / `deviceId` (same lane the library uses). Caller headers win if already set.
 - **Return value:** `setupMockifyerForReactNative` resolves to **`{ status, instance }`**. Use **`status`** instead of treating “no instance” as permanently disabled:
   - **`not_activated`** — nothing patched this run; you can still activate on a **later** launch with env or launch args.
