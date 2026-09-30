@@ -17,6 +17,8 @@ export interface RuntimeDateSyncOptions {
  * `undefined` = not synced; `null` = explicit "no manipulation"; object = scenario/lane payload.
  */
 let runtimeDateManipulation: Record<string, unknown> | null | undefined;
+/** Scenario the dashboard resolved {@link runtimeDateManipulation} for (unset = unknown). */
+let runtimeDateScenario: string | undefined;
 let syncOptions: RuntimeDateSyncOptions | null = null;
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -35,18 +37,31 @@ function resolveUnpatchedFetch(): typeof fetch {
 /**
  * Process-level date payload from the dashboard (Redis scenario / lane).
  * Used by `getCurrentDate()` when no per-call `explicitManipulation` is passed.
+ *
+ * @param scenario When set and the cache was resolved for a different scenario, returns
+ *   `undefined` so a scenario switch never serves the previous scenario's date.
  */
-export function getRuntimeDateManipulation(): Record<string, unknown> | null | undefined {
+export function getRuntimeDateManipulation(
+  scenario?: string
+): Record<string, unknown> | null | undefined {
+  const requested = scenario?.trim();
+  if (requested && runtimeDateScenario && runtimeDateScenario !== requested) {
+    return undefined;
+  }
   return runtimeDateManipulation;
 }
 
 /**
  * Store a dashboard/Redis date payload for subsequent `getCurrentDate()` calls.
+ *
+ * @param scenario Scenario the dashboard resolved this payload for (lane mapping or active scenario).
  */
 export function setRuntimeDateManipulation(
-  payload: Record<string, unknown> | null | undefined
+  payload: Record<string, unknown> | null | undefined,
+  scenario?: string
 ): void {
   runtimeDateManipulation = payload;
+  runtimeDateScenario = payload === undefined ? undefined : scenario?.trim() || undefined;
 }
 
 function clearRuntimeDateSyncTimer(): void {
@@ -62,7 +77,7 @@ function clearRuntimeDateSyncTimer(): void {
 export function stopRuntimeDateSync(): void {
   clearRuntimeDateSyncTimer();
   syncOptions = null;
-  runtimeDateManipulation = undefined;
+  setRuntimeDateManipulation(undefined);
 }
 
 function startRuntimeDateSyncTimer(): void {
@@ -90,26 +105,30 @@ export function applyRuntimeDateManipulationFromProxyPayload(
   if (!payload || typeof payload !== 'object') {
     return;
   }
+  const resolution = payload.scenarioResolution as { scenario?: string | null } | undefined;
+  const scenario = nonEmptyString(resolution?.scenario);
   if (Object.prototype.hasOwnProperty.call(payload, 'dateManipulation')) {
     const dm = payload.dateManipulation;
     if (dm === null) {
-      setRuntimeDateManipulation(null);
+      setRuntimeDateManipulation(null, scenario);
     } else if (typeof dm === 'object') {
-      setRuntimeDateManipulation(dm as Record<string, unknown>);
+      setRuntimeDateManipulation(dm as Record<string, unknown>, scenario);
     }
   }
   if (!syncOptions) {
     return;
   }
-  const clientId = payload.clientId;
-  if (typeof clientId === 'string' && clientId.trim()) {
-    syncOptions = { ...syncOptions, clientId: clientId.trim() };
+  const clientId = nonEmptyString(payload.clientId);
+  if (clientId) {
+    syncOptions = { ...syncOptions, clientId };
   }
-  const resolution = payload.scenarioResolution as { scenario?: string | null } | undefined;
-  const scenario = resolution?.scenario;
-  if (typeof scenario === 'string' && scenario.trim()) {
-    syncOptions = { ...syncOptions, scenario: scenario.trim() };
+  if (scenario) {
+    syncOptions = { ...syncOptions, scenario };
   }
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /**
@@ -153,13 +172,14 @@ export async function syncRuntimeDateManipulationFromDashboard(
     if (!Object.prototype.hasOwnProperty.call(body, 'dateManipulation')) {
       return false;
     }
+    const resolvedScenario = nonEmptyString(body.scenario) ?? scenario;
     const dm = body.dateManipulation;
     if (dm === null) {
-      setRuntimeDateManipulation(null);
+      setRuntimeDateManipulation(null, resolvedScenario);
       return true;
     }
     if (typeof dm === 'object') {
-      setRuntimeDateManipulation(dm as Record<string, unknown>);
+      setRuntimeDateManipulation(dm as Record<string, unknown>, resolvedScenario);
       return true;
     }
     return false;

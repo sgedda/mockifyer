@@ -55,5 +55,17 @@ describe('runtime date sync from dashboard', () => {
     expect(calledUrl).toContain('scenario=alpha');
     expect(calledUrl).toContain('clientId=dev-alice');
     expect(getCurrentDate().toISOString()).toBe('2021-07-01T00:00:00.000Z');
+    expect(getCurrentDate({ scenario: 'beta' }).toISOString()).toBe('2021-07-01T00:00:00.000Z');
+  });
+
+  it('does not serve a cached date resolved for a different scenario', () => {
+    applyRuntimeDateManipulationFromProxyPayload({
+      dateManipulation: { fixedDate: '2024-07-04T00:00:00.000Z' },
+      scenarioResolution: { scenario: 'alpha' },
+    });
+
+    expect(getCurrentDate({ scenario: 'alpha' }).toISOString()).toBe('2024-07-04T00:00:00.000Z');
+    const afterSwitch = getCurrentDate({ scenario: 'beta' });
+    expect(Math.abs(afterSwitch.getTime() - Date.now())).toBeLessThan(2000);
   });
 });

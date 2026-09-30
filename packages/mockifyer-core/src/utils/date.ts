@@ -260,7 +260,7 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
 
   // Dashboard/Redis process cache (scenario or lane). Beats env so stale MOCKIFYER_DATE*
   // cannot override Date Config the way the proxy already ignores env.
-  const runtimeManipulation = getRuntimeDateManipulation();
+  const runtimeManipulation = getRuntimeDateManipulation(context?.scenario);
   if (runtimeManipulation !== undefined) {
     if (runtimeManipulation === null || !dateManipulationHasEffect(runtimeManipulation)) {
       return new Date();
@@ -330,6 +330,25 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
   }
 
   return new Date();
+}
+
+/**
+ * Clock for serve-time date overrides on local mock hits (axios / fetch interceptors).
+ *
+ * - Dashboard proxy (`proxy.baseUrl`): the dashboard resolves the lane/scenario, so the runtime
+ *   cache it fills is used as-is (local scenario files are not authoritative).
+ * - Otherwise: resolves this client's local scenario on every call, so a scenario switch
+ *   picks up that scenario's `date-config.json` instead of the previous one.
+ */
+export function createServeTimeClock(config: MockifyerConfig): () => Date {
+  if (config.proxy?.baseUrl?.trim()) {
+    return () => getCurrentDate();
+  }
+  return () =>
+    getCurrentDate({
+      mockDataPath: config.mockDataPath,
+      scenario: getCurrentScenario(config.mockDataPath, config.clientId),
+    });
 }
 
 /**
