@@ -5,7 +5,10 @@ import {
   getNetworkBodySpillSnapshot,
   resetNetworkBodySpillRuntime,
 } from '../packages/mockifyer-core/src/utils/network-body-spill';
-import { bufferAtlasBodySpill } from '../packages/mockifyer-fetch/src/metro-sync-middleware';
+import {
+  bufferAtlasBodySpill,
+  persistAtlasRenderBodySpills,
+} from '../packages/mockifyer-fetch/src/metro-sync-middleware';
 import {
   atlasHtmlBlockListPattern,
   configureMetroForMockifyer,
@@ -61,5 +64,59 @@ describe('Metro ignores atlas-html writes', () => {
   it('leaves blockList alone without sync middleware', () => {
     const config = configureMetroForMockifyer({ resolver: {} });
     expect(config.resolver?.blockList).toBeUndefined();
+  });
+});
+
+describe('Atlas render persists Metro-buffered spills', () => {
+  afterEach(() => {
+    resetNetworkBodySpillRuntime();
+  });
+
+  it('writes buffered bodies that the 2MB render payload omitted', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-render-spills-'));
+    try {
+      const omitted = bufferAtlasBodySpill('bodies/big-1-res.json', 'x'.repeat(2_000_000));
+      expect(omitted.success).toBe(true);
+      const kept = bufferAtlasBodySpill('bodies/small-2-res.json', '{"ok":true}');
+      expect(kept.success).toBe(true);
+
+      // Render POST cap is 2MB including the key, so a max-size body is dropped
+      // and nothing after it is sent. Metro already holds both from the spill POSTs.
+      const written = persistAtlasRenderBodySpills(outDir, {
+        'bodies/small-2-res.json': '{"ok":true}',
+      });
+
+      expect(written).toBeGreaterThanOrEqual(2);
+      expect(fs.readFileSync(path.join(outDir, 'bodies/big-1-res.json'), 'utf8')).toBe(
+        'x'.repeat(2_000_000)
+      );
+      expect(fs.readFileSync(path.join(outDir, 'bodies/small-2-res.json'), 'utf8')).toBe(
+        '{"ok":true}'
+      );
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the oldest buffered body when the payload would evict it', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-render-evict-'));
+    try {
+      // Matches MAX_BUFFER_ENTRIES in network-body-spill.ts.
+      const oldest = 'bodies/hop-0-res.json';
+      bufferAtlasBodySpill(oldest, '{"i":0}');
+      for (let i = 1; i < 200; i++) {
+        bufferAtlasBodySpill(`bodies/hop-${i}-res.json`, `{"i":${i}}`);
+      }
+      const extra = 'bodies/hop-extra-res.json';
+      const written = persistAtlasRenderBodySpills(outDir, {
+        [extra]: '{"extra":true}',
+      });
+
+      expect(written).toBeGreaterThanOrEqual(201);
+      expect(fs.readFileSync(path.join(outDir, oldest), 'utf8')).toBe('{"i":0}');
+      expect(fs.readFileSync(path.join(outDir, extra), 'utf8')).toBe('{"extra":true}');
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
   });
 });

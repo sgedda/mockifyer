@@ -1397,6 +1397,23 @@ export function bufferAtlasBodySpill(
   return { success: true, relativePath: buffered };
 }
 
+/**
+ * Write hop bodies for an Atlas HTML render.
+ *
+ * Device uploads sit in the Metro spill buffer and are often omitted from the
+ * render POST (`bodySpills` is capped at 2MB, so a max-size body never fits).
+ * Flush that buffer before writing the payload. Buffering the payload first
+ * evicts older spills once the in-memory cap is hit, and those files are then
+ * missing from disk.
+ */
+export function persistAtlasRenderBodySpills(
+  outDir: string,
+  bodySpills: Record<string, string> | undefined,
+): number {
+  const flushed = flushNetworkBodySpillsToDir(outDir);
+  return flushed + writeNetworkBodySpillMap(outDir, bodySpills);
+}
+
 const ATLAS_HTML_CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".htm": "text/html; charset=utf-8",
@@ -2447,7 +2464,10 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
           setAtlasDocMap(doc);
           setAtlasDocHtmlOutputPath(outDir);
-          const spillWritten = writeNetworkBodySpillMap(outDir, parsed.bodySpills);
+          const spillWritten = persistAtlasRenderBodySpills(
+            outDir,
+            parsed.bodySpills,
+          );
           const events = Array.isArray(parsed.events) ? parsed.events : [];
           const written = writeAtlasDocHtml(outDir, doc, events);
           const relativeFromRoot = path
