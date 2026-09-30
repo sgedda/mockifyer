@@ -8,6 +8,7 @@ import {
   isScenarioLockedFs,
   resolveExplicitDateManipulation,
   dateManipulationHasEffect,
+  isScratchScenario,
   MOCKIFYER_CLIENT_ID_HEADER,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
@@ -154,17 +155,15 @@ router.get('/', async (req: Request, res: Response) => {
         const laneDateDoc = clientId
           ? await store.getLaneDateConfig(clientId).catch(() => null)
           : null;
-        const resolvedManipulation = clientId
-          ? resolveExplicitDateManipulation({
-              laneManipulation: laneDateDoc?.dateManipulation ?? null,
-              scenarioDateDoc: redisDoc,
-            })
-          : redisDoc !== null
-            ? (redisDoc.dateManipulation ?? null)
-            : null;
+        const resolvedManipulation = resolveExplicitDateManipulation({
+          laneManipulation: laneDateDoc?.dateManipulation ?? null,
+          scenarioDateDoc: redisDoc,
+          scenario,
+        });
         const currentDate = computeCurrentDate(resolvedManipulation as Record<string, unknown> | null);
-        const configSource =
-          clientId && dateManipulationHasEffect(laneDateDoc?.dateManipulation ?? null)
+        const configSource = isScratchScenario(scenario)
+          ? ('none' as const)
+          : dateManipulationHasEffect(laneDateDoc?.dateManipulation ?? null)
             ? ('lane' as const)
             : redisDoc !== null
               ? ('redis' as const)

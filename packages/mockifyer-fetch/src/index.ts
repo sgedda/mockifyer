@@ -36,7 +36,7 @@ import {
   TestGenerationOptions,
   checkRequestLimit,
   prepareMockResponseBody,
-  getCurrentDate,
+  createServeTimeClock,
   createServeTimePoolResponseLoader,
   collectPoolRefIds,
   arePoolRefsEnabled,
@@ -309,7 +309,7 @@ class MockifyerClass {
   private prepareStoredResponseBody(mockData: MockData, filename?: string, scenarioPath?: string): unknown {
     const joinPath =
       path && typeof path.join === 'function' ? path.join.bind(path) : null;
-    return prepareMockResponseBody(mockData, getCurrentDate, {
+    return prepareMockResponseBody(mockData, createServeTimeClock(this.config), {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: isUsableNodeLikePoolFs(fs) ? fs : null,
@@ -1198,7 +1198,7 @@ class MockifyerClass {
           const clientResponse = buildClientResponseFromLiveCapture(
             matchedMock.mockData,
             capturedResponse,
-            getCurrentDate,
+            createServeTimeClock(this.config),
             { filename: matchedMock.filename, scenarioPath: liveScenarioPath }
           );
           response.data = clientResponse.data;

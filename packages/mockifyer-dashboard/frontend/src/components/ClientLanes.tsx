@@ -106,7 +106,7 @@ function LaneCurrentDateField({
       </div>
       <p className="text-[11px] text-muted-foreground">
         {fixedDate
-          ? 'This lane uses this date instead of the scenario date from Date Config.'
+          ? 'This lane uses this date instead of the scenario date from Date Config. Ignored while the lane resolves to no scenario (temporary / unscoped).'
           : 'Leave empty to use the scenario date from Date Config.'}
       </p>
     </div>
@@ -326,7 +326,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
           set a scenario and override group here, that lane will read mocks under the selected scenario with the chosen override group <em>without affecting other
-          builds</em>. Optionally set a current date per lane — it overrides the scenario date from Date Config for that lane only. The lane id must match what the app uses when initializing Mockifyer (
+          builds</em>. Optionally set a current date per lane — it overrides the scenario date from Date Config for that lane only, and only while the lane resolves to a scenario (unscoped traffic always uses real time). The lane id must match what the app uses when initializing Mockifyer (
           typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
           <span className="font-mono">MockifyerConfig.clientId</span>
           ).

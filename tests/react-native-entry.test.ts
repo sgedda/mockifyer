@@ -6,6 +6,7 @@ import {
   collectPoolRefIds,
   containsPoolRefs,
   createServeTimePoolResponseLoader,
+  createServeTimeClock,
   isUsableNodeLikePoolFs,
   loadPersistedRuntimeEnabled,
   resolveRuntimeEnabledStorage,
@@ -48,6 +49,7 @@ describe('mockifyer-fetch React Native entry', () => {
   it('exports Metro-called helpers that live outside the Node-only modules', () => {
     expect(typeof scheduleRuntimeDateSyncFromConfig).toBe('function');
     expect(typeof createServeTimePoolResponseLoader).toBe('function');
+    expect(typeof createServeTimeClock).toBe('function');
     expect(typeof isUsableNodeLikePoolFs).toBe('function');
     expect(typeof arePoolRefsEnabled).toBe('function');
     expect(typeof containsPoolRefs).toBe('function');

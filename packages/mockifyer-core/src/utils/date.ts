@@ -1,6 +1,6 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { logger } from './logger';
-import { getCurrentScenario, getScenarioFolderPath } from './scenario';
+import { getCurrentScenario, getScenarioFolderPath, isScratchScenario } from './scenario';
 import {
   getRuntimeDateManipulation,
   stopRuntimeDateSync,
@@ -56,11 +56,17 @@ export function dateManipulationHasEffect(
  * Date manipulation the dashboard proxy should pass as `explicitManipulation`.
  * An effective **client-lane** payload wins over the scenario Redis/sqlite document.
  * When the scenario document is missing (`null`), returns `null` so Redis mode does not fall back to disk.
+ * When the resolved scenario is `_scratch` (no scenario selected), returns `{}` (real time) so a lane
+ * date never follows unscoped traffic — e.g. devices that accidentally share a clientId.
  */
 export function resolveExplicitDateManipulation(options: {
   laneManipulation?: Record<string, unknown> | null;
   scenarioDateDoc: { dateManipulation: Record<string, unknown> | null } | null;
+  scenario?: string | null;
 }): Record<string, unknown> | null {
+  if (isScratchScenario(options.scenario)) {
+    return {};
+  }
   if (dateManipulationHasEffect(options.laneManipulation)) {
     return options.laneManipulation as Record<string, unknown>;
   }
@@ -260,7 +266,7 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
 
   // Dashboard/Redis process cache (scenario or lane). Beats env so stale MOCKIFYER_DATE*
   // cannot override Date Config the way the proxy already ignores env.
-  const runtimeManipulation = getRuntimeDateManipulation();
+  const runtimeManipulation = getRuntimeDateManipulation(context?.scenario);
   if (runtimeManipulation !== undefined) {
     if (runtimeManipulation === null || !dateManipulationHasEffect(runtimeManipulation)) {
       return new Date();
@@ -330,6 +336,25 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
   }
 
   return new Date();
+}
+
+/**
+ * Clock for serve-time date overrides on local mock hits (axios / fetch interceptors).
+ *
+ * - Dashboard proxy (`proxy.baseUrl`): the dashboard resolves the lane/scenario, so the runtime
+ *   cache it fills is used as-is (local scenario files are not authoritative).
+ * - Otherwise: resolves this client's local scenario on every call, so a scenario switch
+ *   picks up that scenario's `date-config.json` instead of the previous one.
+ */
+export function createServeTimeClock(config: MockifyerConfig): () => Date {
+  if (config.proxy?.baseUrl?.trim()) {
+    return () => getCurrentDate();
+  }
+  return () =>
+    getCurrentDate({
+      mockDataPath: config.mockDataPath,
+      scenario: getCurrentScenario(config.mockDataPath, config.clientId),
+    });
 }
 
 /**

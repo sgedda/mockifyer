@@ -23,7 +23,7 @@ import {
   TestGenerationOptions,
   checkRequestLimit,
   prepareMockResponseBody,
-  getCurrentDate,
+  createServeTimeClock,
   createServeTimePoolResponseLoader,
   resolveRecordingExclusions,
   shouldExcludeRecording,
@@ -151,7 +151,7 @@ class MockifyerClass {
 
   /** Serve stored mock body with optional `$pool` resolution from the local fixture pool. */
   private prepareStoredResponseBody(mockData: MockData, filename?: string, scenarioPath?: string): unknown {
-    return prepareMockResponseBody(mockData, getCurrentDate, {
+    return prepareMockResponseBody(mockData, createServeTimeClock(this.config), {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: fs,
@@ -1982,7 +1982,7 @@ class MockifyerClass {
     const clientResponse = buildClientResponseFromLiveCapture(
       matchedMock.mockData,
       capturedResponse,
-      getCurrentDate,
+      createServeTimeClock(this.config),
       { filename: matchedMock.filename, scenarioPath: liveScenarioPath }
     );
     response.data = clientResponse.data;

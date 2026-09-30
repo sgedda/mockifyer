@@ -8,7 +8,7 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation, prepareMockResponseBody, getCurrentDate, newRecordingUsesAlwaysUseRealApi, createServeTimePoolResponseLoader } from '@sgedda/mockifyer-core';
+import { initializeDateManipulation, prepareMockResponseBody, createServeTimeClock, newRecordingUsesAlwaysUseRealApi, createServeTimePoolResponseLoader } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -24,7 +24,7 @@ class MockifyerClass {
   private savingResponses: Set<string> = new Set();
 
   private prepareStoredResponseBody(mockData: MockData): unknown {
-    return prepareMockResponseBody(mockData, getCurrentDate, {
+    return prepareMockResponseBody(mockData, createServeTimeClock(this.config), {
       loadPoolResponse: createServeTimePoolResponseLoader({
         mockDataPath: this.config.mockDataPath,
         nodeFs: fs,
