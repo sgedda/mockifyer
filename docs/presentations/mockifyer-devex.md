@@ -1,413 +1,282 @@
 ---
 marp: false
 title: Mockifyer DevEx
-description: 30-minute talk — predictable trip worlds, then code lab
+description: 30-minute talk — background, packages, activation, Atlas via t, scenarios, MCP, lab
 ---
 
 <!--
-Obsidian Advanced Slides / similar: slides separated by ---
-Drop screenshots into the vault and replace SCREENSHOT placeholders.
-Speaker notes in HTML comments under each slide.
-Dual audience: lead with product outcome; eng detail in footers / notes.
+Obsidian Advanced Slides: slides separated by ---
+Talk order (locked):
+  1) Short background — why / how it started
+  2) Packages and what each is for
+  3) How it runs — per repo, acctest only, off by default, enable in RN app
+  4) Demo — start tracking with Metro key "t" → trace, nested calls, search
+  5) Switch scenario in the app + under the hood in the dashboard
+  6) MCP example
+  7) Close → code lab
+Replace SCREENSHOT placeholders with your images.
 -->
 
 # Mockifyer
 
-### Predictable trip worlds for demos, tests, and helping guests
+### Record · track · mock — predictable trip worlds
 
 30 minutes · then we code together
 
-<!-- speaker: Mixed room. Tech-focused but plain language first. Screenshots you supply. -->
+<!-- speaker: Kort bakgrund → paket → aktivering → demo (t) → scenario → MCP → lab -->
 
 ---
 
-# What you’ll leave with
+# Agenda
 
-- Why we needed this (the struggle)
-- **Product worlds** — no trips / one / many / check-in
-- Who can use them — developer, tester, destination
-- How builders see the wires — Network & Atlas
-- Then: **code lab** together
-
----
-
-# The old way hurt
-
-## Always dependent on a huge underlying system
-
-- Admin work just to set up the “right” trip
-- Lost data → add again
-- New kinds of trips → more waiting
-- Just to see how **our** app looks
-
-<!-- SCREENSHOT: optional admin / staging pain -->
-
-<!-- speaker: Personal story. Cost = waiting on other teams/systems. -->
+1. **Bakgrund** — varför det behövdes  
+2. **Paket** — vad som används till vad  
+3. **Hur den körs** — per repo, acctest, av som default  
+4. **Demo** — spårning med `t` · nested calls · sök  
+5. **Byta scenario** — i appen + i dashboarden  
+6. **MCP** — kort exempel  
+7. **Code lab** tillsammans  
 
 ---
 
-# First escape hatch
+# Bakgrund — varför
 
-## Hardcoded: booking number → trips for a user
+## Beroende av ett stort underliggande system
 
-- Unblocked demos a bit
-- Brittle, manual
-- Not a real model of the API
+- Administrativt jobb för att sätta upp “rätt” trip  
+- Data försvann → lägga till igen  
+- Nya typer av trips → mer väntan  
+- Bara för att se hur **vår** app ser ut  
 
-<!-- SCREENSHOT: optional booking-number hack sketch -->
-
-<!-- speaker: Prototype of controlling what the user sees. -->
-
----
-
-# Then tests drifted
-
-- Automated tests vs staging vs the hack
-- Maintaining both became the job
-- UI, data, and “truth” diverged
-
-### The idea
-
-**Why not intercept and record requests through a library?**
+<!-- SCREENSHOT: optional staging / admin pain -->
 
 ---
 
-# From struggle to Mockifyer
+# Bakgrund — första lösningen
+
+## Hårdkodat: booking number → trips för en user
+
+- Löst demos lite  
+- Skört, manuellt  
+- Inte en generell modell av API:t  
+
+### Sedan: automated tests drev isär
+
+UI ↔ data ↔ staging ↔ hacken
+
+### Idén
+
+**Varför inte intercepta och spela in requests via ett bibliotek?**
+
+---
+
+# Från idé till Mockifyer
 
 ```mermaid
 flowchart LR
-  Admin["Huge underlying system"] --> Fragile["Lost data / new trips / wait"]
-  Fragile --> Hardcoded["Hardcoded booking numbers"]
-  Hardcoded --> Drift["Tests drift"]
-  Drift --> Idea["Intercept and record"]
-  Idea --> Worlds["Predictable trip worlds"]
+  Admin["Stort underliggande system"] --> Hack["Hårdkodade booking numbers"]
+  Hack --> Drift["Tester driver isär"]
+  Drift --> Idea["Intercept + record"]
+  Idea --> Worlds["Förutsägbara trip-världar"]
 ```
 
-Recording the wire = the general solution
+Samma världar för demos, tester och att hjälpa en gäst
 
 ---
 
-# What I need to see in the app
+# Paket — vad används till vad
 
-| World | Example name |
-|-------|----------------|
-| **No trips** | `trips-empty` |
-| **One trip** | `trips-one` |
-| **Many trips** | `trips-many` |
-| **During check-in** | `checkin-open` |
+| Paket | Till vad |
+|-------|----------|
+| **`@sgedda/mockifyer-core`** | Matching, scenarios, dates, Atlas-data |
+| **`@sgedda/mockifyer-fetch`** | `fetch` / **React Native** · Metro · `t` Atlas |
+| **`@sgedda/mockifyer-axios`** | Axios (Node / services) |
+| **`@sgedda/mockifyer-dashboard`** | UI · Redis · Network · scenarios |
+| **`@sgedda/mockifyer-mcp`** | AI-verktyg (Cursor / Claude) |
 
-Works as intended **and** looks good — without hunting staging.
+Fungerar idag med **Node**, **React Native** och **React web**
 
-<!-- SCREENSHOT: four UI frames — empty / one / many / check-in -->
-
----
-
-# Same worlds · three jobs
-
-| Who | Job |
-|-----|-----|
-| **Developer** | Works + looks right; debug the wires |
-| **Tester** | Stable edges; no scavenger hunt |
-| **Destination** | Show a guest “what you’ll see when…” |
-
-One infrastructure. Simple flip for people. Deep tools for builders.
-
-<!-- SCREENSHOT: Dev · Tester · Destination graphic -->
+[mockifyer.dev](https://mockifyer.dev/)
 
 ---
 
-# Independence
+# Hur den körs — per repo
 
-### Run without that huge system
+### Läggs till i respektive repo där ni vill
 
-**Before:** app → many live systems (fragile)
+- **Spela in** responses  
+- **Tracka** anrop (nested)  
+- **Mocka** / byta produktvärldar  
 
-**After:** app → Mockifyer → our saved worlds (stable)
+### Hos oss (praktiken)
 
-Mock-only **our** stack — not partner lottery every morning.
+- Endast mot **acctest** (inte prod)  
+- **Inaktiverad från början** — opt-in  
+- Aktiveras via **RN-appen** (Dev / runtime toggle)  
+- Services kopplas via **dashboard + Redis** när ni vill dela lanes / hops  
 
-```mermaid
-flowchart LR
-  Pain["Need trip worlds"] --> Scenarios["Named scenarios"]
-  Pain2["Mock-only our stack"] --> Replay["Record then replay"]
-  Pain3["See nested calls"] --> Network["Network + Atlas"]
-```
-
----
-
-# Opt-in — not a silent layer
-
-Extra interception can hide bugs or surprise production.
-
-**We turn Mockifyer on when we mean to.**
-
-| Plain | Mode | When |
-|-------|------|------|
-| On | `on` | Dev wants mocks |
-| Off until I enable | `manual` | Opt-in at the desk |
-| Only for E2E | `launch_client` | Maestro lane |
-| Never | `off` | Store builds |
-
-<!-- SCREENSHOT: runtime toggle off → on -->
-
-<!-- speaker: If MOCKIFYER_MODE unset, RN library defaults to on — set mode deliberately. Runtime toggle ≠ scenario switch. -->
+<!-- speaker: Undvik tyst abstraktion i prod. Store = off. Acctest only. -->
 
 ---
 
-# Where mocks live
+# Aktivering — opt-in
 
-### Filesystem first → Redis + dashboard now
-
-**Early:** JSON in the repo — simple, git-reviewable  
-*(RN: device + Metro sync to the project folder)*
-
-**Now:** **Redis + dashboard** between our services  
-One control plane — app, BFF, nested backends share scenarios & lanes
-
-```mermaid
-flowchart LR
-  FS["Filesystem mock-data"] --> Dash["Dashboard + Redis"]
-  App["RN app"] --> Dash
-  SvcA["Our service A"] --> Dash
-  SvcB["Our service B"] --> Dash
-```
-
----
-
-# How a world is born
-
-We don’t invent trip JSON first — we **capture a real run**, then shape it.
-
-```mermaid
-flowchart LR
-  Live["Hit real APIs once"] --> Record["Record"]
-  Record --> Pass["Passthrough until curated"]
-  Pass --> Curate["Name trips-empty"]
-  Curate --> Replay["Replay mock-only"]
-```
-
-- New recordings often stay **live until you activate** the mock
-- Keep **recorded-*** vs **curated** worlds separate
-
-<!-- SCREENSHOT: passthrough checkbox → curated mock -->
-
-<!-- speaker: alwaysUseRealApi / MOCK_WORKFLOW. Re-record can destroy curation. -->
-
----
-
-# Three ideas (don’t mix them up)
-
-| Word | Plain meaning |
-|------|----------------|
-| **Scenario** | Which product world (no trips / check-in) |
-| **Lane** | Which phone or test run points at that world |
-| **Runtime mode** | Whether Mockifyer is on — not which world |
+| Läge | Betydelse |
+|------|-----------|
+| **Av som default** | Ingen intercept förrän ni vill |
+| **RN-appen** | Slå på Mockifyer i Dev |
+| **`launch_client` / Maestro** | Endast när E2E skickar lane |
+| **`off`** | Store / builds utan mocks |
 
 ```mermaid
 flowchart TD
-  Mode["Runtime mode: is mocking on?"]
-  Scenario["Scenario: which product world"]
-  Lane["Lane: who is pointed at that world"]
-  Mode --> Intercept{On?}
-  Intercept -->|yes| Lane
-  Lane --> Scenario
-  Scenario --> Worlds["Saved responses"]
+  Repo["Repo med Mockifyer"] --> Off["Start: inaktiv"]
+  Off --> App["Aktivera i RN-appen"]
+  App --> Acctest["acctest / våra mocks"]
+  Acctest --> Track["Track + record + mock"]
 ```
 
-<!-- speaker: Eng: MOCKIFYER_MODE, clientId, scenario folder / Redis. -->
+<!-- SCREENSHOT: RN Dev — Mockifyer off → on -->
 
 ---
 
-# Matching — how a call finds its mock
+# Demo · starta spårning med `t`
 
-Same URL is **not** enough for GraphQL.
+### I Metro-terminalen: tryck **`t`**
 
-| Kind | How it matches |
-|------|----------------|
-| **REST** | Method + URL + query; JSON body → shape hash |
-| **GraphQL** | Normalized **query + variables** (not operation name alone) |
+- Startar **Atlas**-capture + live stream  
+- (Stoppa med `t` igen → kan generera HTML-docs)  
 
-Trip list vs check-in mutation → **different mocks** on `/graphql`
+Sedan visar vi:
+
+1. **Trace** — korrelerade / nestlade anrop  
+2. **Nested calls** — expand / collapse  
+3. **Sök** — hitta data i payloads  
+
+<!-- SCREENSHOT: Metro tip "press t" / Atlas stream -->
+
+<!-- speaker: DEFAULT_METRO_ATLAS_KEY = "t". a = Android — rör inte. -->
+
+---
+
+# Trace & nestlade anrop
+
+**Live wires** — vad appen faktiskt anropar just nu
+
+- Träd av hops (BFF → underliggande)  
+- Expand / collapse  
+- Öppna request / response  
 
 ```mermaid
 flowchart TD
-  Req[Outgoing request] --> Kind{GraphQL?}
-  Kind -->|yes| GQL["Query + variables"]
-  Kind -->|no| REST["Method + URL + body"]
-  GQL --> Hit[Saved mock]
-  REST --> Hit
+  App["RN app"] --> BFF["Vår BFF"]
+  BFF --> S1["Service A"]
+  BFF --> S2["Service B"]
 ```
 
-<!-- speaker: Similar-match is REST-only fallback; never soft-matches GraphQL. -->
+<!-- SCREENSHOT: Atlas TTY eller Network — nested tree expanded -->
+
+<!-- speaker: Dashboard Network = samma idé live i UI. Atlas = stream + HTML map/search. -->
 
 ---
 
-# Only our APIs
+# Sök i datat
 
-**Allowlist** (shipped) — discover host/paths; record/replay off until you enable them  
-**`excludedUrls`** — fully bypass (auth, analytics, noise)
+### Hitta vad som finns — även det UI inte visar
 
-Mock-only *our* system = narrow abstraction (ties to opt-in)
+- Sök i path / body / requestId  
+- Bra för: “finns booking fields vi inte använder än?”  
 
-<!-- SCREENSHOT: domain-path-rules or allowlist UI -->
+<!-- SCREENSHOT: Atlas HTML Search eller bodies search hit -->
 
-<!-- speaker: recordingExclusions = don’t persist, still replay. -->
+**Network** = just nu · **Atlas** = karta + sök över sessionen
 
 ---
 
-# Demo · flip product worlds
+# Byta scenario i appen
 
-### In-app Dev — for everyone
+### Produktvärldar (exempel)
 
-`trips-empty` → `trips-one` → `trips-many` → check-in
+| Värld | Scenario |
+|-------|----------|
+| Inga trips | `trips-empty` |
+| En trip | `trips-one` |
+| Flera | `trips-many` |
+| Check-in | `checkin-open` |
 
-- Developer: works + looks good  
-- Tester: reproduce  
-- Destination: “what the guest sees”
+Byt i **Dev-delen av RN-appen** → UI uppdateras
 
-**Runtime toggle** = Mockifyer on/off · **Scenario** = which world
+**Scenario** = vilken värld · **Lane** = vilken enhet/test som pekar dit  
+*(Runtime on/off ≠ scenario)*
 
 <!-- SCREENSHOT: in-app scenario picker + UI before/after -->
 
-<!-- speaker: Hero demo. Predictable presentation. -->
+---
+
+# Under huven — dashboard
+
+Efter scenario-byte i appen, visa i dashboard:
+
+- **Aktiv scenario / client lane**  
+- **Mocks** för den världen  
+- **Network** — hops följer samma lane  
+- Valfritt: Date Config för check-in “idag”  
+
+<!-- SCREENSHOT: dashboard scenario + lane + mock list -->
+
+Samma värld som appen — delad via Redis när services är kopplade
 
 ---
 
-# Predictable testing & presentation
+# MCP — kort exempel
 
-Same trip world every time — not “hope staging has the right booking.”
+**MCP** = AI-klienten (Cursor / Claude) får verktyg mot dashboarden
 
-**People:** flip in the app  
-**Machines:** launch arguments (Maestro)
+Exempel prompts:
 
----
+- “Set my lane to `trips-empty`”  
+- “Override booking status …” / copy array item  
+- “Trace the last failing hop”  
 
-# Maestro · pin a world for a test
+Vi provar gärna i **code lab**.
 
-```yaml
-- launchApp:
-    clearState: true
-    arguments:
-      mockifyerClientId: e2e-trips-empty
-      scenario: trips-empty
-- assertVisible:
-    id: home_empty_state
-```
-
-“Open the app *as if* there are no trips.”
-
-> For engineers: under `launch_client`, **scenario alone is not enough** — need `mockifyerClientId`.
-
-<!-- SCREENSHOT: Maestro YAML + green assert -->
-
-<!-- speaker: Lab can run this. OSS: example-projects/maestro-login-flow -->
+<!-- SCREENSHOT: MCP chat → tool call → result -->
 
 ---
 
-# Builders lean-in
+# Om ni missar något — ta med kort
 
-### Next: how we see the wires
+| Ämne | En mening |
+|------|-----------|
+| **Hur en värld föds** | Record → passthrough → curate → replay |
+| **Matching** | REST = method+URL+body · GraphQL = query+variables |
+| **Allowlist / excludedUrls** | Bara våra API:er · brus utanför |
+| **Overrides** | Datum offset från now · fler booking numbers i array |
+| **Maestro** | `mockifyerClientId` + `scenario` → förutsägbara E2E |
+| **Vem** | Dev · QA · destination — samma världar |
 
-Stay for the story — or lean in for the stack.
-
----
-
-# Network · live nested calls
-
-**Dashboard Network** = what’s happening **right now**
-
-- Expand / collapse correlated trees  
-- Open a response body  
-- Re-trigger from the app → new hop appears
-
-<!-- SCREENSHOT: Network Expand/Collapse + body -->
-
-<!-- speaker: Nav: Statistics · Mocks · Hops · Overrides · Network · Date Config · Settings -->
-
----
-
-# Network vs Atlas
-
-| | **Network** | **Atlas** |
-|---|-------------|-----------|
-| Plain | Live wires **now** | **Map** of the session |
-| Use | Debug while the app runs | Architecture · search bodies · share |
-
-Live wires → Network.  
-Map + search across what we captured → **Atlas**.
-
----
-
-# Atlas · systems we actually call
-
-- **Architecture / Map** — overview of underlying systems from our app  
-- **Search** — data that exists in payloads but the UI doesn’t use yet  
-- Streaming terminal optional (collapse/expand hops)
-
-<!-- SCREENSHOT: Atlas Architecture/Map + Search hit -->
-
-<!-- speaker: Prefer HTML Map/Search live; TTY as screenshot if short on time. -->
-
----
-
-# Time & overrides
-
-### Check-in needs “today”
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **`getCurrentDate()`** | One control plane | Touches app code |
-| **Date overrides** | App keeps `new Date()` | Many fields to wire |
-
-**Overrides** = change a saved mock without a whole new world
-
-- **A)** Date path = now + offset (fresh check-in window)  
-- **B)** Extend arrays — e.g. more **booking numbers** (echo of the old hack)
-
-<!-- SCREENSHOT: date offset and/or array before/after -->
-
-<!-- speaker: Demo ONE of A or B. Lane date can override scenario Date Config. -->
-
----
-
-# Packages · not mobile-only
-
-Works **today** with:
-
-- **Node** — servers, BFF, scripts  
-- **React Native / Expo** — today’s story  
-- **React web**
-
-| Package | Role |
-|---------|------|
-| `@sgedda/mockifyer-core` | Matching, scenarios, dates |
-| `@sgedda/mockifyer-fetch` | fetch / React Native |
-| `@sgedda/mockifyer-axios` | Axios |
-| `@sgedda/mockifyer-dashboard` | UI · Redis · Network |
-| `@sgedda/mockifyer-mcp` | AI tools — **try in the lab** |
-
-[mockifyer.dev](https://mockifyer.dev/) · open source on GitHub
+<!-- speaker: Välj 1–2 om tid finns; annars lab. -->
 
 ---
 
 # Recap
 
-- Huge system → booking hack → drift → **record the wire**
-- **Shared trip worlds** for developer, tester, destination
-- Opt-in · filesystem → Redis between our services
-- Predictable demos **and** tests
-- Network = now · Atlas = map + search
-
-Curated picks for destination · **off** in store builds · mind PII when recording
+- Behövdes för att slippa admin-helvetet och drift i tester  
+- Paket per yta: core · fetch/RN · axios · dashboard · mcp  
+- **Per repo** · **acctest** · **av som default** · på via RN  
+- **`t`** → track · nested · sök  
+- Scenario i appen ↔ dashboard under huven  
+- MCP för AI-driven lane/override  
 
 ---
 
-# Now we code together
+# Code lab
 
-### Code lab
+Tillsammans:
 
-Flip a world · read the wire · birth a mock · override · optional Maestro / MCP
+1. Aktivera i appen  
+2. `t` → se nested hops + sök  
+3. Byt scenario · kolla dashboard  
+4. Valfritt: record · override · MCP · Maestro  
 
-See **CODE_LAB.md** in this folder
-
-<!-- speaker: Hand off. Non-tech can stay on flip exercise. -->
+→ [CODE_LAB.md](./CODE_LAB.md) · [DEMO_RUNBOOK.md](./DEMO_RUNBOOK.md)

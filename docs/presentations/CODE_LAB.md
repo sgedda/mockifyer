@@ -37,29 +37,42 @@ if (isMockifyerReactNativeActive(result)) {
 
 ---
 
-## Exercise 1 — Flip a world (everyone)
+## Exercise 0 — Activate (acctest / opt-in)
 
-**Goal:** Same product world without staging.
+**Goal:** Confirm Mockifyer starts off and only runs when you enable it (acctest).
 
-1. Open the app Dev / scenario screen.
-2. Switch to `trips-empty` (or your empty scenario) → confirm UI.
-3. Switch to `trips-one` → confirm one trip.
-4. Optional: `trips-many` or `checkin-open`.
-
-**Check:** Runtime toggle off = no Mockifyer; scenario change = different world (not the same control).
+1. Launch app — Mockifyer **inactive**.
+2. Enable via RN Dev UI / runtime toggle.
+3. Confirm traffic can be tracked/mocked only after enable.
 
 ---
 
-## Exercise 2 — Read the wire
+## Exercise 1 — Track with Metro `t` (everyone can watch)
 
-**Goal:** See nested backend calls and discover response data.
+**Goal:** Nested calls + search (same as the talk demo).
 
-1. Open dashboard → **Network** → Live.
-2. Trigger a load in the app (home / trips).
-3. Expand / collapse the correlated tree.
-4. Open a hop body — find one field the UI shows and one that looks unused.
+1. With Metro TTY focused, press **`t`** to start Atlas capture / live stream.
+2. Use the app so calls fire.
+3. Expand / collapse nested hops; open a body.
+4. Use **Search** (Atlas HTML) for a field the UI may not show.
+5. Optional: press **`t`** again to stop; render/open HTML docs if you use that flow.
 
-**Check:** You can explain Network = *now* vs Atlas = *map + search* (Exercise 6 optional).
+**Fallback:** Dashboard **Network** → Live → Expand.
+
+**Check:** Network/Atlas live stream = *now*; Atlas HTML = map + search.
+
+---
+
+## Exercise 2 — Flip a world + dashboard under the hood
+
+**Goal:** Scenario in app ↔ dashboard.
+
+1. Open the app Dev / scenario screen.
+2. Switch to `trips-empty` → confirm UI; check dashboard lane/scenario + mocks.
+3. Switch to `trips-one` → confirm UI + dashboard again.
+4. Optional: `trips-many` or `checkin-open`.
+
+**Check:** Runtime toggle off = no Mockifyer; scenario change = different world (not the same control).
 
 ---
 

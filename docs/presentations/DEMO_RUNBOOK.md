@@ -1,74 +1,84 @@
-# Demo runbook — Mockifyer DevEx (30 min talk)
+# Demo runbook — Mockifyer DevEx (30 min)
 
-Companion to [mockifyer-devex.md](./mockifyer-devex.md). After the talk: [CODE_LAB.md](./CODE_LAB.md).
+Companion to [mockifyer-devex.md](./mockifyer-devex.md). Lab: [CODE_LAB.md](./CODE_LAB.md).
+
+## Your talk order (locked)
+
+1. Short **background** — why / how it started  
+2. **Packages** — what each is for  
+3. **How it runs** — per repo, **acctest only**, **off by default**, enable via **RN app**  
+4. **Demo tracking first** — Metro key **`t`** → trace, nested calls, search  
+5. **Switch scenario** in the app + **dashboard** under the hood  
+6. **MCP** example (short; deeper in lab)  
+7. Optional “if I missed…” beats → **code lab**
 
 ## Prep checklist
 
-- [ ] RN / Expo app with in-app scenario (or lane) picker
-- [ ] Metro running with Mockifyer sync middleware
-- [ ] Dashboard with Redis (or SQLite) — shared lanes across services if you demo hops
-- [ ] Four curated scenarios: `trips-empty`, `trips-one`, `trips-many`, `checkin-open` (or your names)
-- [ ] Screenshots / clips ready for flips, record→passthrough, Network tree, Atlas Map/Search
-- [ ] Maestro YAML on a slide (run in lab, not required live in talk)
-- [ ] Atlas HTML from a prior session (fallback if live Map is slow)
-- [ ] Backup screen recording of the four UI states
+- [ ] RN app on **acctest** with Mockifyer wired; starts **disabled**; Dev toggle to enable  
+- [ ] Metro TTY in foreground (so **`t`** works) — Atlas key default `t`  
+- [ ] Dashboard + Redis (lanes/scenarios shared across services you demo)  
+- [ ] Scenarios ready: e.g. `trips-empty`, `trips-one`, `trips-many`, `checkin-open`  
+- [ ] Screenshots/clips: toggle on, Atlas/`t` nested tree, Search hit, in-app scenario flip, dashboard lane/scenario  
+- [ ] Optional: MCP client pointed at dashboard for a 30s prompt  
 
-## Timing (≈30 min)
+## Timing (~30 min)
 
-| Min | Block | Must land |
-|-----|--------|-----------|
-| 0–5 | Origin + needs + personas | Story → trip worlds → three audiences |
-| 5–8 | Opt-in + runtime mode + filesystem→Redis | Opt-in; mode ≠ world; Redis between services |
-| 8–10 | World is born | Record → passthrough → curate |
-| 10–12 | Lane vs scenario | Plain gloss + Mermaid |
-| 12–15 | Matching + scope | REST vs GraphQL; allowlist + `excludedUrls` |
-| 15–20 | **Demo A** in-app flips | Empty → one → many → check-in |
-| 20–22 | Maestro picture | YAML; predictability line |
-| 22–26 | **Demo B** Network → Atlas | Live hops; then Map/Search; say the distinction |
-| 26–29 | Dates + one override | Check-in today; date offset **or** booking-number array |
-| 29–30 | Packages + handoff | Node · RN · React web → lab |
+| Min | Block |
+|-----|--------|
+| 0–4 | Background (system → booking hack → drift → intercept) |
+| 4–7 | Packages table |
+| 7–11 | Activation: per repo, acctest, off→on in RN |
+| 11–18 | **Demo A:** enable app → press **`t`** → nested trace → search |
+| 18–24 | **Demo B:** switch scenario in app → show dashboard lane/mocks/Network |
+| 24–27 | MCP one prompt (or screenshot) |
+| 27–30 | Missed-one-liners (optional) + handoff to lab |
 
-## Demo order (stage)
+## Stage script
 
-1. Origin narrative (slides; optional old-hack screenshot).
-2. Opt-in / runtime mode (+ toggle screenshot if no live toggle).
-3. Filesystem → Redis + dashboard (one Mermaid).
-4. World born (screenshots OK — don’t burn time on a flaky live record).
-5. Lane vs scenario Mermaid.
-6. Matching + allowlist slides (no live coding).
-7. **Live:** in-app flip through trip worlds. Say: toggle ≠ scenario.
-8. Maestro YAML slide — “lab can try this.”
-9. **Live:** Network expand nested hop → open body → handoff line → Atlas Architecture/Map (+ Search if time).
-10. **Live or screenshot:** one override (prefer booking-number array if it echoes the origin story).
-11. Packages / runtimes → “now we code together.”
+### 1–3 · Story + packages + activation
+- Keep background short (3–4 min max).  
+- Packages: name + one job each; Node / RN / React web one breath.  
+- Stress: **not prod** · **acctest** · **inactive until RN enable** · add package where you want record/track/mock.
+
+### 4 · Tracking first (`t`)
+1. Enable Mockifyer in the RN app.  
+2. In **Metro terminal**, press **`t`** (starts Atlas capture + live stream).  
+3. Use the app so traffic flows.  
+4. Show **nested / correlated** hops (expand/collapse).  
+5. Show **search** (Atlas HTML Search and/or stream links to bodies).  
+
+**Fallback:** Dashboard **Network** Live + Expand if Metro `t` fails; Atlas HTML from a prior session for Search.
+
+**Note:** `a` is reserved for Android in Metro — Atlas default is **`t`**.
+
+### 5 · Scenario in app + dashboard
+1. Flip `trips-empty` → `trips-one` (etc.) in app Dev UI.  
+2. Dashboard: active scenario / **client lane**, mock list for that world, Network hops for the lane.  
+3. Say once: **runtime on/off ≠ scenario**; **lane** = who; **scenario** = which world.
+
+### 6 · MCP
+One prompt only, e.g. “Set my lane to `trips-empty`” or an override. Rest in lab.
+
+### 7 · If time — pick one
+- How a world is born (record → passthrough → curate)  
+- REST vs GraphQL matching  
+- Allowlist / `excludedUrls`  
+- Date offset or booking-number array override  
+- Maestro `mockifyerClientId` + `scenario`  
 
 ## Fallbacks
 
-| If this fails | Do this |
-|---------------|---------|
-| In-app flip | Four UI screenshots + dashboard lane/scenario switch |
-| Live record | Mermaid + passthrough screenshot |
-| Network empty | Pre-recorded hop tree clip |
-| Atlas TTY | Skip TTY; use HTML Map/Search only |
-| Override live | Before/after screenshot of array or date path |
-| Maestro | YAML only — run in lab |
+| Fails | Do this |
+|-------|---------|
+| `t` / Atlas TTY | Dashboard Network + prebuilt Atlas HTML |
+| In-app flip | Screenshots + dashboard scenario switch |
+| MCP | Screenshot of tool call |
+| Redis hops empty | Single-service Network is enough; explain multi-service as “when connected” |
 
-## Cut order if over time
+## Cut order if over
 
-1. Maestro → 1 slide, no talk beyond the YAML  
-2. Atlas streaming terminal (keep HTML Map/Search)  
-3. Second half of overrides slide (keep one use case)  
+1. MCP → screenshot only  
+2. “Missed” table → skip  
+3. Search → one screenshot  
 
-**Never cut:** origin, in-app flips, Network vs Atlas distinction.
-
-## Mixed room cues
-
-- After flips: “So what? Same worlds for demos, QA, and destination — without staging luck.”
-- Before Network: “Builders lean-in — watch the movie either way.”
-- Closing: zero env var names on the recap slide.
-
-## Speaker accuracy notes
-
-- RN: if `MOCKIFYER_MODE` is **unset**, library defaults to **`on`** — teach deliberate opt-in.
-- `launch_client`: need non-empty **`mockifyerClientId`**; `scenario` alone does not activate.
-- Passthrough: new recordings often `alwaysUseRealApi` until curated (`MOCK_WORKFLOW.md`).
+**Never cut:** background (short), activation (acctest / off-by-default), **`t` + nested**, scenario flip + dashboard.
