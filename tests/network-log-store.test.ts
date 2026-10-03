@@ -1,5 +1,8 @@
 import { NETWORK_LOG_STORE_MAX_EVENT_BYTES } from '@sgedda/mockifyer-core';
-import { createNetworkLogStore } from '../packages/mockifyer-dashboard/src/utils/network-log-store';
+import {
+  createNetworkLogStore,
+  payloadsForRedisRpushNewestFirst,
+} from '../packages/mockifyer-dashboard/src/utils/network-log-store';
 import { createSharedStoreCache } from '../packages/mockifyer-dashboard/src/utils/shared-store-cache';
 import type { DashboardContextConfig } from '../packages/mockifyer-dashboard/src/utils/dashboard-context';
 
@@ -26,6 +29,18 @@ describe('shared-store-cache', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
     const { store: next } = fakeStore();
     expect(cache.getOrCreate('redis:a', () => next)).toBe(next);
+  });
+});
+
+describe('redis network-log list order', () => {
+  it('keeps newest hops at index 0 when restoring after a lane clear', () => {
+    const keptNewestFirst = ['newest', 'middle', 'oldest'];
+    const restored: string[] = [];
+    for (const line of payloadsForRedisRpushNewestFirst(keptNewestFirst)) {
+      restored.push(line);
+    }
+    expect(restored).toEqual(keptNewestFirst);
+    expect(restored.slice(0, 1)).toEqual(['newest']);
   });
 });
 
