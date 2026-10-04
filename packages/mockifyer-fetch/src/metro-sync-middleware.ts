@@ -419,25 +419,110 @@ function getMockFilePathLocal(
 }
 
 /**
- * Get current scenario from scenario-config.json
+ * Scenario folder names the dashboard accepts (one path segment).
+ * `pool` is the fixture-pool directory and is not a scenario.
+ */
+const SAFE_SCENARIO_NAME = /^[a-zA-Z0-9_-]+$/;
+const FIXTURE_POOL_DIR_NAME = "pool";
+
+/** True when `candidate` is `root` or a file/directory inside it. */
+function isInsideDirectory(root: string, candidate: string): boolean {
+  const rootResolved = path.resolve(root);
+  const target = path.resolve(candidate);
+  const prefix = rootResolved.endsWith(path.sep)
+    ? rootResolved
+    : rootResolved + path.sep;
+  return target === rootResolved || target.startsWith(prefix);
+}
+
+/**
+ * Accept a scenario name that can be used as a single directory under mock-data.
+ * Rejects traversal (`..`, slashes), absolute paths, and the reserved `pool` directory.
+ */
+function sanitizeScenarioName(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (
+    !trimmed ||
+    trimmed === FIXTURE_POOL_DIR_NAME ||
+    !SAFE_SCENARIO_NAME.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
+/** Absolute scenario directory, or null when `scenario` would escape mock-data. */
+function resolveScenarioDirectory(
+  mockDataPath: string,
+  scenario: string,
+): string | null {
+  const name = sanitizeScenarioName(scenario);
+  if (!name) {
+    return null;
+  }
+  const dir = path.resolve(mockDataPath, name);
+  if (!isInsideDirectory(mockDataPath, dir)) {
+    return null;
+  }
+  return dir;
+}
+
+/**
+ * Relative `.json` path under a scenario folder (for example `redis/<hash>.json`).
+ * Rejects absolute paths and `.` / `..` segments.
+ */
+function sanitizeMockRelativePath(raw: string): string | null {
+  const normalized = raw.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!normalized.endsWith(".json") || normalized.includes("\0")) {
+    return null;
+  }
+  const segments = normalized.split("/");
+  if (segments.some((seg) => seg.length === 0 || seg === "." || seg === "..")) {
+    return null;
+  }
+  return normalized;
+}
+
+/** Absolute mock file path inside `scenarioDir`, or null when the relative path escapes. */
+function resolveMockFilePath(
+  scenarioDir: string,
+  relativePath: string,
+): string | null {
+  const rel = sanitizeMockRelativePath(relativePath);
+  if (!rel) {
+    return null;
+  }
+  const filePath = path.resolve(scenarioDir, rel);
+  if (!isInsideDirectory(scenarioDir, filePath) || filePath === path.resolve(scenarioDir)) {
+    return null;
+  }
+  return filePath;
+}
+
+/**
+ * Get current scenario from env or scenario-config.json.
+ * Unsafe names (path traversal, reserved `pool`) are ignored.
  */
 function getCurrentScenario(mockDataPath: string): string {
-  // Check environment variable first
-  if (process.env.MOCKIFYER_SCENARIO) {
-    return process.env.MOCKIFYER_SCENARIO;
+  const fromEnv = sanitizeScenarioName(process.env.MOCKIFYER_SCENARIO);
+  if (fromEnv) {
+    return fromEnv;
   }
 
-  // Try to load from scenario-config.json
   try {
     const configPath = path.join(mockDataPath, "scenario-config.json");
     if (fs.existsSync(configPath)) {
       const fileContent = fs.readFileSync(configPath, "utf-8");
       const config = JSON.parse(fileContent);
-      if (config.currentScenario) {
-        return config.currentScenario;
+      const fromFile = sanitizeScenarioName(config.currentScenario);
+      if (fromFile) {
+        return fromFile;
       }
     }
-  } catch (error) {
+  } catch {
     // Silently fail - file might not exist or be invalid
   }
 
@@ -445,11 +530,15 @@ function getCurrentScenario(mockDataPath: string): string {
 }
 
 /**
- * Get scenario folder path
+ * Scenario folder under mock-data. Throws when `scenario` is not a safe single segment
+ * so a poisoned name cannot mkdir outside the mock-data tree.
  */
 function getScenarioPath(scenario: string, mockDataPath: string): string {
-  // Always create scenario subfolder, even for 'default'
-  return path.join(mockDataPath, scenario);
+  const dir = resolveScenarioDirectory(mockDataPath, scenario);
+  if (!dir) {
+    throw new Error(`Invalid scenario name: ${scenario}`);
+  }
+  return dir;
 }
 
 /**
@@ -731,17 +820,22 @@ function saveProxyMirrorMockToProject(
         error: "Mock data contains nested Mockifyer sync requests",
       };
     }
-    const id = scenarioName.trim();
+    const id = sanitizeScenarioName(scenarioName);
     if (!id) {
-      return { success: false, error: "scenarioName is required" };
+      return { success: false, error: "Invalid scenarioName" };
     }
-    const normalized = relativePath.replace(/\\/g, "/").replace(/^\//, "");
+    const normalized = sanitizeMockRelativePath(relativePath);
     if (!normalized) {
-      return { success: false, error: "relativePath is required" };
+      return { success: false, error: "Invalid relativePath" };
     }
-    const scenarioPath = getScenarioPath(id, mockDataPath);
+    const scenarioPath = resolveScenarioDirectory(mockDataPath, id);
+    const filePath = scenarioPath
+      ? resolveMockFilePath(scenarioPath, normalized)
+      : null;
+    if (!scenarioPath || !filePath) {
+      return { success: false, error: "Invalid relativePath" };
+    }
     fs.mkdirSync(scenarioPath, { recursive: true });
-    const filePath = path.join(scenarioPath, normalized);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
     if (testConfig) {
@@ -2053,8 +2147,16 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       const scenarioParam = params.get("scenario");
       const scenarioName =
         scenarioParam && scenarioParam.trim() !== ""
-          ? scenarioParam.trim()
+          ? sanitizeScenarioName(scenarioParam)
           : getCurrentScenario(mockDataPath);
+      if (!scenarioName) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json");
+        res.end(
+          JSON.stringify({ success: false, error: "Invalid scenario name" }),
+        );
+        return;
+      }
       const rules = readDomainPathRulesFile(mockDataPath, scenarioName);
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ success: true, scenario: scenarioName, rules }));
@@ -2076,8 +2178,16 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           };
           const scenarioName =
             typeof parsed.scenario === "string" && parsed.scenario.trim() !== ""
-              ? parsed.scenario.trim()
+              ? sanitizeScenarioName(parsed.scenario)
               : getCurrentScenario(mockDataPath);
+          if (!scenarioName) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({ success: false, error: "Invalid scenario name" }),
+            );
+            return;
+          }
           const upserts = parseDomainPathRules(
             parsed.upserts ?? parsed.rules ?? {},
           );
@@ -2654,10 +2764,13 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       try {
         // Check environment variable first (highest priority)
         if (process.env.MOCKIFYER_SCENARIO) {
+          const fromEnv =
+            sanitizeScenarioName(process.env.MOCKIFYER_SCENARIO) ||
+            DEFAULT_SCENARIO;
           logger.debug(
-            `[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${process.env.MOCKIFYER_SCENARIO}`,
+            `[MetroSyncMiddleware] Using scenario from MOCKIFYER_SCENARIO env var: ${fromEnv}`,
           );
-          writeScenarioResponse(process.env.MOCKIFYER_SCENARIO);
+          writeScenarioResponse(fromEnv);
           return;
         }
 
@@ -2674,7 +2787,8 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           const fileContent = fs.readFileSync(configPath, "utf-8");
           logger.debug(`[MetroSyncMiddleware] File content: ${fileContent}`);
           const config = JSON.parse(fileContent);
-          const scenario = config.currentScenario || DEFAULT_SCENARIO;
+          const scenario =
+            sanitizeScenarioName(config.currentScenario) || DEFAULT_SCENARIO;
           logger.debug(
             `[MetroSyncMiddleware] Found scenario in config: ${scenario} (from file: ${JSON.stringify(config)})`,
           );
@@ -2708,6 +2822,20 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
       req.on("end", () => {
         try {
           const config = JSON.parse(body);
+          if (
+            config &&
+            typeof config === "object" &&
+            typeof config.currentScenario === "string" &&
+            config.currentScenario.trim() !== "" &&
+            !sanitizeScenarioName(config.currentScenario)
+          ) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({ success: false, error: "Invalid scenario name" }),
+            );
+            return;
+          }
           const configPath = path.join(mockDataPath, "scenario-config.json");
           fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
           res.setHeader("Content-Type", "application/json");
