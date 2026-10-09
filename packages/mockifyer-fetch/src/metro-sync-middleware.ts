@@ -2192,6 +2192,8 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             scenario?: string;
             upserts?: DomainPathRulesMap;
             rules?: DomainPathRulesMap;
+            /** When true, replace the scenario file with `rules` (enable-record migrations). */
+            replace?: boolean;
           };
           const scenarioName =
             typeof parsed.scenario === "string" && parsed.scenario.trim() !== ""
@@ -2205,6 +2207,23 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             );
             return;
           }
+
+          if (parsed.replace === true) {
+            const rules = parseDomainPathRules(parsed.rules ?? {});
+            writeDomainPathRulesFile(mockDataPath, scenarioName, rules);
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                success: true,
+                changed: true,
+                replaced: true,
+                scenario: scenarioName,
+                rules,
+              }),
+            );
+            return;
+          }
+
           const upserts = parseDomainPathRules(
             parsed.upserts ?? parsed.rules ?? {},
           );

@@ -36,6 +36,10 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  setRecordMode: (enabled: boolean) => void;
+  isRecordMode: () => boolean;
+  setRecordResponses: (enabled: boolean) => void;
+  isRecordResponses: () => boolean;
   enableMockifyer: () => void;
   disableMockifyer: () => void;
   isMockifyerEnabled: () => boolean;
