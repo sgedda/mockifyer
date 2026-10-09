@@ -83,6 +83,7 @@ describe("Mockifyer Fetch Integration", () => {
       const recorder = setupMockifyer({
         mockDataPath: testMockDataPath,
         recordMode: true,
+        recordResponses: true,
         useGlobalFetch: false,
       });
 
@@ -220,10 +221,12 @@ describe("Mockifyer Fetch Integration", () => {
       // Clear the global store to ensure fresh setup
       delete (global as any).__mockifyer_original_fetch;
 
-      // Setup Mockifyer in record mode (after mocking fetch so _originalFetch uses the mock)
+      // Setup Mockifyer in record mode (after mocking fetch so _originalFetch uses the mock).
+      // Opt into full response bodies — default recordResponses is request-only stubs.
       const recordClient = setupMockifyer({
         mockDataPath: testMockDataPath,
         recordMode: true,
+        recordResponses: true,
         useGlobalAxios: false,
         useGlobalFetch: false,
       });

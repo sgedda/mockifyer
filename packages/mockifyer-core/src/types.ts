@@ -22,7 +22,10 @@ export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client' | 'manual';
 /**
  * Hybrid/filesystem domain-path traffic policy (see `domain-path-rules.json`).
  *
- * - **`allowlist`** (default) — record/replay only when a matching rule enables flags; discovery writes keys off.
+ * - **`allowlist`** (default) — record/replay only when a matching rule enables flags.
+ *   While **`recordMode` is off**, discovery does **not** persist new keys (avoids poisoning
+ *   the file with `recordResponses: false`). While recording, discovery writes
+ *   `recordResponses: true` (replay/`autoMock` stays opt-in unless already enabled).
  * - **`record_all`** — record/replay by default; discovery writes keys on; flip paths off to exclude.
  * - **`off`** — no discover/gate (legacy ungated `recordMode`).
  */
@@ -76,6 +79,13 @@ export interface MockifyerConfig {
   launchArgumentClientIdKey?: string;
   /** When true, records real API responses to mock data files. When false, uses existing mock data. */
   recordMode?: boolean;
+  /**
+   * When **false** (default), new local recordings are **request-only** stubs (`responsePending`,
+   * live passthrough) — same default as dashboard proxy `proxy.recordResponses`.
+   * When **true**, store full response bodies (heavier). Env **`MOCKIFYER_RECORD_RESPONSES`** overrides.
+   * Domain-path rule `recordResponses` is a separate allowlist gate (whether the path may record at all).
+   */
+  recordResponses?: boolean;
   /** When true, throws an error if no mock data is found for a request. 
    * Note: This is automatically set to false when recordMode is true, as real API calls are needed for recording. */
   failOnMissingMock?: boolean;

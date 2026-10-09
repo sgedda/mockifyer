@@ -80,6 +80,7 @@ import {
   resolveNetworkLogIncludeTraceOptionsAsync,
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
+  buildRequestOnlyMockData,
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
@@ -472,7 +473,10 @@ class MockifyerClass {
       this.config.clientId = resolveClientId(this.config);
     }
     this.activationMode = resolveActivationMode(this.config);
-    this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+    this.domainPathRules = new DomainPathRulesSession({
+      config: this.config,
+      getRecordMode: () => this.config.recordMode === true,
+    });
     
     this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
     if (config.persistRuntimeEnabled === true && !this.runtimeEnabledStorage) {
@@ -1467,30 +1471,58 @@ class MockifyerClass {
         correlation
       );
 
-      const mockData: MockData = {
-        request: {
-          method: response.config?.method?.toUpperCase() || 'GET',
-          url: response.config?.url || '',
-          headers: this.anonymizeHeaders(response.config?.headers || {}),
-          data: response.config?.data,
-          queryParams: normalizedParamsForSave,
-        },
-        response: {
-          status: response.status,
-          data: stripMockifyerTraceFromBody(response.data),
-          headers: response.headers || {},
-        },
-        timestamp: new Date().toISOString(),
-        duration,
-        sessionId:
+      const requestPayload = {
+        method: response.config?.method?.toUpperCase() || 'GET',
+        url: response.config?.url || '',
+        headers: this.anonymizeHeaders(response.config?.headers || {}),
+        data: response.config?.data,
+        queryParams: normalizedParamsForSave,
+      };
+
+      // Default false — request-only stubs (same as Redis/proxy). Full bodies when opted in.
+      const includeResponseBodies = resolveRecordResponses(
+        this.config.proxy?.recordResponses ?? this.config.recordResponses
+      );
+
+      let mockData: MockData;
+      if (!includeResponseBodies) {
+        mockData = buildRequestOnlyMockData(requestPayload, {
+          alwaysUseRealApi: true,
+        });
+        mockData.timestamp = new Date().toISOString();
+        if (duration !== undefined) {
+          mockData.duration = duration;
+        }
+        mockData.sessionId =
           saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
             ? existingMock.mockData.sessionId
-            : this.currentSessionId,
-        requestId: hopIds.requestId,
-        parentRequestId: hopIds.parentRequestId,
-        parentRequestIds: hopIds.parentRequestIds,
-        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
-      };
+            : this.currentSessionId;
+        mockData.requestId = hopIds.requestId;
+        mockData.parentRequestId = hopIds.parentRequestId;
+        mockData.parentRequestIds = hopIds.parentRequestIds;
+        logger.info(
+          `[Mockifyer-Fetch] Recording request-only stub (responsePending) for ${requestPayload.method} ${requestPayload.url}`
+        );
+      } else {
+        mockData = {
+          request: requestPayload,
+          response: {
+            status: response.status,
+            data: stripMockifyerTraceFromBody(response.data),
+            headers: response.headers || {},
+          },
+          timestamp: new Date().toISOString(),
+          duration,
+          sessionId:
+            saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
+              ? existingMock.mockData.sessionId
+              : this.currentSessionId,
+          requestId: hopIds.requestId,
+          parentRequestId: hopIds.parentRequestId,
+          parentRequestIds: hopIds.parentRequestIds,
+          ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
+        };
+      }
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -1775,6 +1807,68 @@ class MockifyerClass {
   }
 
   /**
+   * Turn record mode on/off at runtime (dev menus, tests).
+   * Also updates `proxy.recordOnMiss` when a dashboard proxy is configured so
+   * Redis/proxy recording follows the same switch as local hybrid saves.
+   *
+   * When enabling: flips existing allowlist `recordResponses` to true and new
+   * discoveries enable recording. When disabled, allowlist discovery stops
+   * persisting new keys (so browsing does not poison the rules file).
+   */
+  setRecordMode(enabled: boolean): void {
+    const next = Boolean(enabled);
+    this.config.recordMode = next;
+    if (next) {
+      // Recording needs live upstream calls; fail-on-miss conflicts with that.
+      this.config.failOnMissingMock = false;
+      this.domainPathRules.enableRecordResponsesForAllRules();
+    }
+    if (this.config.proxy?.baseUrl) {
+      this.config.proxy = {
+        ...this.config.proxy,
+        recordOnMiss: next,
+      };
+      const client = this.httpClient as FetchHTTPClient & {
+        setProxyRecordOnMiss?: (value: boolean | undefined) => void;
+      };
+      client.setProxyRecordOnMiss?.(next);
+    }
+    logger.info(`[Mockifyer-Fetch] recordMode set to: ${next}`);
+  }
+
+  /** Whether newly unmatched requests can be recorded (local or proxy record-on-miss). */
+  isRecordMode(): boolean {
+    return this.config.recordMode === true;
+  }
+
+  /**
+   * Whether new recordings store full response bodies (true) or request-only stubs (false, default).
+   * Matches dashboard proxy `recordResponses` / env `MOCKIFYER_RECORD_RESPONSES`.
+   */
+  setRecordResponses(enabled: boolean): void {
+    const next = Boolean(enabled);
+    this.config.recordResponses = next;
+    if (this.config.proxy?.baseUrl) {
+      this.config.proxy = {
+        ...this.config.proxy,
+        recordResponses: next,
+      };
+      const client = this.httpClient as FetchHTTPClient & {
+        setProxyRecordResponses?: (value: boolean) => void;
+      };
+      client.setProxyRecordResponses?.(next);
+    }
+    logger.info(`[Mockifyer-Fetch] recordResponses (store bodies) set to: ${next}`);
+  }
+
+  /** True when new recordings include response bodies (not request-only stubs). */
+  isRecordResponses(): boolean {
+    return resolveRecordResponses(
+      this.config.proxy?.recordResponses ?? this.config.recordResponses
+    );
+  }
+
+  /**
    * Enable Mockifyer at runtime. All subsequent requests will go through Mockifyer
    * (mock lookup, recording, dashboard/Redis proxy, etc.).
    * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
@@ -1856,6 +1950,10 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  setRecordMode: (enabled: boolean) => void;
+  isRecordMode: () => boolean;
+  setRecordResponses: (enabled: boolean) => void;
+  isRecordResponses: () => boolean;
   enableMockifyer: () => void;
   disableMockifyer: () => void;
   isMockifyerEnabled: () => boolean;
@@ -2033,6 +2131,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
+  extendedClient.setRecordMode = (enabled: boolean) => mockifyer.setRecordMode(enabled);
+  extendedClient.isRecordMode = () => mockifyer.isRecordMode();
+  extendedClient.setRecordResponses = (enabled: boolean) => mockifyer.setRecordResponses(enabled);
+  extendedClient.isRecordResponses = () => mockifyer.isRecordResponses();
   extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
   extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
   extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
