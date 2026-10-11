@@ -74,7 +74,7 @@ See [`.cursor/README.md`](./.cursor/README.md) and [`packages/mockifyer-mcp/READ
 ## Usage (fetch)
 
 ```typescript
-import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 setupMockifyer({
@@ -139,12 +139,14 @@ export MOCKIFYER_TIMEZONE="America/New_York"
 
 Priority: env vars → `setupMockifyer` config → system time.
 
+**Scenario dates:** Date manipulation from a scenario's `date-config.json` (or dashboard Date Config) applies only when a **named scenario** is active (e.g. `default`, `checkout`). Traffic under `_scratch` (the temporary unscoped bucket) always uses **real time**. When you switch scenarios, `getCurrentDate()` never serves the previous scenario's date — it returns real time until the new scenario's date config is loaded.
+
 ## Environment variables (common)
 
 | Variable | Description |
 |----------|-------------|
-| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
-| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/filesystem: `allowlist` (default) \| `record_all` \| `off` — auto-discovers host/path keys into `domain-path-rules.json`; gates record + replay. Migration: set `record_all` or `off` if you relied on ungated `recordMode` |
+| `MOCKIFYER_MODE` | React Native startup: `on` \| `manual` (aliases: `gui`, `toggle`) \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**). `manual` mode patches `fetch` but starts disabled; call `enableMockifyer()` to activate (pair with `persistRuntimeEnabled: true` to save the choice). `launch_client` activates on a launch `mockifyerClientId` OR `scenario`. See [docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md) for runtime enable/disable API. |
+| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/filesystem: `allowlist` (default) \| `record_all` \| `off` — auto-discovers host/path keys into `domain-path-rules.json`; gates record + replay (see **Domain-path rules** below for `allowUpstream`). Migration: set `record_all` or `off` if you relied on ungated `recordMode` |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** "Record on miss" |
 | `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy "replay mock immediately after capture" behavior |
@@ -197,7 +199,7 @@ Use `activationMode` on `setupMockifyer(...)` (or env **`MOCKIFYER_ACTIVATION_MO
 | Mode | Behavior |
 |------|----------|
 | **`always`** (default) | Same as before: every request uses Mockifyer, subject to `excludedUrls` and built-in bypasses (e.g. Mockifyer Metro sync URLs). |
-| **`client_id_header`** | Mockifyer runs only when the outbound request carries a **non-empty** **`X-Mockifyer-Client-Id`** header. Omit the header for a normal real HTTP call; set it (or receive it from an upstream service) to opt that hop into mocks/recording. **Fetch + dashboard proxy:** if `proxy.baseUrl` is set and a **resolved `clientId`** exists, proxy traffic is treated as opted-in even when the inner URL headers do not repeat the field (the lane is sent on the proxy `POST`). |
+| **`client_id_header`** | Mockifyer runs only when the outbound request carries a **non-empty** **`X-Mockifyer-Client-Id`** header, or when the inbound request being served (downstream hops inherit it) has the header. Omit the header for a normal real HTTP call; set it (or receive it from an upstream service) to opt that hop into mocks/recording. Requests without the header pass through untouched. |
 | **`off`** | Interceptors do not apply mock or record behavior; plain HTTP. |
 
 **Axios example (header-gated):**
@@ -227,6 +229,20 @@ await axios.get('https://api.example.com/v1/profile', {
 **Dashboard proxy:** when the dashboard proxies to the real upstream, it sets **`X-Mockifyer-Client-Id`** on that upstream request when a lane `clientId` is resolved, so downstream APIs can apply the same rule. See [MULTI_CLIENT_ISOLATION.md](./MULTI_CLIENT_ISOLATION.md) for lane and proxy context.
 
 Implementation helpers (for custom middleware): `resolveActivationMode`, `shouldApplyMockifyer`, `getOutboundMockifyerClientIdHeader`, and `MOCKIFYER_CLIENT_ID_HEADER` are exported from `@sgedda/mockifyer-core`.
+
+## Domain-path rules
+
+Domain-path rules (`mock-data/<scenario>/domain-path-rules.json`) control recording and upstream access on a per-path basis. Each rule includes:
+
+- **`recordResponses`**: When `true`, cache misses save full response bodies
+- **`autoMock`**: When `true` with recording, new mocks replay immediately (no `alwaysUseRealApi`)
+- **`allowUpstream`**: When `false`, proxy cache misses return **412 Precondition Failed** even if the scenario allows upstream. When `true`, explicitly re-allow under a blocked parent. When omitted, inherit from the nearest ancestor rule that sets this field, else the scenario default.
+
+Rules use **longest-prefix matching**: `api.example.com/v1/users/:id` is more specific than `api.example.com/v1` and wins when both exist.
+
+**Dashboard:** View and edit rules in the **Domains** view (tree UI) or via `POST /api/mocks/domain-path-rules`.
+
+**React Native:** Metro endpoints `GET/POST /mockifyer-domain-path-rules` (Metro loads project rules onto the device at startup via `reloadMockData`).
 
 ## Advanced testing
 
