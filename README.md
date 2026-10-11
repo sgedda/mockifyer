@@ -1,6 +1,6 @@
 # Mockifyer
 
-**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code).
+**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code). **Comparing tools?** See [mockifyer.dev/comparisons](https://mockifyer.dev/comparisons) for feature comparisons with MSW, Polly.js, Nock, Mirage JS, WireMock, Mockoon, and json-server.
 
 **Contact:** **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)) — [open an issue](https://github.com/sgedda/mockifyer/issues) for bugs and ideas, or a [pull request](https://github.com/sgedda/mockifyer/pulls) if you already have a change. General GitHub profile: [@sgedda](https://github.com/sgedda).
 

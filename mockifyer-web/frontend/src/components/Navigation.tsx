@@ -9,6 +9,7 @@ const navItems = [
   { href: '/getting-started', label: 'Getting Started' },
   { href: '/playground', label: 'Playground' },
   { href: '/timeline', label: 'Timeline' },
+  { href: '/comparisons', label: 'Comparisons' },
   { href: '/settings', label: 'Settings' },
   { href: '/contact', label: 'Contact' },
 ]

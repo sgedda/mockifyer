@@ -9,6 +9,7 @@ import GettingStarted from './pages/GettingStarted'
 import ConfigReference from './pages/ConfigReference'
 import Settings from './pages/Settings'
 import Contact from './pages/Contact'
+import Comparisons from './pages/Comparisons'
 import { ThemeProvider } from './lib/use-theme'
 import PageSeoManager from './components/PageSeoManager'
 
@@ -35,6 +36,7 @@ function App() {
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />
               <Route path="/config-reference" element={<ConfigReference />} />
+              <Route path="/comparisons" element={<Comparisons />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/contact" element={<Contact />} />
             </Routes>
