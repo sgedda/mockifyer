@@ -87,6 +87,28 @@ const featureMatrix: {
     jsonServer: 'Single JSON',
   },
   {
+    feature: 'Scenarios (switchable worlds)',
+    mockifyer: true,
+    msw: false,
+    polly: false,
+    nock: false,
+    mirage: false,
+    wiremock: 'Stateful',
+    mockoon: false,
+    jsonServer: false,
+  },
+  {
+    feature: 'Client lanes (multi-user isolation)',
+    mockifyer: 'Redis/SQLite',
+    msw: false,
+    polly: false,
+    nock: false,
+    mirage: false,
+    wiremock: false,
+    mockoon: false,
+    jsonServer: false,
+  },
+  {
     feature: 'Axios support',
     mockifyer: true,
     msw: true,
@@ -107,17 +129,6 @@ const featureMatrix: {
     wiremock: 'Any client',
     mockoon: 'Any client',
     jsonServer: 'Any client',
-  },
-  {
-    feature: 'Scenario switching',
-    mockifyer: true,
-    msw: false,
-    polly: false,
-    nock: false,
-    mirage: false,
-    wiremock: 'Stateful',
-    mockoon: false,
-    jsonServer: false,
   },
   {
     feature: 'Date/time control',
@@ -142,6 +153,17 @@ const featureMatrix: {
     jsonServer: false,
   },
   {
+    feature: 'Live tracing UI (nested hops)',
+    mockifyer: 'Atlas (t key)',
+    msw: false,
+    polly: false,
+    nock: false,
+    mirage: false,
+    wiremock: 'Admin API',
+    mockoon: false,
+    jsonServer: false,
+  },
+  {
     feature: 'Dashboard / UI',
     mockifyer: 'Local web UI',
     msw: false,
@@ -153,8 +175,8 @@ const featureMatrix: {
     jsonServer: false,
   },
   {
-    feature: 'Redis/SQLite proxy',
-    mockifyer: true,
+    feature: 'Deterministic E2E (launch args)',
+    mockifyer: 'Maestro',
     msw: false,
     polly: false,
     nock: false,
@@ -164,8 +186,19 @@ const featureMatrix: {
     jsonServer: false,
   },
   {
-    feature: 'MCP server integration',
+    feature: 'Runtime toggle (opt-in/out)',
     mockifyer: true,
+    msw: false,
+    polly: false,
+    nock: false,
+    mirage: 'Passthrough',
+    wiremock: false,
+    mockoon: false,
+    jsonServer: false,
+  },
+  {
+    feature: 'AI integration (MCP)',
+    mockifyer: 'Experimental',
     msw: false,
     polly: false,
     nock: false,
@@ -173,6 +206,29 @@ const featureMatrix: {
     wiremock: false,
     mockoon: false,
     jsonServer: false,
+  },
+]
+
+const packages = [
+  {
+    name: '@sgedda/mockifyer-core',
+    description: 'Mocks, scenarios, client lanes, date control, providers',
+  },
+  {
+    name: '@sgedda/mockifyer-fetch',
+    description: 'fetch, React Native, Metro sync, Atlas tracing (t key)',
+  },
+  {
+    name: '@sgedda/mockifyer-axios',
+    description: 'Axios integration for Node and backend services',
+  },
+  {
+    name: '@sgedda/mockifyer-dashboard',
+    description: 'Web UI, Redis/SQLite, Network view, scenario/lane management',
+  },
+  {
+    name: '@sgedda/mockifyer-mcp',
+    description: 'AI tools for Cursor and Claude (experimental)',
   },
 ]
 
@@ -185,6 +241,43 @@ export default function Comparisons() {
           A fair comparison of Mockifyer with other API mocking tools, based on official documentation.
         </p>
       </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>The Problem Mockifyer Solves</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            Modern applications depend on many underlying systems — APIs, databases, third-party services. 
+            Testing these integrations is challenging:
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
+            <li>
+              <strong className="text-foreground">Test data disappears or goes stale:</strong> A booking 
+              created for testing yesterday might be expired today, or deleted by another developer
+            </li>
+            <li>
+              <strong className="text-foreground">Dates drift:</strong> Time-dependent logic like "upcoming trips" 
+              or "check-in window" breaks as calendar dates move forward
+            </li>
+            <li>
+              <strong className="text-foreground">State setup takes manual work:</strong> Creating the right 
+              test state (empty cart, one item, many items, checkout error) requires clicking through admin panels 
+              or running database scripts
+            </li>
+            <li>
+              <strong className="text-foreground">Previous fixes were hacky:</strong> Hardcoded backend 
+              bypasses tied to one test user, supporting only one dataset at a time
+            </li>
+          </ul>
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">Mockifyer gives you deterministic state that doesn&apos;t drift.</strong> Record 
+            real API responses once, switch between complete scenarios at runtime, and control dates to keep 
+            time-dependent tests stable. No more "works on my machine" — the same mock world loads 
+            for everyone.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -229,6 +322,207 @@ export default function Comparisons() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>What Makes Mockifyer Different?</CardTitle>
+          <CardDescription>
+            Mockifyer&apos;s unique combination of features for real-world development
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-4">
+            <div>
+              <h4 className="font-semibold mb-2">🎭 Scenarios as Switchable &quot;Worlds&quot;</h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                Instead of managing test data manually, define complete scenarios: <code className="text-xs bg-muted px-1 py-0.5 rounded">trips-empty</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">trips-one</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">trips-many</code>, <code className="text-xs bg-muted px-1 py-0.5 rounded">checkin-open</code>. 
+                Each scenario is a folder of JSON mocks representing a complete application state.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Switch scenarios at runtime from the dev section of your React Native app, the dashboard, 
+                or environment variables. No code changes, no server restarts — just flip the world 
+                you&apos;re testing in.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🔀 Client Lanes (Multi-User Isolation)</h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                Each app instance or device has its own <strong>client ID</strong> (lane). The dashboard 
+                manages lane-to-scenario mappings in Redis or SQLite, so your phone can test <code className="text-xs bg-muted px-1 py-0.5 rounded">trips-empty</code> while 
+                your colleague tests <code className="text-xs bg-muted px-1 py-0.5 rounded">trips-many</code> — both hitting the same backend services, 
+                with no mock conflicts.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Backend services share the same client ID through request headers, so the entire call 
+                chain (app → BFF → microservices) uses the same scenario. Perfect for testing distributed systems.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">📡 Atlas: Live Tracing with the <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> Key</h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> in the Metro terminal to start <strong>Atlas capture</strong>. 
+                A browser opens showing a live stream of correlated, nested HTTP calls as an 
+                expandable/collapsible tree: app → BFF → downstream services.
+              </p>
+              <p className="text-sm text-muted-foreground mb-2">
+                Each hop shows request/response payloads with inline search — find booking data the UI 
+                doesn&apos;t display yet, trace error chains, or verify what actually went over the wire. Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> again 
+                to stop, then render searchable HTML docs from the session.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                <strong>Atlas vs Network view:</strong> The dashboard&apos;s Network tab shows live traffic hop-by-hop 
+                (useful for debugging right now). Atlas maps and searches across an entire captured session, 
+                generating AI-ready documentation of your call chains.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">📅 Deterministic Dates</h4>
+              <p className="text-sm text-muted-foreground">
+                Fix dates, apply offsets, or change timezones across your entire test suite. 
+                Call <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> instead of <code className="text-xs bg-muted px-1 py-0.5 rounded">new Date()</code> and 
+                eliminate flaky time-dependent tests. The date can be configured per scenario in the 
+                dashboard, so <code className="text-xs bg-muted px-1 py-0.5 rounded">checkin-open</code> always shows trips with check-in windows starting &quot;today.&quot;
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🎬 Deterministic Maestro E2E</h4>
+              <p className="text-sm text-muted-foreground mb-2">
+                Launch arguments <code className="text-xs bg-muted px-1 py-0.5 rounded">mockifyerClientId</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario</code> start 
+                the app in the same mock world on every test run. No flaky API dependencies, no race conditions.
+              </p>
+              <div className="bg-muted/50 p-3 rounded-md">
+                <pre className="text-xs overflow-x-auto">
+{`- launchApp:
+    clearState: true
+    arguments:
+      mockifyerClientId: e2e-trips-one
+      scenario: trips-one`}
+                </pre>
+              </div>
+              <p className="text-sm text-muted-foreground mt-2">
+                <strong>Workflow:</strong> Record the real API responses, have an AI write a Maestro test 
+                that starts with that scenario, then assert on what the UI components render. Every run 
+                replays the exact same backend state.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🎛️ Runtime Toggle (Opt-In, Disabled by Default)</h4>
+              <p className="text-sm text-muted-foreground">
+                Mockifyer is opt-in and can be completely disabled. Set <code className="text-xs bg-muted px-1 py-0.5 rounded">runtimeMode: &apos;manual&apos;</code> to 
+                start with mocks off, then call <code className="text-xs bg-muted px-1 py-0.5 rounded">enableMockifyer()</code> from a dev menu toggle. 
+                When disabled, all requests bypass mocks, dashboard, and Redis — zero overhead. Perfect for 
+                comparing mock vs. real API behavior during debugging.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🎛️ Dashboard</h4>
+              <p className="text-sm text-muted-foreground">
+                Local web UI for managing:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1 mt-2">
+                <li>Active scenario and client lanes</li>
+                <li>JSON mocks for each world (view, edit, activate passthrough)</li>
+                <li>Network hops filtered by lane</li>
+                <li>Date Config per scenario</li>
+                <li>Domain-path rules (which endpoints to record/mock)</li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🤖 MCP for AI Assistants (Experimental)</h4>
+              <p className="text-sm text-muted-foreground">
+                Connect Cursor or Claude Desktop to the dashboard via Model Context Protocol. Natural 
+                language commands like:
+              </p>
+              <ul className="text-sm text-muted-foreground list-disc pl-5 space-y-1 mt-2">
+                <li>&quot;Set my lane to trips-empty&quot;</li>
+                <li>&quot;Override the booking status to CONFIRMED&quot;</li>
+                <li>&quot;Trace the last failing hop&quot;</li>
+              </ul>
+              <p className="text-sm text-muted-foreground mt-2">
+                <span className="inline-block bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded">
+                  Early / Experimental
+                </span>
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">📱 React Native & Metro Sync</h4>
+              <p className="text-sm text-muted-foreground">
+                Hybrid provider writes mocks to both device storage (Expo FileSystem) and the project 
+                repo via Metro HTTP endpoints. Edit a mock in your IDE, reload the app — it syncs 
+                automatically. Works with both fetch and axios in React Native.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">🔍 GraphQL Query Normalization</h4>
+              <p className="text-sm text-muted-foreground">
+                Automatically matches GraphQL requests by normalized query + sorted variables, 
+                not just operation name. Handles complex queries correctly out of the box.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform Support</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 border rounded-lg">
+              <h4 className="font-semibold mb-2">Node.js</h4>
+              <p className="text-sm text-muted-foreground">
+                Full support via <code className="text-xs bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-axios</code> for 
+                backend services and APIs
+              </p>
+            </div>
+            <div className="p-4 border rounded-lg">
+              <h4 className="font-semibold mb-2">React Native</h4>
+              <p className="text-sm text-muted-foreground">
+                Native support via <code className="text-xs bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-fetch</code> with 
+                Metro sync and device storage
+              </p>
+            </div>
+            <div className="p-4 border rounded-lg">
+              <h4 className="font-semibold mb-2">React Web</h4>
+              <p className="text-sm text-muted-foreground">
+                Browser support via <code className="text-xs bg-muted px-1 py-0.5 rounded">@sgedda/mockifyer-fetch</code> for 
+                web applications
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Package Overview</CardTitle>
+          <CardDescription>
+            Mockifyer is split into focused packages for different use cases
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {packages.map((pkg) => (
+              <div key={pkg.name} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors">
+                <code className="text-xs bg-primary/10 text-primary px-2 py-1 rounded flex-shrink-0">
+                  {pkg.name}
+                </code>
+                <p className="text-sm text-muted-foreground">{pkg.description}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 md:grid-cols-2">
         {alternatives.map((tool) => (
           <Card key={tool.name}>
@@ -261,69 +555,6 @@ export default function Comparisons() {
 
       <Card>
         <CardHeader>
-          <CardTitle>What Makes Mockifyer Different?</CardTitle>
-          <CardDescription>
-            Mockifyer&apos;s unique combination of features
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-semibold mb-1">📼 Record & Replay in Your Codebase</h4>
-              <p className="text-sm text-muted-foreground">
-                Intercept fetch and axios calls, record real API responses, and commit the JSON to your repo. 
-                Each mock is a searchable file, not buried in database or browser storage.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">🎭 Scenarios for Multi-State Testing</h4>
-              <p className="text-sm text-muted-foreground">
-                Switch between complete datasets (happy path, error states, edge cases) with environment variables 
-                or the dashboard. No need to write separate handlers for each state.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">📱 React Native & Expo Support</h4>
-              <p className="text-sm text-muted-foreground">
-                Device storage with optional Metro sync middleware keeps repo and simulator in sync. 
-                Works with both fetch and axios in React Native apps.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">📅 Deterministic Date Control</h4>
-              <p className="text-sm text-muted-foreground">
-                Fix dates, apply offsets, or change timezones across your entire test suite. 
-                Call <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> instead of <code className="text-xs bg-muted px-1 py-0.5 rounded">new Date()</code> and 
-                eliminate flaky time-dependent tests.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">🔍 GraphQL Query Normalization</h4>
-              <p className="text-sm text-muted-foreground">
-                Automatically matches GraphQL requests by normalized query + sorted variables, 
-                not just operation name. Handles complex queries correctly out of the box.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">🎛️ Optional Dashboard + Redis/SQLite Proxy</h4>
-              <p className="text-sm text-muted-foreground">
-                Browse mocks, switch scenarios, and isolate client lanes with per-client Redis storage. 
-                Run multiple test environments in parallel without mock conflicts.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">🤖 MCP Server for AI Assistants</h4>
-              <p className="text-sm text-muted-foreground">
-                Interact with your mocks using natural language in Cursor or Claude Desktop. 
-                Query, modify, and trace network calls through the Model Context Protocol.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>When to Choose Mockifyer</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -332,28 +563,32 @@ export default function Comparisons() {
           </p>
           <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
             <li>
-              <strong className="text-foreground">Committed recordings:</strong> JSON mocks checked into the repo, 
-              discoverable in your editor and code review
+              <strong className="text-foreground">Deterministic state that doesn&apos;t drift:</strong> No more 
+              stale test data, expired bookings, or broken time-dependent logic
             </li>
             <li>
-              <strong className="text-foreground">Scenario-driven testing:</strong> Easily switch between complete 
-              datasets for different test states without rewriting handlers
+              <strong className="text-foreground">Scenario-driven development:</strong> Switch between complete 
+              application states (empty, one item, many items, errors) at runtime without manual setup
             </li>
             <li>
-              <strong className="text-foreground">React Native support:</strong> Full-stack record/replay for mobile 
-              apps with Metro sync
+              <strong className="text-foreground">Multi-user isolation:</strong> Client lanes let each 
+              developer or device test different scenarios simultaneously without conflicts
             </li>
             <li>
-              <strong className="text-foreground">Date determinism:</strong> Eliminate flaky tests caused by 
-              time-dependent logic
+              <strong className="text-foreground">React Native + Expo:</strong> Full-stack record/replay 
+              for mobile apps with automatic Metro sync
             </li>
             <li>
-              <strong className="text-foreground">Multi-client isolation:</strong> Test parallel flows without 
-              mock conflicts using Redis lanes
+              <strong className="text-foreground">Live tracing & debugging:</strong> Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> to 
+              capture and visualize nested call chains across your entire stack
             </li>
             <li>
-              <strong className="text-foreground">AI-native tooling:</strong> Query and modify mocks conversationally 
-              through the MCP server
+              <strong className="text-foreground">Deterministic E2E with Maestro:</strong> Launch arguments 
+              guarantee the same mock world on every test run
+            </li>
+            <li>
+              <strong className="text-foreground">Committed recordings:</strong> JSON mocks checked into 
+              the repo, discoverable in your editor and code review
             </li>
           </ul>
           <p className="text-sm text-muted-foreground">

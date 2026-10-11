@@ -16,34 +16,34 @@ export const PUBLISHED_PACKAGES: PublishedPackage[] = [
   {
     name: '@sgedda/mockifyer-core',
     version: '1.8.37',
-    role: 'Types, mock matching, scenarios, date helpers, activation mode, request correlation, AI context builders',
+    role: 'Mocks, scenarios, client lanes, date control, activation modes, providers',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-core',
   },
   {
     name: '@sgedda/mockifyer-axios',
     version: '1.8.21',
-    role: 'Axios interceptors — `setupMockifyer()` for Node and browser',
+    role: 'Axios integration for Node and backend services',
     install: 'npm install @sgedda/mockifyer-core @sgedda/mockifyer-axios axios',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-axios',
   },
   {
     name: '@sgedda/mockifyer-fetch',
     version: '1.8.31',
-    role: 'fetch interceptors for Node.js, React Native, and Expo; dashboard proxy helpers',
+    role: 'fetch, React Native, Metro sync, Atlas tracing (t key in Metro)',
     install: 'npm install @sgedda/mockifyer-core @sgedda/mockifyer-fetch',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-fetch',
   },
   {
     name: '@sgedda/mockifyer-dashboard',
     version: '1.4.50',
-    role: 'CLI + UI to browse, edit, and activate mocks; Redis proxy and client lanes',
+    role: 'Web UI, Redis/SQLite, Network view, scenario/lane management, Date Config',
     install: 'npx @sgedda/mockifyer-dashboard --path ./mock-data',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-dashboard',
   },
   {
     name: '@sgedda/mockifyer-mcp',
     version: '0.1.0',
-    role: 'MCP server for Cursor / Claude — search mocks, AI context, field overrides (requires dashboard)',
+    role: 'AI tools for Cursor and Claude (experimental)',
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-mcp',
   },
   {
@@ -174,49 +174,59 @@ export const SETUP_MOCKIFYER_OPTIONS = `{
 
 export const KEY_FEATURES = [
   {
+    icon: '🎭',
+    title: 'Switchable scenario worlds',
+    description: 'trips-empty, trips-one, trips-many — flip between complete mock datasets at runtime from your dev menu',
+  },
+  {
+    icon: '🛤️',
+    title: 'Client lanes',
+    description: 'Per-device isolation via Redis/SQLite; your phone tests trips-empty while a colleague tests trips-many',
+  },
+  {
+    icon: '📡',
+    title: 'Atlas: Press t to trace',
+    description: 'Metro terminal t key starts live hop capture with nested call trees, payload search, and HTML docs',
+  },
+  {
+    icon: '📅',
+    title: 'Deterministic dates',
+    description: 'Fix dates per scenario so "check-in opens today" stays stable; eliminates time-dependent flakes',
+  },
+  {
+    icon: '🎬',
+    title: 'Maestro E2E',
+    description: 'Launch arguments lock the mock world on every test run — no API flakes, same state guaranteed',
+  },
+  {
     icon: '🔒',
     title: 'Record & replay',
     description: 'Capture live axios/fetch responses as JSON; replay offline in dev and CI',
   },
   {
-    icon: '🔍',
-    title: 'GraphQL matching',
-    description: 'Normalized query + sorted variables — reliable replay for GraphQL APIs',
-  },
-  {
-    icon: '📅',
-    title: 'Date manipulation',
-    description: 'fixedDate, offset, timezone via getCurrentDate() — no flaky time-based tests',
-  },
-  {
-    icon: '🎭',
-    title: 'Scenarios',
-    description: 'mock-data/<scenario>/ datasets — happy path, errors, and edge cases',
-  },
-  {
-    icon: '🛤️',
-    title: 'Client lanes',
-    description: 'MOCKIFYER_CLIENT_ID + dashboard Redis proxy for multi-service isolation',
+    icon: '📊',
+    title: 'Dashboard with Date Config',
+    description: 'Manage scenarios, client lanes, network hops, and per-scenario date overrides in one UI',
   },
   {
     icon: '🎚️',
-    title: 'Activation modes',
-    description: 'always, client_id_header (X-Mockifyer-Client-Id), or off per request',
-  },
-  {
-    icon: '📊',
-    title: 'Dashboard',
-    description: 'Browse, edit, activate passthrough mocks; network timeline and client lanes',
+    title: 'Runtime toggle (opt-in)',
+    description: 'Start disabled, enableMockifyer() from a dev switch; zero overhead when off',
   },
   {
     icon: '🤖',
-    title: 'MCP + AI context',
-    description: 'mockifyer-mcp tools and lightweight mock projections for IDE assistants',
+    title: 'MCP for AI (experimental)',
+    description: 'Cursor/Claude: "set my lane to trips-empty" or "override booking status to CONFIRMED"',
   },
   {
     icon: '📱',
-    title: 'React Native',
-    description: 'Hybrid storage, Metro sync, Maestro launch_client mode',
+    title: 'React Native + Expo',
+    description: 'Hybrid storage, Metro sync, device-to-repo two-way sync, launch_client mode',
+  },
+  {
+    icon: '🔍',
+    title: 'GraphQL matching',
+    description: 'Normalized query + sorted variables — reliable replay for GraphQL APIs',
   },
   {
     icon: '🔗',
