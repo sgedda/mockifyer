@@ -26,7 +26,7 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
   - **`failed_no_bundled_mocks`** — activation was requested but the release bundle had no mock data module.
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
-- **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `GET/POST /mockifyer-domain-path-rules` (GET hydrates project rules onto the device at startup via `reloadMockData`).
+- **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `GET/POST /mockifyer-domain-path-rules` (GET hydrates project rules onto the device at startup via `reloadMockData`). Rules support **`allowUpstream`** (`false` blocks upstream with 412; see README.md).
 
 Example (local dev: unset or **`MOCKIFYER_MODE=on`**; GUI opt-in: **`MOCKIFYER_MODE=manual`** + persist; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
 
@@ -128,6 +128,48 @@ Middleware resolves **`projectRoot`** and **`mockDataPath`** (e.g. `./mock-data`
 **Project → device:** when **`status === 'active'`**, call **`instance.reloadMockData(true)`** (or rely on the initial sync inside `setupMockifyerForReactNative`). Uses manifest + per-file downloads over `http://localhost:${metroPort}` (simulator) — ensure Metro is running.
 
 **Dashboard vs Metro:** **[`mockifyer-dashboard`](./packages/mockifyer-dashboard)** is a **separate** Express app (e.g. port **3002**) for browsing/editing mocks. Sync endpoints for the app run on **Metro**, not the dashboard, unless you mount the same middleware on Express yourself.
+
+### Atlas capture from Metro terminal
+
+The Metro terminal includes an **Atlas capture** feature (press **`t`** key) for recording network traffic and debugging React Native apps:
+
+- **`t` key**: Start/stop Atlas capture
+  - **Start**: Clears the hop buffer, signals the app to enable Mockifyer if it was runtime-disabled, and opens the live stream page `/mockifyer-atlas-live` in your browser
+  - **Stop**: Ends the capture session and restores the previous runtime-enabled state
+  - The live page includes a **Render** button that writes full Atlas HTML documentation to `mock-data/atlas-html/`
+- **Capture only runs when started**: Network events are buffered only while Atlas capture is active (not during normal dev)
+- **Live stream page**: Real-time hop visualization at `http://localhost:${METRO_PORT}/mockifyer-atlas-live` with expand/collapse for request/response bodies
+- **Include trace header**: Atlas capture automatically adds `X-Mockifyer-Include-Trace: 1` to outbound requests when enabled. Opt out with `networkLog.includeTraceHeader: false` in the `syncMiddleware` config.
+- **Metro blockList**: The middleware automatically adds Atlas HTML directories to Metro's `blockList` so they don't trigger bundle rebuilds
+
+**Configuration options** on `createMockSyncMiddleware`:
+
+- **`atlasKey`**: Metro terminal key for capture (default `"t"`; set to `false` to disable the feature)
+- **`dashboardKey`**: Optional Metro terminal key to open the dashboard in the browser (e.g. `"d"`)
+- **`dashboardUrl`** / **`MOCKIFYER_DASHBOARD_URL`**: Dashboard base URL for opening in the browser and pulling nested hops from multi-service traces
+
+**Metro blockList example** (to prevent rebuild loops):
+
+```javascript
+// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { createMockSyncMiddleware } = require('@sgedda/mockifyer-fetch');
+
+const config = getDefaultConfig(__dirname);
+
+config.server = {
+  ...config.server,
+  enhanceMiddleware: (middleware, metroServer) => {
+    return createMockSyncMiddleware({ 
+      atlasKey: 't',
+      dashboardKey: 'd',
+      dashboardUrl: process.env.MOCKIFYER_DASHBOARD_URL || 'http://localhost:3002'
+    })(middleware);
+  },
+};
+
+module.exports = config;
+```
 
 ---
 
@@ -257,7 +299,7 @@ See **`example-projects/maestro-login-flow`** for a minimal **`login.yaml`** (re
 
 | Goal | Approach |
 |------|----------|
-| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes |
+| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes. Launch `scenario` sets the scenario without a lane mapping and overrides the lane's scenario when both are passed. |
 | Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + **`MOCKIFYER_MODE`** / `MOCKIFYER_RECORD` as needed |
 | Device-only, no repo sync | **`expo-filesystem`** provider |
 | Production / store build | **Memory** + **bundled** mock module |

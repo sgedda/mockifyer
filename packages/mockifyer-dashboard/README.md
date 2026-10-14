@@ -61,6 +61,7 @@ npx mockifyer-dashboard --base /dashboard
 - `MOCKIFYER_REDIS_KEY_PREFIX` - Redis key prefix (default `mockifyer:v1`)
 - `MOCKIFYER_REDIS_MIRROR_DISK` - If `true`/`1`: same as `--redis-mirror-disk` (can combine with CLI / `createServer` config)
 - `MOCKIFYER_REDIS_DISK_READ_FALLBACK` - If `true`/`1`: same as `--redis-disk-fallback`
+- `MOCKIFYER_NETWORK_LOG_MAX_LIST_BYTES` - Maximum bytes for network log body previews (default varies by storage; ~200KB for filesystem, ~50KB for Redis/SQLite)
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
@@ -180,11 +181,11 @@ When a request fails, axios/fetch rejections and Express errors stamped by Mocki
 
 ### Inline response trace (no Redis / no `/trace` poll)
 
-For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (optional query: `?trace-mockifyer=true`). With correlation middleware (or Node inbound capture when `res.json`/`res.send` exist), the JSON body is wrapped as:
+For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (optional query: `?trace-mockifyer=true`). With correlation middleware (or Node inbound capture when `res.json`/`res.send` exist), the response body gets `mockifyerTrace` added alongside its existing fields:
 
 ```json
 {
-  "data": { "...": "original response" },
+  "...": "original response fields",
   "mockifyerTrace": {
     "requestId": "...",
     "hopCount": 2,
@@ -193,6 +194,8 @@ For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (option
   }
 }
 ```
+
+**Note:** Object bodies keep their own fields and get `mockifyerTrace` added. Non-object responses (arrays, primitives) are wrapped as `{ data, mockifyerTrace }`.
 
 Hops are collected **in-process** for that request (no dashboard Network storage required). Optional **`X-Mockifyer-Include-Trace-Bodies: 1`** adds truncated body previews. Do not send these headers on real consumer traffic.
 
