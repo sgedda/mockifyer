@@ -77,15 +77,20 @@ export async function fetchProxyUpstream(
   init: RequestInit,
   tlsInsecure: boolean
 ): Promise<Response> {
+  // Strip hop-by-hop and content-length headers, then filter empty values for undici.
+  const sanitizedHeaders = omitProxyUpstreamRequestHeaders(
+    init.headers as Record<string, unknown> | Array<[string, unknown]> | undefined
+  );
+  const undiciHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries(sanitizedHeaders)) {
+    if (headerValueIsUsable(v)) {
+      undiciHeaders[k] = v;
+    }
+  }
+  
   const undiciInit: UndiciRequestInit = {
     method: init.method,
-<<<<<<< HEAD
-    headers: toUndiciHeaderRecord(init.headers),
-=======
-    headers: omitProxyUpstreamRequestHeaders(
-      init.headers as Record<string, unknown> | Array<[string, unknown]> | undefined
-    ),
->>>>>>> fb0979c (fix(dashboard): drop stale Content-Length on proxy upstream)
+    headers: undiciHeaders,
     body: init.body as UndiciRequestInit['body'],
     redirect: init.redirect,
     signal: init.signal,
