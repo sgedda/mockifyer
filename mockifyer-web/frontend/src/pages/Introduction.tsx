@@ -34,14 +34,19 @@ export default function Introduction() {
         <CardHeader>
           <CardTitle>What is Mockifyer?</CardTitle>
           <CardDescription>
-            Open-source record-and-replay for axios and fetch — JSON mocks in your repo, optional dashboard and MCP tooling.
+            Deterministic test state that doesn&apos;t drift — switchable scenario worlds for realistic testing
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p>
-            Mockifyer intercepts outbound HTTP calls, matches them to saved JSON recordings, and can capture new
-            responses from live APIs. Use it for deterministic integration tests, local dev without API keys, and
-            multi-scenario datasets — with GraphQL-aware matching and optional React Native support.
+            Modern applications depend on many underlying systems. Test data disappears or goes stale, 
+            dates drift, and setting up the right state takes manual admin work. Mockifyer gives you 
+            deterministic state that doesn&apos;t drift.
+          </p>
+          <p>
+            Record real API responses once, switch between complete <strong>scenario worlds</strong> at 
+            runtime (trips-empty, trips-one, trips-many, checkin-open), and control dates so time-dependent 
+            tests stay stable. No more &quot;works on my machine&quot; — the same mock world loads for everyone.
           </p>
           <div>
             <strong className="text-foreground text-lg mb-4 block">What you get today</strong>
@@ -69,20 +74,36 @@ export default function Introduction() {
         <CardHeader>
           <CardTitle>Why Mockifyer?</CardTitle>
           <CardDescription>
-            The motivation behind creating Mockifyer
+            The problem it solves
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            Mockifyer was created to address the lack of an easy way to record and replicate API responses for mocked data. 
-            Traditional mocking solutions often require manual setup, don't handle state changes well, and make it difficult 
-            to test different scenarios reliably.
+            Applications depend on many underlying systems — APIs, databases, third-party services. 
+            Testing these integrations is challenging:
           </p>
+          <ul className="space-y-2 text-sm text-muted-foreground list-disc pl-5">
+            <li>
+              <strong className="text-foreground">Test data disappears or goes stale:</strong> A booking 
+              created yesterday might be expired today, or deleted by another developer
+            </li>
+            <li>
+              <strong className="text-foreground">Dates drift:</strong> Time-dependent logic like 
+              &quot;upcoming trips&quot; or &quot;check-in window&quot; breaks as calendar dates move forward
+            </li>
+            <li>
+              <strong className="text-foreground">State setup takes manual work:</strong> Creating the 
+              right test state requires clicking through admin panels or running database scripts
+            </li>
+            <li>
+              <strong className="text-foreground">Previous fixes were hacky:</strong> Hardcoded backend 
+              bypasses tied to one test user, supporting only one dataset at a time
+            </li>
+          </ul>
           <p className="text-muted-foreground">
-            With Mockifyer, you can easily record real API responses and set up different datasets called "scenarios" to 
-            replicate realistic testing scenarios. This allows you to test various outcomes—happy paths, error cases, edge 
-            cases—without worrying about state changes. Features like deterministic dates ensure your tests remain consistent 
-            and reproducible, eliminating flaky tests caused by time-dependent logic.
+            <strong className="text-foreground">Mockifyer gives you deterministic state that doesn&apos;t drift.</strong> Record 
+            real API responses once, switch between complete scenarios at runtime, and control dates to keep 
+            time-dependent tests stable.
           </p>
         </CardContent>
       </Card>
@@ -98,24 +119,95 @@ export default function Introduction() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            <strong>@sgedda/mockifyer-dashboard</strong> runs locally to browse mock JSON, switch scenarios, activate
-            passthrough recordings, and (with Redis) proxy traffic per client lane.{' '}
-            <strong>@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop.
+            <strong>@sgedda/mockifyer-dashboard</strong> runs locally to manage scenarios, client lanes, 
+            network hops, and Date Config. With Redis or SQLite, it proxies traffic so each device/app 
+            has its own isolated mock world.
           </p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+            <li>Active scenario and client lane management</li>
+            <li>Browse and edit JSON mocks for each world</li>
+            <li>Network view: live hops filtered by lane</li>
+            <li>Date Config: per-scenario date overrides</li>
+            <li>Domain-path rules: control which endpoints to record/mock</li>
+          </ul>
           <CodeBlock
             language="bash"
             code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
           />
-          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-            {MCP_TOOLS.map((tool) => (
-              <li key={tool}>{tool}</li>
-            ))}
-          </ul>
+          <div className="mt-4">
+            <p className="text-muted-foreground mb-2">
+              <strong>@sgedda/mockifyer-mcp</strong> exposes dashboard APIs to Cursor and Claude Desktop 
+              via Model Context Protocol. <span className="inline-block bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded ml-2">
+                Experimental
+              </span>
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+              {MCP_TOOLS.map((tool) => (
+                <li key={tool}>{tool}</li>
+              ))}
+            </ul>
+          </div>
           <Link to="/config-reference">
             <Button variant="outline" size="sm">
               Configuration reference
             </Button>
           </Link>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Atlas: Live Tracing with the <code className="text-sm">t</code> Key</CardTitle>
+          <CardDescription>
+            Press <code className="text-sm">t</code> in the Metro terminal to capture and visualize nested HTTP calls
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            When running React Native with Metro, press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> to 
+            start <strong>Atlas capture</strong>. A browser opens showing a live stream of correlated, nested 
+            HTTP calls as an expandable/collapsible tree: app → BFF → downstream services.
+          </p>
+          <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+            <li>View request/response payloads with inline search</li>
+            <li>Find booking data the UI doesn&apos;t display yet</li>
+            <li>Trace error chains across multiple hops</li>
+            <li>Verify what actually went over the wire</li>
+            <li>Press <code className="text-xs bg-muted px-1 py-0.5 rounded">t</code> again to stop and render searchable HTML docs</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            <strong>Atlas vs Network view:</strong> The dashboard&apos;s Network tab shows live traffic hop-by-hop. 
+            Atlas maps and searches across an entire captured session, generating AI-ready documentation.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Deterministic Maestro E2E</CardTitle>
+          <CardDescription>
+            Launch arguments lock the mock world on every test run
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            Launch arguments <code className="text-xs bg-muted px-1 py-0.5 rounded">mockifyerClientId</code> and{' '}
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario</code> start the app in the same 
+            mock world on every test run. No flaky API dependencies, no race conditions.
+          </p>
+          <CodeBlock
+            language="yaml"
+            code={`- launchApp:
+    clearState: true
+    arguments:
+      mockifyerClientId: e2e-trips-one
+      scenario: trips-one`}
+          />
+          <p className="text-sm text-muted-foreground">
+            <strong>Workflow:</strong> Record the real API responses, have an AI write a Maestro test that 
+            starts with that scenario, then assert on what the UI components render. Every run replays the 
+            exact same backend state.
+          </p>
         </CardContent>
       </Card>
 
