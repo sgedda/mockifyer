@@ -71,6 +71,17 @@ function trimNewestFirst(
 const REDIS_LIST_TRIM_POPS_PER_APPEND = 64;
 
 /**
+ * `LRANGE` on an `LPUSH` list is newest-first. `RPUSH` those payloads in the
+ * same order so index 0 stays the newest hop.
+ *
+ * Pushing from the tail reverses the list. A limited read then returns the
+ * oldest hops, and the next `LTRIM` / `RPOP` drops the recent ones.
+ */
+export function payloadsForRedisRpushNewestFirst(keptNewestFirst: readonly string[]): readonly string[] {
+  return keptNewestFirst;
+}
+
+/**
  * Drop oldest list entries until Redis `MEMORY USAGE` is within `maxBytes`.
  * No-op when the command is unavailable. Existing fat rows shrink on the next appends.
  */
@@ -361,8 +372,8 @@ class RedisNetworkLogStore implements NetworkLogStore {
       const pipe = redis.pipeline();
       pipe.del(listKey);
       if (kept.length > 0) {
-        for (let i = kept.length - 1; i >= 0; i -= 1) {
-          pipe.rpush(listKey, kept[i]);
+        for (const line of payloadsForRedisRpushNewestFirst(kept)) {
+          pipe.rpush(listKey, line);
         }
         pipe.expire(listKey, this.ttl);
       }
