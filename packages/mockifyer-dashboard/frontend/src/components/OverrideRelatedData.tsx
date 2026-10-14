@@ -299,8 +299,7 @@ export default function OverrideRelatedData({
 
                 {childResult.truncated > 0 ? (
                   <p className="text-[11px] text-muted-foreground">
-                    Showing {childResult.entries.length} of {childResult.total}
-                    {filter.trim() ? ' matches' : ''}. Filter to find the rest.
+                    Showing {childResult.entries.length} of {childResult.total}. Filter to find the rest.
                   </p>
                 ) : null}
 

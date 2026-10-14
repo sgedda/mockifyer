@@ -127,10 +127,6 @@ export function formatLeafPreview(value: unknown, maxLen = 96): string {
   return String(value)
 }
 
-export function relatedChildKeys(value: unknown): string[] {
-  return relatedChildEntries(value, '').entries.map((entry) => entry.key)
-}
-
 export function joinOverridePath(base: string, segment: string): string {
   const trimmed = base.trim()
   return trimmed ? `${trimmed}.${segment}` : segment
