@@ -79,6 +79,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Complete reference for Mockifyer environment variables, mock data paths, recording modes, and activation settings.',
     path: '/config-reference',
   },
+  '/comparisons': {
+    title: 'Mockifyer vs Alternatives - API Mocking Comparison',
+    description:
+      'Compare Mockifyer with MSW, Nock, Polly.js, WireMock, Mirage JS, Mockoon, and json-server. Feature comparison, scenarios, date control, and when to choose each tool.',
+    path: '/comparisons',
+  },
   '/contact': {
     title: 'Contact',
     description:
