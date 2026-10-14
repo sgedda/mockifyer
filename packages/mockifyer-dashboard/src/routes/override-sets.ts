@@ -6,6 +6,7 @@ import {
   listOverrideSetsFromFs,
   normalizeOverrideSetId,
   parseOverrideSetDocument,
+  parseScenarioName,
   readOverrideSetFromFs,
   upsertOverrideSetEntry,
   writeOverrideSetToFs,
@@ -28,7 +29,16 @@ function requireScenario(req: Request): string {
   if (!scenario) {
     throw Object.assign(new Error('scenario query/body parameter is required'), { status: 400 });
   }
-  return scenario;
+  const parsed = parseScenarioName(scenario);
+  if (!parsed) {
+    throw Object.assign(
+      new Error(
+        `Invalid scenario name: "${scenario}". Use only letters, numbers, hyphens, and underscores.`
+      ),
+      { status: 400 }
+    );
+  }
+  return parsed;
 }
 
 router.get('/', async (req: Request, res: Response) => {

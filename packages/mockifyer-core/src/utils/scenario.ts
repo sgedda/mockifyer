@@ -30,6 +30,32 @@ export const SCRATCH_SCENARIO = '_scratch';
 export const SCRATCH_SCENARIO_DEFAULT_TTL_SEC = 60 * 60 * 24;
 
 const UNSAFE_CLIENT_ID_PATH_CHARS = /[/\\\0]/;
+const SCENARIO_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * True when a scenario name is safe to join under `mockDataPath` (no path traversal / separators).
+ */
+export function isValidScenarioName(scenarioName: string): boolean {
+  return SCENARIO_NAME_PATTERN.test(scenarioName);
+}
+
+/**
+ * Parse and validate a scenario name from untrusted input (API body, query, MCP tools).
+ * Returns null when the value is missing/invalid or reserved for the fixture pool.
+ */
+export function parseScenarioName(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed || !isValidScenarioName(trimmed)) {
+    return null;
+  }
+  if (trimmed === POOL_DIR_NAME) {
+    return null;
+  }
+  return trimmed;
+}
 
 /**
  * Reject scenario names reserved for Mockifyer internals (e.g. the fixture pool directory).
