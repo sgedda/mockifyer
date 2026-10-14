@@ -63,6 +63,8 @@ function mockMatchesFilter(mock: MockCatalogFields, query: string): boolean {
 
 interface OverridesViewProps {
   scenario: string
+  /** False until GET /scenario-config has settled; skip list/save against placeholder `default`. */
+  scenarioConfigReady: boolean
   /** Optional catalog for the mock picker; Overrides list loads via /mocks/with-overrides. */
   mocks: MockFile[]
 }
@@ -85,6 +87,7 @@ function slugifyGroupId(label: string): string {
  */
 export default function OverridesView({
   scenario,
+  scenarioConfigReady,
   mocks,
 }: OverridesViewProps) {
   const { toast } = useToast()
@@ -134,6 +137,7 @@ export default function OverridesView({
   }, [scenario])
 
   const loadOverrideList = useCallback(async () => {
+    if (!scenarioConfigReady) return
     setListLoading(true)
     setListError(null)
     try {
@@ -151,7 +155,7 @@ export default function OverridesView({
     } finally {
       setListLoading(false)
     }
-  }, [scenario, toast])
+  }, [scenario, scenarioConfigReady, toast])
 
   useEffect(() => {
     void loadOverrideList()
@@ -164,6 +168,7 @@ export default function OverridesView({
   }, [mocks])
 
   useEffect(() => {
+    if (!scenarioConfigReady) return
     if (pickerMocks.length > 0) return
     let cancelled = false
     setPickerLoading(true)
@@ -185,9 +190,10 @@ export default function OverridesView({
     return () => {
       cancelled = true
     }
-  }, [pickerMocks.length, scenario, toast])
+  }, [pickerMocks.length, scenario, scenarioConfigReady, toast])
 
   useEffect(() => {
+    if (!scenarioConfigReady) return
     void loadGroups().catch((error) => {
       toast({
         title: 'Failed to load override groups',
@@ -195,9 +201,10 @@ export default function OverridesView({
         variant: 'destructive',
       })
     })
-  }, [loadGroups, toast])
+  }, [loadGroups, scenarioConfigReady, toast])
 
   useEffect(() => {
+    if (!scenarioConfigReady) return
     let cancelled = false
     void getDateConfig(scenario)
       .then((config) => {
@@ -211,13 +218,14 @@ export default function OverridesView({
     return () => {
       cancelled = true
     }
-  }, [scenario])
+  }, [scenario, scenarioConfigReady])
 
   useEffect(() => {
     if (editTarget === EDIT_MOCK_LEVEL) {
       setEditGroup(null)
       return
     }
+    if (!scenarioConfigReady) return
     void getOverrideGroup(editTarget, scenario)
       .then((res) => setEditGroup(res.group))
       .catch((error) => {
@@ -228,7 +236,7 @@ export default function OverridesView({
         })
         setEditTarget(EDIT_MOCK_LEVEL)
       })
-  }, [editTarget, scenario, toast])
+  }, [editTarget, scenario, scenarioConfigReady, toast])
 
   const urlFilename = searchParams.get(DASHBOARD_Q.file)
 
