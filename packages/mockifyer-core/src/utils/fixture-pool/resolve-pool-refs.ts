@@ -221,7 +221,10 @@ export function resolvePoolRefAgainstData(ref: PoolRef, poolData: unknown): unkn
       throw new PoolRefResolveError(`${label}: no value at path "${path}"`);
     }
     const selected = applyArraySelection(subtree, ref, label);
-    return unwrapForValueMode(selected, ref);
+    // Always clone: without select/indices, applyArraySelection returns the live
+    // subtree. RN serve-time loaders reuse cached PoolResponseItem objects, so
+    // returning aliases lets consumers mutate subsequent mock hits.
+    return cloneJsonValue(unwrapForValueMode(selected, ref));
   }
 
   // document mode
@@ -305,6 +308,13 @@ export function resolvePoolRefsInData(
 /** True when `data` contains at least one `$pool` ref node. */
 export function containsPoolRefs(data: unknown): boolean {
   if (isPoolRefNode(data)) return true;
+  if (typeof data === 'string') {
+    try {
+      return containsPoolRefs(JSON.parse(data));
+    } catch {
+      return false;
+    }
+  }
   if (Array.isArray(data)) return data.some(containsPoolRefs);
   if (isPlainObject(data)) {
     return Object.values(data).some(containsPoolRefs);
