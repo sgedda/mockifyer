@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -5,7 +6,7 @@ import OverrideRelatedData from '@/components/OverrideRelatedData'
 import OverrideArrayGroupList from '@/components/OverrideArrayGroupList'
 import { OverrideArrayCollapseScope } from '@/components/OverrideArrayCollapseContext'
 import type { FieldOverrideRow } from '@/lib/field-overrides'
-import { emptyFieldOverrideRow } from '@/lib/field-overrides'
+import { emptyFieldOverrideRow, fieldOverrideRowFromStored } from '@/lib/field-overrides'
 import { pathRelativeToArrayItem } from '@/lib/override-path-groups'
 import type { MockResponseFieldOverrideMode } from '@/types'
 
@@ -38,6 +39,8 @@ function FieldOverrideCard({
   responseBody,
   instanceKey,
   readOnly,
+  existingPaths,
+  onAddFieldOverride,
 }: {
   row: FieldOverrideRow
   index: number
@@ -48,6 +51,12 @@ function FieldOverrideCard({
   responseBody: unknown
   instanceKey: string
   readOnly: boolean
+  existingPaths: Set<string>
+  onAddFieldOverride: (
+    path: string,
+    storedValue: unknown,
+    mode: MockResponseFieldOverrideMode
+  ) => void
 }) {
   const relativePath = groupPath ? pathRelativeToArrayItem(row.path, groupPath) : null
 
@@ -104,6 +113,9 @@ function FieldOverrideCard({
           key={`${instanceKey}-${index}`}
           path={row.path}
           responseBody={responseBody}
+          existingPaths={existingPaths}
+          readOnly={readOnly}
+          onAddFieldOverride={onAddFieldOverride}
         />
       ) : null}
       {row.mode === 'remove' ? (
@@ -141,10 +153,26 @@ export default function FieldOverridesEditor({
   instanceKey = 'field',
   readOnly = false,
 }: FieldOverridesEditorProps) {
+  const existingPaths = useMemo(
+    () => new Set(rows.map((row) => row.path.trim()).filter(Boolean)),
+    [rows]
+  )
+  const [browseOpen, setBrowseOpen] = useState(() => rows.length === 0)
+
   function updateRow(index: number, patch: Partial<FieldOverrideRow>) {
     const next = [...rows]
     next[index] = { ...next[index], ...patch }
     onChange(next)
+  }
+
+  function addFieldOverride(
+    path: string,
+    storedValue: unknown,
+    mode: MockResponseFieldOverrideMode
+  ) {
+    const trimmed = path.trim()
+    if (!trimmed || existingPaths.has(trimmed)) return
+    onChange([...rows, fieldOverrideRowFromStored(trimmed, storedValue, mode)])
   }
 
   return (
@@ -154,9 +182,24 @@ export default function FieldOverridesEditor({
         <p className="text-xs text-muted-foreground leading-relaxed">
           Replay-time overlays on the stored JSON. <strong>Replace</strong> sets a value,{' '}
           <strong>Extend</strong> appends/merges, <strong>Remove</strong> deletes the path when the
-          mock is served (the recorded body is not rewritten).
+          mock is served (the recorded body is not rewritten). Click through the stored JSON to pick
+          a list item or field instead of typing the path.
         </p>
       </div>
+
+      {responseBody != null ? (
+        <OverrideRelatedData
+          key={`${instanceKey}-browse`}
+          path=""
+          responseBody={responseBody}
+          open={browseOpen}
+          onOpenChange={setBrowseOpen}
+          browseLabel="Browse JSON to add override"
+          existingPaths={existingPaths}
+          readOnly={readOnly}
+          onAddFieldOverride={addFieldOverride}
+        />
+      ) : null}
 
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">No field overrides.</p>
@@ -166,6 +209,9 @@ export default function FieldOverridesEditor({
             rows={rows}
             responseBody={responseBody}
             instanceKey={instanceKey}
+            existingPaths={existingPaths}
+            readOnly={readOnly}
+            onAddFieldOverride={addFieldOverride}
             renderRow={(row, index, groupPath) => (
               <FieldOverrideCard
                 row={row}
@@ -177,6 +223,8 @@ export default function FieldOverridesEditor({
                 responseBody={responseBody}
                 instanceKey={instanceKey}
                 readOnly={readOnly}
+                existingPaths={existingPaths}
+                onAddFieldOverride={addFieldOverride}
               />
             )}
           />
