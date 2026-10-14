@@ -17,13 +17,13 @@ function makeEnvelope(business: unknown) {
       requestId: 'downstream-root',
       hopCount: 0,
       incomplete: false,
-      hops: [],
     },
   };
 }
 
 function readRecordedMockFiles(mockDataPath: string): any[] {
-  const scenarioDir = path.join(mockDataPath, 'default');
+  // New recordings default to _scratch scenario when no scenario is configured
+  const scenarioDir = path.join(mockDataPath, '_scratch');
   if (!fs.existsSync(scenarioDir)) {
     return [];
   }
@@ -93,11 +93,11 @@ describe('local recordMode strips inline-trace envelopes on save', () => {
       axiosInstance,
     });
 
-    // No ALS hop context — unwrapAndMergeInlineTraceEnvelope leaves the envelope intact.
+    // Without ALS hop context, unwrapAndMergeInlineTraceEnvelope is gated; live.data keeps the envelope.
     const live = await client.get(url);
     expect(live.data).toEqual(envelope);
 
-    // axios saveResponse is fire-and-forget from the response interceptor.
+    // The PR's fix: axios saveResponse calls stripMockifyerTraceFromBody, persisting only business data.
     const recorded = await waitForRecordedMock();
     expect(recorded).toHaveLength(1);
     expect(recorded[0].response.data).toEqual(business);
@@ -138,9 +138,11 @@ describe('local recordMode strips inline-trace envelopes on save', () => {
         useGlobalFetch: false,
       });
 
+      // Without ALS hop context, unwrapAndMergeInlineTraceEnvelope is gated; live.data keeps the envelope.
       const live = await recorder.get(url);
       expect(live.data).toEqual(envelope);
 
+      // The PR's fix: fetch saveResponse calls stripMockifyerTraceFromBody, persisting only business data.
       const recorded = readRecordedMockFiles(mockDataPath);
       expect(recorded).toHaveLength(1);
       expect(recorded[0].response.data).toEqual(business);
