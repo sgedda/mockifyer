@@ -29,6 +29,7 @@ import {
   readMockParentRequestIds,
 } from '@sgedda/mockifyer-core';
 import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
+import { RedactedRequestHeadersError } from '../utils/proxy-recording-privacy';
 import {
   createDashboardMockStore,
   toDashboardRedisStoreConfig,
@@ -1721,6 +1722,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
       data: updated,
     });
   } catch (error: unknown) {
+    if (error instanceof RedactedRequestHeadersError) {
+      return res.status(409).json({ error: error.message });
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error('[MocksRoute] refresh-from-live - Error:', error);
     return res.status(500).json({ error: 'Failed to refresh mock from live API', details: message });

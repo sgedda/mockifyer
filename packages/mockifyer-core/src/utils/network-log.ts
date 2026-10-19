@@ -77,6 +77,9 @@ const DEFAULT_REDACT_HEADER_NAMES = [
 
 const SENSITIVE_QUERY_PARAMS = ['api_key', 'apikey', 'token', 'access_token', 'password', 'secret'];
 
+/** Replacement stored in place of a secret header or query value. */
+export const REDACTED_SECRET_PLACEHOLDER = '[REDACTED]';
+
 export const NETWORK_LOG_DEFAULT_MAX_EVENT_BYTES = 8_192;
 
 /**
@@ -123,7 +126,7 @@ export function redactHeaders(
   );
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(headers)) {
-    out[k] = redact.has(k.toLowerCase()) ? '[REDACTED]' : String(v);
+    out[k] = redact.has(k.toLowerCase()) ? REDACTED_SECRET_PLACEHOLDER : String(v);
   }
   return out;
 }
@@ -137,7 +140,7 @@ export function sanitizeQueryString(query: string | undefined): string | undefin
     let changed = false;
     for (const key of [...params.keys()]) {
       if (SENSITIVE_QUERY_PARAMS.includes(key.toLowerCase())) {
-        params.set(key, '[REDACTED]');
+        params.set(key, REDACTED_SECRET_PLACEHOLDER);
         changed = true;
       }
     }

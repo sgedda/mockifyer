@@ -4,6 +4,10 @@ import {
   type MockData,
   type StoredRequest,
 } from '@sgedda/mockifyer-core';
+import {
+  RedactedRequestHeadersError,
+  requestHeadersIncludeRedactedSecrets,
+} from './proxy-recording-privacy';
 
 export interface UpstreamCaptureResult {
   response: MockData['response'];
@@ -14,6 +18,10 @@ export async function fetchUpstreamResponse(
   request: Pick<StoredRequest, 'method' | 'url' | 'headers' | 'data'>,
   options?: { clientId?: string }
 ): Promise<UpstreamCaptureResult> {
+  if (requestHeadersIncludeRedactedSecrets(request.headers)) {
+    throw new RedactedRequestHeadersError();
+  }
+
   const upperMethod = String(request.method || 'GET').toUpperCase();
   const upstreamHeaders = new Headers();
   const src = request.headers ?? {};
