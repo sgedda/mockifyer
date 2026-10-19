@@ -1593,7 +1593,7 @@ class MockifyerClass {
         },
         save: async (row) => {
           if (this.databaseProvider) {
-            await this.databaseProvider.save(row.mock);
+            await this.databaseProvider.save(row.mock, { relativePath: row.filename });
             return;
           }
           if (!fs || !path) {

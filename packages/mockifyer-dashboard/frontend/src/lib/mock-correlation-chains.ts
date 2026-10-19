@@ -248,7 +248,7 @@ export function visibleHopEndpoint(
   mock: Pick<MockFile, 'endpoint' | 'inboundParentDisplay'>
 ): string | undefined {
   const display = mock.inboundParentDisplay?.url?.trim()
-  if (display) return display
+  if (display && !display.startsWith('mockifyer://inbound-parent/')) return display
   return usableHopEndpoint(mock.endpoint)
 }
 
