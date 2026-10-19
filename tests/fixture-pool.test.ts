@@ -20,7 +20,6 @@ import {
   deletePoolEntityWithIndex,
   deletePoolResponseWithIndex,
   updatePoolEntityWithIndex,
-  savePoolResponseItem,
   loadPoolResponseItem,
   acquirePoolIndexLock,
   releasePoolIndexLock,
@@ -45,7 +44,6 @@ import {
   type EndpointSlot,
   type ScenarioManifest,
   type StoredRequest,
-  type PoolResponseItem,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as fs from 'fs';
