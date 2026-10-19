@@ -330,6 +330,16 @@ function toMockListRow(params: {
     parentRequestIds: correlation.parentRequestIds,
     requestHash: favoriteIdForMock(mockData),
     inboundParentStub: inboundParentStub || undefined,
+    ...(inboundParentStub && mockData.inboundParentDisplay?.url?.trim()
+      ? {
+          inboundParentDisplay: {
+            method: mockData.inboundParentDisplay.method?.trim()
+              ? mockData.inboundParentDisplay.method.trim().toUpperCase()
+              : method,
+            url: mockData.inboundParentDisplay.url.trim(),
+          },
+        }
+      : {}),
     ...activation,
     ...getMockOverrideListFields(mockData),
   };

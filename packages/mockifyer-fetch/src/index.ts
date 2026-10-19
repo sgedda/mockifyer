@@ -80,11 +80,16 @@ import {
   resolveNetworkLogIncludeTraceOptionsAsync,
   getInlineTraceEnvelopeBusinessBody,
   resolveRecordResponses,
-  buildRequestOnlyMockData,
+  resolveLocalRecordResponses,
+  buildLocalRecordingMockData,
   applyOutboundRequestCorrelation,
   adoptStoredOutboundRequestId,
   resolvePersistedHopIds,
   applyPersistedHopIds,
+  ensureLocalInboundParentStubSaved,
+  inboundParentStubFilename,
+  readOutboundParentHopFromConfig,
+  getActiveInboundRequest,
   attachMockifyerRequestIdToError,
   resolveMockifyerRequestIdForError,
   configureFlightRecorder,
@@ -146,6 +151,11 @@ class MockifyerClass {
   private runtimeEnabled: boolean;
   /** Optional storage for persisting enable/disable across restarts. */
   private readonly runtimeEnabledStorage?: MockifyerRuntimeEnabledStorage;
+  /**
+   * Runtime override for whether local/proxy recordings include response bodies.
+   * `undefined` = follow env / defaults ({@link resolveLocalRecordResponses} / {@link resolveRecordResponses}).
+   */
+  private recordResponsesOverride: boolean | undefined = undefined;
 
   /** Session id for timeline hops — per-screen id from {@link setFlightRecorderRuntimeContext} when set. */
   private getRuntimeSessionId(): string {
@@ -1471,46 +1481,28 @@ class MockifyerClass {
         correlation
       );
 
-      const requestPayload = {
+      const storedRequest: StoredRequest = {
         method: response.config?.method?.toUpperCase() || 'GET',
         url: response.config?.url || '',
         headers: this.anonymizeHeaders(response.config?.headers || {}),
         data: response.config?.data,
         queryParams: normalizedParamsForSave,
       };
-
-      // Default false — request-only stubs (same as Redis/proxy). Full bodies when opted in.
-      const includeResponseBodies = resolveRecordResponses(
-        this.config.proxy?.recordResponses ?? this.config.recordResponses
+      // Prefer explicit override / config; else request-only default (same as proxy).
+      const recordBodies = resolveLocalRecordResponses(
+        this.recordResponsesOverride ??
+          this.config.proxy?.recordResponses ??
+          this.config.recordResponses
       );
-
-      let mockData: MockData;
-      if (!includeResponseBodies) {
-        mockData = buildRequestOnlyMockData(requestPayload, {
-          alwaysUseRealApi: true,
-        });
-        mockData.timestamp = new Date().toISOString();
-        if (duration !== undefined) {
-          mockData.duration = duration;
-        }
-        mockData.sessionId =
-          saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
-            ? existingMock.mockData.sessionId
-            : this.currentSessionId;
-        mockData.requestId = hopIds.requestId;
-        mockData.parentRequestId = hopIds.parentRequestId;
-        mockData.parentRequestIds = hopIds.parentRequestIds;
-        logger.info(
-          `[Mockifyer-Fetch] Recording request-only stub (responsePending) for ${requestPayload.method} ${requestPayload.url}`
-        );
-      } else {
-        mockData = {
-          request: requestPayload,
-          response: {
-            status: response.status,
-            data: stripMockifyerTraceFromBody(response.data),
-            headers: response.headers || {},
-          },
+      const mockData = buildLocalRecordingMockData({
+        request: storedRequest,
+        response: {
+          status: response.status,
+          data: stripMockifyerTraceFromBody(response.data),
+          headers: response.headers || {},
+        },
+        recordResponses: recordBodies,
+        meta: {
           timestamp: new Date().toISOString(),
           duration,
           sessionId:
@@ -1520,9 +1512,11 @@ class MockifyerClass {
           requestId: hopIds.requestId,
           parentRequestId: hopIds.parentRequestId,
           parentRequestIds: hopIds.parentRequestIds,
-          ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
-        };
-      }
+          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+            ? { alwaysUseRealApi: true as const }
+            : {}),
+        },
+      });
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -1573,8 +1567,62 @@ class MockifyerClass {
       } else {
         console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
       }
+
+      await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
     } finally {
       this.savingResponses.delete(requestKey);
+    }
+  }
+
+  /**
+   * When a child hop is recorded locally, persist a synthetic inbound-parent stub so
+   * Hops does not show "Missing entry hop" for the ALS gateway id.
+   */
+  private async ensureInboundParentStubForChild(
+    parentRequestId: string | null | undefined,
+    config: unknown
+  ): Promise<void> {
+    const activeInbound = getActiveInboundRequest();
+    const hop =
+      readOutboundParentHopFromConfig(config) ??
+      (activeInbound ? { method: activeInbound.method, url: activeInbound.url } : undefined);
+
+    try {
+      await ensureLocalInboundParentStubSaved({
+        parentRequestId,
+        hop,
+        parentExists: (id) => {
+          if (!fs || !path || this.databaseProvider) {
+            return false;
+          }
+          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          return fs.existsSync(path.join(scenarioPath, inboundParentStubFilename(id)));
+        },
+        save: async (row) => {
+          if (this.databaseProvider) {
+            await this.databaseProvider.save(row.mock);
+            return;
+          }
+          if (!fs || !path) {
+            return;
+          }
+          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+          const filePath = path.join(scenarioPath, row.filename);
+          if (fs.existsSync(filePath)) {
+            return;
+          }
+          fs.writeFileSync(filePath, JSON.stringify(row.mock, null, 2));
+          logger.info(
+            `[Mockifyer-Fetch] Saved inbound parent stub: ${currentScenario}/${row.filename}`
+          );
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`[Mockifyer-Fetch] Failed to save inbound parent stub: ${message}`);
     }
   }
 
@@ -1847,24 +1895,30 @@ class MockifyerClass {
    */
   setRecordResponses(enabled: boolean): void {
     const next = Boolean(enabled);
+    this.recordResponsesOverride = next;
     this.config.recordResponses = next;
-    if (this.config.proxy?.baseUrl) {
+    if (this.config.proxy) {
       this.config.proxy = {
         ...this.config.proxy,
         recordResponses: next,
       };
-      const client = this.httpClient as FetchHTTPClient & {
-        setProxyRecordResponses?: (value: boolean) => void;
-      };
-      client.setProxyRecordResponses?.(next);
     }
+    const client = this.httpClient as FetchHTTPClient & {
+      setProxyRecordResponses?: (value: boolean) => void;
+    };
+    client.setProxyRecordResponses?.(next);
     logger.info(`[Mockifyer-Fetch] recordResponses (store bodies) set to: ${next}`);
   }
 
   /** True when new recordings include response bodies (not request-only stubs). */
   isRecordResponses(): boolean {
-    return resolveRecordResponses(
-      this.config.proxy?.recordResponses ?? this.config.recordResponses
+    if (this.config.proxy?.baseUrl) {
+      return resolveRecordResponses(
+        this.recordResponsesOverride ?? this.config.proxy.recordResponses
+      );
+    }
+    return resolveLocalRecordResponses(
+      this.recordResponsesOverride ?? this.config.recordResponses
     );
   }
 

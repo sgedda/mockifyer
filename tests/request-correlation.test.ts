@@ -14,6 +14,7 @@ import {
   createMockifyerErrorHandler,
   findHopRequestHeaders,
   getActiveInboundClientId,
+  getActiveInboundRequest,
   getActiveRequestCorrelation,
   getMockifyerRequestIdFromError,
   getOutboundMockifyerClientIdHeader,
@@ -298,6 +299,21 @@ describe('request-correlation', () => {
       activeDuringNext = getActiveRequestCorrelation()?.requestId;
     });
     expect(activeDuringNext).toBe('req-gateway');
+  });
+
+  it('middleware records the inbound caller as an absolute URL', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req = {
+      method: 'POST',
+      originalUrl: '/graphql',
+      url: '/graphql',
+      header: (name: string) => (name.toLowerCase() === 'host' ? '127.0.0.1:4200' : undefined),
+    };
+    let inbound: { method: string; url: string } | undefined;
+    middleware(req, {}, () => {
+      inbound = getActiveInboundRequest();
+    });
+    expect(inbound).toEqual({ method: 'POST', url: 'http://127.0.0.1:4200/graphql' });
   });
 
   it('middleware captures inbound client id for downstream hops', () => {

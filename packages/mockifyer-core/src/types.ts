@@ -246,7 +246,8 @@ export interface MockifyerConfig {
     recordOnMiss?: boolean;
     /**
      * When false, proxy stores request-only stubs (`responsePending`) on cache miss instead of full responses.
-     * Defaults to `false`. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set.
+     * Defaults to `false` for proxy. Env **`MOCKIFYER_RECORD_RESPONSES`** overrides when set
+     * (also gates local filesystem/hybrid body capture via `resolveLocalRecordResponses`).
      */
     recordResponses?: boolean;
     /**
@@ -578,7 +579,10 @@ export const ENV_VARS = {
   MOCK_RECORD_DEFAULT_ALWAYS_USE_REAL_API: 'MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API',
   /** New recordings default to passthrough until activated in the dashboard. */
   MOCK_RECORD_NEW_AS_PASSTHROUGH: 'MOCKIFYER_RECORD_NEW_AS_PASSTHROUGH',
-  /** When `false`, proxy may persist request-only stubs (`responsePending`) instead of full responses. */
+  /**
+   * When `false`, persist request-only stubs (`responsePending`) instead of full responses
+   * (dashboard proxy + local filesystem/hybrid saves).
+   */
   MOCK_RECORD_RESPONSES: 'MOCKIFYER_RECORD_RESPONSES',
   /** Overwrite passthrough recordings on each live API response. */
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',

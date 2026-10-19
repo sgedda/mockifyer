@@ -76,6 +76,8 @@ export interface MockFile {
   requestHash?: string | null
   /** Placeholder row for a missing inbound parent (see hops Missing entry heal). */
   inboundParentStub?: boolean
+  /** Real inbound method/url when {@link inboundParentStub} is set. */
+  inboundParentDisplay?: { method: string; url: string }
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).

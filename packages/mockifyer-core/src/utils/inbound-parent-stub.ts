@@ -21,6 +21,11 @@ export function inboundParentStubUrl(parentRequestId: string): string {
   return `mockifyer://inbound-parent/${parentRequestId.trim()}`;
 }
 
+/** Stable filesystem filename for a local inbound-parent stub (one file per parent id). */
+export function inboundParentStubFilename(parentRequestId: string): string {
+  return `inbound-parent_${inboundParentStubHash(parentRequestId)}.json`;
+}
+
 export function isInboundParentStubMock(mock: {
   inboundParentStub?: boolean;
   request?: { url?: string };
@@ -68,4 +73,76 @@ export function buildInboundParentStubMock(
   mock.inboundParentStub = true;
   mock.inboundParentDisplay = { method: displayMethod, url: displayUrl };
   return mock;
+}
+
+/**
+ * Read the inbound parent hop stashed on an outbound request config
+ * (`__mockifyer_parentHop` from {@link applyOutboundRequestCorrelation}).
+ */
+export function readOutboundParentHopFromConfig(config: unknown): InboundParentHop | undefined {
+  if (!config || typeof config !== 'object') {
+    return undefined;
+  }
+  const stashed = (config as { __mockifyer_parentHop?: { method?: string; url?: string } })
+    .__mockifyer_parentHop;
+  const url = stashed?.url?.trim();
+  if (!url) {
+    return undefined;
+  }
+  return {
+    method: stashed?.method?.trim() ? stashed.method.trim().toUpperCase() : 'GET',
+    url,
+  };
+}
+
+export interface LocalInboundParentStubRow {
+  hash: string;
+  filename: string;
+  mock: MockData;
+}
+
+/**
+ * Build a catalog stub for a child hop's missing inbound parent (filesystem / hybrid).
+ * Uses a synthetic URL so multi-writer scenarios never overwrite a real hop key.
+ * Returns null when there is no parent id.
+ */
+export function prepareLocalInboundParentStub(
+  parentRequestId: string | null | undefined,
+  hop?: InboundParentHop | null
+): LocalInboundParentStubRow | null {
+  const parentId = typeof parentRequestId === 'string' ? parentRequestId.trim() : '';
+  if (!parentId) {
+    return null;
+  }
+  const resolvedHop: InboundParentHop = {
+    method: hop?.method?.trim() ? hop.method.trim().toUpperCase() : 'GET',
+    url: hop?.url?.trim() || inboundParentStubUrl(parentId),
+  };
+  return {
+    hash: inboundParentStubHash(parentId),
+    filename: inboundParentStubFilename(parentId),
+    mock: buildInboundParentStubMock(parentId, resolvedHop),
+  };
+}
+
+/**
+ * Persist a local inbound-parent stub when a child hop is recorded.
+ * Callers supply `save` (filesystem / provider); optional `parentExists` skips duplicates.
+ */
+export async function ensureLocalInboundParentStubSaved(options: {
+  parentRequestId?: string | null;
+  hop?: InboundParentHop | null;
+  parentExists?: (parentRequestId: string) => boolean | Promise<boolean>;
+  save: (row: LocalInboundParentStubRow) => void | Promise<void>;
+}): Promise<boolean> {
+  const row = prepareLocalInboundParentStub(options.parentRequestId, options.hop);
+  if (!row) {
+    return false;
+  }
+  const parentId = row.mock.requestId?.trim() ?? '';
+  if (parentId && options.parentExists && (await options.parentExists(parentId))) {
+    return true;
+  }
+  await options.save(row);
+  return true;
 }

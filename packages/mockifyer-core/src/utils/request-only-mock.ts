@@ -17,10 +17,23 @@ export function envRecordResponsesOverride(): boolean | undefined {
 }
 
 /**
- * Whether upstream recordings should include response bodies.
+ * Whether **dashboard proxy** recordings should include response bodies.
  * Env **`MOCKIFYER_RECORD_RESPONSES`** wins; else explicit `recordResponses` argument; default `false`.
  */
 export function resolveRecordResponses(explicit?: boolean): boolean {
+  const fromEnv = envRecordResponsesOverride();
+  if (fromEnv !== undefined) return fromEnv;
+  if (typeof explicit === 'boolean') return explicit;
+  return false;
+}
+
+/**
+ * Whether **local filesystem / hybrid** recordings should include response bodies.
+ * Env **`MOCKIFYER_RECORD_RESPONSES`** wins when set.
+ * Default **`false`** (request-only stubs, same as the dashboard proxy). Set env or
+ * `recordResponses: true` for full bodies.
+ */
+export function resolveLocalRecordResponses(explicit?: boolean): boolean {
   const fromEnv = envRecordResponsesOverride();
   if (fromEnv !== undefined) return fromEnv;
   if (typeof explicit === 'boolean') return explicit;
@@ -38,6 +51,59 @@ export function buildRequestOnlyMockData(
     timestamp: new Date().toISOString(),
     responsePending: true,
     alwaysUseRealApi: options?.alwaysUseRealApi ?? true,
+  };
+}
+
+export interface LocalRecordingMockMeta {
+  timestamp?: string;
+  duration?: number;
+  sessionId?: string;
+  requestId?: string;
+  parentRequestId?: string | null;
+  parentRequestIds?: string[];
+  scenario?: string;
+  alwaysUseRealApi?: boolean;
+}
+
+/**
+ * Build the mock row for a local (non-proxy) recording.
+ * When `recordResponses` is false, stores a request-only stub and still lets the live
+ * response return to the caller (same idea as dashboard proxy stubs).
+ */
+export function buildLocalRecordingMockData(options: {
+  request: StoredRequest;
+  response: MockData['response'];
+  recordResponses: boolean;
+  meta?: LocalRecordingMockMeta;
+}): MockData {
+  const meta = options.meta ?? {};
+  if (!options.recordResponses) {
+    const stub = buildRequestOnlyMockData(options.request, {
+      alwaysUseRealApi: meta.alwaysUseRealApi ?? true,
+    });
+    return {
+      ...stub,
+      ...(meta.timestamp ? { timestamp: meta.timestamp } : {}),
+      ...(meta.duration !== undefined ? { duration: meta.duration } : {}),
+      ...(meta.sessionId ? { sessionId: meta.sessionId } : {}),
+      ...(meta.requestId ? { requestId: meta.requestId } : {}),
+      ...(meta.parentRequestId ? { parentRequestId: meta.parentRequestId } : {}),
+      ...(meta.parentRequestIds?.length ? { parentRequestIds: meta.parentRequestIds } : {}),
+      ...(meta.scenario ? { scenario: meta.scenario } : {}),
+    };
+  }
+
+  return {
+    request: options.request,
+    response: options.response,
+    timestamp: meta.timestamp ?? new Date().toISOString(),
+    ...(meta.duration !== undefined ? { duration: meta.duration } : {}),
+    ...(meta.sessionId ? { sessionId: meta.sessionId } : {}),
+    ...(meta.requestId ? { requestId: meta.requestId } : {}),
+    ...(meta.parentRequestId ? { parentRequestId: meta.parentRequestId } : {}),
+    ...(meta.parentRequestIds?.length ? { parentRequestIds: meta.parentRequestIds } : {}),
+    ...(meta.scenario ? { scenario: meta.scenario } : {}),
+    ...(meta.alwaysUseRealApi === true ? { alwaysUseRealApi: true } : {}),
   };
 }
 
