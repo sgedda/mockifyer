@@ -112,4 +112,57 @@ describe('atlas-generated (dashboard)', () => {
     expect(summary.pages[0].datasources[0].lastRequestId).toBe('req-9');
     expect(summary.screens[0].screen).toBe('Trips');
   });
+
+  it('summarizeAtlasDoc keeps datasource edges that share an id but differ by dataRoot', () => {
+    const summary = summarizeAtlasDoc({
+      pages: {
+        home: {
+          pageId: 'home',
+          nodes: {
+            n1: {
+              nodeId: 'n1',
+              datasources: [
+                {
+                  datasourceId: 'cms',
+                  dataRoot: 'hero',
+                  lastRequestId: 'req-hero',
+                  operations: ['Hero'],
+                },
+              ],
+            },
+            n2: {
+              nodeId: 'n2',
+              datasources: [
+                {
+                  datasourceId: 'cms',
+                  dataRoot: 'rail',
+                  lastRequestId: 'req-rail',
+                  operations: ['Rail'],
+                },
+                {
+                  datasourceId: 'cms',
+                  dataRoot: 'hero',
+                  operations: ['HeroExtra'],
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(summary.pages[0].datasources).toEqual([
+      {
+        datasourceId: 'cms',
+        dataRoot: 'hero',
+        lastRequestId: 'req-hero',
+        operations: ['Hero', 'HeroExtra'],
+      },
+      {
+        datasourceId: 'cms',
+        dataRoot: 'rail',
+        lastRequestId: 'req-rail',
+        operations: ['Rail'],
+      },
+    ]);
+  });
 });

@@ -227,7 +227,10 @@ router.get('/generated/bodies/:eventId', (req: Request, res: Response) => {
   const maxChars = Number.isFinite(maxCharsRaw) ? maxCharsRaw : undefined;
   const result = getAtlasGeneratedHopBody(mockDataPath, eventId, { maxChars });
   if (!result.exists) {
-    return res.status(404).json(result);
+    return res.status(404).json({
+      ...result,
+      error: result.message ?? 'Atlas generated output not found',
+    });
   }
   return res.json(result);
 });
