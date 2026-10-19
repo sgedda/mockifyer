@@ -95,7 +95,7 @@ describe('useGlobalFetch Request argument', () => {
   let prevDomainPathRulesMode: string | undefined;
 
   function writeMock(filename: string, method: string, url: string, data: unknown): void {
-    const scenarioPath = path.join(testMockDataPath, 'default');
+    const scenarioPath = path.join(testMockDataPath, '_scratch');
     fs.mkdirSync(scenarioPath, { recursive: true });
     fs.writeFileSync(
       path.join(scenarioPath, filename),
