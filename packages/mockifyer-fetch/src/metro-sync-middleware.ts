@@ -2209,8 +2209,17 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
           }
 
           if (parsed.replace === true) {
-            const rules = parseDomainPathRules(parsed.rules ?? {});
-            writeDomainPathRulesFile(mockDataPath, scenarioName, rules);
+            const updates = parseDomainPathRules(parsed.rules ?? {});
+            // Re-read to pick up concurrent new keys, then apply recordResponses updates.
+            const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
+            const merged: DomainPathRulesMap = { ...updates };
+            // Add any new keys that were discovered concurrently but preserve the recordResponses updates.
+            for (const [key, rule] of Object.entries(existing)) {
+              if (!merged[key]) {
+                merged[key] = { ...rule };
+              }
+            }
+            writeDomainPathRulesFile(mockDataPath, scenarioName, merged);
             res.setHeader("Content-Type", "application/json");
             res.end(
               JSON.stringify({
@@ -2218,7 +2227,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
                 changed: true,
                 replaced: true,
                 scenario: scenarioName,
-                rules,
+                rules: merged,
               }),
             );
             return;

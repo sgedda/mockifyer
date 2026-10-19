@@ -1777,7 +1777,10 @@ class MockifyerClass {
         );
         this.unwrapResponseInlineTrace(response);
 
-        this.saveResponse(response as HTTPResponse);
+        // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
+        if (this.config.recordMode && !this.config.proxy?.baseUrl) {
+          this.saveResponse(response as HTTPResponse);
+        }
         return response;
       },
       (error) => {
@@ -1846,7 +1849,10 @@ class MockifyerClass {
             status: error.response.status,
             requestKey: errorRequestKey || 'not found'
           });
-          this.saveResponse(error.response as HTTPResponse);
+          // Only save locally if recordMode is enabled AND we're not proxying upstream calls.
+          if (this.config.recordMode && !this.config.proxy?.baseUrl) {
+            this.saveResponse(error.response as HTTPResponse);
+          }
         }
         return this.rejectWithMockifyerRequestId(error);
       }
@@ -2760,8 +2766,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               // Store the request key on the response config so saveResponse can use it
               (httpResponse.config as any).__mockifyer_requestKey = requestKeyForRecording;
               
-              // Call saveResponse directly
-              await mockifyer['saveResponse'](httpResponse);
+              // Only save locally if recordMode is enabled (saveResponse checks proxy itself).
+              if (mockifyer.isRecordMode()) {
+                await mockifyer['saveResponse'](httpResponse);
+              }
               
               return axiosResponse;
             } catch (error) {
@@ -2837,7 +2845,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 requestKey: errorRequestKey || 'not found'
               });
               
-              await mockifyer['saveResponse'](httpResponse);
+              // Only save locally if recordMode is enabled (saveResponse checks proxy itself).
+              if (mockifyer.isRecordMode()) {
+                await mockifyer['saveResponse'](httpResponse);
+              }
             }
             return mockifyer['rejectWithMockifyerRequestId'](error);
           }

@@ -453,12 +453,23 @@ export class DomainPathRulesSession {
   private async persistFullRules(rules: DomainPathRulesMap, scenario: string): Promise<void> {
     if (this.useFs) {
       try {
-        const { writeDomainPathRulesFile } =
-          require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
-        const wrote = writeDomainPathRulesFile(this.config.mockDataPath, scenario, rules);
+        const {
+          readDomainPathRulesFile,
+          writeDomainPathRulesFile,
+        } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+        // Re-read from disk to pick up any concurrent new keys, then apply recordResponses updates.
+        const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
+        const merged: DomainPathRulesMap = { ...rules };
+        // Add any new keys that were discovered concurrently but preserve the recordResponses updates.
+        for (const [key, rule] of Object.entries(onDisk)) {
+          if (!merged[key]) {
+            merged[key] = { ...rule };
+          }
+        }
+        const wrote = writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged);
         if (wrote) {
           if (this.scenarioName() === scenario) {
-            this.rules = rules;
+            this.rules = merged;
             this.rulesScenario = scenario;
             this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
             this.rulesHydrated = true;
@@ -470,6 +481,7 @@ export class DomainPathRulesSession {
       }
     }
 
+    // Metro: use a custom merge that preserves the recordResponses updates.
     await this.postMetroRules({
       scenario,
       rules,
