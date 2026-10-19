@@ -32,10 +32,11 @@ You can also call the HTTP API directly (same host as the dashboard, under `/api
 | `mocks` | Array of `{ "relativePath": "...", "data": { ... } }` entries. Each `data` is a full Mockifyer mock document (`request`, `response`, `timestamp`, etc.). |
 | `dateManipulation` | Effective date override for that scenario, or `null` if none. |
 | `proxyConfig` | `{ recordOnMiss, allowUpstream }` when the dashboard uses Redis and values exist; otherwise `null` (filesystem-only dashboards do not store proxy config in this bundle). |
+| `domainPathRules` | Domain-path allowlist map (`host` / `host/path` → `{ recordResponses, autoMock? }`), or `null` if none. Older bundles may omit this field. |
 
-**Filesystem / sqlite:** mock files are read recursively from the scenario folder. `date-config.json` in that folder is **not** included as a mock; its effect is merged into `dateManipulation` (including legacy fallback to a root `date-config.json` when no per-scenario file exists).
+**Filesystem / sqlite:** mock files are read recursively from the scenario folder. `date-config.json` and `domain-path-rules.json` in that folder are **not** included as mocks; date effect is merged into `dateManipulation`, and path rules are exported as `domainPathRules` (including legacy fallback to a root `date-config.json` when no per-scenario date file exists).
 
-**Redis:** mocks are read from the Redis index for that scenario; date and proxy settings come from the same Redis keys the dashboard uses elsewhere.
+**Redis:** mocks are read from the Redis index for that scenario; date, proxy, and domain-path rules come from the same Redis/file keys the dashboard uses elsewhere (effective rules = file ∪ store).
 
 ## Import
 
@@ -44,7 +45,7 @@ You can also call the HTTP API directly (same host as the dashboard, under `/api
 1. Click **Choose file…** and pick a bundle JSON (from an export or hand-built with `formatVersion: 1`).
 2. Set **Target scenario name** (defaults to `sourceScenario` from the file when present).
 3. Options:
-   - **Replace existing mocks** — removes all mock entries for the target scenario before writing (filesystem: deletes `.json` mocks under the scenario folder except `date-config.json`; Redis: clears the scenario index). Then every mock in the file is written.
+   - **Replace existing mocks** — removes all mock entries for the target scenario before writing (filesystem: deletes `.json` mocks under the scenario folder except `date-config.json` and `domain-path-rules.json`; Redis: clears the scenario index). Then every mock in the file is written. Domain-path rules are restored from `domainPathRules` when that field is present; older bundles without the field leave existing rules intact.
    - **Apply date settings from file** — only runs if the JSON actually contains a `dateManipulation` field. If unchecked, existing date behavior for the target scenario is left unchanged.
    - **Apply proxy settings from file** — only applies when the bundle includes `proxyConfig` **and** the dashboard runs with the Redis provider (same as the Proxy settings UI).
 4. Click **Import into scenario**.
