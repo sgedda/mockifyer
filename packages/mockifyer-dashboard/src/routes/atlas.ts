@@ -229,9 +229,6 @@ router.get('/generated/bodies/:eventId', (req: Request, res: Response) => {
   if (!result.exists) {
     return res.status(404).json(result);
   }
-  if (!result.found) {
-    return res.status(404).json(result);
-  }
   return res.json(result);
 });
 

@@ -486,7 +486,7 @@ export function summarizeAtlasDoc(doc: {
       type?: string;
       path?: string;
       label?: string;
-      datasources?: Array<{ datasourceId: string; lastRequestId?: string; operations?: string[] }>;
+      datasources?: Array<{ datasourceId: string; dataRoot?: string; lastRequestId?: string; operations?: string[] }>;
     }>;
     placements?: Array<{ treePath: string; depth?: number }>;
   }>;
@@ -516,7 +516,7 @@ export function summarizeAtlasDoc(doc: {
     lastSeenAt?: string;
     nodeCount: number;
     treePaths: string[];
-    datasources: Array<{ datasourceId: string; lastRequestId?: string; operations?: string[] }>;
+    datasources: Array<{ datasourceId: string; dataRoot?: string; lastRequestId?: string; operations?: string[] }>;
   }>;
   screens: Array<{
     screen: string;
@@ -535,18 +535,29 @@ export function summarizeAtlasDoc(doc: {
 } {
   const pages = Object.values(doc.pages ?? {}).map((page) => {
     const nodes = Object.values(page.nodes ?? {});
-    const dsMap = new Map<string, { datasourceId: string; lastRequestId?: string; operations?: string[] }>();
+    const dsMap = new Map<string, { datasourceId: string; dataRoot?: string; lastRequestId?: string; operations?: string[] }>();
     for (const node of nodes) {
       for (const d of node.datasources ?? []) {
-        const prev = dsMap.get(d.datasourceId);
+        const key = `${d.datasourceId}::${d.dataRoot ?? ''}`;
+        const prev = dsMap.get(key);
         if (!prev) {
-          dsMap.set(d.datasourceId, {
+          dsMap.set(key, {
             datasourceId: d.datasourceId,
+            dataRoot: d.dataRoot,
             lastRequestId: d.lastRequestId,
             operations: d.operations,
           });
-        } else if (d.lastRequestId) {
-          prev.lastRequestId = d.lastRequestId;
+        } else {
+          if (d.lastRequestId) {
+            prev.lastRequestId = d.lastRequestId;
+          }
+          if (d.operations?.length) {
+            const existing = new Set(prev.operations ?? []);
+            for (const op of d.operations) {
+              existing.add(op);
+            }
+            prev.operations = [...existing];
+          }
         }
       }
     }
