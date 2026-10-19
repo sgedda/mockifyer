@@ -34,6 +34,9 @@ import {
   readMockParentRequestIds,
   INLINE_TRACE_ATTACHMENT,
   REDACTED_SECRET_PLACEHOLDER,
+  prepareLocalInboundParentStub,
+  ensureLocalInboundParentStubSaved,
+  inboundParentStubFilename,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -79,6 +82,9 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof readMockParentRequestIds).toBe('function');
     expect(INLINE_TRACE_ATTACHMENT).toEqual({ sibling: 'sibling', wrap: 'wrap' });
     expect(REDACTED_SECRET_PLACEHOLDER).toBe('[REDACTED]');
+    expect(typeof prepareLocalInboundParentStub).toBe('function');
+    expect(typeof ensureLocalInboundParentStubSaved).toBe('function');
+    expect(typeof inboundParentStubFilename).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {

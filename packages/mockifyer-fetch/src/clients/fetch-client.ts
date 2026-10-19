@@ -116,6 +116,11 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.deviceId = config?.deviceId;
   }
 
+  /** Runtime toggle for proxy `recordResponses` (dev menu). */
+  setProxyRecordResponses(enabled: boolean): void {
+    this.proxyRecordResponses = enabled;
+  }
+
   private resolvedClientLane(hopHeaders?: unknown): string | undefined {
     const fromHop = getOutboundMockifyerClientIdHeader(hopHeaders);
     if (fromHop) {

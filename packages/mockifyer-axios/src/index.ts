@@ -90,6 +90,12 @@ import {
   resolveShouldPersistLiveCapture,
   resolveMockRecordingSaveDecision,
   applyRecordingPassthroughFlag,
+  resolveLocalRecordResponses,
+  buildLocalRecordingMockData,
+  ensureLocalInboundParentStubSaved,
+  inboundParentStubFilename,
+  readOutboundParentHopFromConfig,
+  getActiveInboundRequest,
   emitMockifyerNetworkEvent,
   networkEventHashFromRequestKey,
   recordInlineTraceHopFromExchange,
@@ -2231,21 +2237,27 @@ class MockifyerClass {
         correlation
       );
 
-      const mockData: MockData = {
+      const recordBodies = resolveLocalRecordResponses();
+      const mockData = buildLocalRecordingMockData({
         request,
         response: storedResponse,
-        timestamp: new Date().toISOString(),
-        duration,
-        scenario: this.config.scenarios?.default,
-        sessionId:
-          saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
-            ? existingMock.mockData.sessionId
-            : this.currentSessionId,
-        requestId: hopIds.requestId,
-        parentRequestId: hopIds.parentRequestId,
-        parentRequestIds: hopIds.parentRequestIds,
-        ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
-      };
+        recordResponses: recordBodies,
+        meta: {
+          timestamp: new Date().toISOString(),
+          duration,
+          scenario: this.config.scenarios?.default,
+          sessionId:
+            saveDecision.action === 'overwrite' && existingMock?.mockData.sessionId
+              ? existingMock.mockData.sessionId
+              : this.currentSessionId,
+          requestId: hopIds.requestId,
+          parentRequestId: hopIds.parentRequestId,
+          parentRequestIds: hopIds.parentRequestIds,
+          ...(newRecordingUsesAlwaysUseRealApi() || !recordBodies
+            ? { alwaysUseRealApi: true as const }
+            : {}),
+        },
+      });
 
       applyRecordingPassthroughFlag(mockData, saveDecision.alwaysUseRealApi);
 
@@ -2281,6 +2293,8 @@ class MockifyerClass {
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
         logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
       }
+
+      await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
       
       // Generate test if enabled
       if (this.config.generateTests?.enabled && this.testGenerator) {
@@ -2289,6 +2303,48 @@ class MockifyerClass {
     } finally {
       // Remove from saving set after save completes
       this.savingResponses.delete(requestKey);
+    }
+  }
+
+  /**
+   * When a child hop is recorded locally, persist a synthetic inbound-parent stub so
+   * Hops does not show "Missing entry hop" for the ALS gateway id.
+   */
+  private async ensureInboundParentStubForChild(
+    parentRequestId: string | null | undefined,
+    config: unknown
+  ): Promise<void> {
+    const activeInbound = getActiveInboundRequest();
+    const hop =
+      readOutboundParentHopFromConfig(config) ??
+      (activeInbound ? { method: activeInbound.method, url: activeInbound.url } : undefined);
+
+    try {
+      await ensureLocalInboundParentStubSaved({
+        parentRequestId,
+        hop,
+        parentExists: (id) => {
+          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          return fs.existsSync(path.join(scenarioPath, inboundParentStubFilename(id)));
+        },
+        save: async (row) => {
+          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+          const filePath = path.join(scenarioPath, row.filename);
+          if (fs.existsSync(filePath)) {
+            return;
+          }
+          fs.writeFileSync(filePath, JSON.stringify(row.mock, null, 2));
+          logger.info(
+            `[Mockifyer] Saved inbound parent stub: ${currentScenario}/${row.filename}`
+          );
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`[Mockifyer] Failed to save inbound parent stub: ${message}`);
     }
   }
 
