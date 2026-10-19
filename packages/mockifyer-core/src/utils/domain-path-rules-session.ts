@@ -105,9 +105,10 @@ export class DomainPathRulesSession {
   /**
    * Turn `recordResponses: true` on every known rule for the active scenario and persist.
    * Used when enabling record mode so previously discovered allowlist `false` rows do not block saves.
+   * Only applies to allowlist mode; record_all `false` rows are intentional exclusions.
    */
   enableRecordResponsesForAllRules(): void {
-    if (!this.isActive()) {
+    if (!this.isActive() || this.mode !== 'allowlist') {
       return;
     }
     const scenario = this.scenarioName();

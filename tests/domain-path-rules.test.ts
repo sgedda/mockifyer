@@ -413,6 +413,24 @@ describe('DomainPathRulesSession persistUpserts', () => {
     expect(onDisk['api.example.com/login'].autoMock).toBe(true);
   });
 
+  it('enableRecordResponsesForAllRules preserves record_all exclusions', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/analytics': { recordResponses: false, autoMock: false },
+    });
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'record_all' },
+      getRecordMode: () => true,
+    });
+    session.getTrafficGate('https://api.example.com/analytics');
+    session.enableRecordResponsesForAllRules();
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com/analytics'].recordResponses).toBe(false);
+  });
+
   it('preserves concurrent on-disk edits when discovering new keys', async () => {
     writeDomainPathRulesFile(tmpRoot, 'default', {
       'api.example.com': { recordResponses: true, autoMock: true },
