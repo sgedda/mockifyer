@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FileText, BarChart3, Settings, Zap, GitBranch, Calendar, Radio, Layers } from 'lucide-react'
+import { FileText, BarChart3, Settings, Zap, GitFork, Calendar, Radio, SlidersHorizontal, Braces, HardDrive } from 'lucide-react'
+import { buildSearch } from '@/lib/dashboard-urls'
 import {
   Sidebar,
   SidebarContent,
@@ -15,24 +16,30 @@ interface SidebarNavProps {
   activeTab?: string
   onTabChange: (tab: string) => void
   onNavigate?: () => void
+  scenario?: string
 }
 
-export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps) {
+export default function SidebarNav({ onTabChange, onNavigate, scenario }: SidebarNavProps) {
   const location = useLocation()
   
   const navItems = [
     { id: 'stats', label: 'Statistics', icon: BarChart3, path: '/' },
     { id: 'mocks', label: 'Mocks', icon: FileText, path: '/mocks' },
-    { id: 'fixture-pool', label: 'Fixture pool', icon: Layers, path: '/fixture-pool' },
-    { id: 'timeline', label: 'Timeline', icon: GitBranch, path: '/timeline' },
+    { id: 'hops', label: 'Hops', icon: GitFork, path: '/hops' },
+    { id: 'overrides', label: 'Overrides', icon: SlidersHorizontal, path: '/overrides' },
     { id: 'network', label: 'Network', icon: Radio, path: '/network' },
     { id: 'date-config', label: 'Date Config', icon: Calendar, path: '/date-config' },
+    { id: 'memory', label: 'Memory', icon: HardDrive, path: '/memory' },
+    { id: 'api', label: 'API', icon: Braces, path: '/api-reference' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ]
 
   const isActive = (path: string) => {
     if (path === '/') {
       return location.pathname === '/'
+    }
+    if (path === '/mocks') {
+      return location.pathname === '/mocks' || location.pathname === '/mock'
     }
     return location.pathname === path
   }
@@ -59,7 +66,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
             return (
               <Link
                 key={item.id}
-                to={item.path}
+                to={{ pathname: item.path, search: buildSearch({ scenario }) }}
                 onClick={() => {
                   onTabChange(item.id)
                   onNavigate?.() // Close sidebar on mobile when navigating
@@ -80,7 +87,7 @@ export default function SidebarNav({ onTabChange, onNavigate }: SidebarNavProps)
       <Separator />
       <SidebarFooter className="px-4 py-4">
             <div className="text-xs text-muted-foreground">
-              Version 1.2.0
+              Version {import.meta.env.VITE_MOCKIFYER_DASHBOARD_VERSION || 'dev'}
             </div>
       </SidebarFooter>
     </Sidebar>

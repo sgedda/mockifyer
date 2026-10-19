@@ -2,7 +2,14 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { setupMockifyer } from '@sgedda/mockifyer-axios';
-import { getCurrentDate, initializeDateManipulation, resetDateManipulation } from '@sgedda/mockifyer-core';
+import {
+  getCurrentDate,
+  initializeDateManipulation,
+  resetDateManipulation,
+  resolveExplicitDateManipulation,
+  setRuntimeDateManipulation,
+  SCRATCH_SCENARIO,
+} from '@sgedda/mockifyer-core';
 
 describe('Date Manipulation', () => {
   const fixedBaseTime = new Date('2024-01-01T00:00:00.000Z').getTime();
@@ -387,4 +394,92 @@ describe('Date Manipulation', () => {
       }
     });
   });
-}); 
+
+  describe('resolveExplicitDateManipulation', () => {
+    const scenarioDoc = {
+      dateManipulation: { fixedDate: '2020-01-01T00:00:00.000Z' },
+    };
+
+    it('prefers an effective lane date over the scenario document', () => {
+      const resolved = resolveExplicitDateManipulation({
+        laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+        scenarioDateDoc: scenarioDoc,
+      });
+      expect(resolved).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
+      expect(
+        getCurrentDate({ explicitManipulation: resolved }).toISOString()
+      ).toBe('2025-06-15T12:00:00.000Z');
+    });
+
+    it('falls back to scenario date when the lane has no date', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: null,
+          scenarioDateDoc: scenarioDoc,
+        })
+      ).toEqual({ fixedDate: '2020-01-01T00:00:00.000Z' });
+    });
+
+    it('returns null when neither lane nor scenario has a document', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: {},
+          scenarioDateDoc: null,
+        })
+      ).toBeNull();
+    });
+
+    it('ignores lane and scenario dates when no scenario is selected (_scratch)', () => {
+      const resolved = resolveExplicitDateManipulation({
+        laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+        scenarioDateDoc: scenarioDoc,
+        scenario: SCRATCH_SCENARIO,
+      });
+      expect(resolved).toEqual({});
+      const now = getCurrentDate({ explicitManipulation: resolved });
+      expect(Math.abs(now.getTime() - Date.now())).toBeLessThan(2000);
+    });
+
+    it('still applies the lane date for a named scenario', () => {
+      expect(
+        resolveExplicitDateManipulation({
+          laneManipulation: { fixedDate: '2025-06-15T12:00:00.000Z' },
+          scenarioDateDoc: scenarioDoc,
+          scenario: 'checkout',
+        })
+      ).toEqual({ fixedDate: '2025-06-15T12:00:00.000Z' });
+    });
+  });
+
+  describe('runtime Redis/dashboard cache', () => {
+    it('getCurrentDate() uses setRuntimeDateManipulation without explicit context', () => {
+      setRuntimeDateManipulation({ fixedDate: '2025-03-01T00:00:00.000Z' });
+      expect(getCurrentDate().toISOString()).toBe('2025-03-01T00:00:00.000Z');
+    });
+
+    it('runtime cache beats setupMockifyer dateManipulation and MOCKIFYER_DATE', () => {
+      process.env.MOCKIFYER_DATE = '2010-01-01T00:00:00.000Z';
+      setupMockifyer({
+        mockDataPath: './mock-data',
+        dateManipulation: { fixedDate: '2011-01-01T00:00:00.000Z' },
+      });
+      setRuntimeDateManipulation({ fixedDate: '2026-09-20T12:00:00.000Z' });
+      expect(getCurrentDate().toISOString()).toBe('2026-09-20T12:00:00.000Z');
+    });
+
+    it('empty runtime payload is a clear (real time), not a fallthrough to disk or env', () => {
+      process.env.MOCKIFYER_DATE = '2010-01-01T00:00:00.000Z';
+      setRuntimeDateManipulation({});
+      const result = getCurrentDate();
+      expect(Math.abs(result.getTime() - Date.now())).toBeLessThan(2000);
+    });
+
+    it('resetDateManipulation clears the runtime cache', () => {
+      setRuntimeDateManipulation({ fixedDate: '2025-03-01T00:00:00.000Z' });
+      resetDateManipulation();
+      const result = getCurrentDate();
+      expect(Math.abs(result.getTime() - Date.now())).toBeLessThan(2000);
+    });
+  });
+});
+ 

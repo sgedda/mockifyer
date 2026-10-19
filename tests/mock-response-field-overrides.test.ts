@@ -1,7 +1,9 @@
 import {
   applyResponseFieldOverridesToData,
   copyArrayItemInResponseData,
+  isResponseDataJsonContainer,
   prepareMockResponseBody,
+  setResponseDataValueAtPath,
   validateResponseFieldOverrides,
 } from '@sgedda/mockifyer-core';
 import type { MockData } from '@sgedda/mockifyer-core';
@@ -15,6 +17,22 @@ describe('mock response field overrides', () => {
   it('validateResponseFieldOverrides rejects invalid entries', () => {
     expect(validateResponseFieldOverrides({})).toContain('array');
     expect(validateResponseFieldOverrides([{ path: '' }])).toContain('path');
+    expect(
+      validateResponseFieldOverrides([{ path: 'x', value: 1, mode: 'append' } as never])
+    ).toContain('mode');
+    expect(
+      validateResponseFieldOverrides([{ path: 'constructor.prototype.polluted', value: true }])
+    ).toContain('__proto__, prototype, or constructor');
+  });
+
+  it('validateResponseFieldOverrides accepts extend mode', () => {
+    expect(
+      validateResponseFieldOverrides([{ path: 'bookings', value: { id: '2' }, mode: 'extend' }])
+    ).toBeNull();
+  });
+
+  it('validateResponseFieldOverrides accepts remove without value', () => {
+    expect(validateResponseFieldOverrides([{ path: 'bookings.0', mode: 'remove' }])).toBeNull();
   });
 
   it('applyResponseFieldOverridesToData overlays without mutating stored body', () => {
@@ -25,6 +43,136 @@ describe('mock response field overrides', () => {
 
     expect(out.bookings[0].status).toBe('CONFIRMED');
     expect(data.bookings[0].status).toBe('PENDING');
+  });
+
+  it('extend mode appends to arrays and merges objects', () => {
+    const data = {
+      bookings: [{ id: '1', status: 'PENDING' }],
+      meta: { page: 1, total: 1 },
+    };
+
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings', mode: 'extend', value: { id: '2', status: 'CONFIRMED' } },
+      { path: 'meta', mode: 'extend', value: { total: 2, next: true } },
+    ]) as typeof data & { meta: { page: number; total: number; next: boolean } };
+
+    expect(out.bookings).toEqual([
+      { id: '1', status: 'PENDING' },
+      { id: '2', status: 'CONFIRMED' },
+    ]);
+    expect(out.meta).toEqual({ page: 1, total: 2, next: true });
+    expect(data.bookings).toHaveLength(1);
+    expect(data.meta).toEqual({ page: 1, total: 1 });
+  });
+
+  it('extend mode concats when override value is an array', () => {
+    const data = { tags: ['a'] };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'tags', mode: 'extend', value: ['b', 'c'] },
+    ]) as typeof data;
+    expect(out.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  it('extend mode initializes missing path with provided value', () => {
+    const data = {};
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'tags', mode: 'extend', value: 'a' },
+      { path: 'meta', mode: 'extend', value: { page: 1 } },
+    ]) as { tags: string; meta: { page: number } };
+    expect(out.tags).toBe('a');
+    expect(out.meta).toEqual({ page: 1 });
+  });
+
+  it('extend mode writes value directly for missing numeric leaf segments', () => {
+    const out = applyResponseFieldOverridesToData({}, [
+      { path: 'bookings.0', mode: 'extend', value: 'item-a' },
+    ]) as { bookings: string[] };
+    expect(out.bookings).toEqual(['item-a']);
+  });
+
+  it('extend mode falls back to replace for primitives', () => {
+    const data = { status: 'PENDING' };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'status', mode: 'extend', value: 'CONFIRMED' },
+    ]) as typeof data;
+    expect(out.status).toBe('CONFIRMED');
+  });
+
+  it('remove mode deletes array indices and object keys', () => {
+    const data = {
+      bookings: [
+        { id: '1', status: 'PENDING' },
+        { id: '2', status: 'CONFIRMED' },
+      ],
+      meta: { page: 1, total: 2 },
+    };
+
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings.0', mode: 'remove' },
+      { path: 'meta.total', mode: 'remove' },
+    ]) as typeof data;
+
+    expect(out.bookings).toEqual([{ id: '2', status: 'CONFIRMED' }]);
+    expect(out.meta).toEqual({ page: 1 });
+    expect(data.bookings).toHaveLength(2);
+    expect(data.meta).toEqual({ page: 1, total: 2 });
+  });
+
+  it('remove mode soft no-ops for missing paths', () => {
+    const data = { bookings: [{ id: '1' }] };
+    const out = applyResponseFieldOverridesToData(data, [
+      { path: 'bookings.9', mode: 'remove' },
+      { path: 'missing.key', mode: 'remove' },
+    ]) as typeof data;
+    expect(out).toEqual({ bookings: [{ id: '1' }] });
+  });
+
+  it('ignores unsafe prototype path segments', () => {
+    const out = applyResponseFieldOverridesToData(
+      {},
+      [{ path: '__proto__.polluted', mode: 'extend', value: true }]
+    ) as Record<string, unknown>;
+
+    expect(out).toEqual({});
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('treats inherited object properties as missing path segments', () => {
+    const out = applyResponseFieldOverridesToData(
+      {},
+      [{ path: 'toString.polluted', mode: 'extend', value: true }]
+    ) as Record<string, unknown>;
+
+    expect(out).toEqual({ toString: { polluted: true } });
+    expect(((Object.prototype.toString as unknown) as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('applyResponseFieldOverridesToData soft no-ops for non-JSON-container roots', () => {
+    const plain = 'not-json';
+    expect(applyResponseFieldOverridesToData(plain, [{ path: 'x', value: 1 }])).toBe(plain);
+    expect(applyResponseFieldOverridesToData(42, [{ path: 'x', value: 1 }])).toBe(42);
+    expect(applyResponseFieldOverridesToData(null, [{ path: 'x', value: 1 }])).toBe(null);
+  });
+
+  it('setResponseDataValueAtPath writes into objects and rejects non-containers', () => {
+    const data = { user: { name: 'a' } };
+    const out = setResponseDataValueAtPath(data, 'user.pool', { $pool: { id: 'p1' } }) as typeof data & {
+      user: { name: string; pool: { $pool: { id: string } } };
+    };
+    expect(out.user.pool).toEqual({ $pool: { id: 'p1' } });
+    expect(data.user).toEqual({ name: 'a' });
+
+    expect(() => setResponseDataValueAtPath('plain text', 'x', 1)).toThrow(
+      /must be a JSON object or array/
+    );
+    expect(() => setResponseDataValueAtPath({ a: 1 }, '  ', 1)).toThrow(/path is required/);
+  });
+
+  it('isResponseDataJsonContainer recognizes objects and JSON strings', () => {
+    expect(isResponseDataJsonContainer({ a: 1 })).toBe(true);
+    expect(isResponseDataJsonContainer('{"a":1}')).toBe(true);
+    expect(isResponseDataJsonContainer('plain')).toBe(false);
+    expect(isResponseDataJsonContainer(null)).toBe(false);
   });
 
   it('copyArrayItemInResponseData clones item with overrides', () => {

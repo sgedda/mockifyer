@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getCurrentScenario, resetScenario } from '@sgedda/mockifyer-core';
+import { getCurrentScenario, parseScenarioName, resetScenario } from '@sgedda/mockifyer-core';
 
 describe('client-specific scenario config', () => {
   let tmp: string;
@@ -52,5 +52,17 @@ describe('client-specific scenario config', () => {
     );
 
     expect(getCurrentScenario(mockDataPath, '../../../outside')).toBe('safe-global');
+  });
+
+  it('parseScenarioName rejects path traversal and reserved pool', () => {
+    expect(parseScenarioName('default')).toBe('default');
+    expect(parseScenarioName('  lane-a  ')).toBe('lane-a');
+    expect(parseScenarioName('_scratch')).toBe('_scratch');
+    expect(parseScenarioName('..')).toBeNull();
+    expect(parseScenarioName('../evil')).toBeNull();
+    expect(parseScenarioName('foo/bar')).toBeNull();
+    expect(parseScenarioName('pool')).toBeNull();
+    expect(parseScenarioName('')).toBeNull();
+    expect(parseScenarioName(null)).toBeNull();
   });
 });

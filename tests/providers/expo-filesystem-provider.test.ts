@@ -351,6 +351,108 @@ describe('ExpoFileSystemProvider', () => {
     });
   });
 
+  describe('mock file index', () => {
+    it('reads scenario files once for repeated misses and serves a saved mock without rescanning', async () => {
+      const other: MockData = {
+        request: { method: 'GET', url: 'https://api.example.com/other', headers: {}, queryParams: {} },
+        response: { status: 200, data: {}, headers: {} },
+        timestamp: new Date().toISOString(),
+      };
+      const text = jest.fn().mockResolvedValue(JSON.stringify(other));
+      const scenarioDir = makeMockDir({ exists: true, listResult: [makeListItem('a.json'), makeListItem('b.json')] });
+      mockFileSystem.Directory = jest.fn().mockImplementation((uri: string) =>
+        String(uri).endsWith('/default') ? scenarioDir : makeMockDir({ exists: true })
+      );
+      mockFileSystem.File = jest.fn().mockImplementation((uri: string) =>
+        /\/(a|b|new[^/]*)\.json$/.test(String(uri)) || String(uri).includes('api.example.com')
+          ? { ...makeMockFile({ exists: true }), text }
+          : makeMockFile({ exists: false })
+      );
+      mockFileSystem.Paths.info = jest.fn().mockImplementation((uri: string) =>
+        String(uri).includes('override') ? { exists: false } : { exists: true, isDirectory: true, modificationTime: 1 }
+      );
+      await provider.initialize();
+
+      const request: StoredRequest = { method: 'GET', url: 'https://api.example.com/new', headers: {}, queryParams: {} };
+      const requestKey = generateRequestKey(request);
+      expect(await provider.findExactMatch(request, requestKey)).toBeUndefined();
+      expect(await provider.findExactMatch(request, requestKey)).toBeUndefined();
+      expect(await provider.findAllForSimilarMatch(request)).toEqual([]);
+      expect(text).toHaveBeenCalledTimes(2);
+
+      const saved: MockData = { request, response: { status: 200, data: { id: 'new' }, headers: {} }, timestamp: new Date().toISOString() };
+      await provider.save(saved);
+      text.mockResolvedValue(JSON.stringify(saved));
+      const hit = await provider.findExactMatch(request, requestKey);
+      expect(hit?.mockData.response.data).toEqual({ id: 'new' });
+      expect(text).toHaveBeenCalledTimes(3);
+    });
+
+    it('serves a mock saved while the scenario index is still building', async () => {
+      const existing: MockData = {
+        request: { method: 'GET', url: 'https://api.example.com/existing', headers: {}, queryParams: {} },
+        response: { status: 200, data: { id: 'existing' }, headers: {} },
+        timestamp: new Date().toISOString(),
+      };
+      let releaseExistingRead: () => void = () => undefined;
+      const existingReadGate = new Promise<void>((resolve) => {
+        releaseExistingRead = resolve;
+      });
+      let markIndexReadStarted: () => void = () => undefined;
+      const indexReadStarted = new Promise<void>((resolve) => {
+        markIndexReadStarted = resolve;
+      });
+      const written = new Map<string, string>();
+
+      const scenarioDir = makeMockDir({ exists: true, listResult: [makeListItem('a.json')] });
+      mockFileSystem.Directory = jest.fn().mockImplementation((uri: string) =>
+        String(uri).endsWith('/default') ? scenarioDir : makeMockDir({ exists: true })
+      );
+      mockFileSystem.File = jest.fn().mockImplementation((uri: string) => {
+        const key = String(uri);
+        const file = makeMockFile({ exists: true, modificationTime: 1 });
+        file.text = jest.fn().mockImplementation(async () => {
+          if (key.endsWith('/a.json')) {
+            markIndexReadStarted();
+            await existingReadGate;
+            return JSON.stringify(existing);
+          }
+          return written.get(key) ?? '{}';
+        });
+        file.write = jest.fn().mockImplementation((content: string) => {
+          written.set(key, content);
+        });
+        return file;
+      });
+      mockFileSystem.Paths.info = jest.fn().mockImplementation((uri: string) =>
+        String(uri).includes('override') ? { exists: false } : { exists: true, isDirectory: true, modificationTime: 1 }
+      );
+      await provider.initialize();
+
+      const request: StoredRequest = {
+        method: 'GET',
+        url: 'https://api.example.com/saved-during-index',
+        headers: {},
+        queryParams: {},
+      };
+      const requestKey = generateRequestKey(request);
+      const lookup = provider.findExactMatch(request, requestKey);
+      await indexReadStarted;
+
+      const saved: MockData = {
+        request,
+        response: { status: 200, data: { id: 'saved-during-index' }, headers: {} },
+        timestamp: new Date().toISOString(),
+      };
+      // save chains onto the in-flight build; it must not wait for that build.
+      await provider.save(saved);
+      releaseExistingRead();
+
+      const hit = await lookup;
+      expect(hit?.mockData.response.data).toEqual({ id: 'saved-during-index' });
+    });
+  });
+
   describe('reload', () => {
     it('should clear cache and refresh file list', async () => {
       const dir = makeMockDir({ exists: true, listResult: [] });

@@ -22,6 +22,8 @@ export default defineConfig({
   build: {
     outDir: '../public',
     emptyOutDir: true,
+    // Avoid gzip size pass (extra memory) — Railway Metal builders OOM mid-transform otherwise
+    reportCompressedSize: false,
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index.html'),

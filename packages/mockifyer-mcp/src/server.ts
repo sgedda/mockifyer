@@ -167,6 +167,87 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_set_scenario',
+    {
+      description:
+        'Switch the dashboard active/global scenario. For Redis/sqlite multi-client isolation prefer mockifyer_set_client_lane_scenario so Playwright/app lanes stay independent.',
+      inputSchema: {
+        scenario: z
+          .string()
+          .describe('Scenario name (letters, numbers, hyphens, underscores)'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.setScenario(args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_create_scenario',
+    {
+      description:
+        'Create a scenario and make it active. Pass deriveFrom to copy mocks (and date config) from an existing scenario — e.g. check-in-open derived from default before applying $pool refs/overrides.',
+      inputSchema: {
+        scenario: z.string().describe('New scenario name'),
+        deriveFrom: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Existing scenario to copy from; omit/null for empty'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.createScenario(args.scenario, args.deriveFrom ?? null));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_client_lane_scenario',
+    {
+      description:
+        'Map a Redis/sqlite client lane (MOCKIFYER_CLIENT_ID) to a scenario for isolated E2E/demo runs. Requires dashboard --provider redis|sqlite. Pass scenario=null to clear the lane mapping.',
+      inputSchema: {
+        clientId: z.string().describe('Client lane id (e.g. trips-e2e-checkin)'),
+        scenario: z
+          .string()
+          .nullable()
+          .describe('Scenario to bind, or null to clear the lane override'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(await client.setClientLaneScenario(args.clientId, args.scenario));
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_client_lanes',
+    {
+      description:
+        'List Redis/sqlite client lanes and their configured scenarios (disabled on filesystem provider). Use before mockifyer_set_client_lane_scenario.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return jsonResult(await client.listClientLanes());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_get_endpoint_stats',
     {
       description: 'Summarize mock counts per endpoint, HTTP method, and status code for a scenario.',
@@ -191,10 +272,160 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_get_field_overrides',
+    {
+      description:
+        'Get replay-time field overrides for a mock (path/value pairs only). Prefer this over mockifyer_get_mock when editing overlays.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename'),
+        scenario: z.string().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.getFieldOverrides({
+            filename: args.filename,
+            scenario: args.scenario,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_list_override_groups',
+    {
+      description:
+        'List scenario override groups and effective selection (default vs per-client lane). Pass clientId to see that lane’s choice.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        clientId: z.string().optional().describe('MOCKIFYER_CLIENT_ID / lane id'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.listOverrideGroups({
+            scenario: args.scenario,
+            clientId: args.clientId,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_active_override_group',
+    {
+      description:
+        'Set or clear an override group. With clientId, sets per-lane selection (does not change teammates). Without clientId, sets the scenario default only. Prefer lane scope for shared scenarios.',
+      inputSchema: {
+        scenario: z.string().optional(),
+        clientId: z.string().optional().describe('Lane id — preferred for shared scenarios'),
+        scope: z
+          .enum(['lane', 'default'])
+          .optional()
+          .describe('lane = per clientId; default = scenario-wide fallback'),
+        groupId: z
+          .string()
+          .nullable()
+          .describe('Override group id to activate, or null to clear'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.setActiveOverrideGroup({
+            currentGroup: args.groupId,
+            scenario: args.scenario,
+            clientId: args.clientId,
+            scope: args.scope ?? (args.clientId ? 'lane' : 'default'),
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_upsert_override_group_entry',
+    {
+      description:
+        'Create/update field overrides for one mock inside an override group. Use ensure=true to add an empty entry; clear=true to remove the entry.',
+      inputSchema: {
+        groupId: z.string(),
+        filename: z.string().describe('Scenario-relative mock filename'),
+        scenario: z.string().optional(),
+        overrides: z
+          .array(
+            z.object({
+              path: z.string(),
+              value: z.any(),
+            })
+          )
+          .optional(),
+        ensure: z.boolean().optional(),
+        clear: z.boolean().optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.patchOverrideGroupEntry({
+            groupId: args.groupId,
+            filename: args.filename,
+            scenario: args.scenario,
+            responseFieldOverrides: args.clear
+              ? null
+              : args.overrides?.map((entry) => ({ path: entry.path, value: entry.value })),
+            clear: args.clear === true,
+            ensure: args.ensure === true,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_put_override_group',
+    {
+      description: 'Create or replace an override group document (id + label + optional entries).',
+      inputSchema: {
+        id: z.string(),
+        label: z.string(),
+        scenario: z.string().optional(),
+        entries: z.array(z.any()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.putOverrideGroup({
+            id: args.id,
+            label: args.label,
+            scenario: args.scenario,
+            entries: args.entries,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_set_field_overrides',
     {
       description:
-        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response.',
+        'Set replay-time field overrides on a mock (overlay on stored response.data). Small payload — only path/value pairs, not the full response. Use mode "extend" to append/merge, or "remove" to delete an array index or object key.',
       inputSchema: {
         filename: z.string().describe('Mock filename'),
         scenario: z.string().optional(),
@@ -202,7 +433,16 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           .array(
             z.object({
               path: z.string().describe('Dot path from response.data root, e.g. bookings.0.status'),
-              value: z.any().describe('Value to serve at replay time'),
+              value: z
+                .any()
+                .optional()
+                .describe('Value to serve at replay time (ignored when mode is remove)'),
+              mode: z
+                .enum(['replace', 'extend', 'remove'])
+                .optional()
+                .describe(
+                  'replace (default) sets the value; extend appends to arrays or shallow-merges objects; remove deletes the path'
+                ),
             })
           )
           .describe('Field overrides to apply when the mock is served'),
@@ -219,7 +459,12 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           ? null
           : (args.overrides ?? []).map((entry) => ({
               path: entry.path,
-              value: entry.value,
+              ...(entry.mode === 'remove'
+                ? { mode: entry.mode as 'remove' }
+                : {
+                    value: entry.value,
+                    ...(entry.mode ? { mode: entry.mode } : {}),
+                  }),
             }));
         const result = await client.setFieldOverrides({
           filename: args.filename,
@@ -357,6 +602,45 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           eventId: args.eventId,
           scenario: args.scenario,
           clientId: args.clientId,
+          limit: args.limit,
+        });
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_explain_incident',
+    {
+      description:
+        'Explain a crash or app incident with preceding network hops and heuristic suspects (weird 200s, GraphQL errors, mock misses).',
+      inputSchema: {
+        incidentId: z.string().optional().describe('Dashboard incident row id from network log'),
+        sessionId: z.string().optional().describe('Session id when incidentId is unknown'),
+        clientId: z.string().optional().describe('Client lane filter'),
+        at: z.string().optional().describe('ISO timestamp anchor (defaults to latest incident)'),
+        windowMs: z.number().int().min(1000).max(600_000).optional().describe('Lookback window in ms (default 60000)'),
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(5000)
+          .optional()
+          .describe('Max network events to scan'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.explainIncident({
+          incidentId: args.incidentId,
+          sessionId: args.sessionId,
+          clientId: args.clientId,
+          at: args.at,
+          windowMs: args.windowMs,
+          scenario: args.scenario,
           limit: args.limit,
         });
         return jsonResult(result);
@@ -529,12 +813,88 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
     'mockifyer_list_response_fixtures',
     {
       description:
-        'List full-response fixtures in the pool (inert catalog until a future activation path wires them into mocks).',
+        'List full-response fixtures in the pool. Use with mockifyer_preview_pool_ref / mockifyer_set_pool_ref to activate via $pool refs.',
       inputSchema: {},
     },
     async () => {
       try {
         return jsonResult(await client.listResponseFixtures());
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_preview_pool_ref',
+    {
+      description:
+        'Preview resolving a promoted pool response with optional path + field/index select (document keeps envelope; value returns subtree).',
+      inputSchema: {
+        id: z.string().describe('Pool response fixture id'),
+        mode: z.enum(['document', 'value']).optional(),
+        path: z.string().optional().describe('Dot path into the pool response body'),
+        select: z
+          .object({
+            field: z.string(),
+            values: z.array(z.union([z.string(), z.number(), z.boolean()])),
+          })
+          .optional(),
+        indices: z.array(z.number().int().nonnegative()).optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.resolvePoolResponse(args.id, {
+            mode: args.mode,
+            path: args.path,
+            select: args.select,
+            indices: args.indices,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_set_pool_ref',
+    {
+      description:
+        'Embed a $pool reference into a scenario mock response (entire body or at a JSON path). Serve-time resolve loads the promoted fixture.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename relative to the scenario folder'),
+        scenario: z.string().optional(),
+        path: z
+          .string()
+          .nullable()
+          .optional()
+          .describe('Path within response.data to set; omit/null replaces entire response.data'),
+        pool: z.object({
+          id: z.string(),
+          mode: z.enum(['document', 'value']).optional(),
+          path: z.string().optional(),
+          select: z
+            .object({
+              field: z.string(),
+              values: z.array(z.union([z.string(), z.number(), z.boolean()])),
+            })
+            .optional(),
+          indices: z.array(z.number().int().nonnegative()).optional(),
+        }),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.setMockPoolRef(args.filename, {
+            pool: args.pool,
+            path: args.path ?? null,
+            scenario: args.scenario,
+          })
+        );
       } catch (error) {
         return toolError(error instanceof Error ? error.message : String(error));
       }

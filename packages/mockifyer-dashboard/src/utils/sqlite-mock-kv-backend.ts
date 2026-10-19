@@ -139,7 +139,7 @@ export class SqliteMockKvBackend implements MockKvBackend {
     run();
   }
 
-  async mget(...keys: string[]): Promise<Array<string | null>> {
+  async mget(keys: string[]): Promise<Array<string | null>> {
     this.purgeExpired();
     if (keys.length === 0) return [];
     const stmt = this.db.prepare(`SELECT value FROM kv WHERE key = ?`);
@@ -178,6 +178,20 @@ export class SqliteMockKvBackend implements MockKvBackend {
     run();
   }
 
+  async scard(key: string): Promise<number> {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM set_members WHERE set_key = ?`)
+      .get(key) as { c: number } | undefined;
+    return typeof row?.c === 'number' ? row.c : 0;
+  }
+
+  async sismember(key: string, member: string): Promise<boolean> {
+    const row = this.db
+      .prepare(`SELECT 1 AS ok FROM set_members WHERE set_key = ? AND member = ? LIMIT 1`)
+      .get(key, member) as { ok: number } | undefined;
+    return row != null;
+  }
+
   async hget(key: string, field: string): Promise<string | null> {
     const row = this.db
       .prepare(`SELECT value FROM hash_fields WHERE hash_key = ? AND field = ?`)
@@ -192,6 +206,32 @@ export class SqliteMockKvBackend implements MockKvBackend {
          ON CONFLICT(hash_key, field) DO UPDATE SET value = excluded.value`
       )
       .run(key, field, value);
+  }
+
+  async hsetMany(key: string, fields: Record<string, string>): Promise<void> {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) return;
+    const stmt = this.db.prepare(
+      `INSERT INTO hash_fields (hash_key, field, value) VALUES (?, ?, ?)
+       ON CONFLICT(hash_key, field) DO UPDATE SET value = excluded.value`
+    );
+    const run = this.db.transaction(() => {
+      for (const [field, value] of entries) {
+        stmt.run(key, field, value);
+      }
+    });
+    run();
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    const rows = this.db
+      .prepare(`SELECT field, value FROM hash_fields WHERE hash_key = ?`)
+      .all(key) as Array<{ field: string; value: string }>;
+    const out: Record<string, string> = {};
+    for (const row of rows) {
+      out[row.field] = row.value;
+    }
+    return out;
   }
 
   async hdel(key: string, ...fields: string[]): Promise<void> {

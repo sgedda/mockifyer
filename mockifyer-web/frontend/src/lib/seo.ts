@@ -21,7 +21,7 @@ export const DEFAULT_KEYWORDS = [
 ].join(', ')
 
 export const HERO_TAGLINE =
-  'Record and replay axios, fetch, and GraphQL API calls as JSON mocks — with deterministic date control for reliable Node.js tests.'
+  'Deterministic test state that doesn\'t drift. Record API responses, switch between scenario worlds, and eliminate flaky tests caused by stale data and moving dates.'
 
 export const TWITTER_HANDLE = '@sgedda'
 

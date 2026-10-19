@@ -94,6 +94,106 @@ Control fields (optional unless noted):
 
 Date and proxy behavior follow the `applyDateConfig` / `applyProxyConfig` flags and whether the corresponding keys exist in the JSON.
 
+## Clear mocks (keep the empty scenario)
+
+Use this when you want the scenario name to stay in the picker with no recorded traffic. Date settings, lock metadata, domain-path rules, and Redis proxy settings are left in place.
+
+### UI
+
+**Settings → Scenarios → Clear mocks** (current scenario). Confirm the dialog. Locked scenarios must be unlocked first.
+
+### API
+
+`POST /api/scenario-config/clear-mocks`
+
+```json
+{ "scenario": "staging" }
+```
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "scenario": "staging",
+  "mocksRemoved": 42,
+  "message": "Removed 42 mocks from \"staging\". The scenario is still available (empty)."
+}
+```
+
+**Errors:** `400` invalid scenario name; `423` if the scenario is locked; `500` unexpected server errors.
+
+This does **not** delete the scenario folder or Redis registry entry. Create an empty scenario from **Settings → Create New Scenario** (leave “Derive from” as None) if you want a new empty name instead of clearing an existing one.
+
+## Delete scenario
+
+Use this when you want the scenario gone from the picker, not just emptied.
+
+### UI
+
+**Settings → Scenarios → Delete scenario.** Pick a name, confirm the dialog. Locked scenarios must be unlocked first. `default` and `_scratch` (temporary unscoped) cannot be deleted. If you delete the currently active scenario, the dashboard switches to `default`.
+
+### API
+
+`POST /api/scenario-config/delete`
+
+```json
+{ "scenario": "staging" }
+```
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "scenario": "staging",
+  "currentScenario": "default",
+  "scenarios": ["_scratch", "default"],
+  "mocksRemoved": 42,
+  "lanesUnassigned": 1,
+  "message": "Scenario \"staging\" deleted. Switched to \"default\"."
+}
+```
+
+**Errors:** `400` invalid name, default, scratch, or fixture pool; `404` unknown scenario; `423` if the scenario is locked; `500` unexpected server errors.
+
+Filesystem: removes the scenario folder. Redis/SQLite: drops mocks, date/proxy/lock keys, override groups/sets, and the registry entry, and unassigns client lanes that pointed at the scenario.
+
+## Rename scenario
+
+Use this when you want to keep the recordings and settings but change the scenario name.
+
+### UI
+
+**Settings → Scenarios → Rename scenario.** Pick the current name, enter the new name, confirm. Locked scenarios must be unlocked first. `default` and `_scratch` cannot be renamed (or used as the new name). If you rename the currently active scenario, the dashboard switches to the new name. Client lanes that pointed at the old name are remapped.
+
+### API
+
+`POST /api/scenario-config/rename`
+
+```json
+{ "scenario": "staging", "newName": "staging-v2" }
+```
+
+**Success:**
+
+```json
+{
+  "success": true,
+  "scenario": "staging",
+  "newName": "staging-v2",
+  "currentScenario": "staging-v2",
+  "scenarios": ["_scratch", "default", "staging-v2"],
+  "mocksMoved": 42,
+  "lanesRemapped": 1,
+  "message": "Scenario \"staging\" renamed to \"staging-v2\"."
+}
+```
+
+**Errors:** `400` invalid names, default, scratch, fixture pool, or same name; `404` unknown source scenario; `409` destination already exists (including case-insensitive clash); `423` if the source is locked; `500` unexpected server errors.
+
+Filesystem: renames the scenario folder and rewrites `scenario` inside mock JSON. Redis/SQLite: copies mocks (replay modes kept), date/proxy/lock, domain rules, override groups/sets, remaps lanes, then deletes the old name.
+
 ## Paths and Redis
 
 - **Filesystem:** `relativePath` is relative to the scenario directory (POSIX slashes). Paths are validated so imports cannot escape outside the scenario folder.

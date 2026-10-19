@@ -1,5 +1,12 @@
 import { getCurrentScenario, type MockData } from '@sgedda/mockifyer-core';
 import type { NetworkEventSource, NetworkEventTransport } from '@sgedda/mockifyer-core';
+import {
+  mergeMockParentRequestIds,
+  readMockParentRequestIds,
+  registerHopOwner,
+  resolveRecordedHopIdentity,
+  type RecordedHopIdentity,
+} from '@sgedda/mockifyer-core';
 import { createNetworkLogStore, newRequestId, type NetworkLogStore } from './network-log-store';
 
 export interface ProxyNetworkLogContext {
@@ -49,6 +56,18 @@ export async function closeProxyNetworkLog(ctx: ProxyNetworkLogContext | null): 
   await ctx.store.close().catch(() => undefined);
 }
 
+/** Wall-clock ms since `openProxyNetworkLog`, when the timer is valid. */
+export function proxyNetworkElapsedMs(ctx: ProxyNetworkLogContext | null | undefined): number | undefined {
+  if (!ctx || typeof ctx.startedAt !== 'number' || !Number.isFinite(ctx.startedAt)) {
+    return undefined;
+  }
+  const ms = Date.now() - ctx.startedAt;
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return undefined;
+  }
+  return ms;
+}
+
 export async function appendProxyNetworkEvent(
   ctx: ProxyNetworkLogContext | null,
   partial: {
@@ -69,7 +88,7 @@ export async function appendProxyNetworkEvent(
   }
 ): Promise<void> {
   if (!ctx) return;
-  const durationMs = partial.durationMs ?? Math.max(0, Date.now() - ctx.startedAt);
+  const durationMs = partial.durationMs ?? proxyNetworkElapsedMs(ctx) ?? 0;
   await ctx.store
     .append(ctx.scenario, {
       requestId: ctx.requestId,
@@ -114,6 +133,55 @@ function readCorrelationHeader(req: import('express').Request, name: string): st
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+export function resolveProxyHopIdentity(
+  inbound: ProxyNetworkLogCorrelation,
+  method: string,
+  url: string,
+  storedRequestId?: string | null,
+  options?: { register?: boolean }
+): RecordedHopIdentity {
+  const identity = resolveRecordedHopIdentity({
+    inboundRequestId: inbound.requestId,
+    inboundParentRequestId: inbound.parentRequestId,
+    method,
+    url,
+    storedRequestId,
+  });
+  if (options?.register !== false) {
+    registerHopOwner({
+      requestId: identity.requestId,
+      method,
+      url,
+    });
+  }
+  return identity;
+}
+
+/**
+ * Catalog form of a live hop identity. The recorded Mocks catalog links children to the
+ * healed inbound parent row (stable across refreshes). No live hop carries that id, so the
+ * network log, proxy response trace and upstream headers must keep the caller's live parent.
+ */
+export function resolveCatalogHopIdentity(
+  live: RecordedHopIdentity,
+  healedParentRequestId: string | undefined
+): RecordedHopIdentity {
+  const healed = healedParentRequestId?.trim();
+  if (!healed || !live.parentRequestId || healed === live.parentRequestId) {
+    return live;
+  }
+  return { ...live, parentRequestId: healed };
+}
+
+export function applyHopIdentityToProxyLog(
+  ctx: ProxyNetworkLogContext | null,
+  identity: RecordedHopIdentity
+): void {
+  if (!ctx) return;
+  ctx.requestId = identity.requestId;
+  ctx.parentRequestId = identity.parentRequestId ?? null;
+}
+
 export function resolveProxyInboundCorrelation(req: import('express').Request, body: unknown): ProxyNetworkLogCorrelation {
   const payload = (body ?? {}) as { requestId?: unknown; parentRequestId?: unknown };
   const requestIdFromBody =
@@ -132,26 +200,91 @@ export function resolveProxyInboundCorrelation(req: import('express').Request, b
   };
 }
 
-/** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network. */
+/** Persist hop ids on recorded mocks so the Mocks page can link the same chain as Network.
+ * The row's existing id (on `mock`, or on `previous` when the row is rebuilt) stays put so
+ * refreshes do not break parentRequestId links; live calls use a fresh id per call.
+ * Exception: if the stored requestId equals the live parent (caller id was stolen as this
+ * hop's id), replace it with the resolved hop identity so the chain can heal.
+ * Also stamps round-trip `duration` so Statistics can rank slowest leaf hops.
+ * `catalog` (see {@link resolveCatalogHopIdentity}) overrides the live parent from `ctx`.
+ * Earlier callers on `previous` (the row being replaced) are kept in `parentRequestIds`.
+ */
 export function applyProxyCorrelationToMockData(
   mock: MockData,
   ctx: ProxyNetworkLogContext | null,
-  inbound?: ProxyNetworkLogCorrelation
+  inbound?: ProxyNetworkLogCorrelation,
+  catalog?: RecordedHopIdentity,
+  previous?: MockData | null
 ): void {
   const requestId =
     ctx?.requestId ??
     (typeof inbound?.requestId === 'string' && inbound.requestId.trim() ? inbound.requestId.trim() : undefined);
   const parentRequestId =
+    catalog?.parentRequestId ??
     ctx?.parentRequestId ??
     (typeof inbound?.parentRequestId === 'string' && inbound.parentRequestId.trim()
       ? inbound.parentRequestId.trim()
       : undefined);
-  if (requestId) {
+  const existingRequestId = mock.requestId?.trim() || previous?.requestId?.trim();
+  const existingIsStolenParent = Boolean(parentRequestId && existingRequestId === parentRequestId);
+  if (existingRequestId && !existingIsStolenParent) {
+    mock.requestId = existingRequestId;
+  } else if (requestId) {
     mock.requestId = requestId;
   }
+  const combinedCallers = [
+    ...readMockParentRequestIds(mock),
+    ...readMockParentRequestIds(previous),
+  ];
+  const parentRequestIds = mergeMockParentRequestIds(
+    { parentRequestIds: combinedCallers },
+    parentRequestId,
+    mock.requestId
+  );
   if (parentRequestId) {
     mock.parentRequestId = parentRequestId;
   }
+  if (parentRequestIds.length > 0) {
+    mock.parentRequestIds = parentRequestIds;
+  }
+  const durationMs = proxyNetworkElapsedMs(ctx);
+  if (durationMs != null) {
+    mock.duration = durationMs;
+  }
+}
+
+export interface ProxyMockRowReader {
+  getByHashInScenario(hash: string, scenarioName: string): Promise<MockData | null | undefined>;
+}
+
+/**
+ * Row to merge callers from, read right before a write. The upstream call takes
+ * seconds; a concurrent call for the same request (e.g. two GraphQL operations that
+ * both call it) may have added its caller since the row was first read.
+ */
+export async function readLatestRowForCallerMerge(
+  store: ProxyMockRowReader,
+  hash: string,
+  scenarioName: string,
+  fallback: MockData | null | undefined
+): Promise<MockData | null | undefined> {
+  try {
+    return (await store.getByHashInScenario(hash, scenarioName)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Prefer the hop id already stored on a matched mock for this proxy request. */
+export function adoptStoredHopIdOnProxyLog(
+  ctx: ProxyNetworkLogContext | null,
+  mock: { requestId?: string | null } | null | undefined
+): void {
+  const stored = mock?.requestId?.trim();
+  if (!ctx || !stored) {
+    return;
+  }
+  ctx.requestId = stored;
 }
 
 /** Trace ids for proxy JSON responses and `X-Mockifyer-Request-Id` response header. */
@@ -175,19 +308,69 @@ export function resolveProxyTraceIds(
   };
 }
 
+const MOCKIFYER_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-request-id';
+const MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER = 'x-mockifyer-parent-request-id';
+
+/** Headers that must not be forwarded: hop-by-hop, hop ids, or length (we rebuild the body). */
+const SKIP_UPSTREAM_HEADER_NAMES = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'proxy-connection',
+  'transfer-encoding',
+  'te',
+  'trailer',
+  'upgrade',
+  'content-length',
+  'expect',
+  MOCKIFYER_REQUEST_ID_HEADER_LOWER,
+  MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER,
+]);
+
+function shouldSkipUpstreamHeaderName(name: string): boolean {
+  return SKIP_UPSTREAM_HEADER_NAMES.has(name.toLowerCase());
+}
+
+/**
+ * Copy caller headers onto the upstream fetch, but never hop-id headers — those must
+ * come only from {@link applyUpstreamRequestCorrelationHeaders} (resolved hop identity).
+ * Also strips hop-by-hop and `content-length` so a rebuilt body cannot mismatch.
+ */
+export function copyProxyUpstreamHeadersWithoutHopIds(
+  upstreamHeaders: Headers,
+  headers: Record<string, string>
+): void {
+  for (const [k, v] of Object.entries(headers)) {
+    if (shouldSkipUpstreamHeaderName(k)) continue;
+    if (v.length === 0 || v.includes('\r') || v.includes('\n')) continue;
+    upstreamHeaders.set(k, v);
+  }
+}
+
+/**
+ * Stamp the resolved hop identity on upstream. Clears stale parent when this hop has none
+ * so a reminted child cannot inherit the caller's parent header from the client bag.
+ */
 export function applyUpstreamRequestCorrelationHeaders(
   upstreamHeaders: Headers,
   correlation: ProxyNetworkLogCorrelation | ProxyNetworkLogContext
 ): void {
   const requestId =
-    'requestId' in correlation && typeof correlation.requestId === 'string' ? correlation.requestId : undefined;
+    'requestId' in correlation && typeof correlation.requestId === 'string'
+      ? correlation.requestId.trim()
+      : undefined;
+  const parentRaw = 'parentRequestId' in correlation ? correlation.parentRequestId : undefined;
   const parentRequestId =
-    'parentRequestId' in correlation ? correlation.parentRequestId ?? undefined : undefined;
+    typeof parentRaw === 'string' && parentRaw.trim() ? parentRaw.trim() : undefined;
 
   if (requestId) {
-    upstreamHeaders.set('x-mockifyer-request-id', requestId);
+    upstreamHeaders.set(MOCKIFYER_REQUEST_ID_HEADER_LOWER, requestId);
+  } else {
+    upstreamHeaders.delete(MOCKIFYER_REQUEST_ID_HEADER_LOWER);
   }
   if (parentRequestId) {
-    upstreamHeaders.set('x-mockifyer-parent-request-id', parentRequestId);
+    upstreamHeaders.set(MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER, parentRequestId);
+  } else {
+    upstreamHeaders.delete(MOCKIFYER_PARENT_REQUEST_ID_HEADER_LOWER);
   }
 }

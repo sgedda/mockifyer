@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { detectMockDataPath } from '../utils/path-detector';
 import { getAllJsonFiles } from '../utils/json-files';
+import { parseSearchQuery, searchJsonFilesOnDisk } from '../utils/mock-search';
 import {
   getCurrentScenario,
   getScenarioFolderPath,
@@ -19,25 +20,36 @@ import {
   copyArrayItemInResponseData,
   type MockResponseFieldOverride,
   isScenarioLockedFs,
+  validatePoolRef,
+  setResponseDataValueAtPath,
+  type PoolRef,
+  formatGraphqlQueryForDisplay,
+  isInboundParentStubMock,
+  normalizeDomainPathRule,
+  readMockParentRequestIds,
 } from '@sgedda/mockifyer-core';
-import { getDashboardContext } from '../utils/dashboard-context';
+import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/dashboard-context';
+import { RedactedRequestHeadersError } from '../utils/proxy-recording-privacy';
 import {
   createDashboardMockStore,
   toDashboardRedisStoreConfig,
   type DashboardRedisConfig,
 } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
-import { RedisMockStore } from '../utils/redis-mock-store';
+import { RedisMockStore, rawJsonMightContainResponseOverrides } from '../utils/redis-mock-store';
 import {
-  bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
+  bulkSetReplayModeForFilenames,
 } from '../utils/bulk-domain-mocks';
-import { applyReplayModeFieldsFromBody, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
+import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
+  tryMirrorDomainPathRulesToDisk,
   writeDomainPathRulesFile,
 } from '../utils/domain-path-rules-store';
+import { favoriteIdForMock } from '../utils/favorites-store';
+import { parseMockJsonForCatalog } from '../utils/mock-json-catalog';
 
 const router = express.Router();
 
@@ -46,22 +58,30 @@ const SCENARIO_MOCK_LOCKED_MESSAGE = 'Scenario is locked; mock data cannot be ed
 
 type OverridePreview = { path: string; summary: string };
 
+interface MockCorrelationIdFields {
+  requestId?: unknown;
+  parentRequestId?: unknown;
+  parentRequestIds?: unknown;
+}
+
 function extractMockCorrelationIds(mockData: unknown): {
   requestId: string | null;
   parentRequestId: string | null;
+  parentRequestIds: string[];
 } {
-  const m = mockData as {
-    requestId?: unknown;
-    parentRequestId?: unknown;
-    data?: { requestId?: unknown; parentRequestId?: unknown };
-  };
+  const m = mockData as MockCorrelationIdFields & { data?: MockCorrelationIdFields };
   const requestIdRaw = m.requestId ?? m.data?.requestId;
   const parentRaw = m.parentRequestId ?? m.data?.parentRequestId;
+  const listRaw = m.parentRequestIds ?? m.data?.parentRequestIds;
   const requestId =
     typeof requestIdRaw === 'string' && requestIdRaw.trim() ? requestIdRaw.trim() : null;
   const parentRequestId =
     typeof parentRaw === 'string' && parentRaw.trim() ? parentRaw.trim() : null;
-  return { requestId, parentRequestId };
+  const parentRequestIds = readMockParentRequestIds({
+    parentRequestId,
+    parentRequestIds: Array.isArray(listRaw) ? (listRaw as unknown[]).filter((id): id is string => typeof id === 'string') : null,
+  });
+  return { requestId, parentRequestId, parentRequestIds };
 }
 
 function extractMockActivationFlags(mockData: unknown): {
@@ -86,7 +106,7 @@ function getMockDataPath(): string {
   return detectMockDataPath();
 }
 
-function parseRedisHashFromFilename(relativeName: string): string | null {
+export function parseRedisHashFromFilename(relativeName: string): string | null {
   // Expected format: redis/<hash>.json
   if (!relativeName.startsWith('redis/')) return null;
   if (!relativeName.endsWith('.json')) return null;
@@ -94,6 +114,18 @@ function parseRedisHashFromFilename(relativeName: string): string | null {
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash)) return null;
   return hash;
 }
+
+function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefined): boolean {
+  if (!body) return false;
+  return (
+    Object.prototype.hasOwnProperty.call(body, 'responseData') ||
+    Object.prototype.hasOwnProperty.call(body, 'responseDateOverrides') ||
+    bodyHasReplayModeFields(body)
+  );
+}
+
+const PUT_BODY_MISSING_FIELDS_ERROR =
+  'Request body must contain responseData, replayMode, or responseDateOverrides';
 
 /** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
 async function resolveRedisScenario(req: Request, store: RedisMockStore): Promise<string> {
@@ -132,25 +164,175 @@ function buildOverrideSummary(override: Record<string, unknown>): string {
   return pieces.join(' ');
 }
 
-function getOverridePreview(mockData: any): { hasOverrides: boolean; preview: OverridePreview[] } {
+function getOverridePreview(mockData: any): {
+  hasOverrides: boolean;
+  preview: OverridePreview[];
+  count: number;
+} {
   const overrides = mockData?.responseDateOverrides;
   if (!Array.isArray(overrides) || overrides.length === 0) {
-    return { hasOverrides: false, preview: [] };
+    return { hasOverrides: false, preview: [], count: 0 };
   }
   const preview: OverridePreview[] = [];
+  let count = 0;
   for (const o of overrides) {
     if (!o || typeof o !== 'object') continue;
     const pathVal = (o as any).path;
     if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
-    preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
-    if (preview.length >= 3) break;
+    count += 1;
+    if (preview.length < 3) {
+      preview.push({ path: pathVal, summary: buildOverrideSummary(o as Record<string, unknown>) });
+    }
   }
-  return { hasOverrides: preview.length > 0, preview };
+  return { hasOverrides: count > 0, preview, count };
 }
 
-function normalizeSearchQuery(raw: unknown): string {
-  if (typeof raw !== 'string') return '';
-  return raw.trim().toLowerCase();
+function summarizeFieldOverrideValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  const t = typeof value;
+  if (t === 'string') {
+    const s = value as string;
+    return s.length > 40 ? `${JSON.stringify(s.slice(0, 37))}…` : JSON.stringify(s);
+  }
+  if (t === 'number' || t === 'boolean') return String(value);
+  try {
+    const raw = JSON.stringify(value);
+    if (raw == null) return t;
+    return raw.length > 48 ? `${raw.slice(0, 45)}…` : raw;
+  } catch {
+    return t;
+  }
+}
+
+function getFieldOverridePreview(mockData: any): {
+  hasOverrides: boolean;
+  preview: OverridePreview[];
+  count: number;
+} {
+  const overrides = mockData?.responseFieldOverrides;
+  if (!Array.isArray(overrides) || overrides.length === 0) {
+    return { hasOverrides: false, preview: [], count: 0 };
+  }
+  const preview: OverridePreview[] = [];
+  let count = 0;
+  for (const o of overrides) {
+    if (!o || typeof o !== 'object') continue;
+    const pathVal = (o as { path?: unknown }).path;
+    if (typeof pathVal !== 'string' || !pathVal.trim()) continue;
+    count += 1;
+    if (preview.length < 3) {
+      const mode = (o as { mode?: unknown }).mode;
+      const summary =
+        mode === 'remove'
+          ? 'remove'
+          : mode === 'extend'
+            ? `extend ${summarizeFieldOverrideValue((o as { value?: unknown }).value)}`
+            : summarizeFieldOverrideValue((o as { value?: unknown }).value);
+      preview.push({
+        path: pathVal.trim(),
+        summary,
+      });
+    }
+  }
+  return { hasOverrides: count > 0, preview, count };
+}
+
+/** Date + field override list metadata for mock listings. */
+function getMockOverrideListFields(mockData: any): {
+  hasResponseDateOverrides: boolean;
+  responseDateOverridesPreview: OverridePreview[];
+  responseDateOverridesCount: number;
+  hasResponseFieldOverrides: boolean;
+  responseFieldOverridesPreview: OverridePreview[];
+  responseFieldOverridesCount: number;
+} {
+  const dateInfo = getOverridePreview(mockData);
+  const fieldInfo = getFieldOverridePreview(mockData);
+  return {
+    hasResponseDateOverrides: dateInfo.hasOverrides,
+    responseDateOverridesPreview: dateInfo.preview,
+    responseDateOverridesCount: dateInfo.count,
+    hasResponseFieldOverrides: fieldInfo.hasOverrides,
+    responseFieldOverridesPreview: fieldInfo.preview,
+    responseFieldOverridesCount: fieldInfo.count,
+  };
+}
+
+function mockListHasOverrides(mockData: unknown): boolean {
+  const fields = getMockOverrideListFields(mockData);
+  return fields.hasResponseFieldOverrides || fields.hasResponseDateOverrides;
+}
+
+function toMockListRow(params: {
+  filename: string;
+  filePath: string;
+  mockData: MockData;
+  size: number;
+  /** Redis/disk storage hash when the filename is `redis/<hash>.json`. */
+  storageHash?: string;
+}): Record<string, unknown> {
+  const { filename, filePath, mockData, size, storageHash } = params;
+  const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
+  let endpoint: string | null = null;
+  let method: string | null = null;
+  let sessionId: string | null = null;
+  let activation = extractMockActivationFlags({});
+  try {
+    if (mockData.request?.url) endpoint = mockData.request.url;
+    if (mockData.request?.method) {
+      method = String(mockData.request.method).toUpperCase();
+    }
+    if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
+      const search = new URLSearchParams();
+      Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
+        if (value != null) search.append(key, String(value));
+      });
+      const qs = search.toString();
+      if (qs && endpoint) endpoint += '?' + qs;
+    }
+    sessionId = (mockData as { sessionId?: string }).sessionId || null;
+    activation = extractMockActivationFlags(mockData);
+  } catch {
+    // ignore malformed request metadata
+  }
+  const correlation = extractMockCorrelationIds(mockData);
+  const resolvedStorageHash =
+    storageHash ??
+    (filename.startsWith('redis/') && filename.endsWith('.json')
+      ? filename.slice('redis/'.length, -'.json'.length)
+      : undefined);
+  const inboundParentStub = isInboundParentStubMock({
+    inboundParentStub: mockData.inboundParentStub,
+    request: mockData.request,
+    requestId: correlation.requestId ?? undefined,
+    storageHash: resolvedStorageHash,
+  });
+  if (inboundParentStub && mockData.inboundParentDisplay?.url?.trim()) {
+    endpoint = mockData.inboundParentDisplay.url.trim();
+    method = mockData.inboundParentDisplay.method?.trim()
+      ? mockData.inboundParentDisplay.method.trim().toUpperCase()
+      : method;
+  }
+  const graphqlInfo = inboundParentStub ? null : extractGraphqlListInfo(mockData);
+  return {
+    filename,
+    filePath,
+    size,
+    created: ts.toISOString(),
+    modified: ts.toISOString(),
+    endpoint,
+    method,
+    graphqlInfo,
+    sessionId,
+    requestId: correlation.requestId,
+    parentRequestId: correlation.parentRequestId,
+    parentRequestIds: correlation.parentRequestIds,
+    requestHash: favoriteIdForMock(mockData),
+    inboundParentStub: inboundParentStub || undefined,
+    ...activation,
+    ...getMockOverrideListFields(mockData),
+  };
 }
 
 function parseLimit(raw: unknown, fallback: number): number {
@@ -164,6 +346,72 @@ function parseSimilarGroupsQuery(raw: unknown): boolean {
   if (typeof raw !== 'string') return false;
   const s = raw.trim().toLowerCase();
   return s === '1' || s === 'true' || s === 'yes';
+}
+
+/** Compact list omits GraphQL query/variables so Overrides can load without a multi-MB JSON body. */
+function parseCompactListQuery(raw: unknown): boolean {
+  return parseSimilarGroupsQuery(raw);
+}
+
+const GRAPHQL_LIST_QUERY_PREVIEW_MAX = 1200;
+const GRAPHQL_LIST_VARIABLES_PREVIEW_MAX = 400;
+
+function truncateGraphqlPreview(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).replace(/\s+$/g, '')}\n…`;
+}
+
+function graphqlVariablesPreview(variables: unknown): string | null {
+  if (variables === undefined || variables === null) return null;
+  try {
+    const text = JSON.stringify(variables, null, 2);
+    if (!text || text === '{}' || text === 'null') return null;
+    return truncateGraphqlPreview(text, GRAPHQL_LIST_VARIABLES_PREVIEW_MAX);
+  } catch {
+    return String(variables);
+  }
+}
+
+interface GraphqlListInfo {
+  query: string | null;
+  variables: unknown;
+  operationName: string | null;
+  queryPreview: string | null;
+  variablesPreview: string | null;
+}
+
+function extractGraphqlListInfo(
+  mockData: any
+): GraphqlListInfo | null {
+  const body = mockData?.request?.data;
+  const parsedBody =
+    typeof body === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(body);
+          } catch {
+            return body;
+          }
+        })()
+      : body;
+  if (!parsedBody || typeof parsedBody !== 'object' || typeof parsedBody.query !== 'string') {
+    return null;
+  }
+  const operationName =
+    typeof parsedBody.operationName === 'string' ? parsedBody.operationName : null;
+  const queryPreview = truncateGraphqlPreview(
+    formatGraphqlQueryForDisplay(parsedBody.query.slice(0, GRAPHQL_LIST_QUERY_PREVIEW_MAX + 200)),
+    GRAPHQL_LIST_QUERY_PREVIEW_MAX
+  );
+  const variables = parsedBody.variables || null;
+  const variablesPreview = graphqlVariablesPreview(variables);
+  return {
+    query: parsedBody.query,
+    variables,
+    operationName,
+    queryPreview,
+    variablesPreview,
+  };
 }
 
 function parseSimilarThresholdQuery(raw: unknown): number | undefined {
@@ -250,6 +498,12 @@ async function loadRelatedMocksForEndpoint(params: {
  */
 function maybeAttachSimilarBodyGroups(files: any[], req: Request): { similarBodyGroups?: unknown[] } {
   if (!parseSimilarGroupsQuery(req.query.similarGroups)) return {};
+  let graphqlCount = 0;
+  for (const f of files) {
+    if (f?.graphqlInfo?.query) graphqlCount += 1;
+    if (graphqlCount >= 2) break;
+  }
+  if (graphqlCount < 2) return { similarBodyGroups: [] };
   const threshold = parseSimilarThresholdQuery(req.query.similarThreshold);
   const entries: MockListEntryForSimilarity[] = files.map((f) => ({
     filename: String(f.filename),
@@ -278,6 +532,24 @@ function maybeAttachSimilarBodyGroups(files: any[], req: Request): { similarBody
   };
 }
 
+function redactCompactGraphqlInfo(files: Array<{ graphqlInfo?: GraphqlListInfo | null }>): void {
+  for (const file of files) {
+    if (!file.graphqlInfo) continue;
+    file.graphqlInfo.query = null;
+    file.graphqlInfo.variables = null;
+  }
+}
+
+function finishMockListPayload(
+  files: Array<{ graphqlInfo?: GraphqlListInfo | null }>,
+  req: Request,
+  compact: boolean
+): { similarBodyGroups?: unknown[] } {
+  const extras = maybeAttachSimilarBodyGroups(files, req);
+  if (compact) redactCompactGraphqlInfo(files);
+  return extras;
+}
+
 // List all mock files (recursive)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -288,86 +560,20 @@ router.get('/', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const items = await store.list(scenario);
+        const compact = parseCompactListQuery(req.query.compact);
+        const items = await store.listCatalog(scenario);
         const files = items
-          .map(({ hash, mockData, redisKey }) => {
-            const payload = JSON.stringify(mockData);
-            const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
-
-            let endpoint: string | null = null;
-            let graphqlInfo: any = null;
-            let method: string | null = null;
-            let sessionId: string | null = null;
-            let activation = extractMockActivationFlags({});
-            const { hasOverrides, preview } = getOverridePreview(mockData);
-            try {
-              if (mockData.request?.url) endpoint = mockData.request.url;
-              if (mockData.request?.method) {
-                method = String(mockData.request.method).toUpperCase();
-              }
-              // Best-effort query params formatting, matching filesystem route behavior.
-              if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-                const params = new URLSearchParams();
-                Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-                  if (value != null) params.append(key, String(value));
-                });
-                const qs = params.toString();
-                if (qs && endpoint) endpoint += '?' + qs;
-              }
-              // GraphQL heuristic
-              const body = (mockData.request as any)?.data;
-              const parsedBody =
-                typeof body === 'string'
-                  ? (() => {
-                      try {
-                        return JSON.parse(body);
-                      } catch {
-                        return body;
-                      }
-                    })()
-                  : body;
-              if (
-                parsedBody &&
-                typeof parsedBody === 'object' &&
-                typeof (parsedBody as any).query === 'string'
-              ) {
-                graphqlInfo = {
-                  query: (parsedBody as any).query,
-                  variables: (parsedBody as any).variables || null,
-                  operationName:
-                    typeof (parsedBody as any).operationName === 'string'
-                      ? (parsedBody as any).operationName
-                      : null,
-                };
-              }
-              sessionId = (mockData as any).sessionId || null;
-              activation = extractMockActivationFlags(mockData);
-            } catch {
-              // ignore
-            }
-            const correlation = extractMockCorrelationIds(mockData);
-
-            // Use a stable pseudo-filename for UI routing. Must end with .json.
-            const filename = `redis/${hash}.json`;
-            return {
-              filename,
+          .map(({ hash, mockData, redisKey, rawByteLength }) =>
+            toMockListRow({
+              filename: `redis/${hash}.json`,
               filePath: `redis://${redisKey}`,
-              size: Buffer.byteLength(payload),
-              created: ts.toISOString(),
-              modified: ts.toISOString(),
-              endpoint,
-              method,
-              graphqlInfo,
-              sessionId,
-              requestId: correlation.requestId,
-              parentRequestId: correlation.parentRequestId,
-              ...activation,
-              hasResponseDateOverrides: hasOverrides,
-              responseDateOverridesPreview: preview,
-            };
-          })
-          .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-        const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+              mockData,
+              size: rawByteLength ?? 0,
+              storageHash: hash,
+            })
+          )
+          .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());
+        const similarExtras = finishMockListPayload(files, req, compact);
         return res.json({ files, mockDataPath, scenario, ...similarExtras });
       } catch (error: any) {
         console.error('[MocksRoute] Redis List - Error:', error);
@@ -384,6 +590,7 @@ router.get('/', async (req: Request, res: Response) => {
       return res.json({ files: emptyFiles, mockDataPath, scenario, ...maybeAttachSimilarBodyGroups(emptyFiles, req) });
     }
 
+    const compact = parseCompactListQuery(req.query.compact);
     const files = getAllJsonFiles(scenarioPath)
       .map(filePath => {
         const relativeName = path.relative(scenarioPath, filePath);
@@ -394,15 +601,19 @@ router.get('/', async (req: Request, res: Response) => {
         let method: string | null = null;
         let sessionId = null;
         let activation = extractMockActivationFlags({});
-        let hasResponseDateOverrides = false;
-        let responseDateOverridesPreview: OverridePreview[] = [];
+        let overrideFields = getMockOverrideListFields({});
         let requestId: string | null = null;
         let parentRequestId: string | null = null;
+        let parentRequestIds: string[] = [];
+        let requestHash: string | null = null;
         try {
-          const mockData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const { mockData } = parseMockJsonForCatalog(raw);
           const correlation = extractMockCorrelationIds(mockData);
           requestId = correlation.requestId;
           parentRequestId = correlation.parentRequestId;
+          parentRequestIds = correlation.parentRequestIds;
+          requestHash = favoriteIdForMock(mockData);
           if (mockData.request?.url) {
             endpoint = mockData.request.url;
           }
@@ -411,28 +622,12 @@ router.get('/', async (req: Request, res: Response) => {
           }
           activation = extractMockActivationFlags(mockData);
           if (mockData.sessionId) sessionId = mockData.sessionId;
-          else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
-
-          const overrideInfo = getOverridePreview(mockData);
-          hasResponseDateOverrides = overrideInfo.hasOverrides;
-          responseDateOverridesPreview = overrideInfo.preview;
-
-          if (mockData.request?.data) {
-            let bodyData = mockData.request.data;
-            if (typeof bodyData === 'string') {
-              try { bodyData = JSON.parse(bodyData); } catch { /* not JSON */ }
-            }
-            if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-              graphqlInfo = {
-                query: bodyData.query,
-                variables: bodyData.variables || null,
-                operationName:
-                  typeof (bodyData as any).operationName === 'string'
-                    ? (bodyData as any).operationName
-                    : null,
-              };
-            }
+          else if ((mockData as { data?: { sessionId?: string } }).data?.sessionId) {
+            sessionId = (mockData as { data?: { sessionId?: string } }).data?.sessionId ?? null;
           }
+
+          overrideFields = getMockOverrideListFields(mockData);
+          graphqlInfo = extractGraphqlListInfo(mockData);
 
           if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
             const params = new URLSearchParams();
@@ -458,14 +653,15 @@ router.get('/', async (req: Request, res: Response) => {
           sessionId,
           requestId,
           parentRequestId,
+          parentRequestIds,
+          requestHash,
           ...activation,
-          hasResponseDateOverrides,
-          responseDateOverridesPreview,
+          ...overrideFields,
         };
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-    const similarExtras = maybeAttachSimilarBodyGroups(files, req);
+    const similarExtras = finishMockListPayload(files, req, compact);
     res.json({ files, mockDataPath, scenario, ...similarExtras });
   } catch (error: any) {
     console.error('[MocksRoute] List - Error:', error);
@@ -473,103 +669,113 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Overrides page listing: only mocks that already have field/date overlays.
+ * Does not JSON.parse every Redis recording (that hung GET /api/mocks on large scenarios).
+ */
+router.get('/with-overrides', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    const requestedScenario = req.query.scenario as string | undefined;
+    const scenario = requestedScenario || getCurrentScenario(mockDataPath);
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const items = await store.listWithOverrides(scenario);
+        const files = items
+          .map(({ hash, mockData, redisKey }) =>
+            toMockListRow({
+              filename: `redis/${hash}.json`,
+              filePath: `redis://${redisKey}`,
+              mockData,
+              size: 0,
+            })
+          )
+          .sort(
+            (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
+          );
+        redactCompactGraphqlInfo(files);
+        return res.json({ files, mockDataPath, scenario });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[MocksRoute] with-overrides Redis - Error:', error);
+        return res.status(500).json({ error: 'Failed to list mocks with overrides', details: message });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    if (!fs.existsSync(mockDataPath) || !fs.existsSync(scenarioPath)) {
+      return res.json({ files: [], mockDataPath, scenario });
+    }
+
+    const files = getAllJsonFiles(scenarioPath)
+      .map((filePath) => {
+        const relativeName = path.relative(scenarioPath, filePath);
+        let raw: string;
+        try {
+          raw = fs.readFileSync(filePath, 'utf-8');
+        } catch {
+          return null;
+        }
+        if (!rawJsonMightContainResponseOverrides(raw)) return null;
+        try {
+          const mockData = JSON.parse(raw) as MockData;
+          if (!mockListHasOverrides(mockData)) return null;
+          const stats = fs.statSync(filePath);
+          return toMockListRow({
+            filename: relativeName,
+            filePath,
+            mockData,
+            size: stats.size,
+          });
+        } catch {
+          return null;
+        }
+      })
+      .filter((row): row is Record<string, unknown> => row != null)
+      .sort(
+        (a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime()
+      );
+
+    redactCompactGraphqlInfo(files);
+    return res.json({ files, mockDataPath, scenario });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[MocksRoute] with-overrides - Error:', error);
+    return res.status(500).json({ error: 'Failed to list mocks with overrides', details: message });
+  }
+});
+
 // Search mock files by free-text query (filename/endpoint/method/graphql + response data)
 router.get('/search', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    const q = normalizeSearchQuery(req.query.q);
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const tokens = parseSearchQuery(query);
     const limit = parseLimit(req.query.limit, 200);
     const requestedScenario = req.query.scenario as string | undefined;
     const scenario = requestedScenario || getCurrentScenario(mockDataPath);
 
-    if (!q) {
+    if (tokens.length === 0) {
       return res.json({ files: [], mockDataPath, scenario, query: '', truncated: false });
     }
 
     if (isCentralizedDashboardProvider(config.provider)) {
-    const store = createDashboardMockStore(config, mockDataPath);
-
+      const store = createDashboardMockStore(config, mockDataPath);
       try {
-        const items = await store.list(scenario);
-        const files: any[] = [];
-        for (const { hash, mockData, redisKey } of items) {
-          if (!mockData || typeof mockData !== 'object') continue;
-          const raw = JSON.stringify(mockData).toLowerCase();
-          if (!raw.includes(q)) continue;
-
-          const payload = JSON.stringify(mockData);
-          const ts = mockData.timestamp ? new Date(mockData.timestamp) : new Date();
-
-          let endpoint: string | null = null;
-          let graphqlInfo: any = null;
-          let sessionId: string | null = null;
-          let method: string | null = null;
-          let alwaysUseRealApi = false;
-          const { hasOverrides, preview } = getOverridePreview(mockData);
-
-          try {
-            if (mockData.request?.url) endpoint = mockData.request.url;
-            if (mockData.request?.method) method = String(mockData.request.method);
-
-            if (mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-              const params = new URLSearchParams();
-              Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-                if (value != null) params.append(key, String(value));
-              });
-              const qs = params.toString();
-              if (qs && endpoint) endpoint += '?' + qs;
-            }
-
-            const body = (mockData.request as any)?.data;
-            const parsedBody =
-              typeof body === 'string'
-                ? (() => {
-                    try {
-                      return JSON.parse(body);
-                    } catch {
-                      return body;
-                    }
-                  })()
-                : body;
-            if (
-              parsedBody &&
-              typeof parsedBody === 'object' &&
-              typeof (parsedBody as any).query === 'string'
-            ) {
-              graphqlInfo = {
-                query: (parsedBody as any).query,
-                variables: (parsedBody as any).variables || null,
-              };
-            }
-            sessionId = (mockData as any).sessionId || null;
-            alwaysUseRealApi = (mockData as any).alwaysUseRealApi === true;
-          } catch {
-            // ignore best-effort extraction errors
-          }
-          const correlation = extractMockCorrelationIds(mockData);
-
-          files.push({
+        const { items, truncated } = await store.search(scenario, tokens, limit);
+        const files = items.map(({ hash, mockData, redisKey, size }) =>
+          toMockListRow({
             filename: `redis/${hash}.json`,
             filePath: `redis://${redisKey}`,
-            size: Buffer.byteLength(payload),
-            created: ts.toISOString(),
-            modified: ts.toISOString(),
-            endpoint,
-            method,
-            graphqlInfo,
-            sessionId,
-            requestId: correlation.requestId,
-            parentRequestId: correlation.parentRequestId,
-            alwaysUseRealApi,
-            hasResponseDateOverrides: hasOverrides,
-            responseDateOverridesPreview: preview,
-          });
-
-          if (files.length >= limit) {
-            return res.json({ files, mockDataPath, scenario, query: q, truncated: true });
-          }
-        }
-        return res.json({ files, mockDataPath, scenario, query: q, truncated: false });
+            mockData,
+            size,
+          })
+        );
+        return res.json({ files, mockDataPath, scenario, query, truncated });
       } catch (error: any) {
         console.error('[MocksRoute] Redis Search - Error:', error);
         return res.status(500).json({ error: 'Failed to search Redis mocks', details: error.message });
@@ -580,98 +786,54 @@ router.get('/search', async (req: Request, res: Response) => {
 
     const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
     if (!fs.existsSync(mockDataPath) || !fs.existsSync(scenarioPath)) {
-      return res.json({ files: [], mockDataPath, scenario, query: q, truncated: false });
+      return res.json({ files: [], mockDataPath, scenario, query, truncated: false });
     }
 
-    const files: any[] = [];
-    const all = getAllJsonFiles(scenarioPath);
+    const { hits, truncated } = await searchJsonFilesOnDisk(scenarioPath, tokens, limit);
+    const files: ReturnType<typeof toMockListRow>[] = [];
 
-    for (const filePath of all) {
-      if (files.length >= limit) break;
-
-      const relativeName = path.relative(scenarioPath, filePath);
-      const lowerRel = relativeName.toLowerCase();
-      let content: string;
+    for (const hit of hits) {
+      let stats: fs.Stats;
       try {
-        content = fs.readFileSync(filePath, 'utf-8');
+        stats = fs.statSync(hit.filePath);
       } catch {
         continue;
       }
 
-      const lowerContent = content.toLowerCase();
-      if (!lowerRel.includes(q) && !lowerContent.includes(q)) continue;
-
-      const stats = fs.statSync(filePath);
-      let endpoint: string | null = null;
-      let graphqlInfo: any = null;
-      let sessionId: string | null = null;
-      let method: string | null = null;
-      let alwaysUseRealApi = false;
-      let hasResponseDateOverrides = false;
-      let responseDateOverridesPreview: OverridePreview[] = [];
-      let requestId: string | null = null;
-      let parentRequestId: string | null = null;
-
       try {
-        const mockData = JSON.parse(content);
-        const correlation = extractMockCorrelationIds(mockData);
-        requestId = correlation.requestId;
-        parentRequestId = correlation.parentRequestId;
-        if (mockData.request?.url) endpoint = mockData.request.url;
-        if (mockData.request?.method) method = String(mockData.request.method);
-        if (mockData.alwaysUseRealApi === true) alwaysUseRealApi = true;
-        if (mockData.sessionId) sessionId = mockData.sessionId;
-        else if (mockData.data?.sessionId) sessionId = mockData.data.sessionId;
-
-        const overrideInfo = getOverridePreview(mockData);
-        hasResponseDateOverrides = overrideInfo.hasOverrides;
-        responseDateOverridesPreview = overrideInfo.preview;
-
-        if (mockData.request?.data) {
-          let bodyData = mockData.request.data;
-          if (typeof bodyData === 'string') {
-            try {
-              bodyData = JSON.parse(bodyData);
-            } catch {
-              /* not JSON */
-            }
-          }
-          if (typeof bodyData === 'object' && bodyData !== null && typeof bodyData.query === 'string') {
-            graphqlInfo = { query: bodyData.query, variables: bodyData.variables || null };
-          }
-        }
-
-        if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-          const params = new URLSearchParams();
-          Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-            if (value != null) params.append(key, String(value));
-          });
-          const qs = params.toString();
-          if (qs && endpoint) endpoint += '?' + qs;
-        }
+        const mockData = JSON.parse(hit.raw) as MockData;
+        const row = toMockListRow({
+          filename: hit.relativeName,
+          filePath: hit.filePath,
+          mockData,
+          size: stats.size,
+        });
+        row.created = stats.birthtime;
+        row.modified = stats.mtime;
+        files.push(row);
       } catch (error) {
-        console.warn(`[MocksRoute] Search parse failed for ${relativeName}:`, error);
+        console.warn(`[MocksRoute] Search parse failed for ${hit.relativeName}:`, error);
+        files.push({
+          filename: hit.relativeName,
+          filePath: hit.filePath,
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime,
+          endpoint: null,
+          method: null,
+          graphqlInfo: null,
+          sessionId: null,
+          requestId: null,
+          parentRequestId: null,
+          parentRequestIds: [],
+          requestHash: null,
+          ...extractMockActivationFlags({}),
+          ...getMockOverrideListFields({}),
+        });
       }
-
-      files.push({
-        filename: relativeName,
-        filePath,
-        size: stats.size,
-        created: stats.birthtime,
-        modified: stats.mtime,
-        endpoint,
-        method,
-        graphqlInfo,
-        sessionId,
-        requestId,
-        parentRequestId,
-        alwaysUseRealApi,
-        hasResponseDateOverrides,
-        responseDateOverridesPreview,
-      });
     }
 
-    res.json({ files, mockDataPath, scenario, query: q, truncated: files.length >= limit });
+    res.json({ files, mockDataPath, scenario, query, truncated: truncated || files.length >= limit });
   } catch (error: any) {
     console.error('[MocksRoute] Search - Error:', error);
     res.status(500).json({ error: 'Failed to search mocks', details: error.message });
@@ -726,14 +888,29 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
     }
     if (rule !== null && (typeof rule !== 'object' || typeof rule.recordResponses !== 'boolean')) {
-      return res.status(400).json({ error: 'rule must be null or { recordResponses: boolean, autoMock?: boolean }' });
+      return res.status(400).json({
+        error:
+          'rule must be null or { recordResponses: boolean, autoMock?: boolean, allowUpstream?: boolean }',
+      });
+    }
+    if (
+      rule !== null &&
+      rule.allowUpstream !== undefined &&
+      typeof rule.allowUpstream !== 'boolean'
+    ) {
+      return res.status(400).json({ error: 'rule.allowUpstream must be a boolean when provided' });
     }
 
     const scenarioName = scenario.trim();
     const normalizedRule =
       rule === null
         ? null
-        : { recordResponses: rule.recordResponses, autoMock: rule.autoMock === true };
+        : normalizeDomainPathRule({
+            recordResponses: rule.recordResponses,
+            autoMock: rule.autoMock === true,
+            allowUpstream:
+              typeof rule.allowUpstream === 'boolean' ? rule.allowUpstream : undefined,
+          });
 
     let rules: DomainPathRulesMap;
 
@@ -755,7 +932,11 @@ router.post('/domain-path-rules', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, dataPath);
     try {
       rules = await store.setDomainPathRule(scenarioName, domainPath.trim(), normalizedRule);
-      writeDomainPathRulesFile(dataPath, scenarioName, rules);
+      // Redis/SQLite is the source of truth. Disk is optional (Hybrid / --redis-mirror-disk)
+      // and must not fail Record response when MOCKIFYER_PATH is not a writable folder.
+      tryMirrorDomainPathRulesToDisk(dataPath, scenarioName, rules, {
+        force: resolveRedisDiskMirrorOptions(config).mirrorWrites,
+      });
       return res.json({ scenario: scenarioName, domainPath: domainPath.trim(), rules });
     } finally {
       await store.close().catch(() => undefined);
@@ -838,6 +1019,50 @@ router.get('/*/ai-context', async (req: Request, res: Response) => {
 });
 
 // Replay-time field overrides (no full responseData required)
+router.get('/*/field-overrides', async (req: Request, res: Response) => {
+  try {
+    const relativeName = req.params[0];
+    const { mockDataPath, config } = getDashboardContext(req);
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const scenario = await resolveRedisScenario(req, store);
+        const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
+        if (!existingData) return res.status(404).json({ error: 'Mock not found' });
+        return res.json({
+          filename: relativeName,
+          scenario,
+          responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenario = resolveFilesystemScenario(req, mockDataPath);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+    const filePath = resolveFilePath(scenarioPath, relativeName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Mock file not found' });
+    }
+
+    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    return res.json({
+      filename: relativeName,
+      scenario,
+      responseFieldOverrides: existingData.responseFieldOverrides ?? [],
+    });
+  } catch (error: unknown) {
+    console.error('[MocksRoute] field-overrides GET - Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ error: 'Failed to get field overrides', details: message });
+  }
+});
+
 router.patch('/*/field-overrides', async (req: Request, res: Response) => {
   try {
     const relativeName = req.params[0];
@@ -905,17 +1130,117 @@ router.patch('/*/field-overrides', async (req: Request, res: Response) => {
 
     existingData.timestamp = new Date().toISOString();
     fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
+    const fsScenario = resolveFilesystemScenario(req, mockDataPath);
 
     return res.json({
       success: true,
       filename: relativeName,
-      scenario: resolveFilesystemScenario(req, mockDataPath),
+      scenario: fsScenario,
       responseFieldOverrides: existingData.responseFieldOverrides ?? [],
     });
   } catch (error: unknown) {
     console.error('[MocksRoute] field-overrides PATCH - Error:', error);
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ error: 'Failed to update field overrides', details: message });
+  }
+});
+
+/**
+ * PATCH /api/mocks/.../pool-ref
+ * Embed a `$pool` ref node into the mock response body (entire body or at a JSON path).
+ */
+router.patch('/*/pool-ref', async (req: Request, res: Response) => {
+  try {
+    const relativeName = req.params[0];
+    const { mockDataPath, config } = getDashboardContext(req);
+    const body = req.body ?? {};
+
+    if (!Object.prototype.hasOwnProperty.call(body, 'pool')) {
+      return res.status(400).json({ error: 'Request body must contain pool' });
+    }
+
+    const pool = body.pool as PoolRef;
+    const validationError = validatePoolRef(pool);
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    const targetPath =
+      typeof body.path === 'string' ? body.path.trim() : body.path === null ? '' : '';
+    const poolNode = { $pool: pool };
+
+    const applyPoolRefToMock = (existingData: MockData): void => {
+      if (!targetPath) {
+        existingData.response = {
+          ...existingData.response,
+          data: poolNode,
+        };
+      } else {
+        // Path embeds must fail when response.data is not a JSON object/array.
+        // applyResponseFieldOverridesToData soft no-ops in that case (replay-time);
+        // setResponseDataValueAtPath throws so we never report success without writing $pool.
+        existingData.response = {
+          ...existingData.response,
+          data: setResponseDataValueAtPath(existingData.response.data, targetPath, poolNode),
+        };
+      }
+      existingData.timestamp = new Date().toISOString();
+    };
+
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const hash = parseRedisHashFromFilename(relativeName);
+      if (!hash) return res.status(400).json({ error: 'Invalid filename' });
+
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        const scenario = await resolveRedisScenario(req, store);
+        const existingData = (await store.getByHash(hash, scenario)) as MockData | null;
+        if (!existingData) return res.status(404).json({ error: 'Mock not found' });
+
+        applyPoolRefToMock(existingData);
+        await store.setByHash(hash, existingData, scenario);
+
+        return res.json({
+          success: true,
+          filename: relativeName,
+          scenario,
+          path: targetPath || null,
+          pool,
+          responseData: existingData.response.data,
+        });
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    }
+
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolveFilesystemScenario(req, mockDataPath));
+    const filePath = resolveFilePath(scenarioPath, relativeName);
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Mock file not found' });
+    }
+
+    const existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as MockData;
+    applyPoolRefToMock(existingData);
+    fs.writeFileSync(filePath, JSON.stringify(existingData, null, 2), 'utf-8');
+
+    return res.json({
+      success: true,
+      filename: relativeName,
+      scenario: resolveFilesystemScenario(req, mockDataPath),
+      path: targetPath || null,
+      pool,
+      responseData: existingData.response.data,
+    });
+  } catch (error: unknown) {
+    console.error('[MocksRoute] pool-ref PATCH - Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message === 'Response data must be a JSON object or array' ||
+      message === 'path is required'
+    ) {
+      return res.status(400).json({ error: message });
+    }
+    return res.status(500).json({ error: 'Failed to set pool ref', details: message });
   }
 });
 
@@ -1014,15 +1339,14 @@ router.get('/*', async (req: Request, res: Response) => {
     const store = createDashboardMockStore(config, mockDataPath);
       try {
         const scenario = await resolveRedisScenario(req, store);
-        const data = await store.getByHash(hash, scenario);
-        if (!data) return res.status(404).json({ error: 'Mock not found' });
-        const payload = JSON.stringify(data);
-        const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+        const rec = await store.getByHashWithMeta(hash, scenario);
+        if (!rec) return res.status(404).json({ error: 'Mock not found' });
+        const ts = rec.mockData.timestamp ? new Date(rec.mockData.timestamp) : new Date();
         return res.json({
           filename: relativeName,
-          data,
+          data: rec.mockData,
           metadata: {
-            size: Buffer.byteLength(payload),
+            size: rec.rawByteLength,
             created: ts.toISOString(),
             modified: ts.toISOString(),
           },
@@ -1060,8 +1384,8 @@ router.put('/*', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
       const hash = parseRedisHashFromFilename(relativeName);
       if (!hash) return res.status(400).json({ error: 'Invalid filename' });
-      if (!req.body || req.body.responseData === undefined) {
-        return res.status(400).json({ error: 'Request body must contain responseData field' });
+      if (!putBodyHasUpdatableFields(req.body)) {
+        return res.status(400).json({ error: PUT_BODY_MISSING_FIELDS_ERROR });
       }
 
     const store = createDashboardMockStore(config, mockDataPath);
@@ -1073,18 +1397,20 @@ router.put('/*', async (req: Request, res: Response) => {
         const existingData = await store.getByHash(hash, scenario);
         if (!existingData) return res.status(404).json({ error: 'Mock not found' });
 
-        let parsedResponseData: any;
-        try {
-          parsedResponseData =
-            typeof req.body.responseData === 'string'
-              ? JSON.parse(req.body.responseData)
-              : req.body.responseData;
-        } catch (e: any) {
-          return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-        }
+        if (Object.prototype.hasOwnProperty.call(req.body, 'responseData')) {
+          let parsedResponseData: any;
+          try {
+            parsedResponseData =
+              typeof req.body.responseData === 'string'
+                ? JSON.parse(req.body.responseData)
+                : req.body.responseData;
+          } catch (e: any) {
+            return res.status(400).json({ error: 'Invalid JSON', details: e.message });
+          }
 
-        if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
-        (existingData as any).response.data = parsedResponseData;
+          if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
+          (existingData as any).response.data = parsedResponseData;
+        }
 
         // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
         // Update it on every save so recent edits are reflected in the UI ordering.
@@ -1122,10 +1448,7 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
-        if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
-            Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+        if (bodyHasReplayModeFields(req.body)) {
           const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
           if (replayErr) {
             return res.status(400).json({ error: replayErr });
@@ -1155,24 +1478,26 @@ router.put('/*', async (req: Request, res: Response) => {
 
     if (!filePath) return res.status(400).json({ error: 'Invalid filename' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Mock file not found' });
-    if (!req.body || req.body.responseData === undefined) {
-      return res.status(400).json({ error: 'Request body must contain responseData field' });
+    if (!putBodyHasUpdatableFields(req.body)) {
+      return res.status(400).json({ error: PUT_BODY_MISSING_FIELDS_ERROR });
     }
 
     let existingData: any;
     try { existingData = JSON.parse(fs.readFileSync(filePath, 'utf-8')); }
     catch { return res.status(400).json({ error: 'Existing file is not valid JSON' }); }
 
-    let parsedResponseData;
-    try {
-      parsedResponseData = typeof req.body.responseData === 'string'
-        ? JSON.parse(req.body.responseData) : req.body.responseData;
-    } catch (e: any) {
-      return res.status(400).json({ error: 'Invalid JSON', details: e.message });
-    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'responseData')) {
+      let parsedResponseData;
+      try {
+        parsedResponseData = typeof req.body.responseData === 'string'
+          ? JSON.parse(req.body.responseData) : req.body.responseData;
+      } catch (e: any) {
+        return res.status(400).json({ error: 'Invalid JSON', details: e.message });
+      }
 
-    if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
-    existingData.response.data = parsedResponseData;
+      if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
+      existingData.response.data = parsedResponseData;
+    }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
       const raw = req.body.responseDateOverrides;
@@ -1201,10 +1526,7 @@ router.put('/*', async (req: Request, res: Response) => {
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'alwaysUseRealApi') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'refreshOnNextRequest') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'alwaysRefreshFromLive') ||
-        Object.prototype.hasOwnProperty.call(req.body, 'replayMode')) {
+    if (bodyHasReplayModeFields(req.body)) {
       const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
       if (replayErr) {
         return res.status(400).json({ error: replayErr });
@@ -1253,27 +1575,44 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
   }
 });
 
-/** Bulk capture upstream responses for pending mocks under a domain-tree path prefix. */
-router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
+/** Bulk set stored mock vs live API for specific mock filenames (Hops source/BFF actions). */
+router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
-    const { scenario, domainPath, clientId } = req.body || {};
+    const { scenario, stored, passthrough } = req.body || {};
     if (typeof scenario !== 'string' || !scenario.trim()) {
       return res.status(400).json({ error: 'scenario is required' });
     }
-    if (typeof domainPath !== 'string' || !domainPath.trim()) {
-      return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
+    if (stored !== undefined && !Array.isArray(stored)) {
+      return res.status(400).json({ error: 'stored must be an array of filenames' });
     }
-    if (clientId !== undefined && typeof clientId !== 'string') {
-      return res.status(400).json({ error: 'clientId must be a string when provided' });
+    if (passthrough !== undefined && !Array.isArray(passthrough)) {
+      return res.status(400).json({ error: 'passthrough must be an array of filenames' });
+    }
+    if ((stored?.length ?? 0) === 0 && (passthrough?.length ?? 0) === 0) {
+      return res.status(400).json({ error: 'stored or passthrough filenames are required' });
     }
 
-    const result = await bulkCaptureResponsesForDomain({
+    const scenarioName = scenario.trim();
+    if (isCentralizedDashboardProvider(config.provider)) {
+      const store = createDashboardMockStore(config, mockDataPath);
+      try {
+        if (await store.isScenarioLocked(scenarioName)) {
+          return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+        }
+      } finally {
+        await store.close().catch(() => undefined);
+      }
+    } else if (isScenarioLockedFs(mockDataPath, scenarioName)) {
+      return res.status(423).json({ error: SCENARIO_MOCK_LOCKED_MESSAGE });
+    }
+
+    const result = await bulkSetReplayModeForFilenames({
       provider: config.provider,
       mockDataPath,
-      scenario: scenario.trim(),
-      domainPath: domainPath.trim(),
-      clientId: typeof clientId === 'string' && clientId.trim() ? clientId.trim() : undefined,
+      scenario: scenarioName,
+      stored,
+      passthrough,
       redisUrl: config.redisUrl,
       keyPrefix: config.keyPrefix,
       redisCluster: config.redisCluster,
@@ -1281,7 +1620,7 @@ router.post('/bulk-capture-responses', async (req: Request, res: Response) => {
     return res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: message || 'bulk-capture-responses failed' });
+    return res.status(500).json({ error: message || 'bulk-replay-mode failed' });
   }
 });
 
@@ -1383,6 +1722,9 @@ router.post('/*/refresh-from-live', async (req: Request, res: Response) => {
       data: updated,
     });
   } catch (error: unknown) {
+    if (error instanceof RedactedRequestHeadersError) {
+      return res.status(409).json({ error: error.message });
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.error('[MocksRoute] refresh-from-live - Error:', error);
     return res.status(500).json({ error: 'Failed to refresh mock from live API', details: message });

@@ -134,8 +134,15 @@ export function generateRequestKey(request: StoredRequest): string {
         }
       }
       
-      // Handle GraphQL requests specifically
-      if (typeof bodyData === 'object' && bodyData !== null && (bodyData as { query?: unknown }).query) {
+      // GraphQL documents use a string `query` field. Object `query` values
+      // (Elasticsearch DSL, nested search filters, etc.) must not take this
+      // path — normalizeGraphQLQuery would throw and the catch below would
+      // collapse every body to `[object Object]`, so distinct requests share one mock.
+      const queryField =
+        typeof bodyData === 'object' && bodyData !== null
+          ? (bodyData as { query?: unknown }).query
+          : undefined;
+      if (typeof queryField === 'string') {
         const gqlBody = bodyData as { query: string; variables?: unknown };
         key += `|body:${buildGraphQLBodyKey(gqlBody.query, gqlBody.variables)}`;
       } else {
@@ -266,7 +273,12 @@ export function findBestMatchingMock(
   // Try exact match first
   const exactMatch = mockCache.get(requestKey);
   if (exactMatch) {
-    if (mockShouldBeIncludedInRequestMatch(exactMatch.mockData, { includePassthroughMocks })) {
+    if (
+      mockShouldBeIncludedInRequestMatch(exactMatch.mockData, {
+        includePassthroughMocks,
+        filename: exactMatch.filename,
+      })
+    ) {
       return exactMatch;
     }
   }
@@ -292,7 +304,12 @@ export function findBestMatchingMock(
     for (const [, cachedMock] of mockCache.entries()) {
       const mockData = cachedMock.mockData;
 
-      if (!includePassthroughMocks && mockPassesThroughToRealApi(mockData)) {
+      if (
+        !mockShouldBeIncludedInRequestMatch(mockData, {
+          includePassthroughMocks,
+          filename: cachedMock.filename,
+        })
+      ) {
         continue;
       }
       

@@ -1,7 +1,16 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { getCurrentScenario, getScenarioFolderPath, listScenarios, isScenarioLockedFs } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  getScenarioFolderPath,
+  listScenarios,
+  isScenarioLockedFs,
+  resolveExplicitDateManipulation,
+  dateManipulationHasEffect,
+  isScratchScenario,
+  MOCKIFYER_CLIENT_ID_HEADER,
+} from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { isCentralizedDashboardProvider } from '../utils/dashboard-provider';
@@ -51,6 +60,18 @@ async function resolveScenarioForRoute(
 function getDateConfigPathForScenario(mockDataPath: string, scenario: string): string {
   const folder = getScenarioFolderPath(mockDataPath, scenario);
   return path.join(folder, DATE_CONFIG_FILENAME);
+}
+
+function resolveRequestClientId(req: Request): string | undefined {
+  const fromQuery = typeof req.query.clientId === 'string' ? req.query.clientId.trim() : '';
+  if (fromQuery) {
+    return fromQuery;
+  }
+  const fromHeader = req.header(MOCKIFYER_CLIENT_ID_HEADER);
+  if (typeof fromHeader === 'string' && fromHeader.trim()) {
+    return fromHeader.trim();
+  }
+  return undefined;
 }
 
 function computeCurrentDate(dateManipulation: {
@@ -125,39 +146,37 @@ router.get('/', async (req: Request, res: Response) => {
     if (isCentralizedDashboardProvider(config.provider)) {
       const store = openCentralStore(mockDataPath, config);
       try {
-        const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, store);
+        const clientId = resolveRequestClientId(req);
+        const scenario =
+          clientId && !scenarioParam
+            ? await store.getResolvedScenario(undefined, clientId)
+            : await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, store);
         const redisDoc = await store.getDateConfig(scenario);
-        if (redisDoc !== null) {
-          const dm = redisDoc.dateManipulation;
-          const currentDate = computeCurrentDate(dm as Record<string, unknown> | null);
-          console.log('[DateConfigRoute] GET - scenario:', scenario, 'source: redis');
-          return res.json({
-            dateManipulation: dm,
-            currentDate: currentDate.toISOString(),
-            scenario,
-            currentScenario: await store.getActiveScenario(),
-            configSource: 'redis' as const,
-            storage: 'redis' as const,
-            redisKey: store.dateConfigRedisKey(scenario),
-          });
-        }
-        // Redis is the sole source of truth in redis mode. No filesystem fallback —
-        // a missing key means "no manipulation". This prevents stale `date-config.json`
-        // files (e.g. in the consumer app's mock-data/) from leaking through the dashboard.
-        const currentDate = new Date();
-        console.log(
-          '[DateConfigRoute] GET - scenario:',
+        const laneDateDoc = clientId
+          ? await store.getLaneDateConfig(clientId).catch(() => null)
+          : null;
+        const resolvedManipulation = resolveExplicitDateManipulation({
+          laneManipulation: laneDateDoc?.dateManipulation ?? null,
+          scenarioDateDoc: redisDoc,
           scenario,
-          'source: none (redis miss; filesystem fallback disabled)'
-        );
+        });
+        const currentDate = computeCurrentDate(resolvedManipulation as Record<string, unknown> | null);
+        const configSource = isScratchScenario(scenario)
+          ? ('none' as const)
+          : dateManipulationHasEffect(laneDateDoc?.dateManipulation ?? null)
+            ? ('lane' as const)
+            : redisDoc !== null
+              ? ('redis' as const)
+              : ('none' as const);
         return res.json({
-          dateManipulation: null,
+          dateManipulation: resolvedManipulation,
           currentDate: currentDate.toISOString(),
           scenario,
           currentScenario: await store.getActiveScenario(),
-          configSource: 'none' as const,
+          configSource,
           storage: 'redis' as const,
           redisKey: store.dateConfigRedisKey(scenario),
+          ...(clientId ? { clientId } : {}),
         });
       } finally {
         await store.close().catch(() => undefined);
@@ -167,8 +186,6 @@ router.get('/', async (req: Request, res: Response) => {
     const scenario = await resolveScenarioForRoute(mockDataPath, config.provider, scenarioParam, null);
     const { dateManipulation, source } = loadMergedDateConfig(mockDataPath, scenario);
     const currentDate = computeCurrentDate(dateManipulation as Record<string, unknown> | null);
-
-    console.log('[DateConfigRoute] GET - scenario:', scenario, 'source:', source);
 
     res.json({
       dateManipulation,

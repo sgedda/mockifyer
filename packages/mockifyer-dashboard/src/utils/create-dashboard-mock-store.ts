@@ -2,6 +2,7 @@ import path from 'path';
 import type { DashboardContextConfig } from './dashboard-context';
 import { RedisMockStore, type RedisMockStoreConfig } from './redis-mock-store';
 import { isCentralizedDashboardProvider } from './dashboard-provider';
+import { createSharedStoreCache } from './shared-store-cache';
 
 export type DashboardRedisConfig = Pick<
   DashboardContextConfig,
@@ -42,14 +43,26 @@ export function resolveDashboardSqlitePath(mockDataPath: string, config: Dashboa
   return path.resolve(mockDataPath, 'mockifyer-dashboard.db');
 }
 
-export function createDashboardMockStore(
+const dashboardMockStoreCache = createSharedStoreCache<RedisMockStore>();
+
+/** Stable cache key so /api/mocks does not open a new Redis/SQLite client per request. */
+export function dashboardMockStoreCacheKey(
+  config: DashboardContextConfig,
+  mockDataPath: string
+): string {
+  if (config.provider === 'sqlite') {
+    return `sqlite:${resolveDashboardSqlitePath(mockDataPath, config)}:${config.keyPrefix || ''}`;
+  }
+  const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
+  const cluster =
+    config.redisCluster === true ? '1' : config.redisCluster === false ? '0' : 'auto';
+  return `redis:${redisUrl}:${cluster}:${config.keyPrefix || ''}:${path.resolve(mockDataPath)}`;
+}
+
+function instantiateDashboardMockStore(
   config: DashboardContextConfig,
   mockDataPath: string
 ): RedisMockStore {
-  if (!isCentralizedDashboardProvider(config.provider)) {
-    throw new Error(`createDashboardMockStore requires redis or sqlite provider, got: ${config.provider}`);
-  }
-
   const base: RedisMockStoreConfig = {
     mockDataPath,
     keyPrefix: config.keyPrefix,
@@ -69,4 +82,26 @@ export function createDashboardMockStore(
     redisUrl: config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '',
     ...(redisOptions ? { redisOptions } : {}),
   });
+}
+
+/**
+ * Process-wide mock store. Route `close()` is a no-op so request handlers can keep
+ * calling it without tearing down the shared Redis/SQLite connection.
+ */
+export function createDashboardMockStore(
+  config: DashboardContextConfig,
+  mockDataPath: string
+): RedisMockStore {
+  if (!isCentralizedDashboardProvider(config.provider)) {
+    throw new Error(`createDashboardMockStore requires redis or sqlite provider, got: ${config.provider}`);
+  }
+
+  return dashboardMockStoreCache.getOrCreate(dashboardMockStoreCacheKey(config, mockDataPath), () =>
+    instantiateDashboardMockStore(config, mockDataPath)
+  );
+}
+
+/** Close cached stores (tests / process shutdown). */
+export async function closeCachedDashboardMockStores(): Promise<void> {
+  await dashboardMockStoreCache.closeAll();
 }

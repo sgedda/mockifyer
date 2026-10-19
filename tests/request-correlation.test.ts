@@ -1,21 +1,39 @@
 import http from 'http';
 import {
   applyOutboundRequestCorrelation,
+  adoptStoredOutboundRequestId,
+  resolvePersistedHopIds,
+  applyPersistedHopIds,
+  mergeMockParentRequestIds,
+  readMockParentRequestIds,
+  MAX_MOCK_PARENT_REQUEST_IDS,
+  attachMockifyerRequestIdToError,
   captureInboundMockifyerContext,
   captureInboundRequestCorrelation,
   createMockifyerCorrelationMiddleware,
+  createMockifyerErrorHandler,
+  findHopRequestHeaders,
   getActiveInboundClientId,
   getActiveRequestCorrelation,
+  getMockifyerRequestIdFromError,
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerParentRequestIdHeader,
   getOutboundMockifyerRequestIdHeader,
   installNodeInboundRequestCorrelationCapture,
+  isMockifyerEchoTraceIdEnabled,
   MOCKIFYER_CLIENT_ID_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_HEADER,
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
+  MOCKIFYER_REQUEST_ID_ERROR_PROP,
   MOCKIFYER_REQUEST_ID_HEADER,
+  resolveMockifyerRequestIdForError,
   resolveOutboundParentRequestId,
   runWithMockifyerHopContext,
   runWithRequestCorrelation,
+  resetHopOwnerRegistry,
+  resolveRecordedHopIdentity,
   type RequestCorrelationContext,
 } from '@sgedda/mockifyer-core';
 
@@ -33,6 +51,49 @@ describe('request-correlation', () => {
       inboundClientId: 'lane-a',
       correlation: { requestId: 'req-a', parentRequestId: 'req-root' },
     });
+  });
+
+  it('records outbound headers on the hop so Atlas can rebuild a curl', () => {
+    const config = {
+      method: 'POST',
+      url: 'https://api.example.test/v-2/authenticate',
+      headers: {
+        Authorization: 'Bearer real-token',
+        'Content-Type': 'application/json',
+      },
+    };
+    const hop = applyOutboundRequestCorrelation(config);
+    const headers = findHopRequestHeaders(hop.requestId);
+
+    expect(headers?.authorization).toBe('Bearer real-token');
+    expect(headers?.['content-type']).toBe('application/json');
+    // Mockifyer's own correlation header is part of the reproducible request.
+    expect(headers?.[MOCKIFYER_REQUEST_ID_HEADER]).toBe(hop.requestId);
+  });
+
+  it('captures Atlas Metro stream base on inbound and forwards it outbound', () => {
+    const ctx = captureInboundMockifyerContext({
+      [MOCKIFYER_CLIENT_ID_HEADER]: 'lane-atlas',
+      [MOCKIFYER_REQUEST_ID_HEADER]: 'gql-hop',
+      [MOCKIFYER_METRO_STREAM_BASE_HEADER]: 'http://localhost:8081/',
+    });
+    expect(ctx?.atlasMetroStreamBaseUrl).toBe('http://localhost:8081');
+
+    runWithMockifyerHopContext(ctx, () => {
+      const config = { headers: {} as Record<string, string> };
+      applyOutboundRequestCorrelation(config);
+      expect(config.headers[MOCKIFYER_METRO_STREAM_BASE_HEADER]).toBe('http://localhost:8081');
+      expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('gql-hop');
+    });
+  });
+
+  it('rejects non-loopback Metro stream bases on inbound', () => {
+    const ctx = captureInboundMockifyerContext({
+      [MOCKIFYER_CLIENT_ID_HEADER]: 'lane-a',
+      [MOCKIFYER_REQUEST_ID_HEADER]: 'req-a',
+      [MOCKIFYER_METRO_STREAM_BASE_HEADER]: 'http://evil.example:8081',
+    });
+    expect(ctx?.atlasMetroStreamBaseUrl).toBeUndefined();
   });
 
   it('reads inbound correlation headers', () => {
@@ -70,12 +131,159 @@ describe('request-correlation', () => {
     expect(hop.parentRequestId).toBe('req-parent');
   });
 
+  it('uses forwarded inbound request id as parent when ALS is missing', () => {
+    const config = {
+      headers: {
+        [MOCKIFYER_REQUEST_ID_HEADER]: 'inbound-hop',
+        [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: 'grandparent-hop',
+      },
+    };
+    expect(resolveOutboundParentRequestId(config.headers)).toBe('inbound-hop');
+    const hop = applyOutboundRequestCorrelation(config);
+    expect(hop.parentRequestId).toBe('inbound-hop');
+    expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('inbound-hop');
+    expect(getOutboundMockifyerRequestIdHeader(config.headers)).toBe(hop.requestId);
+    expect(hop.requestId).not.toBe('inbound-hop');
+  });
+
+  it('reuses the stored mock hop id instead of the freshly minted outbound id', () => {
+    const config = {
+      headers: {
+        [MOCKIFYER_PARENT_REQUEST_ID_HEADER]: 'parent-hop',
+      },
+    };
+    const minted = applyOutboundRequestCorrelation(config);
+    expect(minted.requestId).not.toBe('stored-hop');
+    const adopted = adoptStoredOutboundRequestId(config, 'stored-hop');
+    expect(adopted).toEqual({ requestId: 'stored-hop', parentRequestId: 'parent-hop' });
+    expect(getOutboundMockifyerRequestIdHeader(config.headers)).toBe('stored-hop');
+    expect(getOutboundMockifyerParentRequestIdHeader(config.headers)).toBe('parent-hop');
+  });
+
+  it('keeps stored hop ids when persisting a live refresh', () => {
+    expect(
+      resolvePersistedHopIds(
+        { requestId: 'stored-gql', parentRequestId: 'stale-parent' },
+        { requestId: 'live-gql', parentRequestId: 'live-parent' }
+      )
+    ).toEqual({
+      requestId: 'stored-gql',
+      parentRequestId: 'live-parent',
+      parentRequestIds: ['stale-parent', 'live-parent'],
+    });
+    expect(resolvePersistedHopIds(undefined, { requestId: 'live-gql' })).toEqual({
+      requestId: 'live-gql',
+    });
+  });
+
+  it('keeps every caller of a shared hop, newest last and capped', () => {
+    const existing = { requestId: 'myaccount', parentRequestIds: ['gql-deferred', 'gql-extras'], parentRequestId: 'gql-extras' };
+    expect(
+      resolvePersistedHopIds(existing, { requestId: 'live', parentRequestId: 'gql-deferred' })
+    ).toEqual({
+      requestId: 'myaccount',
+      parentRequestId: 'gql-deferred',
+      parentRequestIds: ['gql-extras', 'gql-deferred'],
+    });
+
+    const many = Array.from({ length: MAX_MOCK_PARENT_REQUEST_IDS + 5 }, (_, i) => `gql-${i}`);
+    const capped = mergeMockParentRequestIds({ parentRequestIds: many }, 'gql-new');
+    expect(capped).toHaveLength(MAX_MOCK_PARENT_REQUEST_IDS);
+    expect(capped[capped.length - 1]).toBe('gql-new');
+    expect(mergeMockParentRequestIds({ parentRequestId: 'self' }, 'caller', 'self')).toEqual(['caller']);
+  });
+
+  it('reads legacy single-parent recordings and clears stale parent fields', () => {
+    expect(readMockParentRequestIds({ parentRequestId: 'only' })).toEqual(['only']);
+    expect(readMockParentRequestIds(undefined)).toEqual([]);
+
+    const mock: { requestId?: string; parentRequestId?: string; parentRequestIds?: string[] } = {
+      requestId: 'a',
+      parentRequestId: 'stale',
+      parentRequestIds: ['stale'],
+    };
+    applyPersistedHopIds(mock, { requestId: 'a' });
+    expect(mock).toEqual({ requestId: 'a' });
+  });
+
+  it('remints when stored requestId equals live parent (stolen caller id)', () => {
+    const healed = resolvePersistedHopIds(
+      { requestId: 'gql-1', parentRequestId: 'stale' },
+      { requestId: 'gql-1', parentRequestId: 'gql-1' }
+    );
+    expect(healed.parentRequestId).toBe('gql-1');
+    expect(healed.requestId).toBeTruthy();
+    expect(healed.requestId).not.toBe('gql-1');
+  });
+
+  it('registers an outbound hop so a reused id on another endpoint becomes the parent', () => {
+    resetHopOwnerRegistry();
+    const graphql = applyOutboundRequestCorrelation({
+      url: 'http://localhost:4000/graphql',
+      method: 'POST',
+      headers: {},
+    });
+    const identity = resolveRecordedHopIdentity({
+      inboundRequestId: graphql.requestId,
+      method: 'GET',
+      url: 'https://capi.example/v-2/myaccount/',
+    });
+    expect(identity.parentRequestId).toBe(graphql.requestId);
+    expect(identity.requestId).not.toBe(graphql.requestId);
+  });
+
+  it('does not leak hop ids onto a shared header bag across sequential requests', () => {
+    const sharedHeaders: Record<string, string> = { authorization: 'Bearer x' };
+
+    runWithRequestCorrelation({ requestId: 'inbound-root' }, () => {
+      const first = { headers: sharedHeaders };
+      const hop = applyOutboundRequestCorrelation(first);
+      expect(hop.parentRequestId).toBe('inbound-root');
+      expect(getOutboundMockifyerParentRequestIdHeader(first.headers)).toBe('inbound-root');
+      expect(sharedHeaders[MOCKIFYER_PARENT_REQUEST_ID_HEADER]).toBeUndefined();
+      expect(sharedHeaders[MOCKIFYER_REQUEST_ID_HEADER]).toBeUndefined();
+      expect(sharedHeaders.authorization).toBe('Bearer x');
+    });
+
+    const second = { headers: sharedHeaders };
+    const hop2 = applyOutboundRequestCorrelation(second);
+    expect(hop2.parentRequestId).toBeUndefined();
+    expect(getOutboundMockifyerParentRequestIdHeader(second.headers)).toBeUndefined();
+    expect(sharedHeaders.authorization).toBe('Bearer x');
+  });
+
   it('propagates inbound client id on outbound fetch without manual headers', () => {
     runWithMockifyerHopContext({ inboundClientId: 'lane-gateway' }, () => {
       const config = { headers: {} as Record<string, string> };
       applyOutboundRequestCorrelation(config);
       expect(getOutboundMockifyerClientIdHeader(config.headers)).toBe('lane-gateway');
       expect(getActiveInboundClientId()).toBe('lane-gateway');
+    });
+  });
+
+  it('forwards include-trace headers on outbound hops when parent opted in', () => {
+    runWithMockifyerHopContext(
+      {
+        correlation: { requestId: 'root' },
+        includeInlineTrace: true,
+        includeInlineTraceBodies: true,
+        inlineHops: [],
+      },
+      () => {
+        const config = { headers: {} as Record<string, string> };
+        applyOutboundRequestCorrelation(config);
+        expect(config.headers[MOCKIFYER_INCLUDE_TRACE_HEADER]).toBe('1');
+        expect(config.headers[MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER]).toBe('1');
+      }
+    );
+  });
+
+  it('does not forward include-trace when parent did not opt in', () => {
+    runWithMockifyerHopContext({ correlation: { requestId: 'root' } }, () => {
+      const config = { headers: {} as Record<string, string> };
+      applyOutboundRequestCorrelation(config);
+      expect(config.headers[MOCKIFYER_INCLUDE_TRACE_HEADER]).toBeUndefined();
+      expect(config.headers[MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER]).toBeUndefined();
     });
   });
 
@@ -143,6 +351,7 @@ describe('request-correlation', () => {
 
     let parentDuringHandler: string | undefined;
     let hopDuringHandler: RequestCorrelationContext | undefined;
+    let echoedTraceId: string | undefined;
 
     const server = http.createServer((_req, res) => {
       parentDuringHandler = getActiveRequestCorrelation()?.requestId;
@@ -170,6 +379,7 @@ describe('request-correlation', () => {
             },
           },
           (res) => {
+            echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
             res.resume();
             res.on('end', () => {
               server.close(() => resolve());
@@ -182,5 +392,204 @@ describe('request-correlation', () => {
     expect(parentDuringHandler).toBe('req-inbound');
     expect(hopDuringHandler?.parentRequestId).toBe('req-inbound');
     expect(hopDuringHandler?.requestId).toBeTruthy();
+    expect(echoedTraceId).toBe('req-inbound');
+  });
+
+  it('Node inbound capture assigns and echoes a trace id when the request has none', async () => {
+    expect(installNodeInboundRequestCorrelationCapture()).toBe(true);
+
+    let parentDuringHandler: string | undefined;
+    let echoedTraceId: string | undefined;
+
+    const server = http.createServer((_req, res) => {
+      parentDuringHandler = getActiveRequestCorrelation()?.requestId;
+      res.writeHead(200);
+      res.end('ok');
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          reject(new Error('expected server address'));
+          return;
+        }
+
+        http.get({ host: '127.0.0.1', port: address.port, path: '/' }, (res) => {
+          echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
+          res.resume();
+          res.on('end', () => {
+            server.close(() => resolve());
+          });
+        }).on('error', reject);
+      });
+    });
+
+    expect(parentDuringHandler).toBeTruthy();
+    expect(echoedTraceId).toBe(parentDuringHandler);
+  });
+
+  it('respects MOCKIFYER_ECHO_TRACE_ID=false for Node inbound echo', async () => {
+    expect(installNodeInboundRequestCorrelationCapture()).toBe(true);
+
+    const previous = process.env.MOCKIFYER_ECHO_TRACE_ID;
+    process.env.MOCKIFYER_ECHO_TRACE_ID = 'false';
+
+    let parentDuringHandler: string | undefined;
+    let echoedTraceId: string | undefined;
+
+    try {
+      expect(isMockifyerEchoTraceIdEnabled()).toBe(false);
+
+      const server = http.createServer((_req, res) => {
+        parentDuringHandler = getActiveRequestCorrelation()?.requestId;
+        res.writeHead(200);
+        res.end('ok');
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        server.listen(0, '127.0.0.1', () => {
+          const address = server.address();
+          if (!address || typeof address === 'string') {
+            reject(new Error('expected server address'));
+            return;
+          }
+
+          http.get({ host: '127.0.0.1', port: address.port, path: '/' }, (res) => {
+            echoedTraceId = res.headers[MOCKIFYER_REQUEST_ID_HEADER] as string | undefined;
+            res.resume();
+            res.on('end', () => {
+              server.close(() => resolve());
+            });
+          }).on('error', reject);
+        });
+      });
+
+      expect(parentDuringHandler).toBeTruthy();
+      expect(echoedTraceId).toBeUndefined();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.MOCKIFYER_ECHO_TRACE_ID;
+      } else {
+        process.env.MOCKIFYER_ECHO_TRACE_ID = previous;
+      }
+    }
+  });
+
+  it('isMockifyerEchoTraceIdEnabled defaults on and honors falsey env values', () => {
+    expect(isMockifyerEchoTraceIdEnabled({})).toBe(true);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'false' })).toBe(false);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: '0' })).toBe(false);
+    expect(isMockifyerEchoTraceIdEnabled({ MOCKIFYER_ECHO_TRACE_ID: 'off' })).toBe(false);
+  });
+
+  it('attachMockifyerRequestIdToError stamps property and appends message marker', () => {
+    const err = new Error('boom');
+    attachMockifyerRequestIdToError(err, 'trace-abc');
+    expect(getMockifyerRequestIdFromError(err)).toBe('trace-abc');
+    expect((err as { mockifyerRequestId?: string }).mockifyerRequestId).toBe('trace-abc');
+    expect(err.message).toContain(`[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=trace-abc]`);
+
+    attachMockifyerRequestIdToError(err, 'other-id');
+    expect(getMockifyerRequestIdFromError(err)).toBe('trace-abc');
+    expect(err.message.match(/mockifyerRequestId=/g)?.length).toBe(1);
+  });
+
+  it('resolveMockifyerRequestIdForError prefers active inbound over hop id', () => {
+    runWithRequestCorrelation({ requestId: 'inbound-root' }, () => {
+      expect(
+        resolveMockifyerRequestIdForError({
+          hopRequestId: 'hop-1',
+          responseHeaders: { [MOCKIFYER_REQUEST_ID_HEADER]: 'from-header' },
+        })
+      ).toBe('inbound-root');
+    });
+    expect(
+      resolveMockifyerRequestIdForError({
+        hopRequestId: 'hop-1',
+        responseHeaders: { [MOCKIFYER_REQUEST_ID_HEADER]: 'from-header' },
+      })
+    ).toBe('from-header');
+    expect(resolveMockifyerRequestIdForError({ hopRequestId: 'hop-1' })).toBe('hop-1');
+  });
+
+  it('middleware stores mockifyerRequestId on req for error handlers', () => {
+    const middleware = createMockifyerCorrelationMiddleware();
+    const req: { header: () => undefined; mockifyerRequestId?: string } = {
+      header: () => undefined,
+    };
+    middleware(req, { setHeader: () => undefined }, () => undefined);
+    expect(req.mockifyerRequestId).toBeTruthy();
+  });
+
+  it('error handler enriches exception and can send JSON with requestId', () => {
+    const handler = createMockifyerErrorHandler({ sendJsonResponse: true });
+    const req = { header: () => undefined, mockifyerRequestId: 'err-trace-1' };
+    let statusCode: number | undefined;
+    let body: unknown;
+    const headers: Record<string, string> = {};
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return payload;
+      },
+    };
+    let nextCalled = false;
+    handler(new Error('handler failed'), req, res, () => {
+      nextCalled = true;
+    });
+    expect(nextCalled).toBe(false);
+    expect(statusCode).toBe(500);
+    expect(body).toEqual({ error: expect.stringContaining('handler failed'), requestId: 'err-trace-1' });
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('err-trace-1');
+  });
+
+  it('error handler without sendJsonResponse only enriches and next(err)', () => {
+    const handler = createMockifyerErrorHandler();
+    const req = { header: () => undefined, mockifyerRequestId: 'err-trace-2' };
+    let forwarded: unknown;
+    handler(new Error('x'), req, { setHeader: () => undefined }, (err) => {
+      forwarded = err;
+    });
+    expect(getMockifyerRequestIdFromError(forwarded)).toBe('err-trace-2');
+    expect((forwarded as Error).message).toContain('err-trace-2');
+  });
+
+  it('error handler recovers requestId from stamped error when req and ALS lack it', () => {
+    const handler = createMockifyerErrorHandler({ sendJsonResponse: true });
+    const err = attachMockifyerRequestIdToError(new Error('upstream failed'), 'from-axios');
+    const req = { header: () => undefined };
+    let statusCode: number | undefined;
+    let body: unknown;
+    const headers: Record<string, string> = {};
+    const res = {
+      headersSent: false,
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return payload;
+      },
+    };
+    handler(err, req, res, () => undefined);
+    expect(statusCode).toBe(500);
+    expect(body).toEqual({
+      error: expect.stringContaining('upstream failed'),
+      requestId: 'from-axios',
+    });
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe('from-axios');
   });
 });

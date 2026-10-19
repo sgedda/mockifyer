@@ -3,10 +3,15 @@ import { getDashboardContext, resolveRedisDiskMirrorOptions } from '../utils/das
 import { createDashboardMockStore } from '../utils/create-dashboard-mock-store';
 import { supportsDashboardProxy } from '../utils/dashboard-provider';
 import { RedisMockStore } from '../utils/redis-mock-store';
-import { findMockOnDiskByRequestHash, mirrorRecordedMockToDisk } from '../utils/redis-disk-mirror';
+import {
+  findMockOnDiskByRequestHash,
+  mirrorRecordedMockToDisk,
+  mirroredMockRelativePath,
+} from '../utils/redis-disk-mirror';
 import {
   generateRequestKey,
   getCurrentDate,
+  resolveExplicitDateManipulation,
   MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
   prepareMockResponseBody,
@@ -23,25 +28,50 @@ import {
   applyRecordingPassthroughFlag,
   buildRequestOnlyMockData,
   applyCapturedResponse,
+  mockHasCapturableResponse,
   resolveRecordResponsesForRequest,
+  resolveAllowUpstreamForRequest,
   toNetworkLogBodyPreview,
   buildProxyUpstreamBodyInit,
   normalizeProxyBodyForRequestKey,
   resolveProxyUpstreamTlsInsecureForRequest,
+  createServeTimePoolResponseLoader,
+  isMockifyerDashboardPlumbingApiUrl,
+  ensureOverrideGroupRuntimeForScenarioPath,
+  resolveOverrideGroupIdForServe,
+  MOCKIFYER_OVERRIDE_GROUP_HEADER,
+  getScenarioFolderPath,
   type MockData,
 } from '@sgedda/mockifyer-core';
 import * as crypto from 'crypto';
-import { fetchProxyUpstream } from '../utils/proxy-upstream-fetch';
+import * as fs from 'fs';
+import * as path from 'path';
+import { wrapProxyUpstreamFetchError } from '../utils/proxy-upstream-error';
+import { fetchProxyUpstreamAndReadText } from '../utils/proxy-upstream-fetch';
+import { shouldWriteNewProxyRecording } from '../utils/proxy-record-existing';
+import { rewriteEmulatorLoopbackUrl } from '../utils/rewrite-emulator-loopback-url';
+import { loadMergedOverrideGroupState } from '../utils/override-group-persist';
 import {
   appendProxyNetworkEvent,
   applyProxyCorrelationToMockData,
   applyUpstreamRequestCorrelationHeaders,
   closeProxyNetworkLog,
+  copyProxyUpstreamHeadersWithoutHopIds,
   openProxyNetworkLog,
   resolveNetworkLogScenario,
   resolveProxyInboundCorrelation,
   resolveProxyTraceIds,
+  resolveProxyHopIdentity,
+  resolveCatalogHopIdentity,
+  readLatestRowForCallerMerge,
+  proxyNetworkElapsedMs,
+  applyHopIdentityToProxyLog,
 } from '../utils/proxy-network-log';
+import {
+  resolveInboundParentRequestIdForChild,
+} from '../utils/inbound-parent-record-store';
+import { toPersistedRequestHeaders, toRecordStringHeaders } from '../utils/proxy-recording-privacy';
+import { shouldWriteProxyRecordOnMiss } from '../utils/proxy-recording';
 
 const router = express.Router();
 
@@ -57,14 +87,27 @@ function deriveFallbackDeviceId(req: Request): string | undefined {
   return `derived:${sha256Hex(raw).slice(0, 16)}`;
 }
 
-function toRecordStringHeaders(headers: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!headers || typeof headers !== 'object') return out;
-  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
-    if (v === undefined || v === null) continue;
-    out[k] = String(v);
+function parseProxyParentHop(body: unknown): {
+  method: string;
+  url: string;
+  data?: unknown;
+} | undefined {
+  const raw = (body as { parentHop?: unknown } | null | undefined)?.parentHop;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return undefined;
   }
-  return out;
+  const hop = raw as { method?: unknown; url?: unknown; data?: unknown };
+  const url = typeof hop.url === 'string' ? hop.url.trim() : '';
+  if (!url) {
+    return undefined;
+  }
+  const method =
+    typeof hop.method === 'string' && hop.method.trim() ? hop.method.trim().toUpperCase() : 'GET';
+  return {
+    method,
+    url,
+    ...(hop.data !== undefined ? { data: hop.data } : {}),
+  };
 }
 
 function proxyNetworkBodyFields(requestBody?: unknown, responseBody?: unknown): {
@@ -100,7 +143,7 @@ router.post('/', async (req: Request, res: Response) => {
   }
 
   const {
-    url,
+    url: rawUrl,
     method,
     headers,
     body,
@@ -111,16 +154,25 @@ router.post('/', async (req: Request, res: Response) => {
     clientId: clientIdFromBody,
     deviceId: deviceIdFromBody,
     strictLaneScenario: strictLaneScenarioFromBody,
-    upstreamTlsInsecure: upstreamTlsInsecureFromBody,
+    overrideGroup: overrideGroupFromBody,
   } = req.body || {};
+  const parentHopFromBody = parseProxyParentHop(req.body);
   const requestStrictLane =
     typeof strictLaneScenarioFromBody === 'boolean' ? strictLaneScenarioFromBody : undefined;
-  const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest(upstreamTlsInsecureFromBody);
+  const upstreamTlsInsecure = resolveProxyUpstreamTlsInsecureForRequest();
   const clientIdFromHeader =
     typeof req.header('x-mockifyer-client-id') === 'string' ? String(req.header('x-mockifyer-client-id')) : undefined;
   const clientId = typeof clientIdFromBody === 'string' && clientIdFromBody.trim()
     ? clientIdFromBody.trim()
     : (clientIdFromHeader && clientIdFromHeader.trim() ? clientIdFromHeader.trim() : undefined);
+  const overrideGroupFromHeader =
+    typeof req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER) === 'string'
+      ? String(req.header(MOCKIFYER_OVERRIDE_GROUP_HEADER)).trim()
+      : '';
+  const explicitOverrideGroup =
+    typeof overrideGroupFromBody === 'string' && overrideGroupFromBody.trim()
+      ? overrideGroupFromBody.trim()
+      : overrideGroupFromHeader || null;
   const deviceIdFromHeader =
     typeof req.header('x-mockifyer-device-id') === 'string' ? String(req.header('x-mockifyer-device-id')) : undefined;
   const deviceId =
@@ -129,11 +181,19 @@ router.post('/', async (req: Request, res: Response) => {
       : deviceIdFromHeader && deviceIdFromHeader.trim()
         ? deviceIdFromHeader.trim()
         : deriveFallbackDeviceId(req);
-  if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url is required' });
+  if (!rawUrl || typeof rawUrl !== 'string') return res.status(400).json({ error: 'url is required' });
+  const url = rewriteEmulatorLoopbackUrl(rawUrl);
+  if (debugProxy && url !== rawUrl) {
+    console.log(`[ProxyRoute] rewrote emulator loopback host: ${rawUrl} → ${url}`);
+  }
 
   const inboundCorrelation = resolveProxyInboundCorrelation(req, req.body);
-
   const upperMethod = String(method || 'GET').toUpperCase();
+  // Provisional identity for the network log only — do not register yet so a later
+  // stored-id adopt does not leave the fresh client mint as a second owner of this URL.
+  let hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, undefined, {
+    register: false,
+  });
   const bodyScenario = typeof scenario === 'string' && scenario.trim() ? scenario.trim() : undefined;
 
   const normalizedRequestBody = normalizeProxyBodyForRequestKey(body);
@@ -153,32 +213,45 @@ router.post('/', async (req: Request, res: Response) => {
 
   const redisDisk = resolveRedisDiskMirrorOptions(config);
   let networkLogCtx: Awaited<ReturnType<typeof openProxyNetworkLog>> = null;
+  /** Bookkeeping and network-log writes the response does not wait on; settled in `finally`. */
+  const backgroundWork: Array<Promise<unknown>> = [];
+  const runInBackground = (work: Promise<unknown>): void => {
+    backgroundWork.push(work.catch(() => undefined));
+  };
+  const logNetworkEvent = (partial: Parameters<typeof appendProxyNetworkEvent>[1]): void => {
+    runInBackground(
+      appendProxyNetworkEvent(networkLogCtx, {
+        ...partial,
+        durationMs: partial.durationMs ?? proxyNetworkElapsedMs(networkLogCtx),
+      })
+    );
+  };
 
   try {
     if (clientId) {
-      await store.recordLaneSeen(clientId).catch(() => undefined);
+      runInBackground(store.recordLaneSeen(clientId));
     }
-    if (clientId && deviceId) await store.recordLaneDeviceSeen(clientId, deviceId).catch(() => undefined);
+    if (clientId && deviceId) runInBackground(store.recordLaneDeviceSeen(clientId, deviceId));
 
     const resolution = await store.resolveProxyScenario(bodyScenario, clientId, {
       strictLaneScenario: requestStrictLane,
     });
 
     if (resolution.scenario !== null) {
-      await store
-        .recordProxyEffectiveObservation({
+      runInBackground(
+        store.recordProxyEffectiveObservation({
           clientId: clientId || null,
           deviceId: deviceId || null,
           effectiveScenario: resolution.scenario,
           resolutionSource: resolution.resolutionSource,
           clientBodyScenarioOverride: resolution.hadBodyScenarioOverride,
         })
-        .catch(() => undefined);
+      );
     }
 
     if (resolution.scenario === null) {
       const logScenario = resolveNetworkLogScenario(mockDataPath, null, bodyScenario);
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
 
       const effectiveAllowUpstream = typeof allowUpstream === 'boolean' ? allowUpstream : true;
       if (debugProxy) {
@@ -187,7 +260,7 @@ router.post('/', async (req: Request, res: Response) => {
         );
       }
       if (!effectiveAllowUpstream) {
-        await appendProxyNetworkEvent(networkLogCtx, {
+        logNetworkEvent({
           method: upperMethod,
           url,
           clientId: clientId || null,
@@ -208,39 +281,31 @@ router.post('/', async (req: Request, res: Response) => {
           error: 'Strict lane scenario mode requires a dashboard mapping for this clientId.',
         });
       }
+      const clientHeaderRecord = toRecordStringHeaders(headers);
       const upstreamHeaders = new Headers();
-      for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, clientHeaderRecord);
       if (clientId) {
         upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
       }
-      applyUpstreamRequestCorrelationHeaders(
-        upstreamHeaders,
-        networkLogCtx ?? inboundCorrelation
-      );
 
-      const upstreamBody = buildProxyUpstreamBodyInit(
-        body,
-        toRecordStringHeaders(headers),
-        upperMethod
-      );
+      const upstreamBody = buildProxyUpstreamBodyInit(body, clientHeaderRecord, upperMethod);
       const init: RequestInit = {
         method: upperMethod,
         headers: upstreamHeaders,
       };
-      for (const [k, v] of Object.entries(upstreamBody.headers)) {
-        if (k.toLowerCase() === 'host') continue;
-        upstreamHeaders.set(k, v);
-      }
+      copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, upstreamBody.headers);
+      // Hop identity must win over any client/body header bag (always-refresh adopts stored id).
+      applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
       if (upstreamBody.body !== undefined) {
         init.body = upstreamBody.body as RequestInit['body'];
       }
 
-      const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
+      const { response: upstreamRes, rawText } = await fetchProxyUpstreamAndReadText(
+        url,
+        init,
+        upstreamTlsInsecure
+      );
       const contentType = upstreamRes.headers.get('content-type') || '';
-      const rawText = await upstreamRes.text();
 
       let data: any = rawText;
       if (contentType.includes('application/json')) {
@@ -262,7 +327,7 @@ router.post('/', async (req: Request, res: Response) => {
         headers: responseHeaders,
       };
 
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -270,7 +335,7 @@ router.post('/', async (req: Request, res: Response) => {
         source: 'upstream',
         status: upstreamRes.status,
         requestHash: hash,
-        requestHeaders: toRecordStringHeaders(headers),
+        requestHeaders: clientHeaderRecord,
         responseHeaders,
         ...proxyNetworkBodyFields(normalizedRequestBody, data),
       });
@@ -282,53 +347,98 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         scenarioResolution: resolution,
         response,
-        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
+        ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       });
     }
 
     const resolvedScenarioName = resolution.scenario;
-    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, inboundCorrelation);
+    networkLogCtx = await openProxyNetworkLog(mockDataPath, config, resolvedScenarioName, hopIdentity);
 
-    const proxyConfig = await store.getProxyConfig(resolvedScenarioName);
+    const scenarioPath = getScenarioFolderPath(mockDataPath, resolvedScenarioName);
+    const [proxyConfig, redisDateDoc, laneDateDoc, storedMock, laneOverrideGroup, mergedGroups, pathRules] =
+      await Promise.all([
+        store.getProxyConfig(resolvedScenarioName),
+        store.getDateConfig(resolvedScenarioName),
+        clientId ? store.getLaneDateConfig(clientId).catch(() => null) : null,
+        store.getByHashInScenario(hash, resolvedScenarioName),
+        clientId ? store.getLaneOverrideGroup(clientId).catch(() => null) : null,
+        loadMergedOverrideGroupState(store, resolvedScenarioName, scenarioPath),
+        store.getDomainPathRules(resolvedScenarioName),
+      ]);
     let effectiveRecord = typeof record === 'boolean' ? record : proxyConfig?.recordOnMiss ?? true;
     const proxyRecordingExclusions = parseRecordingExclusionsEnv();
     if (
       effectiveRecord &&
       typeof url === 'string' &&
-      proxyRecordingExclusions.length > 0 &&
-      shouldExcludeRecording(url, proxyRecordingExclusions)
+      (isMockifyerDashboardPlumbingApiUrl(url) ||
+        (proxyRecordingExclusions.length > 0 && shouldExcludeRecording(url, proxyRecordingExclusions)))
     ) {
       effectiveRecord = false;
     }
-    const effectiveAllowUpstream =
-      typeof allowUpstream === 'boolean' ? allowUpstream : proxyConfig?.allowUpstream ?? true;
-
-    const redisDateDoc = await store.getDateConfig(resolvedScenarioName);
+    const explicitManipulation = resolveExplicitDateManipulation({
+      laneManipulation: laneDateDoc?.dateManipulation ?? null,
+      scenarioDateDoc: redisDateDoc,
+      scenario: resolvedScenarioName,
+    });
     const getNow = () =>
       getCurrentDate({
         mockDataPath,
         scenario: resolvedScenarioName,
-        explicitManipulation: redisDateDoc === null ? null : (redisDateDoc.dateManipulation ?? {}),
+        explicitManipulation,
       });
+    const proxyDateFields = { dateManipulation: explicitManipulation };
 
-    let mock = await store.getByHashInScenario(hash, resolvedScenarioName);
+    let mock = storedMock;
     let mockSource: 'redis' | 'disk' = 'redis';
+    let mockFilename = mirroredMockRelativePath(hash);
+
+    const overrideGroupHydrate = {
+      clientId,
+      explicitGroupId: explicitOverrideGroup,
+      laneGroupId: laneOverrideGroup,
+      groups: mergedGroups.groups,
+      defaultGroupId: mergedGroups.defaultGroup,
+    };
+    const overrideGroupId = resolveOverrideGroupIdForServe(scenarioPath, overrideGroupHydrate);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, overrideGroupHydrate);
 
     if (!mock && redisDisk.readFallback) {
-      const diskMock: any = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
-      if (diskMock) {
-        mock = diskMock;
+      const diskHit = findMockOnDiskByRequestHash(mockDataPath, resolvedScenarioName, hash);
+      if (diskHit) {
+        mock = diskHit.mockData;
+        mockFilename = diskHit.filename;
         mockSource = 'disk';
       }
     }
 
-    const pathRules = await store.getDomainPathRules(resolvedScenarioName);
+    // Live ids stay per call (network log, upstream headers, trace to the client); the stored
+    // row keeps its own requestId and children heal onto it via the proxied URL.
+    hopIdentity = resolveProxyHopIdentity(inboundCorrelation, upperMethod, url, mock?.requestId);
+    const liveHopIdentity = hopIdentity;
+    // Only recordings need the healed parent id; a mock hit responds without waiting on the lookup.
+    const catalogHopIdentityPromise = resolveInboundParentRequestIdForChild(
+      store,
+      resolvedScenarioName,
+      liveHopIdentity.parentRequestId,
+      parentHopFromBody,
+      debugProxy
+    ).then((resolvedParentId) => resolveCatalogHopIdentity(liveHopIdentity, resolvedParentId));
+    runInBackground(catalogHopIdentityPromise);
+    applyHopIdentityToProxyLog(networkLogCtx, hopIdentity);
+
     const recordResolution = resolveRecordResponsesForRequest({
       url,
       pathRules,
       fromBody: typeof recordResponsesFromBody === 'boolean' ? recordResponsesFromBody : undefined,
       fromScenario: proxyConfig?.recordResponses,
     });
+    const allowResolution = resolveAllowUpstreamForRequest({
+      url,
+      pathRules,
+      fromBody: typeof allowUpstream === 'boolean' ? allowUpstream : undefined,
+      fromScenario: proxyConfig?.allowUpstream,
+    });
+    const effectiveAllowUpstream = allowResolution.allowUpstream;
 
     if (mock && mockShouldServeStoredBody(mock as MockData)) {
       const sanitizedMock: any =
@@ -342,7 +452,16 @@ router.post('/', async (req: Request, res: Response) => {
           : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
-        data: prepareMockResponseBody(sanitizedMock, getNow),
+        data: prepareMockResponseBody(sanitizedMock as MockData, getNow, {
+          loadPoolResponse: createServeTimePoolResponseLoader({
+            mockDataPath,
+            nodeFs: fs,
+            joinPath: path.join.bind(path),
+          }),
+          filename: mockFilename,
+          scenarioPath,
+          overrideGroupId,
+        }),
       };
       if (debugProxy) {
         console.log(
@@ -351,7 +470,7 @@ router.post('/', async (req: Request, res: Response) => {
             : `[ProxyRoute] redis hit: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -371,19 +490,21 @@ router.post('/', async (req: Request, res: Response) => {
         deviceId: deviceId || null,
         response: responseWithOverrides,
         scenarioResolution: resolution,
-        ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
+        ...proxyDateFields,
+        ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
       });
     }
     const shouldPersistLiveCapture = mock
       ? resolveShouldPersistLiveCapture(mock as MockData, {})
       : false;
     const refreshPassthrough = resolveRefreshPassthroughRecordings({});
+    const existingSnapshot = mock != null && mockHasCapturableResponse(mock as MockData);
     if (
       mock &&
+      existingSnapshot &&
       resolveMockReplayMode(mock as MockData) === 'passthrough' &&
       !refreshPassthrough &&
-      !shouldPersistLiveCapture &&
-      !recordResolution.recordResponses
+      !shouldPersistLiveCapture
     ) {
       effectiveRecord = false;
       if (debugProxy) {
@@ -394,17 +515,25 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const mockNeedsUpstream = !mock || mockRequiresUpstreamFetch(mock as MockData);
-    if (recordResolution.recordResponses && mockNeedsUpstream) {
+    if (
+      recordResolution.recordResponses &&
+      mockNeedsUpstream &&
+      shouldWriteNewProxyRecording(mock as MockData | null)
+    ) {
       effectiveRecord = true;
     }
 
     if (!effectiveAllowUpstream) {
+      const blockedByPath = allowResolution.pathAllowUpstream === false;
+      const blockError = blockedByPath
+        ? `Upstream calls are disabled for domain/path "${allowResolution.matchedDomainPath}" (domain-path rule).`
+        : 'Upstream calls are disabled for this scenario (offline mode).';
       if (debugProxy) {
         console.log(
-          `[ProxyRoute] upstream blocked: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
+          `[ProxyRoute] upstream blocked${blockedByPath ? ' (path rule)' : ''}: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'})`
         );
       }
-      await appendProxyNetworkEvent(networkLogCtx, {
+      logNetworkEvent({
         method: upperMethod,
         url,
         clientId: clientId || null,
@@ -414,7 +543,7 @@ router.post('/', async (req: Request, res: Response) => {
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         ...proxyNetworkBodyFields(body),
-        errorMessage: 'Upstream calls are disabled for this scenario (offline mode).',
+        errorMessage: blockError,
       });
       return res.status(412).json({
         proxied: false,
@@ -422,40 +551,38 @@ router.post('/', async (req: Request, res: Response) => {
         hash,
         clientId: clientId || null,
         deviceId: deviceId || null,
-        error: 'Upstream calls are disabled for this scenario (offline mode).',
+        error: blockError,
         scenarioResolution: resolution,
+        ...(blockedByPath && allowResolution.matchedDomainPath
+          ? { blockedDomainPath: allowResolution.matchedDomainPath }
+          : {}),
       });
     }
+    const clientHeaderRecord = toRecordStringHeaders(headers);
     const upstreamHeaders = new Headers();
-    for (const [k, v] of Object.entries(toRecordStringHeaders(headers))) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, clientHeaderRecord);
     if (clientId) {
       upstreamHeaders.set(MOCKIFYER_CLIENT_ID_HEADER, clientId);
     }
-    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? inboundCorrelation);
 
-    const upstreamBody = buildProxyUpstreamBodyInit(
-      body,
-      toRecordStringHeaders(headers),
-      upperMethod
-    );
+    const upstreamBody = buildProxyUpstreamBodyInit(body, clientHeaderRecord, upperMethod);
     const init: RequestInit = {
       method: upperMethod,
       headers: upstreamHeaders,
     };
-    for (const [k, v] of Object.entries(upstreamBody.headers)) {
-      if (k.toLowerCase() === 'host') continue;
-      upstreamHeaders.set(k, v);
-    }
+    copyProxyUpstreamHeadersWithoutHopIds(upstreamHeaders, upstreamBody.headers);
+    // Hop identity must win over any client/body header bag (always-refresh adopts stored id).
+    applyUpstreamRequestCorrelationHeaders(upstreamHeaders, networkLogCtx ?? hopIdentity);
     if (upstreamBody.body !== undefined) {
       init.body = upstreamBody.body as RequestInit['body'];
     }
 
-    const upstreamRes = await fetchProxyUpstream(url, init, upstreamTlsInsecure);
+    const { response: upstreamRes, rawText } = await fetchProxyUpstreamAndReadText(
+      url,
+      init,
+      upstreamTlsInsecure
+    );
     const contentType = upstreamRes.headers.get('content-type') || '';
-    const rawText = await upstreamRes.text();
 
     let data: any = rawText;
     if (contentType.includes('application/json')) {
@@ -477,10 +604,20 @@ router.post('/', async (req: Request, res: Response) => {
       headers: responseHeaders,
     };
 
+    let persistedLiveCapture = false;
     if (mock && shouldPersistLiveCapture) {
       const updatedMock = buildMockDataAfterLiveCapture(mock as MockData, response);
-      applyProxyCorrelationToMockData(updatedMock, networkLogCtx, inboundCorrelation);
+      // Re-read immediately before write to minimize race window with concurrent callers
+      const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData);
+      applyProxyCorrelationToMockData(
+        updatedMock,
+        networkLogCtx,
+        hopIdentity,
+        await catalogHopIdentityPromise,
+        latestRow
+      );
       await store.setByHashInScenario(hash, updatedMock, resolvedScenarioName);
+      persistedLiveCapture = true;
       mock = updatedMock;
       if (redisDisk.mirrorWrites) {
         try {
@@ -497,11 +634,15 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const clientResponse = mock
-      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow)
+      ? buildClientResponseFromLiveCapture(mock as MockData, response, getNow, {
+          filename: mockFilename,
+          scenarioPath,
+          overrideGroupId,
+        })
       : response;
 
     let storedMockForClient: MockData | null = null;
-    if (effectiveRecord === true) {
+    if (effectiveRecord === true && shouldWriteNewProxyRecording(mock as MockData | null) && shouldWriteProxyRecordOnMiss(effectiveRecord, persistedLiveCapture)) {
       const scenarioLocked = await store.isScenarioLocked(resolvedScenarioName);
       if (scenarioLocked) {
         if (debugProxy) {
@@ -516,7 +657,7 @@ router.post('/', async (req: Request, res: Response) => {
         const requestPayload = {
           method: upperMethod,
           url,
-          headers: toRecordStringHeaders(headers),
+          headers: toPersistedRequestHeaders(headers),
           data: normalizedRequestBody,
           queryParams: {},
         };
@@ -544,9 +685,17 @@ router.post('/', async (req: Request, res: Response) => {
           }
         }
 
-        applyProxyCorrelationToMockData(storedMockForClient, networkLogCtx, inboundCorrelation);
-        await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
-        if (redisDisk.mirrorWrites) {
+        // Re-read immediately before write to minimize race window with concurrent callers
+        const latestRow = await readLatestRowForCallerMerge(store, hash, resolvedScenarioName, mock as MockData | null);
+        applyProxyCorrelationToMockData(
+          storedMockForClient,
+          networkLogCtx,
+          hopIdentity,
+          await catalogHopIdentityPromise,
+          latestRow
+        );
+        const wrote = await store.setByHashInScenario(hash, storedMockForClient, resolvedScenarioName);
+        if (wrote && redisDisk.mirrorWrites) {
           try {
             mirrorRecordedMockToDisk({
               mockDataPath,
@@ -558,6 +707,9 @@ router.post('/', async (req: Request, res: Response) => {
             console.error('[ProxyRoute] Redis disk mirror write failed:', mirrorErr?.message ?? mirrorErr);
           }
         }
+        if (!wrote) {
+          storedMockForClient = null;
+        }
       }
     }
 
@@ -566,7 +718,7 @@ router.post('/', async (req: Request, res: Response) => {
         `[ProxyRoute] upstream miss: ${upperMethod} ${url} (hash=${hash.slice(0, 8)}…) (lane=${clientId || '—'}) record=${effectiveRecord === true}`
       );
     }
-    await appendProxyNetworkEvent(networkLogCtx, {
+    logNetworkEvent({
       method: upperMethod,
       url,
       clientId: clientId || null,
@@ -586,11 +738,10 @@ router.post('/', async (req: Request, res: Response) => {
       deviceId: deviceId || null,
       scenarioResolution: resolution,
       response: clientResponse,
-      recordedToStore: effectiveRecord === true,
-      ...proxyTraceResponseFields(res, networkLogCtx, inboundCorrelation),
-      ...(effectiveRecord === true && storedMockForClient
-        ? { storedMock: storedMockForClient }
-        : {}),
+      recordedToStore: storedMockForClient != null,
+      ...proxyDateFields,
+      ...proxyTraceResponseFields(res, networkLogCtx, hopIdentity),
+      ...(storedMockForClient ? { storedMock: storedMockForClient } : {}),
       ...(shouldPersistLiveCapture ? { refreshedStoredMock: true } : {}),
     });
   } catch (error: any) {
@@ -601,9 +752,10 @@ router.post('/', async (req: Request, res: Response) => {
       bodyScenario
     );
     if (!networkLogCtx && logScenario) {
-      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, inboundCorrelation);
+      networkLogCtx = await openProxyNetworkLog(mockDataPath, config, logScenario, hopIdentity);
     }
-    await appendProxyNetworkEvent(networkLogCtx, {
+    const proxyFailure = wrapProxyUpstreamFetchError(upperMethod, url, error);
+    logNetworkEvent({
       method: upperMethod,
       url,
       clientId: clientId || null,
@@ -613,10 +765,16 @@ router.post('/', async (req: Request, res: Response) => {
       requestHash: hash,
       requestHeaders: toRecordStringHeaders(headers),
       ...proxyNetworkBodyFields(body),
-      errorMessage: error?.message ?? String(error),
+      errorMessage: proxyFailure.message,
     });
-    return res.status(500).json({ error: 'Proxy failed', details: error.message });
+    return res.status(500).json({
+      error: 'Proxy failed',
+      details: proxyFailure.message,
+      url,
+      method: upperMethod,
+    });
   } finally {
+    await Promise.all(backgroundWork);
     await closeProxyNetworkLog(networkLogCtx);
     await store.close().catch(() => undefined);
   }

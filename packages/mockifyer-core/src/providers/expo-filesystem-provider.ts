@@ -8,8 +8,29 @@ import { logger } from '../utils/logger';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { getScenarioLaunchOverride } from '../utils/scenario';
+import {
+  POOL_DIR_NAME,
+  POOL_ID_PATTERN,
+  POOL_RESPONSES_DIR,
+  type PoolResponseItem,
+} from '../types/fixture-pool';
+import { validatePoolResponseItem } from '../utils/fixture-pool/validate';
+import { isMockRecordingSidecarDir } from '../utils/mock-recording-sidecars';
+import { MockFileIndex, mockPathMethodKey } from '../utils/mock-file-index';
 
 const DEFAULT_SCENARIO = 'default';
+
+/** Metro sync paths that must never be served or indexed as mocks. */
+const SYNC_ENDPOINT_URL_MARKERS = ['/mockifyer-save', '/mockifyer-clear', '/mockifyer-sync'];
+/** File content markers for recordings corrupted by a sync-endpoint loop. */
+const CORRUPT_MOCK_FILE_MARKERS = [
+  ...SYNC_ENDPOINT_URL_MARKERS,
+  'Cannot save Mockifyer sync endpoint requests',
+];
+
+function includesAnyMarker(text: string, markers: readonly string[]): boolean {
+  return markers.some((marker) => text.includes(marker));
+}
 
 /**
  * expo-file-system v18+ exposes `Paths`, `File`, and `Directory` classes.
@@ -88,6 +109,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   private watchIntervalMs: number = 2000; // Check every 2 seconds
   private onFilesChanged?: () => void;
   private currentScenario: string = DEFAULT_SCENARIO;
+  /** Lazily built index of the current scenario folder; dropped when files change outside {@link save}. */
+  private mockFileIndexPromise: Promise<MockFileIndex> | null = null;
+  /** Timestamp of last file change check to avoid excessive checks on rapid lookups */
+  private lastFileCheckMs: number = 0;
+  /** Minimum ms between file change checks (only check when index exists and might be stale) */
+  private readonly minFileCheckIntervalMs: number = 100;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
@@ -318,6 +345,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
         const childUri = this.joinFsUri(dirUri, name);
         const childInfo = await this.fsGetInfo(childUri);
         if (childInfo.isDirectory) {
+          if (isMockRecordingSidecarDir(name)) continue;
           out.push(...(await this.fsListJsonRecursive(childUri, baseUri)));
         } else if (name.endsWith('.json')) {
           const rel = childUri.startsWith(prefix) ? childUri.slice(prefix.length) : name;
@@ -331,6 +359,12 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       const results: string[] = [];
       for (const item of items as any[]) {
         if (typeof this.FileSystem.Directory === 'function' && item instanceof this.FileSystem.Directory) {
+          const dirName =
+            String(item.uri || '')
+              .replace(/\/+$/, '')
+              .split('/')
+              .pop() || '';
+          if (isMockRecordingSidecarDir(dirName)) continue;
           results.push(...(await this.fsListJsonRecursive(item.uri as string, baseUri)));
         } else if (typeof item?.name === 'string' && item.name.endsWith('.json')) {
           const relUri = typeof item.uri === 'string' ? item.uri : '';
@@ -448,6 +482,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       if (hasChanges) {
         this.fileCache.clear();
         this.fileModTimes.clear();
+        this.mockFileIndexPromise = null;
+        this.lastFileCheckMs = Date.now();
 
         // Update modification times for current files
         const scenarioPath = this.getScenarioPath();
@@ -501,6 +537,8 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     // Clear all caches
     this.fileCache.clear();
     this.fileModTimes.clear();
+    this.mockFileIndexPromise = null;
+    this.lastFileCheckMs = Date.now();
 
     // Force refresh of file modification times by re-reading directory
     // This ensures that synced files are detected on next request
@@ -611,6 +649,218 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       logger.error(`[ExpoFileSystemProvider] ❌ Error saving mock file:`, error);
       throw error;
     }
+
+    this.indexSavedMockFile(scenarioPath, relativeFilename, mockData);
+  }
+
+  /** Keep a built (or building) index current without rescanning the folder. */
+  private indexSavedMockFile(scenarioPath: string, file: string, mockData: MockData): void {
+    if (!mockData?.request || typeof mockData.request !== 'object') {
+      return;
+    }
+    // Chain onto the raw build promise. Do not await the read-side follower:
+    // that follower waits for this chain, and awaiting it here would deadlock.
+    const pending = this.ensureMockFileIndex();
+    this.mockFileIndexPromise = pending.then((index) => {
+      if (index.scenarioPath === scenarioPath) {
+        index.upsert(file, mockData.request);
+      }
+      return index;
+    });
+  }
+
+  /** Start (or return) the in-flight index build. Callers that serve traffic use {@link readSettledMockFileIndex}. */
+  private ensureMockFileIndex(): Promise<MockFileIndex> {
+    this.mockFileIndexPromise ??= this.buildMockFileIndex();
+    return this.mockFileIndexPromise;
+  }
+
+  /**
+   * Index to serve a lookup from. A save that lands while the folder scan is in
+   * flight chains an upsert onto the build promise; a lookup that already awaited
+   * the build would otherwise miss that file and call the real API.
+   * File-change checks can also drop the promise; follow the replacement.
+   */
+  private async readSettledMockFileIndex(): Promise<MockFileIndex> {
+    let pending = this.ensureMockFileIndex();
+    for (;;) {
+      const index = await pending;
+      const latest = this.mockFileIndexPromise;
+      if (latest === pending) return index;
+      if (!latest) {
+        pending = this.ensureMockFileIndex();
+        continue;
+      }
+      pending = latest;
+    }
+  }
+
+  private async buildMockFileIndex(): Promise<MockFileIndex> {
+    const scenarioPath = this.getScenarioPath();
+    const index = new MockFileIndex(scenarioPath);
+    for (const file of await this.listMockFiles()) {
+      try {
+        const mockData = await this.readMockFile(scenarioPath, file);
+        if (mockData) {
+          index.upsert(file, mockData.request);
+        }
+        // Cache modification time to avoid false-positive change detection
+        const filePath = this.joinFsUri(scenarioPath, file);
+        const info = await this.fsGetInfo(filePath);
+        if (info.exists && info.modificationTime !== undefined) {
+          this.fileModTimes.set(file, info.modificationTime);
+        }
+      } catch (error) {
+        logger.warn(`[Mockifyer] Failed to index mock file ${file}:`, error);
+      }
+    }
+    logger.debug(`[ExpoFileSystemProvider] Indexed mock files in ${scenarioPath}`);
+    return index;
+  }
+
+  /**
+   * Read and parse one mock file; `undefined` for files that are not servable mocks
+   * (no request, or corrupted by a sync-endpoint loop). Throws on read / JSON errors.
+   */
+  private async readMockFile(scenarioPath: string, file: string): Promise<MockData | undefined> {
+    const fileContent = await this.fsReadText(this.joinFsUri(scenarioPath, file));
+    if (includesAnyMarker(fileContent, CORRUPT_MOCK_FILE_MARKERS)) {
+      logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
+      return undefined;
+    }
+    const mockData: MockData = JSON.parse(fileContent);
+    if (!mockData?.request || typeof mockData.request !== 'object') {
+      return undefined;
+    }
+    if (includesAnyMarker(mockData.request.url || '', SYNC_ENDPOINT_URL_MARKERS)) {
+      logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
+      return undefined;
+    }
+    return mockData;
+  }
+
+  /**
+   * Load override groups for the current scenario using expo-file-system.
+   * This is the Expo equivalent of `ensureOverrideGroupRuntimeForScenarioPath`.
+   */
+  private async loadOverrideGroupsForScenario(options?: {
+    clientId?: string | null;
+    explicitGroupId?: string | null;
+    laneGroupId?: string | null;
+  }): Promise<void> {
+    const scenarioPath = this.getScenarioPath();
+    try {
+      const { 
+        replaceRegisteredOverrideGroups, 
+        setActiveOverrideGroup,
+        setOverrideGroupRuntimeScenarioPath 
+      } = await import('../utils/override-group-runtime');
+      const {
+        validateMockOverrideGroup,
+        normalizeMockOverrideGroup,
+      } = await import('../utils/override-group');
+      const { 
+        OVERRIDE_GROUPS_DIR_NAME, 
+        OVERRIDE_GROUP_CONFIG_FILENAME,
+        overrideGroupConfigFilenameForClient 
+      } = await import('../types/override-group');
+      const { 
+        resolveActiveOverrideGroupId,
+        readOverrideGroupIdFromEnv 
+      } = await import('../utils/override-group-resolve');
+
+      setOverrideGroupRuntimeScenarioPath(scenarioPath);
+
+      // Read default override-group-config.json
+      const configPath = this.joinFsUri(scenarioPath, OVERRIDE_GROUP_CONFIG_FILENAME);
+      let defaultGroup: string | null = null;
+      try {
+        const configInfo = await this.fsGetInfo(configPath);
+        if (configInfo.exists) {
+          const configText = await this.fsReadText(configPath);
+          const config = JSON.parse(configText);
+          defaultGroup = typeof config.currentGroup === 'string' && config.currentGroup.trim()
+            ? config.currentGroup.trim()
+            : null;
+        }
+      } catch {
+        // Config file doesn't exist or is invalid
+      }
+
+      // Read per-lane/client config if clientId provided
+      let laneGroup: string | null = null;
+      const clientId = typeof options?.clientId === 'string' && options.clientId.trim()
+        ? options.clientId.trim()
+        : null;
+      
+      if (typeof options?.laneGroupId === 'string' || options?.laneGroupId === null) {
+        laneGroup = options.laneGroupId == null || options.laneGroupId === ''
+          ? null
+          : String(options.laneGroupId).trim() || null;
+      } else if (clientId) {
+        const laneConfigFilename = overrideGroupConfigFilenameForClient(clientId);
+        const laneConfigPath = this.joinFsUri(scenarioPath, laneConfigFilename);
+        try {
+          const laneInfo = await this.fsGetInfo(laneConfigPath);
+          if (laneInfo.exists) {
+            const laneText = await this.fsReadText(laneConfigPath);
+            const laneConfig = JSON.parse(laneText);
+            laneGroup = typeof laneConfig.currentGroup === 'string' && laneConfig.currentGroup.trim()
+              ? laneConfig.currentGroup.trim()
+              : null;
+          }
+        } catch {
+          // Lane config doesn't exist or is invalid
+        }
+      }
+
+      // Read all override group files from override-groups/
+      const groupsDir = this.joinFsUri(scenarioPath, OVERRIDE_GROUPS_DIR_NAME);
+      const groups: any[] = [];
+      try {
+        const groupsDirInfo = await this.fsGetInfo(groupsDir);
+        if (groupsDirInfo.exists && groupsDirInfo.isDirectory) {
+          const files = this.useLegacyExpoFileSystem
+            ? await this.FileSystem.readDirectoryAsync(groupsDir)
+            : this.newDirectory(groupsDir).list().map((item: any) => item.name);
+
+          for (const name of files) {
+            if (!name.endsWith('.json')) continue;
+            try {
+              const filePath = this.joinFsUri(groupsDir, name);
+              const raw = await this.fsReadText(filePath);
+              const parsed = JSON.parse(raw);
+              const err = validateMockOverrideGroup(parsed);
+              if (!err) {
+                groups.push(normalizeMockOverrideGroup(parsed));
+              }
+            } catch {
+              // Skip invalid group files
+            }
+          }
+        }
+      } catch {
+        // Groups directory doesn't exist
+      }
+
+      replaceRegisteredOverrideGroups(groups, scenarioPath);
+      
+      // Resolve active group using precedence: explicit → env → lane → default
+      const explicit = options?.explicitGroupId ?? null;
+      const envGroup = readOverrideGroupIdFromEnv();
+      const knownIds = groups.map((g: any) => g.id);
+      const currentGroup = resolveActiveOverrideGroupId({
+        explicitGroupId: explicit,
+        envGroupId: envGroup,
+        laneGroupId: laneGroup,
+        defaultGroupId: defaultGroup,
+        knownGroupIds: knownIds,
+      });
+
+      setActiveOverrideGroup(currentGroup, scenarioPath);
+    } catch {
+      // Override group modules not available or error loading - continue without groups
+    }
   }
 
   async findExactMatch(
@@ -619,6 +869,18 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
     options?: { includePassthroughMocks?: boolean }
   ): Promise<CachedMockData | undefined> {
     const includePassthroughMocks = options?.includePassthroughMocks === true;
+    const scenarioPath = this.getScenarioPath();
+    
+    // Check for file changes only if enough time has passed and index exists (catches Metro sync, external writes)
+    const now = Date.now();
+    if (this.mockFileIndexPromise && now - this.lastFileCheckMs >= this.minFileCheckIntervalMs) {
+      this.lastFileCheckMs = now;
+      await this.checkForFileChanges();
+    }
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     // Check cache first, but verify file hasn't been modified
     const cached = this.fileCache.get(requestKey);
     if (cached) {
@@ -633,10 +895,20 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
           // If file hasn't changed, return cached result
           if (currentMtime === cachedMtime) {
-            return cached.content;
+            // Re-validate that the mock should still be included (group config might have changed)
+            if (mockShouldBeIncludedInRequestMatch(cached.content.mockData, {
+              includePassthroughMocks,
+              filename: cached.content.filename,
+              scenarioPath,
+            })) {
+              return cached.content;
+            }
+            // Mock no longer matches (e.g. due to group change), clear cache and re-read
+            this.fileCache.delete(requestKey);
+          } else {
+            // File has been modified, clear cache entry and re-read
+            this.fileCache.delete(requestKey);
           }
-          // File has been modified, clear cache entry and re-read
-          this.fileCache.delete(requestKey);
         } else {
           // File no longer exists, clear cache
           this.fileCache.delete(requestKey);
@@ -648,58 +920,33 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
       }
     }
     // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
-    const requestUrl = request?.url || '';
-    if (requestUrl.includes('/mockifyer-save') ||
-        requestUrl.includes('/mockifyer-clear') ||
-        requestUrl.includes('/mockifyer-sync')) {
+    if (
+      includesAnyMarker(request?.url || '', SYNC_ENDPOINT_URL_MARKERS) ||
+      includesAnyMarker(requestKey, SYNC_ENDPOINT_URL_MARKERS)
+    ) {
       return undefined;
     }
 
-    // CRITICAL: Also check requestKey for sync endpoint URLs (defense in depth)
-    if (requestKey.includes('/mockifyer-save') ||
-        requestKey.includes('/mockifyer-clear') ||
-        requestKey.includes('/mockifyer-sync')) {
-      return undefined;
-    }
-
-    const files = await this.listMockFiles();
-    const scenarioPath = this.getScenarioPath();
+    const index = await this.readSettledMockFileIndex();
 
     // Collect all matching files with their modification times
     const matches: Array<{ file: string; filePath: string; mockData: MockData; mtime: number }> = [];
 
-    for (const file of files) {
+    for (const file of index.filesForRequestKey(requestKey)) {
       try {
         const filePath = this.joinFsUri(scenarioPath, file);
-        const fileContent = await this.fsReadText(filePath);
-
-        // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
-        if (fileContent.includes('/mockifyer-save') ||
-            fileContent.includes('/mockifyer-clear') ||
-            fileContent.includes('/mockifyer-sync') ||
-            fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
+        const mockData = await this.readMockFile(scenarioPath, file);
+        if (!mockData) {
           continue;
         }
 
-        const mockData: MockData = JSON.parse(fileContent);
-
-        if (!mockData?.request || typeof mockData.request !== 'object') {
-          continue;
-        }
-
-        // CRITICAL: Also check the parsed mockData for sync endpoint URLs
-        const requestUrl = mockData.request?.url || '';
-        if (requestUrl.includes('/mockifyer-save') ||
-            requestUrl.includes('/mockifyer-clear') ||
-            requestUrl.includes('/mockifyer-sync')) {
-          continue;
-        }
-
-        // Generate key for this mock and compare with requested key
-        const mockKey = generateRequestKey(mockData.request);
         if (
-          mockKey === requestKey &&
-          mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })
+          generateRequestKey(mockData.request) === requestKey &&
+          mockShouldBeIncludedInRequestMatch(mockData, {
+            includePassthroughMocks,
+            filename: file,
+            scenarioPath,
+          })
         ) {
           // Get file modification time
           let fileMtime = Date.now();
@@ -754,66 +1001,45 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   async findAllForSimilarMatch(request: StoredRequest): Promise<CachedMockData[]> {
     // CRITICAL: Never try to match sync endpoint requests - they should never be mocked
     const requestUrl = request?.url || '';
-    if (requestUrl.includes('/mockifyer-save') ||
-        requestUrl.includes('/mockifyer-clear') ||
-        requestUrl.includes('/mockifyer-sync')) {
+    if (includesAnyMarker(requestUrl, SYNC_ENDPOINT_URL_MARKERS)) {
       logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping findAllForSimilarMatch - request URL is a sync endpoint: ${requestUrl}`);
       return [];
     }
 
-    const files = await this.listMockFiles();
+    const requestPathMethod = mockPathMethodKey(request);
+    if (!requestPathMethod) {
+      return [];
+    }
+
+    // Check for file changes only if enough time has passed and index exists (catches Metro sync, external writes)
+    const now = Date.now();
+    if (this.mockFileIndexPromise && now - this.lastFileCheckMs >= this.minFileCheckIntervalMs) {
+      this.lastFileCheckMs = now;
+      await this.checkForFileChanges();
+    }
+    
+    const index = await this.readSettledMockFileIndex();
     const scenarioPath = this.getScenarioPath();
+    
+    // Hydrate override groups for this scenario before matching
+    await this.loadOverrideGroupsForScenario();
+    
     const results: CachedMockData[] = [];
 
-    for (const file of files) {
+    for (const file of index.filesForPathMethod(request)) {
       try {
         const filePath = this.joinFsUri(scenarioPath, file);
-        const fileContent = await this.fsReadText(filePath);
-
-        // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
-        if (fileContent.includes('/mockifyer-save') ||
-            fileContent.includes('/mockifyer-clear') ||
-            fileContent.includes('/mockifyer-sync') ||
-            fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
-          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
+        const mockData = await this.readMockFile(scenarioPath, file);
+        if (!mockData || mockPathMethodKey(mockData.request) !== requestPathMethod) {
           continue;
         }
 
-        const mockData: MockData = JSON.parse(fileContent);
-
-        if (!mockData?.request || typeof mockData.request !== 'object') {
-          continue;
-        }
-
-        // CRITICAL: Also check the parsed mockData for sync endpoint URLs
-        const requestUrl = mockData.request?.url || '';
-        if (requestUrl.includes('/mockifyer-save') ||
-            requestUrl.includes('/mockifyer-clear') ||
-            requestUrl.includes('/mockifyer-sync')) {
-          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
-          continue;
-        }
-
-        // Check if path and method match
-        try {
-          const requestUrl = new URL(request.url);
-          const mockUrl = new URL(mockData.request.url);
-          const requestPath = requestUrl.pathname;
-          const mockPath = mockUrl.pathname;
-
-          if (mockPath === requestPath &&
-              (mockData.request.method || 'GET').toUpperCase() === (request.method || 'GET').toUpperCase()) {
-            if (!mockPassesThroughToRealApi(mockData)) {
-              results.push({
-                mockData,
-                filename: file,
-                filePath: filePath
-              });
-            }
-          }
-        } catch (e) {
-          // Invalid URL, skip
-          continue;
+        if (mockShouldBeIncludedInRequestMatch(mockData, {
+          includePassthroughMocks: false,
+          filename: file,
+          scenarioPath,
+        })) {
+          results.push({ mockData, filename: file, filePath });
         }
       } catch (error) {
         logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
@@ -836,30 +1062,10 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
     for (const file of files) {
       try {
-        const filePath = this.joinFsUri(scenarioPath, file);
-        const fileContent = await this.fsReadText(filePath);
-
-        // CRITICAL: Skip corrupted files that contain Mockifyer sync endpoint requests
-        if (fileContent.includes('/mockifyer-save') ||
-            fileContent.includes('/mockifyer-clear') ||
-            fileContent.includes('/mockifyer-sync') ||
-            fileContent.includes('Cannot save Mockifyer sync endpoint requests')) {
-          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - contains Mockifyer sync endpoint`);
-          continue;
+        const mockData = await this.readMockFile(scenarioPath, file);
+        if (mockData) {
+          results.push(mockData);
         }
-
-        const mockData: MockData = JSON.parse(fileContent);
-
-        // CRITICAL: Also check the parsed mockData for sync endpoint URLs
-        const requestUrl = mockData.request?.url || '';
-        if (requestUrl.includes('/mockifyer-save') ||
-            requestUrl.includes('/mockifyer-clear') ||
-            requestUrl.includes('/mockifyer-sync')) {
-          logger.debug(`[ExpoFileSystemProvider] ⚠️ Skipping corrupted file ${file} - request URL is a sync endpoint`);
-          continue;
-        }
-
-        results.push(mockData);
       } catch (error) {
         logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
       }
@@ -904,6 +1110,36 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
   }
 
   /**
+   * Load a promoted pool response fixture from device storage (`pool/responses/{id}.json`).
+   * Used for serve-time `$pool` resolution when Node `fs` is unavailable.
+   */
+  async loadPoolResponseItem(id: string): Promise<PoolResponseItem | undefined> {
+    if (!POOL_ID_PATTERN.test(id)) {
+      return undefined;
+    }
+    const filePath = this.joinFsUri(this.mockDataPath, POOL_DIR_NAME, POOL_RESPONSES_DIR, `${id}.json`);
+    try {
+      const info = await this.fsGetInfo(filePath);
+      if (!info.exists) {
+        return undefined;
+      }
+      const raw = await this.fsReadText(filePath);
+      const parsed = JSON.parse(raw) as unknown;
+      const validationError = validatePoolResponseItem(parsed);
+      if (validationError) {
+        logger.warn(
+          `[ExpoFileSystemProvider] Invalid pool response "${id}": ${validationError}`
+        );
+        return undefined;
+      }
+      return parsed as PoolResponseItem;
+    } catch (error) {
+      logger.warn(`[ExpoFileSystemProvider] Failed to load pool response "${id}":`, error);
+      return undefined;
+    }
+  }
+
+  /**
    * Cleanup resources (stop file watching)
    */
   close(): void {
@@ -930,6 +1166,7 @@ export class ExpoFileSystemProvider implements DatabaseProvider {
 
       // Clear cache after deleting files
       this.fileCache.clear();
+      this.mockFileIndexPromise = null;
 
     } catch (error) {
       logger.error(`[ExpoFileSystemProvider] ❌ Error clearing mock files:`, error);

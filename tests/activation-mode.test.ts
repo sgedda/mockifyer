@@ -2,6 +2,7 @@ import {
   getOutboundMockifyerClientIdHeader,
   getOutboundMockifyerDeviceIdHeader,
   resolveActivationMode,
+  runWithMockifyerHopContext,
   shouldApplyMockifyer,
   type MockifyerConfig,
 } from '@sgedda/mockifyer-core';
@@ -53,18 +54,18 @@ describe('activation-mode', () => {
     expect(getOutboundMockifyerDeviceIdHeader(h)).toBe('ulid-xyz');
   });
 
-  it('shouldApplyMockifyer client_id_header requires header or proxy lane', () => {
+  it('shouldApplyMockifyer client_id_header requires the outbound header or an inbound lane', () => {
     expect(shouldApplyMockifyer('client_id_header', {})).toBe(false);
     expect(shouldApplyMockifyer('client_id_header', { 'x-mockifyer-client-id': 'x' })).toBe(true);
     expect(
-      shouldApplyMockifyer('client_id_header', {}, {
-        useProxyLane: { proxyBaseUrl: 'http://localhost:3002', resolvedClientId: 'rn-lane' },
-      })
+      runWithMockifyerHopContext({ inboundClientId: 'lane-from-caller' }, () =>
+        shouldApplyMockifyer('client_id_header', {})
+      )
     ).toBe(true);
     expect(
-      shouldApplyMockifyer('client_id_header', {}, {
-        useProxyLane: { proxyBaseUrl: 'http://localhost:3002', resolvedClientId: '   ' },
-      })
+      runWithMockifyerHopContext({ inboundClientId: '   ' }, () =>
+        shouldApplyMockifyer('client_id_header', {})
+      )
     ).toBe(false);
   });
 

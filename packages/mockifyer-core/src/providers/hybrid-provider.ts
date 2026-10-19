@@ -1,7 +1,9 @@
 import { MockData, StoredRequest } from '../types';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { containsMockifyerSyncEndpointMarker } from '../utils/url-exclusion';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { ExpoFileSystemProvider } from './expo-filesystem-provider';
+import type { PoolResponseItem } from '../types/fixture-pool';
 
 /**
  * Hybrid Provider for React Native/Expo applications
@@ -57,7 +59,7 @@ export class HybridProvider implements DatabaseProvider {
   async save(mockData: MockData, options?: SaveMockOptions): Promise<void> {
     // CRITICAL: Never save Mockifyer sync endpoint requests to prevent infinite loops
     const url = mockData.request.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       return;
     }
     
@@ -81,9 +83,7 @@ export class HybridProvider implements DatabaseProvider {
       }
       
       // Check for sync endpoint URLs in response data
-      if (responseDataStr.includes('/mockifyer-save') || 
-          responseDataStr.includes('/mockifyer-clear') || 
-          responseDataStr.includes('/mockifyer-sync')) {
+      if (containsMockifyerSyncEndpointMarker(responseDataStr)) {
         return;
       }
     } catch (e) {
@@ -99,13 +99,12 @@ export class HybridProvider implements DatabaseProvider {
       throw error; // Re-throw device save errors
     }
 
-    // Sync back to project folder only when this save originated on device (not Metro pull)
+    // Sync back to project folder only when this save originated on device (not Metro pull).
+    // Not awaited: the device copy is what replay reads, so the app response must not wait on Metro.
     if (!options?.relativePath) {
-      try {
-        await this.saveToProjectFolder(mockData);
-      } catch (error) {
+      this.saveToProjectFolder(mockData).catch((error) => {
         console.warn('[HybridProvider] Failed to save to project folder via Metro:', error);
-      }
+      });
     }
   }
 
@@ -116,7 +115,7 @@ export class HybridProvider implements DatabaseProvider {
     // CRITICAL: Never attempt to save sync endpoint requests to project folder
     // This prevents infinite loops when Metro rejects the save
     const url = mockData.request?.url || '';
-    if (url.includes('/mockifyer-save') || url.includes('/mockifyer-clear') || url.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(url)) {
       console.warn('[HybridProvider] ⚠️ BLOCKING saveToProjectFolder - request URL is a sync endpoint:', url);
       return;
     }
@@ -151,7 +150,7 @@ export class HybridProvider implements DatabaseProvider {
     
     // CRITICAL: Check if mockData contains nested Mockifyer sync requests to prevent loops
     const mockDataStr = JSON.stringify(mockData);
-    if (mockDataStr.includes('/mockifyer-save') || mockDataStr.includes('/mockifyer-clear') || mockDataStr.includes('/mockifyer-sync')) {
+    if (containsMockifyerSyncEndpointMarker(mockDataStr)) {
       console.warn('[HybridProvider] ⚠️ BLOCKING saveToProjectFolder - mockData contains nested Mockifyer sync requests');
       return;
     }
@@ -245,6 +244,13 @@ export class HybridProvider implements DatabaseProvider {
    */
   getMockDataPath(): string {
     return (this.deviceProvider as any).getMockDataPath();
+  }
+
+  /**
+   * Load a promoted pool response from device storage for serve-time `$pool` refs.
+   */
+  async loadPoolResponseItem(id: string): Promise<PoolResponseItem | undefined> {
+    return this.deviceProvider.loadPoolResponseItem(id);
   }
 
   /**

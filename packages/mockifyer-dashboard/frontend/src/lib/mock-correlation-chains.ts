@@ -1,5 +1,5 @@
 import type { MockFile } from '@/types'
-import { endpointToDomainPath } from '@/lib/domainTreeMatch'
+import { endpointMatchesDomainPath, endpointToDomainPath } from '@/lib/domainTreeMatch'
 
 export interface MockChainMaps {
   byRequestId: Map<string, MockFile>
@@ -17,90 +17,178 @@ export interface MockServiceChain {
   enrichedHopFilenames?: string[]
 }
 
-/** Typical multi-service demo hop order (lower = earlier in chain). */
-const INFERRED_HOP_PATH_ORDER: Array<{ test: (url: string) => boolean }> = [
-  { test: (u) => /\/aggregate\b/i.test(u) },
-  { test: (u) => /\/via-axios\b/i.test(u) },
-  { test: (u) => /\/product\b/i.test(u) },
-  { test: (u) => /jsonplaceholder\.typicode\.com/i.test(u) },
-  { test: (u) => /typicode\.com/i.test(u) },
-]
-
-const INFER_CLUSTER_MS = 15_000
-/** Wider window when attaching entry hops (e.g. `/aggregate`) to an id-linked chain. */
-const ENRICH_CHAIN_CLUSTER_MS = 120_000
-
-function inferHopSortKey(mock: MockFile): number {
-  const url = mock.endpoint ?? ''
-  for (let i = 0; i < INFERRED_HOP_PATH_ORDER.length; i++) {
-    if (INFERRED_HOP_PATH_ORDER[i].test(url)) return i
-  }
-  return 100 + new Date(mock.modified).getTime() / 1e12
+/** Unique sibling group for nested service-chain display (Atlas-style). */
+export interface MockUniqueChainNode {
+  fingerprint: string
+  representative: MockFile
+  hops: MockFile[]
+  callCount: number
+  children: MockUniqueChainNode[]
 }
 
-function clusterMocksByModifiedTime(mocks: MockFile[], windowMs: number): MockFile[][] {
-  const sorted = [...mocks].sort(
-    (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
-  )
-  const groups: MockFile[][] = []
-  for (const mock of sorted) {
-    const t = new Date(mock.modified).getTime()
-    const last = groups[groups.length - 1]
-    if (last?.length) {
-      const anchor = new Date(last[0].modified).getTime()
-      if (Math.abs(t - anchor) <= windowMs) {
-        last.push(mock)
-        continue
-      }
-    }
-    groups.push([mock])
+/** Real missing parents are a short gateway prefix, not a 70-hop walk. */
+const MAX_ENRICHED_ANCESTORS = 4
+
+/** Keep in sync with `packages/mockifyer-core/src/utils/hop-chain.ts`. */
+const SESSION_FANOUT_MIN_HOPS = 16
+const SESSION_FANOUT_MIN_UNIQUE_ENDPOINTS = 8
+/** 2 covers dashboard-proxy recordings where most APIs share one host. */
+const SESSION_FANOUT_MIN_UNIQUE_HOSTS = 2
+const SESSION_FANOUT_MAX_NESTING = 1
+const DAISY_CHAIN_MIN_HOPS = 16
+
+const UUID_IN_PATH = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const NUMERIC_PATH_SEGMENT = /\/\d+(?=\/|$)/g
+
+function parseEndpointParts(url: string | null | undefined): { host: string; path: string } {
+  const raw = url?.trim() ?? ''
+  if (!raw) return { host: '', path: '' }
+  try {
+    const parsed = new URL(raw)
+    return { host: parsed.host, path: parsed.pathname || '/' }
+  } catch {
+    return { host: '', path: raw.split('?')[0] ?? raw }
   }
-  return groups
 }
 
-function clusterLooksLikeServiceChain(hops: MockFile[]): boolean {
-  if (hops.length < 2) return false
-  const hosts = new Set<string>()
-  let knownPatternHits = 0
+export function mockHopEndpointFingerprint(mock: MockFile): string {
+  const method = (mock.method ?? 'GET').toUpperCase()
+  const { path } = parseEndpointParts(mock.endpoint)
+  const normalized = (path || '/').replace(UUID_IN_PATH, ':id').replace(NUMERIC_PATH_SEGMENT, '/:id')
+  return `${method} ${normalized}`
+}
+
+/**
+ * Every caller recorded for a hop. The list API already includes the primary
+ * `parentRequestId`; older payloads only carry that single field.
+ */
+export function getMockParentRequestIds(mock: Pick<MockFile, 'parentRequestId' | 'parentRequestIds'>): string[] {
+  if (mock.parentRequestIds?.length) return mock.parentRequestIds
+  const parentId = mock.parentRequestId?.trim()
+  return parentId ? [parentId] : []
+}
+
+/** Callers of `mock` that are present in `byRequestId` (and in `inChain`, when given). */
+function knownParents(
+  mock: MockFile,
+  byRequestId: Map<string, MockFile>,
+  inChain?: ReadonlySet<string>
+): MockFile[] {
+  const parents: MockFile[] = []
+  for (const parentId of getMockParentRequestIds(mock)) {
+    const parent = byRequestId.get(parentId)
+    if (parent && (!inChain || inChain.has(parent.filename))) parents.push(parent)
+  }
+  return parents
+}
+
+function mockHopHostKey(mock: MockFile): string {
+  const { host, path } = parseEndpointParts(mock.endpoint)
+  return host ? host.toLowerCase() : path
+}
+
+function describeMockChainShape(hops: MockFile[]): {
+  hopCount: number
+  uniqueEndpoints: number
+  uniqueHosts: number
+  maxDepth: number
+} {
+  const uniqueEndpoints = new Set(hops.map(mockHopEndpointFingerprint))
+  const uniqueHosts = new Set(hops.map(mockHopHostKey).filter(Boolean))
+  const byFilename = new Map(hops.map((hop) => [hop.filename, hop]))
+  const byRequestId = new Map<string, MockFile>()
   for (const hop of hops) {
-    const url = hop.endpoint ?? ''
-    if (!url) continue
-    try {
-      const u = new URL(url)
-      hosts.add(u.port ? `${u.hostname}:${u.port}` : u.hostname)
-    } catch {
-      hosts.add(url)
-    }
-    if (INFERRED_HOP_PATH_ORDER.some((p) => p.test(url))) knownPatternHits += 1
+    if (hop.requestId) byRequestId.set(hop.requestId, hop)
   }
-  return hosts.size >= 2 || (knownPatternHits >= 2 && hops.length >= 2)
+
+  let maxDepth = 0
+  for (const hop of hops) {
+    let depth = 0
+    let current: MockFile | undefined = hop
+    const seen = new Set<string>()
+    while (current?.parentRequestId) {
+      if (seen.has(current.filename)) break
+      seen.add(current.filename)
+      const parent = byRequestId.get(current.parentRequestId)
+      if (!parent || !byFilename.has(parent.filename)) break
+      depth += 1
+      current = parent
+    }
+    if (depth > maxDepth) maxDepth = depth
+  }
+
+  return {
+    hopCount: hops.length,
+    uniqueEndpoints: uniqueEndpoints.size,
+    uniqueHosts: uniqueHosts.size,
+    maxDepth,
+  }
 }
 
-function buildInferredMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
-  const chains: MockServiceChain[] = []
-  const assigned = new Set<string>()
+/** GraphQL / BFF entry hop that routinely fans out to many upstream services. */
+function isGraphqlLikeHop(mock: MockFile): boolean {
+  if (mock.graphqlInfo) return true
+  const method = (mock.method ?? 'GET').toUpperCase()
+  if (method !== 'POST') return false
+  const { path } = parseEndpointParts(mock.endpoint)
+  return /\/graphql\/?$/i.test(path)
+}
 
-  for (const cluster of clusterMocksByModifiedTime(mocks, INFER_CLUSTER_MS)) {
-    if (!clusterLooksLikeServiceChain(cluster)) continue
-    const hops = [...cluster]
-      .filter((m) => !assigned.has(m.filename))
-      .sort((a, b) => inferHopSortKey(a) - inferHopSortKey(b))
-    if (hops.length < 2) continue
-    for (const hop of hops) assigned.add(hop.filename)
-    const latestModified = hops.reduce(
-      (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
-      hops[0].modified
-    )
-    chains.push({
-      id: `inferred-${hops[0].filename}`,
-      hops,
-      latestModified,
-      inferred: true,
-    })
+/** Public alias for bulk replay: GraphQL gateway hops vs source/leaf hops. */
+export function isGraphqlBffHop(mock: MockFile): boolean {
+  return isGraphqlLikeHop(mock)
+}
+
+/**
+ * Real GraphQL BFFs call many distinct upstream hosts at depth 1 (bookings, tokens, CRM).
+ * That looks like a client-session fan-out unless we exempt multi-host GraphQL roots.
+ * Proxy dumps that mostly stay on the GraphQL host (≤2 external hosts) still drop.
+ */
+function isGraphqlBffFanout(hops: MockFile[]): boolean {
+  const root = hops[0]
+  if (!root || !isGraphqlLikeHop(root)) return false
+  const rootHost = mockHopHostKey(root)
+  const externalHosts = new Set(
+    hops
+      .slice(1)
+      .map((hop) => mockHopHostKey(hop))
+      .filter((host) => Boolean(host) && host !== rootHost)
+  )
+  return externalHosts.size >= 3
+}
+
+function isNonsensicalMockServiceChain(hops: MockFile[]): boolean {
+  const shape = describeMockChainShape(hops)
+  const sessionFanout =
+    shape.hopCount >= SESSION_FANOUT_MIN_HOPS &&
+    shape.uniqueEndpoints >= SESSION_FANOUT_MIN_UNIQUE_ENDPOINTS &&
+    shape.maxDepth <= SESSION_FANOUT_MAX_NESTING &&
+    shape.uniqueHosts >= SESSION_FANOUT_MIN_UNIQUE_HOSTS
+  const daisyChain = shape.hopCount >= DAISY_CHAIN_MIN_HOPS && shape.maxDepth >= shape.hopCount - 1
+  if (sessionFanout && isGraphqlBffFanout(hops)) {
+    return daisyChain
   }
+  return sessionFanout || daisyChain
+}
 
-  chains.sort((a, b) => new Date(b.latestModified).getTime() - new Date(a.latestModified).getTime())
-  return chains
+/** Prefer a real recorded hop over an inbound-parent placeholder for the same requestId. */
+export function isInboundParentStubHop(mock: MockFile): boolean {
+  if (mock.inboundParentStub === true) return true
+  const endpoint = mock.endpoint?.trim() ?? ''
+  if (endpoint.startsWith('mockifyer://inbound-parent/')) return true
+  return false
+}
+
+function preferMockForRequestId(existing: MockFile, candidate: MockFile): MockFile {
+  const existingStub = isInboundParentStubHop(existing)
+  const candidateStub = isInboundParentStubHop(candidate)
+  if (existingStub && !candidateStub) return candidate
+  if (!existingStub && candidateStub) return existing
+  // Prefer GraphQL op / captured body over empty pending twins.
+  if (!existing.graphqlInfo?.operationName && candidate.graphqlInfo?.operationName) {
+    return candidate
+  }
+  return existing
 }
 
 export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
@@ -111,33 +199,339 @@ export function buildMockChainMaps(mocks: MockFile[]): MockChainMaps {
   for (const mock of mocks) {
     byFilename.set(mock.filename, mock)
     if (mock.requestId) {
-      byRequestId.set(mock.requestId, mock)
+      const existing = byRequestId.get(mock.requestId)
+      byRequestId.set(
+        mock.requestId,
+        existing ? preferMockForRequestId(existing, mock) : mock
+      )
     }
-    if (mock.parentRequestId) {
-      const siblings = childrenByParent.get(mock.parentRequestId) ?? []
+    for (const parentId of getMockParentRequestIds(mock)) {
+      const siblings = childrenByParent.get(parentId) ?? []
       siblings.push(mock)
-      childrenByParent.set(mock.parentRequestId, siblings)
+      childrenByParent.set(parentId, siblings)
     }
   }
 
   return { byRequestId, byFilename, childrenByParent }
 }
 
-export function formatMockHopLabel(mock: MockFile): string {
-  const method = (mock.method ?? 'GET').toUpperCase()
-  if (mock.endpoint) {
+export function endpointHostname(endpoint?: string | null): string {
+  if (!endpoint?.trim()) return ''
+  try {
+    return new URL(endpoint).hostname
+  } catch {
+    return ''
+  }
+}
+
+const OPAQUE_MOCK_STEM = /^[a-f0-9]{32,}$/i
+
+/** Redis catalog ids and other content-hash filenames — not useful as a hop label. */
+export function isOpaqueMockFilename(filename: string | null | undefined): boolean {
+  if (!filename?.trim()) return false
+  const trimmed = filename.trim()
+  if (/^redis\/[a-f0-9]{32,}/i.test(trimmed)) return true
+  const base = trimmed.includes('/') ? trimmed.split('/').pop() ?? trimmed : trimmed
+  const stem = base.replace(/\.json$/i, '')
+  return OPAQUE_MOCK_STEM.test(stem)
+}
+
+function usableHopEndpoint(endpoint?: string | null): string | undefined {
+  const raw = endpoint?.trim()
+  if (!raw || isOpaqueMockFilename(raw)) return undefined
+  return raw
+}
+
+export interface HopPathLabelSource {
+  method?: string | null
+  endpoint?: string | null
+  operationName?: string | null
+  filename?: string | null
+}
+
+export type HopPathLabelKind = 'operation' | 'path' | 'host' | 'filename' | 'method'
+
+export interface HopPathLabelParts {
+  method: string
+  kind: HopPathLabelKind
+  text: string
+  query?: string
+}
+
+export function hopPathLabelSourceFromMock(mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>): HopPathLabelSource {
+  return {
+    method: mock.method,
+    endpoint: mock.endpoint,
+    operationName: mock.graphqlInfo?.operationName,
+    filename: mock.filename,
+  }
+}
+
+/** Stats catalog sometimes stores a hash as `endpoint`; prefer the compact mock list URL. */
+export function hopPathLabelSourceWithCatalog(
+  item: HopPathLabelSource,
+  catalog?: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'> | null
+): HopPathLabelSource {
+  return {
+    method: item.method || catalog?.method,
+    endpoint: usableHopEndpoint(item.endpoint) ?? catalog?.endpoint,
+    operationName: item.operationName || catalog?.graphqlInfo?.operationName,
+    filename: item.filename || catalog?.filename,
+  }
+}
+
+export function hopPathLabelParts(params: HopPathLabelSource): HopPathLabelParts {
+  const method = (params.method ?? 'GET').toUpperCase()
+  const operation = params.operationName?.trim()
+  if (operation) return { method, kind: 'operation', text: operation }
+  const endpoint = usableHopEndpoint(params.endpoint)
+  if (endpoint) {
     try {
-      const url = new URL(mock.endpoint)
-      return `${method} ${url.pathname || '/'}`
+      const url = new URL(endpoint)
+      const path = url.pathname || '/'
+      const search = url.search
+      if (path === '/' && !search) {
+        if (url.hostname) return { method, kind: 'host', text: `${url.hostname}/` }
+        return { method, kind: 'path', text: '/' }
+      }
+      return {
+        method,
+        kind: 'path',
+        text: path,
+        ...(search ? { query: search } : {}),
+      }
     } catch {
-      return `${method} ${mock.endpoint}`
+      return { method, kind: 'path', text: endpoint }
     }
   }
-  return mock.filename.includes('/') ? mock.filename.split('/').pop()! : mock.filename
+  const filename = params.filename
+  if (filename && !isOpaqueMockFilename(filename)) {
+    const base = filename.includes('/') ? filename.split('/').pop()! : filename
+    return { method, kind: 'filename', text: base }
+  }
+  return { method, kind: 'method', text: '' }
+}
+
+export function formatHopPathLabel(params: HopPathLabelSource): string {
+  const parts = hopPathLabelParts(params)
+  if (parts.kind === 'filename') return parts.text
+  if (!parts.text) return parts.method
+  return `${parts.method} ${parts.text}${parts.query ?? ''}`
+}
+
+export function formatHopPathLabelWithCatalog(
+  item: HopPathLabelSource,
+  catalog?: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'> | null
+): string {
+  return formatHopPathLabel(hopPathLabelSourceWithCatalog(item, catalog))
+}
+
+export function formatMockHopLabel(
+  mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>
+): string {
+  return formatHopPathLabel(hopPathLabelSourceFromMock(mock))
+}
+
+function isOpaquePickerText(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('redis/')) return true
+  return isOpaqueMockFilename(trimmed)
+}
+
+/** Label for mock pickers — never a Redis catalog hash. */
+export function formatMockPickerLabel(
+  mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>
+): string {
+  const label = formatMockHopLabel(mock)
+  if (!isOpaquePickerText(label)) return label
+  return (mock.method ?? 'GET').toUpperCase()
+}
+
+/**
+ * Human-readable mock names for pickers. Redis hashes stay as the option value,
+ * not the label; colliding method/path names get host+path appended.
+ */
+export function uniqueMockCatalogLabels(
+  mocks: Array<Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>>
+): Map<string, string> {
+  const labels = mocks.map((mock) => formatMockPickerLabel(mock))
+  const counts = new Map<string, number>()
+  for (const label of labels) counts.set(label, (counts.get(label) ?? 0) + 1)
+
+  const result = new Map<string, string>()
+  for (let i = 0; i < mocks.length; i += 1) {
+    const mock = mocks[i]
+    const label = labels[i]
+    if (!mock || !label) continue
+    if ((counts.get(label) ?? 0) <= 1) {
+      result.set(mock.filename, label)
+      continue
+    }
+    const extra = formatMockHopSubtitle(mock)
+    const usableExtra =
+      extra && extra !== label && !isOpaquePickerText(extra)
+    result.set(mock.filename, usableExtra ? `${label} · ${extra}` : label)
+  }
+  return result
+}
+
+export function chainFirstLastHops(chain: MockServiceChain): { start: MockFile; end?: MockFile } | null {
+  if (chain.hops.length === 0) return null
+  const start = chain.hops[0]
+  if (!start) return null
+  if (chain.hops.length === 1) return { start }
+  const startLabel = formatMockHopLabel(start)
+  let end = chain.hops[chain.hops.length - 1]
+  if (end && formatMockHopLabel(end) === startLabel) {
+    for (let i = chain.hops.length - 2; i > 0; i -= 1) {
+      const hop = chain.hops[i]
+      if (hop && formatMockHopLabel(hop) !== startLabel) {
+        end = hop
+        break
+      }
+    }
+  }
+  if (!end || formatMockHopLabel(end) === startLabel) return { start }
+  return { start, end }
+}
+
+/** Entry → leaf path so collapsed Statistics rows stay unique. */
+export function formatChainFirstLastLabel(chain: MockServiceChain): string {
+  const pair = chainFirstLastHops(chain)
+  if (!pair) return chain.id
+  const start = formatMockHopLabel(pair.start)
+  if (!pair.end) return start
+  return `${start} → ${formatMockHopLabel(pair.end)}`
+}
+
+export interface ChainLeafIndex {
+  leaves: Set<string>
+  inAChain: Set<string>
+}
+
+function collectForestLeafFilenames(nodes: MockUniqueChainNode[], out: Set<string>): void {
+  for (const node of nodes) {
+    if (node.children.length === 0) {
+      for (const hop of node.hops) out.add(hop.filename)
+      continue
+    }
+    collectForestLeafFilenames(node.children, out)
+  }
+}
+
+/** Lowest-level hop files in each chain (parents with nested calls are excluded). */
+export function indexChainLeafFilenames(chains: MockServiceChain[]): ChainLeafIndex {
+  const leaves = new Set<string>()
+  const inAChain = new Set<string>()
+  for (const chain of chains) {
+    for (const hop of chain.hops) inAChain.add(hop.filename)
+    if (chain.hops.length === 1) {
+      const only = chain.hops[0]
+      if (only) leaves.add(only.filename)
+      continue
+    }
+    collectForestLeafFilenames(buildUniqueMockChainForest(chain.hops), leaves)
+  }
+  return { leaves, inAChain }
+}
+
+export function isChainLeafHop(filename: string, index: ChainLeafIndex): boolean {
+  if (index.leaves.has(filename)) return true
+  return !index.inAChain.has(filename)
+}
+
+export interface MockChainRoleFilenames {
+  /** GraphQL / BFF hops. */
+  bff: string[]
+  /** Lowest-level source hops (not GraphQL). */
+  sources: string[]
+  /** Parent hops that must be Live before source hops can be reached. */
+  ancestorsOfSources: string[]
+}
+
+function collectRolesFromForest(
+  nodes: MockUniqueChainNode[],
+  bff: Set<string>,
+  sources: Set<string>,
+  ancestorsOfSources: Set<string>,
+  ancestorFilenames: string[]
+): void {
+  for (const node of nodes) {
+    const nodeFilenames = node.hops.map((hop) => hop.filename)
+    for (const hop of node.hops) {
+      if (isGraphqlLikeHop(hop)) bff.add(hop.filename)
+    }
+    if (node.children.length === 0) {
+      const hasSourceLeaf = node.hops.some((hop) => !isGraphqlLikeHop(hop))
+      for (const hop of node.hops) {
+        if (!isGraphqlLikeHop(hop)) sources.add(hop.filename)
+      }
+      if (hasSourceLeaf) {
+        for (const filename of ancestorFilenames) ancestorsOfSources.add(filename)
+      }
+      continue
+    }
+    collectRolesFromForest(node.children, bff, sources, ancestorsOfSources, [
+      ...ancestorFilenames,
+      ...nodeFilenames,
+    ])
+  }
+}
+
+/**
+ * Split chain hops into GraphQL/BFF vs source/leaf filenames for bulk "use mock".
+ */
+export function collectMockChainRoleFilenames(chains: MockServiceChain[]): MockChainRoleFilenames {
+  const bff = new Set<string>()
+  const sources = new Set<string>()
+  const ancestorsOfSources = new Set<string>()
+  for (const chain of chains) {
+    for (const hop of chain.hops) {
+      if (isGraphqlLikeHop(hop)) bff.add(hop.filename)
+    }
+    collectRolesFromForest(
+      buildUniqueMockChainForest(chain.hops),
+      bff,
+      sources,
+      ancestorsOfSources,
+      []
+    )
+  }
+  for (const filename of bff) {
+    sources.delete(filename)
+  }
+  return {
+    bff: [...bff],
+    sources: [...sources],
+    ancestorsOfSources: [...ancestorsOfSources],
+  }
+}
+
+export type ChainRoleReplayTarget = 'sources' | 'bff'
+
+/**
+ * Filenames to put on stored mock vs Live API for a bulk role replay.
+ * Source replay also flips ancestor/BFF hops to Live so traffic can reach them.
+ * Used by the unused MockChainRoleReplayMenu (future Hops/Mocks control).
+ */
+export function planChainRoleReplay(
+  chains: MockServiceChain[],
+  target: ChainRoleReplayTarget
+): { stored: string[]; passthrough: string[] } {
+  const roles = collectMockChainRoleFilenames(chains)
+  if (target === 'bff') {
+    return { stored: roles.bff, passthrough: [] }
+  }
+  const sourceSet = new Set(roles.sources)
+  return {
+    stored: roles.sources,
+    passthrough: roles.ancestorsOfSources.filter((filename) => !sourceSet.has(filename)),
+  }
 }
 
 /** Short host + path line for chain step subtitles. */
-export function formatMockHopSubtitle(mock: MockFile): string {
+export function formatMockHopSubtitle(mock: Pick<MockFile, 'endpoint' | 'filename'>): string {
   if (!mock.endpoint) return mock.filename
   try {
     const url = new URL(mock.endpoint)
@@ -148,7 +542,11 @@ export function formatMockHopSubtitle(mock: MockFile): string {
   }
 }
 
-export function getMockChain(mock: MockFile, byRequestId: Map<string, MockFile>): MockFile[] {
+export function getMockChain(
+  mock: MockFile,
+  byRequestId: Map<string, MockFile>,
+  childrenByParent?: Map<string, MockFile[]>
+): MockFile[] {
   const chain: MockFile[] = [mock]
   const seen = new Set<string>([mock.filename])
   let current = mock
@@ -158,6 +556,12 @@ export function getMockChain(mock: MockFile, byRequestId: Map<string, MockFile>)
     if (!parent || seen.has(parent.filename)) {
       break
     }
+    if (childrenByParent && parent.requestId) {
+      const siblingCount = childrenByParent.get(parent.requestId)?.length ?? 0
+      if (siblingCount >= SESSION_FANOUT_MIN_HOPS) {
+        break
+      }
+    }
     chain.unshift(parent)
     seen.add(parent.filename)
     current = parent
@@ -166,13 +570,16 @@ export function getMockChain(mock: MockFile, byRequestId: Map<string, MockFile>)
   return chain
 }
 
-export function mockChainDepth(mock: MockFile, byRequestId: Map<string, MockFile>): number {
-  return getMockChain(mock, byRequestId).length - 1
+export function mockChainDepth(
+  mock: MockFile,
+  byRequestId: Map<string, MockFile>,
+  childrenByParent?: Map<string, MockFile[]>
+): number {
+  return getMockChain(mock, byRequestId, childrenByParent).length - 1
 }
 
 export function isMockChainRoot(mock: MockFile, byRequestId: Map<string, MockFile>): boolean {
-  if (!mock.parentRequestId) return true
-  return !byRequestId.has(mock.parentRequestId)
+  return knownParents(mock, byRequestId).length === 0
 }
 
 export function mockHasChainChildren(mock: MockFile, childrenByParent: Map<string, MockFile[]>): boolean {
@@ -192,13 +599,18 @@ export function mockIsInServiceChain(
 function orderHopsFromRoot(root: MockFile, chainMocks: MockFile[], maps: MockChainMaps): MockFile[] {
   const inChain = new Set(chainMocks.map((m) => m.filename))
   const ordered: MockFile[] = [root]
+  const visited = new Set<string>([root.filename])
 
   const visit = (parentRequestId: string) => {
-    const children = (maps.childrenByParent.get(parentRequestId) ?? []).filter((c) => inChain.has(c.filename))
+    const children = (maps.childrenByParent.get(parentRequestId) ?? []).filter(
+      (c) => inChain.has(c.filename) && !visited.has(c.filename)
+    )
     children.sort(
       (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
     )
     for (const child of children) {
+      if (visited.has(child.filename)) continue
+      visited.add(child.filename)
       ordered.push(child)
       if (child.requestId) visit(child.requestId)
     }
@@ -230,15 +642,120 @@ function collectDescendants(
   }
 }
 
+/** True when this hop shares a missing parent id with at least one other mock. */
+function sharesMissingParentWithSiblings(
+  mock: MockFile,
+  mocks: MockFile[],
+  byRequestId: Map<string, MockFile>
+): boolean {
+  const parentId = mock.parentRequestId?.trim()
+  if (!parentId || !isMockChainRoot(mock, byRequestId)) return false
+  return mocks.some(
+    (other) => other.filename !== mock.filename && other.parentRequestId?.trim() === parentId
+  )
+}
+
+/**
+ * Sibling hops that share a parentRequestId which is no longer in the catalog.
+ * Keep their exact remaining links; do not invent a GraphQL (or other) parent by time.
+ */
+function buildMissingParentSiblingChains(
+  mocks: MockFile[],
+  maps: MockChainMaps,
+  assigned: Set<string>
+): MockServiceChain[] {
+  const orphansByMissingParent = new Map<string, MockFile[]>()
+  for (const mock of mocks) {
+    if (assigned.has(mock.filename)) continue
+    const parentId = mock.parentRequestId?.trim()
+    if (!parentId || !isMockChainRoot(mock, maps.byRequestId)) continue
+    const list = orphansByMissingParent.get(parentId) ?? []
+    list.push(mock)
+    orphansByMissingParent.set(parentId, list)
+  }
+
+  const chains: MockServiceChain[] = []
+  for (const [missingParentId, orphans] of orphansByMissingParent) {
+    if (orphans.length < 2) continue
+    const chainMocks: MockFile[] = [...orphans]
+    for (const orphan of orphans) {
+      collectDescendants(orphan, maps, chainMocks)
+    }
+    if (chainMocks.length < 2) continue
+    if (isNonsensicalMockServiceChain(chainMocks)) continue
+
+    const roots = [...orphans].sort(
+      (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
+    )
+    const hops = orderHopsFromRoots(roots, chainMocks, maps)
+    for (const hop of hops) assigned.add(hop.filename)
+    const latestModified = hops.reduce(
+      (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
+      hops[0].modified
+    )
+    chains.push({
+      id: missingParentId,
+      hops,
+      latestModified,
+    })
+  }
+  return chains
+}
+
+function orderHopsFromRoots(roots: MockFile[], chainMocks: MockFile[], maps: MockChainMaps): MockFile[] {
+  const ordered: MockFile[] = []
+  const inChain = new Set(chainMocks.map((m) => m.filename))
+  const seen = new Set<string>()
+
+  const visit = (parentRequestId: string) => {
+    const children = (maps.childrenByParent.get(parentRequestId) ?? [])
+      .filter((c) => inChain.has(c.filename) && !seen.has(c.filename))
+      .sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
+    for (const child of children) {
+      if (seen.has(child.filename)) continue
+      ordered.push(child)
+      seen.add(child.filename)
+      if (child.requestId) visit(child.requestId)
+    }
+  }
+
+  for (const root of roots) {
+    if (seen.has(root.filename)) continue
+    ordered.push(root)
+    seen.add(root.filename)
+    if (root.requestId) visit(root.requestId)
+  }
+
+  for (const hop of chainMocks) {
+    if (!seen.has(hop.filename)) {
+      ordered.push(hop)
+      seen.add(hop.filename)
+    }
+  }
+  return ordered
+}
+
 /** Multi-hop service chains (root → downstream), newest chains first. */
 export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
   const maps = buildMockChainMaps(mocks)
   const assigned = new Set<string>()
   const chains: MockServiceChain[] = []
 
+  // Shared missing-parent families keep exact sibling/descendant links (no guessed GraphQL root).
+  chains.push(...buildMissingParentSiblingChains(mocks, maps, assigned))
+
   for (const mock of mocks) {
     if (!mockIsInServiceChain(mock, maps)) continue
     if (!isMockChainRoot(mock, maps.byRequestId)) continue
+    // Shared missing-parent families are grouped above (exact sibling links only).
+    if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
+    // Prefer the canonical mock for this requestId (real hop over inbound stub twin).
+    if (
+      mock.requestId &&
+      maps.byRequestId.get(mock.requestId)?.filename !== mock.filename
+    ) {
+      continue
+    }
     if (!mockHasChainChildren(mock, maps.childrenByParent)) continue
     if (assigned.has(mock.filename)) continue
 
@@ -247,6 +764,7 @@ export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
 
     const hops = orderHopsFromRoot(mock, chainMocks, maps)
     if (hops.length < 2) continue
+    if (isNonsensicalMockServiceChain(hops)) continue
 
     for (const hop of hops) assigned.add(hop.filename)
 
@@ -266,13 +784,15 @@ export function buildMockServiceChains(mocks: MockFile[]): MockServiceChain[] {
   for (const mock of mocks) {
     if (assigned.has(mock.filename)) continue
     if (!mock.parentRequestId) continue
-    if (!maps.byRequestId.has(mock.parentRequestId)) {
+    if (sharesMissingParentWithSiblings(mock, mocks, maps.byRequestId)) continue
+    if (isMockChainRoot(mock, maps.byRequestId)) {
       const chainMocks: MockFile[] = [mock]
       collectDescendants(mock, maps, chainMocks)
       if (chainMocks.length < 2) continue
       const hops = [...chainMocks].sort(
         (a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime()
       )
+      if (isNonsensicalMockServiceChain(hops)) continue
       for (const hop of hops) assigned.add(hop.filename)
       chains.push({
         id: mock.requestId ?? mock.filename,
@@ -292,25 +812,38 @@ function walkUpAncestorsByRequestId(
   seen: Set<string>
 ): MockFile[] {
   const prefix: MockFile[] = []
+  const walked = new Set(seen)
   let current: MockFile | undefined = head
   while (current?.parentRequestId?.trim()) {
+    if (prefix.length >= MAX_ENRICHED_ANCESTORS) {
+      return []
+    }
     const parent = maps.byRequestId.get(current.parentRequestId.trim())
-    if (!parent || seen.has(parent.filename)) {
+    if (!parent || walked.has(parent.filename)) {
       break
     }
+    if (parent.requestId) {
+      const siblingCount = maps.childrenByParent.get(parent.requestId)?.length ?? 0
+      if (siblingCount >= SESSION_FANOUT_MIN_HOPS) {
+        return []
+      }
+    }
     prefix.unshift(parent)
-    seen.add(parent.filename)
+    walked.add(parent.filename)
     current = parent
+  }
+  for (const hop of prefix) {
+    seen.add(hop.filename)
   }
   return prefix
 }
 
 /**
- * Prepends missing entry hops (e.g. gateway `/aggregate`) onto id-linked chains.
+ * Prepends missing ancestors that are linked by requestId (never by time/URL).
  */
 export function enrichChainHopsForDisplay(
   hops: MockFile[],
-  catalog: MockFile[],
+  _catalog: MockFile[],
   maps: MockChainMaps
 ): { hops: MockFile[]; enrichedHopFilenames: string[] } {
   if (hops.length === 0) {
@@ -318,42 +851,8 @@ export function enrichChainHopsForDisplay(
   }
 
   const seen = new Set(hops.map((h) => h.filename))
-  const enrichedFilenames: string[] = []
-
   const ancestorPrefix = walkUpAncestorsByRequestId(hops[0], maps, seen)
-  for (const hop of ancestorPrefix) {
-    enrichedFilenames.push(hop.filename)
-  }
-
-  let result = [...ancestorPrefix, ...hops]
-
-  const times = result.map((h) => new Date(h.modified).getTime())
-  const minT = Math.min(...times)
-  const maxT = Math.max(...times)
-  const windowMs = Math.max(ENRICH_CHAIN_CLUSTER_MS, maxT - minT + 30_000)
-  const minSortKey = inferHopSortKey(result[0])
-
-  const pathPrepend = catalog
-    .filter((mock) => {
-      if (seen.has(mock.filename)) return false
-      if (inferHopSortKey(mock) >= minSortKey) return false
-      const t = new Date(mock.modified).getTime()
-      return t >= minT - windowMs && t <= maxT + 5_000
-    })
-    .sort((a, b) => inferHopSortKey(a) - inferHopSortKey(b))
-
-  for (const hop of pathPrepend) {
-    seen.add(hop.filename)
-    enrichedFilenames.push(hop.filename)
-  }
-
-  result = [...pathPrepend, ...result]
-  result.sort((a, b) => {
-    const keyDiff = inferHopSortKey(a) - inferHopSortKey(b)
-    if (keyDiff !== 0) return keyDiff
-    return new Date(a.modified).getTime() - new Date(b.modified).getTime()
-  })
-
+  const result = [...ancestorPrefix, ...hops]
   const deduped: MockFile[] = []
   const dedupeSeen = new Set<string>()
   for (const hop of result) {
@@ -362,49 +861,110 @@ export function enrichChainHopsForDisplay(
     deduped.push(hop)
   }
 
-  return { hops: deduped, enrichedHopFilenames: enrichedFilenames }
+  return { hops: deduped, enrichedHopFilenames: [] }
 }
 
 /**
- * Correlation-linked chains when mocks have requestId/parentRequestId; otherwise infers from
- * recording time + URL order (same user run, multi-host).
+ * Correlation-linked chains only. Parent → child must match stored request ids.
  */
 export function buildMockServiceChainsForDisplay(mocks: MockFile[]): MockServiceChain[] {
   const maps = buildMockChainMaps(mocks)
   const linked = buildMockServiceChains(mocks)
 
-  if (linked.length > 0) {
-    return linked.map((chain) => {
-      const { hops, enrichedHopFilenames } = enrichChainHopsForDisplay(chain.hops, mocks, maps)
-      const latestModified = hops.reduce(
-        (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
-        hops[0].modified
-      )
-      return {
+  return linked.flatMap((chain) => {
+    const enriched = enrichChainHopsForDisplay(chain.hops, mocks, maps)
+    const hops = isNonsensicalMockServiceChain(enriched.hops) ? chain.hops : enriched.hops
+    if (isNonsensicalMockServiceChain(hops)) return []
+    const latestModified = hops.reduce(
+      (max, hop) => (new Date(hop.modified) > new Date(max) ? hop.modified : max),
+      hops[0].modified
+    )
+    return [
+      {
         ...chain,
         hops,
         latestModified,
-        inferred: chain.inferred === true || enrichedHopFilenames.length > 0,
-        enrichedHopFilenames,
-      }
-    })
-  }
+        inferred: false,
+        enrichedHopFilenames: [],
+      },
+    ]
+  })
+}
 
-  return buildInferredMockServiceChains(mocks)
+/**
+ * Keep full multi-hop chains when the list is search-filtered.
+ * Matching on one hop (e.g. GET /v-2/myaccount) must not drop GraphQL/token siblings.
+ */
+export function filterMockServiceChainsByFilenames(
+  chains: MockServiceChain[],
+  filenames: ReadonlySet<string>
+): MockServiceChain[] {
+  if (filenames.size === 0) return []
+  return chains.filter((chain) => chain.hops.some((hop) => filenames.has(hop.filename)))
 }
 
 export function isEnrichedChainHop(chain: MockServiceChain, hop: MockFile): boolean {
   return chain.enrichedHopFilenames?.includes(hop.filename) === true
 }
 
-export type MockHopTrafficMode = 'live' | 'replay' | 'pending'
+export type MockHopTrafficMode = 'live' | 'replay' | 'pending' | 'refresh'
 
-export function getMockHopTrafficMode(
-  mock: Pick<MockFile, 'alwaysUseRealApi' | 'responsePending'>
-): MockHopTrafficMode {
+export const MOCK_HOP_TRAFFIC_LABELS: Record<MockHopTrafficMode, string> = {
+  replay: 'Replay',
+  refresh: 'Refresh',
+  pending: 'Pending',
+  live: 'Live',
+}
+
+export function parseMockHopTrafficMode(value: string | null | undefined): MockHopTrafficMode | null {
+  if (value === 'replay' || value === 'refresh' || value === 'pending' || value === 'live') {
+    return value
+  }
+  return null
+}
+
+export function filterMocksByHopTraffic(
+  mocks: MockFile[],
+  traffic: MockHopTrafficMode | null,
+  domain?: string | null
+): MockFile[] {
+  const wantedDomain = domain?.trim() ?? ''
+  if (!traffic && !wantedDomain) return mocks
+  return mocks.filter((mock) => {
+    if (traffic && getMockHopTrafficMode(mock) !== traffic) return false
+    if (wantedDomain && endpointHostname(mock.endpoint) !== wantedDomain) return false
+    return true
+  })
+}
+
+type MockTrafficFields = Pick<
+  MockFile,
+  'alwaysUseRealApi' | 'responsePending' | 'alwaysRefreshFromLive' | 'refreshOnNextRequest' | 'replayMode'
+>
+
+/**
+ * Same precedence as core `resolveMockReplayMode` (refresh flags win over passthrough).
+ */
+function resolveMockFileReplayMode(mock: MockTrafficFields): NonNullable<MockFile['replayMode']> {
+  if (mock.replayMode) return mock.replayMode
+  if (mock.alwaysRefreshFromLive === true) return 'always-refresh'
+  if (mock.refreshOnNextRequest === true) return 'refresh-next'
+  if (mock.alwaysUseRealApi === true || mock.responsePending === true) return 'passthrough'
+  return 'stored'
+}
+
+/** True when this hop calls upstream instead of returning the stored body. */
+export function mockHopHitsUpstream(mock: MockTrafficFields): boolean {
+  if (mock.responsePending === true) return true
+  return resolveMockFileReplayMode(mock) !== 'stored'
+}
+
+export function getMockHopTrafficMode(mock: MockTrafficFields): MockHopTrafficMode {
   if (mock.responsePending === true) return 'pending'
-  if (mock.alwaysUseRealApi === true) return 'live'
-  return 'replay'
+  const mode = resolveMockFileReplayMode(mock)
+  if (mode === 'stored') return 'replay'
+  if (mode === 'always-refresh' || mode === 'refresh-next') return 'refresh'
+  return 'live'
 }
 
 /**
@@ -416,38 +976,119 @@ export function collectUpstreamDomainPathsForReplay(
   catalogMocks: MockFile[]
 ): string[] {
   const chainMaps = buildMockChainMaps(catalogMocks)
+  const displayChains = buildMockServiceChainsForDisplay(catalogMocks)
   const domains = new Set<string>()
+  const chainIndex = new Map<string, MockFile[]>()
+  for (const chain of displayChains) {
+    for (const hop of chain.hops) {
+      if (!chainIndex.has(hop.filename)) chainIndex.set(hop.filename, chain.hops)
+    }
+  }
 
   const addHop = (hop: MockFile) => {
     const path = endpointToDomainPath(hop.endpoint)
     if (path) domains.add(path)
   }
 
+  const addParents = (hops: MockFile[], filename: string) => {
+    const idx = hops.findIndex((h) => h.filename === filename)
+    if (idx <= 0) return false
+    for (let i = 0; i < idx; i++) addHop(hops[i])
+    return true
+  }
+
   for (const mock of targetMocks) {
-    const linked = getMockChain(mock, chainMaps.byRequestId)
-    let idx = linked.findIndex((h) => h.filename === mock.filename)
-    if (idx > 0) {
-      for (let i = 0; i < idx; i++) addHop(linked[i])
-    }
-
-    for (const chain of buildMockServiceChainsForDisplay(catalogMocks)) {
-      idx = chain.hops.findIndex((h) => h.filename === mock.filename)
-      if (idx > 0) {
-        for (let i = 0; i < idx; i++) addHop(chain.hops[i])
-      }
-    }
-
-    const targetKey = inferHopSortKey(mock)
-    const targetTime = new Date(mock.modified).getTime()
-    for (const candidate of catalogMocks) {
-      if (candidate.filename === mock.filename) continue
-      if (inferHopSortKey(candidate) >= targetKey) continue
-      if (Math.abs(new Date(candidate.modified).getTime() - targetTime) > INFER_CLUSTER_MS) continue
-      addHop(candidate)
-    }
+    const linked = getMockChain(mock, chainMaps.byRequestId, chainMaps.childrenByParent)
+    addParents(linked, mock.filename)
+    const displayHops = chainIndex.get(mock.filename)
+    if (displayHops) addParents(displayHops, mock.filename)
   }
 
   return [...domains]
+}
+
+export interface DomainFolderReplayPlan {
+  stored: string[]
+  passthrough: string[]
+}
+
+/**
+ * Filenames to put on saved-mock replay when Replay is clicked for a domain-tree folder.
+ * Only this folder is changed — sibling hosts stay as they are.
+ */
+export function planDomainFolderReplay(
+  catalogMocks: MockFile[],
+  domainPath: string
+): DomainFolderReplayPlan {
+  const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
+  const stored = catalogMocks
+    .filter((mock) => endpointMatchesDomainPath(mock.endpoint ?? null, normalizedPath))
+    .map((mock) => mock.filename)
+  return { stored, passthrough: [] }
+}
+
+/**
+ * Apply bulk replay-mode flags to an in-memory catalog so the list can update
+ * without waiting for GET /mocks (similarGroups clustering).
+ */
+export function applyCatalogReplayModeFlags(
+  mocks: MockFile[],
+  stored: string[],
+  passthrough: string[]
+): MockFile[] {
+  if (stored.length === 0 && passthrough.length === 0) return mocks
+  const storedSet = new Set(stored)
+  const liveSet = new Set(passthrough.filter((name) => !storedSet.has(name)))
+  if (storedSet.size === 0 && liveSet.size === 0) return mocks
+  return mocks.map((mock) => {
+    if (storedSet.has(mock.filename)) return applyReplayModeToCatalogMock(mock, 'stored')
+    if (liveSet.has(mock.filename)) return applyReplayModeToCatalogMock(mock, 'passthrough')
+    return mock
+  })
+}
+
+function applyReplayModeToCatalogMock(mock: MockFile, mode: 'stored' | 'passthrough'): MockFile {
+  const pendingWithoutBody = mock.responsePending === true
+  const resolved = mode === 'stored' && pendingWithoutBody ? 'refresh-next' : mode
+  const next: MockFile = {
+    ...mock,
+    alwaysUseRealApi: undefined,
+    refreshOnNextRequest: undefined,
+    alwaysRefreshFromLive: undefined,
+    replayMode: resolved === 'passthrough' ? 'passthrough' : resolved === 'refresh-next' ? 'refresh-next' : 'stored',
+  }
+  if (resolved !== 'passthrough' && pendingWithoutBody) {
+    next.responsePending = undefined
+  }
+  if (resolved === 'passthrough') {
+    next.alwaysUseRealApi = true
+  } else if (resolved === 'refresh-next') {
+    next.refreshOnNextRequest = true
+  }
+  return next
+}
+
+export function describeBulkReplayModeResult(result: {
+  updatedStored: number
+  updatedLive: number
+  queuedRefreshNext: number
+}): string {
+  const parts: string[] = []
+  if (result.updatedStored > 0) {
+    parts.push(`${result.updatedStored} mock${result.updatedStored === 1 ? '' : 's'} on saved response`)
+  }
+  if (result.queuedRefreshNext > 0) {
+    parts.push(`${result.queuedRefreshNext} will capture on next request, then replay`)
+  }
+  if (result.updatedLive > 0) {
+    parts.push(
+      `${result.updatedLive} mock${result.updatedLive === 1 ? '' : 's'} set to Live`
+    )
+  }
+  if (parts.length === 0) {
+    return 'No hops updated'
+  }
+  return parts.join('. ')
 }
 
 /** True when an upstream hop on Replay prevents later hops from running. */
@@ -470,23 +1111,248 @@ export function formatShortCorrelationId(id: string | null | undefined): string 
 /** Human label for which upstream hop triggered this one. */
 export function describeHopParentLink(chain: MockFile[], hopIndex: number): string | null {
   const hop = chain[hopIndex]
-  if (hopIndex <= 0 || !hop.parentRequestId?.trim()) return null
+  if (hopIndex < 0 || !hop?.parentRequestId?.trim()) return null
 
-  const parentId = hop.parentRequestId.trim()
-  const parentHopIndex = chain.findIndex(
-    (candidate, index) => index < hopIndex && candidate.requestId === parentId
+  const parentIds = getMockParentRequestIds(hop)
+  const parentHop = chain.find(
+    (candidate) => Boolean(candidate.requestId) && parentIds.includes(candidate.requestId!)
   )
-  const shortParent = formatShortCorrelationId(parentId)
-  if (parentHopIndex >= 0) {
-    return `Parent: hop ${parentHopIndex + 1}${shortParent ? ` (${shortParent})` : ''}`
+  const shortParent = formatShortCorrelationId(parentHop?.requestId ?? hop.parentRequestId)
+  const otherCallers = parentIds.length - 1
+  const sharedSuffix = otherCallers > 0 ? ` · also called by ${otherCallers} other hop${otherCallers === 1 ? '' : 's'}` : ''
+  if (parentHop) {
+    return `Parent: ${formatMockHopLabel(parentHop)}${shortParent ? ` (${shortParent})` : ''}${sharedSuffix}`
   }
-  return shortParent ? `Parent request id: ${shortParent} (not in this chain)` : 'Parent request id linked'
+  return shortParent ? `Parent request id: ${shortParent} (missing from catalog)` : 'Parent request id linked'
+}
+
+/**
+ * When every top-level hop in a chain points at the same parentRequestId that is
+ * not present in the chain, that id is the real root (caller was not recorded /
+ * rewritten). Prefer it over promoting the first orphan as the root.
+ */
+export function getSharedMissingParentId(hops: MockFile[]): string | null {
+  if (hops.length === 0) return null
+  const maps = buildMockChainMaps(hops)
+  const inChain = new Set(hops.map((hop) => hop.filename))
+  const roots = hops.filter((hop) => knownParents(hop, maps.byRequestId, inChain).length === 0)
+  if (roots.length === 0) return null
+
+  const parentIds = new Set(
+    roots.map((hop) => hop.parentRequestId?.trim()).filter((id): id is string => Boolean(id))
+  )
+  if (parentIds.size !== 1) return null
+  const only = [...parentIds][0]!
+  if (!roots.every((hop) => hop.parentRequestId?.trim() === only)) return null
+  return only
 }
 
 export function chainHasRequestCorrelation(chain: MockFile[]): boolean {
-  return chain.some((hop, index) => index > 0 && Boolean(hop.parentRequestId?.trim()))
+  if (getSharedMissingParentId(chain)) return true
+  const requestIds = new Set(
+    chain.map((hop) => hop.requestId?.trim()).filter((id): id is string => Boolean(id))
+  )
+  return chain.some((hop) => getMockParentRequestIds(hop).some((parentId) => requestIds.has(parentId)))
 }
 
 export function getChainRootRequestId(chain: MockFile[]): string | null {
-  return chain[0]?.requestId?.trim() ?? null
+  return getSharedMissingParentId(chain) ?? chain[0]?.requestId?.trim() ?? null
+}
+
+/** Fingerprint prefix for synthetic forest nodes that stand in for a missing parent hop. */
+export const MISSING_PARENT_NODE_PREFIX = 'missing-parent:'
+
+export function isMissingParentChainNode(node: MockUniqueChainNode): boolean {
+  return node.fingerprint.startsWith(MISSING_PARENT_NODE_PREFIX)
+}
+
+function makeMissingParentForestNode(
+  parentId: string,
+  children: MockUniqueChainNode[]
+): MockUniqueChainNode {
+  const representative: MockFile = {
+    filename: `${MISSING_PARENT_NODE_PREFIX}${parentId}`,
+    filePath: '',
+    size: 0,
+    created: '',
+    modified: '',
+    endpoint: null,
+    method: null,
+    graphqlInfo: null,
+    sessionId: null,
+    requestId: parentId,
+  }
+  return {
+    fingerprint: `${MISSING_PARENT_NODE_PREFIX}${parentId}`,
+    representative,
+    hops: [],
+    callCount: 0,
+    children,
+  }
+}
+
+function groupSiblingsByFingerprint(children: MockFile[]): MockUniqueChainNode[] {
+  const groups = new Map<string, MockFile[]>()
+  const order: string[] = []
+  for (const child of children) {
+    const key = mockHopEndpointFingerprint(child)
+    if (!groups.has(key)) {
+      groups.set(key, [])
+      order.push(key)
+    }
+    groups.get(key)!.push(child)
+  }
+  return order.map((key) => {
+    const grouped = groups.get(key)!
+    grouped.sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
+    return {
+      fingerprint: key,
+      representative: grouped[0],
+      hops: grouped,
+      callCount: grouped.length,
+      children: [],
+    }
+  })
+}
+
+/**
+ * `ancestors` holds hop filenames on the current path. A hop with several callers can
+ * otherwise loop (stale ids make A → B → A) and recurse forever.
+ */
+function uniqueChildrenOf(
+  parents: MockFile[],
+  maps: MockChainMaps,
+  inChain: Set<string>,
+  ancestors: ReadonlySet<string> = new Set(parents.map((parent) => parent.filename))
+): MockUniqueChainNode[] {
+  const kids: MockFile[] = []
+  const seen = new Set<string>()
+  for (const parent of parents) {
+    if (!parent.requestId) continue
+    for (const child of maps.childrenByParent.get(parent.requestId) ?? []) {
+      if (!inChain.has(child.filename) || seen.has(child.filename) || ancestors.has(child.filename)) continue
+      seen.add(child.filename)
+      kids.push(child)
+    }
+  }
+  kids.sort((a, b) => new Date(a.modified).getTime() - new Date(b.modified).getTime())
+  const grouped = groupSiblingsByFingerprint(kids)
+  for (const node of grouped) {
+    const path = new Set(ancestors)
+    for (const hop of node.hops) path.add(hop.filename)
+    node.children = uniqueChildrenOf(node.hops, maps, inChain, path)
+  }
+  return grouped
+}
+
+function uniqueNodeHasHopId(node: MockUniqueChainNode): boolean {
+  return node.hops.some((hop) => Boolean(hop.requestId?.trim()))
+}
+
+/**
+ * Fold consecutive unique hops into a path tree so later services nest under
+ * the caller even when parent-request-id links are missing (inferred chains).
+ * Id-bearing orphan roots stay siblings — daisy-chaining them inverted GraphQL /
+ * myaccount / bookings after always-refresh rewrote a parent id.
+ */
+function nestUniqueNodesAsPath(nodes: MockUniqueChainNode[]): MockUniqueChainNode[] {
+  if (nodes.length <= 1) return nodes
+  const roots: MockUniqueChainNode[] = [nodes[0]]
+  for (let i = 1; i < nodes.length; i++) {
+    const prev = nodes[i - 1]
+    const curr = nodes[i]
+    if (uniqueNodeHasHopId(prev) && uniqueNodeHasHopId(curr)) {
+      roots.push(curr)
+      continue
+    }
+    prev.children.push(curr)
+  }
+  return roots
+}
+
+function buildSequentialUniquePath(hops: MockFile[]): MockUniqueChainNode[] {
+  const unique: MockUniqueChainNode[] = []
+  for (const hop of hops) {
+    const key = mockHopEndpointFingerprint(hop)
+    const last = unique[unique.length - 1]
+    if (last && last.fingerprint === key) {
+      last.hops.push(hop)
+      last.callCount += 1
+      continue
+    }
+    unique.push({
+      fingerprint: key,
+      representative: hop,
+      hops: [hop],
+      callCount: 1,
+      children: [],
+    })
+  }
+  return nestUniqueNodesAsPath(unique)
+}
+
+/**
+ * Nested unique-endpoint forest for display. Repeated sibling calls collapse to ×N
+ * (same idea as Atlas HTML unique chains) instead of a linear dump of every hop.
+ * Distinct hops nest as a tree: parent-linked children stay under their caller.
+ * Orphans that share one missing parentRequestId nest under a synthetic root for
+ * that id — never promote the first orphan as "the" entry hop.
+ */
+export function buildUniqueMockChainForest(hops: MockFile[]): MockUniqueChainNode[] {
+  if (hops.length === 0) return []
+  const maps = buildMockChainMaps(hops)
+  const inChain = new Set(hops.map((h) => h.filename))
+  const hasParentLinks = hops.some((h) => Boolean(h.parentRequestId?.trim()))
+
+  if (hasParentLinks) {
+    const roots = hops.filter((h) => knownParents(h, maps.byRequestId, inChain).length === 0)
+    const grouped = groupSiblingsByFingerprint(roots)
+    for (const node of grouped) {
+      node.children = uniqueChildrenOf(node.hops, maps, inChain)
+    }
+    const sharedMissing = getSharedMissingParentId(hops)
+    if (sharedMissing) {
+      return [makeMissingParentForestNode(sharedMissing, grouped)]
+    }
+    return nestUniqueNodesAsPath(grouped)
+  }
+
+  return buildSequentialUniquePath(hops)
+}
+
+/** Downstream call count under this node (nested levels, including repeats). */
+export function countNestedMockChainCalls(node: MockUniqueChainNode): number {
+  let n = 0
+  for (const child of node.children) {
+    n += child.callCount
+    n += countNestedMockChainCalls(child)
+  }
+  return n
+}
+
+export function uniqueChainNodeContainsFilename(
+  node: MockUniqueChainNode,
+  filename: string | null | undefined
+): boolean {
+  if (!filename) return false
+  if (node.hops.some((hop) => hop.filename === filename)) return true
+  return node.children.some((child) => uniqueChainNodeContainsFilename(child, filename))
+}
+
+function countUniqueChainNodes(nodes: MockUniqueChainNode[]): number {
+  let n = 0
+  for (const node of nodes) {
+    n += 1
+    n += countUniqueChainNodes(node.children)
+  }
+  return n
+}
+
+export function countUniqueMockChainHops(hops: MockFile[]): number {
+  return countUniqueChainNodes(buildUniqueMockChainForest(hops))
+}
+
+/** True when the node hides nested services or multiple underlying calls behind ×N. */
+export function mockChainNodeCanExpand(node: MockUniqueChainNode): boolean {
+  return node.children.length > 0 || node.hops.length > 1
 }

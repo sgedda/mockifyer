@@ -1,39 +1,16 @@
 import fs from 'fs';
-import path from 'path';
-import { getScenarioFolderPath, type DomainPathRulesMap } from '@sgedda/mockifyer-core';
+import {
+  readDomainPathRulesFile as readFromCore,
+  writeDomainPathRulesFile as writeFromCore,
+  DOMAIN_PATH_RULES_FILENAME,
+} from '@sgedda/mockifyer-core';
+import type { DomainPathRulesMap } from '@sgedda/mockifyer-core';
 
-export const DOMAIN_PATH_RULES_FILENAME = 'domain-path-rules.json';
-
-function parseDomainPathRules(raw: unknown): DomainPathRulesMap {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return {};
-  }
-  const out: DomainPathRulesMap = {};
-  for (const [domainPath, val] of Object.entries(raw as Record<string, unknown>)) {
-    if (!val || typeof val !== 'object') continue;
-    const r = val as Record<string, unknown>;
-    if (typeof r.recordResponses !== 'boolean') continue;
-    out[domainPath] = {
-      recordResponses: r.recordResponses,
-      autoMock: r.autoMock === true,
-      updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : undefined,
-    };
-  }
-  return out;
-}
+export { DOMAIN_PATH_RULES_FILENAME };
 
 /** Load per-scenario domain auto-record rules from `mock-data/<scenario>/domain-path-rules.json`. */
 export function readDomainPathRulesFile(mockDataPath: string, scenario: string): DomainPathRulesMap {
-  const filePath = path.join(getScenarioFolderPath(mockDataPath, scenario), DOMAIN_PATH_RULES_FILENAME);
-  if (!fs.existsSync(filePath)) {
-    return {};
-  }
-  try {
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    return parseDomainPathRules(JSON.parse(raw));
-  } catch {
-    return {};
-  }
+  return readFromCore(mockDataPath, scenario);
 }
 
 /** Persist domain auto-record rules next to scenario mocks (survives dashboard refresh / Redis loss). */
@@ -42,14 +19,43 @@ export function writeDomainPathRulesFile(
   scenario: string,
   rules: DomainPathRulesMap
 ): void {
-  const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
-  fs.mkdirSync(scenarioPath, { recursive: true });
-  const filePath = path.join(scenarioPath, DOMAIN_PATH_RULES_FILENAME);
-  if (Object.keys(rules).length === 0) {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-    return;
+  writeFromCore(mockDataPath, scenario, rules);
+}
+
+function isExistingDirectory(mockDataPath: string): boolean {
+  try {
+    return fs.existsSync(mockDataPath) && fs.statSync(mockDataPath).isDirectory();
+  } catch {
+    return false;
   }
-  fs.writeFileSync(filePath, `${JSON.stringify(rules, null, 2)}\n`, 'utf-8');
+}
+
+/**
+ * Optional disk copy of centralized (Redis/SQLite) domain-path rules.
+ *
+ * Redis dashboards often use a dummy `MOCKIFYER_PATH` such as `/mock-data` that is not
+ * a writable tree. Record response must still succeed after the Redis write; mkdir of
+ * that path must not 500 the API.
+ *
+ * Writes to disk only when `mockDataPath` already exists as a directory, or when
+ * `force` is set (Redis disk-mirror mode). Failures are logged and ignored.
+ */
+export function tryMirrorDomainPathRulesToDisk(
+  mockDataPath: string,
+  scenario: string,
+  rules: DomainPathRulesMap,
+  options?: { force?: boolean }
+): boolean {
+  if (!options?.force && !isExistingDirectory(mockDataPath)) {
+    return false;
+  }
+  try {
+    return writeFromCore(mockDataPath, scenario, rules);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[Mockifyer Dashboard] Skipping domain-path-rules.json disk write (${mockDataPath}): ${message}`
+    );
+    return false;
+  }
 }

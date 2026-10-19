@@ -12,11 +12,16 @@ import {
   logger,
   MOCKIFYER_LAUNCH_ARGUMENT_CLIENT_ID_KEY,
   tryGetClientIdFromLaunchArguments,
+  tryGetScenarioFromLaunchArguments,
   resolveMockifyerRuntimeMode,
   logMockifyerNotActivated,
   resolveRecordResponses,
   resolveStrictScenarioResolution,
+  resolveRuntimeEnabledStorage,
+  loadPersistedRuntimeEnabled,
+  shouldActivateMockifyerForReactNative,
   type MockifyerRuntimeMode,
+  type MockifyerRuntimeEnabledStorage,
 } from '@sgedda/mockifyer-core';
 
 // React Native package-root resolution points at this entry. Keep the root
@@ -31,12 +36,15 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 /**
  * Outcome of {@link setupMockifyerForReactNative}.
  *
- * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane).
+ * - **`not_activated`** — `fetch` was not patched this run (see **`MOCKIFYER_MODE`** / `runtimeMode`: `off`, or `launch_client` without a launch-arg lane or scenario).
  *   Not the same as “permanently off” unless mode is **`off`** (then launch args do not activate).
  * - **`active`** — Mockifyer initialized and patched `global.fetch`.
  * - **`failed_no_bundled_mocks`** — Activation criteria were met and `isDev` was false, but bundled mock data was missing or empty.
@@ -70,8 +78,28 @@ export interface ReactNativeMockifyerConfig {
   /** Enable recording mode (development only) */
   recordMode?: boolean;
   /**
+   * When true, Mockifyer starts disabled (all requests bypass).
+   * Use `instance.enableMockifyer()` to turn it on via GUI.
+   * 
+   * **Prefer `runtimeMode: 'manual'`** for clearer intent.
+   * 
+   * Default: false (starts enabled).
+   */
+  startDisabled?: boolean;
+  /**
+   * Persist enable/disable across app restarts (AsyncStorage when `true`).
+   * With `runtimeMode: 'manual'`, first launch is off; after the user enables,
+   * the next launch stays on.
+   */
+  persistRuntimeEnabled?: boolean | MockifyerRuntimeEnabledStorage;
+  /**
    * When true, reads `scenario` from `react-native-launch-arguments` (optional peer).
    * Highest priority over MOCKIFYER_SCENARIO, config.scenarios, Metro scenario sync, and scenario-config.json.
+   * When a launch `scenario` is present, Mockifyer **activates** (also under `launch_client`, no lane needed),
+   * **starts enabled** (even with `runtimeMode: 'manual'`), and sends it as the dashboard proxy scenario
+   * (unless `proxyScenario` is set). `runtimeMode: 'off'` still wins.
+   * Set to `false` to ignore launch scenario args entirely.
+   * Default: auto-detect when a non-empty launch `scenario` is present.
    */
   useLaunchArgumentsScenario?: boolean;
   /**
@@ -111,39 +139,38 @@ export interface ReactNativeMockifyerConfig {
   launchArgumentClientIdKey?: string;
   /**
    * When Mockifyer may patch `fetch` at startup. Overrides **`MOCKIFYER_MODE`** env and `config.runtimeMode`.
-   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` (aliases e.g. `e2e`, `maestro` → `launch_client`).
+   * Prefer env **`MOCKIFYER_MODE`**: `off` | `on` | `launch_client` | `manual`.
+   * 
+   * Use **`manual`** to patch but start disabled (enable via GUI toggle).
+   * Aliases: `e2e`, `maestro` → `launch_client`; `gui`, `toggle` → `manual`.
    */
   runtimeMode?: MockifyerRuntimeMode;
 }
 
 /**
  * Apply scenario from launch arguments and/or defaultScenario (highest priority in getCurrentScenario).
+ * @returns The native launch-argument `scenario` when one was applied (activates Mockifyer, forces runtime toggle on,
+ *   and is sent as the proxy scenario); otherwise `undefined`.
  */
-function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): void {
-  let applied = false;
-  if (options.useLaunchArgumentsScenario) {
-    try {
-      // Optional dependency — install `react-native-launch-arguments` in the app when using this flag
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require(/* webpackIgnore: true */ 'react-native-launch-arguments') as { LaunchArguments?: { value?: () => Record<string, unknown> } };
-      const LaunchArguments = mod.LaunchArguments;
-      const raw =
-        LaunchArguments && typeof LaunchArguments.value === 'function' ? LaunchArguments.value() : undefined;
-      const scenario = raw?.scenario;
-      if (scenario !== undefined && scenario !== null && String(scenario).trim() !== '') {
-        setScenarioLaunchOverride(String(scenario).trim());
-        applied = true;
-      }
-    } catch {
-      // Package not installed or native module unavailable
+function applyReactNativeScenarioOptions(options: ReactNativeMockifyerConfig): string | undefined {
+  // Auto-detect launch `scenario` when present (E2E). Opt out with useLaunchArgumentsScenario: false.
+  if (options.useLaunchArgumentsScenario !== false) {
+    const scenarioFromLaunch = tryGetScenarioFromLaunchArguments();
+    if (scenarioFromLaunch) {
+      setScenarioLaunchOverride(scenarioFromLaunch, { fromLaunchArguments: true });
+      return scenarioFromLaunch;
     }
   }
-  if (!applied && options.defaultScenario !== undefined && options.defaultScenario !== null) {
+
+  if (options.defaultScenario !== undefined && options.defaultScenario !== null) {
     const t = String(options.defaultScenario).trim();
     if (t !== '') {
+      // App config default — not a native launch arg; do not force runtime toggle on.
       setScenarioLaunchOverride(t);
     }
   }
+
+  return undefined;
 }
 
 // Lazy load bundled data (only used in production builds)
@@ -214,6 +241,8 @@ export async function setupMockifyerForReactNative(
     mockDataPath = 'mock-data',
     bundledDataPath = './assets/mock-data',
     recordMode = false,
+    startDisabled = false,
+    persistRuntimeEnabled,
     config: userConfig = {},
     proxyBaseUrl,
     proxyScenario,
@@ -240,9 +269,35 @@ export async function setupMockifyerForReactNative(
     configMode: runtimeModeOption ?? userConfig.runtimeMode,
   });
 
+  const persistOption = persistRuntimeEnabled ?? userConfig.persistRuntimeEnabled;
+  const runtimeEnabledStorage = resolveRuntimeEnabledStorage(persistOption);
+  let initialRuntimeEnabled: boolean | undefined = userConfig.initialRuntimeEnabled;
+  if (runtimeEnabledStorage && typeof initialRuntimeEnabled !== 'boolean') {
+    const saved = await loadPersistedRuntimeEnabled(runtimeEnabledStorage);
+    if (typeof saved === 'boolean') {
+      initialRuntimeEnabled = saved;
+    }
+  }
+
+  // Apply scenario launch override early so we know if E2E forced a scenario.
+  const launchScenario = applyReactNativeScenarioOptions(options);
+  const launchScenarioApplied = launchScenario !== undefined;
+  // Launch `scenario` travels on every dashboard proxy request (body override wins over lane / global scenario),
+  // so E2E does not need a lane mapped in the dashboard. An explicit `proxyScenario` still wins.
+  const effectiveProxyScenario = proxyScenario ?? launchScenario;
+  if (launchScenarioApplied) {
+    // Launch `scenario` arg → start enabled (wins over persisted off for this session).
+    initialRuntimeEnabled = true;
+    logger.info(
+      '[Mockifyer] Launch argument scenario present — starting with Mockifyer ENABLED'
+    );
+  }
+
   const mergedConfig: typeof userConfig = {
     ...userConfig,
     runtimeMode: resolvedRuntimeMode,
+    ...(persistOption !== undefined ? { persistRuntimeEnabled: persistOption } : {}),
+    ...(typeof initialRuntimeEnabled === 'boolean' ? { initialRuntimeEnabled } : {}),
     ...(shouldApplyLaunchClientId
       ? {
           useLaunchArgumentsClientId: true as const,
@@ -259,9 +314,12 @@ export async function setupMockifyerForReactNative(
     return 'React Native dev · hybrid (device + Metro)';
   };
 
-  const isEnabled =
-    resolvedRuntimeMode === 'on' ||
-    (resolvedRuntimeMode === 'launch_client' && Boolean(clientIdFromLaunchArgs));
+  // Patch fetch for on / manual; launch_client when a launch lane id or launch scenario is present.
+  const isEnabled = shouldActivateMockifyerForReactNative({
+    runtimeMode: resolvedRuntimeMode,
+    hasLaunchClientId: Boolean(clientIdFromLaunchArgs),
+    hasLaunchScenario: launchScenarioApplied,
+  });
   if (!isEnabled) {
     logMockifyerNotActivated(resolvedRuntimeMode, {
       launchClientIdKey,
@@ -269,8 +327,6 @@ export async function setupMockifyerForReactNative(
     });
     return { status: 'not_activated', instance: null } as const;
   }
-
-  applyReactNativeScenarioOptions(options);
 
   if (isDev === true) {
     const strictProxyEnabled = proxyBaseUrl
@@ -330,11 +386,12 @@ export async function setupMockifyerForReactNative(
           : databaseProviderConfig,
       recordMode,
       useGlobalFetch: true,
+      startDisabled,
       proxy:
         strictProxyEnabled && proxyBaseUrl
           ? {
               baseUrl: proxyBaseUrl,
-              scenario: proxyScenario,
+              scenario: effectiveProxyScenario,
               recordOnMiss: proxyShouldRecordOnMiss,
               recordResponses: proxyShouldRecordResponses,
             }
@@ -400,10 +457,11 @@ export async function setupMockifyerForReactNative(
       },
       recordMode: false, // Can't record in production builds
       useGlobalFetch: true,
+      startDisabled,
       proxy: proxyBaseUrl
         ? {
             baseUrl: proxyBaseUrl,
-            scenario: proxyScenario,
+            scenario: effectiveProxyScenario,
             recordOnMiss: proxyShouldRecordOnMiss,
             recordResponses: proxyShouldRecordResponses,
           }

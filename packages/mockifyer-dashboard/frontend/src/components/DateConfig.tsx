@@ -9,6 +9,7 @@ import {
   getScenarioConfig,
   type DateConfig,
 } from '@/lib/api'
+import { isoToDatetimeLocalValue, datetimeLocalValueToIso } from '@/lib/datetime-local'
 import { Calendar, Clock, Globe, RotateCcw } from 'lucide-react'
 
 // Comprehensive list of IANA timezones
@@ -411,7 +412,7 @@ export default function DateConfig() {
         <CardHeader>
           <CardTitle>Date Manipulation</CardTitle>
           <CardDescription>
-            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the <strong className="font-medium text-foreground">selected scenario</strong> only. With the Redis provider, the active scenario comes from Redis; otherwise from{' '}
+            Manipulate dates returned by <code className="text-xs bg-muted px-1 py-0.5 rounded">getCurrentDate()</code> for testing time-dependent functionality. Settings apply to the <strong className="font-medium text-foreground">selected scenario</strong> only. A current date set on a <strong className="font-medium text-foreground">client lane</strong> overrides this scenario date for that lane&apos;s proxied requests. With the Redis provider, the active scenario comes from Redis; otherwise from{' '}
             <code className="text-xs bg-muted px-1 py-0.5 rounded">scenario-config.json</code>.
           </CardDescription>
         </CardHeader>
@@ -493,27 +494,12 @@ export default function DateConfig() {
             </div>
             <Input
               type="datetime-local"
-              value={fixedDate ? (() => {
-                try {
-                  const date = new Date(fixedDate)
-                  // Convert to local datetime string for datetime-local input
-                  const year = date.getFullYear()
-                  const month = String(date.getMonth() + 1).padStart(2, '0')
-                  const day = String(date.getDate()).padStart(2, '0')
-                  const hours = String(date.getHours()).padStart(2, '0')
-                  const minutes = String(date.getMinutes()).padStart(2, '0')
-                  return `${year}-${month}-${day}T${hours}:${minutes}`
-                } catch {
-                  return ''
-                }
-              })() : ''}
+              value={fixedDate ? isoToDatetimeLocalValue(fixedDate) : ''}
               onChange={(e) => {
                 isEditingRef.current = true
                 const value = e.target.value
                 if (value) {
-                  // Convert local datetime to ISO string
-                  const localDate = new Date(value)
-                  setFixedDate(localDate.toISOString())
+                  setFixedDate(datetimeLocalValueToIso(value))
                   setMode('fixed')
                 } else {
                   setFixedDate('')

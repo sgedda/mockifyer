@@ -1,11 +1,33 @@
 import express, { Request, Response } from 'express';
-import { getCurrentScenario, resolveNetworkRequestTrace } from '@sgedda/mockifyer-core';
+import {
+  getCurrentScenario,
+  resolveNetworkRequestTrace,
+  explainIncidentFromEvents,
+  explainCrashContext,
+  rememberAtlasHtmlNetworkEvent,
+  scheduleAtlasDocHtmlRewrite,
+  getAtlasDocHtmlOutputPath,
+  prettyPrintJsonText,
+} from '@sgedda/mockifyer-core';
 import type { NetworkEvent } from '@sgedda/mockifyer-core';
 import { getDashboardContext } from '../utils/dashboard-context';
 import { createNetworkLogStore } from '../utils/network-log-store';
+import { hydrateResponsePreviewsForDashboard } from '../utils/network-event-response-hydration';
+import { getAtlasStore, mergeNetworkEventsWithAtlasUsage } from '../utils/atlas-store';
 
 const router = express.Router();
 
+/** Re-format stored GraphQL JSON bodies so query text is readable (real newlines). */
+function polishNetworkEventBodies(event: NetworkEvent): NetworkEvent {
+  const next = { ...event };
+  if (typeof next.requestBodyPreview === 'string' && next.requestBodyPreview) {
+    next.requestBodyPreview = prettyPrintJsonText(next.requestBodyPreview);
+  }
+  if (typeof next.responseBodyPreview === 'string' && next.responseBodyPreview) {
+    next.responseBodyPreview = prettyPrintJsonText(next.responseBodyPreview);
+  }
+  return next;
+}
 function parseLimit(raw: unknown, fallback = 200): number {
   const n = Number.parseInt(String(raw ?? ''), 10);
   if (!Number.isFinite(n) || n < 1) return fallback;
@@ -83,7 +105,8 @@ router.get('/trace', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events } = await store.list({ scenario, clientId, limit: scanLimit });
+    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
     const trace = resolveNetworkRequestTrace(events, {
       by: requestId ? 'requestId' : 'eventId',
       value: requestId || eventId,
@@ -111,6 +134,58 @@ router.get('/trace', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Crash / soft-failure context: incident row + preceding hops + heuristic suspects.
+ * Query: `incidentId` or (`sessionId` + optional `at` / `windowMs`).
+ */
+router.get('/explain', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const scenario = resolveScenario(req, mockDataPath);
+  const incidentId = typeof req.query.incidentId === 'string' ? req.query.incidentId.trim() : '';
+  const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
+  const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
+  const at = typeof req.query.at === 'string' ? req.query.at : undefined;
+  const windowMsRaw = typeof req.query.windowMs === 'string' ? Number.parseInt(req.query.windowMs, 10) : undefined;
+  const windowMs = Number.isFinite(windowMsRaw) ? windowMsRaw : undefined;
+  const scanLimit = parseLimit(req.query.limit, 5000);
+
+  if (!incidentId && !sessionId) {
+    return res.status(400).json({
+      error: 'Provide incidentId or sessionId',
+    });
+  }
+
+  const store = createNetworkLogStore(config);
+  try {
+    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
+    const context = explainIncidentFromEvents(events, {
+      incidentId: incidentId || undefined,
+      sessionId,
+      clientId,
+      at,
+      windowMs,
+    });
+    if (!context) {
+      return res.status(404).json({
+        error: 'No incident found for the given key',
+        scenario,
+        lookup: { incidentId: incidentId || undefined, sessionId, at, windowMs },
+      });
+    }
+    return res.json({
+      scenario,
+      provider: config.provider,
+      context,
+      narrative: explainCrashContext(context),
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to explain incident' });
+  } finally {
+    await store.close().catch(() => undefined);
+  }
+});
+
 router.get('/', async (req: Request, res: Response) => {
   const { mockDataPath, config } = getDashboardContext(req);
   const scenario = resolveScenario(req, mockDataPath);
@@ -124,12 +199,14 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
+    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario);
+    const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, hydrated).map(polishNetworkEventBodies);
     return res.json({
       scenario,
       provider: config.provider,
       ephemeral,
       networkLogConfig,
-      events,
+      events: withUsage,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message ?? 'Failed to list network events' });
@@ -146,9 +223,16 @@ router.post('/', async (req: Request, res: Response) => {
   if (!incoming || typeof incoming !== 'object') {
     return res.status(400).json({ error: 'Request body must include an event object' });
   }
-  if (!incoming.method || !incoming.url || !incoming.source || !incoming.transport) {
+
+  const isIncident = incoming.kind === 'incident';
+  if (!isIncident && (!incoming.method || !incoming.url || !incoming.source || !incoming.transport)) {
     return res.status(400).json({
       error: 'event requires method, url, source, and transport',
+    });
+  }
+  if (isIncident && (!incoming.transport || !incoming.errorMessage)) {
+    return res.status(400).json({
+      error: 'incident event requires transport and errorMessage',
     });
   }
 
@@ -156,9 +240,11 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const saved = await store.append(scenario, {
       transport: incoming.transport!,
-      method: incoming.method!,
-      url: incoming.url!,
-      source: incoming.source!,
+      method: incoming.method ?? 'INCIDENT',
+      url: incoming.url ?? `app://${incoming.incidentType ?? 'incident'}`,
+      source: incoming.source ?? 'error',
+      kind: incoming.kind,
+      incidentType: incoming.incidentType,
       clientId: incoming.clientId ?? null,
       deviceId: incoming.deviceId ?? null,
       sessionId: incoming.sessionId,
@@ -172,16 +258,30 @@ router.post('/', async (req: Request, res: Response) => {
       status: incoming.status,
       durationMs: incoming.durationMs,
       requestHash: incoming.requestHash,
+      matchMode: incoming.matchMode,
+      responseShape: incoming.responseShape,
+      anomalyFlags: incoming.anomalyFlags,
       requestHeaders: incoming.requestHeaders,
       responseHeaders: incoming.responseHeaders,
       requestBodyPreview: incoming.requestBodyPreview,
       responseBodyPreview: incoming.responseBodyPreview,
       errorMessage: incoming.errorMessage,
+      stackPreview: incoming.stackPreview,
+      componentStackPreview: incoming.componentStackPreview,
+      usage: incoming.usage,
       id: incoming.id,
       timestamp: incoming.timestamp,
     });
     if (!saved) {
       return res.json({ ok: true, skipped: true, reason: 'network_logging_disabled' });
+    }
+    if (saved.kind !== 'incident' && getAtlasDocHtmlOutputPath()) {
+      rememberAtlasHtmlNetworkEvent(saved);
+      try {
+        scheduleAtlasDocHtmlRewrite(getAtlasStore().getDoc(scenario));
+      } catch {
+        // HTML rewrite must not fail the ingest
+      }
     }
     return res.status(201).json({ ok: true, event: saved });
   } catch (error: any) {

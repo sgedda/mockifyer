@@ -24,4 +24,15 @@ describe('domain-tree-match', () => {
     expect(counts.live).toBe(1);
     expect(aggregateLiveApiState(counts)).toBe('mixed');
   });
+
+  it('counts always-refresh-from-live as live traffic', () => {
+    const mocks = [
+      { endpoint: 'https://api.example.com/graphql', alwaysRefreshFromLive: true },
+      { endpoint: 'https://api.example.com/account', alwaysUseRealApi: false },
+    ];
+    const counts = countLiveApiInMocks(mocks, 'api.example.com');
+    expect(counts.total).toBe(2);
+    expect(counts.live).toBe(1);
+    expect(aggregateLiveApiState(counts)).toBe('mixed');
+  });
 });

@@ -3,6 +3,8 @@ import {
   buildNetworkEvent,
   NETWORK_LOG_DEFAULT_MAX_EVENTS,
   NETWORK_LOG_DEFAULT_TTL_SEC,
+  NETWORK_LOG_STORE_MAX_EVENT_BYTES,
+  NETWORK_LOG_STORE_MAX_LIST_BYTES,
   parseNetworkLogIntEnv,
   ResilientIoRedisClient,
   type NetworkEvent,
@@ -12,6 +14,100 @@ import {
   buildDashboardRedisClientOptions,
   resolveDashboardSqlitePath,
 } from './create-dashboard-mock-store';
+import { createSharedStoreCache } from './shared-store-cache';
+
+/**
+ * Keep authorization and the request body preview so the live stream can rebuild curl.
+ * Response bodies are stored only when the scenario enables `captureBodies`; otherwise
+ * readers resolve them from the recorded mock by `requestHash`.
+ * Query secrets in the URL are still masked by {@link buildNetworkEvent}.
+ * Request headers are never truncated. Over the ring budget, body previews shrink
+ * and response headers are dropped first.
+ */
+function buildStoredNetworkEvent(
+  partial: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'> & {
+    id?: string;
+    timestamp?: string;
+    scenario: string;
+  },
+  captureBodiesConfig: boolean
+): NetworkEvent {
+  const responseBody = captureBodiesConfig
+    ? {}
+    : {
+        responseBodyPreview: undefined,
+        responseBodyRef: undefined,
+        responseBodyTruncated: undefined,
+      };
+  return buildNetworkEvent(
+    { ...partial, ...responseBody },
+    {
+      captureBodies: captureBodiesConfig || Boolean(partial.requestBodyPreview),
+      redactSensitiveHeaders: false,
+      maxEventBytes: NETWORK_LOG_STORE_MAX_EVENT_BYTES,
+    }
+  );
+}
+
+/** Newest-first trim by count and approximate JSON payload bytes. */
+function trimNewestFirst(
+  events: NetworkEvent[],
+  maxCount: number,
+  maxBytes: number
+): NetworkEvent[] {
+  const kept: NetworkEvent[] = [];
+  let used = 0;
+  for (const event of events) {
+    if (kept.length >= maxCount) break;
+    const size = Buffer.byteLength(JSON.stringify(event), 'utf8');
+    if (kept.length > 0 && used + size > maxBytes) break;
+    kept.push(event);
+    used += size;
+  }
+  return kept;
+}
+
+/** How many oldest rows one append may drop. Traffic drains a full list across requests. */
+const REDIS_LIST_TRIM_POPS_PER_APPEND = 64;
+
+/**
+ * `LRANGE` on an `LPUSH` list is newest-first. `RPUSH` those payloads in the
+ * same order so index 0 stays the newest hop.
+ *
+ * Pushing from the tail reverses the list. A limited read then returns the
+ * oldest hops, and the next `LTRIM` / `RPOP` drops the recent ones.
+ */
+export function payloadsForRedisRpushNewestFirst(keptNewestFirst: readonly string[]): readonly string[] {
+  return keptNewestFirst;
+}
+
+/**
+ * Drop oldest list entries until Redis `MEMORY USAGE` is within `maxBytes`.
+ * No-op when the command is unavailable. Existing fat rows shrink on the next appends.
+ */
+async function trimRedisListToByteBudget(
+  redis: {
+    call: (command: string, ...args: string[]) => Promise<unknown>;
+    rpop: (key: string) => Promise<string | null>;
+  },
+  listKey: string,
+  maxBytes: number,
+  maxPops: number
+): Promise<void> {
+  if (maxBytes <= 0 || maxPops <= 0) return;
+  for (let i = 0; i < maxPops; i++) {
+    let usage: unknown;
+    try {
+      usage = await redis.call('MEMORY', 'USAGE', listKey);
+    } catch {
+      return;
+    }
+    const bytes = typeof usage === 'number' ? usage : Number(usage);
+    if (!Number.isFinite(bytes) || bytes <= maxBytes) return;
+    const removed = await redis.rpop(listKey);
+    if (removed == null) return;
+  }
+}
 
 export interface NetworkLogScenarioConfig {
   enabled: boolean;
@@ -50,6 +146,13 @@ function maxEvents(): number {
 
 function ttlSec(): number {
   return parseNetworkLogIntEnv(process.env.MOCKIFYER_NETWORK_LOG_TTL_SEC, NETWORK_LOG_DEFAULT_TTL_SEC);
+}
+
+function maxListBytes(): number {
+  return parseNetworkLogIntEnv(
+    process.env.MOCKIFYER_NETWORK_LOG_MAX_LIST_BYTES,
+    NETWORK_LOG_STORE_MAX_LIST_BYTES
+  );
 }
 
 function filterSince(events: NetworkEvent[], since?: string): NetworkEvent[] {
@@ -100,18 +203,15 @@ class MemoryNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.bufferKey(scenario) },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies || Boolean(partial.responseBodyPreview)
     );
 
     const key = this.bufferKey(scenario);
     const buf = this.buffers.get(key) ?? [];
     buf.unshift(event);
-    if (buf.length > this.max) {
-      buf.length = this.max;
-    }
-    this.buffers.set(key, buf);
+    this.buffers.set(key, trimNewestFirst(buf, this.max, maxListBytes()));
     return event;
   }
 
@@ -202,21 +302,23 @@ class RedisNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: scenario.trim() || 'default' },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies
     );
 
     const listKey = this.eventsKey(scenario);
     const payload = JSON.stringify(event);
-    await this.holder.run((redis) =>
-      redis
+    const listBudget = maxListBytes();
+    await this.holder.run(async (redis) => {
+      await redis
         .multi()
         .lpush(listKey, payload)
         .ltrim(listKey, 0, this.max - 1)
         .expire(listKey, this.ttl)
-        .exec()
-    );
+        .exec();
+      await trimRedisListToByteBudget(redis, listKey, listBudget, REDIS_LIST_TRIM_POPS_PER_APPEND);
+    });
 
     return event;
   }
@@ -270,8 +372,8 @@ class RedisNetworkLogStore implements NetworkLogStore {
       const pipe = redis.pipeline();
       pipe.del(listKey);
       if (kept.length > 0) {
-        for (let i = kept.length - 1; i >= 0; i -= 1) {
-          pipe.rpush(listKey, kept[i]);
+        for (const line of payloadsForRedisRpushNewestFirst(kept)) {
+          pipe.rpush(listKey, line);
         }
         pipe.expire(listKey, this.ttl);
       }
@@ -369,9 +471,9 @@ class SqliteNetworkLogStore implements NetworkLogStore {
     const cfg = await this.getConfig(scenario);
     if (!cfg.enabled) return null;
 
-    const event = buildNetworkEvent(
+    const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.eventsKey(scenario) },
-      { captureBodies: cfg.captureBodies }
+      cfg.captureBodies
     );
 
     const now = Date.now();
@@ -388,10 +490,29 @@ class SqliteNetworkLogStore implements NetworkLogStore {
          SELECT id FROM network_log_events WHERE scenario = ? ORDER BY id DESC LIMIT ?
        )`
     );
+    const listBudget = maxListBytes();
+    const oversized = this.db.prepare(
+      `SELECT id, length(cast(payload as blob)) AS n
+       FROM network_log_events WHERE scenario = ? ORDER BY id DESC`
+    );
+    const dropOne = this.db.prepare(`DELETE FROM network_log_events WHERE id = ?`);
     const run = this.db.transaction(() => {
       purge.run(sc, minTs);
       insert.run(sc, JSON.stringify(event), now);
       trim.run(sc, sc, this.max);
+      const rows = oversized.all(sc) as Array<{ id: number; n: number }>;
+      let used = 0;
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        const size = typeof row.n === 'number' ? row.n : 0;
+        if (index > 0 && used + size > listBudget) {
+          for (let drop = index; drop < rows.length; drop++) {
+            dropOne.run(rows[drop].id);
+          }
+          break;
+        }
+        used += size;
+      }
     });
     run();
     return event;
@@ -461,6 +582,13 @@ class SqliteNetworkLogStore implements NetworkLogStore {
   }
 }
 
+const networkLogStoreCache = createSharedStoreCache<NetworkLogStore>();
+
+/**
+ * Process-wide network log store for the dashboard provider.
+ * Redis/SQLite stores are cached per connection settings: the proxy logs every hop,
+ * and opening a client per request adds a connect round trip to each proxied call.
+ */
 export function createNetworkLogStore(config: DashboardContextConfig): NetworkLogStore {
   if (config.provider === 'redis') {
     const redisUrl = config.redisUrl || process.env.MOCKIFYER_REDIS_URL || '';
@@ -468,14 +596,27 @@ export function createNetworkLogStore(config: DashboardContextConfig): NetworkLo
       throw new Error('Redis provider requires redisUrl or MOCKIFYER_REDIS_URL');
     }
     const redisOptions = buildDashboardRedisClientOptions(config);
-    return new RedisNetworkLogStore(redisUrl, config.keyPrefix, redisOptions);
+    const cluster = redisOptions?.cluster;
+    const key = `redis:${redisUrl}:${cluster ?? 'auto'}:${config.keyPrefix || ''}`;
+    return networkLogStoreCache.getOrCreate(
+      key,
+      () => new RedisNetworkLogStore(redisUrl, config.keyPrefix, redisOptions)
+    );
   }
   if (config.provider === 'sqlite') {
     const dataPath = config.mockDataPath || process.env.MOCKIFYER_PATH || './mock-data';
     const dbPath = resolveDashboardSqlitePath(dataPath, config);
-    return new SqliteNetworkLogStore(dbPath, config.keyPrefix);
+    return networkLogStoreCache.getOrCreate(
+      `sqlite:${dbPath}:${config.keyPrefix || ''}`,
+      () => new SqliteNetworkLogStore(dbPath, config.keyPrefix)
+    );
   }
   return memorySingleton;
+}
+
+/** Close cached Redis/SQLite network log stores (tests / process shutdown). */
+export async function closeCachedNetworkLogStores(): Promise<void> {
+  await networkLogStoreCache.closeAll();
 }
 
 export function newRequestId(): string {

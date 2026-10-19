@@ -2,7 +2,7 @@
  * When Mockifyer applies mock lookup / recording to an outbound HTTP request.
  *
  * - **`always`** — Every request (default; historical behavior).
- * - **`client_id_header`** — Only when the outbound request includes a non-empty `X-Mockifyer-Client-Id` header (propagate from another service or set manually, e.g. Postman).
+ * - **`client_id_header`** — When the outbound request includes a non-empty `X-Mockifyer-Client-Id`, or the current inbound request already carried that header (so a service's own downstream calls can be logged/mocked). This does not start an inline trace by itself.
  * - **`off`** — Never; passthrough with no mock lookup and no recording.
  */
 export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
@@ -11,12 +11,22 @@ export type MockifyerActivationMode = 'always' | 'client_id_header' | 'off';
  * Whether `setupMockifyerForReactNative` patches `fetch` at startup (activation gate, not per-request {@link MockifyerActivationMode}).
  *
  * - **`off`** — never activate; launch arguments do **not** override (use for production builds that ship Mockifyer code but must not run it).
- * - **`on`** — always activate when the helper is called.
- * - **`launch_client`** — activate only when the Maestro/native launch client lane id is non-empty (default key `mockifyerClientId`).
+ * - **`on`** — always activate when the helper is called (starts enabled).
+ * - **`launch_client`** — activate only when the Maestro/native launch client lane id (default key `mockifyerClientId`) or launch `scenario` is non-empty.
+ * - **`manual`** — activate but start disabled; user must call `enableMockifyer()` to turn it on (perfect for GUI toggle). A launch `scenario` still starts the runtime toggle enabled.
  *
  * Resolution: optional config **`runtimeMode`**, then env **`MOCKIFYER_MODE`**, else **`on`**. Set **`launch_client`** explicitly for E2E-only activation (`resolveMockifyerRuntimeMode` in `@sgedda/mockifyer-core`).
  */
-export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client';
+export type MockifyerRuntimeMode = 'off' | 'on' | 'launch_client' | 'manual';
+
+/**
+ * Hybrid/filesystem domain-path traffic policy (see `domain-path-rules.json`).
+ *
+ * - **`allowlist`** (default) — record/replay only when a matching rule enables flags; discovery writes keys off.
+ * - **`record_all`** — record/replay by default; discovery writes keys on; flip paths off to exclude.
+ * - **`off`** — no discover/gate (legacy ungated `recordMode`).
+ */
+export type DomainPathRulesMode = 'allowlist' | 'record_all' | 'off';
 
 /**
  * Exclude **recording** only (mock replay unchanged) when an outbound URL matches the host hierarchy and optional pathname prefix.
@@ -75,7 +85,7 @@ export interface MockifyerConfig {
    * | Mode | Behavior |
    * |------|----------|
    * | `always` (default) | All requests use Mockifyer (still subject to `excludedUrls` and internal bypasses). |
-   * | `client_id_header` | Only if the request has a **non-empty** `X-Mockifyer-Client-Id` header, **or** (fetch + dashboard proxy only) a configured `proxy.baseUrl` and resolved `clientId` so the lane is sent on the proxy envelope. |
+   * | `client_id_header` | If the outbound request has a **non-empty** `X-Mockifyer-Client-Id`, **or** the active inbound request already carried that header (downstream hops inherit activation). The service's own `clientId` / `proxy.baseUrl` never activates it; requests without the header go out untouched (no `X-Mockifyer-*` headers). Activation alone does not turn on inline trace. |
    * | `off` | Mockifyer does not intercept; plain HTTP. |
    *
    * Env **`MOCKIFYER_ACTIVATION_MODE`** overrides this when set to `always`, `client_id_header`, or `off`.
@@ -87,8 +97,38 @@ export interface MockifyerConfig {
   /**
    * React Native / `setupMockifyerForReactNative`: when Mockifyer may patch `fetch` at startup.
    * Prefer **`MOCKIFYER_MODE`** env; this field overrides env when set.
+   * Use **`runtimeMode: 'manual'`** to patch but start disabled (enable via GUI).
    */
   runtimeMode?: MockifyerRuntimeMode;
+  /**
+   * When true, Mockifyer starts disabled at runtime (all requests bypass).
+   * Use `enableMockifyer()` to turn it on. When false (default), Mockifyer starts enabled.
+   * 
+   * **Prefer `runtimeMode: 'manual'`** for the same behavior with clearer intent.
+   * This option remains for backwards compatibility.
+   */
+  startDisabled?: boolean;
+  /**
+   * Persist {@link enableMockifyer} / {@link disableMockifyer} across app restarts.
+   *
+   * - **`true`** — use AsyncStorage (React Native) or `localStorage` (web) when available
+   * - **custom storage** — any `{ getItem, setItem }` (e.g. your own AsyncStorage wrapper)
+   *
+   * With **`runtimeMode: 'manual'`**, first launch starts disabled; after the user enables once,
+   * the next launch restores **enabled**. Pair with {@link initialRuntimeEnabled} when you load
+   * storage yourself before `setupMockifyer` (sync APIs).
+   */
+  persistRuntimeEnabled?:
+    | boolean
+    | {
+        getItem(key: string): Promise<string | null> | string | null;
+        setItem(key: string, value: string): Promise<void> | void;
+      };
+  /**
+   * Explicit initial runtime enable state (overrides `startDisabled` / `runtimeMode: 'manual'`).
+   * Set after loading persisted preference in async setup (see `setupMockifyerForReactNative`).
+   */
+  initialRuntimeEnabled?: boolean;
   /** Optional title for the startup configuration log block (see `logMockifyerInitSummary`). */
   initLog?: { headline?: string };
   recordSameEndpoints?: boolean; // When false, don't record the same endpoint again
@@ -174,6 +214,11 @@ export interface MockifyerConfig {
    */
   recordingExclusions?: RecordingExclusion[];
   /**
+   * Domain-path rules mode for Hybrid/filesystem record + replay gating.
+   * Env **`MOCKIFYER_DOMAIN_PATH_RULES_MODE`** overrides when set. Default **`allowlist`**.
+   */
+  domainPathRulesMode?: DomainPathRulesMode;
+  /**
    * Optional HTTP proxy mode for environments that can't access the database provider directly (e.g. React Native + Redis).
    * When set, network requests can be routed through a proxy service (e.g. mockifyer-dashboard) which serves mocks and/or forwards upstream.
    */
@@ -223,6 +268,76 @@ export interface MockifyerConfig {
     dashboardBaseUrl?: string;
     /** When true, include truncated request/response body previews in events. */
     captureBodies?: boolean;
+    /**
+     * When true (default) and {@link captureBodies} is on, oversized bodies are written
+     * async to `atlas-html/bodies/` (Node or Metro) so Atlas can offer “Download full”.
+     */
+    spillBodies?: boolean;
+    /**
+     * When true, stamp `X-Mockifyer-Include-Trace: 1` on outbound hops so downstream
+     * Mockifyer services return nested `mockifyerTrace` hops. Child hops are
+     * re-emitted into the network log / Metro Atlas stream with `parentRequestId`.
+     *
+     * Also turns on automatically while an Atlas `t` capture session is active
+     * (response bodies stay opt-in — see {@link includeTraceBodies}). Set `false` to keep it off
+     * even during capture. HAL/auth unwrap peels legacy envelopes so login stays safe.
+     * Nested hops include outbound headers and the request body so the live stream can re-call them.
+     */
+    includeTraceHeader?: boolean;
+    /**
+     * When true with include-trace (config or Atlas `t`), also request response body previews on
+     * nested hops (`X-Mockifyer-Include-Trace-Bodies: 1`). Off by default — heavier payloads.
+     * Request bodies are included whenever include-trace is on (needed to replay the hop).
+     */
+    includeTraceBodies?: boolean;
+    /** In-process ring buffer for crash forensics (works without dashboard URL). */
+    flightRecorder?: {
+      enabled?: boolean;
+      maxEvents?: number;
+      maxIncidents?: number;
+    };
+    /** App crash / ErrorBoundary incidents posted to dashboard network log. */
+    incidents?: {
+      enabled?: boolean;
+      postToDashboard?: boolean;
+    };
+  };
+  /**
+   * CMS / surface atlas + usage annotations on the network trace spine.
+   * Env **`MOCKIFYER_ATLAS`**: `off` \| `live` \| `session` (wins over this field).
+   *
+   * Prefer trace-first: {@link setAtlasUsageContext} / {@link useMockifyerScreenSession}
+   * auto-tags outbound hops; {@link recordUsage} / CMS {@link capturePresentation} attach
+   * after-the-fact by `requestId`. See Network dashboard "used by".
+   */
+  atlas?: {
+    /** When false, all atlas capture is a no-op. */
+    enabled?: boolean;
+    /** `off` (default) \| `live` (stream to dashboard) \| `session` (bounded run). */
+    mode?: 'off' | 'live' | 'session';
+    /** Dashboard origin for `POST /api/atlas/events`. Falls back to networkLog / proxy / `MOCKIFYER_DASHBOARD_URL`. */
+    dashboardBaseUrl?: string;
+    /** How much of component props to store: `sample` (default) \| `schema` \| `full` \| `off`. */
+    captureValues?: 'off' | 'sample' | 'schema' | 'full';
+    /** Max UTF-8 bytes for serialized props snapshots (default 8192). */
+    maxShownBytes?: number;
+    /**
+     * Directory for self-contained Atlas auto-doc HTML written on capture (Node).
+     * Env **`MOCKIFYER_ATLAS_HTML_PATH`** wins when set.
+     * When atlas is enabled and this is unset, Node defaults to `{mockDataPath}/atlas-html`.
+     * Open `{path}/index.html` in VS Code / a browser.
+     */
+    htmlOutputPath?: string;
+    /** Opt-in screen screenshots — requires {@link registerAtlasScreenshotCapturer}. Default false. */
+    captureScreenshots?: boolean;
+    /** Delay after paint before screenshot (default 600). Avoids skeleton frames. */
+    screenshotSettleMs?: number;
+    /**
+     * When to write PNGs under `atlas-html/screenshots/`.
+     * - `on-flush` (default): buffer in memory; write on Dev Menu render / crash export
+     * - `immediate`: write as soon as captured
+     */
+    screenshotPersist?: 'immediate' | 'on-flush';
   };
   /**
    * Optional storage backend for mocks. Defaults to filesystem under `mockDataPath`.
@@ -304,9 +419,25 @@ export interface MockResponseDateOverride {
   offsetDays?: number;
   offsetHours?: number;
   offsetMinutes?: number;
-  /** How to encode the value. If omitted, inferred from the existing value (ISO string vs unix s/ms). */
+  /**
+   * How to encode the value. If omitted, inferred from the existing value (ISO-like string vs unix s/ms).
+   *
+   * - `unix-ms` / `unix-s` always write a number (explicit encoding wins over a string original).
+   * - `iso` writes a string. When the original field is an ISO-like string, the original shape is
+   *   preserved (date-only, naive, offset, or `Z`) instead of rewriting via `Date#toISOString()`.
+   * - When the path is a GraphQL/JSON object, date-like children are rewritten in place so
+   *   `__typename` and sibling fields stay intact.
+   */
   format?: 'iso' | 'unix-ms' | 'unix-s';
 }
+
+/**
+ * How a field override combines with the existing value at `path`.
+ * - **`replace`** (default) — set `value` at the path.
+ * - **`extend`** — if existing is an array, append item(s); if an object, shallow-merge keys; otherwise replace.
+ * - **`remove`** — delete the path (array index splice or object key delete). `value` is ignored.
+ */
+export type MockResponseFieldOverrideMode = 'replace' | 'extend' | 'remove';
 
 /**
  * When serving a mock, replace values at dot-paths under `response.data` without mutating the stored body.
@@ -315,7 +446,13 @@ export interface MockResponseDateOverride {
 export interface MockResponseFieldOverride {
   /** Dot-separated path from `response.data` root (e.g. `bookings.0.status`). */
   path: string;
-  value: unknown;
+  /** Value to set or extend with. Ignored when {@link mode} is `remove`. */
+  value?: unknown;
+  /**
+   * Default `replace`. Use `extend` to append to arrays or merge into objects.
+   * Use `remove` to delete an array index or object key at `path`.
+   */
+  mode?: MockResponseFieldOverrideMode;
 }
 
 export interface CopyArrayItemParams {
@@ -338,8 +475,14 @@ export interface MockData {
   sessionId?: string; // Unique identifier for grouping related requests
   /** Unique id for this outbound hop (see request correlation headers). */
   requestId?: string;
-  /** Id of the outbound request that triggered this hop. */
+  /** Id of the outbound request that triggered this hop (most recent caller). */
   parentRequestId?: string;
+  /**
+   * Every caller seen for this recording, oldest first (includes {@link parentRequestId}).
+   * A shared downstream hop (e.g. one REST call made by several GraphQL operations) is
+   * stored once per request key, so it needs more than one parent to nest under each caller.
+   */
+  parentRequestIds?: string[];
   /** Optional: when serving this mock, replace dates at the given paths relative to manipulated current date. */
   responseDateOverrides?: MockResponseDateOverride[];
   /** Optional: when serving this mock, replace field values at the given paths (overlay on stored body). */
@@ -365,16 +508,42 @@ export interface MockData {
    * Implies live API until a response is stored and {@link alwaysUseRealApi} is cleared.
    */
   responsePending?: boolean;
+  /**
+   * Request-only placeholder so hops UI can show a `parentRequestId` that was never
+   * recorded (ALS gap / concurrent race). Storage URL is always synthetic
+   * (`mockifyer://inbound-parent/…`); see {@link inboundParentDisplay}.
+   */
+  inboundParentStub?: boolean;
+  /** Real inbound method/url for hops display when {@link inboundParentStub} is set. */
+  inboundParentDisplay?: { method: string; url: string };
 }
 
 // Environment variable names
 export const ENV_VARS = {
-  /** `off` \| `on` \| `launch_client` — RN startup gate; unset defaults to **`on`** via {@link MockifyerRuntimeMode}. */
+  /** `off` \| `on` \| `launch_client` \| `manual` — RN startup gate; unset defaults to **`on`** via {@link MockifyerRuntimeMode}. */
   MOCK_RUNTIME_MODE: 'MOCKIFYER_MODE',
   MOCK_RECORD: 'MOCKIFYER_RECORD',
   MOCK_PATH: 'MOCKIFYER_PATH',
   MOCK_SCENARIO: 'MOCKIFYER_SCENARIO',
+  /**
+   * Positive integer — max mock files / Redis mock hashes per scenario.
+   * Applies to filesystem {@link checkRequestLimit} and Redis mock writes.
+   * Unset = no scenario cap.
+   */
+  MOCK_MAX_REQUESTS_PER_SCENARIO: 'MOCKIFYER_MAX_REQUESTS_PER_SCENARIO',
+  /**
+   * Positive integer — max distinct Redis mock hashes per METHOD+host+pathname
+   * (default **200**). Set `0` / `off` / `false` / `no` to disable. Guards high-cardinality POSTs.
+   */
+  MOCK_MAX_MOCKS_PER_PATH: 'MOCKIFYER_MAX_MOCKS_PER_PATH',
+  /**
+   * Positive seconds — Redis TTL for mocks under the ephemeral `_scratch` scenario
+   * (unset / unscoped traffic). Default **86400** (24h). Named scenarios (including `default`) stay durable.
+   */
+  MOCK_SCRATCH_SCENARIO_TTL_SEC: 'MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC',
   MOCK_CLIENT_ID: 'MOCKIFYER_CLIENT_ID',
+  /** Active override group id for this process (wins over scenario default; below explicit header/body). */
+  MOCK_OVERRIDE_GROUP: 'MOCKIFYER_OVERRIDE_GROUP',
   MOCK_DATE: 'MOCKIFYER_DATE',
   MOCK_DATE_OFFSET: 'MOCKIFYER_DATE_OFFSET',
   MOCK_TIMEZONE: 'MOCKIFYER_TIMEZONE',
@@ -405,6 +574,22 @@ export const ENV_VARS = {
   MOCK_REFRESH_PASSTHROUGH_RECORDINGS: 'MOCKIFYER_REFRESH_PASSTHROUGH_RECORDINGS',
   /** Dashboard origin for optional SDK network log POSTs (`/api/network-events`). */
   MOCK_DASHBOARD_URL: 'MOCKIFYER_DASHBOARD_URL',
+  /**
+   * Metro hop stream for `mockifyer-atlas`: `on` \| `off` (auto when unset —
+   * enabled if `METRO_PORT` is set or React Native is detected).
+   */
+  MOCK_METRO_STREAM: 'MOCKIFYER_METRO_STREAM',
+  /** Optional Metro origin override for hop stream (default `http://localhost:$METRO_PORT`). */
+  MOCK_METRO_URL: 'MOCKIFYER_METRO_URL',
+  /** `off` \| `live` \| `session` — CMS/surface atlas capture (see {@link MockifyerConfig.atlas}). */
+  MOCK_ATLAS: 'MOCKIFYER_ATLAS',
+  /**
+   * Directory for Atlas auto-doc HTML written on capture (Node).
+   * See {@link MockifyerConfig.atlas.htmlOutputPath}; default `{mockDataPath}/atlas-html` when atlas is on.
+   */
+  MOCK_ATLAS_HTML_PATH: 'MOCKIFYER_ATLAS_HTML_PATH',
+  /** When `false`, disables atlas screenshot capture even if config enables it. */
+  MOCK_ATLAS_SCREENSHOTS: 'MOCKIFYER_ATLAS_SCREENSHOTS',
   /** JSON array of `{ host, pathPrefix? }` — adds {@link RecordingExclusion} entries for dashboard proxy + merged into client exclusions when unset in config (see core `parseRecordingExclusionsEnv`). */
   MOCK_RECORDING_EXCLUSIONS: 'MOCKIFYER_RECORDING_EXCLUSIONS',
   /** Comma-separated hostnames-only exclusion list (apex + subdomain tree each). */
@@ -423,4 +608,24 @@ export const ENV_VARS = {
   MOCK_USE_ENDPOINT_SLOTS: 'MOCKIFYER_USE_ENDPOINT_SLOTS',
   /** When not `false`, reject/skip slot serve on entityType mismatch. */
   MOCK_SLOT_ENTITY_TYPE_STRICT: 'MOCKIFYER_SLOT_ENTITY_TYPE_STRICT',
+  /**
+   * When `false`, skip serve-time `$pool` resolution (debug: leave raw `$pool` nodes in the body).
+   * Default on — resolve refs before field/date overrides.
+   */
+  MOCK_POOL_REFS: 'MOCKIFYER_POOL_REFS',
+  /**
+   * When `false` / `0` / `off` / `no`, skip installing Node inbound hop capture
+   * ({@link installNodeInboundRequestCorrelationCapture}). Default on when `setupMockifyer` runs.
+   */
+  MOCK_AUTO_INBOUND_CORRELATION: 'MOCKIFYER_AUTO_INBOUND_CORRELATION',
+  /**
+   * When `false` / `0` / `off` / `no`, do not assign/echo `X-Mockifyer-Request-Id` on HTTP responses
+   * from the Node inbound patch. Default on (echo enabled). Read per request.
+   */
+  MOCK_ECHO_TRACE_ID: 'MOCKIFYER_ECHO_TRACE_ID',
+  /**
+   * `allowlist` \| `record_all` \| `off` — Hybrid/filesystem domain-path gate.
+   * Unset defaults to **`allowlist`**. See {@link MockifyerConfig.domainPathRulesMode}.
+   */
+  MOCK_DOMAIN_PATH_RULES_MODE: 'MOCKIFYER_DOMAIN_PATH_RULES_MODE',
 } as const;

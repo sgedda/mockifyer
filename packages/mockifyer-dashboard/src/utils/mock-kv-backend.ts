@@ -10,14 +10,27 @@ export interface MockKvMulti {
 
 export interface MockKvBackend {
   get(key: string): Promise<string | null>;
+  /**
+   * Redis GETRANGE. Optional: SQLite backends may omit this; callers fall back to {@link get}/{@link mget}.
+   * Negative indexes count from the end (Redis semantics).
+   */
+  getrange?(key: string, start: number, end: number): Promise<string | null>;
   set(key: string, value: string, expiryMode?: 'EX', ttlSec?: number): Promise<void>;
   del(...keys: string[]): Promise<void>;
-  mget(...keys: string[]): Promise<Array<string | null>>;
+  /** Pass keys as an array — do not spread a large list (`mget(...keys)` overflows the call stack). */
+  mget(keys: string[]): Promise<Array<string | null>>;
   sadd(key: string, ...members: string[]): Promise<void>;
   smembers(key: string): Promise<string[]>;
   srem(key: string, ...members: string[]): Promise<void>;
+  /** Number of members in a set (Redis SCARD). */
+  scard(key: string): Promise<number>;
+  /** True when member is in the set (Redis SISMEMBER). */
+  sismember(key: string, member: string): Promise<boolean>;
   hget(key: string, field: string): Promise<string | null>;
   hset(key: string, field: string, value: string): Promise<void>;
+  /** Batch HSET so catalog backfill is not one round-trip per mock. */
+  hsetMany(key: string, fields: Record<string, string>): Promise<void>;
+  hgetall(key: string): Promise<Record<string, string>>;
   hdel(key: string, ...fields: string[]): Promise<void>;
   zadd(key: string, score: number, member: string): Promise<void>;
   zrem(key: string, ...members: string[]): Promise<void>;

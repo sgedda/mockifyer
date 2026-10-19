@@ -1,12 +1,120 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
-import { deleteClientLane, getClientLanes, setClientLaneNote, setClientLaneScenario, type ClientLane } from '@/lib/api'
-import { Trash2 } from 'lucide-react'
+import {
+  deleteClientLane,
+  getClientLanes,
+  listOverrideGroups,
+  putOverrideGroup,
+  setClientLaneFixedDate,
+  setClientLaneNote,
+  setClientLaneOverrideGroup,
+  setClientLaneScenario,
+  type ClientLane,
+  type OverrideGroupSummary,
+} from '@/lib/api'
+import { datetimeLocalValueToIso, isoToDatetimeLocalValue } from '@/lib/datetime-local'
+import { CLIENT_LANES_SECTION_ID } from '@/lib/dashboard-urls'
+import { Calendar, Trash2 } from 'lucide-react'
+
+function LaneCurrentDateField({
+  clientId,
+  fixedDate,
+  onSaved,
+}: {
+  clientId: string
+  fixedDate: string | null | undefined
+  onSaved: () => Promise<void>
+}) {
+  const { toast } = useToast()
+  const [value, setValue] = useState(fixedDate ? isoToDatetimeLocalValue(fixedDate) : '')
+
+  useEffect(() => {
+    setValue(fixedDate ? isoToDatetimeLocalValue(fixedDate) : '')
+  }, [fixedDate])
+
+  async function persist(nextIso: string | null) {
+    try {
+      await setClientLaneFixedDate(clientId, nextIso)
+      await onSaved()
+      toast({
+        title: 'Saved',
+        description: nextIso
+          ? `Lane "${clientId}" current date overrides scenario Date Config.`
+          : `Cleared lane date for "${clientId}" — scenario Date Config applies.`,
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to update lane date'
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Calendar className="h-3.5 w-3.5" />
+        <span>Current date (optional)</span>
+        {fixedDate ? (
+          <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0 text-[10px] font-medium text-primary">
+            Overrides scenario
+          </span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="datetime-local"
+          className="h-9 max-w-[16rem]"
+          value={value}
+          onChange={(e) => {
+            const next = e.target.value
+            setValue(next)
+            const previousLocal = fixedDate ? isoToDatetimeLocalValue(fixedDate) : ''
+            if (next === previousLocal) return
+            if (!next) {
+              void persist(null)
+              return
+            }
+            if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(next)) return
+            try {
+              void persist(datetimeLocalValueToIso(next))
+            } catch {
+              setValue(previousLocal)
+            }
+          }}
+          aria-label={`Current date for ${clientId}`}
+        />
+        {value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setValue('')
+              void persist(null)
+            }}
+          >
+            Clear
+          </Button>
+        ) : null}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        {fixedDate
+          ? 'This lane uses this date instead of the scenario date from Date Config. Ignored while the lane resolves to no scenario (temporary / unscoped).'
+          : 'Leave empty to use the scenario date from Date Config.'}
+      </p>
+    </div>
+  )
+}
 
 export default function ClientLanes({ availableScenarios }: { availableScenarios: string[] }) {
+  const location = useLocation()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [enabled, setEnabled] = useState(true)
@@ -16,6 +124,10 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [globalScenario, setGlobalScenario] = useState<string>('default')
   const [newLaneId, setNewLaneId] = useState('')
   const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({})
+  const [overrideGroupsByScenario, setOverrideGroupsByScenario] = useState<
+    Record<string, OverrideGroupSummary[]>
+  >({})
+  const [newOverrideGroupId, setNewOverrideGroupId] = useState('')
 
   const addLaneSuggestions = useMemo(() => {
     const existing = new Set(lanes.map((l) => l.clientId))
@@ -41,6 +153,24 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       setLanes(data.lanes || [])
       setDiscoveredLanes((data as any).discoveredLanes || [])
       setGlobalScenario(data.globalScenario || 'default')
+      const scenarios = Array.from(
+        new Set([
+          ...(data.lanes || []).map((l: ClientLane) => l.scenario),
+          data.globalScenario || 'default',
+        ])
+      ).filter(Boolean)
+      const groupMap: Record<string, OverrideGroupSummary[]> = {}
+      await Promise.all(
+        scenarios.map(async (scenario) => {
+          try {
+            const res = await listOverrideGroups(scenario)
+            groupMap[scenario] = res.groups
+          } catch {
+            groupMap[scenario] = []
+          }
+        })
+      )
+      setOverrideGroupsByScenario(groupMap)
     } catch (e: any) {
       toast({
         title: 'Error',
@@ -77,6 +207,45 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       toast({
         title: 'Error',
         description: e?.message ?? 'Failed to create lane',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  async function handleOverrideGroupChange(clientId: string, value: string) {
+    try {
+      await setClientLaneOverrideGroup(clientId, value.trim() ? value.trim() : null)
+      await load()
+      toast({
+        title: 'Saved',
+        description: value.trim()
+          ? `Lane "${clientId}" → group ${value.trim()}`
+          : `Cleared override group for lane "${clientId}"`,
+      })
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message ?? 'Failed to update lane override group',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  async function handleCreateOverrideGroup(scenario: string) {
+    const id = newOverrideGroupId.trim()
+    if (!id) return
+    try {
+      await putOverrideGroup(
+        { id, label: id, updatedAt: new Date().toISOString(), entries: [] },
+        scenario
+      )
+      setNewOverrideGroupId('')
+      await load()
+      toast({ title: 'Created', description: `Override group "${id}" created for ${scenario}.` })
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: e?.message ?? 'Failed to create override group',
         variant: 'destructive',
       })
     }
@@ -130,15 +299,34 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
     }
   }
 
+  useEffect(() => {
+    if (location.hash !== `#${CLIENT_LANES_SECTION_ID}`) return
+    let cancelled = false
+    const scroll = () => {
+      if (cancelled) return
+      document.getElementById(CLIENT_LANES_SECTION_ID)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }
+    const frame = window.requestAnimationFrame(scroll)
+    const retry = window.setTimeout(scroll, 200)
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(retry)
+    }
+  }, [location.hash, location.pathname, loading])
+
   return (
-    <Card>
+    <Card id={CLIENT_LANES_SECTION_ID} className="scroll-mt-4">
       <CardHeader>
         <CardTitle>Client lanes</CardTitle>
         <CardDescription>
           Use this to <strong>separate mocks by build</strong>. Each app build sends a{' '}
           <span className="font-mono">clientId</span> (lane id) to the dashboard (for example: market + version). If you
-          set an override here, that lane will read/write mocks under the selected scenario <em>without affecting other
-          builds</em>. The lane id must match what the app uses when initializing Mockifyer (
+          set a scenario and override group here, that lane will read mocks under the selected scenario with the chosen override group <em>without affecting other
+          builds</em>. Optionally set a current date per lane — it overrides the scenario date from Date Config for that lane only, and only while the lane resolves to a scenario (unscoped traffic always uses real time). The lane id must match what the app uses when initializing Mockifyer (
           typically <span className="font-mono">MOCKIFYER_CLIENT_ID</span> or{' '}
           <span className="font-mono">MockifyerConfig.clientId</span>
           ).
@@ -180,10 +368,26 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                       className="flex h-9 min-w-[12rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       value={availableScenarios.includes(lane.scenario) ? lane.scenario : globalScenario}
                       onChange={(e) => handleScenarioChange(lane.clientId, e.target.value)}
+                      title="Scenario"
+                      aria-label={`Scenario for ${lane.clientId}`}
                     >
                       {scenarioOptions.map((s) => (
                         <option key={s} value={s}>
                           {s}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="flex h-9 min-w-[10rem] rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={lane.overrideGroupId || ''}
+                      onChange={(e) => handleOverrideGroupChange(lane.clientId, e.target.value)}
+                      title="Override group"
+                      aria-label={`Override group for ${lane.clientId}`}
+                    >
+                      <option value="">(none)</option>
+                      {(overrideGroupsByScenario[lane.scenario] || []).map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.label || g.id}
                         </option>
                       ))}
                     </select>
@@ -224,6 +428,11 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
                     onBlur={(e) => handleNoteChange(lane.clientId, e.target.value)}
                   />
                 </div>
+                <LaneCurrentDateField
+                  clientId={lane.clientId}
+                  fixedDate={lane.fixedDate}
+                  onSaved={load}
+                />
 
                 {lane.devices?.recent && lane.devices.recent.length > 0 ? (
                   <div className="space-y-1">
@@ -300,6 +509,28 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
           <Button type="button" variant="ghost" onClick={load}>
             Refresh
           </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+          <Input
+            placeholder="New override group id (e.g. check-in-open)…"
+            value={newOverrideGroupId}
+            onChange={(e) => setNewOverrideGroupId(e.target.value)}
+            className="min-w-[16rem] flex-1 font-mono"
+            disabled={!enabled}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handleCreateOverrideGroup(globalScenario)}
+            disabled={!enabled || !newOverrideGroupId.trim()}
+          >
+            Create override group
+          </Button>
+          <div className="text-xs text-muted-foreground w-full">
+            Creates the group under the global scenario (<span className="font-mono">{globalScenario}</span>).
+            Assign it per lane with the override-group dropdown, next to scenario — same per-clientId scope.
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -1,6 +1,40 @@
+import { ENV_VARS } from '../types';
 import { randomEventId } from './crypto-digest';
-import { getOutboundHeaderValue } from './outbound-header';
+import { getOutboundHeaderValue, outboundHeadersToRecord } from './outbound-header';
 import { MOCKIFYER_CLIENT_ID_HEADER, getOutboundMockifyerClientIdHeader } from './activation-mode';
+import {
+  MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  MOCKIFYER_INCLUDE_TRACE_HEADER,
+  installInlineTraceBodyWrapper,
+  isIncludeInlineTraceBodiesRequested,
+  isIncludeInlineTraceRequested,
+} from './inline-trace';
+import {
+  getActiveInboundClientId,
+  getActiveMockifyerHopContext,
+  getActiveRequestCorrelation,
+  runWithMockifyerHopContext,
+  type MockifyerHopContext,
+  type RequestCorrelationContext,
+} from './hop-context';
+import { registerHopOwner } from './hop-identity';
+import {
+  MOCKIFYER_METRO_STREAM_BASE_HEADER,
+  resolveMetroNetworkStreamBaseUrl,
+  sanitizeAtlasMetroStreamBaseUrl,
+} from './metro-network-stream';
+export type {
+  InlineTraceHopBufferItem,
+  MockifyerHopContext,
+  RequestCorrelationContext,
+} from './hop-context';
+export {
+  getActiveInboundClientId,
+  getActiveMockifyerHopContext,
+  getActiveRequestCorrelation,
+  runWithMockifyerHopContext,
+  runWithRequestCorrelation,
+} from './hop-context';
 
 /** Outbound hop id — propagated to downstream services and the dashboard. */
 export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
@@ -8,20 +42,133 @@ export const MOCKIFYER_REQUEST_ID_HEADER = 'x-mockifyer-request-id';
 /** Caller hop id — links this outbound request to the request that triggered it. */
 export const MOCKIFYER_PARENT_REQUEST_ID_HEADER = 'x-mockifyer-parent-request-id';
 
-export interface RequestCorrelationContext {
-  requestId: string;
-  parentRequestId?: string;
+/**
+ * Property stamped on thrown/rejected errors so debuggers can look up
+ * `/api/network-events/trace?requestId=…` without digging through response headers.
+ */
+export const MOCKIFYER_REQUEST_ID_ERROR_PROP = 'mockifyerRequestId' as const;
+
+/** Express/Connect request field used to survive ALS gaps in error middleware. */
+export const MOCKIFYER_REQUEST_ID_REQ_PROP = 'mockifyerRequestId' as const;
+
+export function getMockifyerRequestIdFromError(error: unknown): string | undefined {
+  if (!error || (typeof error !== 'object' && typeof error !== 'function')) {
+    return undefined;
+  }
+  const value = (error as Record<string, unknown>)[MOCKIFYER_REQUEST_ID_ERROR_PROP];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 /**
- * Inbound HTTP context for service chains (Express middleware / Node http.Server).
- * Outbound `fetch`/`axios` patched by Mockifyer reads this from AsyncLocalStorage — no manual headers in app code.
+ * Prefer the active inbound trace id (dashboard entry key), then a response header echo,
+ * then the outbound hop id stashed on the HTTP client config.
  */
-export interface MockifyerHopContext {
-  /** `X-Mockifyer-Client-Id` on the inbound request (lane for downstream proxy hops). */
-  inboundClientId?: string;
-  /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
-  correlation?: RequestCorrelationContext;
+export function resolveMockifyerRequestIdForError(options: {
+  hopRequestId?: string;
+  responseHeaders?: unknown;
+  requestId?: string;
+} = {}): string | undefined {
+  const explicit = options.requestId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  const active = getActiveRequestCorrelation()?.requestId?.trim();
+  if (active) {
+    return active;
+  }
+  const fromHeaders = getOutboundMockifyerRequestIdHeader(options.responseHeaders)?.trim();
+  if (fromHeaders) {
+    return fromHeaders;
+  }
+  const hop = options.hopRequestId?.trim();
+  return hop || undefined;
+}
+
+export interface AttachMockifyerRequestIdToErrorOptions {
+  /**
+   * When true (default), append `[mockifyerRequestId=…]` to `Error.message` so the id
+   * is visible in logs and test failure output without inspecting properties.
+   */
+  appendToMessage?: boolean;
+}
+
+/**
+ * Stamps {@link MOCKIFYER_REQUEST_ID_ERROR_PROP} onto an error so thrown failures
+ * carry the id to use with the dashboard network trace API.
+ */
+export function attachMockifyerRequestIdToError<T>(
+  error: T,
+  requestId?: string,
+  options: AttachMockifyerRequestIdToErrorOptions = {}
+): T {
+  const id = resolveMockifyerRequestIdForError({ requestId });
+  if (!id || error == null || (typeof error !== 'object' && typeof error !== 'function')) {
+    return error;
+  }
+
+  const target = error as Record<string, unknown>;
+  const existing =
+    typeof target[MOCKIFYER_REQUEST_ID_ERROR_PROP] === 'string'
+      ? String(target[MOCKIFYER_REQUEST_ID_ERROR_PROP]).trim()
+      : '';
+  if (!existing) {
+    try {
+      Object.defineProperty(target, MOCKIFYER_REQUEST_ID_ERROR_PROP, {
+        value: id,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    } catch {
+      try {
+        target[MOCKIFYER_REQUEST_ID_ERROR_PROP] = id;
+      } catch {
+        // non-extensible / frozen
+      }
+    }
+  }
+
+  const effectiveId = existing || id;
+  const appendToMessage = options.appendToMessage !== false;
+  if (appendToMessage && error instanceof Error) {
+    const marker = `[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=${effectiveId}]`;
+    if (!error.message.includes(`[${MOCKIFYER_REQUEST_ID_ERROR_PROP}=`)) {
+      try {
+        error.message = error.message ? `${error.message} ${marker}` : marker;
+      } catch {
+        // message may be read-only
+      }
+    }
+  }
+
+  return error;
+}
+
+function isEnvFlagDisabled(raw: string | undefined): boolean {
+  const value = String(raw ?? '')
+    .trim()
+    .toLowerCase();
+  return value === '0' || value === 'false' || value === 'off' || value === 'no';
+}
+
+/**
+ * Whether Node inbound capture should echo/assign `X-Mockifyer-Request-Id` on responses.
+ * Default **true**. Disable with {@link ENV_VARS.MOCK_ECHO_TRACE_ID}=false.
+ */
+export function isMockifyerEchoTraceIdEnabled(
+  env: NodeJS.ProcessEnv = typeof process !== 'undefined' ? process.env : {}
+): boolean {
+  return !isEnvFlagDisabled(env[ENV_VARS.MOCK_ECHO_TRACE_ID]);
+}
+
+/**
+ * Whether {@link installNodeInboundRequestCorrelationCapture} should install.
+ * Default **true**. Disable with {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
+ */
+export function isMockifyerAutoInboundCorrelationEnabled(
+  env: NodeJS.ProcessEnv = typeof process !== 'undefined' ? process.env : {}
+): boolean {
+  return !isEnvFlagDisabled(env[ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION]);
 }
 
 export function newRequestCorrelationId(): string {
@@ -37,12 +184,15 @@ export function getOutboundMockifyerParentRequestIdHeader(headers: unknown): str
 }
 
 /**
- * Reads inbound Mockifyer headers (lane + optional request correlation).
+ * Reads inbound Mockifyer headers (lane + optional request correlation + Atlas Metro bridge).
  */
 export function captureInboundMockifyerContext(headers: unknown): MockifyerHopContext | undefined {
   const inboundClientId = getOutboundMockifyerClientIdHeader(headers);
   const requestId = getOutboundMockifyerRequestIdHeader(headers);
   const parentRequestId = getOutboundMockifyerParentRequestIdHeader(headers);
+  const atlasMetroStreamBaseUrl = sanitizeAtlasMetroStreamBaseUrl(
+    getOutboundHeaderValue(headers, MOCKIFYER_METRO_STREAM_BASE_HEADER)
+  );
   if (!inboundClientId && !requestId) {
     return undefined;
   }
@@ -51,7 +201,123 @@ export function captureInboundMockifyerContext(headers: unknown): MockifyerHopCo
       ? { requestId, parentRequestId }
       : { requestId }
     : undefined;
-  return { inboundClientId, correlation };
+  return {
+    inboundClientId,
+    correlation,
+    ...(atlasMetroStreamBaseUrl ? { atlasMetroStreamBaseUrl } : {}),
+  };
+}
+
+/**
+ * Builds hop context for an inbound HTTP request (optional assign when the trace id is missing).
+ */
+export function resolveInboundHopContext(
+  headers: unknown,
+  options: {
+    assignInboundTraceIdWhenMissing?: boolean;
+    /** Collect outbound hops for an inline response-body trace (test/debug). */
+    includeInlineTrace?: boolean;
+    includeInlineTraceBodies?: boolean;
+    /** Inbound HTTP method (for parent-stub catalog entries). */
+    method?: string;
+    /** Inbound URL (for parent-stub catalog entries). */
+    url?: string;
+  } = {}
+): { ctx: MockifyerHopContext; traceId?: string } | undefined {
+  const includeInlineTrace = options.includeInlineTrace === true;
+  const includeInlineTraceBodies = options.includeInlineTraceBodies === true;
+  const assignInboundTraceIdWhenMissing =
+    options.assignInboundTraceIdWhenMissing !== false || includeInlineTrace;
+  const captured = captureInboundMockifyerContext(headers);
+
+  let traceId = captured?.correlation?.requestId;
+  if (!traceId && assignInboundTraceIdWhenMissing) {
+    traceId = newRequestCorrelationId();
+  }
+
+  if (!traceId && !captured?.inboundClientId && !includeInlineTrace) {
+    return undefined;
+  }
+
+  const method =
+    typeof options.method === 'string' && options.method.trim()
+      ? options.method.trim().toUpperCase()
+      : 'GET';
+  const url = typeof options.url === 'string' ? options.url.trim() : '';
+  const inboundRequest = url ? { method, url } : undefined;
+
+  const ctx: MockifyerHopContext = {
+    inboundClientId: captured?.inboundClientId,
+    correlation: traceId
+      ? captured?.correlation?.parentRequestId
+        ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
+        : { requestId: traceId }
+      : captured?.correlation,
+    ...(inboundRequest ? { inboundRequest } : {}),
+    ...(captured?.atlasMetroStreamBaseUrl
+      ? { atlasMetroStreamBaseUrl: captured.atlasMetroStreamBaseUrl }
+      : {}),
+    ...(includeInlineTrace
+      ? {
+          includeInlineTrace: true,
+          includeInlineTraceBodies,
+          inlineHops: [],
+        }
+      : {}),
+  };
+
+  return { ctx, traceId };
+}
+
+/** Active inbound HTTP method/URL/body for the current ALS hop (if capture recorded them). */
+export function getActiveInboundRequest(): {
+  method: string;
+  url: string;
+  data?: unknown;
+} | undefined {
+  const ctx = getActiveMockifyerHopContext();
+  const inbound = ctx?.inboundRequest;
+  if (!inbound?.url?.trim()) {
+    return undefined;
+  }
+  // Express/Apollo attach `body` on the same IncomingMessage after json parse — pull it lazily.
+  if (inbound.data === undefined && ctx?.inboundHttpRequest) {
+    const body = ctx.inboundHttpRequest.body;
+    if (body !== undefined) {
+      inbound.data = body;
+    }
+  }
+  return {
+    method: inbound.method?.trim() ? inbound.method.trim().toUpperCase() : 'GET',
+    url: inbound.url.trim(),
+    ...(inbound.data !== undefined ? { data: inbound.data } : {}),
+  };
+}
+
+/**
+ * Attach a parsed inbound body onto the active ALS hop (call after `express.json()`).
+ * Enables outbound children to persist a real parent row with the GraphQL document.
+ */
+export function attachActiveInboundRequestBody(data: unknown): void {
+  const ctx = getActiveMockifyerHopContext();
+  if (!ctx?.inboundRequest?.url?.trim()) {
+    return;
+  }
+  ctx.inboundRequest = {
+    ...ctx.inboundRequest,
+    data,
+  };
+}
+
+function maybeEchoTraceIdOnResponse(
+  res: { setHeader?: (name: string, value: string) => void } | undefined,
+  traceId: string | undefined,
+  echoEnabled: boolean
+): void {
+  if (!echoEnabled || !traceId || typeof res?.setHeader !== 'function') {
+    return;
+  }
+  res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, traceId);
 }
 
 /**
@@ -117,60 +383,123 @@ function removeOutboundHeader(headers: unknown, canonicalLower: string): unknown
   return next;
 }
 
-/** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
-let hopContextStorage: import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined;
+function isPlainRecord(headers: unknown): headers is Record<string, unknown> {
+  return Boolean(headers) && typeof headers === 'object' && !Array.isArray(headers);
+}
 
-function getHopContextStorage(): import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined {
-  if (hopContextStorage) {
-    return hopContextStorage;
+/**
+ * Copy hop headers onto a new bag so Mockifyer never mutates a shared
+ * `init.headers` / axios defaults object (that leaked parent ids across client calls).
+ */
+function cloneOutboundHeaders(headers: unknown): unknown {
+  if (!headers || typeof headers !== 'object') {
+    return {};
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { AsyncLocalStorage } = require('async_hooks') as typeof import('async_hooks');
-    hopContextStorage = new AsyncLocalStorage<MockifyerHopContext>();
-    return hopContextStorage;
-  } catch {
-    return undefined;
+
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return new Headers(headers);
+  }
+
+  const h = headers as Record<string, unknown> & {
+    toJSON?: () => unknown;
+    forEach?: (fn: (value: string, key: string) => void) => void;
+    set?: (name: string, value: string) => void;
+  };
+
+  if (typeof h.toJSON === 'function') {
+    try {
+      const json = h.toJSON();
+      if (json && typeof json === 'object' && !Array.isArray(json)) {
+        return { ...(json as Record<string, unknown>) };
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  if (typeof h.forEach === 'function' && typeof h.set === 'function') {
+    const next: Record<string, string> = {};
+    h.forEach((value, key) => {
+      if (value != null && key) {
+        next[key] = String(value);
+      }
+    });
+    return next;
+  }
+
+  if (!isPlainRecord(headers)) {
+    return {};
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === 'function') {
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
+}
+
+function deleteHeaderKeyInPlace(headers: Record<string, unknown>, canonicalLower: string): void {
+  for (const key of Object.keys(headers)) {
+    if (key.toLowerCase() === canonicalLower) {
+      delete headers[key];
+    }
   }
 }
 
-export function getActiveMockifyerHopContext(): MockifyerHopContext | undefined {
-  return getHopContextStorage()?.getStore();
-}
-
-/** Inbound lane id for the current async scope (from upstream `X-Mockifyer-Client-Id`). */
-export function getActiveInboundClientId(): string | undefined {
-  return getActiveMockifyerHopContext()?.inboundClientId;
-}
-
-export function getActiveRequestCorrelation(): RequestCorrelationContext | undefined {
-  return getActiveMockifyerHopContext()?.correlation;
-}
-
-export function runWithMockifyerHopContext<T>(ctx: MockifyerHopContext | undefined, fn: () => T): T {
-  const storage = getHopContextStorage();
-  if (!ctx || !storage) {
-    return fn();
+/** Remove hop ids from the caller's original bag after they were copied onto the clone. */
+function scrubHopIdsFromCallerHeaders(headers: unknown): void {
+  if (!headers || typeof headers !== 'object') {
+    return;
   }
-  return storage.run(ctx, fn);
+
+  const h = headers as Record<string, unknown> & {
+    delete?: (name: string) => void;
+  };
+
+  if (typeof h.delete === 'function') {
+    h.delete(MOCKIFYER_REQUEST_ID_HEADER);
+    h.delete(MOCKIFYER_PARENT_REQUEST_ID_HEADER);
+    return;
+  }
+
+  if (!isPlainRecord(headers)) {
+    return;
+  }
+
+  deleteHeaderKeyInPlace(headers, MOCKIFYER_REQUEST_ID_HEADER);
+  deleteHeaderKeyInPlace(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER);
 }
 
-export function runWithRequestCorrelation<T>(ctx: RequestCorrelationContext | undefined, fn: () => T): T {
-  if (!ctx) {
-    return fn();
+/**
+ * Clone `config.headers` and strip hop ids from the original object so sequential
+ * client requests (shared header bags) do not inherit the previous hop as parent.
+ */
+function isolateOutboundHopHeaderBag(config: { headers?: unknown }): void {
+  const original = config.headers;
+  const cloned = cloneOutboundHeaders(original);
+  if (original && original !== cloned) {
+    scrubHopIdsFromCallerHeaders(original);
   }
-  return runWithMockifyerHopContext({ correlation: ctx }, fn);
+  config.headers = cloned;
 }
 
 /**
  * Resolve parent for the next outbound hop:
  * 1. Active inbound correlation (Node auto-capture / Express middleware / ALS)
- * 2. Explicit `X-Mockifyer-Parent-Request-Id` on the outbound config
+ * 2. Forwarded inbound `X-Mockifyer-Request-Id` (service copied `req.headers` onto the client)
+ * 3. Explicit `X-Mockifyer-Parent-Request-Id` on the outbound config
  */
 export function resolveOutboundParentRequestId(headers: unknown): string | undefined {
   const active = getActiveRequestCorrelation()?.requestId;
   if (active) {
     return active;
+  }
+  const forwardedInboundHopId = getOutboundMockifyerRequestIdHeader(headers);
+  if (forwardedInboundHopId) {
+    return forwardedInboundHopId;
   }
   return getOutboundMockifyerParentRequestIdHeader(headers);
 }
@@ -184,11 +513,75 @@ function applyInboundClientIdToOutboundHeaders(config: { headers?: unknown }): v
 }
 
 /**
- * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
- * Strips any stale `X-Mockifyer-Request-Id` on the config so each hop gets a fresh id.
+ * Stamp the caller's Metro ingest base so downstream Mockifyer can POST child hops
+ * into the same Atlas buffer (correlation only — not include-trace).
  */
-export function applyOutboundRequestCorrelation(config: { headers?: unknown }): RequestCorrelationContext {
+function applyOutboundAtlasMetroStreamHeader(config: { headers?: unknown }): void {
+  const fromCtx = sanitizeAtlasMetroStreamBaseUrl(
+    getActiveMockifyerHopContext()?.atlasMetroStreamBaseUrl
+  );
+  const fromLocal = sanitizeAtlasMetroStreamBaseUrl(resolveMetroNetworkStreamBaseUrl());
+  const fromHeader = sanitizeAtlasMetroStreamBaseUrl(
+    getOutboundHeaderValue(config.headers, MOCKIFYER_METRO_STREAM_BASE_HEADER)
+  );
+  const base = fromCtx ?? fromLocal ?? fromHeader;
+  if (!base) {
+    return;
+  }
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_METRO_STREAM_BASE_HEADER, base);
+}
+
+/** Forward include-trace opt-in so downstream services can return nested mockifyerTrace. */
+function applyOutboundInlineTraceHeaders(
+  config: { headers?: unknown },
+  options?: { includeInlineTrace?: boolean; includeInlineTraceBodies?: boolean }
+): void {
+  const ctx = getActiveMockifyerHopContext();
+  const includeInlineTrace =
+    ctx?.includeInlineTrace === true || options?.includeInlineTrace === true;
+  if (!includeInlineTrace) {
+    return;
+  }
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_INCLUDE_TRACE_HEADER, '1');
+  const includeBodies =
+    ctx?.includeInlineTraceBodies === true || options?.includeInlineTraceBodies === true;
+  if (includeBodies) {
+    config.headers = setOutboundHeader(
+      config.headers,
+      MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+      '1'
+    );
+  }
+}
+
+/**
+ * Assigns hop ids on an outbound request and returns them for logging / mock metadata.
+ * Clones the header bag first so shared `init.headers` / axios defaults are not mutated.
+ * Strips any stale `X-Mockifyer-Request-Id` on the clone so each hop gets a fresh id.
+ * When the active request opted into inline trace (or {@link options} requests it),
+ * also forwards include-trace headers.
+ */
+function hopOwnerMetaFromConfig(config: { headers?: unknown; url?: unknown; method?: unknown }): {
+  method: string;
+  url: string;
+} {
+  const method = typeof config.method === 'string' && config.method.trim() ? config.method : 'GET';
+  const url = typeof config.url === 'string' ? config.url : '';
+  return { method, url };
+}
+
+export function applyOutboundRequestCorrelation(
+  config: {
+    headers?: unknown;
+    url?: unknown;
+    method?: unknown;
+  },
+  options?: { includeInlineTrace?: boolean; includeInlineTraceBodies?: boolean }
+): RequestCorrelationContext {
+  isolateOutboundHopHeaderBag(config);
   applyInboundClientIdToOutboundHeaders(config);
+  applyOutboundAtlasMetroStreamHeader(config);
+  applyOutboundInlineTraceHeaders(config, options);
   const parentRequestId = resolveOutboundParentRequestId(config.headers);
   const requestId = newRequestCorrelationId();
 
@@ -197,24 +590,196 @@ export function applyOutboundRequestCorrelation(config: { headers?: unknown }): 
   headers = setOutboundHeader(headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
   if (parentRequestId) {
     headers = setOutboundHeader(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER, parentRequestId);
+  } else {
+    headers = removeOutboundHeader(headers, MOCKIFYER_PARENT_REQUEST_ID_HEADER);
   }
   config.headers = headers;
 
+  // Capture inbound method/url now — ALS may be gone by the time /api/proxy runs (GraphQL resolvers).
+  const cfg = config as {
+    __mockifyer_parentHop?: { method: string; url: string; data?: unknown };
+  };
+  const inbound = getActiveInboundRequest();
+  const activeId = getActiveRequestCorrelation()?.requestId;
+  if (parentRequestId && inbound && activeId && parentRequestId === activeId) {
+    cfg.__mockifyer_parentHop = inbound;
+  } else {
+    delete cfg.__mockifyer_parentHop;
+  }
+
+  // Headers are captured after Mockifyer stamped its own, so Atlas can rebuild
+  // the exact outbound request (curl). Dashboard POSTs still redact.
+  registerHopOwner({
+    requestId,
+    ...hopOwnerMetaFromConfig(config),
+    requestHeaders: outboundHeadersToRecord(config.headers),
+  });
   return parentRequestId ? { requestId, parentRequestId } : { requestId };
+}
+
+/**
+ * Reuse the hop id already stored on a matched mock.
+ * Always-refresh / live capture must not mint a new requestId or child mocks
+ * (`parentRequestId`) detach from GraphQL / myaccount on the next run.
+ */
+export function adoptStoredOutboundRequestId(
+  config: { headers?: unknown; url?: unknown; method?: unknown },
+  storedRequestId: string | null | undefined
+): RequestCorrelationContext | undefined {
+  const requestId = storedRequestId?.trim();
+  if (!requestId) {
+    return undefined;
+  }
+  const parentRequestId = getOutboundMockifyerParentRequestIdHeader(config.headers);
+  config.headers = setOutboundHeader(config.headers, MOCKIFYER_REQUEST_ID_HEADER, requestId);
+  registerHopOwner({
+    requestId,
+    ...hopOwnerMetaFromConfig(config),
+    requestHeaders: outboundHeadersToRecord(config.headers),
+  });
+  return parentRequestId ? { requestId, parentRequestId } : { requestId };
+}
+
+/** Callers remembered per recording, so a hot shared hop does not grow without bound. */
+export const MAX_MOCK_PARENT_REQUEST_IDS = 20;
+
+/** Hop ids persisted on a recording. */
+export interface PersistedHopIds {
+  requestId?: string;
+  parentRequestId?: string;
+  parentRequestIds?: string[];
+}
+
+interface MockParentRequestIdFields {
+  parentRequestId?: string | null;
+  parentRequestIds?: readonly (string | null | undefined)[] | null;
+}
+
+function trimmedIds(values: readonly unknown[]): string[] {
+  const ids: string[] = [];
+  for (const value of values) {
+    const id = typeof value === 'string' ? value.trim() : '';
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Every caller recorded on a mock, oldest first. Legacy recordings only carry
+ * `parentRequestId`; the most recent caller always ends the list.
+ */
+export function readMockParentRequestIds(mock: MockParentRequestIdFields | null | undefined): string[] {
+  if (!mock) return [];
+  const listed = Array.isArray(mock.parentRequestIds) ? mock.parentRequestIds : [];
+  const latest = typeof mock.parentRequestId === 'string' ? mock.parentRequestId.trim() : '';
+  const ids = trimmedIds(listed).filter((id) => id !== latest);
+  if (latest) ids.push(latest);
+  return ids;
+}
+
+/**
+ * Add `parentRequestId` as the most recent caller, keeping at most
+ * {@link MAX_MOCK_PARENT_REQUEST_IDS} callers and never listing the hop itself.
+ */
+export function mergeMockParentRequestIds(
+  existing: MockParentRequestIdFields | null | undefined,
+  parentRequestId: string | null | undefined,
+  selfRequestId?: string | null
+): string[] {
+  const merged = readMockParentRequestIds({
+    parentRequestIds: readMockParentRequestIds(existing),
+    parentRequestId,
+  });
+  const self = selfRequestId?.trim();
+  return merged.filter((id) => id !== self).slice(-MAX_MOCK_PARENT_REQUEST_IDS);
+}
+
+/**
+ * Prefer hop ids already stored on a mock when refreshing/overwriting it.
+ * `requestId` stays stable so children keep a valid parent; `parentRequestId`
+ * follows the live caller so a stale link can heal on the next refresh, and
+ * `parentRequestIds` keeps earlier callers so a shared hop nests under each one.
+ * If the stored requestId equals the live parent (caller id was stolen), mint a
+ * fresh hop id so this hop no longer self-parents.
+ */
+export function resolvePersistedHopIds(
+  existing: PersistedHopIds | null | undefined,
+  live?: { requestId?: string; parentRequestId?: string }
+): PersistedHopIds {
+  const existingId = existing?.requestId?.trim();
+  const liveId = live?.requestId?.trim();
+  const parentRequestId = live?.parentRequestId?.trim() || existing?.parentRequestId?.trim();
+  let requestId = existingId || liveId;
+  if (requestId && parentRequestId && requestId === parentRequestId) {
+    requestId = liveId && liveId !== parentRequestId ? liveId : randomEventId();
+  }
+  const parentRequestIds = mergeMockParentRequestIds(existing, parentRequestId, requestId);
+  return {
+    ...(requestId ? { requestId } : {}),
+    ...(parentRequestId ? { parentRequestId } : {}),
+    ...(parentRequestIds.length > 0 ? { parentRequestIds } : {}),
+  };
+}
+
+/** Write resolved hop ids onto a recording, clearing parent fields that no longer apply. */
+export function applyPersistedHopIds(mock: PersistedHopIds, hopIds: PersistedHopIds): void {
+  if (hopIds.requestId) {
+    mock.requestId = hopIds.requestId;
+  }
+  if (hopIds.parentRequestId) {
+    mock.parentRequestId = hopIds.parentRequestId;
+  } else {
+    delete mock.parentRequestId;
+  }
+  if (hopIds.parentRequestIds?.length) {
+    mock.parentRequestIds = hopIds.parentRequestIds;
+  } else {
+    delete mock.parentRequestIds;
+  }
 }
 
 export interface MockifyerCorrelationMiddlewareRequest {
   header(name: string): string | undefined;
+  query?: unknown;
+  url?: string;
+  originalUrl?: string;
+  method?: string;
+  /** Set by {@link createMockifyerCorrelationMiddleware} for error handlers. */
+  mockifyerRequestId?: string;
 }
 
 export interface MockifyerCorrelationMiddlewareResponse {
   setHeader?(name: string, value: string): void;
+  headersSent?: boolean;
+  json?(body: unknown): unknown;
+  send?(body: unknown): unknown;
+  status?(code: number): unknown;
+  statusCode?: number;
+}
+
+/**
+ * Express middleware: after body parsers, copy `req.body` onto the active ALS inbound hop
+ * so outbound children can persist a real parent catalog row (GraphQL query/variables).
+ * Mount **after** `express.json()` / Apollo body parsing.
+ */
+export function createMockifyerInboundBodyCaptureMiddleware(): (
+  req: { body?: unknown },
+  _res: unknown,
+  next: () => void
+) => void {
+  return (req, _res, next) => {
+    if (req.body !== undefined) {
+      attachActiveInboundRequestBody(req.body);
+    }
+    next();
+  };
 }
 
 export interface MockifyerCorrelationMiddlewareOptions {
   /**
-   * When true (default), set `X-Mockifyer-Request-Id` on the HTTP response so clients can
+   * When true, set `X-Mockifyer-Request-Id` on the HTTP response so clients can
    * call `/api/network-events/trace?requestId=…` after the request completes.
+   * When omitted, follows {@link ENV_VARS.MOCK_ECHO_TRACE_ID} (default on).
    */
   echoTraceIdOnResponse?: boolean;
   /**
@@ -223,47 +788,162 @@ export interface MockifyerCorrelationMiddlewareOptions {
   assignInboundTraceIdWhenMissing?: boolean;
 }
 
-let nodeInboundCaptureInstalled = false;
+export interface MockifyerErrorHandlerOptions {
+  /**
+   * When true, if headers are not sent yet, respond with JSON `{ error, requestId }`
+   * (status from `err.status` / `err.statusCode` or 500).
+   * Default **false** — only enrich the error, re-echo the response header, and `next(err)`.
+   */
+  sendJsonResponse?: boolean;
+}
+
+const NODE_INBOUND_EMIT_PATCHED = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitPatched');
+const NODE_INBOUND_EMIT_OWNER = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitOwner');
+const NODE_INBOUND_EMIT_ORIGINAL = Symbol.for('@sgedda/mockifyer-core.nodeInboundEmitOriginal');
+/**
+ * Per module instance. Jest runs test files in separate realms that share
+ * `http.Server.prototype`, so a patch installed by another copy must be replaced
+ * or inbound AsyncLocalStorage never reaches that file's handlers.
+ */
+const inboundEmitPatchOwner = {};
+
+type InboundPatchedEmit = ((event: string, ...args: unknown[]) => boolean) & {
+  [NODE_INBOUND_EMIT_PATCHED]?: boolean;
+  [NODE_INBOUND_EMIT_OWNER]?: object;
+  [NODE_INBOUND_EMIT_ORIGINAL]?: InboundPatchedEmit;
+};
+
+function unwrapInboundEmit(emitFn: InboundPatchedEmit | undefined): InboundPatchedEmit | undefined {
+  let current = emitFn;
+  const seen = new Set<unknown>();
+  while (current?.[NODE_INBOUND_EMIT_ORIGINAL] && !seen.has(current)) {
+    seen.add(current);
+    current = current[NODE_INBOUND_EMIT_ORIGINAL];
+  }
+  return current;
+}
+
+function resolveInboundRequestUrl(req: {
+  url?: string;
+  headers?: unknown;
+}): string | undefined {
+  const raw = typeof req.url === 'string' ? req.url.trim() : '';
+  if (!raw) {
+    return undefined;
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+  const headers = req.headers;
+  let host: string | undefined;
+  if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+    const h = headers as Record<string, unknown>;
+    const rawHost = h.host ?? h.Host;
+    if (typeof rawHost === 'string' && rawHost.trim()) {
+      host = rawHost.trim();
+    } else if (Array.isArray(rawHost) && typeof rawHost[0] === 'string') {
+      host = rawHost[0].trim();
+    }
+  }
+  if (!host) {
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  }
+  const path = raw.startsWith('/') ? raw : `/${raw}`;
+  return `http://${host}${path}`;
+}
 
 function patchNodeServerEmit(serverModule: { Server: new (...args: never[]) => unknown }): void {
   const prototype = serverModule.Server.prototype as {
-    emit: (event: string, ...args: unknown[]) => boolean;
+    emit: InboundPatchedEmit;
   };
-  const originalEmit = prototype.emit;
+  const existing = prototype.emit;
+  if (existing?.[NODE_INBOUND_EMIT_OWNER] === inboundEmitPatchOwner) {
+    return;
+  }
+  const originalEmit = unwrapInboundEmit(existing) ?? existing;
 
-  prototype.emit = function patchedServerEmit(
+  const patchedServerEmit = function patchedServerEmit(
     this: unknown,
     event: string,
     ...args: unknown[]
   ): boolean {
     if (event === 'request') {
-      const req = args[0] as { headers?: unknown } | undefined;
-      const ctx = req?.headers ? captureInboundMockifyerContext(req.headers) : undefined;
-      if (ctx) {
-        return runWithMockifyerHopContext(ctx, () => originalEmit.apply(this, [event, ...args]));
+      const req = args[0] as { headers?: unknown; url?: string } | undefined;
+      const res = args[1] as {
+        setHeader?: (name: string, value: string) => void;
+        json?: (body: unknown) => unknown;
+        send?: (body: unknown) => unknown;
+      } | undefined;
+      const includeInlineTrace = isIncludeInlineTraceRequested({
+        headers: req?.headers,
+        url: req?.url,
+      });
+      const includeInlineTraceBodies = isIncludeInlineTraceBodiesRequested({
+        headers: req?.headers,
+        url: req?.url,
+      });
+      const resolved = req?.headers
+        ? resolveInboundHopContext(req.headers, {
+            includeInlineTrace,
+            includeInlineTraceBodies,
+            method: (req as { method?: string }).method,
+            url: resolveInboundRequestUrl(req),
+          })
+        : includeInlineTrace
+          ? resolveInboundHopContext(
+              {},
+              {
+                includeInlineTrace,
+                includeInlineTraceBodies,
+                method: (req as { method?: string } | undefined)?.method,
+                url: req ? resolveInboundRequestUrl(req) : undefined,
+              }
+            )
+          : undefined;
+      if (resolved) {
+        if (req && resolved.traceId) {
+          (req as { [MOCKIFYER_REQUEST_ID_REQ_PROP]?: string })[MOCKIFYER_REQUEST_ID_REQ_PROP] =
+            resolved.traceId;
+        }
+        if (req) {
+          resolved.ctx.inboundHttpRequest = req as { body?: unknown };
+        }
+        maybeEchoTraceIdOnResponse(res, resolved.traceId, isMockifyerEchoTraceIdEnabled());
+        return runWithMockifyerHopContext(resolved.ctx, () => {
+          if (res) {
+            installInlineTraceBodyWrapper(res);
+          }
+          try {
+            return originalEmit.apply(this, [event, ...args]);
+          } catch (error) {
+            throw attachMockifyerRequestIdToError(error, resolved.traceId);
+          }
+        });
       }
     }
     return originalEmit.apply(this, [event, ...args]);
   };
+  const patched = patchedServerEmit as InboundPatchedEmit;
+  patched[NODE_INBOUND_EMIT_PATCHED] = true;
+  patched[NODE_INBOUND_EMIT_OWNER] = inboundEmitPatchOwner;
+  patched[NODE_INBOUND_EMIT_ORIGINAL] = originalEmit;
+  prototype.emit = patched;
 }
 
 /**
  * Node.js only: wrap incoming `http(s).Server` requests so outbound Mockifyer calls inherit
- * `X-Mockifyer-Request-Id` from the caller without Express middleware.
+ * inbound lane / trace ids without Express middleware. By default also assigns a trace id when
+ * missing and echoes `X-Mockifyer-Request-Id` on the response
+ * (disable echo with {@link ENV_VARS.MOCK_ECHO_TRACE_ID}=false).
  *
- * Installed once when `setupMockifyer` runs. Disable with `MOCKIFYER_AUTO_INBOUND_CORRELATION=false`.
+ * Installed once when `setupMockifyer` runs. Disable entirely with
+ * {@link ENV_VARS.MOCK_AUTO_INBOUND_CORRELATION}=false.
  */
 export function installNodeInboundRequestCorrelationCapture(): boolean {
-  if (nodeInboundCaptureInstalled) {
-    return true;
-  }
   if (typeof process === 'undefined' || !process.versions?.node) {
     return false;
   }
-  const disabled = String(process.env.MOCKIFYER_AUTO_INBOUND_CORRELATION ?? '')
-    .trim()
-    .toLowerCase();
-  if (disabled === '0' || disabled === 'false' || disabled === 'off' || disabled === 'no') {
+  if (!isMockifyerAutoInboundCorrelationEnabled()) {
     return false;
   }
 
@@ -278,7 +958,6 @@ export function installNodeInboundRequestCorrelationCapture(): boolean {
     } catch {
       // https optional
     }
-    nodeInboundCaptureInstalled = true;
     return true;
   } catch {
     return false;
@@ -296,37 +975,127 @@ export function createMockifyerCorrelationMiddleware(
   res: MockifyerCorrelationMiddlewareResponse,
   next: () => void
 ) => void {
-  const echoTraceIdOnResponse = options.echoTraceIdOnResponse !== false;
   const assignInboundTraceIdWhenMissing = options.assignInboundTraceIdWhenMissing !== false;
 
   return (req, res, next) => {
-    const captured = captureInboundMockifyerContext({
+    const headerBag = {
       get: (name: string) => req.header(name),
+    };
+    const includeInlineTrace = isIncludeInlineTraceRequested({
+      headers: headerBag,
+      query: req.query,
+      url: req.url,
+    });
+    const includeInlineTraceBodies = isIncludeInlineTraceBodiesRequested({
+      headers: headerBag,
+      query: req.query,
+      url: req.url,
     });
 
-    let traceId = captured?.correlation?.requestId;
-    if (!traceId && assignInboundTraceIdWhenMissing) {
-      traceId = newRequestCorrelationId();
-    }
+    const resolved = resolveInboundHopContext(headerBag, {
+      assignInboundTraceIdWhenMissing,
+      includeInlineTrace,
+      includeInlineTraceBodies,
+      method: req.method,
+      url: typeof req.originalUrl === 'string' ? req.originalUrl : req.url,
+    });
 
-    if (echoTraceIdOnResponse && traceId && typeof res.setHeader === 'function') {
-      res.setHeader(MOCKIFYER_REQUEST_ID_HEADER, traceId);
-    }
-
-    if (!traceId && !captured?.inboundClientId) {
+    if (!resolved) {
       next();
       return;
     }
 
-    const ctx: MockifyerHopContext = {
-      inboundClientId: captured?.inboundClientId,
-      correlation: traceId
-        ? captured?.correlation?.parentRequestId
-          ? { requestId: traceId, parentRequestId: captured.correlation.parentRequestId }
-          : { requestId: traceId }
-        : captured?.correlation,
-    };
+    if (resolved.traceId) {
+      req[MOCKIFYER_REQUEST_ID_REQ_PROP] = resolved.traceId;
+    }
+    resolved.ctx.inboundHttpRequest = req as { body?: unknown };
 
-    runWithMockifyerHopContext(ctx, next);
+    const shouldEcho =
+      options.echoTraceIdOnResponse !== undefined
+        ? options.echoTraceIdOnResponse
+        : isMockifyerEchoTraceIdEnabled();
+    maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
+    runWithMockifyerHopContext(resolved.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      try {
+        next();
+      } catch (error) {
+        throw attachMockifyerRequestIdToError(error, resolved.traceId);
+      }
+    });
+  };
+}
+
+function readErrorHttpStatus(error: unknown): number {
+  if (!error || typeof error !== 'object') {
+    return 500;
+  }
+  const e = error as { status?: unknown; statusCode?: unknown };
+  const raw = e.status ?? e.statusCode;
+  const status = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isInteger(status) && status >= 400 && status < 600) {
+    return status;
+  }
+  return 500;
+}
+
+/**
+ * Express error middleware: stamps {@link MOCKIFYER_REQUEST_ID_ERROR_PROP} on the error,
+ * re-echoes `X-Mockifyer-Request-Id`, and optionally sends JSON that includes `requestId`
+ * so clients/debuggers can open the dashboard trace without reading headers.
+ *
+ * Mount after routes: `app.use(createMockifyerErrorHandler())`.
+ */
+export function createMockifyerErrorHandler(
+  options: MockifyerErrorHandlerOptions = {}
+): (
+  err: unknown,
+  req: MockifyerCorrelationMiddlewareRequest,
+  res: MockifyerCorrelationMiddlewareResponse,
+  next: (err?: unknown) => void
+) => void {
+  const sendJsonResponse = options.sendJsonResponse === true;
+
+  return (err, req, res, next) => {
+    const requestIdFromReqOrAls =
+      (typeof req.mockifyerRequestId === 'string' && req.mockifyerRequestId.trim()
+        ? req.mockifyerRequestId.trim()
+        : undefined) ?? getActiveRequestCorrelation()?.requestId;
+    const enriched = attachMockifyerRequestIdToError(err, requestIdFromReqOrAls);
+    const requestId = requestIdFromReqOrAls ?? getMockifyerRequestIdFromError(enriched);
+    maybeEchoTraceIdOnResponse(res, requestId, isMockifyerEchoTraceIdEnabled());
+
+    if (!sendJsonResponse || res.headersSent) {
+      next(enriched);
+      return;
+    }
+
+    const status = readErrorHttpStatus(enriched);
+    const message =
+      enriched instanceof Error
+        ? enriched.message
+        : typeof enriched === 'string'
+          ? enriched
+          : 'Internal Server Error';
+
+    if (typeof res.status === 'function' && typeof res.json === 'function') {
+      res.status(status);
+      res.json({
+        error: message,
+        ...(requestId ? { requestId } : {}),
+      });
+      return;
+    }
+
+    if (typeof res.json === 'function') {
+      res.statusCode = status;
+      res.json({
+        error: message,
+        ...(requestId ? { requestId } : {}),
+      });
+      return;
+    }
+
+    next(enriched);
   };
 }

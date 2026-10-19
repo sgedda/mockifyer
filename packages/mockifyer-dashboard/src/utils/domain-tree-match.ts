@@ -1,4 +1,4 @@
-import { endpointUrlToDomainPath } from '@sgedda/mockifyer-core';
+import { endpointUrlToDomainPath, mockRequiresUpstreamFetch, type MockData } from '@sgedda/mockifyer-core';
 
 /**
  * Matches mock endpoint URLs to domain-tree `fullPath` keys
@@ -21,7 +21,13 @@ export interface LiveApiCounts {
 }
 
 export function countLiveApiInMocks(
-  mocks: Array<{ endpoint?: string | null; alwaysUseRealApi?: boolean; responsePending?: boolean }>,
+  mocks: Array<{
+    endpoint?: string | null;
+    alwaysUseRealApi?: boolean;
+    responsePending?: boolean;
+    alwaysRefreshFromLive?: boolean;
+    refreshOnNextRequest?: boolean;
+  }>,
   domainPath: string
 ): LiveApiCounts {
   const counts: LiveApiCounts = { total: 0, live: 0, pending: 0 };
@@ -29,7 +35,16 @@ export function countLiveApiInMocks(
     if (!endpointMatchesDomainPath(m.endpoint ?? null, domainPath)) continue;
     counts.total += 1;
     if (m.responsePending === true) counts.pending += 1;
-    if (m.alwaysUseRealApi === true || m.responsePending === true) counts.live += 1;
+    if (
+      mockRequiresUpstreamFetch({
+        alwaysUseRealApi: m.alwaysUseRealApi,
+        responsePending: m.responsePending,
+        alwaysRefreshFromLive: m.alwaysRefreshFromLive,
+        refreshOnNextRequest: m.refreshOnNextRequest,
+      } as MockData)
+    ) {
+      counts.live += 1;
+    }
   }
   return counts;
 }

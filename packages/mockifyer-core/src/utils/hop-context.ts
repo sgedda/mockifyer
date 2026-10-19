@@ -1,0 +1,120 @@
+/**
+ * Request-scoped hop context (AsyncLocalStorage).
+ *
+ * Kept separate from `request-correlation` and `inline-trace` so those modules
+ * can import each other without a circular dependency (lazy `require` is unsafe
+ * under Jest teardown and can poison the module cache).
+ */
+
+export interface RequestCorrelationContext {
+  requestId: string;
+  parentRequestId?: string;
+}
+
+/**
+ * Inbound HTTP context for service chains (Express middleware / Node http.Server).
+ * Outbound `fetch`/`axios` patched by Mockifyer reads this from AsyncLocalStorage.
+ */
+export interface InlineTraceHopBufferItem {
+  index: number;
+  requestId: string | null;
+  parentRequestId: string | null;
+  timestamp: string;
+  method: string;
+  url: string;
+  status?: number;
+  source: string;
+  durationMs?: number;
+  transport: string;
+  clientId?: string | null;
+  /** Outbound headers so a later Atlas trace can re-call this hop. */
+  requestHeaders?: Record<string, string>;
+  requestBodyPreview?: string;
+  responseBodyPreview?: string;
+  errorMessage?: string;
+}
+
+export interface MockifyerHopContext {
+  /** `X-Mockifyer-Client-Id` on the inbound request (lane for downstream proxy hops). */
+  inboundClientId?: string;
+  /** Set when inbound carried `X-Mockifyer-Request-Id` (becomes parent for the next outbound hop). */
+  correlation?: RequestCorrelationContext;
+  /**
+   * HTTP method + URL (+ optional body) of the inbound request that established this ALS scope.
+   * Outbound recordings upsert a real catalog row for this hop when children arrive first.
+   */
+  inboundRequest?: {
+    method: string;
+    url: string;
+    /** Parsed body when Express (or similar) has run body parsers. */
+    data?: unknown;
+  };
+  /**
+   * Raw Node/Express request for this ALS scope. Used to lazily read `body` after
+   * `express.json()` / Apollo parse without requiring a separate middleware mount.
+   */
+  inboundHttpRequest?: { body?: unknown };
+  /**
+   * When true, outbound Mockifyer hops are collected on {@link inlineHops} for this request
+   * and can be wrapped into the HTTP response body (test/debug).
+   */
+  includeInlineTrace?: boolean;
+  /** When true with {@link includeInlineTrace}, store truncated body previews on hops. */
+  includeInlineTraceBodies?: boolean;
+  /** Mutable in-process hop list for the active inbound request. */
+  inlineHops?: InlineTraceHopBufferItem[];
+  /**
+   * Local Metro base URL from the caller (`X-Mockifyer-Metro-Stream-Base`).
+   * Downstream services POST correlated hops there so Atlas nests without include-trace.
+   */
+  atlasMetroStreamBaseUrl?: string;
+}
+
+/** AsyncLocalStorage scope for inbound HTTP → outbound chains (Node.js services). */
+const HOP_CONTEXT_ALS_GLOBAL = Symbol.for('@sgedda/mockifyer-core.hopContextALS');
+
+function getHopContextStorage(): import('async_hooks').AsyncLocalStorage<MockifyerHopContext> | undefined {
+  const globalStore = globalThis as typeof globalThis & {
+    [HOP_CONTEXT_ALS_GLOBAL]?: import('async_hooks').AsyncLocalStorage<MockifyerHopContext>;
+  };
+  if (globalStore[HOP_CONTEXT_ALS_GLOBAL]) {
+    return globalStore[HOP_CONTEXT_ALS_GLOBAL];
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { AsyncLocalStorage } = require('async_hooks') as typeof import('async_hooks');
+    const storage = new AsyncLocalStorage<MockifyerHopContext>();
+    globalStore[HOP_CONTEXT_ALS_GLOBAL] = storage;
+    return storage;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getActiveMockifyerHopContext(): MockifyerHopContext | undefined {
+  return getHopContextStorage()?.getStore();
+}
+
+/** Inbound lane id for the current async scope (from upstream `X-Mockifyer-Client-Id`). */
+export function getActiveInboundClientId(): string | undefined {
+  return getActiveMockifyerHopContext()?.inboundClientId;
+}
+
+export function getActiveRequestCorrelation(): RequestCorrelationContext | undefined {
+  return getActiveMockifyerHopContext()?.correlation;
+}
+
+export function runWithMockifyerHopContext<T>(ctx: MockifyerHopContext | undefined, fn: () => T): T {
+  const storage = getHopContextStorage();
+  if (!ctx || !storage) {
+    return fn();
+  }
+  return storage.run(ctx, fn);
+}
+
+export function runWithRequestCorrelation<T>(ctx: RequestCorrelationContext | undefined, fn: () => T): T {
+  if (!ctx) {
+    return fn();
+  }
+  return runWithMockifyerHopContext({ correlation: ctx }, fn);
+}

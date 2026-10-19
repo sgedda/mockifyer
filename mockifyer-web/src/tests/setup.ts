@@ -6,6 +6,8 @@ setupMockifyer({
   recordMode: true,  // Enable recording mode to generate mock data
   failOnMissingMock: true,
   useGlobalAxios: true,
+  // Ungated replay — web service tests predate domain-path allowlist.
+  domainPathRulesMode: 'off',
   dateManipulation: {
     fixedDate: '2024-03-16T00:00:00Z'
   }

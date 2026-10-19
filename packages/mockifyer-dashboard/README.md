@@ -61,10 +61,23 @@ npx mockifyer-dashboard --base /dashboard
 - `MOCKIFYER_REDIS_KEY_PREFIX` - Redis key prefix (default `mockifyer:v1`)
 - `MOCKIFYER_REDIS_MIRROR_DISK` - If `true`/`1`: same as `--redis-mirror-disk` (can combine with CLI / `createServer` config)
 - `MOCKIFYER_REDIS_DISK_READ_FALLBACK` - If `true`/`1`: same as `--redis-disk-fallback`
+- `MOCKIFYER_NETWORK_LOG_MAX_LIST_BYTES` - Maximum bytes for network log body previews (default varies by storage; ~200KB for filesystem, ~50KB for Redis/SQLite)
 
 ### Subpath / embedding (e.g. `/dashboard`)
 
-The default UI build uses a **portable** Vite base (`./`): the same `public/` works at **`/`** or when mounted under **`/dashboard`** (no extra build for that path). The app infers the mount for React Router and `/api` from the main bundle script URL.
+The default UI build uses a **portable** Vite base (`./`): the same `public/` works at **`/`** or when mounted under **`/dashboard`** (no extra build for that path). The built `index.html` loads JS/CSS from **`/<mount>/assets/*`** (not `./assets/*` on the current page), so a host SPA fallback cannot serve `index.html` as JavaScript on `/mockifyer/overrides/`. The app infers the mount for React Router and `/api` from the page URL.
+
+**Host `package.json`:** look for `@sgedda/mockifyer-dashboard`. A published copy older than this package’s `version` will not include the Overrides embed fix. Point at the published version, a `file:` path to `packages/mockifyer-dashboard`, or reinstall after publishing — then **restart** the host process. The sidebar footer shows the real dashboard version (not a hardcoded `1.2.0`).
+
+```json
+{
+  "dependencies": {
+    "@sgedda/mockifyer-dashboard": "1.5.36"
+  }
+}
+```
+
+Prefer `app.use('/mockifyer', createServer(publicDir, mockDataPath, config))` rather than `express.static` + a catch-all `sendFile(index.html)` for `/mockifyer/*`. If the host must SPA-fallback, keep **`/mockifyer/assets/`** and **`/mockifyer/api/`** out of that catch-all.
 
 **Optional:** root-absolute assets — `VITE_MOCKIFYER_DASHBOARD_BASE=/ npm run build`. Fixed subpath in the bundle — e.g. `VITE_MOCKIFYER_DASHBOARD_BASE=/dashboard/ npm run build` (mount Express at the same path).
 
@@ -106,7 +119,8 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, config))
 
 - 📁 **Browse Mock Files** - View all mock files with search and filtering
 - ✏️ **Edit Mock Data** - Edit response data with JSON editor
-- 📊 **Statistics** - View mock file statistics and usage
+- 📊 **Statistics** - View mock file statistics, usage, and service hops
+- 🔗 **Hops** - Multi-service request chains recorded in the active scenario
 - 🔍 **Search** - Search by filename, endpoint, or method
 - 💾 **Save Changes** - Save edited mock data back to files
 - 🗑️ **Delete Mocks** - Delete unwanted mock files
@@ -133,6 +147,12 @@ npx mockifyer-dashboard --host 0.0.0.0
 
 ⚠️ **Note**: The dashboard reads files directly from the filesystem, so it must run on the same machine where your mock data files are located. For remote access, you would need to run the dashboard on the server and access it via network.
 
+### Android emulator loopback (`10.0.2.2`)
+
+When an Android emulator sends `/api/proxy` a target URL whose host is **`10.0.2.2`** (AVD) or **`10.0.3.2`** (Genymotion), the dashboard rewrites it to **`127.0.0.1`** before mock matching and the upstream fetch. Those aliases only mean "host machine" *inside* the emulator; fetching them from the dashboard process would time out (`UND_ERR_CONNECT_TIMEOUT`).
+
+The emulator should still use `http://10.0.2.2:<dashboard-port>` to **reach** the dashboard. Physical devices should use the host's LAN IP instead.
+
 ## Network request trace API
 
 Resolve a **multi-service call chain** from the network log (gateway → downstream services → external APIs). Each hop includes response data when **Bodies** capture is enabled in the Network tab.
@@ -155,13 +175,60 @@ curl -s 'http://localhost:3002/api/network-events/trace?requestId=THE_ID&scenari
 curl -s 'http://localhost:3002/api/network-events/trace?eventId=ev-...&scenario=default' | jq .
 ```
 
-Entry services should mount **`createMockifyerCorrelationMiddleware()`** from `@sgedda/mockifyer-core` (default: assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response). Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
+`setupMockifyer` auto-installs Node inbound capture: it assigns a trace id when missing and echoes **`X-Mockifyer-Request-Id`** on the HTTP response (disable echo with **`MOCKIFYER_ECHO_TRACE_ID=false`**; disable the whole patch with **`MOCKIFYER_AUTO_INBOUND_CORRELATION=false`**). Express apps can still mount **`createMockifyerCorrelationMiddleware()`** for explicit control. Dashboard **`/api/proxy`** also returns `requestId` in JSON and sets the same response header.
+
+When a request fails, axios/fetch rejections and Express errors stamped by Mockifyer include **`error.mockifyerRequestId`** (and append `[mockifyerRequestId=…]` to the message) so you can open the same `/api/network-events/trace?requestId=…` lookup from logs without copying response headers. Mount **`createMockifyerErrorHandler()`** (optionally `{ sendJsonResponse: true }`) after routes to re-echo the header on error responses and optionally return `{ error, requestId }` JSON.
+
+### Inline response trace (no Redis / no `/trace` poll)
+
+For **test/debug** traffic only, send **`X-Mockifyer-Include-Trace: 1`** (optional query: `?trace-mockifyer=true`). With correlation middleware (or Node inbound capture when `res.json`/`res.send` exist), the response body gets `mockifyerTrace` added alongside its existing fields:
+
+```json
+{
+  "...": "original response fields",
+  "mockifyerTrace": {
+    "requestId": "...",
+    "hopCount": 2,
+    "hops": [{ "method": "GET", "url": "...", "status": 200, "source": "upstream" }],
+    "incomplete": false
+  }
+}
+```
+
+**Note:** Object bodies keep their own fields and get `mockifyerTrace` added. Non-object responses (arrays, primitives) are wrapped as `{ data, mockifyerTrace }`.
+
+Hops are collected **in-process** for that request (no dashboard Network storage required). Optional **`X-Mockifyer-Include-Trace-Bodies: 1`** adds truncated body previews. Do not send these headers on real consumer traffic.
+
+### Response sidecar (production-safe trace lookup)
+
+For normal app traffic, prefer reading trace ids from the **response sidecar** ([PR #333](https://github.com/sgedda/mockifyer/pull/333)) instead of wrapping JSON bodies:
+
+```typescript
+const res = await client.get('/api/foo');
+res.data;                 // upstream payload — unchanged
+res.mockifyerTrace;       // { requestId, parentRequestId? } when correlation headers or proxy envelope provide ids
+```
+
+Axios and fetch clients populate `mockifyerTrace` from `X-Mockifyer-*` response headers or dashboard `/api/proxy` JSON. Accidental `{ data, mockifyerTrace }` wrappers are stripped before `data` reaches app code or mock recordings.
+
+Use `res.mockifyerTrace?.requestId` with `/api/network-events/trace?requestId=…` **after** the request completes — no need to opt into inline body wrapping or change parsers.
+
+See [docs/architecture/debugging-and-incidents.md](../../docs/architecture/debugging-and-incidents.md) for crash forensics and soft-failure debugging direction.
 
 `requestId` on `/trace` matches a logged hop **or** a virtual root id (only referenced as `parentRequestId` on downstream hops).
 
 Response shape: `trace.hops[]` ordered **root-first** (caller → callee). Each hop has `method`, `url`, `status`, `source`, and optional `request` / `response` with `body` previews. `trace.incomplete` is `true` when a parent or child is outside the loaded log window.
 
 Requires network logging (in-memory for filesystem provider; persistent for `redis` / `sqlite`). Multi-service linking requires Mockifyer correlation headers on outbound calls (automatic when using `setupMockifyer` in each service).
+
+### Explain incident (crash forensics)
+
+```bash
+curl -s 'http://localhost:3002/api/network-events/explain?incidentId=EV_ID&scenario=default' | jq .
+# Or by session: ?sessionId=sess-…&windowMs=60000
+```
+
+Returns `{ context: { incident, hops[], suspects[] }, narrative }`. Incidents are posted via `reportIncident()` / `MockifyerErrorBoundary` or appear as `kind: "incident"` rows in the Network tab.
 
 ## MCP (Cursor / Claude Desktop)
 

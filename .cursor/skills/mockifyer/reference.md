@@ -54,11 +54,17 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, { provider: 'filesys
 
 **Network trace** (multi-service response chain):
 
-- After calling an entry service, read **`X-Mockifyer-Request-Id`** from the response (`createMockifyerCorrelationMiddleware()` echoes it by default).
+- After calling an entry service, read **`X-Mockifyer-Request-Id`** from the response (Node inbound capture from `setupMockifyer` echoes it by default; disable with `MOCKIFYER_ECHO_TRACE_ID=false`). Express apps can also use `createMockifyerCorrelationMiddleware()`.
+- On thrown/rejected errors, read **`error.mockifyerRequestId`** (also appended to `Error.message`) — same lookup key. Express: `createMockifyerErrorHandler()` (optional `{ sendJsonResponse: true }` → `{ error, requestId }`).
 - `GET /api/network-events/trace?requestId=<that id>&scenario=default` — also matches virtual roots (id only appears as `parentRequestId` on child hops).
 - Or `?eventId=<dashboard log row id>` when you only have the network tab id.
 - `/api/proxy` JSON includes `requestId` / `parentRequestId` and sets the same response header.
 - Returns `trace.hops[]` root-first with `request` / `response` body previews when **Bodies** capture is enabled.
+- **Sidecar (production-safe, PR #333):** `HTTPResponse.mockifyerTrace` — `{ requestId, parentRequestId? }` from response headers or proxy envelope; `response.data` stays the upstream shape. Use for post-hoc `/trace` lookup without wrapping bodies.
+- **Inline (test/debug only):** `X-Mockifyer-Include-Trace: 1` adds `mockifyerTrace` beside the original JSON fields (GraphQL `data` stays put). Arrays and scalars still use `{ data, mockifyerTrace }`. Optional `X-Mockifyer-Include-Trace-Bodies: 1`. Include-trace headers are forwarded downstream; nested traces are unwrapped and child hops merged into the parent trace (parent hop first). Internal dashboard `/api/proxy` POSTs are always bypassed and omitted from hops. Both services need a recent core that supports inline trace.
+- **RN / Metro Atlas nesting** (core ≥ **1.10.145**, fetch ≥ **1.8.73**, axios ≥ **1.10.18**): set `networkLog.includeTraceHeader` / `includeTraceBodies` so the client stamps include-trace on every outbound hop (no inbound ALS). On unwrap, nested hops are re-emitted as `NetworkEvent`s with `parentRequestId` into the flight recorder + Metro stream + Atlas HTML Trace call forest.
+- **Atlas app bump:** `apps/app` already uses `file:` links to this monorepo — rebuild core/fetch, then `npm install` in Atlas app so Metro picks up the new builds. Keep `includeTraceHeader` / `includeTraceBodies: true` in `mockifyer-setup.ts`. Verify: (1) Dashboard → Network → Trace for phone → BFF → backends when proxy/Redis is reachable; (2) Render Atlas / live Metro stream → Trace → expand trees → children under GraphQL roots.
+- **Architecture:** [docs/architecture/debugging-and-incidents.md](../../../docs/architecture/debugging-and-incidents.md) — crash forensics, weird-200 debugging, planned ErrorBoundary + flight recorder.
 
 ## Scenario precedence (filesystem SDK)
 
@@ -72,6 +78,8 @@ app.use('/mockifyer', createServer(publicDir, mockDataPath, { provider: 'filesys
 Per request: body `scenario` → `client_scenario:{clientId}` → Redis `active_scenario` → filesystem seed.
 
 `MOCKIFYER_STRICT_LANE_SCENARIO`: with `clientId`, missing lane → upstream only (no mock replay/record).
+
+`/api/proxy` rewrites Android emulator loopback hosts (`10.0.2.2`, `10.0.3.2`) to `127.0.0.1` before matching and upstream fetch.
 
 ## Tests
 

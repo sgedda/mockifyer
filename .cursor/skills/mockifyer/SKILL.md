@@ -25,7 +25,7 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 
 - **Record / replay**: intercept HTTP → match stored JSON mock → return saved response or call real API when recording.
 - **Mock data**: `mock-data/<scenario>/` (JSON per request). Active scenario from env, `scenario-config.json`, or dashboard (Redis lanes).
-- **Dates in tests**: use `getCurrentDate()` from the same package as `setupMockifyer`, not `new Date()`.
+- **Dates in tests**: use `getCurrentDate()` from the same package as `setupMockifyer`, not `new Date()`. With Redis/dashboard proxy it follows the active scenario Date Config (lane date if set).
 - **Matching key** (`generateRequestKey` in `mock-matcher.ts`): `METHOD:url?query` + for POST bodies:
   - **GraphQL**: normalized `query` string + sorted `variables` JSON (not headers, not `operationName` alone).
   - **Other JSON**: sorted-key body hash.
@@ -41,9 +41,14 @@ Root `package.json` is **private** — publish changes only under `packages/*`.
 | `MOCKIFYER_PATH` / `mockDataPath` | Mock data root |
 | `MOCKIFYER_SCENARIO` | Active scenario |
 | `MOCKIFYER_MODE` | RN: `on` \| `launch_client` \| `off` |
+| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/disk: `allowlist` (default) \| `record_all` \| `off` |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` |
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-level fallback matching |
 | `MOCKIFYER_DASHBOARD_AUTH_USER` + `MOCKIFYER_DASHBOARD_AUTH_PASSWORD` | Optional HTTP Basic Auth on dashboard |
+| `MOCKIFYER_ECHO_TRACE_ID` | Echo `X-Mockifyer-Request-Id` on responses (default on; set `false` to disable) |
+| `MOCKIFYER_AUTO_INBOUND_CORRELATION` | Node inbound hop capture on `setupMockifyer` (default on) |
+
+Thrown/rejected HTTP errors are stamped with `error.mockifyerRequestId` (dashboard `/api/network-events/trace` lookup key). Express: `createMockifyerErrorHandler()`.
 
 See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build rules.
 
@@ -52,7 +57,9 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - **async/await**, explicit errors, TypeScript strict, interfaces over type aliases for objects.
 - **DRY**: extract repeated logic; no drive-by refactors outside the task.
 - **Git**: never commit/push unless the user asks.
-- **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (see `.cursor/rules/release-pr-build-check.mdc`).
+- **Versions**: when code under `packages/<pkg>/` changes, bump that package’s `version` (and every other changed package) before PR — see `.cursor/rules/release-pr-build-check.mdc`.
+- **Dashboard builds** (if touching `packages/mockifyer-dashboard`): run frontend + backend build before PR (same rule).
+- **Tests**: `npm test` from the repo root must pass before push or a new PR (same rule).
 - **Linear issues**: project `Mockifyer`, labels `feature` + `backlog` unless overridden.
 
 ## Quick tasks
@@ -63,7 +70,7 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 
 **Dashboard list / similar GraphQL groups** → `packages/mockifyer-dashboard/src/routes/mocks.ts`, `mock-body-similarity.ts` in core.
 
-**React Native** → [REACT_NATIVE.md](../../../REACT_NATIVE.md), Hybrid provider, Metro sync.
+**React Native** → [REACT_NATIVE.md](../../../REACT_NATIVE.md), Hybrid provider, Metro sync. New public exports used on device must also be re-exported from `packages/mockifyer-core/src/index.react-native.ts` (and fetch `src/react-native.ts` / `src/react/index.native.ts` when those entries apply). Typecheck and Jest import the Node barrel. See `.cursor/rules/react-native-exports.mdc`.
 
 **Why two GraphQL mocks?** Different `query` documents → different keys even if `operationName` and `variables` match. Dashboard `?similarGroups=1` clusters near-duplicates for review only.
 
@@ -73,3 +80,5 @@ See [reference.md](reference.md) for dashboard API, Redis proxy, and PR build ru
 - [packages/mockifyer-dashboard/README.md](../../../packages/mockifyer-dashboard/README.md) — CLI, auth, embed
 - [MULTI_CLIENT_ISOLATION.md](../../../MULTI_CLIENT_ISOLATION.md) — Redis lanes / proxy
 - [reference.md](reference.md) — condensed deep reference
+- **Trace sidecar (PR #333):** `response.mockifyerTrace` on axios/fetch — lookup ids without wrapping `response.data`. See [debugging-and-incidents.md](../../../docs/architecture/debugging-and-incidents.md).
+- Inline response trace: `X-Mockifyer-Include-Trace: 1` adds `mockifyerTrace` beside the original JSON fields (test/debug only; no Redis required for in-process hops). Arrays and scalars still use `{ data, mockifyerTrace }`. Opt-in is forwarded on outbound hops; nested downstream traces are unwrapped and merged into the parent buffer. Internal POSTs to dashboard `/api/proxy` are bypassed and never shown as hops.

@@ -4,6 +4,7 @@ import type {
   MockAiContext,
   AiContextMode,
   MockResponseDateOverride,
+  MockResponseFieldOverride,
   Stats,
   ScenarioConfig,
   ScenarioExportBundle,
@@ -12,6 +13,7 @@ import type {
   NetworkLogConfig,
   NetworkEvent,
   MockReplayMode,
+  FavoriteRequest,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
 
@@ -19,6 +21,21 @@ const API_BASE = getApiBase()
 
 /** Prevent stale API responses (browser HTTP cache on GET). */
 const noStore: RequestInit = { cache: 'no-store' }
+
+/**
+ * Express can still 304 GET /api/* when If-None-Match matches. A 304 is not
+ * `response.ok` and has an empty body, so JSON parse / `ok` checks fail and the
+ * Overrides page stays on "Loading…". Retry once with a cache-busting query.
+ */
+async function fetchApi(input: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const isGetLike = method === 'GET' || method === 'HEAD'
+  const merged: RequestInit = isGetLike ? { ...noStore, ...init } : { ...init }
+  const response = await fetch(input, merged)
+  if (response.status !== 304 || !isGetLike) return response
+  const joiner = input.includes('?') ? '&' : '?'
+  return fetch(`${input}${joiner}_=${Date.now()}`, { ...merged, cache: 'reload' })
+}
 
 function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig {
   return {
@@ -32,23 +49,59 @@ function mapScenarioConfigPayload(data: Record<string, unknown>): ScenarioConfig
       data.scenarioLocks && typeof data.scenarioLocks === 'object' && data.scenarioLocks !== null
         ? (data.scenarioLocks as Record<string, boolean>)
         : {},
+    scratchScenario: typeof data.scratchScenario === 'string' ? data.scratchScenario : undefined,
+    scratchScenarioLabel:
+      typeof data.scratchScenarioLabel === 'string' ? data.scratchScenarioLabel : undefined,
+    isScratchScenario: data.isScratchScenario === true,
+    scratchTtlSec:
+      typeof data.scratchTtlSec === 'number' && Number.isFinite(data.scratchTtlSec)
+        ? data.scratchTtlSec
+        : undefined,
   }
 }
 
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
-    const err = (await response.json()) as { error?: string; message?: string }
-    if (typeof err.error === 'string' && err.error) return err.error
-    if (typeof err.message === 'string' && err.message) return err.message
+    const err = (await response.json()) as { error?: string; message?: string; details?: string }
+    const main =
+      (typeof err.error === 'string' && err.error) ||
+      (typeof err.message === 'string' && err.message) ||
+      ''
+    const details = typeof err.details === 'string' && err.details.trim() ? err.details.trim() : ''
+    if (main && details && details !== main) return `${main}: ${details}`
+    if (main) return main
+    if (details) return details
   } catch {
     // ignore
   }
   return fallback
 }
 
+/** Redis UI names are `redis/<hash>.json`; encode each segment so Express matches field-overrides. */
+function encodeMockFilename(filename: string): string {
+  return filename
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
+const OVERRIDES_LIST_TIMEOUT_MS = 25_000
+
 export async function getMocks(
   scenario?: string,
-  opts?: { similarGroups?: boolean; similarThreshold?: number }
+  opts?: {
+    similarGroups?: boolean
+    similarThreshold?: number
+    signal?: AbortSignal
+    compact?: boolean
+  }
 ): Promise<{
   files: MockFile[]
   mockDataPath: string
@@ -57,6 +110,7 @@ export async function getMocks(
 }> {
   const qs = new URLSearchParams()
   if (scenario) qs.set('scenario', scenario)
+  if (opts?.compact) qs.set('compact', '1')
   if (opts?.similarGroups) {
     qs.set('similarGroups', '1')
     if (typeof opts.similarThreshold === 'number' && Number.isFinite(opts.similarThreshold)) {
@@ -64,9 +118,46 @@ export async function getMocks(
     }
   }
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks${suffix}`, {
+    ...noStore,
+    signal: opts?.signal,
+  })
   if (!response.ok) throw new Error('Failed to fetch mocks')
   return response.json()
+}
+
+/**
+ * Overrides sidebar: only mocks that already have field/date overlays.
+ * Does not wait on GET /api/mocks of the full Redis catalog.
+ */
+export async function getMocksWithOverrides(
+  scenario?: string,
+  opts?: { signal?: AbortSignal }
+): Promise<{ files: MockFile[]; mockDataPath: string; scenario: string }> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  const timeout = new AbortController()
+  const timer = globalThis.setTimeout(() => timeout.abort(), OVERRIDES_LIST_TIMEOUT_MS)
+  const onParentAbort = () => timeout.abort()
+  opts?.signal?.addEventListener('abort', onParentAbort)
+  try {
+    const response = await fetchApi(`${API_BASE}/mocks/with-overrides${suffix}`, {
+      ...noStore,
+      signal: timeout.signal,
+    })
+    if (!response.ok) throw new Error('Failed to fetch mocks with overrides')
+    return response.json()
+  } catch (error) {
+    if (opts?.signal?.aborted) throw error
+    if (isAbortError(error)) {
+      throw new Error('Timed out loading mocks with overrides')
+    }
+    throw error
+  } finally {
+    globalThis.clearTimeout(timer)
+    opts?.signal?.removeEventListener('abort', onParentAbort)
+  }
 }
 
 export async function searchMocks(params: {
@@ -82,14 +173,41 @@ export async function searchMocks(params: {
   if (scenario) qs.set('scenario', scenario)
   if (typeof limit === 'number' && Number.isFinite(limit)) qs.set('limit', String(limit))
 
-  const response = await fetch(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/search?${qs.toString()}`, noStore)
   if (!response.ok) throw new Error('Failed to search mocks')
+  return response.json()
+}
+
+export async function getFavorites(): Promise<{ favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites`, noStore)
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to fetch favorites'))
+  return response.json()
+}
+
+export async function addFavorite(params: {
+  filename: string
+  scenario?: string
+}): Promise<{ favorite: FavoriteRequest; favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to add favorite'))
+  return response.json()
+}
+
+export async function removeFavorite(id: string): Promise<{ favorites: FavoriteRequest[] }> {
+  const response = await fetchApi(`${API_BASE}/favorites/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) throw new Error(await readErrorMessage(response, 'Failed to remove favorite'))
   return response.json()
 }
 
 export async function getMock(filename: string, scenario?: string): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch mock')
   return response.json()
 }
@@ -116,12 +234,29 @@ export async function getMockAiContext(
   if (opts?.includeRelated === false) qs.set('includeRelated', '0')
 
   const suffix = qs.toString() ? `?${qs.toString()}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/ai-context${suffix}`, noStore)
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/ai-context${suffix}`, noStore)
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error(error.error || error.details || 'Failed to fetch AI context')
   }
   return response.json()
+}
+
+async function putMockUpdate(
+  filename: string,
+  body: Record<string, unknown>,
+  scenario?: string
+): Promise<void> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to update mock')
+    throw new Error(message)
+  }
 }
 
 export async function updateMock(
@@ -138,16 +273,222 @@ export async function updateMock(
   if (replayMode !== undefined) {
     body.replayMode = replayMode
   }
+  await putMockUpdate(filename, body, scenario)
+}
+
+/** Persist only replay mode — avoids re-uploading a large GraphQL response body. */
+export async function updateMockReplayMode(
+  filename: string,
+  replayMode: MockReplayMode,
+  scenario?: string
+): Promise<void> {
+  await putMockUpdate(filename, { replayMode }, scenario)
+}
+
+export async function getMockFieldOverrides(
+  filename: string,
+  scenario?: string
+): Promise<{
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
-    method: 'PUT',
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load field overrides'))
+  }
+  return response.json()
+}
+
+export async function setMockDateOverrides(
+  filename: string,
+  responseDateOverrides: MockResponseDateOverride[] | null,
+  scenario?: string
+): Promise<void> {
+  await putMockUpdate(filename, { responseDateOverrides }, scenario)
+}
+
+export async function setMockFieldOverrides(
+  filename: string,
+  responseFieldOverrides: MockResponseFieldOverride[] | null,
+  options?: { scenario?: string; merge?: boolean }
+): Promise<{
+  success: boolean
+  filename: string
+  scenario: string
+  responseFieldOverrides: MockResponseFieldOverride[]
+}> {
+  const q = options?.scenario ? `?scenario=${encodeURIComponent(options.scenario)}` : ''
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/field-overrides${q}`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      responseFieldOverrides,
+      merge: options?.merge === true,
+    }),
   })
   if (!response.ok) {
-    const message = await readErrorMessage(response, 'Failed to update mock')
-    throw new Error(message)
+    throw new Error(await readErrorMessage(response, 'Failed to save field overrides'))
   }
+  return response.json()
+}
+
+export interface OverrideGroupSummary {
+  id: string
+  label: string
+  updatedAt: string
+  entryCount: number
+}
+
+export interface OverrideGroupEntry {
+  filename: string
+  responseFieldOverrides?: MockResponseFieldOverride[]
+  responseDateOverrides?: MockResponseDateOverride[]
+}
+
+export interface OverrideGroup {
+  id: string
+  label: string
+  updatedAt: string
+  entries: OverrideGroupEntry[]
+}
+
+export async function listOverrideGroups(
+  scenario?: string,
+  clientId?: string
+): Promise<{
+  scenario: string
+  clientId: string | null
+  defaultGroup: string | null
+  laneGroup: string | null
+  currentGroup: string | null
+  source: 'explicit' | 'env' | 'lane' | 'default' | 'none'
+  updatedAt: string | null
+  groups: OverrideGroupSummary[]
+}> {
+  const qs = new URLSearchParams()
+  if (scenario) qs.set('scenario', scenario)
+  if (clientId) qs.set('clientId', clientId)
+  const q = qs.toString() ? `?${qs}` : ''
+  const response = await fetchApi(`${API_BASE}/override-groups${q}`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to list override groups'))
+  }
+  return response.json()
+}
+
+export async function getOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetchApi(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load override group'))
+  }
+  return response.json()
+}
+
+export async function putOverrideGroup(
+  group: OverrideGroup,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetchApi(
+    `${API_BASE}/override-groups/${encodeURIComponent(group.id)}${q}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(group),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to save override group'))
+  }
+  return response.json()
+}
+
+export async function setActiveOverrideGroup(
+  currentGroup: string | null,
+  options?: {
+    scenario?: string
+    clientId?: string | null
+    /** `lane` = per-client selection; `default` = scenario-wide default */
+    scope?: 'lane' | 'default'
+  }
+): Promise<{
+  success: boolean
+  scenario: string
+  clientId?: string | null
+  scope?: string
+  defaultGroup?: string | null
+  laneGroup?: string | null
+  currentGroup: string | null
+  source?: string
+}> {
+  const qs = new URLSearchParams()
+  if (options?.scenario) qs.set('scenario', options.scenario)
+  if (options?.clientId) qs.set('clientId', options.clientId)
+  const q = qs.toString() ? `?${qs}` : ''
+  const response = await fetchApi(`${API_BASE}/override-groups/config${q}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      currentGroup,
+      scenario: options?.scenario,
+      clientId: options?.clientId,
+      scope: options?.scope,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set active override group'))
+  }
+  return response.json()
+}
+
+export async function patchOverrideGroupEntry(
+  groupId: string,
+  payload: {
+    filename: string
+    responseFieldOverrides?: MockResponseFieldOverride[] | null
+    responseDateOverrides?: MockResponseDateOverride[] | null
+    clear?: boolean
+    ensure?: boolean
+  },
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; group: OverrideGroup }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetchApi(
+    `${API_BASE}/override-groups/${encodeURIComponent(groupId)}/entries${q}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to update override group entry'))
+  }
+  return response.json()
+}
+
+export async function deleteOverrideGroup(
+  id: string,
+  scenario?: string
+): Promise<{ success: boolean; scenario: string; deleted: string }> {
+  const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
+  const response = await fetchApi(
+    `${API_BASE}/override-groups/${encodeURIComponent(id)}${q}`,
+    { method: 'DELETE' }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to delete override group'))
+  }
+  return response.json()
 }
 
 export async function refreshMockFromLive(
@@ -156,7 +497,7 @@ export async function refreshMockFromLive(
   clientId?: string
 ): Promise<MockData> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/refresh-from-live${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/refresh-from-live${q}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(clientId ? { clientId } : {}),
@@ -171,7 +512,7 @@ export async function refreshMockFromLive(
 
 export async function deleteMock(filename: string, scenario?: string): Promise<void> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}${q}`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -182,7 +523,7 @@ export async function deleteMock(filename: string, scenario?: string): Promise<v
 
 export async function duplicateMock(filename: string, scenario?: string): Promise<{ newFilename: string }> {
   const q = scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''
-  const response = await fetch(`${API_BASE}/mocks/${filename}/duplicate${q}`, {
+  const response = await fetchApi(`${API_BASE}/mocks/${encodeMockFilename(filename)}/duplicate${q}`, {
     method: 'POST',
   })
   if (!response.ok) {
@@ -192,24 +533,31 @@ export async function duplicateMock(filename: string, scenario?: string): Promis
   return response.json()
 }
 
-export async function getStats(scenario?: string): Promise<Stats> {
-  const url = scenario
-    ? `${API_BASE}/stats?scenario=${encodeURIComponent(scenario)}`
-    : `${API_BASE}/stats`
-  const response = await fetch(url, noStore)
+export async function getStats(scenario?: string, domain?: string): Promise<Stats> {
+  const params = new URLSearchParams()
+  if (scenario) params.set('scenario', scenario)
+  if (domain) params.set('domain', domain)
+  const query = params.toString()
+  const url = query ? `${API_BASE}/stats?${query}` : `${API_BASE}/stats`
+  const response = await fetchApi(url, noStore)
   if (!response.ok) throw new Error('Failed to fetch stats')
   return response.json()
 }
 
+const SCENARIO_CONFIG_TIMEOUT_MS = 10_000
+
 export async function getScenarioConfig(): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config`, noStore)
+  const response = await fetchApi(`${API_BASE}/scenario-config`, {
+    ...noStore,
+    signal: AbortSignal.timeout(SCENARIO_CONFIG_TIMEOUT_MS),
+  })
   if (!response.ok) throw new Error('Failed to fetch scenario config')
   const data = await response.json()
   return mapScenarioConfigPayload(data)
 }
 
 export async function setScenarioLock(scenario: string, locked: boolean): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config/lock`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/lock`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, locked }),
@@ -223,7 +571,7 @@ export async function setScenarioLock(scenario: string, locked: boolean): Promis
 }
 
 export async function setScenario(scenario: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/scenario-config/set`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/set`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario }),
@@ -244,6 +592,9 @@ export interface ClientLaneLastSeenResolved {
 export interface ClientLane {
   clientId: string
   scenario: string
+  overrideGroupId?: string | null
+  /** ISO current date for this lane; when set, it overrides scenario Date Config. */
+  fixedDate?: string | null
   note: string | null
   lastSeenResolved?: ClientLaneLastSeenResolved | null
   devices?: {
@@ -277,13 +628,13 @@ export async function getClientLanes(): Promise<{
   connections?: ClientConnectionRow[]
   globalScenario: string | null
 }> {
-  const response = await fetch(`${API_BASE}/client-lanes`, noStore)
+  const response = await fetchApi(`${API_BASE}/client-lanes`, noStore)
   if (!response.ok) throw new Error('Failed to fetch client lanes')
   return response.json()
 }
 
 export async function setClientLaneScenario(clientId: string, scenario: string | null): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario }),
@@ -294,8 +645,40 @@ export async function setClientLaneScenario(clientId: string, scenario: string |
   }
 }
 
+export async function setClientLaneOverrideGroup(
+  clientId: string,
+  overrideGroupId: string | null
+): Promise<void> {
+  const response = await fetchApi(
+    `${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/override-group`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overrideGroupId }),
+    }
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set lane override group'))
+  }
+}
+
+export async function setClientLaneFixedDate(
+  clientId: string,
+  fixedDate: string | null
+): Promise<void> {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}/date`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fixedDate }),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to set lane current date'))
+  }
+}
+
+
 export async function setClientLaneNote(clientId: string, note: string | null): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ note }),
@@ -307,7 +690,7 @@ export async function setClientLaneNote(clientId: string, note: string | null): 
 }
 
 export async function deleteClientLane(clientId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
+  const response = await fetchApi(`${API_BASE}/client-lanes/${encodeURIComponent(clientId)}`, {
     method: 'DELETE',
   })
   if (!response.ok) {
@@ -317,14 +700,13 @@ export async function deleteClientLane(clientId: string): Promise<void> {
 }
 
 export async function createScenario(scenario: string, deriveFrom?: string | null): Promise<ScenarioConfig> {
-  const response = await fetch(`${API_BASE}/scenario-config/create`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
   })
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Failed to create scenario')
+    throw new Error(await readErrorMessage(response, 'Failed to create scenario'))
   }
   const data = await response.json()
   return mapScenarioConfigPayload(data)
@@ -335,7 +717,7 @@ export async function exportScenarioBundle(scenario?: string): Promise<ScenarioE
     scenario !== undefined && scenario !== ''
       ? `?scenario=${encodeURIComponent(scenario)}`
       : ''
-  const response = await fetch(`${API_BASE}/scenario-config/export${qs}`, noStore)
+  const response = await fetchApi(`${API_BASE}/scenario-config/export${qs}`, noStore)
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || 'Failed to export scenario')
@@ -365,7 +747,7 @@ export async function importScenarioBundle(payload: {
     applyDateConfig: payload.applyDateConfig !== false,
     applyProxyConfig: payload.applyProxyConfig !== false,
   }
-  const response = await fetch(`${API_BASE}/scenario-config/import`, {
+  const response = await fetchApi(`${API_BASE}/scenario-config/import`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -381,6 +763,70 @@ export async function importScenarioBundle(payload: {
   return response.json()
 }
 
+export async function clearScenarioMocks(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  mocksRemoved: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/clear-mocks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to clear scenario mocks')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function deleteScenario(scenario: string): Promise<{
+  success: boolean
+  scenario: string
+  currentScenario: string
+  scenarios: string[]
+  mocksRemoved: number
+  lanesUnassigned: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to delete scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
+export async function renameScenario(
+  scenario: string,
+  newName: string
+): Promise<{
+  success: boolean
+  scenario: string
+  newName: string
+  currentScenario: string
+  scenarios: string[]
+  mocksMoved: number
+  lanesRemapped: number
+  message: string
+}> {
+  const response = await fetchApi(`${API_BASE}/scenario-config/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario, newName }),
+  })
+  if (!response.ok) {
+    const message = await readErrorMessage(response, 'Failed to rename scenario')
+    throw new Error(message)
+  }
+  return response.json()
+}
+
 export interface ProxyConfig {
   scenario: string
   recordOnMiss: boolean
@@ -390,7 +836,7 @@ export interface ProxyConfig {
 
 export async function getProxyConfig(scenario: string): Promise<ProxyConfig> {
   const q = `?scenario=${encodeURIComponent(scenario)}`
-  const response = await fetch(`${API_BASE}/proxy-config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/proxy-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch proxy config')
   return response.json()
 }
@@ -400,7 +846,7 @@ export async function updateProxyConfig(payload: {
   recordOnMiss: boolean
   allowUpstream: boolean
 }): Promise<void> {
-  const response = await fetch(`${API_BASE}/proxy-config`, {
+  const response = await fetchApi(`${API_BASE}/proxy-config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -435,7 +881,7 @@ export async function getDateConfig(scenario?: string): Promise<DateConfig> {
     scenario !== undefined && scenario !== ''
       ? `?scenario=${encodeURIComponent(scenario)}`
       : ''
-  const response = await fetch(`${API_BASE}/date-config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/date-config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch date config')
   return response.json()
 }
@@ -475,7 +921,7 @@ export async function getNetworkEventTrace(params: {
   if (params.requestId) qs.set('requestId', params.requestId)
   if (params.eventId) qs.set('eventId', params.eventId)
   if (params.clientId) qs.set('clientId', params.clientId)
-  const response = await fetch(`${API_BASE}/network-events/trace?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events/trace?${qs.toString()}`, noStore)
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
     throw new Error((error as { error?: string }).error || 'Failed to fetch network trace')
@@ -494,21 +940,22 @@ export async function getNetworkEvents(params: {
   if (params.clientId) qs.set('clientId', params.clientId)
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.since) qs.set('since', params.since)
-  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events?${qs.toString()}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch network events')
   return response.json()
 }
 
-export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<void> {
+export async function clearNetworkEvents(scenario: string, clientId?: string): Promise<{ ok: boolean; removed: number }> {
   const qs = new URLSearchParams({ scenario })
   if (clientId) qs.set('clientId', clientId)
-  const response = await fetch(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
+  const response = await fetchApi(`${API_BASE}/network-events?${qs.toString()}`, { method: 'DELETE' })
   if (!response.ok) throw new Error('Failed to clear network events')
+  return response.json()
 }
 
 export async function getNetworkLogConfig(scenario: string): Promise<NetworkLogConfig & { scenario: string }> {
   const q = `?scenario=${encodeURIComponent(scenario)}`
-  const response = await fetch(`${API_BASE}/network-events/config${q}`, noStore)
+  const response = await fetchApi(`${API_BASE}/network-events/config${q}`, noStore)
   if (!response.ok) throw new Error('Failed to fetch network log config')
   return response.json()
 }
@@ -517,7 +964,7 @@ export async function updateNetworkLogConfig(
   scenario: string,
   patch: Partial<Pick<NetworkLogConfig, 'enabled' | 'captureBodies'>>
 ): Promise<NetworkLogConfig & { scenario: string }> {
-  const response = await fetch(`${API_BASE}/network-events/config`, {
+  const response = await fetchApi(`${API_BASE}/network-events/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, ...patch }),
@@ -539,7 +986,7 @@ export async function bulkSetLiveApiForDomain(payload: {
   skippedPending: number
   domainPath: string
 }> {
-  const response = await fetch(`${API_BASE}/mocks/bulk-live-api`, {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-live-api`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -551,26 +998,26 @@ export async function bulkSetLiveApiForDomain(payload: {
   return response.json()
 }
 
-export async function bulkCaptureResponsesForDomain(payload: {
+export async function bulkSetReplayMode(payload: {
   scenario: string
-  domainPath: string
-  clientId?: string
+  stored?: string[]
+  passthrough?: string[]
 }): Promise<{
   ok: boolean
-  captured: number
-  skippedAlready: number
-  failed: number
-  errors: Array<{ endpoint: string | null; message: string }>
-  domainPath: string
+  updatedStored: number
+  updatedLive: number
+  queuedRefreshNext: number
+  skippedPending: number
+  missing: number
 }> {
-  const response = await fetch(`${API_BASE}/mocks/bulk-capture-responses`, {
+  const response = await fetchApi(`${API_BASE}/mocks/bulk-replay-mode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error((err as { error?: string }).error || 'Failed to bulk capture responses')
+    throw new Error((err as { error?: string }).error || 'Failed to update hop replay mode')
   }
   return response.json()
 }
@@ -578,6 +1025,8 @@ export async function bulkCaptureResponsesForDomain(payload: {
 export interface DomainPathRule {
   recordResponses: boolean
   autoMock?: boolean
+  /** When false, proxy blocks upstream for this host/path even if the scenario allows it. */
+  allowUpstream?: boolean
   updatedAt?: string
 }
 
@@ -585,7 +1034,7 @@ export type DomainPathRulesMap = Record<string, DomainPathRule>
 
 export async function fetchDomainPathRules(scenario: string): Promise<DomainPathRulesMap> {
   const params = new URLSearchParams({ scenario })
-  const response = await fetch(`${API_BASE}/mocks/domain-path-rules?${params}`)
+  const response = await fetchApi(`${API_BASE}/mocks/domain-path-rules?${params}`)
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
     throw new Error((err as { error?: string }).error || 'Failed to load domain path rules')
@@ -597,9 +1046,9 @@ export async function fetchDomainPathRules(scenario: string): Promise<DomainPath
 export async function setDomainPathRule(payload: {
   scenario: string
   domainPath: string
-  rule: { recordResponses: boolean; autoMock?: boolean } | null
+  rule: { recordResponses?: boolean; autoMock?: boolean; allowUpstream?: boolean } | null
 }): Promise<DomainPathRulesMap> {
-  const response = await fetch(`${API_BASE}/mocks/domain-path-rules`, {
+  const response = await fetchApi(`${API_BASE}/mocks/domain-path-rules`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -616,7 +1065,7 @@ export async function appendNetworkEvent(
   scenario: string,
   event: Omit<NetworkEvent, 'id' | 'timestamp' | 'scenario'>
 ): Promise<void> {
-  const response = await fetch(`${API_BASE}/network-events`, {
+  const response = await fetchApi(`${API_BASE}/network-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scenario, event }),
@@ -630,7 +1079,7 @@ export async function updateDateConfig(config: {
   timezone?: string | null
   scenario?: string | null
 }): Promise<DateConfig> {
-  const response = await fetch(`${API_BASE}/date-config`, {
+  const response = await fetchApi(`${API_BASE}/date-config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -638,6 +1087,113 @@ export async function updateDateConfig(config: {
   if (!response.ok) {
     const message = await readErrorMessage(response, 'Failed to update date config')
     throw new Error(message)
+  }
+  return response.json()
+}
+
+export interface FixturePoolEntityRow {
+  id: string
+  label: string
+  entityType: string
+  tags?: string[]
+}
+
+export interface FixturePoolResponseRow {
+  id: string
+  label: string
+  tags?: string[]
+}
+
+export async function getFixturePoolEntities(): Promise<{
+  entities: FixturePoolEntityRow[]
+  updatedAt?: string
+  warning?: string
+}> {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/entities`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load entities'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolResponses(): Promise<{
+  responses: FixturePoolResponseRow[]
+  updatedAt?: string
+  warning?: string
+}> {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/responses`, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load responses'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolEntity(id: string): Promise<unknown> {
+  const response = await fetchApi(
+    `${API_BASE}/fixture-pool/entities/${encodeURIComponent(id)}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load entity'))
+  }
+  return response.json()
+}
+
+export async function getFixturePoolResponse(id: string): Promise<unknown> {
+  const response = await fetchApi(
+    `${API_BASE}/fixture-pool/responses/${encodeURIComponent(id)}`,
+    noStore
+  )
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load response fixture'))
+  }
+  return response.json()
+}
+
+export async function extractFixturePoolEntity(body: {
+  scenario: string
+  filename: string
+  jsonPath: string
+  entityType: string
+  id?: string
+  extractAllArrayItems?: boolean
+  label?: string
+}): Promise<{ entities: FixturePoolEntityRow[] }> {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/entities/extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to extract entity'))
+  }
+  return response.json()
+}
+
+export async function promoteFixturePoolResponse(body: {
+  scenario: string
+  filename: string
+  id?: string
+  label?: string
+}): Promise<{ response: FixturePoolResponseRow }> {
+  const response = await fetchApi(`${API_BASE}/fixture-pool/responses/promote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to promote response'))
+  }
+  return response.json()
+}
+
+export async function getMemoryStats(scenario?: string): Promise<import('@/types').MemoryStats> {
+  const url = scenario
+    ? `${API_BASE}/memory?scenario=${encodeURIComponent(scenario)}`
+    : `${API_BASE}/memory`
+  const response = await fetchApi(url, noStore)
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Failed to load memory statistics'))
   }
   return response.json()
 }

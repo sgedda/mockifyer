@@ -44,6 +44,51 @@ export interface ScenarioConfigResponse {
   currentScenario: string;
   availableScenarios?: string[];
   scenarios?: string[];
+  scenarioLocks?: Record<string, boolean>;
+  success?: boolean;
+  message?: string;
+}
+
+export interface SetScenarioResponse {
+  success: boolean;
+  message: string;
+  currentScenario: string;
+  scenarios: string[];
+}
+
+export interface CreateScenarioResponse {
+  success: boolean;
+  message: string;
+  currentScenario: string;
+  scenarios: string[];
+}
+
+export interface ClientLaneLastSeenResolved {
+  scenario: string;
+  lastSeenAt: string;
+  resolutionSource: string;
+  clientBodyScenarioOverride: boolean;
+}
+
+export interface ClientLane {
+  clientId: string;
+  scenario: string;
+  note: string | null;
+  lastSeenResolved?: ClientLaneLastSeenResolved | null;
+}
+
+export interface ClientLanesResponse {
+  enabled: boolean;
+  reason?: string | null;
+  lanes: ClientLane[];
+  discoveredLanes?: string[];
+  globalScenario: string | null;
+}
+
+export interface SetClientLaneScenarioResponse {
+  success: boolean;
+  lanes: ClientLane[];
+  globalScenario: string | null;
 }
 
 export interface StatsResponse {
@@ -56,7 +101,8 @@ export interface StatsResponse {
 
 export interface MockFieldOverride {
   path: string;
-  value: unknown;
+  value?: unknown;
+  mode?: 'replace' | 'extend' | 'remove';
 }
 
 export interface CopyArrayItemResponse {
@@ -77,7 +123,8 @@ export interface SetFieldOverridesResponse {
 
 export interface MockFieldOverrideEntry {
   path: string;
-  value: unknown;
+  value?: unknown;
+  mode?: 'replace' | 'extend' | 'remove';
 }
 
 export interface SetFieldOverridesResponse {
@@ -321,9 +368,46 @@ export class DashboardApiClient {
     return this.request('/scenario-config');
   }
 
+  async setScenario(scenario: string): Promise<SetScenarioResponse> {
+    return this.request('/scenario-config/set', {
+      method: 'POST',
+      body: JSON.stringify({ scenario }),
+    });
+  }
+
+  async createScenario(scenario: string, deriveFrom?: string | null): Promise<CreateScenarioResponse> {
+    return this.request('/scenario-config/create', {
+      method: 'POST',
+      body: JSON.stringify({ scenario, deriveFrom: deriveFrom ?? null }),
+    });
+  }
+
+  async listClientLanes(): Promise<ClientLanesResponse> {
+    return this.request('/client-lanes');
+  }
+
+  async setClientLaneScenario(
+    clientId: string,
+    scenario: string | null
+  ): Promise<SetClientLaneScenarioResponse> {
+    return this.request(`/client-lanes/${encodeURIComponent(clientId)}/scenario`, {
+      method: 'PUT',
+      body: JSON.stringify({ scenario }),
+    });
+  }
+
   async getStats(scenario?: string): Promise<StatsResponse> {
     const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
     return this.request(`/stats${qs}`);
+  }
+
+  async getFieldOverrides(params: {
+    filename: string;
+    scenario?: string;
+  }): Promise<SetFieldOverridesResponse> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    const encoded = encodeMockFilename(params.filename);
+    return this.request(`/mocks/${encoded}/field-overrides${qs}`);
   }
 
   async setFieldOverrides(params: {
@@ -339,6 +423,99 @@ export class DashboardApiClient {
       body: JSON.stringify({
         responseFieldOverrides: params.responseFieldOverrides,
         merge: params.merge === true,
+      }),
+    });
+  }
+
+  async listOverrideGroups(params?: {
+    scenario?: string;
+    clientId?: string;
+  }): Promise<{
+    scenario: string;
+    clientId?: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
+    currentGroup: string | null;
+    source?: string;
+    groups: Array<{ id: string; label: string; updatedAt: string; entryCount: number }>;
+  }> {
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups${q}`);
+  }
+
+  async getOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+  }): Promise<{ scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`);
+  }
+
+  async putOverrideGroup(params: {
+    id: string;
+    scenario?: string;
+    label: string;
+    entries?: unknown[];
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.id)}${qs}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        id: params.id,
+        label: params.label,
+        entries: params.entries ?? [],
+      }),
+    });
+  }
+
+  async setActiveOverrideGroup(params: {
+    currentGroup: string | null;
+    scenario?: string;
+    clientId?: string;
+    scope?: 'lane' | 'default';
+  }): Promise<{
+    success: boolean;
+    scenario: string;
+    clientId?: string | null;
+    currentGroup: string | null;
+    defaultGroup?: string | null;
+    laneGroup?: string | null;
+    source?: string;
+  }> {
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    const q = qs.toString() ? `?${qs}` : '';
+    return this.request(`/override-groups/config${q}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        currentGroup: params.currentGroup,
+        scenario: params.scenario,
+        clientId: params.clientId,
+        scope: params.scope ?? (params.clientId ? 'lane' : 'default'),
+      }),
+    });
+  }
+
+  async patchOverrideGroupEntry(params: {
+    groupId: string;
+    scenario?: string;
+    filename: string;
+    responseFieldOverrides?: MockFieldOverride[] | null;
+    clear?: boolean;
+    ensure?: boolean;
+  }): Promise<{ success: boolean; scenario: string; group: unknown }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    return this.request(`/override-groups/${encodeURIComponent(params.groupId)}/entries${qs}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        filename: params.filename,
+        responseFieldOverrides: params.responseFieldOverrides,
+        clear: params.clear === true,
+        ensure: params.ensure === true,
       }),
     });
   }
@@ -411,6 +588,39 @@ export class DashboardApiClient {
   async getNetworkLogConfig(scenario?: string): Promise<NetworkLogConfigResponse> {
     const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
     return this.request<NetworkLogConfigResponse>(`/network-events/config${qs}`);
+  }
+
+  async explainIncident(params: {
+    incidentId?: string;
+    sessionId?: string;
+    clientId?: string;
+    at?: string;
+    windowMs?: number;
+    scenario?: string;
+    limit?: number;
+  }): Promise<{
+    scenario: string;
+    context: unknown;
+    narrative: string;
+  }> {
+    const incidentId = params.incidentId?.trim() ?? '';
+    const sessionId = params.sessionId?.trim() ?? '';
+    if (!incidentId && !sessionId) {
+      throw new Error('Provide incidentId or sessionId');
+    }
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (incidentId) qs.set('incidentId', incidentId);
+    if (sessionId) qs.set('sessionId', sessionId);
+    if (params.clientId) qs.set('clientId', params.clientId);
+    if (params.at) qs.set('at', params.at);
+    if (typeof params.windowMs === 'number' && Number.isFinite(params.windowMs)) {
+      qs.set('windowMs', String(params.windowMs));
+    }
+    if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    return this.request(`/network-events/explain?${qs.toString()}`);
   }
 
   async listEntities(params?: {
@@ -502,5 +712,45 @@ export class DashboardApiClient {
 
   async getResponseFixture(id: string): Promise<{ response: unknown }> {
     return this.request(`/fixture-pool/responses/${encodeURIComponent(id)}`);
+  }
+
+  async resolvePoolResponse(
+    id: string,
+    body: {
+      mode?: 'document' | 'value';
+      path?: string;
+      select?: { field: string; values: Array<string | number | boolean> };
+      indices?: number[];
+    }
+  ): Promise<{ id: string; ref: unknown; data: unknown }> {
+    return this.request(`/fixture-pool/responses/${encodeURIComponent(id)}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async setMockPoolRef(
+    filename: string,
+    body: {
+      pool: {
+        id: string;
+        mode?: 'document' | 'value';
+        path?: string;
+        select?: { field: string; values: Array<string | number | boolean> };
+        indices?: number[];
+      };
+      path?: string | null;
+      scenario?: string;
+    }
+  ): Promise<unknown> {
+    const encoded = filename
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+    const qs = body.scenario ? `?scenario=${encodeURIComponent(body.scenario)}` : '';
+    return this.request(`/mocks/${encoded}/pool-ref${qs}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pool: body.pool, path: body.path ?? null }),
+    });
   }
 }

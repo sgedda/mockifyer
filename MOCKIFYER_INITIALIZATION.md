@@ -62,6 +62,23 @@ await initMockifyerForDashboardProxy({
 });
 ```
 
+Patch **both** `fetch` and `axios` from one call (install `@sgedda/mockifyer-axios` + `axios`):
+
+```typescript
+import axios from 'axios';
+import { initMockifyerForDashboardProxy } from '@sgedda/mockifyer-fetch';
+
+await initMockifyerForDashboardProxy({
+  dashboardBaseUrl: 'http://localhost:3002',
+  clientId: process.env.MOCKIFYER_CLIENT_ID,
+  useGlobalFetch: true,
+  useGlobalAxios: true,
+  axiosInstance: axios, // optional — defaults to require('axios')
+});
+```
+
+`setClientId` / `reloadMockData` on the returned instance are synced across both clients.
+
 Force proxy without health probe (CI that must fail at HTTP layer if dashboard is wrong, or trust the URL):
 
 ```typescript
@@ -141,6 +158,8 @@ await initMockifyerForDashboardProxy({
 });
 ```
 
+Same dual-client option as fetch — set `useGlobalFetch: true` (and install `@sgedda/mockifyer-fetch`) to patch both stacks from axios’s preset.
+
 ### `setupMockifyer(config)`
 
 > **Use when:** The app uses **Axios** instead of `global.fetch`. Mockifyer wires **interceptors**; configuration is the same **`MockifyerConfig`** shape (paths, scenarios, `recordMode`, `proxy`, etc.).  
@@ -176,7 +195,7 @@ Controls whether **`global.fetch` is patched at all** when your init runs. It do
 |------|---------|
 | **`on`** | Activate Mockifyer when the RN helper runs (patch `fetch`). |
 | **`off`** | Do **not** activate; **`not_activated`**; native launch args do **not** bypass this (use for store builds that ship SDK code but must never intercept). |
-| **`launch_client`** | Activate **only if** native launch arguments include a non-empty **`mockifyerClientId`** (or custom **`launchArgumentClientIdKey`**) via optional peer **`react-native-launch-arguments`** — typical **Maestro / XCTest**. |
+| **`launch_client`** | Activate **only if** native launch arguments include a non-empty **`mockifyerClientId`** (or custom **`launchArgumentClientIdKey`**) **or** **`scenario`** via optional peer **`react-native-launch-arguments`** — typical **Maestro / XCTest**. A launch `scenario` is sent on every dashboard proxy request, so no lane mapping is needed. |
 
 **Aliases** (normalized in **`resolveMockifyerRuntimeMode`**): `disabled` \| `none` → **`off`**; `enabled` \| `always` → **`on`**; `e2e` \| `maestro` \| `launch-client` → **`launch_client`**.
 
@@ -184,15 +203,27 @@ Controls whether **`global.fetch` is patched at all** when your init runs. It do
 
 **Important:** **`launch_client` does not look at** **`MOCKIFYER_CLIENT_ID`**, **`config.clientId`**, or “lane connected” in the dashboard UI — only **native launch args** at startup count for this gate. For “activate when env lane is set,” use **`on`** (default) and set **`MOCKIFYER_CLIENT_ID`** / **`clientId`** in merged config **after** activation.
 
-#### 2. **Strict proxy scenario** — **per-request**, optional
+#### 2. **Domain-path rules** (Hybrid / local disk)
+
+For filesystem/Hybrid (no `proxy.baseUrl`), Mockifyer maintains **`mock-data/<scenario>/domain-path-rules.json`**:
+
+| Mode (`MOCKIFYER_DOMAIN_PATH_RULES_MODE` / `domainPathRulesMode`) | Discovery defaults | Unmatched traffic |
+|------|-------------------|-------------------|
+| **`allowlist`** (default) | `recordResponses` + `autoMock` **false** | no record, no replay |
+| **`record_all`** | both **true** | allow |
+| **`off`** | no discovery | legacy ungated `recordMode` |
+
+Workflow: run the app → keys appear in the JSON (host + path; numeric/UUID segments → `:id`) → set flags to `true` for paths you want (dashboard domain tree works too). **Breaking:** apps that previously recorded everything with only `recordMode: true` should set **`record_all`** or **`off`**, or enable paths in the file.
+
+#### 3. **Strict proxy scenario** — **per-request**, optional
 
 Separate from **`MOCKIFYER_MODE`**. When **`strictScenarioResolution`** is **`true`** (or **`MOCKIFYER_STRICT_SCENARIO=true`**) **and** **`proxy.baseUrl`** is set, **`fetch`** interception **skips** Mockifyer (plain passthrough) until **`clientId`** **or** **`proxy.scenario`** is set — see **`isExplicitProxyScenarioContext`** in **`@sgedda/mockifyer-core`**.
 
 When there is **no proxy** (e.g. Hybrid / filesystem-only dev), or strict mode is **off**, **`MOCKIFYER_MODE=on`** does **not** require a lane before intercepting.
 
-#### 3. **`MOCKIFYER_ACTIVATION_MODE`** — **per-request** slice
+#### 4. **`MOCKIFYER_ACTIVATION_MODE`** — **per-request** slice
 
-Yet another axis: e.g. **`client_id_header`** only runs Mockifyer when **`X-Mockifyer-Client-Id`** is present (unless proxy lane rules opt traffic in). See **`README.md`** and **`activationMode`** on **`MockifyerConfig`**.
+Yet another axis: e.g. **`client_id_header`** only runs Mockifyer when **`X-Mockifyer-Client-Id`** is present on the outbound request or on the inbound request being served. Everything else passes through untouched. See **`README.md`** and **`activationMode`** on **`MockifyerConfig`**.
 
 ---
 
@@ -288,6 +319,7 @@ MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 mockifyer-dashboard --provider redis 
 | Variable | Role |
 |----------|------|
 | `MOCKIFYER_MODE` | **RN only** (with **`setupMockifyerForReactNative`**): startup gate — **`on`** \| **`launch_client`** \| **`off`** (see [MOCKIFYER_MODE compared to lane and scenario](#mockifyer_mode-compared-to-lane-and-scenario-two-layers)). Unset → **`on`**. |
+| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/filesystem (not dashboard proxy): **`allowlist`** (default) \| **`record_all`** \| **`off`**. Discovers keys into `mock-data/<scenario>/domain-path-rules.json` and gates local record/replay. Set **`record_all`** or **`off`** to restore “record everything” behavior. |
 | `MOCKIFYER_STRICT_SCENARIO` | When **`true`** and **`proxy.baseUrl`** is set, require **`clientId`** or **`proxy.scenario`** before intercepting (per-request). |
 | `MOCKIFYER_RECORD` | Recording: local **`recordMode`** (filesystem saves) and/or preset **`recordOnMiss`** when using **`initMockifyerForDashboardProxy`** (see below) |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted in config, set to **`true`** or **`false`** to send that `record` flag on `/api/proxy`; if unset, the **`record`** field is omitted and the **dashboard per-scenario** “Record on miss” applies |

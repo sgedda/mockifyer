@@ -4,7 +4,15 @@ import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
-import { getCurrentScenario } from '../utils/scenario';
+import { getCurrentScenario, getScratchScenarioTtlSec, isScratchScenario } from '../utils/scenario';
+import {
+  buildMockPathCardinalitySegment,
+  evaluateRedisMockWriteLimits,
+  formatRedisMockWriteSkipMessage,
+  getMaxMocksPerPathFromEnv,
+  getMaxRequestsPerScenarioFromEnv,
+  redisPathIndexKey,
+} from '../utils/redis-mock-write-limits';
 import { logger } from '../utils/logger';
 import { resolveIoRedisClient } from '../utils/create-io-redis-client';
 import { redisDel, redisMget } from '../utils/redis-cluster-ops';
@@ -117,12 +125,80 @@ export class RedisProvider implements DatabaseProvider {
   async save(mockData: MockData, _options?: SaveMockOptions): Promise<void> {
     const requestKey = generateRequestKey(mockData.request);
     const h = hashRequestKey(requestKey);
-    const key = await this.dataKey(h);
-    const payload = JSON.stringify(mockData);
+    const scenario = await this.scenarioKey();
+    const key = `${this.keyPrefix}:mock:${scenario}:${h}`;
+    const scenarioIndex = `${this.keyPrefix}:index:${scenario}`;
     const client = await this.redis();
-    await client.set(key, payload);
-    const scenarioIndex = await this.indexKey();
+
+    const hashAlreadyStored = (await client.exists(key)) === 1;
+    const maxScenario = getMaxRequestsPerScenarioFromEnv();
+    const maxPath = getMaxMocksPerPathFromEnv();
+    const pathSegment = buildMockPathCardinalitySegment(
+      mockData.request?.method,
+      mockData.request?.url
+    );
+    const pathIndexKey =
+      pathSegment != null ? redisPathIndexKey(this.keyPrefix, scenario, pathSegment) : null;
+
+    let scenarioMockCount = 0;
+    let pathMockCount = 0;
+    let hashAlreadyOnPath = false;
+    if (!hashAlreadyStored) {
+      if (maxScenario != null) {
+        scenarioMockCount = await client.scard(scenarioIndex);
+      }
+      if (maxPath != null && pathIndexKey) {
+        pathMockCount = await client.scard(pathIndexKey);
+        hashAlreadyOnPath = (await client.sismember(pathIndexKey, h)) === 1;
+      }
+      const decision = await evaluateRedisMockWriteLimits({
+        hashAlreadyStored,
+        scenarioMockCount,
+        pathMockCount,
+        hashAlreadyOnPath,
+        maxScenario,
+        maxPath: pathIndexKey ? maxPath : undefined,
+        loadScenarioMembers:
+          maxScenario != null ? () => client.smembers(scenarioIndex) : undefined,
+        loadPathMembers:
+          maxPath != null && pathIndexKey ? () => client.smembers(pathIndexKey) : undefined,
+        membersAreLive: async (hashes: string[]) => {
+          if (hashes.length === 0) return [];
+          const keys = hashes.map((member: string) => `${this.keyPrefix}:mock:${scenario}:${member}`);
+          const values = await redisMget(client, keys);
+          return values.map((raw) => raw != null && raw !== '');
+        },
+        dropStale: async (kind, hashes) => {
+          if (hashes.length === 0) return;
+          if (kind === 'scenario') {
+            await client.srem(scenarioIndex, ...hashes);
+          } else if (pathIndexKey) {
+            await client.srem(pathIndexKey, ...hashes);
+          }
+        },
+      });
+      if (!decision.allow) {
+        logger.warn(
+          formatRedisMockWriteSkipMessage(decision, {
+            scenario,
+            method: mockData.request?.method,
+            url: mockData.request?.url,
+          })
+        );
+        return;
+      }
+    }
+
+    const payload = JSON.stringify(mockData);
+    if (isScratchScenario(scenario)) {
+      await client.set(key, payload, 'EX', getScratchScenarioTtlSec());
+    } else {
+      await client.set(key, payload);
+    }
     await client.sadd(scenarioIndex, h);
+    if (pathIndexKey) {
+      await client.sadd(pathIndexKey, h);
+    }
     logger.debug(`[RedisProvider] Saved mock ${h.slice(0, 12)}… (${payload.length} bytes)`);
   }
 
@@ -139,12 +215,13 @@ export class RedisProvider implements DatabaseProvider {
       return undefined;
     }
     const mockData = JSON.parse(raw) as MockData;
-    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
+    const filename = `redis/${h}.json`;
+    if (!mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks, filename })) {
       return undefined;
     }
     return {
       mockData,
-      filename: `redis_${h.slice(0, 16)}.json`,
+      filename,
       filePath: `redis://${dataKey}`,
     };
   }
@@ -181,7 +258,7 @@ export class RedisProvider implements DatabaseProvider {
             const h = members[i];
             results.push({
               mockData,
-              filename: `redis_${h.slice(0, 16)}.json`,
+              filename: `redis/${h}.json`,
               filePath: `redis://${keys[i]}`,
             });
           }

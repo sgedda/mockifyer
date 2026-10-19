@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.14",
+  "version": "1.10.184",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -50,12 +50,19 @@
     "./utils/fixture-pool/runtime-cache": {
       "types": "./dist/utils/fixture-pool/runtime-cache.d.ts",
       "default": "./dist/utils/fixture-pool/runtime-cache.js"
+    },
+    "./react": {
+      "react-native": "./dist/react/index.native.js",
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
     }
   },
   "bin": {
     "mockifyer": "./src/cli/generate-bundle.ts",
     "mockifyer-sync-to-device": "./src/cli/sync-to-device.ts",
     "mockifyer-sync-from-device": "./src/cli/sync-from-device.ts",
+    "mockifyer-atlas-har": "./src/cli/atlas-har.ts",
+    "mockifyer-atlas": "./src/cli/atlas.ts",
     "mockifyer-init-ai": "./bin/mockifyer-init-ai"
   },
   "scripts": {
@@ -77,10 +84,17 @@
   "license": "MIT",
   "peerDependencies": {
     "ioredis": ">=5.0.0",
+    "react": ">=17.0.0",
     "react-native-launch-arguments": ">=1.0.0"
   },
   "peerDependenciesMeta": {
     "ioredis": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
       "optional": true
     },
     "react-native-launch-arguments": {
@@ -89,7 +103,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "@types/react": "^18.3.12",
     "ioredis": "^5.6.1",
+    "react": "^18.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },

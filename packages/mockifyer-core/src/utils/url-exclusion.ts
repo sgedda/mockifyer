@@ -1,16 +1,48 @@
+import { isMockifyerDashboardPlumbingApiUrl } from './join-proxy-dashboard-api-url';
 import { resolveOutboundUrl } from './recording-exclusion';
+
+/**
+ * Metro sync endpoint path markers that must always bypass Mockifyer
+ * (even when `excludedUrls` replaces the default exclusion list).
+ */
+export const MOCKIFYER_SYNC_ENDPOINT_MARKERS = [
+  '/mockifyer-save',
+  '/mockifyer-clear',
+  '/mockifyer-sync',
+  '/mockifyer-atlas-html',
+  /** Short Metro browse path for atlas-html/index.html (alias of mockifyer-atlas-html). */
+  '/atlas-html',
+  '/mockifyer-atlas-screenshot',
+  '/mockifyer-atlas-render',
+  /** Metro live hop stream (mockifyer-atlas CLI). */
+  '/mockifyer-network-events',
+  /** Metro Atlas capture session (press `t` → activate Mockifyer / include-trace). */
+  '/mockifyer-atlas-capture',
+  '/mockifyer-atlas-session',
+  /** Metro domain-path rules discovery merge. */
+  '/mockifyer-domain-path-rules',
+] as const;
 
 /**
  * Default excluded URLs that should never be recorded or mocked
  */
 export const DEFAULT_EXCLUDED_URLS = [
-  '/mockifyer-save',
-  '/mockifyer-clear',
-  '/mockifyer-sync',
+  ...MOCKIFYER_SYNC_ENDPOINT_MARKERS,
   /** Metro scenario sync — uses cache-bust `?t=`; recording each fetch creates duplicate mocks. */
   '/mockifyer-scenario-config',
   'api.resend.com',
 ];
+
+/**
+ * True when `text` references a Mockifyer Metro sync endpoint path.
+ * Used for request/response interceptor and save-path defense-in-depth checks.
+ */
+export function containsMockifyerSyncEndpointMarker(text: string | null | undefined): boolean {
+  if (!text) {
+    return false;
+  }
+  return MOCKIFYER_SYNC_ENDPOINT_MARKERS.some((marker) => text.includes(marker));
+}
 
 /**
  * Checks if a URL should be excluded from recording/mocking based on the exclusion list
@@ -33,6 +65,10 @@ export function shouldExcludeUrl(url: string | null | undefined, excludedUrls?: 
 /**
  * When true, outbound HTTP should skip Mockifyer entirely (no proxy, mock lookup, or recording).
  * Resolves relative URLs with `baseUrl` when provided.
+ *
+ * Dashboard plumbing (`/api/proxy`, `/api/network-events`) is always bypassed (even when
+ * `excludedUrls` replaces defaults) so internal POSTs are never re-intercepted, recorded,
+ * or shown as user-visible hops.
  */
 export function shouldBypassMockifyerForUrl(
   rawUrl: string | null | undefined,
@@ -40,6 +76,9 @@ export function shouldBypassMockifyerForUrl(
   baseUrl?: string | null
 ): boolean {
   const resolved = resolveOutboundUrl(rawUrl, baseUrl);
+  if (isMockifyerDashboardPlumbingApiUrl(resolved) || isMockifyerDashboardPlumbingApiUrl(rawUrl)) {
+    return true;
+  }
   if (resolved && shouldExcludeUrl(resolved, excludedUrls)) {
     return true;
   }

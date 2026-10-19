@@ -1,13 +1,34 @@
 import fs from 'fs';
 import path from 'path';
 import type { MockData } from '@sgedda/mockifyer-core';
-import { getScenarioFolderPath } from '@sgedda/mockifyer-core';
+import {
+  DOMAIN_PATH_RULES_FILENAME,
+  getScenarioFolderPath,
+  SCENARIO_META_FILENAME,
+  OVERRIDE_SETS_DIR_NAME,
+} from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
+
+/** Scenario-folder JSON that is not recorded request/response traffic. */
+const PRESERVED_SCENARIO_JSON = new Set([
+  DATE_CONFIG_BASENAME,
+  SCENARIO_META_FILENAME,
+  DOMAIN_PATH_RULES_FILENAME,
+]);
+
+function isRecordedMockJson(raw: string): boolean {
+  try {
+    const data = JSON.parse(raw) as { request?: unknown; response?: unknown };
+    return Boolean(data && typeof data === 'object' && data.request && data.response);
+  } catch {
+    return false;
+  }
+}
 
 /** JSON bundle written by GET /api/scenario-config/export and consumed by POST /api/scenario-config/import */
 export const SCENARIO_BUNDLE_FORMAT_VERSION = 1 as const;
@@ -266,24 +287,260 @@ export function assertValidImportBundle(body: unknown): ScenarioExportBundle {
   };
 }
 
-function clearFilesystemScenarioMocks(scenarioPath: string): void {
-  if (!fs.existsSync(scenarioPath)) return;
+function clearFilesystemScenarioMocks(scenarioPath: string): number {
+  if (!fs.existsSync(scenarioPath)) return 0;
+  let removed = 0;
   for (const filePath of getAllJsonFiles(scenarioPath)) {
-    const rel = path.relative(scenarioPath, filePath);
-    if (rel === DATE_CONFIG_BASENAME) continue;
+    const rel = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+    const base = path.basename(filePath);
+    if (PRESERVED_SCENARIO_JSON.has(base) || PRESERVED_SCENARIO_JSON.has(rel)) {
+      continue;
+    }
+    let raw: string;
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (!isRecordedMockJson(raw)) {
+      continue;
+    }
     try {
       fs.unlinkSync(filePath);
+      removed += 1;
     } catch {
       // best-effort
     }
   }
+  return removed;
 }
 
-async function clearRedisScenarioMocks(store: RedisMockStore, scenario: string): Promise<void> {
-  const items = await store.list(scenario);
-  for (const { hash } of items) {
-    await store.deleteByHash(hash, scenario);
+async function clearRedisScenarioMocks(
+  store: RedisMockStore,
+  scenario: string,
+  mockDataPath: string
+): Promise<number> {
+  const removed = await store.clearAllMocksInScenario(scenario);
+
+  const scenarioPath = getScenarioFolderPath(mockDataPath, scenario);
+  const redisFolder = path.join(scenarioPath, 'redis');
+  if (fs.existsSync(redisFolder)) {
+    for (const filePath of getAllJsonFiles(redisFolder)) {
+      const rel = path.relative(scenarioPath, filePath).split(path.sep).join('/');
+      const base = path.basename(filePath);
+      if (PRESERVED_SCENARIO_JSON.has(base) || PRESERVED_SCENARIO_JSON.has(rel)) {
+        continue;
+      }
+      let raw: string;
+      try {
+        raw = fs.readFileSync(filePath, 'utf-8');
+      } catch {
+        continue;
+      }
+      if (!isRecordedMockJson(raw)) {
+        continue;
+      }
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        // best-effort
+      }
+    }
   }
+  return removed;
+}
+
+export interface ClearScenarioMocksOptions {
+  mockDataPath: string;
+  scenario: string;
+  provider: 'filesystem' | 'sqlite' | 'redis';
+  redisUrl?: string;
+  keyPrefix?: string;
+  redisCluster?: boolean;
+}
+
+/**
+ * Deletes recorded mocks for a scenario. The scenario itself stays (empty folder /
+ * Redis registry). Redis also drops the mock index and path-index sets so the next
+ * list is not an MGET of leftover hashes. Date config, lock metadata, domain-path
+ * rules, and proxy settings are left in place.
+ */
+export async function clearScenarioMocks(
+  opts: ClearScenarioMocksOptions
+): Promise<{ mocksRemoved: number }> {
+  const { mockDataPath, scenario, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const mocksRemoved = await clearRedisScenarioMocks(store, scenario, mockDataPath);
+      return { mocksRemoved };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const scenarioFolder = getScenarioFolderPath(mockDataPath, scenario);
+  return { mocksRemoved: clearFilesystemScenarioMocks(scenarioFolder) };
+}
+
+export interface DeleteEntireScenarioOptions extends ClearScenarioMocksOptions {}
+
+/**
+ * Ensures a scenario folder stays inside mockDataPath (no path traversal).
+ */
+function resolveScenarioFolderOrThrow(mockDataPath: string, scenario: string): string {
+  const resolvedRoot = path.resolve(mockDataPath);
+  const resolvedFolder = path.resolve(getScenarioFolderPath(mockDataPath, scenario));
+  const rootWithSep = resolvedRoot.endsWith(path.sep) ? resolvedRoot : `${resolvedRoot}${path.sep}`;
+  if (resolvedFolder === resolvedRoot || !resolvedFolder.startsWith(rootWithSep)) {
+    throw new Error(`Invalid scenario path for "${scenario}"`);
+  }
+  return resolvedFolder;
+}
+
+function removeFilesystemScenarioFolder(mockDataPath: string, scenario: string): boolean {
+  const scenarioFolder = resolveScenarioFolderOrThrow(mockDataPath, scenario);
+  if (!fs.existsSync(scenarioFolder)) {
+    return false;
+  }
+  fs.rmSync(scenarioFolder, { recursive: true, force: true });
+  return true;
+}
+
+/**
+ * Deletes a scenario completely: mocks, folder / Redis registry, date config, lock,
+ * domain-path rules, override groups/sets, and proxy settings. Client lanes that
+ * pointed at the scenario are unassigned.
+ */
+export async function deleteEntireScenario(
+  opts: DeleteEntireScenarioOptions
+): Promise<{ mocksRemoved: number; lanesUnassigned: number; folderRemoved: boolean }> {
+  const { mockDataPath, scenario, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const result = await store.deleteEntireScenario(scenario);
+      const folderRemoved = removeFilesystemScenarioFolder(mockDataPath, scenario);
+      return { ...result, folderRemoved };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const mocksRemoved = clearFilesystemScenarioMocks(getScenarioFolderPath(mockDataPath, scenario));
+  const folderRemoved = removeFilesystemScenarioFolder(mockDataPath, scenario);
+  return { mocksRemoved, lanesUnassigned: 0, folderRemoved };
+}
+
+export interface RenameEntireScenarioOptions extends ClearScenarioMocksOptions {
+  newName: string;
+}
+
+function rewriteScenarioFieldInFolder(scenarioFolder: string, fromScenario: string, toScenario: string): number {
+  if (!fs.existsSync(scenarioFolder)) return 0;
+  let rewritten = 0;
+  for (const filePath of getAllJsonFiles(scenarioFolder)) {
+    let raw: string;
+    try {
+      raw = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+    if (!isRecordedMockJson(raw)) continue;
+    try {
+      const data = JSON.parse(raw) as { scenario?: unknown };
+      if (data.scenario !== fromScenario) continue;
+      data.scenario = toScenario;
+      fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
+      rewritten += 1;
+    } catch {
+      // skip unreadable mock
+    }
+  }
+  return rewritten;
+}
+
+function renameFilesystemScenarioFolder(mockDataPath: string, fromScenario: string, toScenario: string): boolean {
+  const fromFolder = resolveScenarioFolderOrThrow(mockDataPath, fromScenario);
+  const toFolder = resolveScenarioFolderOrThrow(mockDataPath, toScenario);
+  if (!fs.existsSync(fromFolder)) {
+    return false;
+  }
+  if (fromFolder === toFolder) {
+    return true;
+  }
+  const caseOnlyChange = fromFolder.toLowerCase() === toFolder.toLowerCase();
+  if (!caseOnlyChange && fs.existsSync(toFolder)) {
+    throw new Error(`Scenario "${toScenario}" already exists`);
+  }
+  if (caseOnlyChange) {
+    const tempFolder = `${fromFolder}__rename_tmp`;
+    if (fs.existsSync(tempFolder)) {
+      throw new Error(`Scenario "${toScenario}" already exists`);
+    }
+    fs.renameSync(fromFolder, tempFolder);
+    fs.renameSync(tempFolder, toFolder);
+    return true;
+  }
+  fs.renameSync(fromFolder, toFolder);
+  return true;
+}
+
+/**
+ * Renames a scenario in place. Replay modes, lock, date/proxy settings, and override
+ * groups move with it. Client lanes that pointed at the old name are remapped.
+ */
+export async function renameEntireScenario(
+  opts: RenameEntireScenarioOptions
+): Promise<{ mocksMoved: number; lanesRemapped: number; folderRenamed: boolean }> {
+  const { mockDataPath, scenario, newName, provider, redisUrl, keyPrefix, redisCluster } = opts;
+
+  if (isCentralizedDashboardProvider(provider)) {
+    if (provider === 'redis' && !redisUrl) {
+      throw new Error('Redis URL is required for redis provider');
+    }
+    const store = createDashboardMockStore(
+      toDashboardRedisStoreConfig({ provider, redisUrl, keyPrefix, redisCluster }),
+      mockDataPath
+    );
+    try {
+      const result = await store.renameEntireScenario(scenario, newName);
+      let folderRenamed = false;
+      try {
+        folderRenamed = renameFilesystemScenarioFolder(mockDataPath, scenario, newName);
+        if (folderRenamed) {
+          rewriteScenarioFieldInFolder(getScenarioFolderPath(mockDataPath, newName), scenario, newName);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('already exists')) {
+          throw error;
+        }
+      }
+      return { ...result, folderRenamed };
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  }
+
+  const folderRenamed = renameFilesystemScenarioFolder(mockDataPath, scenario, newName);
+  const destFolder = getScenarioFolderPath(mockDataPath, newName);
+  const mocksMoved = rewriteScenarioFieldInFolder(destFolder, scenario, newName);
+  return { mocksMoved, lanesRemapped: 0, folderRenamed };
 }
 
 function writeDateConfigFilesystem(scenarioFolder: string, dateManipulation: Record<string, unknown> | null): void {
@@ -414,7 +671,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     );
     try {
       if (replaceExistingMocks) {
-        await clearRedisScenarioMocks(store, targetScenario);
+        await clearRedisScenarioMocks(store, targetScenario, mockDataPath);
       }
       for (const { relativePath, data } of bundle.mocks) {
         const copy = { ...data, scenario: targetScenario } as MockData;

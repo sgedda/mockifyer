@@ -11,17 +11,24 @@ Use **`setupMockifyerForReactNative`** from `@sgedda/mockifyer-fetch` (same entr
 | **Development** (`isDev: true`) | **Hybrid** | Writes mocks to the **device** (Expo FileSystem) **and** to the **project** `mock-data` folder via Metro HTTP endpoints. |
 | **Production** (`isDev: false`) | **Memory** | Loads mocks from a **bundled** module (e.g. `assets/mock-data.ts`). |
 
-- **`MOCKIFYER_MODE`** (preferred) — **`on`** always activates when `setupMockifyerForReactNative` runs (**default when unset**); **`launch_client`** activates only when Maestro/native launch **`mockifyerClientId`** is non-empty (set explicitly for E2E-only runs); **`off`** never activates (launch args ignored — use in store builds that must not run mocks). Aliases: `e2e` / `maestro` → `launch_client`, `disabled` → `off`, `enabled` → `on`.
+- **`MOCKIFYER_MODE`** (preferred) — when `setupMockifyerForReactNative` may patch `fetch`:
+  - **`on`** — always activate (**default when unset**); starts enabled
+  - **`manual`** (aliases: `gui`, `toggle`) — activate but **start disabled**; call `enableMockifyer()` from a GUI switch (pair with **`persistRuntimeEnabled: true`** so the choice survives app restart). A native launch **`scenario`** argument still starts the runtime toggle **enabled** for that E2E session (client must already be activated)
+  - **`launch_client`** (aliases: `e2e`, `maestro`) — activate only when Maestro/native launch **`mockifyerClientId`** or **`scenario`** is non-empty
+  - **`off`** (aliases: `disabled`) — never activate (launch args ignored — use in store builds that must not run mocks)
 - **`isDev` / `__DEV__` alone does not enable** Mockifyer (use **`MOCKIFYER_MODE`** or a launch-arg lane).
+- **Runtime toggle** (when status is `active`): `instance.enableMockifyer()` / `disableMockifyer()` / `isMockifyerEnabled()` — completely bypasses mocks, dashboard, and Redis while disabled. See **[docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md)**.
+- **Launch `scenario`**: auto-applied when present on `react-native-launch-arguments` (opt out with `useLaunchArgumentsScenario: false`). Activates Mockifyer (unless mode is **`off`**), forces the runtime toggle **on** for that session, and is sent as the scenario on every dashboard proxy request — no lane has to be mapped in the dashboard. An explicit `proxyScenario` still wins.
 - **Direct upstream `fetch`** (not the dashboard proxy POST) automatically adds **`X-Mockifyer-Client-Id`** / **`X-Mockifyer-Device-Id`** when missing, whenever Mockifyer has a resolved `clientId` / `deviceId` (same lane the library uses). Caller headers win if already set.
 - **Return value:** `setupMockifyerForReactNative` resolves to **`{ status, instance }`**. Use **`status`** instead of treating “no instance” as permanently disabled:
   - **`not_activated`** — nothing patched this run; you can still activate on a **later** launch with env or launch args.
-  - **`active`** — `global.fetch` patched; **`instance`** is the Mockifyer handle.
+  - **`active`** — `global.fetch` patched; **`instance`** is the Mockifyer handle (may still be runtime-disabled under `manual` until `enableMockifyer()`).
   - **`failed_no_bundled_mocks`** — activation was requested but the release bundle had no mock data module.
 - **`METRO_PORT`** (optional) must match the Metro bundler port (default **8081**) so Hybrid can reach sync/save endpoints.
 - After init in dev, **`reloadMockData(true)`** runs once to **pull** project `mock-data` onto the device (see sync below).
+- **Domain-path rules (Hybrid/filesystem):** by default (`MOCKIFYER_DOMAIN_PATH_RULES_MODE=allowlist` or unset), traffic **discovers** host/path keys into `mock-data/<scenario>/domain-path-rules.json` with record/replay **off**. Flip `recordResponses` / `autoMock` to `true` for paths you want (or use the dashboard domain tree). Use **`record_all`** to discover with both flags on (then disable noisy paths), or **`off`** for legacy ungated `recordMode`. Numeric/UUID path segments collapse to `:id`. Metro: `GET/POST /mockifyer-domain-path-rules` (GET hydrates project rules onto the device at startup via `reloadMockData`). Rules support **`allowUpstream`** (`false` blocks upstream with 412; see README.md).
 
-Example (local dev: unset or **`MOCKIFYER_MODE=on`**; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
+Example (local dev: unset or **`MOCKIFYER_MODE=on`**; GUI opt-in: **`MOCKIFYER_MODE=manual`** + persist; E2E-only: **`MOCKIFYER_MODE=launch_client`** + **`mockifyerClientId`** from Maestro):
 
 ```typescript
 import {
@@ -37,13 +44,16 @@ export async function initializeMockifyer() {
     mockDataPath: 'mock-data',
     bundledDataPath: './assets/mock-data',
     recordMode,
+    // Optional GUI toggle (starts off; enableMockifyer persists across restarts):
+    // runtimeMode: 'manual',
+    // persistRuntimeEnabled: true,
     config: {
       logging: 'info',
     },
   });
 
   if (isMockifyerReactNativeActive(result)) {
-    // result.instance available
+    // result.instance.enableMockifyer() / disableMockifyer() / isMockifyerEnabled()
   }
   return result;
 }
@@ -55,11 +65,11 @@ In **`App`** / root layout, **`await initializeMockifyer()`** before other netwo
 
 To force a scenario **above** `MOCKIFYER_SCENARIO`, `config.scenarios.default`, Metro's `/mockifyer-scenario-config`, and `scenario-config.json`, use either:
 
-1. **`setupMockifyerForReactNative({ useLaunchArgumentsScenario: true, ... })`** — reads `scenario` from [`react-native-launch-arguments`](https://github.com/wix/react-native-launch-arguments) when that package is installed (`LaunchArguments.value().scenario`).
+1. **Auto-detect** — when `react-native-launch-arguments` is installed and `LaunchArguments.value().scenario` is non-empty, it is applied automatically (and the runtime toggle starts **enabled**). Opt out with **`useLaunchArgumentsScenario: false`**. Explicit **`useLaunchArgumentsScenario: true`** is still supported.
 
-2. **`setScenarioLaunchOverride('my-scenario')`** from `@sgedda/mockifyer-core` — call before or after setup if you read launch args yourself.
+2. **`setScenarioLaunchOverride('my-scenario', { fromLaunchArguments: true })`** from `@sgedda/mockifyer-core` — call before setup if you read launch args yourself. Pass **`fromLaunchArguments: true`** so `runtimeMode: 'manual'` still starts enabled for E2E.
 
-3. **`defaultScenario: 'smoke'`** on `setupMockifyerForReactNative` — same priority as (1) when launch args did not supply a non-empty `scenario`.
+3. **`defaultScenario: 'smoke'`** on `setupMockifyerForReactNative` — same scenario priority when launch args did not supply a scenario. Does **not** force the runtime toggle on (app config only).
 
 Clear with `setScenarioLaunchOverride(null)`.
 
@@ -92,6 +102,8 @@ export async function initializeMockifyer() {
 
 Node / Jest / server apps use **`await initMockifyerForDashboardProxy(...)`** (`dashboardBaseUrl`, **`skipDashboardRedisHealthCheck`**, etc.) — same **`/api/health`** idea as RN strict proxy vs Hybrid.
 
+On an **Android emulator**, use `http://10.0.2.2:3002` (or your dashboard port) as `dashboardBaseUrl` / `proxyBaseUrl`. The app's **API** base URL may also be `http://10.0.2.2:…`. The dashboard proxy runs on the host and rewrites those emulator loopback hosts to `127.0.0.1` before calling upstream — no extra Express middleware is required. Physical devices should keep using the Mac's LAN IP for both dashboard and API.
+
 ---
 
 ## Metro sync middleware (required for Hybrid)
@@ -116,6 +128,48 @@ Middleware resolves **`projectRoot`** and **`mockDataPath`** (e.g. `./mock-data`
 **Project → device:** when **`status === 'active'`**, call **`instance.reloadMockData(true)`** (or rely on the initial sync inside `setupMockifyerForReactNative`). Uses manifest + per-file downloads over `http://localhost:${metroPort}` (simulator) — ensure Metro is running.
 
 **Dashboard vs Metro:** **[`mockifyer-dashboard`](./packages/mockifyer-dashboard)** is a **separate** Express app (e.g. port **3002**) for browsing/editing mocks. Sync endpoints for the app run on **Metro**, not the dashboard, unless you mount the same middleware on Express yourself.
+
+### Atlas capture from Metro terminal
+
+The Metro terminal includes an **Atlas capture** feature (press **`t`** key) for recording network traffic and debugging React Native apps:
+
+- **`t` key**: Start/stop Atlas capture
+  - **Start**: Clears the hop buffer, signals the app to enable Mockifyer if it was runtime-disabled, and opens the live stream page `/mockifyer-atlas-live` in your browser
+  - **Stop**: Ends the capture session and restores the previous runtime-enabled state
+  - The live page includes a **Render** button that writes full Atlas HTML documentation to `mock-data/atlas-html/`
+- **Capture only runs when started**: Network events are buffered only while Atlas capture is active (not during normal dev)
+- **Live stream page**: Real-time hop visualization at `http://localhost:${METRO_PORT}/mockifyer-atlas-live` with expand/collapse for request/response bodies
+- **Include trace header**: Atlas capture automatically adds `X-Mockifyer-Include-Trace: 1` to outbound requests when enabled. Opt out with `networkLog.includeTraceHeader: false` in the `syncMiddleware` config.
+- **Metro blockList**: The middleware automatically adds Atlas HTML directories to Metro's `blockList` so they don't trigger bundle rebuilds
+
+**Configuration options** on `createMockSyncMiddleware`:
+
+- **`atlasKey`**: Metro terminal key for capture (default `"t"`; set to `false` to disable the feature)
+- **`dashboardKey`**: Optional Metro terminal key to open the dashboard in the browser (e.g. `"d"`)
+- **`dashboardUrl`** / **`MOCKIFYER_DASHBOARD_URL`**: Dashboard base URL for opening in the browser and pulling nested hops from multi-service traces
+
+**Metro blockList example** (to prevent rebuild loops):
+
+```javascript
+// metro.config.js
+const { getDefaultConfig } = require('expo/metro-config');
+const { createMockSyncMiddleware } = require('@sgedda/mockifyer-fetch');
+
+const config = getDefaultConfig(__dirname);
+
+config.server = {
+  ...config.server,
+  enhanceMiddleware: (middleware, metroServer) => {
+    return createMockSyncMiddleware({ 
+      atlasKey: 't',
+      dashboardKey: 'd',
+      dashboardUrl: process.env.MOCKIFYER_DASHBOARD_URL || 'http://localhost:3002'
+    })(middleware);
+  },
+};
+
+module.exports = config;
+```
 
 ---
 
@@ -177,13 +231,15 @@ Listing files in app code depends on your **expo-file-system** API (legacy `read
 Typical:
 
 ```bash
-MOCKIFYER_MODE=on        # or: launch_client | off (see table above)
+MOCKIFYER_MODE=on        # or: manual | launch_client | off (see table above)
 MOCKIFYER_RECORD=true    # recording mode when supported
 MOCKIFYER_SCENARIO=default
 METRO_PORT=8081          # if not default
 ```
 
 Use **`app.config` / Babel** / **metro `transform-inline-environment-variables`** for vars that must appear in the JS bundle (see example projects).
+
+For GUI opt-in that survives restart: `MOCKIFYER_MODE=manual` plus `persistRuntimeEnabled: true` (needs `@react-native-async-storage/async-storage`).
 
 ---
 
@@ -243,7 +299,7 @@ See **`example-projects/maestro-login-flow`** for a minimal **`login.yaml`** (re
 
 | Goal | Approach |
 |------|----------|
-| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes |
+| Maestro E2E + dashboard scenario | **`useLaunchArgumentsClientId`** + optional **`react-native-launch-arguments`**; scenario via Redis/client lanes. Launch `scenario` sets the scenario without a lane mapping and overrides the lane's scenario when both are passed. |
 | Best Expo dev UX | **`setupMockifyerForReactNative`** + **Metro `createMockSyncMiddleware`** + **`MOCKIFYER_MODE`** / `MOCKIFYER_RECORD` as needed |
 | Device-only, no repo sync | **`expo-filesystem`** provider |
 | Production / store build | **Memory** + **bundled** mock module |

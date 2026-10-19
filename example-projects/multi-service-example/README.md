@@ -120,7 +120,7 @@ A single Network row like **`http://127.0.0.1:4101/aggregate`** often means the 
 3. Run the chain again with **`npm run dev:proxy:record`** (Redis up, `npm run dashboard:redis`).
 4. After a **live** run you should see multiple proxy URLs, e.g. `…4101/aggregate`, `…4103/via-axios`, `…4102/product`, and `jsonplaceholder.typicode.com/…` (exact set depends on mocks still on disk/Redis).
 
-`setupMockifyer` also enables Node inbound capture; **`createMockifyerCorrelationMiddleware`** echoes **`X-Mockifyer-Request-Id`** on each Express response (use it with `/api/network-events/trace?requestId=…` on the dashboard).
+`setupMockifyer` enables Node inbound capture (assigns + echoes **`X-Mockifyer-Request-Id`** by default; set **`MOCKIFYER_ECHO_TRACE_ID=false`** to skip the response header). Express services also mount **`createMockifyerCorrelationMiddleware`**. Use the response header with `/api/network-events/trace?requestId=…` on the dashboard.
 
 ### Trace a full call after `GET /aggregate`
 

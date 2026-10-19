@@ -1,6 +1,6 @@
 # Mockifyer
 
-**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code).
+**Official site:** [mockifyer.dev](https://mockifyer.dev/) — public **playground and docs**: try record/replay, scenarios, and the interactive demo **without cloning this repo**. For AI assistants: [llms.txt](https://mockifyer.dev/llms.txt) · [llms-full.txt](https://mockifyer.dev/llms-full.txt). To **use Mockifyer in your own app**, install the npm packages below (the site is for trying the product, not a hosted backend for your code). **Comparing tools?** See [mockifyer.dev/comparisons](https://mockifyer.dev/comparisons) for feature comparisons with MSW, Polly.js, Nock, Mirage JS, WireMock, Mockoon, and json-server.
 
 **Contact:** **Sebastian Gedda** ([@sgedda](https://github.com/sgedda)) — [open an issue](https://github.com/sgedda/mockifyer/issues) for bugs and ideas, or a [pull request](https://github.com/sgedda/mockifyer/pulls) if you already have a change. General GitHub profile: [@sgedda](https://github.com/sgedda).
 
@@ -26,12 +26,15 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-fetch`](./packages/mockifyer-fetch) | **`fetch` / React Native** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node) and **`initMockifyerForReactNativeDashboard`** (Expo) for mockifyer-dashboard + Redis |
 | [`@sgedda/mockifyer-axios`](./packages/mockifyer-axios) | **Axios** — `setupMockifyer`, **`initMockifyerForDashboardProxy`** (Node dashboard + Redis/SQLite proxy) |
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
+| [`@sgedda/mockifyer-mcp`](./packages/mockifyer-mcp) | **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io) integration for Cursor and Claude Desktop (query/modify mocks via natural language) |
 
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
 **Team workflow (recorded vs curated mocks, re-recording):** **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)**.
 
 **React Native / Expo:** see **[REACT_NATIVE.md](./REACT_NATIVE.md)** for Hybrid provider, Metro sync middleware, and `setupMockifyerForReactNative`.
+
+**Runtime Toggle:** see **[docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md)** to enable/disable Mockifyer at runtime (completely bypass dashboard, Redis, and proxy with a button press).
 
 ## Installation
 
@@ -49,10 +52,29 @@ npx mockifyer-init-ai
 
 Installs `docs/mockifyer-ai/` (`INSTRUCTIONS.md` + reference). Docs ship with `@sgedda/mockifyer-core`.
 
+## AI Integration (MCP)
+
+**Model Context Protocol** support for Cursor and Claude Desktop allows you to interact with Mockifyer using natural language:
+
+```bash
+# Build the MCP server (first time)
+cd packages/mockifyer-mcp
+npm install && npm run build
+```
+
+The repository includes a pre-configured `.cursor/mcp.json` that works out of the box. Start the dashboard and restart Cursor to enable:
+
+- "List all mocks in the default scenario"
+- "Override the booking status to CONFIRMED"
+- "Create a new scenario from default"
+- "Trace the network call that returned 502"
+
+See [`.cursor/README.md`](./.cursor/README.md) and [`packages/mockifyer-mcp/README.md`](./packages/mockifyer-mcp/README.md) for details.
+
 ## Usage (fetch)
 
 ```typescript
-import { setupMockifyer } from '@sgedda/mockifyer-axios';
+import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 import { getCurrentDate } from '@sgedda/mockifyer-core';
 
 setupMockifyer({
@@ -84,7 +106,7 @@ setupMockifyer({
 const response = await axios.get('https://api.example.com/data');
 ```
 
-**Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply.
+**Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply. With the dashboard Redis/SQLite proxy, that call follows the **active scenario’s Date Config** (a client-lane date wins). Switch scenarios or update the date in the dashboard and `getCurrentDate()` tracks it — no extra arguments.
 
 ## Features
 
@@ -117,11 +139,14 @@ export MOCKIFYER_TIMEZONE="America/New_York"
 
 Priority: env vars → `setupMockifyer` config → system time.
 
+**Scenario dates:** Date manipulation from a scenario's `date-config.json` (or dashboard Date Config) applies only when a **named scenario** is active (e.g. `default`, `checkout`). Traffic under `_scratch` (the temporary unscoped bucket) always uses **real time**. When you switch scenarios, `getCurrentDate()` never serves the previous scenario's date — it returns real time until the new scenario's date config is loaded.
+
 ## Environment variables (common)
 
 | Variable | Description |
 |----------|-------------|
-| `MOCKIFYER_MODE` | React Native startup: `on` \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**) |
+| `MOCKIFYER_MODE` | React Native startup: `on` \| `manual` (aliases: `gui`, `toggle`) \| `launch_client` \| `off` (see `MockifyerRuntimeMode` in core; **unset defaults to `on`**). `manual` mode patches `fetch` but starts disabled; call `enableMockifyer()` to activate (pair with `persistRuntimeEnabled: true` to save the choice). `launch_client` activates on a launch `mockifyerClientId` OR `scenario`. See [docs/RUNTIME_TOGGLE.md](./docs/RUNTIME_TOGGLE.md) for runtime enable/disable API. |
+| `MOCKIFYER_DOMAIN_PATH_RULES_MODE` | Hybrid/filesystem: `allowlist` (default) \| `record_all` \| `off` — auto-discovers host/path keys into `domain-path-rules.json`; gates record + replay (see **Domain-path rules** below for `allowUpstream`). Migration: set `record_all` or `off` if you relied on ungated `recordMode` |
 | `MOCKIFYER_RECORD` | Record real responses (fetch/axios packages); with **`initMockifyerForDashboardProxy`**, implies **`recordOnMiss: true`** when not otherwise set |
 | `MOCKIFYER_PROXY_RECORD_ON_MISS` | Fetch + **`proxy.baseUrl`**: when **`proxy.recordOnMiss`** is omitted, `true` / `false` sets the `record` flag on `/api/proxy`; omit env to defer to **dashboard per-scenario** "Record on miss" |
 | `MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API` | When not `false`, **new recordings** (proxy Redis, fetch/axios disk) set **`alwaysUseRealApi: true`** so the response is stored but **live API** is used until you uncheck in the dashboard. Set to `false` for legacy "replay mock immediately after capture" behavior |
@@ -134,6 +159,10 @@ Priority: env vars → `setupMockifyer` config → system time.
 | `MOCKIFYER_USE_SIMILAR_MATCH` | Path-based fallback matching |
 | `MOCKIFYER_USE_SIMILAR_MATCH_CHECK_RESPONSE` | Verify response when similar-matching |
 | `MOCKIFYER_ACTIVATION_MODE` | `always` \| `client_id_header` \| `off` — when interceptors run (overrides `activationMode` in config) |
+| `MOCKIFYER_MAX_REQUESTS_PER_SCENARIO` | Max mocks per scenario (filesystem **and** Redis). Unset = no scenario cap |
+| `MOCKIFYER_MAX_MOCKS_PER_PATH` | Max distinct Redis mocks per METHOD+host+pathname (default **200**). Set `0`/`off` to disable. Stops high-cardinality POST floods |
+| `MOCKIFYER_ECHO_TRACE_ID` | When `false`/`0`/`off`/`no`, skip echoing `X-Mockifyer-Request-Id` on HTTP responses from Node inbound capture (default on) |
+| `MOCKIFYER_AUTO_INBOUND_CORRELATION` | When `false`/`0`/`off`/`no`, skip installing Node inbound hop capture on `setupMockifyer` (default on) |
 
 
 See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
@@ -147,13 +176,17 @@ See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
 | 1 | **`MOCKIFYER_SCENARIO`** env |
 | 2 | **`MockifyerConfig.defaultScenario`** or **`scenarios.default`** ( **`defaultScenario`** wins when both are set ) |
 | 3 | **`scenario-config.json`** (preferred: **`scenario-config.{clientId}.json`** when that file exists ) |
-| 4 | **`default`** folder name |
+| 4 | **`_scratch`** — temporary unscoped bucket (not the named **`default`** scenario) |
+
+When nothing is set, traffic uses **`_scratch`**. Redis mocks under `_scratch` expire after **24h** (override with **`MOCKIFYER_SCRATCH_SCENARIO_TTL_SEC`**). Select or set a **named** scenario (including **`default`**) for durable mocks. The dashboard labels `_scratch` as **Temporary (unscoped)**.
 
 ### Dashboard Redis **`/api/proxy`** (effective scenario used for mocks and recordings )
 
 Per proxied request: **`scenario`** in the POST body (**client override**) **→** **`client_scenario:{clientId}`** **→** Redis **`active_scenario`** **→** filesystem seed via **`getCurrentScenario`** on the dashboard.
 
 With strict lane (default when using the dashboard proxy): non-empty **`clientId`** plus missing **`client_scenario:{clientId}`** ⇒ upstream passthrough only (no global **`active_scenario`**). Configure per app via **`proxy.strictLaneScenario`** in **`setupMockifyer`** / **`setupMockifyerForReactNative`** (overridable with **`MOCKIFYER_STRICT_LANE_SCENARIO`** env).
+
+Android emulators reach the host via **`10.0.2.2`** (AVD) or **`10.0.3.2`** (Genymotion). Those addresses are meaningless on the host, so `/api/proxy` rewrites them to **`127.0.0.1`** before matching, recording, and fetching upstream. Point the app's **dashboard** URL at `http://10.0.2.2:3002` as usual; you do not need a host-side rewrite of the **API** URL.
 
 For optional app escape hatches (**`proxy.scenario`** SDK / proxy body **`scenario`**), **`last seen resolved`** in the Client Lanes UI can diverge from the configured lane scenario.
 
@@ -166,7 +199,7 @@ Use `activationMode` on `setupMockifyer(...)` (or env **`MOCKIFYER_ACTIVATION_MO
 | Mode | Behavior |
 |------|----------|
 | **`always`** (default) | Same as before: every request uses Mockifyer, subject to `excludedUrls` and built-in bypasses (e.g. Mockifyer Metro sync URLs). |
-| **`client_id_header`** | Mockifyer runs only when the outbound request carries a **non-empty** **`X-Mockifyer-Client-Id`** header. Omit the header for a normal real HTTP call; set it (or receive it from an upstream service) to opt that hop into mocks/recording. **Fetch + dashboard proxy:** if `proxy.baseUrl` is set and a **resolved `clientId`** exists, proxy traffic is treated as opted-in even when the inner URL headers do not repeat the field (the lane is sent on the proxy `POST`). |
+| **`client_id_header`** | Mockifyer runs only when the outbound request carries a **non-empty** **`X-Mockifyer-Client-Id`** header, or when the inbound request being served (downstream hops inherit it) has the header. Omit the header for a normal real HTTP call; set it (or receive it from an upstream service) to opt that hop into mocks/recording. Requests without the header pass through untouched. |
 | **`off`** | Interceptors do not apply mock or record behavior; plain HTTP. |
 
 **Axios example (header-gated):**
@@ -196,6 +229,20 @@ await axios.get('https://api.example.com/v1/profile', {
 **Dashboard proxy:** when the dashboard proxies to the real upstream, it sets **`X-Mockifyer-Client-Id`** on that upstream request when a lane `clientId` is resolved, so downstream APIs can apply the same rule. See [MULTI_CLIENT_ISOLATION.md](./MULTI_CLIENT_ISOLATION.md) for lane and proxy context.
 
 Implementation helpers (for custom middleware): `resolveActivationMode`, `shouldApplyMockifyer`, `getOutboundMockifyerClientIdHeader`, and `MOCKIFYER_CLIENT_ID_HEADER` are exported from `@sgedda/mockifyer-core`.
+
+## Domain-path rules
+
+Domain-path rules (`mock-data/<scenario>/domain-path-rules.json`) control recording and upstream access on a per-path basis. Each rule includes:
+
+- **`recordResponses`**: When `true`, cache misses save full response bodies
+- **`autoMock`**: When `true` with recording, new mocks replay immediately (no `alwaysUseRealApi`)
+- **`allowUpstream`**: When `false`, proxy cache misses return **412 Precondition Failed** even if the scenario allows upstream. When `true`, explicitly re-allow under a blocked parent. When omitted, inherit from the nearest ancestor rule that sets this field, else the scenario default.
+
+Rules use **longest-prefix matching**: `api.example.com/v1/users/:id` is more specific than `api.example.com/v1` and wins when both exist.
+
+**Dashboard:** View and edit rules in the **Domains** view (tree UI) or via `POST /api/mocks/domain-path-rules`.
+
+**React Native:** Metro endpoints `GET/POST /mockifyer-domain-path-rules` (Metro loads project rules onto the device at startup via `reloadMockData`).
 
 ## Advanced testing
 

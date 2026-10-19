@@ -1,14 +1,51 @@
 import { MOCKIFYER_CLIENT_ID_HEADER, MOCKIFYER_DEVICE_ID_HEADER } from './activation-mode';
 import {
+  getActiveInboundRequest,
+  getActiveRequestCorrelation,
   MOCKIFYER_PARENT_REQUEST_ID_HEADER,
   MOCKIFYER_REQUEST_ID_HEADER,
 } from './request-correlation';
+import {
+  mapProxyPayloadSourceToNetworkSource,
+  recordInlineTraceHopFromExchange,
+  unwrapAndMergeInlineTraceEnvelope,
+} from './inline-trace';
 import { buildDashboardProxyEnvelope } from './dashboard-proxy-envelope';
-import { joinProxyDashboardApiUrl } from './join-proxy-dashboard-api-url';
+import {
+  isMockifyerDashboardProxyApiUrl,
+  joinProxyDashboardApiUrl,
+} from './join-proxy-dashboard-api-url';
 import { serializeProxyRequestBody } from './serialize-proxy-request-body';
 import type { HTTPRequestConfig, HTTPResponse, MockifyerProxyRecordingMeta } from '../types/http-client';
 import type { MockData } from '../types';
+import {
+  resolveMockifyerTraceFromProxyPayload,
+  stripMockifyerTraceFromBody,
+} from './mockifyer-trace';
+import { outboundHeadersToRecord } from './outbound-header';
 import { logger } from './logger';
+import { applyRuntimeDateManipulationFromProxyPayload } from './runtime-date-sync';
+
+const MOCKIFYER_ORIGINAL_FETCH_KEY = '__mockifyer_original_fetch';
+
+/**
+ * Prefer the unpatched fetch stored when Mockifyer patches `global.fetch`, so the
+ * internal POST to `/api/proxy` is not re-intercepted by a dual axios+fetch setup.
+ */
+function resolveDashboardProxyFetchFn(fetchFn?: typeof fetch): typeof fetch {
+  if (fetchFn) {
+    return fetchFn;
+  }
+  try {
+    const g = globalThis as typeof globalThis & { [MOCKIFYER_ORIGINAL_FETCH_KEY]?: typeof fetch };
+    if (typeof g[MOCKIFYER_ORIGINAL_FETCH_KEY] === 'function') {
+      return g[MOCKIFYER_ORIGINAL_FETCH_KEY]!;
+    }
+  } catch {
+    // ignore
+  }
+  return fetch;
+}
 
 export interface PerformDashboardProxyRequestParams {
   proxyBaseUrl: string;
@@ -56,9 +93,30 @@ export async function performDashboardProxyRequest(
     config,
     logTag = 'Mockifyer',
   } = params;
-  const fetchFn = params.fetchFn ?? fetch;
+  const fetchFn = resolveDashboardProxyFetchFn(params.fetchFn);
+  const startedAt = Date.now();
   const serializedBody = await serializeProxyRequestBody(body, headers);
   const proxyUrl = joinProxyDashboardApiUrl(proxyBaseUrl, 'api/proxy');
+  const stashedParentHop = (
+    config as { __mockifyer_parentHop?: { method: string; url: string; data?: unknown } }
+  ).__mockifyer_parentHop;
+  const activeCorrelation = getActiveRequestCorrelation();
+  const liveParentHop =
+    parentRequestId &&
+    activeCorrelation?.requestId &&
+    parentRequestId === activeCorrelation.requestId
+      ? getActiveInboundRequest()
+      : undefined;
+  const parentHop =
+    stashedParentHop?.url?.trim() && parentRequestId
+      ? {
+          method: stashedParentHop.method?.trim()
+            ? stashedParentHop.method.trim().toUpperCase()
+            : 'GET',
+          url: stashedParentHop.url.trim(),
+          ...(stashedParentHop.data !== undefined ? { data: stashedParentHop.data } : {}),
+        }
+      : liveParentHop;
   const proxyResponse = await fetchFn(proxyUrl, {
     method: 'POST',
     headers: {
@@ -76,6 +134,7 @@ export async function performDashboardProxyRequest(
         deviceId,
         requestId,
         parentRequestId,
+        parentHop,
         headers,
         body: serializedBody,
         scenario,
@@ -91,6 +150,11 @@ export async function performDashboardProxyRequest(
     throw new Error(`[${logTag}] Proxy error: ${proxyResponse.status} ${txt}`);
   }
   const payload = (await proxyResponse.json()) as Record<string, unknown>;
+  applyRuntimeDateManipulationFromProxyPayload(payload);
+  const outerProxyHeaders: Record<string, string> = {};
+  proxyResponse.headers.forEach((value: string, key: string) => {
+    outerProxyHeaders[key.toLowerCase()] = value;
+  });
   try {
     const source = String(payload?.source || '');
     const hash = typeof payload?.hash === 'string' ? payload.hash : '';
@@ -110,9 +174,36 @@ export async function performDashboardProxyRequest(
   const proxyResponseBody = payload.response as
     | { data?: unknown; status?: number; headers?: Record<string, string> }
     | undefined;
-  const data = proxyResponseBody?.data;
+  let data = proxyResponseBody?.data;
   const status = proxyResponseBody?.status ?? 200;
-  const responseHeaders: Record<string, string> = proxyResponseBody?.headers ?? {};
+  const responseHeaders: Record<string, string> = { ...(proxyResponseBody?.headers ?? {}) };
+  const networkSource = mapProxyPayloadSourceToNetworkSource(
+    typeof payload?.source === 'string' ? payload.source : undefined
+  );
+  if (networkSource === 'mock-hit') {
+    responseHeaders['x-mockifyer'] = 'true';
+  }
+
+  const mockifyerTrace = resolveMockifyerTraceFromProxyPayload(
+    payload,
+    outerProxyHeaders,
+    responseHeaders
+  );
+
+  // Dashboard may have adopted a stored hop id (always-refresh / mock-hit). Prefer that
+  // over the client's pre-proxy mint so inline trace, stash, and catalog stay aligned.
+  const adoptedRequestId = mockifyerTrace?.requestId ?? requestId;
+  const adoptedParentRequestId =
+    mockifyerTrace != null ? mockifyerTrace.parentRequestId : parentRequestId;
+  if (adoptedRequestId) {
+    (config as { __mockifyer_requestId?: string }).__mockifyer_requestId = adoptedRequestId;
+  }
+  if (adoptedParentRequestId) {
+    (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId =
+      adoptedParentRequestId;
+  } else {
+    delete (config as { __mockifyer_parentRequestId?: string }).__mockifyer_parentRequestId;
+  }
 
   const scenarioResolution = payload?.scenarioResolution as { scenario?: string | null } | undefined;
   const scenarioName =
@@ -130,6 +221,35 @@ export async function performDashboardProxyRequest(
         }
       : undefined;
 
+  // Parent hop first, then merge any nested mockifyerTrace from the downstream service.
+  // Skip when `url` is itself `/api/proxy` (re-entrant dual axios+fetch interception).
+  if (!isMockifyerDashboardProxyApiUrl(url)) {
+    recordInlineTraceHopFromExchange({
+      method,
+      url,
+      status,
+      source: networkSource,
+      transport: 'proxy',
+      requestId: adoptedRequestId ?? null,
+      parentRequestId: adoptedParentRequestId ?? null,
+      durationMs: Math.max(0, Date.now() - startedAt),
+      clientId: lane ?? null,
+      requestHeaders: outboundHeadersToRecord(headers),
+      requestBody: body,
+      responseBody: data,
+    });
+  }
+  data = unwrapAndMergeInlineTraceEnvelope(data);
+  data = stripMockifyerTraceFromBody(data);
+
+  const effectiveTrace =
+    mockifyerTrace ??
+    (adoptedRequestId
+      ? adoptedParentRequestId
+        ? { requestId: adoptedRequestId, parentRequestId: adoptedParentRequestId }
+        : { requestId: adoptedRequestId }
+      : undefined);
+
   return {
     data,
     status,
@@ -137,5 +257,6 @@ export async function performDashboardProxyRequest(
     headers: responseHeaders,
     config,
     mockifyerProxyRecording,
+    ...(effectiveTrace ? { mockifyerTrace: effectiveTrace } : {}),
   };
 }

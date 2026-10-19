@@ -1,19 +1,20 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useToast } from '@/components/ui/use-toast'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import MockList from './MockList'
-import MockEditor from './MockEditor'
+import MockEditorPage from './MockEditorPage'
 import StatsView from './StatsView'
+import HopsView from './HopsView'
 import Settings from './Settings'
-import Timeline from './Timeline'
 import Network from './Network'
 import DateConfig from './DateConfig'
-import FixturePool from './FixturePool'
+import OverridesView from './OverridesView'
+import ApiReference from './ApiReference'
+import Memory from './Memory'
 import SidebarNav from './SidebarNav'
 import ClientConnectionsPanel from './ClientConnectionsPanel'
-import { getMocks, getMock, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
-import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
+import { getMocks, getScenarioConfig, getProxyConfig, searchMocks, setScenario, updateProxyConfig } from '@/lib/api'
+import type { MockFile, SimilarBodyGroupSummary } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,55 +25,94 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, Lock } from 'lucide-react'
+import {
+  formatScratchTtlHours,
+  isScratchScenario,
+  scenarioDisplayName,
+} from '@/lib/scenario-display'
+import { buildSearch, DASHBOARD_Q, mockEditorPath } from '@/lib/dashboard-urls'
+import { FavoritesProvider } from '@/lib/favorites-context'
+import { applyCatalogReplayModeFlags } from '@/lib/mock-correlation-chains'
 
 interface DashboardProps {
   scenario: string
   onScenarioChange: (scenario: string) => void
 }
 
+/** Tabs that render the full mock catalog. Overrides uses GET /mocks/with-overrides instead. */
+function tabNeedsMockCatalog(tab: string): boolean {
+  return tab === 'mocks'
+}
+
 export default function Dashboard({ scenario, onScenarioChange }: DashboardProps) {
   const location = useLocation()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [availableScenarios, setAvailableScenarios] = useState<string[]>([])
   const [scenarioLocks, setScenarioLocks] = useState<Record<string, boolean>>({})
+  const [scratchTtlSec, setScratchTtlSec] = useState<number | undefined>(undefined)
   const [switchingScenario, setSwitchingScenario] = useState(false)
   const [scenarioFilter, setScenarioFilter] = useState('')
   const [proxyRecordOnMiss, setProxyRecordOnMiss] = useState<boolean | null>(null)
   const [proxyAllowUpstream, setProxyAllowUpstream] = useState<boolean | null>(null)
   const [proxySaving, setProxySaving] = useState(false)
   
-  // Get active tab from URL path
+  // Get active tab from URL path (basename-relative or full embed path)
   const getActiveTabFromPath = () => {
-    const path = location.pathname
-    if (path === '/mocks') return 'mocks'
-    if (path === '/timeline') return 'timeline'
-    if (path === '/network') return 'network'
-    if (path === '/fixture-pool') return 'fixture-pool'
-    if (path === '/date-config') return 'date-config'
-    if (path === '/settings') return 'settings'
-    return 'stats' // default to stats (root path)
+    const path = (location.pathname || '/').replace(/\/+$/, '') || '/'
+    if (path === '/mocks' || path === '/mock' || path.endsWith('/mocks') || path.endsWith('/mock')) {
+      return 'mocks'
+    }
+    if (path === '/hops' || path.endsWith('/hops')) return 'hops'
+    if (path === '/overrides' || path.endsWith('/overrides')) return 'overrides'
+    if (path === '/network' || path.endsWith('/network')) return 'network'
+    if (path === '/date-config' || path.endsWith('/date-config')) return 'date-config'
+    if (path === '/memory' || path.endsWith('/memory')) return 'memory'
+    if (path === '/api-reference' || path.endsWith('/api-reference')) return 'api'
+    if (path === '/settings' || path.endsWith('/settings')) return 'settings'
+    return 'stats'
   }
   
   const [activeTab, setActiveTab] = useState(getActiveTabFromPath())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mocks, setMocks] = useState<MockFile[]>([])
   const [allMocks, setAllMocks] = useState<MockFile[]>([])
-  const [selectedMock, setSelectedMock] = useState<MockData | null>(null)
-  const [loadingMock, setLoadingMock] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(false)
+  const searchQuery = searchParams.get(DASHBOARD_Q.q) ?? searchParams.get(DASHBOARD_Q.endpoint) ?? ''
   const [similarBodyGroups, setSimilarBodyGroups] = useState<SimilarBodyGroupSummary[]>([])
+  const mocksLoadAbortRef = useRef<AbortController | null>(null)
+  const rejectedUrlScenarioRef = useRef<string | null>(null)
+  const searchQueryRef = useRef(searchQuery)
   const { toast } = useToast()
+
+  const applyCatalogReplayFlags = useCallback((stored: string[], passthrough: string[]) => {
+    const patch = (list: MockFile[]) => applyCatalogReplayModeFlags(list, stored, passthrough)
+    setAllMocks(patch)
+    setMocks(patch)
+  }, [])
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+  }, [searchQuery])
+
+  function isAbortError(error: unknown): boolean {
+    return (
+      (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    )
+  }
 
   const refreshScenarioConfig = useCallback(async () => {
     try {
       const cfg = await getScenarioConfig()
-      const next = cfg.availableScenarios?.length ? cfg.availableScenarios : ['default']
+      const next = cfg.availableScenarios?.length ? cfg.availableScenarios : ['default', '_scratch']
       setAvailableScenarios(next)
       setScenarioLocks(cfg.scenarioLocks ?? {})
+      setScratchTtlSec(cfg.scratchTtlSec)
     } catch {
-      setAvailableScenarios(['default'])
+      setAvailableScenarios(['default', '_scratch'])
       setScenarioLocks({})
+      setScratchTtlSec(undefined)
     }
   }, [])
 
@@ -115,21 +155,41 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }
 
-  async function handleHeaderScenarioChange(nextScenario: string) {
+  async function handleHeaderScenarioChange(nextScenario: string, options?: { silent?: boolean }) {
     if (!nextScenario || nextScenario === scenario) return
     try {
       setSwitchingScenario(true)
       await setScenario(nextScenario)
+      rejectedUrlScenarioRef.current = null
       onScenarioChange(nextScenario)
-      setSelectedMock(null)
-      toast({
-        title: 'Scenario changed',
-        description: `Switched to "${nextScenario}"`,
-      })
-    } catch (error: any) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set(DASHBOARD_Q.scenario, nextScenario)
+          return next
+        },
+        { replace: true }
+      )
+      if (!options?.silent) {
+        toast({
+          title: 'Scenario changed',
+          description: `Switched to "${nextScenario}"`,
+        })
+      }
+    } catch (error: unknown) {
+      rejectedUrlScenarioRef.current = nextScenario
+      setSearchParams(
+        (prev) => {
+          if (prev.get(DASHBOARD_Q.scenario) === scenario) return prev
+          const next = new URLSearchParams(prev)
+          next.set(DASHBOARD_Q.scenario, scenario)
+          return next
+        },
+        { replace: true }
+      )
       toast({
         title: 'Error',
-        description: error?.message || 'Failed to change scenario',
+        description: error instanceof Error ? error.message : 'Failed to change scenario',
         variant: 'destructive',
       })
     } finally {
@@ -145,20 +205,54 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     }
   }, [location.pathname])
 
+  const urlScenario = searchParams.get(DASHBOARD_Q.scenario)
+
   useEffect(() => {
-    if (activeTab === 'mocks') {
-      loadMocks()
-      // Check for endpoint query parameter
-      const params = new URLSearchParams(location.search)
-      const qParam = params.get('q')
-      const endpointParam = params.get('endpoint')
-      if (qParam) {
-        setSearchQuery(qParam)
-      } else if (endpointParam) {
-        setSearchQuery(endpointParam)
-      }
+    if (!urlScenario) {
+      rejectedUrlScenarioRef.current = null
+      setSearchParams(
+        (prev) => {
+          if (prev.get(DASHBOARD_Q.scenario) === scenario) return prev
+          const next = new URLSearchParams(prev)
+          next.set(DASHBOARD_Q.scenario, scenario)
+          return next
+        },
+        { replace: true }
+      )
+      return
     }
-  }, [scenario, activeTab, location.search])
+    if (urlScenario === scenario) {
+      rejectedUrlScenarioRef.current = null
+      return
+    }
+    if (switchingScenario || rejectedUrlScenarioRef.current === urlScenario) return
+    void handleHeaderScenarioChange(urlScenario, { silent: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlScenario, scenario, switchingScenario])
+
+  useEffect(() => {
+    if (!tabNeedsMockCatalog(activeTab)) {
+      mocksLoadAbortRef.current?.abort()
+      return
+    }
+    loadMocks()
+    return () => {
+      mocksLoadAbortRef.current?.abort()
+    }
+  }, [scenario, activeTab, location.pathname])
+
+  function setSearchQuery(nextQuery: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (nextQuery.trim()) next.set(DASHBOARD_Q.q, nextQuery)
+        else next.delete(DASHBOARD_Q.q)
+        next.delete(DASHBOARD_Q.endpoint)
+        return next
+      },
+      { replace: true }
+    )
+  }
 
   // Handle tab change - update URL
   const handleTabChange = (tab: string) => {
@@ -166,83 +260,100 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     setSidebarOpen(false) // Close sidebar on mobile when navigating
     const pathMap: Record<string, string> = {
       'mocks': '/mocks',
-      'timeline': '/timeline',
+      'hops': '/hops',
+      'overrides': '/overrides',
       'network': '/network',
-      'fixture-pool': '/fixture-pool',
       'stats': '/',
       'date-config': '/date-config',
+      'memory': '/memory',
+      'api': '/api-reference',
       'settings': '/settings',
     }
-    navigate(pathMap[tab] || '/')
+    navigate({
+      pathname: pathMap[tab] || '/',
+      search: buildSearch({ scenario }),
+    })
   }
 
   async function loadMocks() {
+    mocksLoadAbortRef.current?.abort()
+    const ac = new AbortController()
+    mocksLoadAbortRef.current = ac
+    const { signal } = ac
+    const requestedSearchQuery = searchQuery.trim()
+    const hasCatalog = allMocks.length > 0
     try {
-      setLoading(true)
-      const data = await getMocks(scenario, { similarGroups: true })
-      setMocks(data.files)
+      if (!hasCatalog) setLoading(true)
+      setSimilarBodyGroups([])
+      const data = await getMocks(scenario, {
+        signal,
+        compact: true,
+        similarGroups: true,
+      })
+      if (signal.aborted) return
+      if (searchQueryRef.current.trim() !== requestedSearchQuery) return
+      if (!requestedSearchQuery) {
+        setMocks(data.files)
+      }
       setAllMocks(data.files)
       setSimilarBodyGroups(data.similarBodyGroups ?? [])
     } catch (error) {
+      if (isAbortError(error)) return
       toast({
         title: 'Error',
         description: 'Failed to load mocks',
         variant: 'destructive',
       })
     } finally {
-      setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (activeTab !== 'mocks') return
+    if (activeTab !== 'mocks' || location.pathname !== '/mocks') return
 
     const q = searchQuery.trim()
     if (!q) {
       // Restore full list when clearing search.
       if (allMocks.length > 0) {
         setMocks(allMocks)
+        setLoading(false)
         return
       }
       loadMocks()
       return
     }
 
-    const t = window.setTimeout(() => {
-      void (async () => {
-        try {
-          setLoading(true)
-          const result = await searchMocks({ q, scenario, limit: 200 })
-          setMocks(result.files)
-        } catch (error) {
-          toast({
-            title: 'Error',
-            description: 'Failed to search mocks',
-            variant: 'destructive',
-          })
-        } finally {
-          setLoading(false)
-        }
-      })()
-    }, 350)
-
-    return () => window.clearTimeout(t)
-  }, [activeTab, scenario, searchQuery])
-
-  async function handleSelectMock(file: MockFile) {
-    try {
-      setLoadingMock(true)
-      const mockData = await getMock(file.filename, scenario)
-      setSelectedMock(mockData)
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load mock data',
-        variant: 'destructive',
-      })
-    } finally {
-      setLoadingMock(false)
+    let cancelled = false
+    void (async () => {
+      try {
+        setLoading(true)
+        const result = await searchMocks({ q, scenario, limit: 200 })
+        if (cancelled) return
+        setMocks(result.files)
+      } catch (error) {
+        if (cancelled) return
+        toast({
+          title: 'Error',
+          description: 'Failed to search mocks',
+          variant: 'destructive',
+        })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
+  }, [activeTab, scenario, searchQuery, location.pathname])
+
+  function handleSelectMock(file: MockFile) {
+    navigate(
+      mockEditorPath(file.filename, {
+        scenario,
+        q: searchQuery.trim() || undefined,
+      })
+    )
   }
 
   // Mocks come from GET /mocks or /mocks/search (full JSON); extra client filtering hid response-body hits.
@@ -261,8 +372,11 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
     })
 
   const scenarioLocked = scenarioLocks[scenario] === true
+  const viewingScratch = isScratchScenario(scenario)
+  const scratchTtlLabel = formatScratchTtlHours(scratchTtlSec)
 
   return (
+    <FavoritesProvider scenario={scenario}>
     <div className="flex h-screen overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
@@ -284,6 +398,7 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
           activeTab={activeTab} 
           onTabChange={handleTabChange}
           onNavigate={() => setSidebarOpen(false)}
+          scenario={scenario}
         />
       </div>
       
@@ -336,26 +451,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                 >
                   Record: {proxyRecordOnMiss ? 'On' : 'Off'}
                 </Button>
-                <Button
-                  type="button"
-                  variant={proxyAllowUpstream ? 'outline' : 'destructive'}
-                  size="sm"
-                  className="h-9"
-                  disabled={proxySaving}
-                  title={
-                    proxyAllowUpstream
-                      ? 'Upstream calls allowed on miss.'
-                      : 'Offline mode: upstream calls blocked on miss.'
-                  }
-                  onClick={() =>
-                    saveProxyConfig({
-                      recordOnMiss: proxyRecordOnMiss,
-                      allowUpstream: !proxyAllowUpstream,
-                    })
-                  }
-                >
-                  Upstream: {proxyAllowUpstream ? 'Allow' : 'Block'}
-                </Button>
               </div>
             )}
             <span className="hidden sm:inline text-xs text-muted-foreground">Scenario</span>
@@ -371,13 +466,22 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   size="sm"
                   className="h-9 gap-2"
                   disabled={switchingScenario}
-                  title={scenarioLocked ? 'Scenario is locked (read-only mocks)' : 'Change scenario'}
+                  title={
+                    viewingScratch
+                      ? `Temporary unscoped traffic (expires in ~${scratchTtlLabel}). Select a named scenario to keep mocks.`
+                      : scenarioLocked
+                        ? 'Scenario is locked (read-only mocks)'
+                        : 'Change scenario'
+                  }
                 >
                   {scenarioLocked ? (
                     <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                   ) : null}
-                  <Badge variant="outline" className="font-mono">
-                    {scenario}
+                  {viewingScratch ? (
+                    <Badge variant="secondary">Temporary</Badge>
+                  ) : null}
+                  <Badge variant="outline" className="font-mono" title={scenario}>
+                    {scenarioDisplayName(scenario)}
                   </Badge>
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
@@ -401,9 +505,17 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                         key={s}
                         onClick={() => handleHeaderScenarioChange(s)}
                         disabled={s === scenario || switchingScenario}
-                        className={`font-mono ${s === scenario ? 'bg-primary/10' : ''}`}
+                        className={`${s === scenario ? 'bg-primary/10' : ''}`}
+                        title={s}
                       >
-                        {s}
+                        <span className={isScratchScenario(s) ? '' : 'font-mono'}>
+                          {scenarioDisplayName(s)}
+                        </span>
+                        {isScratchScenario(s) ? (
+                          <Badge variant="secondary" className="ml-2 text-[10px]">
+                            expires
+                          </Badge>
+                        ) : null}
                         {s === scenario ? ' ✓' : ''}
                       </DropdownMenuItem>
                     ))
@@ -413,6 +525,25 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             </DropdownMenu>
           </div>
         </header>
+        {viewingScratch ? (
+          <div className="border-b border-amber-500/40 bg-amber-500/10 px-6 py-2.5 text-sm text-amber-950 dark:text-amber-100 flex flex-wrap items-center justify-between gap-2">
+            <p>
+              Unscoped traffic is stored temporarily (~{scratchTtlLabel}) and expires automatically.
+              Select a named scenario (for example <span className="font-mono">default</span>) to keep
+              mocks long-term.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-amber-600/50 bg-background/80"
+              disabled={switchingScenario || scenario === 'default'}
+              onClick={() => handleHeaderScenarioChange('default')}
+            >
+              Switch to default
+            </Button>
+          </div>
+        ) : null}
         <ClientConnectionsPanel />
         <main className="flex-1 overflow-auto p-6">
           <Routes>
@@ -423,6 +554,14 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
                   scenario={scenario}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)
+                    setSearchParams(
+                      (prev) => {
+                        const next = new URLSearchParams(prev)
+                        next.set(DASHBOARD_Q.scenario, newScenario)
+                        return next
+                      },
+                      { replace: true }
+                    )
                   }}
                 />
               }
@@ -430,66 +569,79 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
             <Route
               path="/mocks"
               element={
-                <div className="space-y-6">
-                  <MockList
-                    mocks={mocks}
-                    allMocks={allMocks}
-                    similarBodyGroups={similarBodyGroups}
-                    scenario={scenario}
-                    scenarioLocked={scenarioLocked}
-                    loading={loading}
-                    loadingMock={loadingMock}
-                    searchQuery={searchQuery}
-                    onSearchChange={setSearchQuery}
-                    selectedMock={selectedMock}
-                    onSelectMock={handleSelectMock}
-                    onRefresh={loadMocks}
-                  />
-                  <Dialog
-                    open={!!selectedMock}
-                    onOpenChange={(open) => {
-                      if (!open) setSelectedMock(null)
-                    }}
-                  >
-                    <DialogContent
-                      showCloseButton
-                      className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96rem,96vw)] w-[min(96rem,96vw)]"
-                    >
-                      {selectedMock ? (
-                        <>
-                          <DialogTitle className="sr-only">Edit mock {selectedMock.filename}</DialogTitle>
-                          <MockEditor
-                            variant="modal"
-                            mock={selectedMock}
-                            allMocks={allMocks}
-                            onSelectRelatedMock={handleSelectMock}
-                            scenario={scenario}
-                            scenarioLocked={scenarioLocked}
-                            onClose={() => setSelectedMock(null)}
-                            onSave={loadMocks}
-                          />
-                        </>
-                      ) : null}
-                    </DialogContent>
-                  </Dialog>
-                </div>
+                <MockList
+                  mocks={mocks}
+                  allMocks={allMocks}
+                  similarBodyGroups={similarBodyGroups}
+                  scenario={scenario}
+                  scenarioLocked={scenarioLocked}
+                  loading={loading}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                  onSelectMock={handleSelectMock}
+                  onRefresh={loadMocks}
+                  onCatalogReplayApplied={applyCatalogReplayFlags}
+                />
               }
             />
-            <Route path="/timeline" element={<Timeline scenario={scenario} />} />
+            <Route
+              path="/mock"
+              element={
+                <MockEditorPage
+                  scenario={scenario}
+                  scenarioLocked={scenarioLocked}
+                  scenarioReady={!urlScenario || urlScenario === scenario}
+                />
+              }
+            />
+            <Route path="/hops" element={<HopsView scenario={scenario} />} />
+            <Route
+              path="/timeline"
+              element={<Navigate to={{ pathname: '/network', search: location.search }} replace />}
+            />
+            <Route
+              path="/overrides"
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+            />
+            <Route
+              path="/:mountPrefix/overrides"
+              element={<OverridesView scenario={scenario} mocks={allMocks} />}
+            />
+            <Route path="/atlas" element={<Navigate to={{ pathname: '/network', search: location.search }} replace />} />
             <Route path="/network" element={<Network scenario={scenario} />} />
-            <Route path="/fixture-pool" element={<FixturePool scenario={scenario} />} />
+            <Route
+              path="/fixture-pool"
+              element={<Navigate to={{ pathname: '/mocks', search: location.search }} replace />}
+            />
             <Route path="/date-config" element={<DateConfig />} />
+            <Route path="/memory" element={<Memory scenario={scenario} />} />
+            <Route path="/api-reference" element={<ApiReference />} />
             <Route
               path="/settings"
               element={
                 <Settings
                   scenario={scenario}
+                  availableScenarios={availableScenarios}
                   scenarioLocks={scenarioLocks}
+                  proxyRecordOnMiss={proxyRecordOnMiss}
+                  proxyAllowUpstream={proxyAllowUpstream}
+                  proxySaving={proxySaving}
+                  onSaveProxyConfig={saveProxyConfig}
                   onScenarioChange={(newScenario) => {
                     onScenarioChange(newScenario)
-                    setSelectedMock(null)
+                    setSearchParams(
+                      (prev) => {
+                        const next = new URLSearchParams(prev)
+                        next.set(DASHBOARD_Q.scenario, newScenario)
+                        return next
+                      },
+                      { replace: true }
+                    )
                   }}
                   onScenarioConfigRefresh={refreshScenarioConfig}
+                  onMocksChanged={async () => {
+                    await loadMocks()
+                  }}
                 />
               }
             />
@@ -497,6 +649,6 @@ export default function Dashboard({ scenario, onScenarioChange }: DashboardProps
         </main>
       </div>
     </div>
+    </FavoritesProvider>
   )
 }
-

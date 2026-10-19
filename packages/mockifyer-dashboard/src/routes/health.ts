@@ -16,7 +16,7 @@ router.get('/', async (req: Request, res: Response) => {
     try {
       const files = fs
         .readdirSync(mockDataPath)
-        .filter((file) => file.endsWith('.json') && file !== 'date-config.json');
+        .filter((file) => file.endsWith('.json') && file !== 'date-config.json' && file !== 'favorites.json');
       fileCount = files.length;
     } catch {
       // Ignore errors

@@ -6,12 +6,24 @@ import { useToast } from '@/components/ui/use-toast'
 import { deleteMock, duplicateMock, fetchDomainPathRules, type DomainPathRulesMap } from '@/lib/api'
 import { buildMockFolderTree, sortFolderEntries } from '@/lib/mockFolderTree'
 import { buildMockRequestTree } from '@/lib/mockRequestTree'
-import { buildMockChainMaps, buildMockServiceChainsForDisplay } from '@/lib/mock-correlation-chains'
+import {
+  buildMockChainMaps,
+  buildMockServiceChainsForDisplay,
+  filterMocksByHopTraffic,
+  MOCK_HOP_TRAFFIC_LABELS,
+  parseMockHopTrafficMode,
+} from '@/lib/mock-correlation-chains'
+import { HopsNavCard } from '@/components/ServiceChainList'
+import { countServiceChainHops } from '@/lib/use-mock-service-chains'
 import { MockFolderTree, MockFolderTreeProvider, useFolderTreeBulkActions } from '@/components/MockFolderTree'
+import { DomainPathRulesBar } from '@/components/DomainPathRulesBar'
 import { MockCard } from '@/components/MockCard'
-import { MockServiceChainCard } from '@/components/MockServiceChainCard'
 import type { MockFile, MockData, SimilarBodyGroupSummary } from '@/types'
-import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, GitBranch } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { RefreshCw, UnfoldVertical, FoldVertical, ChevronDown, ChevronRight, Link2, SlidersHorizontal, Star, X } from 'lucide-react'
+import { DASHBOARD_Q, hopsPath, overridesPath } from '@/lib/dashboard-urls'
+import { useLocationQuery } from '@/lib/use-location-query'
+import { useMockFavorites } from '@/lib/favorites-context'
 
 interface MockListProps {
   mocks: MockFile[]
@@ -24,12 +36,12 @@ interface MockListProps {
   /** When true, delete/duplicate actions are hidden (scenario locked server-side). */
   scenarioLocked?: boolean
   loading: boolean
-  loadingMock?: boolean
   searchQuery: string
   onSearchChange: (query: string) => void
-  selectedMock: MockData | null
+  selectedMock?: MockData | null
   onSelectMock: (file: MockFile) => void
   onRefresh: () => void
+  onCatalogReplayApplied?: (stored: string[], passthrough: string[]) => void
 }
 
 export default function MockList(props: MockListProps) {
@@ -47,32 +59,64 @@ function MockListContent({
   scenario,
   scenarioLocked = false,
   loading,
-  loadingMock = false,
   searchQuery,
   onSearchChange,
-  selectedMock,
+  selectedMock = null,
   onSelectMock,
   onRefresh,
+  onCatalogReplayApplied,
 }: MockListProps) {
   const { toast } = useToast()
+  const { searchParams, patch } = useLocationQuery()
+  const trafficFilter = parseMockHopTrafficMode(searchParams.get(DASHBOARD_Q.traffic))
+  const domainFilter = searchParams.get(DASHBOARD_Q.domain)?.trim() || ''
   const { expandAllFolders, collapseAllFolders } = useFolderTreeBulkActions()
+  const { favoriteIds, favoritesOnly, setFavoritesOnly, loading: favoritesLoading } = useMockFavorites()
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [groupBy, setGroupBy] = useState<'folders' | 'domains' | 'chains'>('folders')
+  const [groupBy, setGroupBy] = useState<'folders' | 'domains'>('folders')
   const [domainPathRules, setDomainPathRules] = useState<DomainPathRulesMap>({})
   const didAutoSwitchGroupBy = useRef(false)
-  const [overridesCollapsed, setOverridesCollapsed] = useState(true)
   const [recentCollapsed, setRecentCollapsed] = useState(true)
+  const [favoritesCollapsed, setFavoritesCollapsed] = useState(false)
   const [similarClustersCollapsed, setSimilarClustersCollapsed] = useState(false)
-  const [serviceChainsCollapsed, setServiceChainsCollapsed] = useState(false)
-  const didSuggestChainsView = useRef(false)
-  const [chainsOnly, setChainsOnly] = useState(false)
+  const [searchDraft, setSearchDraft] = useState(searchQuery)
+
+  useEffect(() => {
+    setSearchDraft(searchQuery)
+  }, [searchQuery])
+
+  const scopedMocks = useMemo(
+    () => filterMocksByHopTraffic(mocks, trafficFilter, domainFilter),
+    [mocks, trafficFilter, domainFilter]
+  )
+  const scopedAllMocks = useMemo(
+    () => filterMocksByHopTraffic(allMocks, trafficFilter, domainFilter),
+    [allMocks, trafficFilter, domainFilter]
+  )
+
+  const matchingFavoriteMocks = useMemo(() => {
+    if (favoritesLoading) return []
+    const source = searchQuery.trim() ? scopedMocks : scopedAllMocks
+    return source.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [scopedAllMocks, scopedMocks, searchQuery, favoriteIds, favoritesLoading])
+
+  const visibleMocks = useMemo(() => {
+    if (!favoritesOnly || favoritesLoading) return scopedMocks
+    return scopedMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, favoritesLoading, scopedMocks, favoriteIds])
+
+  const visibleAllMocks = useMemo(() => {
+    if (!favoritesOnly || favoritesLoading) return scopedAllMocks
+    return scopedAllMocks.filter((m) => m.requestHash != null && favoriteIds.has(m.requestHash))
+  }, [favoritesOnly, favoritesLoading, scopedAllMocks, favoriteIds])
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) return error.message
     return 'Unexpected error'
   }
 
-  const chainSource = searchQuery.trim() ? mocks : allMocks
+  /** Always the scenario catalog — search must not drop parent/child hops from chain building. */
+  const chainSource = visibleAllMocks
 
   /** Redis-backed mocks with real URLs — use Domains (not redis/ filename folders) for Live/Replay. */
   const preferDomainsGrouping = useMemo(() => {
@@ -87,21 +131,11 @@ function MockListContent({
   }, [chainSource])
 
   const groupByModes = preferDomainsGrouping
-    ? (['domains', 'chains'] as const)
-    : (['folders', 'domains', 'chains'] as const)
+    ? (['domains'] as const)
+    : (['folders', 'domains'] as const)
 
   useEffect(() => {
     if (didAutoSwitchGroupBy.current || loading || !mocks?.length) return
-
-    const source = searchQuery.trim() ? mocks : allMocks
-    const chains = buildMockServiceChainsForDisplay(source)
-    if (chains.length > 0) {
-      setGroupBy('chains')
-      setServiceChainsCollapsed(false)
-      didAutoSwitchGroupBy.current = true
-      didSuggestChainsView.current = true
-      return
-    }
 
     const looksLikeRedisFilenames = mocks.every((m) => m.filename.startsWith('redis/'))
     const hasAbsoluteEndpoints = mocks.some(
@@ -111,7 +145,7 @@ function MockListContent({
       setGroupBy('domains')
       didAutoSwitchGroupBy.current = true
     }
-  }, [loading, mocks, allMocks, searchQuery])
+  }, [loading, mocks])
 
   useEffect(() => {
     if (preferDomainsGrouping && groupBy === 'folders') {
@@ -200,67 +234,104 @@ function MockListContent({
 
   const chainMaps = useMemo(() => buildMockChainMaps(chainSource), [chainSource])
 
-  const serviceChains = useMemo(() => buildMockServiceChainsForDisplay(chainSource), [chainSource])
-
-  const displayedMocks = useMemo(() => {
-    if (!chainsOnly) return mocks
-    const inChain = new Set<string>()
-    for (const chain of serviceChains) {
-      for (const hop of chain.hops) inChain.add(hop.filename)
-    }
-    return mocks.filter((m) => inChain.has(m.filename))
-  }, [chainsOnly, mocks, serviceChains])
+  const catalogServiceChains = useMemo(
+    () => buildMockServiceChainsForDisplay(chainSource),
+    [chainSource]
+  )
+  const catalogHopCount = countServiceChainHops(catalogServiceChains)
 
   const { folderTree, hasFolders } = useMemo(() => {
-    if (groupBy === 'chains') {
-      return { folderTree: buildMockFolderTree([]), hasFolders: false }
-    }
     const tree =
-      groupBy === 'domains' ? buildMockRequestTree(displayedMocks) : buildMockFolderTree(displayedMocks)
+      groupBy === 'domains' ? buildMockRequestTree(visibleMocks) : buildMockFolderTree(visibleMocks)
     return {
       folderTree: tree,
       hasFolders: sortFolderEntries(tree).length > 0,
     }
-  }, [groupBy, displayedMocks])
-
-  const chainsInView = useMemo(() => {
-    if (groupBy === 'chains') {
-      return buildMockServiceChainsForDisplay(displayedMocks)
-    }
-    return serviceChains
-  }, [groupBy, displayedMocks, serviceChains])
+  }, [groupBy, visibleMocks])
 
   const recentMocks = useMemo(() => {
-    const source = searchQuery.trim() ? mocks : allMocks
+    const source = searchQuery.trim() ? visibleMocks : visibleAllMocks
     return [...source]
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
       .slice(0, 5)
-  }, [allMocks, mocks, searchQuery])
+  }, [visibleAllMocks, visibleMocks, searchQuery])
 
   const overrideMocks = useMemo(() => {
-    const source = searchQuery.trim() ? mocks : allMocks
+    const source = searchQuery.trim() ? visibleMocks : visibleAllMocks
     return [...source]
-      .filter((m) => m.hasResponseDateOverrides === true)
+      .filter(
+        (m) =>
+          m.hasResponseDateOverrides === true || m.hasResponseFieldOverrides === true
+      )
       .sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime())
-  }, [allMocks, mocks, searchQuery])
+  }, [visibleAllMocks, visibleMocks, searchQuery])
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="🔍 Search mocks (URL, GraphQL query, variables, response body, …)"
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
+        <form
           className="min-w-[12rem] flex-1"
-          disabled={loading}
-        />
-        {!loading && mocks.length > 0 && (
+          onSubmit={(event) => {
+            event.preventDefault()
+            onSearchChange(searchDraft)
+          }}
+        >
+          <Input
+            type="search"
+            enterKeyHint="search"
+            placeholder='Search mocks — press Enter. Words are AND; "quotes" keep a phrase'
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+              onSearchChange(searchDraft)
+            }}
+            className="w-full"
+            aria-label="Search mocks"
+          />
+          <button type="submit" className="sr-only">
+            Search
+          </button>
+        </form>
+        <label
+          className="flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-border px-3 text-sm"
+          title="Show only starred requests that exist in this scenario"
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-input"
+            checked={favoritesOnly}
+            onChange={(e) => setFavoritesOnly(e.target.checked)}
+            disabled={loading}
+          />
+          <Star className={`h-3.5 w-3.5 ${favoritesOnly ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
+          <span className="hidden sm:inline">Favorites only</span>
+        </label>
+        {(trafficFilter || domainFilter) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 gap-1.5"
+            onClick={() => patch({ [DASHBOARD_Q.traffic]: null, [DASHBOARD_Q.domain]: null })}
+            title="Clear replay-mode and domain filters"
+          >
+            <span className="truncate max-w-[14rem]">
+              {[trafficFilter ? MOCK_HOP_TRAFFIC_LABELS[trafficFilter] : null, domainFilter || null]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        {!loading && mocks.length > 0 && groupByModes.length > 1 && (
           <div
             className="inline-flex h-9 shrink-0 overflow-hidden rounded-md border border-border"
             title={
               preferDomainsGrouping
-                ? 'Group by service host (Live/Replay) or by call chain'
-                : 'Group by filename folder, service host, or call chain'
+                ? 'Group by service host (Live/Replay)'
+                : 'Group by filename folder or service host'
             }
           >
             {groupByModes.map((mode) => (
@@ -272,23 +343,10 @@ function MockListContent({
                 className="h-9 rounded-none border-0 px-3 text-xs shadow-none gap-1"
                 onClick={() => setGroupBy(mode)}
               >
-                {mode === 'folders' ? 'Folders' : mode === 'domains' ? 'Domains' : 'Chains'}
+                {mode === 'folders' ? 'Folders' : 'Domains'}
               </Button>
             ))}
           </div>
-        )}
-        {!loading && serviceChains.length > 0 && (
-          <Button
-            type="button"
-            variant={chainsOnly ? 'default' : 'outline'}
-            size="sm"
-            className="shrink-0 gap-1.5"
-            onClick={() => setChainsOnly((v) => !v)}
-            title="Show only mocks that are part of a multi-service chain"
-          >
-            <GitBranch className="h-4 w-4" />
-            <span className="hidden sm:inline">Chains only</span>
-          </Button>
         )}
         {!loading && hasFolders && mocks.length > 0 && (
           <>
@@ -323,108 +381,85 @@ function MockListContent({
 
       {!loading && overrideMocks.length > 0 && (
         <Card>
-          <CardContent className="p-4 space-y-3">
-            <button
-              type="button"
+          <CardContent className="p-4">
+            <Link
+              to={overridesPath(undefined, { scenario })}
               className="flex w-full items-center justify-between gap-3 text-left"
-              onClick={() => setOverridesCollapsed((c) => !c)}
-              title={overridesCollapsed ? 'Expand overrides' : 'Collapse overrides'}
             >
               <div className="flex items-center gap-2">
-                {overridesCollapsed ? (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
+                <SlidersHorizontal className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
                 <div className="text-sm font-medium">
-                  Overrides {searchQuery.trim() ? '(matching search)' : ''}{' '}
-                  <span className="text-xs text-muted-foreground">({overrideMocks.length})</span>
+                  {overrideMocks.length} mock{overrideMocks.length === 1 ? '' : 's'} with overlays
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">Sorted by modified time</div>
-            </button>
-            {!overridesCollapsed && (
-              <div className="flex flex-col gap-2">
-                {overrideMocks.map((m) => (
-                  <MockCard
-                    key={`override:${m.filename}`}
-                    mock={m}
-                    selectedMock={selectedMock}
-                    onSelectMock={onSelectMock}
-                    showActions={false}
-                  />
-                ))}
-              </div>
-            )}
+              <div className="text-xs text-primary">Open Overrides →</div>
+            </Link>
           </CardContent>
         </Card>
       )}
 
-      {!loading && groupBy !== 'chains' && serviceChains.length > 0 && (
+      {!loading && !favoritesOnly && matchingFavoriteMocks.length > 0 && (
         <Card>
           <CardContent className="p-4 space-y-3">
             <button
               type="button"
               className="flex w-full items-center justify-between gap-3 text-left"
-              onClick={() => setServiceChainsCollapsed((c) => !c)}
-              title={serviceChainsCollapsed ? 'Expand service chains' : 'Collapse service chains'}
+              onClick={() => setFavoritesCollapsed((c) => !c)}
+              title={favoritesCollapsed ? 'Expand favorites' : 'Collapse favorites'}
             >
               <div className="flex items-center gap-2">
-                {serviceChainsCollapsed ? (
+                {favoritesCollapsed ? (
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 ) : (
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 )}
-                <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400 shrink-0" aria-hidden />
                 <div className="text-sm font-medium">
-                  Service chains{' '}
+                  Favorites{' '}
                   <span className="text-xs text-muted-foreground">
-                    ({serviceChains.length} multi-hop{serviceChains.length === 1 ? '' : 's'})
+                    ({matchingFavoriteMocks.length} in this scenario)
                   </span>
                 </div>
               </div>
-              <Button
-                type="button"
-                variant="link"
-                className="h-auto p-0 text-xs shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setGroupBy('chains')
-                }}
-              >
-                View all as chains →
-              </Button>
+              <div className="text-xs text-muted-foreground">Global stars, matching requests only</div>
             </button>
-            {!serviceChainsCollapsed && (
-              <div className="space-y-3">
-                {serviceChains.slice(0, 6).map((chain) => (
-                  <MockServiceChainCard
-                    key={chain.id}
-                    chain={chain}
-                    selectedFilename={selectedMock?.filename ?? null}
-                    onSelectHop={onSelectMock}
+            {!favoritesCollapsed && (
+              <div className="flex flex-col gap-2">
+                {matchingFavoriteMocks.map((m) => (
+                  <MockCard
+                    key={`favorite:${m.filename}`}
+                    mock={m}
+                    selectedMock={selectedMock}
+                    onSelectMock={onSelectMock}
+                    showActions={false}
+                    scenario={scenario}
                   />
                 ))}
-                {serviceChains.length > 6 && (
-                  <p className="text-xs text-muted-foreground">
-                    Showing 6 newest chains. Switch Group to <strong>Chains</strong> for the full list.
-                  </p>
-                )}
               </div>
             )}
           </CardContent>
         </Card>
       )}
 
+      {!loading && catalogServiceChains.length > 0 && (
+        <HopsNavCard
+          chainCount={catalogServiceChains.length}
+          hopCount={catalogHopCount}
+          scenario={scenario}
+        />
+      )}
+
       {!loading &&
-        groupBy !== 'chains' &&
-        serviceChains.length === 0 &&
+        catalogServiceChains.length === 0 &&
         chainSource.some((m) => m.parentRequestId) && (
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground">
-              Some mocks have a parent request id but are not linked into a full chain yet. Re-run{' '}
-              <span className="font-mono text-foreground">dev:proxy:record</span> so each hop saves correlation ids
-              (same as the Network tab).
+              Some mocks have a parent request id but are not linked into a full chain yet. Open{' '}
+              <Link to={hopsPath({ scenario })} className="text-primary hover:underline">
+                Hops
+              </Link>{' '}
+              or re-run <span className="font-mono text-foreground">dev:proxy:record</span> so each hop
+              saves correlation ids.
             </CardContent>
           </Card>
         )}
@@ -519,6 +554,7 @@ function MockListContent({
                     selectedMock={selectedMock}
                     onSelectMock={onSelectMock}
                     showActions={false}
+                    scenario={scenario}
                   />
                 ))}
               </div>
@@ -533,54 +569,34 @@ function MockListContent({
             <div className="text-center text-muted-foreground">Loading mocks...</div>
           </CardContent>
         </Card>
-      ) : groupBy === 'chains' && chainsInView.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 space-y-2 text-center text-muted-foreground text-sm">
-            <p>No linked service chains in this scenario yet.</p>
-            <p>
-              Record via dashboard proxy (<span className="font-mono">dev:proxy:record</span>) and trigger a
-              multi-service flow — each hop should appear here in order, like the Network tab.
-            </p>
-          </CardContent>
-        </Card>
-      ) : displayedMocks.length === 0 ? (
+      ) : visibleMocks.length === 0 ? (
         <Card>
           <CardContent className="p-6">
             <div className="text-center text-muted-foreground">
-              {chainsOnly
-                ? 'No multi-service chains in the current list'
+              {favoritesOnly
+                ? 'No favorite requests match this scenario'
                 : searchQuery
                   ? 'No mocks found matching your search'
-                  : 'No mocks found'}
+                  : trafficFilter || domainFilter
+                    ? 'No mocks match this replay mode or domain'
+                    : 'No mocks found'}
             </div>
           </CardContent>
         </Card>
-      ) : groupBy === 'chains' ? (
-        <div className="relative space-y-4">
-          {(loading || loadingMock) && (
-            <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
-              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
-            </div>
-          )}
-          <p className="text-sm text-muted-foreground">
-            Each card is one user request across services. Hop 1 is the entry service; later hops were triggered by
-            the previous service (parent request id).
-          </p>
-          {chainsInView.map((chain) => (
-            <MockServiceChainCard
-              key={chain.id}
-              chain={chain}
-              selectedFilename={selectedMock?.filename ?? null}
-              onSelectHop={onSelectMock}
-            />
-          ))}
-        </div>
       ) : (
         <div className="relative space-y-4">
-          {(loading || loadingMock) && (
+          {loading && (
             <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-background/60 pt-8 text-sm text-muted-foreground backdrop-blur-[1px]">
-              {loadingMock ? 'Loading mock…' : 'Refreshing mocks…'}
+              Refreshing mocks…
             </div>
+          )}
+          {groupBy === 'domains' && scenario && (
+            <DomainPathRulesBar
+              scenario={scenario}
+              mocks={allMocks}
+              pathRules={domainPathRules}
+              onPathRulesChange={setDomainPathRules}
+            />
           )}
           <MockFolderTree
             node={folderTree}
@@ -591,14 +607,17 @@ function MockListContent({
             onDuplicate={scenarioLocked ? undefined : handleDuplicate}
             deleting={deleting}
             chainMaps={chainMaps}
+            scenario={scenario}
             domainTreeMode={
               groupBy === 'domains' && scenario
                 ? {
                     scenario,
-                    catalogMocks: displayedMocks,
+                    catalogMocks: visibleMocks,
+                    actionMocks: allMocks,
                     pathRules: domainPathRules,
                     onPathRulesChange: setDomainPathRules,
                     onRefresh,
+                    onCatalogReplayApplied,
                   }
                 : undefined
             }

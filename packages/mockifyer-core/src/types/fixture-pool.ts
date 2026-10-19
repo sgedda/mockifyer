@@ -15,7 +15,8 @@ export interface PoolEntitySource {
 }
 
 /**
- * Reusable domain object in the global fixture pool (inert until a slot references it).
+ * Reusable domain object in the global fixture pool (catalog / extract).
+ * Serve-time activation for v1 is `$pool` on **response fixtures**, not entity slots.
  */
 export interface PoolEntity {
   id: string;
@@ -65,6 +66,42 @@ export interface PoolResponseItem {
   };
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** How a `$pool` ref materializes into scenario mock response data. */
+export type PoolRefMode = 'document' | 'value';
+
+/**
+ * Select array elements by field equality. Output order follows {@link values}.
+ */
+export interface PoolRefSelect {
+  field: string;
+  values: Array<string | number | boolean>;
+}
+
+/**
+ * Serve-time reference to a promoted pool response fixture.
+ * Stored in scenario mock `response.data` as `{ "$pool": PoolRef }`.
+ */
+export interface PoolRef {
+  /** {@link PoolResponseItem.responseItemId} in the global fixture pool. */
+  id: string;
+  /**
+   * `document` (default): clone full pool body; filter only at {@link path}.
+   * `value`: replace the `$pool` node with the selected subtree only.
+   */
+  mode?: PoolRefMode;
+  /** Dot/JSONPath-lite into pool `response.data` (same family as extract `jsonPath`). */
+  path?: string;
+  /** Subset when the target at {@link path} (or root) is an array. Mutually exclusive with {@link indices}. */
+  select?: PoolRefSelect;
+  /** Positional pick when the target is an array. Mutually exclusive with {@link select}. */
+  indices?: number[];
+}
+
+/** Wrapper node embedded in mock response JSON. */
+export interface PoolRefNode {
+  $pool: PoolRef;
 }
 
 export interface PoolIndex {

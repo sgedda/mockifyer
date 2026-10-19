@@ -12,7 +12,8 @@ import { MockCard } from '@/components/MockCard'
 import type { MockFile, MockData } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
 import {
-  collectUpstreamDomainPathsForReplay,
+  describeBulkReplayModeResult,
+  planDomainFolderReplay,
   type MockChainMaps,
 } from '@/lib/mock-correlation-chains'
 import { sortFolderEntries } from '@/lib/mockFolderTree'
@@ -20,12 +21,13 @@ import {
   aggregateLiveApiState,
   countMocksInDomainFolder,
   endpointMatchesDomainPath,
+  findEffectiveAllowUpstreamOverride,
   findEffectiveDomainPathRule,
   type LiveApiAggregate,
 } from '@/lib/domainTreeMatch'
 import {
-  bulkCaptureResponsesForDomain,
   bulkSetLiveApiForDomain,
+  bulkSetReplayMode,
   setDomainPathRule,
   type DomainPathRulesMap,
 } from '@/lib/api'
@@ -35,7 +37,7 @@ import { ChevronRight, ChevronDown, Folder } from 'lucide-react'
 
 const FOLDER_NEST_PAD_REM = 0.75
 const DOMAIN_RECORD_RESPONSE_BTN_WIDTH = '7.75rem'
-const DOMAIN_CAPTURE_BTN_WIDTH = '6.75rem'
+const DOMAIN_ALLOW_UPSTREAM_BTN_WIDTH = '7.5rem'
 
 function folderHeaderInsetStyle(depth: number): CSSProperties {
   if (depth <= 0) {
@@ -100,9 +102,13 @@ export function useFolderTreeBulkActions(): FolderTreeBulkContextValue {
 export interface DomainTreeModeProps {
   scenario: string
   catalogMocks: MockFile[]
+  /** Full scenario catalog for Replay/Live (not search-filtered). Defaults to catalogMocks. */
+  actionMocks?: MockFile[]
   pathRules: DomainPathRulesMap
   onPathRulesChange: (rules: DomainPathRulesMap) => void
   onRefresh: () => void
+  /** Patch in-memory catalog flags instead of reloading GET /mocks. */
+  onCatalogReplayApplied?: (stored: string[], passthrough: string[]) => void
 }
 
 interface MockFolderTreeProps {
@@ -117,6 +123,7 @@ interface MockFolderTreeProps {
   domainTreeMode?: DomainTreeModeProps
   /** For multi-service hop badges and indentation. */
   chainMaps?: MockChainMaps
+  scenario?: string
 }
 
 export function MockFolderTree({
@@ -129,6 +136,7 @@ export function MockFolderTree({
   deleting,
   domainTreeMode,
   chainMaps,
+  scenario,
 }: MockFolderTreeProps) {
   const folders = sortFolderEntries(node)
   const sortedFiles = [...node.files].sort((a, b) => a.filename.localeCompare(b.filename))
@@ -145,6 +153,7 @@ export function MockFolderTree({
           onDuplicate={onDuplicate}
           deleting={deleting}
           chainMaps={chainMaps}
+          scenario={scenario}
         />
       ))}
       {folders.map(({ name, child }) => (
@@ -166,6 +175,7 @@ export function MockFolderTree({
             deleting={deleting}
             domainTreeMode={domainTreeMode}
             chainMaps={chainMaps}
+            scenario={scenario}
           />
         </FolderSection>
       ))}
@@ -191,7 +201,7 @@ function FolderSection({
   const bulkCtx = useContext(FolderTreeBulkContext)
   const { toast } = useToast()
   const [open, setOpen] = useState(defaultOpen)
-  const [busy, setBusy] = useState<'live' | 'mock' | 'capture' | 'auto' | null>(null)
+  const [busy, setBusy] = useState<'live' | 'mock' | 'auto' | 'upstream' | null>(null)
 
   useEffect(() => {
     if (!bulkCtx || bulkCtx.bulkGeneration === 0) return
@@ -210,7 +220,7 @@ function FolderSection({
 
   const pendingCount = folderCounts?.pending ?? 0
   const recordedCount = folderCounts?.recorded ?? 0
-  const canReplay = recordedCount > 0
+  const canReplay = recordedCount > 0 || pendingCount > 0
 
   const effectivePathRule = useMemo(() => {
     if (!domainTreeMode || !domainPath) return null
@@ -221,10 +231,32 @@ function FolderSection({
   const autoRecordExact =
     domainPath != null && domainTreeMode?.pathRules[domainPath.trim()]?.recordResponses === true
 
+  const allowUpstreamOverride = useMemo(() => {
+    if (!domainTreeMode || !domainPath) return null
+    return findEffectiveAllowUpstreamOverride(domainPath, domainTreeMode.pathRules)
+  }, [domainTreeMode, domainPath])
+
+  const upstreamAllowed = allowUpstreamOverride?.allowUpstream !== false
+  const upstreamBlockExact =
+    domainPath != null &&
+    domainTreeMode?.pathRules[domainPath.trim()]?.allowUpstream === false
+  const upstreamAllowExact =
+    domainPath != null &&
+    domainTreeMode?.pathRules[domainPath.trim()]?.allowUpstream === true
+
   async function handleLiveToggle(useLiveApi: boolean) {
     if (!domainTreeMode || !domainPath) return
     try {
       setBusy(useLiveApi ? 'live' : 'mock')
+      const catalog = domainTreeMode.actionMocks ?? domainTreeMode.catalogMocks
+      const filenames = catalog
+        .filter((mock) => endpointMatchesDomainPath(mock.endpoint ?? null, domainPath))
+        .map((mock) => mock.filename)
+      if (useLiveApi) {
+        domainTreeMode.onCatalogReplayApplied?.([], filenames)
+      } else {
+        domainTreeMode.onCatalogReplayApplied?.(filenames, [])
+      }
       const result = await bulkSetLiveApiForDomain({
         scenario: domainTreeMode.scenario,
         domainPath,
@@ -232,47 +264,18 @@ function FolderSection({
       })
       toast({
         title: useLiveApi ? 'Live API enabled' : 'Replay mocks enabled',
-        description:
-          result.skippedPending > 0
-            ? `Updated ${result.updated}; ${result.skippedPending} pending (capture responses first).`
-            : `Updated ${result.updated} mock(s) under ${domainPath}`,
+        description: `Updated ${result.updated} mock(s) under ${domainPath}`,
       })
-      domainTreeMode.onRefresh()
+      if (!domainTreeMode.onCatalogReplayApplied) {
+        domainTreeMode.onRefresh()
+      }
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Bulk update failed',
         variant: 'destructive',
       })
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  async function handleBulkCapture() {
-    if (!domainTreeMode || !domainPath) return
-    try {
-      setBusy('capture')
-      const result = await bulkCaptureResponsesForDomain({
-        scenario: domainTreeMode.scenario,
-        domainPath,
-      })
-      const errHint =
-        result.failed > 0 && result.errors[0]?.message
-          ? ` First error: ${result.errors[0].message}`
-          : ''
-      toast({
-        title: 'Capture complete',
-        description: `Captured ${result.captured}; skipped ${result.skippedAlready} already captured; ${result.failed} failed.${errHint}`,
-        variant: result.failed > 0 ? 'destructive' : 'default',
-      })
       domainTreeMode.onRefresh()
-    } catch (error: unknown) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Bulk capture failed',
-        variant: 'destructive',
-      })
     } finally {
       setBusy(null)
     }
@@ -280,52 +283,33 @@ function FolderSection({
 
   async function handleSetReplayMode() {
     if (!domainTreeMode || !domainPath) return
-    if (pendingCount > 0) {
-      await handleBulkCapture()
-    }
-
-    const normalizedPath = domainPath.trim().replace(/^\/+|\/+$/g, '')
-    const domainMocks = domainTreeMode.catalogMocks.filter((m) =>
-      endpointMatchesDomainPath(m.endpoint ?? null, normalizedPath)
-    )
-    const upstreamDomains = collectUpstreamDomainPathsForReplay(
-      domainMocks,
-      domainTreeMode.catalogMocks
-    ).filter((path) => path !== normalizedPath)
-
     try {
       setBusy('mock')
-      for (const upstream of upstreamDomains) {
-        await bulkSetLiveApiForDomain({
-          scenario: domainTreeMode.scenario,
-          domainPath: upstream,
-          useLiveApi: true,
-        })
-      }
-      const result = await bulkSetLiveApiForDomain({
+      const plan = planDomainFolderReplay(
+        domainTreeMode.actionMocks ?? domainTreeMode.catalogMocks,
+        domainPath
+      )
+      if (plan.stored.length === 0 && plan.passthrough.length === 0) return
+      domainTreeMode.onCatalogReplayApplied?.(plan.stored, plan.passthrough)
+      const result = await bulkSetReplayMode({
         scenario: domainTreeMode.scenario,
-        domainPath,
-        useLiveApi: false,
+        stored: plan.stored,
+        passthrough: plan.passthrough,
       })
-      const upstreamHint =
-        upstreamDomains.length > 0
-          ? `Set ${upstreamDomains.length} upstream hop${upstreamDomains.length === 1 ? '' : 's'} to Live so traffic reaches this service. `
-          : ''
-      const pendingHint =
-        result.skippedPending > 0
-          ? `Updated ${result.updated}; ${result.skippedPending} pending (capture responses first).`
-          : `Updated ${result.updated} mock(s) under ${domainPath}.`
       toast({
         title: 'Replay enabled',
-        description: `${upstreamHint}${pendingHint}`,
+        description: describeBulkReplayModeResult(result),
       })
-      domainTreeMode.onRefresh()
+      if (!domainTreeMode.onCatalogReplayApplied) {
+        domainTreeMode.onRefresh()
+      }
     } catch (error: unknown) {
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Bulk update failed',
         variant: 'destructive',
       })
+      domainTreeMode.onRefresh()
     } finally {
       setBusy(null)
     }
@@ -345,13 +329,35 @@ function FolderSection({
     if (!domainTreeMode || !domainPath) return
     try {
       setBusy('auto')
-      let rule: { recordResponses: boolean; autoMock?: boolean } | null
+      const exact = domainTreeMode.pathRules[domainPath.trim()]
+      let rule: { recordResponses: boolean; autoMock?: boolean; allowUpstream?: boolean } | null
       if (autoRecordExact) {
-        rule = null
+        // Drop explicit rule only when it was solely for record flags; otherwise keep allowUpstream.
+        if (typeof exact?.allowUpstream === 'boolean') {
+          rule = {
+            recordResponses: false,
+            autoMock: false,
+            allowUpstream: exact.allowUpstream,
+          }
+        } else {
+          rule = null
+        }
       } else if (autoRecordOn) {
-        rule = { recordResponses: false, autoMock: false }
+        rule = {
+          recordResponses: false,
+          autoMock: false,
+          ...(typeof exact?.allowUpstream === 'boolean'
+            ? { allowUpstream: exact.allowUpstream }
+            : {}),
+        }
       } else {
-        rule = { recordResponses: true, autoMock: true }
+        rule = {
+          recordResponses: true,
+          autoMock: true,
+          ...(typeof exact?.allowUpstream === 'boolean'
+            ? { allowUpstream: exact.allowUpstream }
+            : {}),
+        }
       }
       const rules = await setDomainPathRule({
         scenario: domainTreeMode.scenario,
@@ -372,6 +378,72 @@ function FolderSection({
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to update record response policy',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function handleAllowUpstreamToggle() {
+    if (!domainTreeMode || !domainPath) return
+    try {
+      setBusy('upstream')
+      const exact = domainTreeMode.pathRules[domainPath.trim()]
+      
+      // Only preserve recordResponses/autoMock if they were explicitly set on this exact rule
+      const base: { recordResponses?: boolean; autoMock?: boolean } = {}
+      if (typeof exact?.recordResponses === 'boolean') {
+        base.recordResponses = exact.recordResponses
+      }
+      if (typeof exact?.autoMock === 'boolean') {
+        base.autoMock = exact.autoMock
+      }
+
+      let rule: { recordResponses?: boolean; autoMock?: boolean; allowUpstream?: boolean }
+
+      if (!upstreamAllowed) {
+        if (upstreamBlockExact) {
+          // Clear explicit block; check if a parent would still block by simulating removal.
+          const rulesWithoutCurrent = { ...domainTreeMode.pathRules }
+          delete rulesWithoutCurrent[domainPath.trim()]
+          const parentOverride = findEffectiveAllowUpstreamOverride(domainPath, rulesWithoutCurrent)
+          // If a parent would still block, set explicit allow; otherwise just clear the block.
+          if (parentOverride?.allowUpstream === false) {
+            rule = { ...base, allowUpstream: true }
+          } else {
+            rule = { ...base }
+          }
+        } else {
+          // Inherited block — explicitly re-allow this path.
+          rule = { ...base, allowUpstream: true }
+        }
+      } else if (upstreamAllowExact) {
+        // Clear explicit allow (may re-inherit a parent block).
+        rule = { ...base }
+      } else {
+        rule = { ...base, allowUpstream: false }
+      }
+
+      const rules = await setDomainPathRule({
+        scenario: domainTreeMode.scenario,
+        domainPath,
+        rule,
+      })
+      domainTreeMode.onPathRulesChange(rules)
+      const nextOverride = findEffectiveAllowUpstreamOverride(domainPath, rules)
+      const nowAllowed = nextOverride?.allowUpstream !== false
+      toast({
+        title: nowAllowed ? 'Upstream allowed' : 'Upstream blocked',
+        description: nowAllowed
+          ? `Cache misses under ${domainPath} may call the real API (if the scenario allows upstream).`
+          : `Cache misses under ${domainPath} return 412 instead of calling the real API. Mock hits still replay.`,
+      })
+    } catch (error: unknown) {
+      toast({
+        title: 'Error',
+        description:
+          error instanceof Error ? error.message : 'Failed to update allow-upstream policy',
         variant: 'destructive',
       })
     } finally {
@@ -408,7 +480,7 @@ function FolderSection({
             )}
           </span>
         </button>
-        {domainTreeMode && domainPath && liveState !== 'empty' && (
+        {domainTreeMode && domainPath && (
           <div className="flex shrink-0 items-center gap-2">
             <Button
               type="button"
@@ -428,55 +500,63 @@ function FolderSection({
             >
               {busy === 'auto' ? '…' : 'Record response'}
             </Button>
-            {pendingCount > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 text-xs"
-                style={{ width: DOMAIN_CAPTURE_BTN_WIDTH }}
-                disabled={busy !== null}
-                title="Fetch real responses for pending stubs under this path"
-                onClick={() => void handleBulkCapture()}
-              >
-                {busy === 'capture' ? '…' : `Capture (${pendingCount})`}
-              </Button>
-            )}
-            <div
-              className="inline-flex h-7 shrink-0 overflow-hidden rounded-md border border-border"
+            <Button
+              type="button"
+              variant={upstreamAllowed ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 shrink-0 text-xs"
+              style={{ width: DOMAIN_ALLOW_UPSTREAM_BTN_WIDTH }}
+              disabled={busy !== null}
               title={
-                trafficMixed
-                  ? 'Mocks in this folder use mixed replay and live settings'
-                  : 'How existing mocks are served — does not change Record response policy for new requests'
+                upstreamAllowed
+                  ? upstreamAllowExact
+                    ? 'Upstream explicitly allowed on this path. Click to clear.'
+                    : 'Cache misses may call the real API (scenario permitting). Click to block upstream for this path.'
+                  : upstreamBlockExact
+                    ? 'Upstream blocked on this path. Click to allow again.'
+                    : `Upstream blocked via ${allowUpstreamOverride?.domainPath}. Click to allow this path.`
               }
+              onClick={() => void handleAllowUpstreamToggle()}
             >
-              <Button
-                type="button"
-                variant={replayActive ? 'default' : 'ghost'}
-                size="sm"
-                className="h-7 rounded-none border-0 px-3 text-xs shadow-none"
-                disabled={busy !== null || !canReplay}
+              {busy === 'upstream' ? '…' : 'Allow upstream'}
+            </Button>
+            {liveState !== 'empty' && (
+              <div
+                className="inline-flex h-7 shrink-0 overflow-hidden rounded-md border border-border"
                 title={
-                  canReplay
-                    ? 'Replay saved responses (turns off live API for mocks in this folder)'
-                    : 'Nothing to replay yet — capture a response first'
+                  trafficMixed
+                    ? 'Mocks in this folder use mixed replay and live settings'
+                    : 'How existing mocks are served — does not change Record response policy for new requests'
                 }
-                onClick={() => void handleTrafficModeChange('replay')}
               >
-                {busy === 'mock' || busy === 'capture' ? '…' : 'Replay'}
-              </Button>
-              <Button
-                type="button"
-                variant={liveActive ? 'default' : 'ghost'}
-                size="sm"
-                className="h-7 rounded-none border-0 border-l border-border px-3 text-xs shadow-none"
-                disabled={busy !== null}
-                title="Always call the real API for mocks in this folder"
-                onClick={() => void handleTrafficModeChange('live')}
-              >
-                {busy === 'live' ? '…' : 'Live'}
-              </Button>
-            </div>
+                <Button
+                  type="button"
+                  variant={replayActive ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 rounded-none border-0 px-3 text-xs shadow-none"
+                  disabled={busy !== null || !canReplay}
+                  title={
+                    canReplay
+                      ? 'Replay saved responses. Pending stubs capture on the next matching request, then replay.'
+                      : 'Nothing to replay yet'
+                  }
+                  onClick={() => void handleTrafficModeChange('replay')}
+                >
+                  {busy === 'mock' ? '…' : 'Replay'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={liveActive ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 rounded-none border-0 border-l border-border px-3 text-xs shadow-none"
+                  disabled={busy !== null}
+                  title="Always call the real API for mocks in this folder"
+                  onClick={() => void handleTrafficModeChange('live')}
+                >
+                  {busy === 'live' ? '…' : 'Live'}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

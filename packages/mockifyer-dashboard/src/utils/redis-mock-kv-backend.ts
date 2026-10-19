@@ -1,5 +1,8 @@
-import { redisDel, redisMget, ResilientIoRedisClient } from '@sgedda/mockifyer-core';
+import { chunkArray, redisDel, redisMget, ResilientIoRedisClient } from '@sgedda/mockifyer-core';
 import type { MockKvBackend, MockKvMulti } from './mock-kv-backend';
+
+/** Field/value pairs per HSET so flattened args stay under Redis command chunk size (500). */
+const HSET_FIELD_PAIR_CHUNK = 250;
 
 /** Buffers MULTI commands until exec(), when the cluster-aware client is ready. */
 class BufferedRedisKvMulti implements MockKvMulti {
@@ -13,8 +16,9 @@ class BufferedRedisKvMulti implements MockKvMulti {
   }
 
   sadd(key: string, ...members: string[]): MockKvMulti {
-    if (members.length > 0) {
-      this.ops.push((multi) => multi.sadd(key, ...members));
+    if (members.length === 0) return this;
+    for (const chunk of chunkArray(members)) {
+      this.ops.push((multi) => multi.sadd(key, ...chunk));
     }
     return this;
   }
@@ -49,6 +53,11 @@ export class RedisMockKvBackend implements MockKvBackend {
     return this.holder.run((redis) => redis.get(key));
   }
 
+  async getrange(key: string, start: number, end: number): Promise<string | null> {
+    const value = await this.holder.run((redis) => redis.getrange(key, start, end));
+    return typeof value === 'string' ? value : null;
+  }
+
   async set(key: string, value: string, expiryMode?: 'EX', ttlSec?: number): Promise<void> {
     await this.holder.run(async (redis) => {
       if (expiryMode === 'EX' && ttlSec != null) {
@@ -63,13 +72,17 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.holder.run((redis) => redisDel(redis, keys));
   }
 
-  async mget(...keys: string[]): Promise<Array<string | null>> {
+  async mget(keys: string[]): Promise<Array<string | null>> {
     return this.holder.run((redis) => redisMget(redis, keys));
   }
 
   async sadd(key: string, ...members: string[]): Promise<void> {
     if (members.length === 0) return;
-    await this.holder.run((redis) => redis.sadd(key, ...members));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(members)) {
+        await redis.sadd(key, ...chunk);
+      }
+    });
   }
 
   async smembers(key: string): Promise<string[]> {
@@ -78,7 +91,21 @@ export class RedisMockKvBackend implements MockKvBackend {
 
   async srem(key: string, ...members: string[]): Promise<void> {
     if (members.length === 0) return;
-    await this.holder.run((redis) => redis.srem(key, ...members));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(members)) {
+        await redis.srem(key, ...chunk);
+      }
+    });
+  }
+
+  async scard(key: string): Promise<number> {
+    const n = await this.holder.run((redis) => redis.scard(key));
+    return typeof n === 'number' ? n : 0;
+  }
+
+  async sismember(key: string, member: string): Promise<boolean> {
+    const n = await this.holder.run((redis) => redis.sismember(key, member));
+    return n === 1 || n === true;
   }
 
   async hget(key: string, field: string): Promise<string | null> {
@@ -89,9 +116,39 @@ export class RedisMockKvBackend implements MockKvBackend {
     await this.holder.run((redis) => redis.hset(key, field, value));
   }
 
+  async hsetMany(key: string, fields: Record<string, string>): Promise<void> {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) return;
+    const pairChunk = HSET_FIELD_PAIR_CHUNK;
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(entries, pairChunk)) {
+        const args: string[] = [];
+        for (const [field, value] of chunk) {
+          args.push(field, value);
+        }
+        await redis.hset(key, ...args);
+      }
+    });
+  }
+
+  async hgetall(key: string): Promise<Record<string, string>> {
+    const raw = await this.holder.run((redis) => redis.hgetall(key));
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [field, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (value == null) continue;
+      out[field] = typeof value === 'string' ? value : String(value);
+    }
+    return out;
+  }
+
   async hdel(key: string, ...fields: string[]): Promise<void> {
     if (fields.length === 0) return;
-    await this.holder.run((redis) => redis.hdel(key, ...fields));
+    await this.holder.run(async (redis) => {
+      for (const chunk of chunkArray(fields)) {
+        await redis.hdel(key, ...chunk);
+      }
+    });
   }
 
   async zadd(key: string, score: number, member: string): Promise<void> {

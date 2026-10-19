@@ -13,18 +13,23 @@ When creating a new feature or fix:
    git checkout -b feature/description-of-feature
    ```
 
-2. **Stage and commit changes:**
+2. **Run tests and require them to pass** (see `.cursor/rules/release-pr-build-check.mdc`). Do this before commit, push, and PR. Do not open a PR while this fails:
+   ```bash
+   npm test
+   ```
+
+3. **Stage and commit changes:**
    ```bash
    git add <files>
    git commit -m "fix: description of change"
    ```
 
-3. **Push the branch:**
+4. **Push the branch:**
    ```bash
    git push -u origin fix/description-of-change
    ```
 
-4. **Create a PR using curl:**
+5. **Create a PR using curl:**
    ```bash
    curl -X POST \
      -H "Accept: application/vnd.github+json" \
@@ -45,7 +50,7 @@ When creating a new feature or fix:
      --base main --head fix/description-of-change
    ```
 
-5. **Checkout main branch:**
+6. **Checkout main branch:**
    ```bash
    git checkout main
    ```

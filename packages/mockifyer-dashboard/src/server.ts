@@ -1,6 +1,7 @@
 import express from 'express';
+import fs from 'fs';
 import path from 'path';
-import { initializeDateManipulation } from '@sgedda/mockifyer-core';
+import { configureAtlas, initializeDateManipulation } from '@sgedda/mockifyer-core';
 import { mocksRouter } from './routes/mocks';
 import { statsRouter } from './routes/stats';
 import { healthRouter } from './routes/health';
@@ -8,13 +9,20 @@ import { dateConfigRouter } from './routes/date-config';
 import { scenarioConfigRouter } from './routes/scenario-config';
 import { proxyRouter } from './routes/proxy';
 import { clientLanesRouter } from './routes/client-lanes';
+import { overrideSetsRouter } from './routes/override-sets';
 import { proxyConfigRouter } from './routes/proxy-config';
 import { networkEventsRouter } from './routes/network-events';
 import { fixturePoolRouter } from './routes/fixture-pool';
-import type {
-  DashboardContextConfig,
-  RedisDiskMirrorConfigInput,
-  RedisDiskMirrorResolved,
+import { atlasRouter } from './routes/atlas';
+import overrideGroupsRouter from './routes/override-groups';
+import { favoritesRouter } from './routes/favorites';
+import { memoryRouter } from './routes/memory';
+import { dashboardApiNoCache } from './utils/api-no-cache';
+import {
+  attachDashboardContext,
+  type DashboardContextConfig,
+  type RedisDiskMirrorConfigInput,
+  type RedisDiskMirrorResolved,
 } from './utils/dashboard-context';
 
 export type { DashboardContextConfig, RedisDiskMirrorConfigInput, RedisDiskMirrorResolved };
@@ -45,29 +53,38 @@ export function createServer(
   config: DashboardContextConfig = { provider: 'filesystem' }
 ): express.Application {
   const app = express();
+  const dashboardConfig = { ...config, mockDataPath };
   app.locals.mockDataPath = mockDataPath;
-  app.locals.dashboardConfig = { ...config, mockDataPath };
+  app.locals.dashboardConfig = dashboardConfig;
+  // Live JSON must not 304: fetch() treats 304 as !ok with an empty body.
+  app.set('etag', false);
 
   /** So `getCurrentDate()` resolves `date-config.json` under detected mock-data, not cwd fallbacks */
   initializeDateManipulation({ mockDataPath });
+
+  const atlasMode =
+    process.env.MOCKIFYER_ATLAS?.trim().toLowerCase() === 'off' ? 'off' : 'live';
+  configureAtlas({
+    mockDataPath,
+    atlas: { mode: atlasMode },
+  });
 
   // Middleware
   const jsonBodyLimit = getDashboardJsonBodyLimit();
   app.use(express.json({ limit: jsonBodyLimit }));
   app.use(express.urlencoded({ extended: true, limit: jsonBodyLimit }));
-
-  /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
-  app.use('/api', (_req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+  app.use((req, _res, next) => {
+    attachDashboardContext(req, { mockDataPath, config: dashboardConfig });
     next();
   });
+
+  /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
+  app.use('/api', dashboardApiNoCache);
   
   // CORS for local development
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -84,13 +101,35 @@ export function createServer(
   app.use('/api/proxy', proxyRouter);
   app.use('/api/proxy-config', proxyConfigRouter);
   app.use('/api/client-lanes', clientLanesRouter);
+  app.use('/api/override-sets', overrideSetsRouter);
   app.use('/api/network-events', networkEventsRouter);
   app.use('/api/fixture-pool', fixturePoolRouter);
+  app.use('/api/atlas', atlasRouter);
+  app.use('/api/override-groups', overrideGroupsRouter);
+  app.use('/api/favorites', favoritesRouter);
+  app.use('/api/memory', memoryRouter);
   
   // Log route registration (for debugging)
   console.log(
-    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import), /api/proxy, /api/proxy-config, /api/client-lanes, /api/network-events (incl. /trace), /api/fixture-pool'
+    '[Server] Registered API routes: /api/mocks, /api/stats, /api/health, /api/date-config, /api/scenario-config (export/import/clear-mocks/delete/rename), /api/proxy, /api/proxy-config, /api/client-lanes, /api/override-sets, /api/network-events (incl. /trace), /api/fixture-pool, /api/atlas, /api/override-groups, /api/favorites, /api/memory'
   );
+
+  // Atlas interactive HTML trace (Trace / Waterfall / Journey) — written under mock-data/atlas-html
+  app.use('/atlas-html', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    const dir = path.join(mockDataPath, 'atlas-html');
+    if (!fs.existsSync(dir)) {
+      return res
+        .status(404)
+        .type('text/plain')
+        .send(
+          'Atlas HTML trace not generated yet. Capture network traffic with atlas mode enabled.'
+        );
+    }
+    return express.static(dir, { index: 'index.html' })(req, res, next);
+  });
 
   // Serve static files from public directory (React build output)
   // Only serve static files for GET requests to non-API paths
@@ -100,6 +139,25 @@ export function createServer(
     } else {
       next();
     }
+  });
+
+  /**
+   * Vite `base: './'` + a trailing-slash deep link (`/mockifyer/overrides/`)
+   * requests `/overrides/assets/*.js`. If we SPA-fallback that to index.html,
+   * the browser never boots React and `/api/override-groups` is never called.
+   * Keep page names in sync with frontend `DASHBOARD_PAGE_SUFFIXES` (includes `/mock`).
+   */
+  const spaPageAssetPrefix =
+    /^\/(mocks|mock|hops|overrides|timeline|atlas|network|fixture-pool|date-config|api-reference|settings|memory)\/assets\//;
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return next();
+    }
+    if (!spaPageAssetPrefix.test(req.path)) {
+      return next();
+    }
+    req.url = req.url.replace(spaPageAssetPrefix, '/assets/');
+    return express.static(publicDir)(req, res, next);
   });
   
   app.use((req, res, next) => {
@@ -117,8 +175,11 @@ export function createServer(
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found', path: req.path });
     }
-    if (req.path.startsWith('/assets/')) {
+    if (req.path.startsWith('/assets/') || req.path.includes('/assets/')) {
       return res.status(404).send('Asset not found');
+    }
+    if (req.path.startsWith('/atlas-html/')) {
+      return res.status(404).send('Atlas HTML trace not found');
     }
     // Serve React app's index.html for all other GET routes
     res.sendFile(path.join(publicDir, 'index.html'));
@@ -140,4 +201,3 @@ export function createServer(
 
   return app;
 }
-

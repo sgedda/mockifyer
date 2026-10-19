@@ -1,6 +1,10 @@
 import { MockifyerConfig, ENV_VARS } from '../types';
 import { logger } from './logger';
-import { getCurrentScenario, getScenarioFolderPath } from './scenario';
+import { getCurrentScenario, getScenarioFolderPath, isScratchScenario } from './scenario';
+import {
+  getRuntimeDateManipulation,
+  stopRuntimeDateSync,
+} from './runtime-date-sync';
 
 // Conditionally import fs and path - will be undefined in React Native
 let fs: typeof import('fs') | undefined;
@@ -30,13 +34,46 @@ export interface GetCurrentDateContext {
   explicitManipulation?: Record<string, unknown> | null;
 }
 
-function manipulationPayloadIsEffective(dm: Record<string, unknown>): boolean {
+/**
+ * True when a dateManipulation payload would change {@link getCurrentDate}
+ * (fixed date, offset, or timezone).
+ */
+export function dateManipulationHasEffect(
+  dm: Record<string, unknown> | null | undefined
+): boolean {
+  if (!dm || typeof dm !== 'object') {
+    return false;
+  }
   const fixed = dm.fixedDate;
   const hasFixed = fixed !== undefined && fixed !== null && fixed !== '';
   const hasOffset = dm.offset !== undefined && dm.offset !== null && typeof dm.offset === 'number';
   const tz = dm.timezone;
   const hasTz = tz !== undefined && tz !== null && tz !== '';
   return hasFixed || hasOffset || hasTz;
+}
+
+/**
+ * Date manipulation the dashboard proxy should pass as `explicitManipulation`.
+ * An effective **client-lane** payload wins over the scenario Redis/sqlite document.
+ * When the scenario document is missing (`null`), returns `null` so Redis mode does not fall back to disk.
+ * When the resolved scenario is `_scratch` (no scenario selected), returns `{}` (real time) so a lane
+ * date never follows unscoped traffic — e.g. devices that accidentally share a clientId.
+ */
+export function resolveExplicitDateManipulation(options: {
+  laneManipulation?: Record<string, unknown> | null;
+  scenarioDateDoc: { dateManipulation: Record<string, unknown> | null } | null;
+  scenario?: string | null;
+}): Record<string, unknown> | null {
+  if (isScratchScenario(options.scenario)) {
+    return {};
+  }
+  if (dateManipulationHasEffect(options.laneManipulation)) {
+    return options.laneManipulation as Record<string, unknown>;
+  }
+  if (options.scenarioDateDoc === null) {
+    return null;
+  }
+  return options.scenarioDateDoc.dateManipulation ?? {};
 }
 
 /**
@@ -143,8 +180,31 @@ function loadDateConfigFromFile(
 }
 
 /**
- * Calculate timezone offset in milliseconds
+ * Apply a dateManipulation record (fixed date, offset, or timezone).
  */
+function dateFromManipulationRecord(dm: Record<string, unknown>): Date {
+  const fixed = dm.fixedDate;
+  if (typeof fixed === 'string' && fixed) {
+    return new Date(fixed);
+  }
+  if (fixed instanceof Date) {
+    return new Date(fixed);
+  }
+  const offset = dm.offset;
+  if (typeof offset === 'number' && !Number.isNaN(offset)) {
+    return new Date(Date.now() + offset);
+  }
+  const timezone = dm.timezone;
+  if (typeof timezone === 'string' && timezone) {
+    try {
+      return new Date(new Date().toLocaleString('en-US', { timeZone: timezone }));
+    } catch {
+      logger.warn(`Invalid timezone: ${timezone}. Using system timezone instead.`);
+    }
+  }
+  return new Date();
+}
+
 function getTimezoneOffset(targetTimezone: string): number {
   try {
     const now = new Date();
@@ -165,10 +225,6 @@ function getTimezoneOffset(targetTimezone: string): number {
  */
 export function initializeDateManipulation(config: MockifyerConfig): void {
   currentConfig = config;
-
-  // Config is stored and used by getCurrentDate() to return manipulated dates
-  // For global Date manipulation (new Date(), Date.now()), use Sinon or Jest fake timers
-  // See documentation for examples
 }
 
 /**
@@ -180,6 +236,8 @@ export function initializeDateManipulation(config: MockifyerConfig): void {
  *
  * @param context Optional; pass `mockDataPath`/`scenario` so server code (e.g. dashboard Redis proxy) reads the same
  *                `date-config.json` as the UI instead of falling back to `process.cwd()/mock-data` discovery.
+ *                With `proxy.baseUrl`, a process cache from Redis Date Config is used so bare `getCurrentDate()`
+ *                follows the active scenario (lane date wins when set).
  */
 export function getCurrentDate(context?: GetCurrentDateContext): Date {
   // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
@@ -199,29 +257,21 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
     if (ex !== null && typeof ex === 'object') {
       // `{}` (or otherwise "ineffective") is an explicit "clear" signal: treat as no manipulation
       // and do not fall through to env vars / disk defaults.
-      if (!manipulationPayloadIsEffective(ex)) {
+      if (!dateManipulationHasEffect(ex)) {
         return new Date();
       }
-      // Apply explicit manipulation directly (no env var precedence).
-      const fixedDate = (ex as Record<string, unknown>).fixedDate;
-      if (typeof fixedDate === 'string' && fixedDate) {
-        return new Date(fixedDate);
-      }
-      const offset = (ex as Record<string, unknown>).offset;
-      if (typeof offset === 'number' && !Number.isNaN(offset)) {
-        return new Date(Date.now() + offset);
-      }
-      const timezone = (ex as Record<string, unknown>).timezone;
-      if (typeof timezone === 'string' && timezone) {
-        const date = new Date();
-        try {
-          return new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-        } catch {
-          return new Date();
-        }
-      }
+      return dateFromManipulationRecord(ex);
+    }
+  }
+
+  // Dashboard/Redis process cache (scenario or lane). Beats env so stale MOCKIFYER_DATE*
+  // cannot override Date Config the way the proxy already ignores env.
+  const runtimeManipulation = getRuntimeDateManipulation(context?.scenario);
+  if (runtimeManipulation !== undefined) {
+    if (runtimeManipulation === null || !dateManipulationHasEffect(runtimeManipulation)) {
       return new Date();
     }
+    return dateFromManipulationRecord(runtimeManipulation);
   }
 
   // Check environment variables (they take precedence over disk config)
@@ -242,22 +292,6 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
 
   // Try to get date manipulation from current config
   let dateManipulation: Record<string, unknown> | null | undefined = currentConfig?.dateManipulation;
-
-  // Redis-backed dashboard: explicit manipulation from `{prefix}:date_config:{scenario}`
-  if (
-    !dateManipulation &&
-    context !== undefined &&
-    Object.prototype.hasOwnProperty.call(context, 'explicitManipulation')
-  ) {
-    const ex = context.explicitManipulation;
-    // If the caller explicitly provided `explicitManipulation` (even if null),
-    // we should not fall through to filesystem date-config.json.
-    if (ex === null) {
-      dateManipulation = null;
-    } else if (ex !== null && typeof ex === 'object') {
-      dateManipulation = ex;
-    }
-  }
 
   // If no config, try to load from date-config.json file (per-scenario, then legacy root)
   const disableDateConfigFileFallback = currentConfig?.disableDateConfigFileFallback ?? true;
@@ -305,12 +339,32 @@ export function getCurrentDate(context?: GetCurrentDateContext): Date {
 }
 
 /**
+ * Clock for serve-time date overrides on local mock hits (axios / fetch interceptors).
+ *
+ * - Dashboard proxy (`proxy.baseUrl`): the dashboard resolves the lane/scenario, so the runtime
+ *   cache it fills is used as-is (local scenario files are not authoritative).
+ * - Otherwise: resolves this client's local scenario on every call, so a scenario switch
+ *   picks up that scenario's `date-config.json` instead of the previous one.
+ */
+export function createServeTimeClock(config: MockifyerConfig): () => Date {
+  if (config.proxy?.baseUrl?.trim()) {
+    return () => getCurrentDate();
+  }
+  return () =>
+    getCurrentDate({
+      mockDataPath: config.mockDataPath,
+      scenario: getCurrentScenario(config.mockDataPath, config.clientId),
+    });
+}
+
+/**
  * Reset any date manipulation settings
  * Note: This does NOT restore fake timers if you're using Sinon/Jest fake timers
  * You need to restore those separately (clock.restore() or jest.useRealTimers())
  */
 export function resetDateManipulation(): void {
   currentConfig = null;
+  stopRuntimeDateSync();
 }
 
 /**

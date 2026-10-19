@@ -1,3 +1,8 @@
+import {
+  clearFlightRecorder,
+  configureFlightRecorder,
+  getRecentFlightHops,
+} from '@sgedda/mockifyer-core';
 import { clearMockifyerClientIdRuntime, setupMockifyer } from '@sgedda/mockifyer-fetch';
 import fs from 'fs';
 import path from 'path';
@@ -16,6 +21,8 @@ describe('fetch proxy bypass', () => {
   beforeEach(() => {
     delete (global as any).__mockifyer_original_fetch;
     clearMockifyerClientIdRuntime();
+    clearFlightRecorder();
+    configureFlightRecorder({ enabled: true, maxEvents: 50 });
     fs.mkdirSync(testMockDataPath, { recursive: true });
   });
 
@@ -47,6 +54,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -82,6 +90,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local', recordOnMiss: false },
     });
     await client.get('https://api.example.com/x');
@@ -112,6 +121,7 @@ describe('fetch proxy bypass', () => {
         mockDataPath: testMockDataPath,
         recordMode: false,
         useGlobalFetch: false,
+        networkLog: { enabled: false },
         proxy: { baseUrl: 'http://dashboard.local' },
       });
       await client.get('https://api.example.com/env');
@@ -185,6 +195,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -210,6 +221,7 @@ describe('fetch proxy bypass', () => {
       useGlobalFetch: false,
       activationMode: 'off',
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
     });
 
@@ -237,6 +249,7 @@ describe('fetch proxy bypass', () => {
       recordMode: false,
       useGlobalFetch: false,
       clientId: 'lane-alpha',
+      networkLog: { enabled: false },
       proxy: { baseUrl: 'http://dashboard.local' },
       excludedUrls: ['login.microsoftonline.com'],
     });
@@ -248,5 +261,218 @@ describe('fetch proxy bypass', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('dashboard.local');
+  });
+
+  it('records proxy mock hits with x-mockifyer header to the flight recorder', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'redis',
+        hash: 'abc123def',
+        response: {
+          status: 200,
+          data: { fromRedisMock: true },
+          headers: { 'x-mockifyer': 'true' },
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      networkLog: { enabled: false, flightRecorder: { enabled: true } },
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/users');
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({ fromRedisMock: true });
+    expect(response.headers['x-mockifyer']).toBe('true');
+
+    // emitMockifyerNetworkEvent records hops on setImmediate, after the response returns.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const hops = getRecentFlightHops({ limit: 10 });
+    expect(hops.length).toBeGreaterThanOrEqual(1);
+    const hop = hops.find((h) => h.url.includes('/users'));
+    expect(hop).toBeDefined();
+    expect(hop!.source).toBe('mock-hit');
+    expect(hop!.transport).toBe('proxy');
+  });
+
+  it('re-emits underlying service hops from a proxy mock hit trace', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'redis',
+        hash: 'abc123def',
+        response: {
+          status: 200,
+          data: {
+            users: [{ id: 1 }],
+            mockifyerTrace: {
+              requestId: 'parent-hop',
+              hopCount: 1,
+              incomplete: false,
+              hops: [
+                {
+                  index: 0,
+                  requestId: 'child-hop',
+                  parentRequestId: 'parent-hop',
+                  method: 'GET',
+                  url: 'https://downstream.example/items',
+                  status: 200,
+                  source: 'upstream',
+                  transport: 'fetch',
+                  responseBodyPreview: '{"ok":true}',
+                },
+              ],
+            },
+          },
+          headers: { 'x-mockifyer': 'true' },
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-beta',
+      networkLog: { enabled: false, flightRecorder: { enabled: true } },
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/users');
+
+    expect(response.status).toBe(200);
+    expect(response.data.users).toEqual([{ id: 1 }]);
+
+    // emitMockifyerNetworkEvent records hops on setImmediate, after the response returns.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const events = getRecentFlightHops({ limit: 10 });
+    const childHop = events.find((h) => h.requestId === 'child-hop');
+    expect(childHop).toBeDefined();
+    expect(childHop!.parentRequestId).toBe('parent-hop');
+    expect(childHop!.url).toContain('downstream.example/items');
+  });
+
+  it('preserves URLSearchParams bodies when excludedUrls bypasses dashboard proxy', async () => {
+    const tokenUrl = 'https://login.microsoftonline.com/tenant/oauth2/token';
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: 'test-client',
+    });
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ access_token: 'secret-token' })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['login.microsoftonline.com'],
+    });
+
+    const response = await client.post(tokenUrl, body, {
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(tokenUrl);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(body);
+  });
+
+  it('preserves FormData bodies when excludedUrls bypasses dashboard proxy', async () => {
+    const uploadUrl = 'https://uploads.example.com/files';
+    const body = new FormData();
+    body.append('description', 'avatar');
+    body.append('file', new Blob(['hello file'], { type: 'text/plain' }), 'avatar.txt');
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({ uploaded: true })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      proxy: { baseUrl: 'http://dashboard.local' },
+      excludedUrls: ['uploads.example.com'],
+    });
+
+    const response = await client.post(uploadUrl, body);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(uploadUrl);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).body).toBe(body);
+  });
+
+  it('strips mockifyerTrace from proxy mock hit response bodies returned to client', async () => {
+    const fetchMock = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(async () =>
+      jsonResponse({
+        source: 'redis',
+        hash: 'abc123def',
+        response: {
+          status: 200,
+          data: {
+            users: [{ id: 1 }],
+            mockifyerTrace: {
+              requestId: 'parent-hop',
+              hopCount: 1,
+              incomplete: false,
+              hops: [
+                {
+                  index: 0,
+                  requestId: 'child-hop',
+                  parentRequestId: 'parent-hop',
+                  method: 'GET',
+                  url: 'https://downstream.example/items',
+                  status: 200,
+                  source: 'upstream',
+                  transport: 'fetch',
+                  responseBodyPreview: '{"ok":true}',
+                },
+              ],
+            },
+          },
+          headers: { 'x-mockifyer': 'true' },
+        },
+      })
+    );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const client = setupMockifyer({
+      mockDataPath: testMockDataPath,
+      recordMode: false,
+      useGlobalFetch: false,
+      clientId: 'lane-alpha',
+      networkLog: { enabled: false, captureBodies: true, flightRecorder: { enabled: true } },
+      proxy: { baseUrl: 'http://dashboard.local' },
+    });
+
+    const response = await client.get('https://api.example.com/users');
+
+    expect(response.data).toEqual({ users: [{ id: 1 }] });
+    expect(response.data).not.toHaveProperty('mockifyerTrace');
+
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const hops = getRecentFlightHops({ limit: 10 });
+    const child = hops.find((h) => h.url.includes('downstream.example/items'));
+    expect(child).toBeDefined();
+    expect(child!.requestId).toBe('child-hop');
+    expect(child!.parentRequestId).toBe('parent-hop');
+    expect(child!.responseBodyPreview).toContain('ok');
   });
 });

@@ -1,3 +1,11 @@
+export type MockResponseFieldOverrideMode = 'replace' | 'extend' | 'remove'
+
+export interface MockResponseFieldOverride {
+  path: string
+  value?: unknown
+  mode?: MockResponseFieldOverrideMode
+}
+
 /** Paths are relative to `response.data` (see Mockifyer core). */
 export interface MockResponseDateOverride {
   path: string
@@ -30,9 +38,13 @@ export interface MockFile {
   /** HTTP method when available (GET/POST/...). */
   method?: string | null
   graphqlInfo: {
-    query: string
-    variables: any
+    query: string | null
+    variables: unknown
     operationName?: string | null
+    /** Truncated formatted query for list cards (present even when compact omits `query`). */
+    queryPreview?: string | null
+    /** Truncated JSON variables for list cards. */
+    variablesPreview?: string | null
   } | null
   sessionId: string | null
   hasResponseDateOverrides?: boolean
@@ -40,6 +52,13 @@ export interface MockFile {
     path: string
     summary: string
   }>
+  hasResponseFieldOverrides?: boolean
+  responseFieldOverridesPreview?: Array<{
+    path: string
+    summary: string
+  }>
+  responseFieldOverridesCount?: number
+  responseDateOverridesCount?: number
   /** When true, Mockifyer always calls the live API for this request (mock file is kept). */
   alwaysUseRealApi?: boolean
   replayMode?: MockReplayMode
@@ -49,13 +68,29 @@ export interface MockFile {
   responsePending?: boolean
   /** Hop id from `X-Mockifyer-Request-Id` when recorded with correlation. */
   requestId?: string | null
-  /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (upstream caller). */
+  /** Parent hop id from `X-Mockifyer-Parent-Request-Id` (most recent upstream caller). */
   parentRequestId?: string | null
+  /** Every caller recorded for this hop, oldest first (includes `parentRequestId`). */
+  parentRequestIds?: string[]
+  /** SHA-256 of the canonical request key — stable identity across scenarios. */
+  requestHash?: string | null
+  /** Placeholder row for a missing inbound parent (see hops Missing entry heal). */
+  inboundParentStub?: boolean
   /**
    * Present when GET /mocks was called with similarGroups=1 and this file is in a near-duplicate cluster
    * (same GraphQL op + variables + URL; high token overlap with other members).
    */
   similarBodyGroup?: { id: string; size: number; minSimilarity: number } | null
+}
+
+/** Global starred request (identity is {@link MockFile.requestHash}, not filename). */
+export interface FavoriteRequest {
+  id: string
+  method: string
+  endpoint: string
+  operationName: string | null
+  favoritedAt: string
+  filename?: string
 }
 
 export interface MockData {
@@ -86,10 +121,13 @@ export interface MockData {
     callStack?: string[]
     /** When serving the mock, rewrite these paths relative to the dashboard-configured “current” date. */
     responseDateOverrides?: MockResponseDateOverride[]
+    /** Replay-time path/value overlays (stored body unchanged). */
+    responseFieldOverrides?: MockResponseFieldOverride[]
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
     alwaysUseRealApi?: boolean
     refreshOnNextRequest?: boolean
     alwaysRefreshFromLive?: boolean
+    responsePending?: boolean
   }
   metadata: {
     size: number
@@ -144,6 +182,36 @@ export interface MockAiContext {
   data?: MockData['data']
 }
 
+export interface RankedResponseStat {
+  filename: string
+  endpoint: string
+  method: string
+  operationName?: string | null
+  durationMs?: number
+  size: number
+  requestId?: string | null
+  parentRequestId?: string | null
+  /** True when no other recording lists this hop as its parent (lowest-level call). */
+  isLeaf?: boolean
+  /** Same buckets as hop Replay / Live / Pending / Refresh badges. */
+  trafficMode?: 'replay' | 'refresh' | 'pending' | 'live'
+}
+
+export interface ReplayModeBreakdown {
+  replay: number
+  refresh: number
+  pending: number
+  live: number
+}
+
+export interface RecentActivityStat {
+  filename: string
+  modified: string
+  method: string
+  endpoint: string
+  operationName?: string | null
+}
+
 export interface Stats {
   totalFiles: number
   totalSize: number
@@ -151,9 +219,15 @@ export interface Stats {
   domains: Record<string, number>
   methods: Record<string, number>
   statusCodes: Record<string, number>
-  recentActivity: Array<{ filename: string; modified: string }>
+  recentActivity: RecentActivityStat[]
   /** Files per subdirectory (matches mock folder layout under the scenario). */
   folderBreakdown?: Array<{ folder: string; count: number }>
+  /** Slowest recorded round-trips (when duration was stored). */
+  slowestResponses?: RankedResponseStat[]
+  /** Largest mock recordings by stored size. */
+  largestResponses?: RankedResponseStat[]
+  /** Counts by hop traffic badge: Replay, Refresh, Pending, Live. */
+  replayModes?: ReplayModeBreakdown
   scenario: string
   mockDataPath?: string
   scenarioPath?: string
@@ -164,6 +238,14 @@ export interface ScenarioConfig {
   availableScenarios: string[]
   /** When true, mock/date edits for that scenario are blocked server-side. */
   scenarioLocks?: Record<string, boolean>
+  /** Storage id for the ephemeral unscoped bucket (`_scratch`). */
+  scratchScenario?: string
+  /** Human label for the scratch scenario. */
+  scratchScenarioLabel?: string
+  /** True when {@link currentScenario} is the temporary unscoped bucket. */
+  isScratchScenario?: boolean
+  /** Redis TTL seconds for scratch mocks (default 86400). */
+  scratchTtlSec?: number
 }
 
 /** Scenario backup JSON (`formatVersion` 1) from Settings export or GET /api/scenario-config/export */
@@ -192,12 +274,18 @@ export type NetworkEventSource =
   | 'blocked'
   | 'error'
 
-export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy'
+export type NetworkEventTransport = 'axios' | 'fetch' | 'proxy' | 'app'
+
+export type TimelineEventKind = 'network' | 'incident'
+
+export type IncidentType = 'error_boundary' | 'unhandledrejection' | 'uncaught_exception'
 
 export interface NetworkEvent {
   id: string
   timestamp: string
   scenario: string
+  kind?: TimelineEventKind
+  incidentType?: IncidentType
   clientId?: string | null
   deviceId?: string | null
   sessionId?: string | null
@@ -215,11 +303,26 @@ export interface NetworkEvent {
   durationMs?: number
   source: NetworkEventSource
   requestHash?: string
+  matchMode?: 'exact' | 'similar' | 'passthrough' | 'upstream'
+  responseShape?: string
+  anomalyFlags?: string[]
   requestHeaders?: Record<string, string>
   responseHeaders?: Record<string, string>
   requestBodyPreview?: string
   responseBodyPreview?: string
   errorMessage?: string
+  stackPreview?: string
+  componentStackPreview?: string
+  usage?: NetworkEventUsage | NetworkEventUsage[]
+}
+
+export interface NetworkEventUsage {
+  screen?: string
+  component?: string
+  label?: string
+  cms?: { pageId?: string; nodeId?: string; type?: string; path?: string }
+  datasourceId?: string
+  dataRoot?: string
 }
 
 export interface NetworkLogConfig {
@@ -234,5 +337,26 @@ export interface NetworkEventsResponse {
   ephemeral: boolean
   networkLogConfig: NetworkLogConfig
   events: NetworkEvent[]
+}
+
+export interface ScenarioMemoryStats {
+  scenario: string
+  mocksCount: number
+  mocksSize: number
+  networkEventsCount: number
+  networkEventsSize: number
+  totalSize: number
+}
+
+export interface MemoryStats {
+  currentScenario: string
+  scenarios: ScenarioMemoryStats[]
+  summary: {
+    totalMocksCount: number
+    totalMocksSize: number
+    totalNetworkEventsCount: number
+    totalNetworkEventsSize: number
+    totalSize: number
+  }
 }
 

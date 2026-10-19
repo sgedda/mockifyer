@@ -4,11 +4,13 @@ import { MockData, StoredRequest } from '../types';
 import { mockPassesThroughToRealApi } from '../utils/mock-passthrough';
 import { mockShouldBeIncludedInRequestMatch } from '../utils/mock-replay-mode';
 import { CachedMockData, generateRequestKey } from '../utils/mock-matcher';
+import { isMockRecordingSidecarDir } from '../utils/mock-recording-sidecars';
 import { DatabaseProvider, DatabaseProviderConfig, SaveMockOptions } from './types';
 import { getCurrentScenario, getScenarioFolderPath, ensureScenarioFolder, checkRequestLimit } from '../utils/scenario';
 import { getCurrentDate } from '../utils/date';
 import { getMockFilePath, formatDateStr } from '../utils/file-naming';
 import { shouldExcludeUrl } from '../utils/url-exclusion';
+import { ensureOverrideGroupRuntimeForScenarioPath } from '../utils/override-group-fs';
 
 /**
  * Filesystem-based provider (current default implementation)
@@ -20,12 +22,16 @@ import { shouldExcludeUrl } from '../utils/url-exclusion';
 export class FilesystemProvider implements DatabaseProvider {
   private mockDataPath: string;
   private fsAvailable: boolean;
+  private clientId?: string;
 
   constructor(config: DatabaseProviderConfig) {
     if (!config.path) {
       throw new Error('FilesystemProvider requires a path in config');
     }
     this.mockDataPath = config.path;
+    const rawClient =
+      typeof config.options?.clientId === 'string' ? config.options.clientId.trim() : '';
+    this.clientId = rawClient || undefined;
     // Check if fs is available (will be false in React Native where fs is stubbed)
     this.fsAvailable = typeof fs !== 'undefined' && typeof fs.existsSync === 'function';
     
@@ -52,8 +58,10 @@ export class FilesystemProvider implements DatabaseProvider {
    * Scenario folder path used for mock files (lookup still uses active scenario via getScenarioPath).
    */
   private getScenarioPath(): string {
-    const currentScenario = getCurrentScenario(this.mockDataPath);
-    return getScenarioFolderPath(this.mockDataPath, currentScenario);
+    const currentScenario = getCurrentScenario(this.mockDataPath, this.clientId);
+    const scenarioPath = getScenarioFolderPath(this.mockDataPath, currentScenario);
+    ensureOverrideGroupRuntimeForScenarioPath(scenarioPath, { clientId: this.clientId });
+    return scenarioPath;
   }
 
   save(mockData: MockData, options?: SaveMockOptions): void {
@@ -107,6 +115,9 @@ export class FilesystemProvider implements DatabaseProvider {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (isMockRecordingSidecarDir(entry.name)) {
+          continue;
+        }
         results.push(...this.getAllJsonFiles(fullPath));
       } else if (entry.name.endsWith('.json')) {
         results.push(fullPath);
@@ -143,8 +154,15 @@ export class FilesystemProvider implements DatabaseProvider {
 
         const mockKey = generateRequestKey(mockData.request);
         if (mockKey === requestKey) {
-          if (mockShouldBeIncludedInRequestMatch(mockData, { includePassthroughMocks })) {
-            return { mockData, filename: path.relative(scenarioPath, filePath), filePath };
+          const filename = path.relative(scenarioPath, filePath);
+          if (
+            mockShouldBeIncludedInRequestMatch(mockData, {
+              includePassthroughMocks,
+              filename,
+              scenarioPath,
+            })
+          ) {
+            return { mockData, filename, filePath };
           }
           continue;
         }
