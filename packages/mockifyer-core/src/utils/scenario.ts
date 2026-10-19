@@ -103,31 +103,6 @@ export function scratchScenarioDisplayName(): string {
   return 'Temporary (unscoped)';
 }
 
-/**
- * True when a scenario name is safe to join under `mockDataPath` (no path traversal / separators).
- */
-export function isValidScenarioName(scenarioName: string): boolean {
-  return SCENARIO_NAME_PATTERN.test(scenarioName);
-}
-
-/**
- * Parse and validate a scenario name from untrusted input (API body, query, MCP tools).
- * Returns null when the value is missing/invalid or reserved.
- */
-export function parseScenarioName(raw: unknown): string | null {
-  if (typeof raw !== 'string') {
-    return null;
-  }
-  const trimmed = raw.trim();
-  if (!trimmed || !isValidScenarioName(trimmed)) {
-    return null;
-  }
-  if (trimmed === POOL_DIR_NAME) {
-    return null;
-  }
-  return trimmed;
-}
-
 /** Highest-priority scenario (e.g. Detox / E2E via react-native-launch-arguments). Set with setScenarioLaunchOverride. */
 let scenarioLaunchOverride: string | null = null;
 
