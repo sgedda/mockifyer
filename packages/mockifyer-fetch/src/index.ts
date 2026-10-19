@@ -483,7 +483,10 @@ class MockifyerClass {
       this.config.clientId = resolveClientId(this.config);
     }
     this.activationMode = resolveActivationMode(this.config);
-    this.domainPathRules = new DomainPathRulesSession({ config: this.config });
+    this.domainPathRules = new DomainPathRulesSession({
+      config: this.config,
+      getRecordMode: () => this.config.recordMode === true,
+    });
     
     this.runtimeEnabledStorage = resolveRuntimeEnabledStorage(config.persistRuntimeEnabled);
     if (config.persistRuntimeEnabled === true && !this.runtimeEnabledStorage) {
@@ -1485,7 +1488,12 @@ class MockifyerClass {
         data: response.config?.data,
         queryParams: normalizedParamsForSave,
       };
-      const recordBodies = resolveLocalRecordResponses(this.recordResponsesOverride);
+      // Prefer explicit override / config; else request-only default (same as proxy).
+      const recordBodies = resolveLocalRecordResponses(
+        this.recordResponsesOverride ??
+          this.config.proxy?.recordResponses ??
+          this.config.recordResponses
+      );
       const mockData = buildLocalRecordingMockData({
         request: storedRequest,
         response: {
@@ -1847,6 +1855,74 @@ class MockifyerClass {
   }
 
   /**
+   * Turn record mode on/off at runtime (dev menus, tests).
+   * Also updates `proxy.recordOnMiss` when a dashboard proxy is configured so
+   * Redis/proxy recording follows the same switch as local hybrid saves.
+   *
+   * When enabling: flips existing allowlist `recordResponses` to true and new
+   * discoveries enable recording. When disabled, allowlist discovery stops
+   * persisting new keys (so browsing does not poison the rules file).
+   */
+  setRecordMode(enabled: boolean): void {
+    const next = Boolean(enabled);
+    this.config.recordMode = next;
+    if (next) {
+      // Recording needs live upstream calls; fail-on-miss conflicts with that.
+      this.config.failOnMissingMock = false;
+      this.domainPathRules.enableRecordResponsesForAllRules();
+    }
+    if (this.config.proxy?.baseUrl) {
+      this.config.proxy = {
+        ...this.config.proxy,
+        recordOnMiss: next,
+      };
+      const client = this.httpClient as FetchHTTPClient & {
+        setProxyRecordOnMiss?: (value: boolean | undefined) => void;
+      };
+      client.setProxyRecordOnMiss?.(next);
+    }
+    logger.info(`[Mockifyer-Fetch] recordMode set to: ${next}`);
+  }
+
+  /** Whether newly unmatched requests can be recorded (local or proxy record-on-miss). */
+  isRecordMode(): boolean {
+    return this.config.recordMode === true;
+  }
+
+  /**
+   * Whether new recordings store full response bodies (true) or request-only stubs (false, default).
+   * Matches dashboard proxy `recordResponses` / env `MOCKIFYER_RECORD_RESPONSES`.
+   */
+  setRecordResponses(enabled: boolean): void {
+    const next = Boolean(enabled);
+    this.recordResponsesOverride = next;
+    this.config.recordResponses = next;
+    if (this.config.proxy) {
+      this.config.proxy = {
+        ...this.config.proxy,
+        recordResponses: next,
+      };
+    }
+    const client = this.httpClient as FetchHTTPClient & {
+      setProxyRecordResponses?: (value: boolean) => void;
+    };
+    client.setProxyRecordResponses?.(next);
+    logger.info(`[Mockifyer-Fetch] recordResponses (store bodies) set to: ${next}`);
+  }
+
+  /** True when new recordings include response bodies (not request-only stubs). */
+  isRecordResponses(): boolean {
+    if (this.config.proxy?.baseUrl) {
+      return resolveRecordResponses(
+        this.recordResponsesOverride ?? this.config.proxy.recordResponses
+      );
+    }
+    return resolveLocalRecordResponses(
+      this.recordResponsesOverride ?? this.config.recordResponses
+    );
+  }
+
+  /**
    * Enable Mockifyer at runtime. All subsequent requests will go through Mockifyer
    * (mock lookup, recording, dashboard/Redis proxy, etc.).
    * When `persistRuntimeEnabled` is set, the preference is saved for the next app launch.
@@ -1873,41 +1949,6 @@ class MockifyerClass {
    */
   isMockifyerEnabled(): boolean {
     return this.runtimeEnabled;
-  }
-
-  /** Enable/disable recording of new mocks at runtime (dev menu). */
-  setRecordMode(enabled: boolean): void {
-    this.config.recordMode = enabled;
-    logger.info(`[Mockifyer-Fetch] Record mode ${enabled ? 'ON' : 'OFF'}`);
-  }
-
-  isRecordMode(): boolean {
-    return this.config.recordMode === true;
-  }
-
-  /**
-   * Enable/disable storing response bodies on new recordings.
-   * Off = request-only stubs (`responsePending`), same as proxy default.
-   */
-  setRecordResponses(enabled: boolean): void {
-    this.recordResponsesOverride = enabled;
-    if (this.config.proxy) {
-      this.config.proxy.recordResponses = enabled;
-    }
-    const client = this.httpClient as {
-      setProxyRecordResponses?: (value: boolean) => void;
-    };
-    client.setProxyRecordResponses?.(enabled);
-    logger.info(`[Mockifyer-Fetch] Record response bodies ${enabled ? 'ON' : 'OFF'}`);
-  }
-
-  isRecordResponses(): boolean {
-    if (this.config.proxy?.baseUrl) {
-      return resolveRecordResponses(
-        this.recordResponsesOverride ?? this.config.proxy.recordResponses
-      );
-    }
-    return resolveLocalRecordResponses(this.recordResponsesOverride);
   }
 
   private async persistRuntimeEnabledState(enabled: boolean): Promise<void> {
@@ -1963,13 +2004,13 @@ export interface MockifyerInstance extends HTTPClient {
   clearAllMocks: () => Promise<void>;
   setClientId: (lane: string) => void;
   getClientId: () => string | undefined;
-  enableMockifyer: () => void;
-  disableMockifyer: () => void;
-  isMockifyerEnabled: () => boolean;
   setRecordMode: (enabled: boolean) => void;
   isRecordMode: () => boolean;
   setRecordResponses: (enabled: boolean) => void;
   isRecordResponses: () => boolean;
+  enableMockifyer: () => void;
+  disableMockifyer: () => void;
+  isMockifyerEnabled: () => boolean;
 }
 
 export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
@@ -2152,13 +2193,13 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
   extendedClient.clearAllMocks = () => mockifyer.clearAllMocks();
   extendedClient.setClientId = (lane: string) => mockifyer.setClientId(lane);
   extendedClient.getClientId = () => mockifyer.getClientId();
-  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
-  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
-  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
   extendedClient.setRecordMode = (enabled: boolean) => mockifyer.setRecordMode(enabled);
   extendedClient.isRecordMode = () => mockifyer.isRecordMode();
   extendedClient.setRecordResponses = (enabled: boolean) => mockifyer.setRecordResponses(enabled);
   extendedClient.isRecordResponses = () => mockifyer.isRecordResponses();
+  extendedClient.enableMockifyer = () => mockifyer.enableMockifyer();
+  extendedClient.disableMockifyer = () => mockifyer.disableMockifyer();
+  extendedClient.isMockifyerEnabled = () => mockifyer.isMockifyerEnabled();
 
   registerMockifyerInstance(extendedClient);
 

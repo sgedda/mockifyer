@@ -248,7 +248,7 @@ describe('domain-path discovery + traffic gate', () => {
     expect(map['api.example.com/v1/weather'].recordResponses).toBe(false);
   });
 
-  it('discoverDomainPathRulesForUrl uses allowlist defaults', () => {
+  it('discoverDomainPathRulesForUrl uses allowlist defaults when not recording', () => {
     const map: DomainPathRulesMap = {};
     const result = discoverDomainPathRulesForUrl(
       map,
@@ -259,6 +259,23 @@ describe('domain-path discovery + traffic gate', () => {
     expect(map['api.example.com']).toEqual({ recordResponses: false, autoMock: false });
     expect(map['api.example.com/v1/users/:id']).toEqual({
       recordResponses: false,
+      autoMock: false,
+    });
+  });
+
+  it('discoverDomainPathRulesForUrl enables recordResponses under allowlist when recording', () => {
+    const map: DomainPathRulesMap = {};
+    const result = discoverDomainPathRulesForUrl(
+      map,
+      'https://api.example.com/v1/users/7',
+      'allowlist',
+      undefined,
+      { recording: true }
+    );
+    expect(result.changed).toBe(true);
+    expect(map['api.example.com']).toEqual({ recordResponses: true, autoMock: false });
+    expect(map['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
       autoMock: false,
     });
   });
@@ -351,6 +368,49 @@ describe('DomainPathRulesSession persistUpserts', () => {
     if (prevScenario === undefined) delete process.env.MOCKIFYER_SCENARIO;
     else process.env.MOCKIFYER_SCENARIO = prevScenario;
     fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('skips allowlist discovery persist when recordMode is off', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {});
+    let recording = false;
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => recording,
+    });
+
+    session.discover('https://api.example.com/v1/users/1');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+    expect(readDomainPathRulesFile(tmpRoot, 'default')).toEqual({});
+
+    recording = true;
+    session.discover('https://api.example.com/v1/users/1');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com']).toEqual({ recordResponses: true, autoMock: false });
+    expect(onDisk['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: false,
+    });
+  });
+
+  it('enableRecordResponsesForAllRules flips existing false flags', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: false, autoMock: false },
+      'api.example.com/login': { recordResponses: false, autoMock: true },
+    });
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => true,
+    });
+    session.getTrafficGate('https://api.example.com/login');
+    session.enableRecordResponsesForAllRules();
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com'].autoMock).toBe(false);
+    expect(onDisk['api.example.com/login'].recordResponses).toBe(true);
+    expect(onDisk['api.example.com/login'].autoMock).toBe(true);
   });
 
   it('preserves concurrent on-disk edits when discovering new keys', async () => {
@@ -589,6 +649,7 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
       config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
       useFilesystem: false,
       fetchFn: mockMetroFetch(store),
+      getRecordMode: () => true,
     });
 
     await session.hydrate();
@@ -597,13 +658,30 @@ describe('DomainPathRulesSession Metro hydrate (RN Hybrid)', () => {
 
     expect(store.posts.length).toBe(1);
     expect(store.rules['api.example.com']).toEqual({
-      recordResponses: false,
+      recordResponses: true,
       autoMock: false,
     });
     expect(store.rules['api.example.com/v1/items/:id']).toEqual({
-      recordResponses: false,
+      recordResponses: true,
       autoMock: false,
     });
+  });
+
+  it('does not Metro-POST allowlist discovery when recordMode is off', async () => {
+    const store = { rules: {} as DomainPathRulesMap, posts: [] as unknown[] };
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: './mock-data', domainPathRulesMode: 'allowlist' },
+      useFilesystem: false,
+      fetchFn: mockMetroFetch(store),
+      getRecordMode: () => false,
+    });
+
+    await session.hydrate();
+    session.discover('https://api.example.com/v1/items/1');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    expect(store.posts.length).toBe(0);
+    expect(store.rules).toEqual({});
   });
 });
 

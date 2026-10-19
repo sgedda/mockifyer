@@ -2192,6 +2192,8 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             scenario?: string;
             upserts?: DomainPathRulesMap;
             rules?: DomainPathRulesMap;
+            /** When true, replace the scenario file with `rules` (enable-record migrations). */
+            replace?: boolean;
           };
           const scenarioName =
             typeof parsed.scenario === "string" && parsed.scenario.trim() !== ""
@@ -2205,6 +2207,32 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             );
             return;
           }
+
+          if (parsed.replace === true) {
+            const updates = parseDomainPathRules(parsed.rules ?? {});
+            // Re-read to pick up concurrent new keys, then apply recordResponses updates.
+            const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
+            const merged: DomainPathRulesMap = { ...updates };
+            // Add any new keys that were discovered concurrently but preserve the recordResponses updates.
+            for (const [key, rule] of Object.entries(existing)) {
+              if (!merged[key]) {
+                merged[key] = { ...rule };
+              }
+            }
+            writeDomainPathRulesFile(mockDataPath, scenarioName, merged);
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                success: true,
+                changed: true,
+                replaced: true,
+                scenario: scenarioName,
+                rules: merged,
+              }),
+            );
+            return;
+          }
+
           const upserts = parseDomainPathRules(
             parsed.upserts ?? parsed.rules ?? {},
           );

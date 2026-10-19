@@ -190,6 +190,16 @@ export class AxiosHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     };
   }
 
+  /** Update whether `/api/proxy` sends `record` (record-on-miss). */
+  setProxyRecordOnMiss(recordOnMiss: boolean | undefined): void {
+    this.proxyRecordOnMiss = recordOnMiss;
+  }
+
+  /** Update whether `/api/proxy` asks the dashboard to store response bodies. */
+  setProxyRecordResponses(recordResponses: boolean): void {
+    this.proxyRecordResponses = recordResponses;
+  }
+
   protected getDefaultHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     const commonHeaders = this.instance.defaults.headers.common;

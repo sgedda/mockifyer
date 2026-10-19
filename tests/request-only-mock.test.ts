@@ -30,16 +30,16 @@ describe('request-only-mock', () => {
     expect(resolveRecordResponses(true)).toBe(false);
   });
 
-  it('resolveLocalRecordResponses defaults to true (filesystem keeps bodies)', () => {
+  it('resolveLocalRecordResponses defaults to false (request-only stubs)', () => {
     delete process.env.MOCKIFYER_RECORD_RESPONSES;
-    expect(resolveLocalRecordResponses()).toBe(true);
-    expect(resolveLocalRecordResponses(false)).toBe(false);
+    expect(resolveLocalRecordResponses()).toBe(false);
+    expect(resolveLocalRecordResponses(true)).toBe(true);
   });
 
   it('resolveLocalRecordResponses respects MOCKIFYER_RECORD_RESPONSES env', () => {
-    process.env.MOCKIFYER_RECORD_RESPONSES = 'false';
-    expect(resolveLocalRecordResponses()).toBe(false);
-    expect(resolveLocalRecordResponses(true)).toBe(false);
+    process.env.MOCKIFYER_RECORD_RESPONSES = 'true';
+    expect(resolveLocalRecordResponses()).toBe(true);
+    expect(resolveLocalRecordResponses(false)).toBe(true);
   });
 
   it('buildRequestOnlyMockData marks passthrough', () => {

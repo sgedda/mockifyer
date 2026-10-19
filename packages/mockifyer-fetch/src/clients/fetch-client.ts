@@ -116,11 +116,6 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
     this.deviceId = config?.deviceId;
   }
 
-  /** Runtime toggle for proxy `recordResponses` (dev menu). */
-  setProxyRecordResponses(enabled: boolean): void {
-    this.proxyRecordResponses = enabled;
-  }
-
   private resolvedClientLane(hopHeaders?: unknown): string | undefined {
     const fromHop = getOutboundMockifyerClientIdHeader(hopHeaders);
     if (fromHop) {
@@ -259,6 +254,16 @@ export class FetchHTTPClient extends BaseHTTPClient<any, HTTPResponse<any>> {
       config,
       ...(mockifyerTrace ? { mockifyerTrace } : {}),
     };
+  }
+
+  /** Update whether `/api/proxy` sends `record` (record-on-miss). */
+  setProxyRecordOnMiss(recordOnMiss: boolean | undefined): void {
+    this.proxyRecordOnMiss = recordOnMiss;
+  }
+
+  /** Update whether `/api/proxy` asks the dashboard to store response bodies. */
+  setProxyRecordResponses(recordResponses: boolean): void {
+    this.proxyRecordResponses = recordResponses;
   }
 
   protected getDefaultHeaders(): Record<string, string> {

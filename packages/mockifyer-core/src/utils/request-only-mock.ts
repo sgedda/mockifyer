@@ -30,14 +30,14 @@ export function resolveRecordResponses(explicit?: boolean): boolean {
 /**
  * Whether **local filesystem / hybrid** recordings should include response bodies.
  * Env **`MOCKIFYER_RECORD_RESPONSES`** wins when set.
- * Default **`true`** (historical local-save behavior). Set env to `false` for request-only stubs
- * (`responsePending`) — same shape as the dashboard proxy when bodies are off.
+ * Default **`false`** (request-only stubs, same as the dashboard proxy). Set env or
+ * `recordResponses: true` for full bodies.
  */
 export function resolveLocalRecordResponses(explicit?: boolean): boolean {
   const fromEnv = envRecordResponsesOverride();
   if (fromEnv !== undefined) return fromEnv;
   if (typeof explicit === 'boolean') return explicit;
-  return true;
+  return false;
 }
 
 /** Placeholder mock: visible in dashboard, always live API until response is captured. */

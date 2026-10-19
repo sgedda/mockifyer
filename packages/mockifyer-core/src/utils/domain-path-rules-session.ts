@@ -38,6 +38,11 @@ export interface DomainPathRulesSessionOptions {
    * Defaults to whether `fs` is require-able in this runtime.
    */
   useFilesystem?: boolean;
+  /**
+   * Live `recordMode` from the Mockifyer instance. When false under allowlist mode,
+   * discovery does not persist new keys. When true, discovery enables `recordResponses`.
+   */
+  getRecordMode?: () => boolean;
 }
 
 interface PendingDiscover {
@@ -61,6 +66,7 @@ export class DomainPathRulesSession {
   private readonly metroPort: number;
   private readonly fetchFn: typeof fetch | undefined;
   private readonly useFs: boolean;
+  private readonly getRecordMode: (() => boolean) | undefined;
   private persistQueue: Promise<void> = Promise.resolve();
   private hydratePromise: Promise<void> | null = null;
   private pendingDiscovers: PendingDiscover[] = [];
@@ -76,14 +82,58 @@ export class DomainPathRulesSession {
         : 8081);
     this.fetchFn = options.fetchFn;
     this.useFs = options.useFilesystem ?? fsAvailable;
+    this.getRecordMode = options.getRecordMode;
   }
 
   getMode(): DomainPathRulesMode {
     return this.mode;
   }
 
+  /** Change the domain-path gate mode at runtime. */
+  setMode(mode: DomainPathRulesMode): void {
+    this.mode = resolveDomainPathRulesMode({ configMode: mode });
+  }
+
+  private isRecording(): boolean {
+    return this.getRecordMode?.() === true;
+  }
+
   isActive(): boolean {
     return this.mode !== 'off' && !Boolean(this.config.proxy?.baseUrl?.trim());
+  }
+
+  /**
+   * Turn `recordResponses: true` on every known rule for the active scenario and persist.
+   * Used when enabling record mode so previously discovered allowlist `false` rows do not block saves.
+   */
+  enableRecordResponsesForAllRules(): void {
+    if (!this.isActive()) {
+      return;
+    }
+    const scenario = this.scenarioName();
+    const rules = this.loadRules();
+    let changed = false;
+    const next: DomainPathRulesMap = {};
+    for (const [key, rule] of Object.entries(rules)) {
+      if (rule.recordResponses === true) {
+        next[key] = rule;
+        continue;
+      }
+      next[key] = { ...rule, recordResponses: true };
+      changed = true;
+    }
+    if (!changed) {
+      return;
+    }
+    this.rules = next;
+    this.rulesScenario = scenario;
+    this.persistQueue = this.persistQueue
+      .then(async () => {
+        await this.persistFullRules(next, scenario);
+      })
+      .catch((err) => {
+        logger.warn('[Mockifyer] Domain path rules enable-record persist failed:', err);
+      });
   }
 
   private scenarioName(): string {
@@ -304,8 +354,14 @@ export class DomainPathRulesSession {
       return;
     }
 
+    const recording = this.isRecording();
+    // Allowlist + not recording: do not persist disabled catalog rows that later block Record.
+    if (this.mode === 'allowlist' && !recording) {
+      return;
+    }
+
     // Without fs, wait for Metro hydrate so discovery does not seed allowlist
-    // defaults (false) over project rules that are enabled on disk.
+    // defaults over project rules that are enabled on disk.
     if (!this.useFs && !this.rulesHydrated) {
       this.pendingDiscovers.push({ rawUrl, baseUrl });
       this.ensureMetroHydrate();
@@ -319,7 +375,8 @@ export class DomainPathRulesSession {
       rules,
       rawUrl,
       this.mode,
-      baseUrl ?? this.config.baseUrl
+      baseUrl ?? this.config.baseUrl,
+      { recording }
     );
     if (!changed) {
       return;
@@ -385,6 +442,61 @@ export class DomainPathRulesSession {
       }
     }
 
+    await this.postMetroRules({
+      scenario,
+      upserts: upsertMap,
+      mode: this.mode,
+    });
+  }
+
+  /** Replace the full rules map on disk / Metro (used when enabling record on existing keys). */
+  private async persistFullRules(rules: DomainPathRulesMap, scenario: string): Promise<void> {
+    if (this.useFs) {
+      try {
+        const {
+          readDomainPathRulesFile,
+          writeDomainPathRulesFile,
+        } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
+        // Re-read from disk to pick up any concurrent new keys, then apply recordResponses updates.
+        const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
+        const merged: DomainPathRulesMap = { ...rules };
+        // Add any new keys that were discovered concurrently but preserve the recordResponses updates.
+        for (const [key, rule] of Object.entries(onDisk)) {
+          if (!merged[key]) {
+            merged[key] = { ...rule };
+          }
+        }
+        const wrote = writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged);
+        if (wrote) {
+          if (this.scenarioName() === scenario) {
+            this.rules = merged;
+            this.rulesScenario = scenario;
+            this.rulesMtimeMs = this.rulesFileMtimeMs(scenario);
+            this.rulesHydrated = true;
+          }
+          return;
+        }
+      } catch (err) {
+        logger.warn('[Mockifyer] Domain path rules full write failed:', err);
+      }
+    }
+
+    // Metro: use a custom merge that preserves the recordResponses updates.
+    await this.postMetroRules({
+      scenario,
+      rules,
+      replace: true,
+      mode: this.mode,
+    });
+  }
+
+  private async postMetroRules(body: {
+    scenario: string;
+    upserts?: DomainPathRulesMap;
+    rules?: DomainPathRulesMap;
+    replace?: boolean;
+    mode: DomainPathRulesMode;
+  }): Promise<void> {
     const fetchFn = this.resolveFetch();
     if (!fetchFn) {
       return;
@@ -393,11 +505,7 @@ export class DomainPathRulesSession {
     const res = await fetchFn(metroUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scenario,
-        upserts: upsertMap,
-        mode: this.mode,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
@@ -407,9 +515,9 @@ export class DomainPathRulesSession {
     try {
       const parsed = (await res.json()) as { success?: boolean; rules?: DomainPathRulesMap };
       if (parsed.success && parsed.rules && typeof parsed.rules === 'object') {
-        if (this.scenarioName() === scenario) {
+        if (this.scenarioName() === body.scenario) {
           this.rules = parseDomainPathRules(parsed.rules);
-          this.rulesScenario = scenario;
+          this.rulesScenario = body.scenario;
           this.rulesMtimeMs = null;
           this.rulesHydrated = true;
         }
