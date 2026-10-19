@@ -1,57 +1,11 @@
-import { getValueAtResponsePath, parsePathSegments } from './detect-date-fields'
-import { formatLeafPreview } from './override-related-data'
+import { parsePathSegments } from './detect-date-fields'
+
+export {
+  summarizeOverrideArrayItem,
+  summarizeOverrideArrayItemAtPath,
+} from './override-related-data'
 
 const INDEX_SEGMENT = /^\d+$/
-
-/** Nested GraphQL/JSON wrappers that usually hold the real entity. */
-const NESTED_ENTITY_KEYS = [
-  'booking',
-  'node',
-  'item',
-  'trip',
-  'reservation',
-  'hotel',
-  'flight',
-  'stay',
-  'order',
-] as const
-
-/** Scalar keys that help identify which array item an override belongs to. */
-const IDENTITY_KEYS = [
-  'id',
-  'uuid',
-  'bookingId',
-  'bookingNumber',
-  'confirmationNumber',
-  'confirmation',
-  'reference',
-  'reservationId',
-  'tripId',
-  'code',
-  'number',
-  'name',
-  'title',
-  'label',
-  'destination',
-  'hotelName',
-  'city',
-  'status',
-  'state',
-  'type',
-  '__typename',
-  'bookedDate',
-  'startDate',
-  'endDate',
-  'checkIn',
-  'checkOut',
-  'checkInDate',
-  'checkOutDate',
-  'departureDate',
-  'arrivalDate',
-] as const
-
-const MAX_IDENTITY_PARTS = 5
-const IDENTITY_VALUE_MAX = 40
 
 export interface IndexedOverrideRow<T> {
   item: T
@@ -143,66 +97,6 @@ export function pathRelativeToArrayItem(path: string, arrayItemPath: string): st
   const prefix = `${arrayItemPath}.`
   if (trimmed.startsWith(prefix)) return trimmed.slice(prefix.length)
   return trimmed
-}
-
-function scalarIdentityText(value: unknown): string | null {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (!trimmed) return null
-    return trimmed.length > IDENTITY_VALUE_MAX
-      ? `${trimmed.slice(0, IDENTITY_VALUE_MAX - 1)}…`
-      : trimmed
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
-  if (typeof value === 'boolean') return String(value)
-  return null
-}
-
-function pushIdentityParts(record: Record<string, unknown>, parts: string[], seen: Set<string>): void {
-  for (const key of IDENTITY_KEYS) {
-    if (parts.length >= MAX_IDENTITY_PARTS) return
-    if (!(key in record)) continue
-    const text = scalarIdentityText(record[key])
-    if (!text) continue
-    const dedupe = `${key}:${text}`
-    if (seen.has(dedupe)) continue
-    seen.add(dedupe)
-    if (key === '__typename') {
-      parts.push(text)
-      continue
-    }
-    if (key === 'id' || key === 'uuid' || key.endsWith('Id') || key.endsWith('Number')) {
-      parts.push(`${key} ${text}`)
-      continue
-    }
-    parts.push(text)
-  }
-}
-
-/**
- * Compact identity line for an array item (and a nested `booking` / `node` / … object).
- */
-export function summarizeOverrideArrayItem(value: unknown): string {
-  if (value === undefined) return ''
-  if (value === null || typeof value !== 'object') return formatLeafPreview(value)
-  if (Array.isArray(value)) return `Array (${value.length})`
-
-  const root = value as Record<string, unknown>
-  const parts: string[] = []
-  const seen = new Set<string>()
-  pushIdentityParts(root, parts, seen)
-  for (const nestedKey of NESTED_ENTITY_KEYS) {
-    if (parts.length >= MAX_IDENTITY_PARTS) break
-    const nested = root[nestedKey]
-    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-      pushIdentityParts(nested as Record<string, unknown>, parts, seen)
-    }
-  }
-  return parts.join(' · ')
-}
-
-export function summarizeOverrideArrayItemAtPath(responseBody: unknown, arrayItemPath: string): string {
-  return summarizeOverrideArrayItem(getValueAtResponsePath(responseBody, arrayItemPath))
 }
 
 export function countOverrideSectionRows<T>(section: OverrideEditorSection<T>): number {
