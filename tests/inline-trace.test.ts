@@ -540,7 +540,7 @@ describe('inline-trace', () => {
     const parsed = JSON.parse(ended!);
     expect(parsed.mockifyerTrace.hopCount).toBe(1);
     expect(parsed.mockifyerTrace.hops[0].url).toBe('https://catalog.example/items');
-    expect(parsed.data).toEqual({ items: [1] });
+    expect(parsed.items).toEqual([1]);
   });
 
   it('does not nest envelopes when installInlineTraceBodyWrapper runs twice (inbound + middleware)', () => {
