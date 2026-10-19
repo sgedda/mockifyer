@@ -239,7 +239,17 @@ export function isOpaqueMockFilename(filename: string | null | undefined): boole
 function usableHopEndpoint(endpoint?: string | null): string | undefined {
   const raw = endpoint?.trim()
   if (!raw || isOpaqueMockFilename(raw)) return undefined
+  if (raw.startsWith('mockifyer://inbound-parent/')) return undefined
   return raw
+}
+
+/** Prefer the real inbound call over the synthetic catalog URL. */
+export function visibleHopEndpoint(
+  mock: Pick<MockFile, 'endpoint' | 'inboundParentDisplay'>
+): string | undefined {
+  const display = mock.inboundParentDisplay?.url?.trim()
+  if (display) return display
+  return usableHopEndpoint(mock.endpoint)
 }
 
 export interface HopPathLabelSource {
@@ -258,10 +268,12 @@ export interface HopPathLabelParts {
   query?: string
 }
 
-export function hopPathLabelSourceFromMock(mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo'>): HopPathLabelSource {
+export function hopPathLabelSourceFromMock(
+  mock: Pick<MockFile, 'method' | 'endpoint' | 'filename' | 'graphqlInfo' | 'inboundParentDisplay'>
+): HopPathLabelSource {
   return {
-    method: mock.method,
-    endpoint: mock.endpoint,
+    method: mock.inboundParentDisplay?.method?.trim() || mock.method,
+    endpoint: visibleHopEndpoint(mock) ?? mock.endpoint,
     operationName: mock.graphqlInfo?.operationName,
     filename: mock.filename,
   }
@@ -531,14 +543,17 @@ export function planChainRoleReplay(
 }
 
 /** Short host + path line for chain step subtitles. */
-export function formatMockHopSubtitle(mock: Pick<MockFile, 'endpoint' | 'filename'>): string {
-  if (!mock.endpoint) return mock.filename
+export function formatMockHopSubtitle(
+  mock: Pick<MockFile, 'endpoint' | 'filename' | 'inboundParentDisplay'>
+): string {
+  const endpoint = visibleHopEndpoint(mock) ?? mock.endpoint
+  if (!endpoint) return mock.filename
   try {
-    const url = new URL(mock.endpoint)
+    const url = new URL(endpoint)
     const host = url.port ? `${url.hostname}:${url.port}` : url.hostname
     return `${host}${url.pathname}${url.search}`
   } catch {
-    return mock.endpoint
+    return endpoint
   }
 }
 
