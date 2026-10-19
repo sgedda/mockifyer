@@ -269,6 +269,83 @@ export function resolveInboundHopContext(
   return { ctx, traceId };
 }
 
+/**
+ * Merge inbound middleware options into an existing ALS hop context (e.g. from
+ * {@link installNodeInboundRequestCorrelationCapture}).
+ *
+ * Mutates `existing` in place so a body wrapper that closed over that object still
+ * sees hops recorded later. Callers must not start a nested {@link runWithMockifyerHopContext}
+ * with a fresh `inlineHops` array — that orphaned hops under a second request id.
+ *
+ * @returns Active trace id after enrichment (may assign one when missing).
+ */
+export function enrichMockifyerHopContextForInbound(
+  existing: MockifyerHopContext,
+  options: {
+    includeInlineTrace?: boolean;
+    includeInlineTraceBodies?: boolean;
+    assignInboundTraceIdWhenMissing?: boolean;
+    method?: string;
+    url?: string;
+    inboundHttpRequest?: { body?: unknown };
+    /** Fresh capture from the current request headers (lane / client ids). */
+    captured?: MockifyerHopContext;
+  } = {}
+): string | undefined {
+  const captured = options.captured;
+  if (captured?.inboundClientId && !existing.inboundClientId) {
+    existing.inboundClientId = captured.inboundClientId;
+  }
+  if (captured?.atlasMetroStreamBaseUrl && !existing.atlasMetroStreamBaseUrl) {
+    existing.atlasMetroStreamBaseUrl = captured.atlasMetroStreamBaseUrl;
+  }
+
+  if (captured?.correlation?.requestId) {
+    existing.correlation = captured.correlation.parentRequestId
+      ? {
+          requestId: captured.correlation.requestId,
+          parentRequestId: captured.correlation.parentRequestId,
+        }
+      : { requestId: captured.correlation.requestId };
+  } else if (
+    !existing.correlation?.requestId &&
+    (options.assignInboundTraceIdWhenMissing !== false || options.includeInlineTrace === true)
+  ) {
+    existing.correlation = { requestId: newRequestCorrelationId() };
+  }
+
+  if (options.includeInlineTrace === true) {
+    existing.includeInlineTrace = true;
+    if (!existing.inlineHops) {
+      existing.inlineHops = [];
+    }
+    if (options.includeInlineTraceBodies === true) {
+      existing.includeInlineTraceBodies = true;
+    }
+  }
+
+  const method =
+    typeof options.method === 'string' && options.method.trim()
+      ? options.method.trim().toUpperCase()
+      : existing.inboundRequest?.method || 'GET';
+  const url = typeof options.url === 'string' ? options.url.trim() : '';
+  if (url) {
+    existing.inboundRequest = {
+      method,
+      url,
+      ...(existing.inboundRequest?.data !== undefined
+        ? { data: existing.inboundRequest.data }
+        : {}),
+    };
+  }
+
+  if (options.inboundHttpRequest) {
+    existing.inboundHttpRequest = options.inboundHttpRequest;
+  }
+
+  return existing.correlation?.requestId;
+}
+
 /** Active inbound HTTP method/URL/body for the current ALS hop (if capture recorded them). */
 export function getActiveInboundRequest(): {
   method: string;
@@ -969,6 +1046,12 @@ export function installNodeInboundRequestCorrelationCapture(): boolean {
 /**
  * Express/Connect middleware: capture inbound lane + trace id for downstream Mockifyer hops.
  * By default assigns a trace id when missing and echoes it on the response header.
+ *
+ * When Node auto-inbound capture already established an ALS hop context for this
+ * request, the middleware reuses that object instead of nesting a second
+ * {@link runWithMockifyerHopContext}. Nesting assigned a new request id and empty
+ * `inlineHops` while the body wrapper still closed over the outer context — so
+ * include-trace responses showed `hopCount: 0` and mismatched header/body ids.
  */
 export function createMockifyerCorrelationMiddleware(
   options: MockifyerCorrelationMiddlewareOptions = {}
@@ -993,17 +1076,46 @@ export function createMockifyerCorrelationMiddleware(
       query: req.query,
       url: req.url,
     });
+    const inboundUrl = resolveInboundRequestUrl({
+      url: req.url,
+      originalUrl: req.originalUrl,
+      headers: { host: req.header('host') },
+    });
+    const shouldEcho =
+      options.echoTraceIdOnResponse !== undefined
+        ? options.echoTraceIdOnResponse
+        : isMockifyerEchoTraceIdEnabled();
+
+    const existing = getActiveMockifyerHopContext();
+    if (existing) {
+      const traceId = enrichMockifyerHopContextForInbound(existing, {
+        assignInboundTraceIdWhenMissing,
+        includeInlineTrace,
+        includeInlineTraceBodies,
+        method: req.method,
+        url: inboundUrl,
+        inboundHttpRequest: req as { body?: unknown },
+        captured: captureInboundMockifyerContext(headerBag),
+      });
+      if (traceId) {
+        req[MOCKIFYER_REQUEST_ID_REQ_PROP] = traceId;
+      }
+      maybeEchoTraceIdOnResponse(res, traceId, shouldEcho);
+      installInlineTraceBodyWrapper(res);
+      try {
+        next();
+      } catch (error) {
+        throw attachMockifyerRequestIdToError(error, traceId);
+      }
+      return;
+    }
 
     const resolved = resolveInboundHopContext(headerBag, {
       assignInboundTraceIdWhenMissing,
       includeInlineTrace,
       includeInlineTraceBodies,
       method: req.method,
-      url: resolveInboundRequestUrl({
-        url: req.url,
-        originalUrl: req.originalUrl,
-        headers: { host: req.header('host') },
-      }),
+      url: inboundUrl,
     });
 
     if (!resolved) {
@@ -1016,10 +1128,6 @@ export function createMockifyerCorrelationMiddleware(
     }
     resolved.ctx.inboundHttpRequest = req as { body?: unknown };
 
-    const shouldEcho =
-      options.echoTraceIdOnResponse !== undefined
-        ? options.echoTraceIdOnResponse
-        : isMockifyerEchoTraceIdEnabled();
     maybeEchoTraceIdOnResponse(res, resolved.traceId, shouldEcho);
     runWithMockifyerHopContext(resolved.ctx, () => {
       installInlineTraceBodyWrapper(res);

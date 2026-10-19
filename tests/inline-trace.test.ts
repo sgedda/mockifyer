@@ -177,6 +177,76 @@ describe('inline-trace', () => {
     });
   });
 
+  it('middleware reuses auto-inbound ALS so include-trace hops are not empty', () => {
+    // Mirrors setupMockifyer auto-inbound capture (outer ALS + body wrapper) then
+    // createMockifyerCorrelationMiddleware. Nesting a second context used to leave
+    // hops on the inner store while res.json wrapped the outer empty buffer.
+    const inbound = resolveInboundHopContext(
+      {
+        get: (name: string) =>
+          name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      },
+      {
+        includeInlineTrace: true,
+        includeInlineTraceBodies: true,
+        method: 'POST',
+        url: '/graphql',
+      }
+    );
+    expect(inbound).toBeTruthy();
+
+    const middleware = createMockifyerCorrelationMiddleware();
+    const headers: Record<string, string> = {};
+    let jsonBody: unknown;
+    const res = {
+      setHeader: (name: string, value: string) => {
+        headers[name.toLowerCase()] = value;
+      },
+      json: (body: unknown) => {
+        jsonBody = body;
+        return body;
+      },
+    };
+    const req = {
+      header: (name: string) =>
+        name.toLowerCase() === MOCKIFYER_INCLUDE_TRACE_HEADER ? '1' : undefined,
+      method: 'POST',
+      url: '/graphql',
+      originalUrl: '/graphql',
+    };
+
+    runWithMockifyerHopContext(inbound!.ctx, () => {
+      installInlineTraceBodyWrapper(res);
+      middleware(req, res, () => {
+        recordInlineTraceHopFromExchange({
+          method: 'POST',
+          url: 'http://127.0.0.1:4206/graphql',
+          status: 200,
+          source: 'upstream',
+          transport: 'fetch',
+          requestId: 'hop-graphql',
+          parentRequestId: inbound!.traceId!,
+        });
+        res.json!({ data: { ok: true } });
+      });
+    });
+
+    expect(headers[MOCKIFYER_REQUEST_ID_HEADER]).toBe(inbound!.traceId);
+    expect(jsonBody).toMatchObject({
+      data: { ok: true },
+      mockifyerTrace: {
+        requestId: inbound!.traceId,
+        hopCount: 1,
+        hops: [
+          expect.objectContaining({
+            url: 'http://127.0.0.1:4206/graphql',
+            status: 200,
+          }),
+        ],
+      },
+    });
+  });
+
   it('wraps Apollo-style res.end JSON when include-trace is set via Node-like response', () => {
     const resolved = resolveInboundHopContext(
       {
