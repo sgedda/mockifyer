@@ -11,6 +11,7 @@ function inlineTraceEnvelope() {
       requestId: 'downstream-root',
       hopCount: 1,
       incomplete: false,
+      attachment: 'wrap',
       hops: [
         {
           requestId: 'downstream-child',
