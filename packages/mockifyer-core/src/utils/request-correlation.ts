@@ -902,9 +902,11 @@ function unwrapInboundEmit(emitFn: InboundPatchedEmit | undefined): InboundPatch
 
 function resolveInboundRequestUrl(req: {
   url?: string;
+  originalUrl?: string;
   headers?: unknown;
 }): string | undefined {
-  const raw = typeof req.url === 'string' ? req.url.trim() : '';
+  const original = typeof req.originalUrl === 'string' ? req.originalUrl.trim() : '';
+  const raw = original || (typeof req.url === 'string' ? req.url.trim() : '');
   if (!raw) {
     return undefined;
   }
@@ -1074,8 +1076,11 @@ export function createMockifyerCorrelationMiddleware(
       query: req.query,
       url: req.url,
     });
-    const inboundUrl =
-      typeof req.originalUrl === 'string' ? req.originalUrl : req.url;
+    const inboundUrl = resolveInboundRequestUrl({
+      url: req.url,
+      originalUrl: req.originalUrl,
+      headers: { host: req.header('host') },
+    });
     const shouldEcho =
       options.echoTraceIdOnResponse !== undefined
         ? options.echoTraceIdOnResponse

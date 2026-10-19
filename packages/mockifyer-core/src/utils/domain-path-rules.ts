@@ -74,13 +74,28 @@ export function resolveDomainPathRulesMode(input?: {
   return 'allowlist';
 }
 
+export interface DomainPathDiscoveryOptions {
+  /**
+   * When true (active `recordMode`), allowlist discovery enables `recordResponses`
+   * so turning Record on actually captures traffic. Replay (`autoMock`) stays false
+   * until opted in. Ignored for `record_all` / `off`.
+   */
+  recording?: boolean;
+}
+
 /** Defaults applied when discovering a new domain-path key for the given mode. */
-export function discoveryDefaultsForMode(mode: DomainPathRulesMode): DomainPathRule | null {
+export function discoveryDefaultsForMode(
+  mode: DomainPathRulesMode,
+  options?: DomainPathDiscoveryOptions
+): DomainPathRule | null {
   if (mode === 'off') {
     return null;
   }
   if (mode === 'record_all') {
     return { recordResponses: true, autoMock: true };
+  }
+  if (options?.recording === true) {
+    return { recordResponses: true, autoMock: false };
   }
   return { recordResponses: false, autoMock: false };
 }
@@ -232,9 +247,10 @@ export function discoverDomainPathRulesForUrl(
   rules: DomainPathRulesMap,
   rawUrl: string | null | undefined,
   mode: DomainPathRulesMode,
-  baseUrl?: string | null
+  baseUrl?: string | null,
+  options?: DomainPathDiscoveryOptions
 ): { changed: boolean; upserted: string[] } {
-  const defaults = discoveryDefaultsForMode(mode);
+  const defaults = discoveryDefaultsForMode(mode, options);
   if (!defaults) {
     return { changed: false, upserted: [] };
   }
@@ -252,13 +268,14 @@ export function mergeDiscoveredDomainPathRules(
   existing: DomainPathRulesMap,
   rawUrl: string | null | undefined,
   mode: DomainPathRulesMode,
-  baseUrl?: string | null
+  baseUrl?: string | null,
+  options?: DomainPathDiscoveryOptions
 ): { rules: DomainPathRulesMap; changed: boolean; upserted: string[] } {
   const rules: DomainPathRulesMap = { ...existing };
   for (const [k, v] of Object.entries(existing)) {
     rules[k] = { ...v };
   }
-  const result = discoverDomainPathRulesForUrl(rules, rawUrl, mode, baseUrl);
+  const result = discoverDomainPathRulesForUrl(rules, rawUrl, mode, baseUrl, options);
   return { rules, changed: result.changed, upserted: result.upserted };
 }
 
