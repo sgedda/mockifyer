@@ -1,4 +1,7 @@
-import { planScenarioUrlSync } from '../packages/mockifyer-dashboard/frontend/src/lib/dashboard-urls';
+import {
+  planScenarioUrlSync,
+  scenarioQueryForNavigation,
+} from '../packages/mockifyer-dashboard/frontend/src/lib/dashboard-urls';
 
 describe('planScenarioUrlSync', () => {
   const base = {
@@ -96,5 +99,37 @@ describe('planScenarioUrlSync', () => {
         scenario: 'production',
       })
     ).toEqual({ action: 'apply-url', urlScenario: 'default' });
+  });
+});
+
+describe('scenarioQueryForNavigation', () => {
+  it('omits the placeholder scenario before config is ready', () => {
+    expect(
+      scenarioQueryForNavigation({
+        scenarioConfigReady: false,
+        scenario: 'default',
+        urlScenario: null,
+      })
+    ).toBe('');
+  });
+
+  it('keeps a pasted scenario while config is still loading', () => {
+    expect(
+      scenarioQueryForNavigation({
+        scenarioConfigReady: false,
+        scenario: 'default',
+        urlScenario: 'staging',
+      })
+    ).toBe('?scenario=staging');
+  });
+
+  it('stamps the loaded scenario once config is ready', () => {
+    expect(
+      scenarioQueryForNavigation({
+        scenarioConfigReady: true,
+        scenario: 'production',
+        urlScenario: null,
+      })
+    ).toBe('?scenario=production');
   });
 });

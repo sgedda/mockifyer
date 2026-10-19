@@ -30,7 +30,7 @@ import {
   isScratchScenario,
   scenarioDisplayName,
 } from '@/lib/scenario-display'
-import { buildSearch, DASHBOARD_Q, mockEditorPath, planScenarioUrlSync } from '@/lib/dashboard-urls'
+import { DASHBOARD_Q, mockEditorPath, planScenarioUrlSync, scenarioQueryForNavigation } from '@/lib/dashboard-urls'
 import { FavoritesProvider } from '@/lib/favorites-context'
 import { applyCatalogReplayModeFlags } from '@/lib/mock-correlation-chains'
 
@@ -287,7 +287,11 @@ export default function Dashboard({
     }
     navigate({
       pathname: pathMap[tab] || '/',
-      search: buildSearch({ scenario }),
+      search: scenarioQueryForNavigation({
+        scenarioConfigReady,
+        scenario,
+        urlScenario,
+      }),
     })
   }
 
@@ -414,7 +418,11 @@ export default function Dashboard({
           activeTab={activeTab} 
           onTabChange={handleTabChange}
           onNavigate={() => setSidebarOpen(false)}
-          scenario={scenario}
+          search={scenarioQueryForNavigation({
+            scenarioConfigReady,
+            scenario,
+            urlScenario,
+          })}
         />
       </div>
       

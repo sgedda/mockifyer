@@ -238,6 +238,16 @@ export default function OverridesView({
       })
   }, [editTarget, scenario, scenarioConfigReady, toast])
 
+  const blockUntilScenarioReady = (): boolean => {
+    if (scenarioConfigReady) return false
+    toast({
+      title: 'Scenario still loading',
+      description: 'Wait until the active scenario is loaded before changing overrides.',
+      variant: 'destructive',
+    })
+    return true
+  }
+
   const urlFilename = searchParams.get(DASHBOARD_Q.file)
 
   const selectFilename = useCallback(
@@ -363,6 +373,7 @@ export default function OverridesView({
 
   const loadSelected = useCallback(
     async (filename: string) => {
+      if (!scenarioConfigReady) return
       setLoadingDetail(true)
       try {
         const mock = await getMock(filename, scenario).catch(() => null)
@@ -395,11 +406,11 @@ export default function OverridesView({
         setLoadingDetail(false)
       }
     },
-    [scenario, toast, editingGroup, editGroup]
+    [scenario, scenarioConfigReady, toast, editingGroup, editGroup]
   )
 
   useEffect(() => {
-    if (!selectedFilename) return
+    if (!scenarioConfigReady || !selectedFilename) return
     const listed = listItems.some((m) => m.filename === selectedFilename)
     const knownMock =
       mocks.some((m) => m.filename === selectedFilename) ||
@@ -414,10 +425,10 @@ export default function OverridesView({
       return
     }
     void loadSelected(selectedFilename)
-  }, [selectedFilename, listItems, loadSelected, mocks, selectFilename])
+  }, [scenarioConfigReady, selectedFilename, listItems, loadSelected, mocks, selectFilename])
 
   const handleSave = async () => {
-    if (!selectedFilename) return
+    if (!selectedFilename || blockUntilScenarioReady()) return
     const parsed = rowsToFieldOverrides(drafts)
     if (parsed.error) {
       toast({ title: 'Save failed', description: parsed.error, variant: 'destructive' })
@@ -462,7 +473,7 @@ export default function OverridesView({
   }
 
   const handleClear = async () => {
-    if (!selectedFilename) return
+    if (!selectedFilename || blockUntilScenarioReady()) return
     setSaving(true)
     try {
       if (editingGroup && editTarget !== EDIT_MOCK_LEVEL) {
@@ -501,7 +512,7 @@ export default function OverridesView({
 
   const handleCreateGroup = async () => {
     const label = newGroupLabel.trim()
-    if (!label) return
+    if (!label || blockUntilScenarioReady()) return
     const id = slugifyGroupId(label)
     setSaving(true)
     try {
@@ -525,6 +536,7 @@ export default function OverridesView({
   }
 
   const handleActivate = async (groupId: string | null, scope: 'lane' | 'default') => {
+    if (blockUntilScenarioReady()) return
     if (scope === 'lane' && !laneClientId.trim()) {
       toast({
         title: 'Client lane required',
@@ -567,7 +579,7 @@ export default function OverridesView({
   }
 
   const handleDeleteGroup = async () => {
-    if (editTarget === EDIT_MOCK_LEVEL) return
+    if (editTarget === EDIT_MOCK_LEVEL || blockUntilScenarioReady()) return
     setSaving(true)
     try {
       await deleteOverrideGroup(editTarget, scenario)
@@ -589,7 +601,7 @@ export default function OverridesView({
 
   const handleAddMockToGroup = async () => {
     const filename = addMockFilename.trim()
-    if (!filename || editTarget === EDIT_MOCK_LEVEL) return
+    if (!filename || editTarget === EDIT_MOCK_LEVEL || blockUntilScenarioReady()) return
     setSaving(true)
     try {
       const res = await patchOverrideGroupEntry(

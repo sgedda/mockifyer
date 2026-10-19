@@ -132,6 +132,25 @@ export type ScenarioUrlSyncPlan =
  * makes the later mismatch look like the user chose `default`, so
  * POST /api/scenario-config/set would clobber `_scratch` / named scenarios.
  */
+/**
+ * Query string for sidebar and tab navigation.
+ *
+ * Before scenario-config loads, `scenario` is the boot placeholder (`default`).
+ * Writing that into the URL makes the later sync treat it as an explicit choice
+ * and POST it over the real active scenario. Keep an existing `?scenario=` and
+ * otherwise omit the param until config is ready.
+ */
+export function scenarioQueryForNavigation(input: {
+  scenarioConfigReady: boolean
+  scenario: string
+  urlScenario: string | null
+}): string {
+  if (!input.scenarioConfigReady) {
+    return input.urlScenario ? buildSearch({ scenario: input.urlScenario }) : ''
+  }
+  return buildSearch({ scenario: input.scenario })
+}
+
 export function planScenarioUrlSync(input: {
   scenarioConfigReady: boolean
   urlScenario: string | null
