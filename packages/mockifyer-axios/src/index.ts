@@ -2324,18 +2324,11 @@ class MockifyerClass {
         parentRequestId,
         hop,
         parentExists: (id) => {
-          if (this.databaseProvider) {
-            return false;
-          }
           const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
           const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
           return fs.existsSync(path.join(scenarioPath, inboundParentStubFilename(id)));
         },
         save: async (row) => {
-          if (this.databaseProvider) {
-            await this.databaseProvider.save(row.mock);
-            return;
-          }
           const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
           const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
           ensureScenarioFolder(this.config.mockDataPath, currentScenario);
