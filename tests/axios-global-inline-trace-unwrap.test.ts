@@ -118,6 +118,7 @@ describe('useGlobalAxios inline-trace unwrap', () => {
       useGlobalAxios: true,
       axiosInstance,
       recordMode: true,
+      recordResponses: true,
       domainPathRulesMode: 'record_all',
       networkLog: { includeTraceHeader: true, enabled: false },
     });

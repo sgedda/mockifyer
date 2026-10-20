@@ -230,7 +230,7 @@ class MockifyerClass {
     const correlation = this.readRequestCorrelation(response.config);
     const parentRequestId = correlation?.requestId?.trim();
     if (!parentRequestId) {
-      response.data = unwrapAndMergeInlineTraceEnvelope(response.data);
+      response.data = getInlineTraceEnvelopeBusinessBody(response.data);
       return;
     }
     const scenario =
