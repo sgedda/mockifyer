@@ -81,6 +81,25 @@ export interface DomainPathDiscoveryOptions {
    * until opted in. Ignored for `record_all` / `off`.
    */
   recording?: boolean;
+  /**
+   * Update existing discovery-seeded deny rows under an allowing parent, but do not
+   * insert new keys. Used when allowlist record mode is off so browsing cannot
+   * persist `recordResponses: false` catalog rows.
+   */
+  repairOnly?: boolean;
+}
+
+/** Discovery rows omit `updatedAt` and leave record/replay off until a parent or dashboard write. */
+function isDiscoverySeedRule(rule: DomainPathRule): boolean {
+  return (
+    rule.updatedAt == null &&
+    rule.recordResponses !== true &&
+    rule.autoMock !== true
+  );
+}
+
+function ruleAllowsRecordOrReplay(rule: DomainPathRule | null | undefined): boolean {
+  return rule != null && (rule.recordResponses === true || rule.autoMock === true);
 }
 
 /** Defaults applied when discovering a new domain-path key for the given mode. */
@@ -295,32 +314,30 @@ export function findLongestDomainPathRuleForFolder(
 export function upsertDiscoveredDomainPathRule(
   rules: DomainPathRulesMap,
   domainPath: string,
-  defaults: DomainPathRule
+  defaults: DomainPathRule,
+  options?: { repairOnly?: boolean }
 ): { changed: boolean; upserted: string[] } {
   const upserted: string[] = [];
   const key = domainPath.trim().replace(/^\/+|\/+$/g, '');
   if (!key) {
     return { changed: false, upserted };
   }
+  const repairOnly = options?.repairOnly === true;
 
   const ensure = (
     pathKey: string,
     ruleDefaults: DomainPathRule,
-    options?: { repairDiscoverySeed?: boolean }
+    ensureOptions?: { repairDiscoverySeed?: boolean }
   ) => {
     const existing = rules[pathKey];
     if (existing) {
       // Discovery seeds omit updatedAt; dashboard/API writes set it.
       // Only repair path seeds when an allowing parent is being inherited — never
       // reinterpret mode defaults as a reason to flip an existing host/path key.
-      const isDiscoverySeed =
-        existing.updatedAt == null &&
-        existing.recordResponses !== true &&
-        existing.autoMock !== true;
       if (
-        options?.repairDiscoverySeed &&
-        isDiscoverySeed &&
-        (ruleDefaults.recordResponses === true || ruleDefaults.autoMock === true)
+        ensureOptions?.repairDiscoverySeed &&
+        isDiscoverySeedRule(existing) &&
+        ruleAllowsRecordOrReplay(ruleDefaults)
       ) {
         rules[pathKey] = {
           recordResponses: ruleDefaults.recordResponses === true,
@@ -329,6 +346,9 @@ export function upsertDiscoveredDomainPathRule(
         };
         upserted.push(pathKey);
       }
+      return;
+    }
+    if (repairOnly) {
       return;
     }
     const next: DomainPathRule = {
@@ -351,8 +371,7 @@ export function upsertDiscoveredDomainPathRule(
   // Path keys (beyond host) inherit allowing parents so discovery cannot shadow them.
   if (key !== host) {
     const parent = findStrictParentDomainPathRule(key, rules);
-    const inherit =
-      parent != null && (parent.recordResponses === true || parent.autoMock === true);
+    const inherit = ruleAllowsRecordOrReplay(parent);
     const pathDefaults = inherit
       ? {
           recordResponses: parent!.recordResponses === true,
@@ -383,7 +402,9 @@ export function discoverDomainPathRulesForUrl(
   if (!domainPath) {
     return { changed: false, upserted: [] };
   }
-  return upsertDiscoveredDomainPathRule(rules, domainPath, defaults);
+  return upsertDiscoveredDomainPathRule(rules, domainPath, defaults, {
+    repairOnly: options?.repairOnly === true,
+  });
 }
 
 /**
@@ -435,6 +456,51 @@ export function mergeDomainPathRuleUpserts(
     rules[key] = next;
     changed = true;
   }
+  return { rules, changed };
+}
+
+/**
+ * Persist discovery upserts onto `existing`.
+ *
+ * New keys are inserted. Existing keys stay as stored, except discovery seeds
+ * (no `updatedAt`, record and replay off) whose parent **on `existing`** already
+ * allows record or replay. Those inherit the parent flags.
+ *
+ * Re-checking the parent against `existing` (not the in-memory upsert) keeps a
+ * stale repair from re-enabling a child after the dashboard disabled the parent.
+ * Dashboard writes set `updatedAt` and are never overwritten.
+ */
+export function mergeDiscoveredDomainPathUpserts(
+  existing: DomainPathRulesMap,
+  upserts: DomainPathRulesMap
+): { rules: DomainPathRulesMap; changed: boolean } {
+  const merged = mergeDomainPathRuleUpserts(existing, upserts);
+  const rules = merged.rules;
+  let changed = merged.changed;
+
+  for (const [domainPath, incoming] of Object.entries(upserts)) {
+    const key = domainPath.trim().replace(/^\/+|\/+$/g, '');
+    if (!key || !incoming || typeof incoming !== 'object') {
+      continue;
+    }
+    const current = rules[key];
+    if (!current || !isDiscoverySeedRule(current)) {
+      continue;
+    }
+    if (!ruleAllowsRecordOrReplay(incoming)) {
+      continue;
+    }
+    const parent = findStrictParentDomainPathRule(key, rules);
+    if (!ruleAllowsRecordOrReplay(parent)) {
+      continue;
+    }
+    rules[key] = {
+      recordResponses: parent!.recordResponses === true,
+      autoMock: parent!.autoMock === true,
+    };
+    changed = true;
+  }
+
   return { rules, changed };
 }
 
