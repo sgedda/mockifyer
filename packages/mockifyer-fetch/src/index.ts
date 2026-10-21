@@ -107,6 +107,9 @@ import {
   type MockifyerRuntimeEnabledStorage,
   outboundHeadersToRecord,
   appendParamsToUrl,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -1551,14 +1554,14 @@ class MockifyerClass {
             `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
           );
         } else {
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
-          const domain = urlParts[0].replace(/\./g, '_');
-          const urlPathPart = urlParts.slice(1).join('_') || 'root';
-          const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
-          const filePath = path.join(scenarioPath, filename);
+          // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+          const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+          const filePath = path.join(scenarioPath, dir, filename);
+          fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
           fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-          logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+          logger.info(
+            `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
+          );
         }
 
         if (this.config.generateTests?.enabled && this.testGenerator) {

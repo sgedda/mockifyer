@@ -1,4 +1,5 @@
 import type { MockFile } from '@/types'
+import { safeParseUrl, splitPathname } from '@/lib/mock-tree-url'
 
 export interface MockFolderNode {
   /** Last path segment, or '' for scenario root */
@@ -10,7 +11,27 @@ export interface MockFolderNode {
 }
 
 /**
+ * Directory segments for the Folders view.
+ * Prefer on-disk nested paths; for flat filenames fall back to endpoint host + path
+ * (hostname only, matching core `getMockFilePath`) so filesystem catalogs nest usefully.
+ */
+export function mockFolderDirSegments(mock: MockFile): string[] {
+  const filenameSegments = mock.filename.split('/').filter(Boolean)
+  if (filenameSegments.length > 1) {
+    return filenameSegments.slice(0, -1)
+  }
+
+  const endpoint = mock.endpoint?.trim() ?? ''
+  const url = endpoint ? safeParseUrl(endpoint) : null
+  if (!url?.hostname) return []
+
+  const hostSafe = url.hostname.replace(/[^a-zA-Z0-9.-]/g, '_')
+  return [hostSafe, ...splitPathname(url.pathname)]
+}
+
+/**
  * Group mock files by directory segments (relative paths with /).
+ * Flat scenario-root files are nested by request URL so Folders is not a single dump.
  */
 export function buildMockFolderTree(mocks: MockFile[]): MockFolderNode {
   const root: MockFolderNode = {
@@ -21,14 +42,11 @@ export function buildMockFolderTree(mocks: MockFile[]): MockFolderNode {
   }
 
   for (const mock of mocks) {
-    const segments = mock.filename.split('/').filter(Boolean)
-    if (segments.length === 0) continue
-
-    segments.pop() /* file name */
+    const dirSegments = mockFolderDirSegments(mock)
     let node = root
     let pathAcc = ''
 
-    for (const seg of segments) {
+    for (const seg of dirSegments) {
       pathAcc = pathAcc ? `${pathAcc}/${seg}` : seg
       let next = node.subfolders.get(seg)
       if (!next) {

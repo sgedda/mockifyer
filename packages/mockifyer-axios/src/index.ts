@@ -74,6 +74,9 @@ import {
   resolveRuntimeEnabledStorage,
   savePersistedRuntimeEnabled,
   type MockifyerRuntimeEnabledStorage,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -2291,19 +2294,14 @@ class MockifyerClass {
           `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
         );
       } else {
-        const now = new Date();
-        const dateStr = now
-          .toISOString()
-          .replace(/T/, '_')
-          .replace(/\..+/, '')
-          .replace(/:/g, '-');
-        const urlSafe = request.url
-          .replace(/^https?:\/\//, '')
-          .replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-        const filePath = path.join(scenarioPath, filename);
+        // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+        const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+        const filePath = path.join(scenarioPath, dir, filename);
+        fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+        logger.info(
+          `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
+        );
       }
 
       await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);

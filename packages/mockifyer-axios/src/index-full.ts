@@ -8,7 +8,16 @@ import MockAdapter from 'axios-mock-adapter';
 import fs from 'fs';
 import path from 'path';
 import { MockifyerConfig, MockData, StoredRequest, StoredResponse } from './types';
-import { initializeDateManipulation, prepareMockResponseBody, createServeTimeClock, newRecordingUsesAlwaysUseRealApi, createServeTimePoolResponseLoader } from '@sgedda/mockifyer-core';
+import {
+  initializeDateManipulation,
+  prepareMockResponseBody,
+  createServeTimeClock,
+  newRecordingUsesAlwaysUseRealApi,
+  createServeTimePoolResponseLoader,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
+} from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
 import { 
@@ -943,24 +952,11 @@ class MockifyerClass {
         ...(newRecordingUsesAlwaysUseRealApi() ? { alwaysUseRealApi: true as const } : {}),
       };
 
-      // Format the datetime to be readable
-      const now = new Date();
-      const dateStr = now.toISOString()
-        .replace(/T/, '_')
-        .replace(/\..+/, '')
-        .replace(/:/g, '-');
-
-      // Create a safe filename from the URL
-      const urlSafe = request.url
-        .replace(/^https?:\/\//, '')
-        .replace(/[^a-zA-Z0-9]/g, '_');
-
-      const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
-      const filePath = path.join(this.config.mockDataPath, filename);
-      
-      // Write to file (no cache)
+      const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+      const filePath = path.join(this.config.mockDataPath, dir, filename);
+      fs.mkdirSync(path.join(this.config.mockDataPath, dir), { recursive: true });
       fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-      console.log(`[Mockifyer] Saved new mock to file: ${filename}`);
+      console.log(`[Mockifyer] Saved new mock to file: ${dir ? `${dir}/` : ''}${filename}`);
     } finally {
       // Remove from saving set after save completes
       this.savingResponses.delete(requestKey);
