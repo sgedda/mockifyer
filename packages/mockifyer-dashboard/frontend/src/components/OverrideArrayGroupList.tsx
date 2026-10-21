@@ -2,28 +2,32 @@ import type { ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import OverrideRelatedData from '@/components/OverrideRelatedData'
+import OverrideItemIdentity from '@/components/OverrideItemIdentity'
 import { useOverrideArrayCollapse } from '@/components/OverrideArrayCollapseContext'
+import type { OverrideAddPathControlProps } from '@/components/OverrideAddPathControl'
 import {
-  arrayItemGroupLabel,
   countOverrideItemRows,
   countOverrideSectionRows,
   groupOverridesByTopLevelArray,
-  summarizeOverrideArrayItemAtPath,
   type OverrideArrayItemGroup,
   type OverrideArraySection,
   type OverrideEditorSection,
 } from '@/lib/override-path-groups'
-import { pathCrumbs } from '@/lib/override-related-data'
 import { cn } from '@/lib/utils'
 
-interface OverrideArrayGroupListProps<T extends { path: string }> {
+type RelatedAddProps = Pick<
+  OverrideAddPathControlProps,
+  'existingPaths' | 'readOnly' | 'onAddFieldOverride' | 'onAddDateOverride'
+>
+
+interface OverrideArrayGroupListProps<T extends { path: string }> extends RelatedAddProps {
   rows: T[]
   responseBody: unknown
   instanceKey: string
   renderRow: (item: T, index: number, groupPath: string | null) => ReactNode
 }
 
-interface SectionListProps<T extends { path: string }> {
+interface SectionListProps<T extends { path: string }> extends RelatedAddProps {
   sections: OverrideEditorSection<T>[]
   responseBody: unknown
   instanceKey: string
@@ -40,39 +44,13 @@ function CollapseChevron({ collapsed }: { collapsed: boolean }) {
   )
 }
 
-function ArrayItemIdentity({
-  arrayItemPath,
-  overrideCount,
-  responseBody,
-}: {
-  arrayItemPath: string
-  overrideCount: number
-  responseBody: unknown
-}) {
-  const identity = summarizeOverrideArrayItemAtPath(responseBody, arrayItemPath)
-  const crumbs = pathCrumbs(arrayItemPath)
-  return (
-    <div className="min-w-0 space-y-0.5">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-mono text-xs font-medium text-foreground">
-          {arrayItemGroupLabel(arrayItemPath)}
-        </span>
-        <span className="text-[11px] text-muted-foreground">
-          {overrideCount} override{overrideCount === 1 ? '' : 's'}
-        </span>
-      </div>
-      {identity ? (
-        <div className="text-[11px] leading-snug text-sky-200/90" title={identity}>
-          {identity}
-        </div>
-      ) : null}
-      {crumbs.length > 0 ? (
-        <div className="font-mono text-[10px] text-muted-foreground">
-          {crumbs.map((crumb) => crumb.label).join(' › ')}
-        </div>
-      ) : null}
-    </div>
-  )
+function relatedAddProps(props: RelatedAddProps): RelatedAddProps {
+  return {
+    existingPaths: props.existingPaths,
+    readOnly: props.readOnly,
+    onAddFieldOverride: props.onAddFieldOverride,
+    onAddDateOverride: props.onAddDateOverride,
+  }
 }
 
 function ArrayItemBlock<T extends { path: string }>({
@@ -82,6 +60,7 @@ function ArrayItemBlock<T extends { path: string }>({
   instanceKey,
   nested,
   renderRow,
+  ...addProps
 }: {
   group: OverrideArrayItemGroup<T>
   arrayCollapseKey: string
@@ -89,7 +68,7 @@ function ArrayItemBlock<T extends { path: string }>({
   instanceKey: string
   nested: boolean
   renderRow: (item: T, index: number, groupPath: string | null) => ReactNode
-}) {
+} & RelatedAddProps) {
   const { isItemCollapsed, toggleItem, isRelatedOpen, setRelatedOpen } = useOverrideArrayCollapse()
   const collapsed = isItemCollapsed(group.arrayItemPath)
   const relatedOpen = isRelatedOpen(arrayCollapseKey)
@@ -113,7 +92,7 @@ function ArrayItemBlock<T extends { path: string }>({
         onClick={() => toggleItem(group.arrayItemPath)}
       >
         <CollapseChevron collapsed={collapsed} />
-        <ArrayItemIdentity
+        <OverrideItemIdentity
           arrayItemPath={group.arrayItemPath}
           overrideCount={overrideCount}
           responseBody={responseBody}
@@ -126,6 +105,7 @@ function ArrayItemBlock<T extends { path: string }>({
             responseBody={responseBody}
             open={relatedOpen}
             onOpenChange={(open) => setRelatedOpen(arrayCollapseKey, open)}
+            {...relatedAddProps(addProps)}
           />
           <OverrideSectionList
             sections={group.children}
@@ -134,6 +114,7 @@ function ArrayItemBlock<T extends { path: string }>({
             groupPath={group.arrayItemPath}
             nested
             renderRow={renderRow}
+            {...relatedAddProps(addProps)}
           />
         </div>
       ) : null}
@@ -147,13 +128,14 @@ function ArraySectionBlock<T extends { path: string }>({
   instanceKey,
   nested,
   renderRow,
+  ...addProps
 }: {
   section: OverrideArraySection<T>
   responseBody: unknown
   instanceKey: string
   nested: boolean
   renderRow: (item: T, index: number, groupPath: string | null) => ReactNode
-}) {
+} & RelatedAddProps) {
   const { isArrayCollapsed, toggleArray } = useOverrideArrayCollapse()
   const collapsed = isArrayCollapsed(section.collapseKey)
   const overrideCount = countOverrideSectionRows(section)
@@ -193,6 +175,7 @@ function ArraySectionBlock<T extends { path: string }>({
               instanceKey={instanceKey}
               nested={nested}
               renderRow={renderRow}
+              {...relatedAddProps(addProps)}
             />
           ))}
         </div>
@@ -208,6 +191,7 @@ function OverrideSectionList<T extends { path: string }>({
   groupPath,
   nested,
   renderRow,
+  ...addProps
 }: SectionListProps<T>) {
   return (
     <div className="space-y-3">
@@ -227,6 +211,7 @@ function OverrideSectionList<T extends { path: string }>({
             instanceKey={instanceKey}
             nested={nested}
             renderRow={renderRow}
+            {...relatedAddProps(addProps)}
           />
         )
       })}
@@ -243,6 +228,7 @@ export default function OverrideArrayGroupList<T extends { path: string }>({
   responseBody,
   instanceKey,
   renderRow,
+  ...addProps
 }: OverrideArrayGroupListProps<T>) {
   const sections = groupOverridesByTopLevelArray(rows)
   return (
@@ -253,6 +239,7 @@ export default function OverrideArrayGroupList<T extends { path: string }>({
       groupPath={null}
       nested={false}
       renderRow={renderRow}
+      {...relatedAddProps(addProps)}
     />
   )
 }

@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
 import { FileText, BarChart3, Settings, Zap, GitFork, Calendar, Radio, SlidersHorizontal, Braces, HardDrive } from 'lucide-react'
-import { buildSearch } from '@/lib/dashboard-urls'
 import {
   Sidebar,
   SidebarContent,
@@ -16,10 +15,11 @@ interface SidebarNavProps {
   activeTab?: string
   onTabChange: (tab: string) => void
   onNavigate?: () => void
-  scenario?: string
+  /** Prebuilt query string. Omit the scenario until scenario-config has loaded. */
+  search?: string
 }
 
-export default function SidebarNav({ onTabChange, onNavigate, scenario }: SidebarNavProps) {
+export default function SidebarNav({ onTabChange, onNavigate, search = '' }: SidebarNavProps) {
   const location = useLocation()
   
   const navItems = [
@@ -66,7 +66,7 @@ export default function SidebarNav({ onTabChange, onNavigate, scenario }: Sideba
             return (
               <Link
                 key={item.id}
-                to={{ pathname: item.path, search: buildSearch({ scenario }) }}
+                to={{ pathname: item.path, search }}
                 onClick={() => {
                   onTabChange(item.id)
                   onNavigate?.() // Close sidebar on mobile when navigating
