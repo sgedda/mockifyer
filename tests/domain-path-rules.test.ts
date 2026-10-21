@@ -10,6 +10,7 @@ import {
   findLongestDomainPathRuleForFolder,
   mergeDomainPathRuleUpserts,
   mergeDiscoveredDomainPathRules,
+  mergeDiscoveredDomainPathUpserts,
   normalizeDomainPathForDiscovery,
   readDomainPathRulesFile,
   resolveDomainPathRulesMode,
@@ -435,6 +436,57 @@ describe('domain-path discovery + traffic gate', () => {
     expect(rules['api.example.com'].recordResponses).toBe(false);
     expect(rules['api.example.com/v1'].recordResponses).toBe(true);
   });
+
+  it('mergeDiscoveredDomainPathUpserts repairs a deny seed under an allowing parent', () => {
+    const { rules, changed } = mergeDiscoveredDomainPathUpserts(
+      {
+        'api.example.com': { recordResponses: true, autoMock: true },
+        'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+      },
+      {
+        'api.example.com/v1/users/:id': { recordResponses: true, autoMock: true },
+      }
+    );
+    expect(changed).toBe(true);
+    expect(rules['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: true,
+    });
+  });
+
+  it('mergeDiscoveredDomainPathUpserts keeps a seed when the stored parent does not allow', () => {
+    const { rules, changed } = mergeDiscoveredDomainPathUpserts(
+      {
+        'api.example.com': { recordResponses: false, autoMock: false },
+        'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+      },
+      {
+        'api.example.com/v1/users/:id': { recordResponses: true, autoMock: true },
+      }
+    );
+    expect(changed).toBe(false);
+    expect(rules['api.example.com/v1/users/:id'].recordResponses).toBe(false);
+    expect(rules['api.example.com'].recordResponses).toBe(false);
+  });
+
+  it('mergeDiscoveredDomainPathUpserts does not overwrite a dashboard-written deny', () => {
+    const { rules, changed } = mergeDiscoveredDomainPathUpserts(
+      {
+        'api.example.com': { recordResponses: true, autoMock: true },
+        'api.example.com/v1/users/:id': {
+          recordResponses: false,
+          autoMock: false,
+          updatedAt: '2026-08-07T00:00:00.000Z',
+        },
+      },
+      {
+        'api.example.com/v1/users/:id': { recordResponses: true, autoMock: true },
+      }
+    );
+    expect(changed).toBe(false);
+    expect(rules['api.example.com/v1/users/:id'].recordResponses).toBe(false);
+    expect(rules['api.example.com/v1/users/:id'].updatedAt).toBe('2026-08-07T00:00:00.000Z');
+  });
 });
 
 describe('DomainPathRulesSession persistUpserts', () => {
@@ -474,6 +526,56 @@ describe('DomainPathRulesSession persistUpserts', () => {
       recordResponses: true,
       autoMock: false,
     });
+  });
+
+  it('persists repair of a deny :id seed during replay (record mode off)', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+    });
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => false,
+    });
+
+    session.discover('https://api.example.com/v1/users/7');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com']).toEqual({ recordResponses: true, autoMock: true });
+    expect(onDisk['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: true,
+    });
+    expect(Object.keys(onDisk)).toEqual(['api.example.com', 'api.example.com/v1/users/:id']);
+
+    const gate = session.getTrafficGate('https://api.example.com/v1/users/42');
+    expect(gate.matchedDomainPath).toBe('api.example.com/v1/users/:id');
+    expect(gate.mayRecord).toBe(true);
+    expect(gate.mayReplay).toBe(true);
+  });
+
+  it('persists repair of a deny :id seed while recording without dropping it on merge', async () => {
+    writeDomainPathRulesFile(tmpRoot, 'default', {
+      'api.example.com': { recordResponses: true, autoMock: true },
+      'api.example.com/v1/users/:id': { recordResponses: false, autoMock: false },
+    });
+    const session = new DomainPathRulesSession({
+      config: { mockDataPath: tmpRoot, domainPathRulesMode: 'allowlist' },
+      getRecordMode: () => true,
+    });
+
+    session.discover('https://api.example.com/v1/users/7');
+    await (session as unknown as { persistQueue: Promise<void> }).persistQueue;
+
+    const onDisk = readDomainPathRulesFile(tmpRoot, 'default');
+    expect(onDisk['api.example.com/v1/users/:id']).toEqual({
+      recordResponses: true,
+      autoMock: true,
+    });
+    const gate = session.getTrafficGate('https://api.example.com/v1/users/9');
+    expect(gate.mayReplay).toBe(true);
+    expect(gate.mayRecord).toBe(true);
   });
 
   it('enableRecordResponsesForAllRules flips existing false flags', async () => {
