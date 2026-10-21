@@ -18,8 +18,9 @@ import { createSharedStoreCache } from './shared-store-cache';
 
 /**
  * Keep authorization and the request body preview so the live stream can rebuild curl.
- * Response bodies are stored only when the scenario enables `captureBodies`; otherwise
- * readers resolve them from the recorded mock by `requestHash`.
+ * Response body previews, refs, and truncation flags are stored only when the scenario
+ * enables `captureBodies`. A preview already on the incoming hop is not enough — the
+ * filesystem ring used to keep it, so turning Bodies off still showed the payload.
  * Query secrets in the URL are still masked by {@link buildNetworkEvent}.
  * Request headers are never truncated. Over the ring budget, body previews shrink
  * and response headers are dropped first.
@@ -205,7 +206,7 @@ class MemoryNetworkLogStore implements NetworkLogStore {
 
     const event = buildStoredNetworkEvent(
       { ...partial, scenario: this.bufferKey(scenario) },
-      cfg.captureBodies || Boolean(partial.responseBodyPreview)
+      cfg.captureBodies
     );
 
     const key = this.bufferKey(scenario);

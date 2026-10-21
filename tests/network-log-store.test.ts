@@ -123,6 +123,7 @@ describe('network-log-store (memory)', () => {
   it('caps stored body previews but keeps request header values intact', async () => {
     const store = createNetworkLogStore(fsConfig);
     const scenario = `test-cap-${Date.now()}`;
+    await store.setConfig(scenario, { captureBodies: true });
     const saved = await store.append(scenario, {
       transport: 'proxy',
       method: 'POST',
@@ -161,12 +162,12 @@ describe('network-log-store (memory)', () => {
     };
     const off = await store.append(scenario, hop);
     expect(off?.requestBodyPreview).toContain('me');
-    // Filesystem provider preserves response bodies even when captureBodies is false,
-    // since it can't recover them from disk like Redis/SQLite can
-    expect(off?.responseBodyPreview).toContain('"me"');
+    expect(off?.responseBodyPreview).toBeUndefined();
+    expect(off?.responseBodyRef).toBeUndefined();
 
     await store.setConfig(scenario, { captureBodies: true });
     const on = await store.append(scenario, hop);
+    expect(on?.requestBodyPreview).toContain('me');
     expect(on?.responseBodyPreview).toContain('"me"');
     await store.clear({ scenario });
     await store.close();

@@ -37,6 +37,23 @@ describe('hydrateResponsePreviewsFromMocks', () => {
     expect(getByHashInScenario).toHaveBeenCalledWith('h1', 'default');
   });
 
+  it('does not copy mock response bodies when captureBodies is off', async () => {
+    const getByHashInScenario = jest.fn(async () => mock({ destination: { key: 'moonbase' } }));
+    const events = [
+      hop({ id: 'fresh', requestHash: 'h1' }),
+      hop({ id: 'stored', requestHash: 'h1', responseBodyPreview: '{"kept":true}' }),
+    ];
+    const out = await hydrateResponsePreviewsFromMocks(
+      events,
+      { getByHashInScenario },
+      'default',
+      { captureBodies: false }
+    );
+    expect(out[0].responseBodyPreview).toBeUndefined();
+    expect(out[1].responseBodyPreview).toBe('{"kept":true}');
+    expect(getByHashInScenario).not.toHaveBeenCalled();
+  });
+
   it('keeps stored previews, skips pending mocks, and tolerates lookup errors', async () => {
     const getByHashInScenario = jest.fn(async (hash: string) => {
       if (hash === 'pending') return mock(null, { responsePending: true });
