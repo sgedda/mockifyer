@@ -17,6 +17,7 @@ import {
   getMockFilePath,
   formatDateStr,
   getCurrentDate,
+  isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 import { createHTTPClient, HTTPClientConfig } from './clients/http-client-factory';
 import { HTTPClient, HTTPResponse } from './types/http-client';
@@ -126,6 +127,23 @@ class MockifyerClass {
     return this.findBestMatchingMockFromFiles(request);
   }
 
+  private getAllJsonFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (isMockRecordingSidecarDir(entry.name)) {
+          continue;
+        }
+        results.push(...this.getAllJsonFiles(fullPath));
+      } else if (entry.name.endsWith('.json')) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
   /**
    * Find best matching mock by reading directly from files (no cache, reads on each request)
    */
@@ -135,24 +153,23 @@ class MockifyerClass {
       return undefined;
     }
 
-    const files = fs.readdirSync(this.config.mockDataPath)
-      .filter(file => file.endsWith('.json'));
+    const files = this.getAllJsonFiles(this.config.mockDataPath);
 
     const requestKey = this.generateRequestKey(request);
     let exactMatch: CachedMockData | undefined;
     let similarMatch: CachedMockData | undefined;
     
     // Read files one by one and check for matches (no cache structure)
-    for (const file of files) {
+    for (const filePath of files) {
       try {
-        const filePath = path.join(this.config.mockDataPath, file);
+        const filename = path.relative(this.config.mockDataPath, filePath);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
         // Skip files that don't have a valid request property
         // Check for null explicitly since typeof null === 'object' in JavaScript
         if (!mockData || !mockData.request || mockData.request === null || typeof mockData.request !== 'object') {
-          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${filename}`, {
             hasMockData: !!mockData,
             hasRequest: !!mockData?.request,
             requestType: typeof mockData?.request,
@@ -164,13 +181,13 @@ class MockifyerClass {
         // Additional safety check - ensure request has required properties
         // Only skip if url is explicitly null or undefined (not empty string, as that will be caught by generateRequestKey)
         if (mockData.request.url === null || mockData.request.url === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request missing url): ${file}`);
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing url): ${filename}`);
           continue;
         }
         
         // Double-check that request is actually an object before calling generateRequestKey
         if (typeof mockData.request !== 'object' || mockData.request === null || mockData.request === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request is not a valid object): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request is not a valid object): ${filename}`, {
             requestType: typeof mockData.request,
             requestIsNull: mockData.request === null,
             requestIsUndefined: mockData.request === undefined
@@ -180,7 +197,7 @@ class MockifyerClass {
         
         // Final safety check - ensure request has method property (required by generateRequestKey)
         if (!mockData.request || mockData.request.method === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request missing method): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing method): ${filename}`, {
             hasRequest: !!mockData.request,
             hasMethod: mockData.request?.method !== undefined
           });
@@ -196,7 +213,7 @@ class MockifyerClass {
           mockKey = this.generateRequestKey(mockData.request);
         } catch (error: any) {
           // Log more details about the error to help debug
-          console.warn(`[Mockifyer] Error generating key for mock file ${file}:`, {
+          console.warn(`[Mockifyer] Error generating key for mock file ${filename}:`, {
             error: error?.message || error,
             requestUrl: mockData.request?.url,
             requestMethod: mockData.request?.method,
@@ -212,8 +229,8 @@ class MockifyerClass {
         if (mockKey === requestKey) {
           exactMatch = {
             mockData,
-            filename: file,
-            filePath: filePath
+            filename,
+            filePath
           };
           break; // Exact match found, no need to continue
         }
@@ -264,8 +281,8 @@ class MockifyerClass {
                 
                 similarMatch = {
                   mockData,
-                  filename: file,
-                  filePath: filePath
+                  filename,
+                  filePath
                 };
               }
             } catch (e) {
@@ -275,7 +292,7 @@ class MockifyerClass {
           }
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 
@@ -301,8 +318,7 @@ class MockifyerClass {
     if (!fs.existsSync(this.config.mockDataPath)) {
       console.log('[Mockifyer] Mock data directory does not exist:', this.config.mockDataPath);
     } else {
-      const files = fs.readdirSync(this.config.mockDataPath)
-        .filter(file => file.endsWith('.json'));
+      const files = this.getAllJsonFiles(this.config.mockDataPath);
       console.log('[Mockifyer] Found', files.length, 'mock files (will read on demand)');
     }
   }
