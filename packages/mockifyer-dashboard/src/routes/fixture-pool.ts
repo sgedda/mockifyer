@@ -61,6 +61,10 @@ const fsAdapter: FixturePoolFsAdapter = {
   },
   unlinkSync: (p) => fs.unlinkSync(p),
   readdirSync: (p) => fs.readdirSync(p),
+  statSync: (p) => {
+    const st = fs.statSync(p);
+    return { mtimeMs: st.mtimeMs };
+  },
 };
 
 function nowIso(): string {
