@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Wanderweird",
+    "slug": "wanderweird",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "wanderweird",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mockifyer.wanderweird"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#07131A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.mockifyer.wanderweird",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#07131A",
+          "image": "./assets/splash-icon.png"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

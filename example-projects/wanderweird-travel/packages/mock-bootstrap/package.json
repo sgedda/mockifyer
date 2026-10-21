@@ -1,0 +1,13 @@
+{
+  "name": "@wanderweird/mock-bootstrap",
+  "version": "0.0.0",
+  "private": true,
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sgedda/mockifyer-core": "file:../../../../packages/mockifyer-core",
+    "@sgedda/mockifyer-fetch": "file:../../../../packages/mockifyer-fetch"
+  }
+}
