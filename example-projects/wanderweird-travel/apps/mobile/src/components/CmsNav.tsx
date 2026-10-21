@@ -89,11 +89,13 @@ export function CmsDeepLinks({
 export function CmsTabDeepLinks({
   screenKey,
   tab,
+  title,
 }: {
   screenKey: string;
   tab?: CmsTabNode;
+  title?: string;
 }) {
-  return <CmsDeepLinks screenKey={screenKey} pages={tab?.children} />;
+  return <CmsDeepLinks screenKey={screenKey} pages={tab?.children} title={title} />;
 }
 
 const styles = StyleSheet.create({

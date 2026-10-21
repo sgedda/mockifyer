@@ -15,8 +15,8 @@ export default function NewTripScreen() {
   const [destinationKey, setDestinationKey] = useState('atlantis');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [startDate, setStartDate] = useState('2026-08-01');
-  const [endDate, setEndDate] = useState('2026-08-04');
+  const [startDate, setStartDate] = useState('2026-12-01');
+  const [endDate, setEndDate] = useState('2026-12-04');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -18,11 +18,11 @@ export default function DiscoverScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (destinationKey?: string) => {
+    async (destinationKey?: string, useDefault = true) => {
       setError(null);
       try {
-        const key = destinationKey ?? appConfig.defaultDiscoverKey;
-        const payload = await api.discover(key || undefined);
+        const key = useDefault && !destinationKey ? appConfig.defaultDiscoverKey : destinationKey;
+        const payload = await api.discover(key);
         setDiscover(payload);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load destination');
@@ -170,7 +170,7 @@ export default function DiscoverScreen() {
           </View>
         ) : null}
 
-        <Button label="Show another destination" onPress={() => void load()} variant="ghost" />
+        <Button label="Show another destination" onPress={() => void load(undefined, false)} variant="ghost" />
 
         {appConfig.showLuggageLottery ? (
           <View style={styles.lottery}>

@@ -49,11 +49,11 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
 }
 
-async function loadLiveContext(): Promise<LiveContext> {
+async function loadLiveContext(userId = 'u-wanderer'): Promise<LiveContext> {
   const hops: string[] = ['lore-api'];
   const [discoverResult, tripsResult] = await Promise.all([
-    fetchJson(`${WANDER_BASE}/discover`),
-    fetchJson(`${TRIPS_BASE}/trips?userId=u-wanderer`),
+    fetchJson(`${WANDER_BASE}/discover`).catch(() => ({ status: 500, body: null })),
+    fetchJson(`${TRIPS_BASE}/trips?userId=${encodeURIComponent(userId)}`).catch(() => ({ status: 500, body: null })),
   ]);
 
   hops.push('wander-api', 'trips-api');
@@ -161,13 +161,14 @@ async function main(): Promise<void> {
     });
   });
 
-  app.get('/navigation', async (_req, res) => {
+  app.get('/navigation', async (req, res) => {
     const cms = await fetchJson(`${CMS_BASE}/navigation`);
     if (cms.status >= 400) {
       res.status(cms.status).json(cms.body);
       return;
     }
-    const ctx = await loadLiveContext();
+    const userId = String(req.headers['x-user-id'] ?? req.query.userId ?? 'u-wanderer');
+    const ctx = await loadLiveContext(userId);
     res.json(enrichNavigation(cms.body as CmsNavigation, ctx));
   });
 
@@ -177,7 +178,8 @@ async function main(): Promise<void> {
       res.status(cms.status).json(cms.body);
       return;
     }
-    const ctx = await loadLiveContext();
+    const userId = String(req.headers['x-user-id'] ?? req.query.userId ?? 'u-wanderer');
+    const ctx = await loadLiveContext(userId);
     const payload = cms.body as { app: CmsNavigation['app']; tab: { children?: CmsPage[] }; source: string };
     res.json({
       ...payload,
@@ -203,7 +205,8 @@ async function main(): Promise<void> {
       res.status(cms.status).json(cms.body);
       return;
     }
-    const ctx = await loadLiveContext();
+    const userId = String(req.headers['x-user-id'] ?? req.query.userId ?? 'u-wanderer');
+    const ctx = await loadLiveContext(userId);
     const payload = cms.body as { page: CmsPage; [key: string]: unknown };
     res.json({
       ...payload,
