@@ -1,8 +1,10 @@
 import {
   ATLAS_TRACE_REPLAY_PATH,
   ATLAS_TRACE_REPLAY_TIMEOUT_MS,
+  MOCKIFYER_CLIENT_ID_HEADER,
   MOCKIFYER_INCLUDE_TRACE_HEADER,
   MOCKIFYER_INCLUDE_TRACE_BODIES_HEADER,
+  REDACTED_SECRET_PLACEHOLDER,
   buildAtlasTracePendingHtml,
   buildAtlasTraceReplayHtml,
   buildPrettyCurlCommand,
@@ -31,6 +33,8 @@ function hop(
     source: partial.source,
     requestId: partial.requestId ?? partial.id ?? 'hop-1',
     parentRequestId: partial.parentRequestId,
+    clientId: partial.clientId,
+    requestHeaders: partial.requestHeaders,
     requestBodyPreview: partial.requestBodyPreview,
   };
 }
@@ -154,6 +158,92 @@ describe('atlas-trace-replay', () => {
       requestId: 'hop-1',
       hops: [{ id: 'child-1' }],
     });
+  });
+
+  it('stamps event.clientId as X-Mockifyer-Client-Id when requestHeaders omitted it', async () => {
+    let seenHeaders: Record<string, string> | undefined;
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      seenHeaders = init?.headers as Record<string, string>;
+      return new Response(JSON.stringify({ ok: true, mockifyerTrace: { hops: [] } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const event = hop({
+      id: 'hop-lane',
+      method: 'POST',
+      url: 'http://127.0.0.1:4200/graphql',
+      path: '/graphql',
+      source: 'upstream',
+      clientId: 'wanderweird-demo',
+      requestHeaders: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'x-mockifyer-request-id': '6b1ffb9a-87db-4b7a-abc4-e1b2204f6818',
+      },
+      requestBodyPreview: '{"query":"{ __typename }"}',
+    });
+
+    const result = await replayNetworkEventWithIncludeTrace([event], 'hop-lane', {
+      fetchFn,
+    });
+
+    expect(result.success).toBe(true);
+    expect(seenHeaders?.[MOCKIFYER_CLIENT_ID_HEADER]).toBe('wanderweird-demo');
+    expect(result.requestHeaders[MOCKIFYER_CLIENT_ID_HEADER]).toBe('wanderweird-demo');
+  });
+
+  it('replaces a redacted client-id header from event.clientId', async () => {
+    let seenHeaders: Record<string, string> | undefined;
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      seenHeaders = init?.headers as Record<string, string>;
+      return new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const event = hop({
+      id: 'hop-redacted',
+      method: 'GET',
+      url: 'https://api.example.com/v1/home',
+      path: '/v1/home',
+      source: 'upstream',
+      clientId: 'lane-from-event',
+      requestHeaders: {
+        [MOCKIFYER_CLIENT_ID_HEADER]: REDACTED_SECRET_PLACEHOLDER,
+      },
+    });
+
+    await replayNetworkEventWithIncludeTrace([event], 'hop-redacted', { fetchFn });
+    expect(seenHeaders?.[MOCKIFYER_CLIENT_ID_HEADER]).toBe('lane-from-event');
+  });
+
+  it('keeps an explicit captured client-id header over event.clientId', async () => {
+    let seenHeaders: Record<string, string> | undefined;
+    const fetchFn = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      seenHeaders = init?.headers as Record<string, string>;
+      return new Response('{"ok":true}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const event = hop({
+      id: 'hop-keep',
+      method: 'GET',
+      url: 'https://api.example.com/v1/home',
+      path: '/v1/home',
+      source: 'upstream',
+      clientId: 'from-event',
+      requestHeaders: {
+        [MOCKIFYER_CLIENT_ID_HEADER]: 'from-headers',
+      },
+    });
+
+    await replayNetworkEventWithIncludeTrace([event], 'hop-keep', { fetchFn });
+    expect(seenHeaders?.[MOCKIFYER_CLIENT_ID_HEADER]).toBe('from-headers');
   });
 
   it('forwards request body preview on POST replays', async () => {
