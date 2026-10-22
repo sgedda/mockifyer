@@ -1,0 +1,39 @@
+{
+  "name": "wanderweird-travel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wanderweird — fun Expo travel showcase with Mockifyer-backed Node services + Umbraco CMS",
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "cross-env MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3002 concurrently -n gateway,auth,trips,wander,cms,lore,graphql -c cyan,magenta,yellow,green,white,blue,red \"npm run dev -w @wanderweird/gateway-api\" \"npm run dev -w @wanderweird/auth-api\" \"npm run dev -w @wanderweird/trips-api\" \"npm run dev -w @wanderweird/wander-api\" \"npm run dev -w @wanderweird/cms-api\" \"npm run dev -w @wanderweird/lore-api\" \"npm run dev -w @wanderweird/graphql-api\"",
+    "dev:record": "cross-env MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3002 MOCKIFYER_RECORD=true concurrently -n gateway,auth,trips,wander,cms,lore,graphql -c cyan,magenta,yellow,green,white,blue,red \"npm run dev -w @wanderweird/gateway-api\" \"npm run dev -w @wanderweird/auth-api\" \"npm run dev -w @wanderweird/trips-api\" \"npm run dev -w @wanderweird/wander-api\" \"npm run dev -w @wanderweird/cms-api\" \"npm run dev -w @wanderweird/lore-api\" \"npm run dev -w @wanderweird/graphql-api\"",
+    "dev:record:stubs": "cross-env MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3002 MOCKIFYER_RECORD=true MOCKIFYER_RECORD_RESPONSES=false MOCKIFYER_ACTIVATION_MODE=client_id_header concurrently -n gateway,auth,trips,wander,cms,lore,graphql -c cyan,magenta,yellow,green,white,blue,red \"npm run dev -w @wanderweird/gateway-api\" \"npm run dev -w @wanderweird/auth-api\" \"npm run dev -w @wanderweird/trips-api\" \"npm run dev -w @wanderweird/wander-api\" \"npm run dev -w @wanderweird/cms-api\" \"npm run dev -w @wanderweird/lore-api\" \"npm run dev -w @wanderweird/graphql-api\"",
+    "dev:proxy": "cross-env MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL=http://127.0.0.1:3002 MOCKIFYER_ACTIVATION_MODE=client_id_header MOCKIFYER_RECORD_RESPONSES=false concurrently -n gateway,auth,trips,wander,cms,lore,graphql -c cyan,magenta,yellow,green,white,blue,red \"npm run dev -w @wanderweird/gateway-api\" \"npm run dev -w @wanderweird/auth-api\" \"npm run dev -w @wanderweird/trips-api\" \"npm run dev -w @wanderweird/wander-api\" \"npm run dev -w @wanderweird/cms-api\" \"npm run dev -w @wanderweird/lore-api\" \"npm run dev -w @wanderweird/graphql-api\"",
+    "dev:proxy:record": "cross-env MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL=http://127.0.0.1:3002 MOCKIFYER_ACTIVATION_MODE=client_id_header MOCKIFYER_RECORD=true MOCKIFYER_RECORD_RESPONSES=false concurrently -n gateway,auth,trips,wander,cms,lore,graphql -c cyan,magenta,yellow,green,white,blue,red \"npm run dev -w @wanderweird/gateway-api\" \"npm run dev -w @wanderweird/auth-api\" \"npm run dev -w @wanderweird/trips-api\" \"npm run dev -w @wanderweird/wander-api\" \"npm run dev -w @wanderweird/cms-api\" \"npm run dev -w @wanderweird/lore-api\" \"npm run dev -w @wanderweird/graphql-api\"",
+    "dev:mobile": "npm --prefix apps/mobile run start",
+    "dev:mobile:hybrid": "npm --prefix apps/mobile run start:hybrid",
+    "cms:run": "NUGET_PACKAGES=$HOME/.nuget/packages ASPNETCORE_URLS=http://127.0.0.1:4400 dotnet run --project cms/umbraco/Wanderweird.Cms.csproj --launch-profile Wanderweird.Cms",
+    "cms:build": "NUGET_PACKAGES=$HOME/.nuget/packages dotnet build cms/umbraco/Wanderweird.Cms.csproj",
+    "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002 --host 127.0.0.1",
+    "dashboard:sqlite": "cross-env MOCKIFYER_RECORD_RESPONSES=false mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1",
+    "dashboard:redis": "cross-env MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 MOCKIFYER_RECORD_RESPONSES=false mockifyer-dashboard --provider redis --port 3002 --host 127.0.0.1",
+    "lane:hello": "curl -sS -X PUT http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario -H 'Content-Type: application/json' -d '{\"scenario\":\"hello\"}'",
+    "lane:default": "curl -sS -X PUT http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario -H 'Content-Type: application/json' -d '{\"scenario\":\"default\"}'",
+    "redis:up": "docker compose --profile redis up -d redis",
+    "cms:up": "docker compose up -d umbraco",
+    "cms:down": "docker compose stop umbraco",
+    "cluster:up": "docker compose up -d --build",
+    "cluster:down": "docker compose down",
+    "cluster:logs": "docker compose logs -f --tail=80",
+    "cluster:ps": "docker compose ps",
+    "redis:down": "docker compose --profile redis stop redis"
+  },
+  "devDependencies": {
+    "@sgedda/mockifyer-dashboard": "file:../../packages/mockifyer-dashboard",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3"
+  }
+}

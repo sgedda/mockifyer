@@ -1,0 +1,207 @@
+# Full Wanderweird cluster.
+# From this directory:  npm run cluster:up
+# From repo root:
+#   docker compose -f example-projects/wanderweird-travel/docker-compose.yml up -d --build
+
+name: wanderweird
+
+x-node-env: &node-env
+  MOCKIFYER_CLIENT_ID: wanderweird-demo
+  MOCKIFYER_RUNTIME: filesystem
+  MOCKIFYER_RECORD: 'false'
+  MOCKIFYER_PATH: /repo/example-projects/wanderweird-travel/mock-data
+  AUTH_URL: http://auth-api:4201
+  TRIPS_URL: http://trips-api:4202
+  WANDER_URL: http://wander-api:4203
+  CMS_URL: http://cms-api:4204
+  LORE_URL: http://lore-api:4205
+  GRAPHQL_URL: http://graphql-api:4206
+  UMBRACO_URL: http://umbraco:8080
+
+x-node-service: &node-service
+  image: wanderweird-node:local
+  build:
+    context: ../..
+    dockerfile: example-projects/wanderweird-travel/docker/Dockerfile.node
+  networks:
+    - wanderweird
+  restart: unless-stopped
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    networks:
+      - wanderweird
+    profiles:
+      - redis
+
+  umbraco:
+    build:
+      context: ./cms/umbraco
+      dockerfile: Dockerfile.local
+    ports:
+      - '4400:8080'
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__umbracoDbDSN: 'Data Source=/app/umbraco/Data/Wanderweird.sqlite.db;Cache=Shared;Foreign Keys=True;Pooling=True'
+      ConnectionStrings__umbracoDbDSN_ProviderName: Microsoft.Data.Sqlite
+      Umbraco__CMS__Unattended__InstallUnattended: 'true'
+      Umbraco__CMS__Unattended__UpgradeUnattended: 'true'
+      Umbraco__CMS__Unattended__UnattendedUserName: Wanderweird Admin
+      Umbraco__CMS__Unattended__UnattendedUserEmail: admin@wanderweird.mock
+      Umbraco__CMS__Unattended__UnattendedUserPassword: Wanderweird123!
+      Umbraco__CMS__DeliveryApi__Enabled: 'true'
+      Umbraco__CMS__DeliveryApi__PublicAccess: 'true'
+      Umbraco__CMS__Global__UseHttps: 'false'
+    volumes:
+      - umbraco-data:/app/umbraco/Data
+      - umbraco-media:/app/wwwroot/media
+    networks:
+      - wanderweird
+
+  auth-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: auth-api
+      PORT: '4201'
+    ports:
+      - '4201:4201'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4201/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  trips-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: trips-api
+      PORT: '4202'
+    ports:
+      - '4202:4202'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4202/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  wander-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: wander-api
+      PORT: '4203'
+      OPENTRIPMAP_API_KEY: ${OPENTRIPMAP_API_KEY:-}
+    ports:
+      - '4203:4203'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4203/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  cms-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: cms-api
+      PORT: '4204'
+      UMBRACO_URL: http://umbraco:8080
+    ports:
+      - '4204:4204'
+    depends_on:
+      - umbraco
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4204/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  lore-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: lore-api
+      PORT: '4205'
+    ports:
+      - '4205:4205'
+    depends_on:
+      cms-api:
+        condition: service_healthy
+      wander-api:
+        condition: service_healthy
+      trips-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4205/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  graphql-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: graphql-api
+      PORT: '4206'
+    ports:
+      - '4206:4206'
+    depends_on:
+      auth-api:
+        condition: service_healthy
+      trips-api:
+        condition: service_healthy
+      wander-api:
+        condition: service_healthy
+      lore-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4206/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+  gateway-api:
+    <<: *node-service
+    environment:
+      <<: *node-env
+      SERVICE: gateway-api
+      PORT: '4200'
+    ports:
+      - '4200:4200'
+    depends_on:
+      auth-api:
+        condition: service_healthy
+      trips-api:
+        condition: service_healthy
+      wander-api:
+        condition: service_healthy
+      lore-api:
+        condition: service_healthy
+      graphql-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4200/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
+networks:
+  wanderweird:
+    driver: bridge
+
+volumes:
+  umbraco-data:
+  umbraco-media:

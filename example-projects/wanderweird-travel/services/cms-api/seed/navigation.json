@@ -1,0 +1,415 @@
+{
+  "app": {
+    "title": "Wanderweird",
+    "tagline": "Plan trips, discover places, and keep your travel notes together.",
+    "config": {
+      "showLuggageLottery": true,
+      "enableChaosDice": true,
+      "enableGraphqlTrips": true,
+      "minChaosForLegendary": 70,
+      "defaultDiscoverKey": "atlantis",
+      "themePreset": "midnight",
+      "maintenanceBanner": "",
+      "featureFlags": ["graphql-trips", "lore-remix", "delay-activity", "opentripmap"],
+      "configVersion": 2,
+      "extras": {
+        "analyticsEnabled": true,
+        "serendipityFloor": 40,
+        "lotteryButtonLabel": "Pull a ticket stub",
+        "supportEmail": "desk@wanderweird.mock",
+        "modules": { "discoverOpenApis": true, "cmsDeepLinks": true }
+      }
+    }
+  },
+  "tabs": [
+    {
+      "id": "tab-trips",
+      "slug": "trips",
+      "screenKey": "trips",
+      "title": "Trips",
+      "iconGlyph": "◆",
+      "heroTitle": "Your trips",
+      "heroSubtitle": "Plan itineraries, packing lists, and trip notes.",
+      "heroImageUrl": "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1200&q=80",
+      "sortOrder": 10,
+      "children": [
+        {
+          "id": "page-trip-tips",
+          "slug": "trip-tips",
+          "title": "Trip Tips",
+          "bodyText": "Always pack an emergency joke for border agents. Waterproof glitter is underrated.",
+          "imageUrl": "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1200&q=80",
+          "ctaLabel": "Back to Trips",
+          "featured": true,
+          "readingMinutes": 2,
+          "chaosHint": 40,
+          "topics": ["packing", "borders", "glitter"],
+          "accentColor": "#3DDC97",
+          "highlights": ["Waterproof glitter", "Emergency joke", "Declare Turkish Delight"],
+          "pageConfig": {
+            "layoutMode": "story",
+            "showChaosMeter": true,
+            "showShareSheet": true,
+            "primaryAction": "deepLink",
+            "deepLinkPath": "/(tabs)/trips/new",
+            "externalUrl": "",
+            "extras": {
+              "analyticsKey": "trip_tips",
+              "modules": ["chaosMeter", "highlights", "cta"],
+              "ctaLabelOverride": "Plan a new impossibility",
+              "hint": "CMS-driven CTA routes into the trips stack."
+            }
+          },
+          "children": [
+            {
+              "id": "page-border-etiquette",
+              "slug": "border-agent-etiquette",
+              "title": "Border Agent Etiquette",
+              "bodyText": "Smile. Declare Turkish Delight. Never argue with a beaver clerk about prophecy processing times.",
+              "imageUrl": "https://images.unsplash.com/photo-1526779259212-939e64788e3c?w=1200&q=80",
+              "ctaLabel": "Back to Trip Tips",
+              "pageConfig": {
+                "layoutMode": "story",
+                "showChaosMeter": true,
+                "showShareSheet": false,
+                "primaryAction": "back",
+                "deepLinkPath": "",
+                "externalUrl": "",
+                "extras": { "analyticsKey": "border_etiquette", "modules": ["story"] }
+              },
+              "children": [
+                {
+                  "id": "page-prophecy-queue",
+                  "slug": "prophecy-queue-numbers",
+                  "title": "Prophecy Queue Numbers",
+                  "bodyText": "Take a number. Lose a number. The beaver clerk invents a better number. Nested stack depth: 3.",
+                  "imageUrl": "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=1200&q=80",
+                  "ctaLabel": "Back",
+                  "pageConfig": {
+                    "layoutMode": "dossier",
+                    "showChaosMeter": true,
+                    "showShareSheet": false,
+                    "primaryAction": "back",
+                    "deepLinkPath": "",
+                    "externalUrl": "",
+                    "extras": {
+                      "analyticsKey": "prophecy_queue",
+                      "modules": ["dossier"],
+                      "hint": "Deep stack: Trips → Trip Tips → Etiquette → Queue."
+                    }
+                  },
+                  "children": []
+                },
+                {
+                  "id": "page-delight-form",
+                  "slug": "turkish-delight-declaration-form",
+                  "title": "Turkish Delight Declaration Form",
+                  "bodyText": "Form 88-B: list every cube. Nested under Border Agent Etiquette for deep linking demos.",
+                  "imageUrl": "https://images.unsplash.com/photo-1526779259212-939e64788e3c?w=1200&q=80",
+                  "ctaLabel": "Back",
+                  "pageConfig": {
+                    "layoutMode": "dossier",
+                    "showChaosMeter": true,
+                    "showShareSheet": false,
+                    "primaryAction": "back",
+                    "deepLinkPath": "",
+                    "externalUrl": "",
+                    "extras": { "analyticsKey": "delight_form", "modules": ["dossier"] }
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "page-packing-guide",
+          "slug": "packing-guide",
+          "title": "Packing Guide",
+          "bodyText": "Dimensional socks first. Reality filters second. Snacks that survive customs third.",
+          "imageUrl": "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=1200&q=80",
+          "ctaLabel": "Back to Trips",
+          "pageConfig": {
+            "layoutMode": "checklist",
+            "showChaosMeter": true,
+            "showShareSheet": false,
+            "primaryAction": "deepLink",
+            "deepLinkPath": "/(tabs)/trips",
+            "externalUrl": "",
+            "extras": {
+              "analyticsKey": "packing_guide",
+              "modules": ["chaosMeter", "checklist"],
+              "checklistSeed": ["Dimensional socks", "Reality filter", "Customs-proof snack"]
+            }
+          },
+          "children": [
+            {
+              "id": "page-sock-chart",
+              "slug": "dimensional-sock-chart",
+              "title": "Dimensional Sock Chart",
+              "bodyText": "Left sock: present. Right sock: adjacent timeline. Nested under Packing Guide.",
+              "imageUrl": "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=1200&q=80",
+              "ctaLabel": "Back",
+              "pageConfig": {
+                "layoutMode": "checklist",
+                "showChaosMeter": true,
+                "showShareSheet": false,
+                "primaryAction": "back",
+                "deepLinkPath": "",
+                "externalUrl": "",
+                "extras": {
+                  "analyticsKey": "sock_chart",
+                  "modules": ["checklist"],
+                  "checklistSeed": ["Present-timeline left", "Adjacent-timeline right", "Spare for jet lag"],
+                  "hint": "Third-level stack page under Packing Guide."
+                }
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tab-discover",
+      "slug": "discover",
+      "screenKey": "discover",
+      "title": "Discover",
+      "iconGlyph": "✦",
+      "heroTitle": "Discover",
+      "heroSubtitle": "Weather, tips, and nearby places for your next destination.",
+      "heroImageUrl": "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1200&q=80",
+      "sortOrder": 20,
+      "children": [
+        {
+          "id": "page-serendipity",
+          "slug": "serendipity-explained",
+          "title": "Serendipity Explained",
+          "bodyText": "We blend Open-Meteo weather, Frankfurter FX, and Advice Slip wisdom with fictional atlas vibes.",
+          "imageUrl": "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1200&q=80",
+          "ctaLabel": "Back to Discover",
+          "featured": true,
+          "readingMinutes": 2,
+          "chaosHint": 28,
+          "topics": ["weather", "fx", "advice"],
+          "accentColor": "#F0B429",
+          "highlights": ["Open-Meteo", "Frankfurter FX", "Advice Slip"],
+          "pageConfig": {
+            "layoutMode": "story",
+            "showChaosMeter": true,
+            "showShareSheet": true,
+            "primaryAction": "back",
+            "deepLinkPath": "",
+            "externalUrl": "",
+            "extras": {
+              "analyticsKey": "serendipity",
+              "modules": ["chaosMeter", "highlights", "openApis"]
+            }
+          },
+          "children": [
+            {
+              "id": "page-scoring",
+              "slug": "how-scoring-works",
+              "title": "How Scoring Works",
+              "bodyText": "Serendipity scores are cheerfully random. High scores unlock nothing except vibes.",
+              "imageUrl": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1200&q=80",
+              "ctaLabel": "Back to Serendipity",
+              "pageConfig": {
+                "layoutMode": "dossier",
+                "showChaosMeter": true,
+                "showShareSheet": false,
+                "primaryAction": "back",
+                "deepLinkPath": "",
+                "externalUrl": "",
+                "extras": { "analyticsKey": "scoring", "modules": ["dossier"] }
+              },
+              "children": [
+                {
+                  "id": "page-vibe-formula",
+                  "slug": "vibe-index-formula",
+                  "title": "Vibe Index Formula",
+                  "bodyText": "vibe = chaos×0.45 + serendipity×0.35 + tags×6. Nested under How Scoring Works.",
+                  "imageUrl": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=1200&q=80",
+                  "ctaLabel": "Back",
+                  "pageConfig": {
+                    "layoutMode": "dossier",
+                    "showChaosMeter": true,
+                    "showShareSheet": true,
+                    "primaryAction": "back",
+                    "deepLinkPath": "",
+                    "externalUrl": "",
+                    "extras": {
+                      "analyticsKey": "vibe_formula",
+                      "modules": ["dossier", "chaosMeter"],
+                      "hint": "Deep stack: Discover → Serendipity → Scoring → Formula."
+                    }
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "page-lottery",
+          "slug": "lottery-rules",
+          "title": "Luggage Lottery Rules",
+          "bodyText": "Prizes cannot be checked as baggage. Ticket stubs are valid only inside Mockifyer scenarios.",
+          "imageUrl": "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1200&q=80",
+          "ctaLabel": "Back to Discover",
+          "pageConfig": {
+            "layoutMode": "dossier",
+            "showChaosMeter": true,
+            "showShareSheet": false,
+            "primaryAction": "deepLink",
+            "deepLinkPath": "/(tabs)/discover",
+            "externalUrl": "",
+            "extras": {
+              "analyticsKey": "lottery_rules",
+              "modules": ["dossier", "cta"],
+              "ctaLabelOverride": "Back to lottery desk"
+            }
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "tab-passport",
+      "slug": "passport",
+      "screenKey": "passport",
+      "title": "Passport",
+      "iconGlyph": "◎",
+      "heroTitle": "Passport",
+      "heroSubtitle": "Stamps collected when you mark a trip complete.",
+      "heroImageUrl": "https://images.unsplash.com/photo-1452421822248-d4c2b47f0c81?w=1200&q=80",
+      "sortOrder": 30,
+      "children": [
+        {
+          "id": "page-stamp-lore",
+          "slug": "stamp-lore",
+          "title": "Stamp Lore",
+          "bodyText": "Each legendary trip mints a passport stamp. Colors come from your account settings.",
+          "imageUrl": "https://images.unsplash.com/photo-1529070538774-1840cb96e9ca?w=1200&q=80",
+          "ctaLabel": "Back to Passport",
+          "pageConfig": {
+            "layoutMode": "story",
+            "showChaosMeter": true,
+            "showShareSheet": false,
+            "primaryAction": "back",
+            "deepLinkPath": "",
+            "externalUrl": "",
+            "extras": { "analyticsKey": "stamp_lore", "modules": ["story"] }
+          },
+          "children": [
+            {
+              "id": "page-ink",
+              "slug": "ink-recipes",
+              "title": "Ink Recipes",
+              "bodyText": "Official stamp ink: 1 part seafoam, 2 parts chaos, a dash of jet lag.",
+              "imageUrl": "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=1200&q=80",
+              "ctaLabel": "Back to Stamp Lore",
+              "pageConfig": {
+                "layoutMode": "story",
+                "showChaosMeter": true,
+                "showShareSheet": false,
+                "primaryAction": "back",
+                "deepLinkPath": "",
+                "externalUrl": "",
+                "extras": { "analyticsKey": "ink_recipes", "modules": ["story"] }
+              },
+              "children": [
+                {
+                  "id": "page-seafoam",
+                  "slug": "seafoam-extraction-notes",
+                  "title": "Seafoam Extraction Notes",
+                  "bodyText": "Harvest only at dusk. Nested under Ink Recipes — third stack level.",
+                  "imageUrl": "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=1200&q=80",
+                  "ctaLabel": "Back",
+                  "pageConfig": {
+                    "layoutMode": "story",
+                    "showChaosMeter": true,
+                    "showShareSheet": false,
+                    "primaryAction": "back",
+                    "deepLinkPath": "",
+                    "externalUrl": "",
+                    "extras": { "analyticsKey": "seafoam_notes", "modules": ["story"] }
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tab-account",
+      "slug": "account",
+      "screenKey": "account",
+      "title": "Account",
+      "iconGlyph": "◉",
+      "heroTitle": "Account",
+      "heroSubtitle": "Profile, travel style, and notification preferences.",
+      "heroImageUrl": "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80",
+      "sortOrder": 40,
+      "children": [
+        {
+          "id": "page-about",
+          "slug": "about-wanderweird",
+          "title": "About Wanderweird",
+          "bodyText": "A Mockifyer showcase travel app. Not a real booking product. Reality is optional.",
+          "imageUrl": "https://images.unsplash.com/photo-1488085061387-422e29b40080?w=1200&q=80",
+          "ctaLabel": "Back to Account",
+          "pageConfig": {
+            "layoutMode": "story",
+            "showChaosMeter": false,
+            "showShareSheet": false,
+            "primaryAction": "external",
+            "deepLinkPath": "",
+            "externalUrl": "https://github.com/sgedda/mockifyer",
+            "extras": { "analyticsKey": "about", "modules": ["story"] }
+          },
+          "children": []
+        },
+        {
+          "id": "page-privacy",
+          "slug": "privacy",
+          "title": "Privacy",
+          "bodyText": "Demo accounts live in auth-api memory. Tokens sit in SecureStore. No real travelers were confused in production.",
+          "imageUrl": "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=1200&q=80",
+          "ctaLabel": "Back to Account",
+          "pageConfig": {
+            "layoutMode": "story",
+            "showChaosMeter": false,
+            "showShareSheet": false,
+            "primaryAction": "back",
+            "deepLinkPath": "",
+            "externalUrl": "",
+            "extras": { "analyticsKey": "privacy", "modules": ["story"] }
+          },
+          "children": [
+            {
+              "id": "page-retention",
+              "slug": "data-retention-myths",
+              "title": "Data Retention Myths",
+              "bodyText": "Nothing persists past process restart except your curiosity. Nested under Privacy.",
+              "imageUrl": "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=1200&q=80",
+              "ctaLabel": "Back",
+              "pageConfig": {
+                "layoutMode": "story",
+                "showChaosMeter": false,
+                "showShareSheet": false,
+                "primaryAction": "back",
+                "deepLinkPath": "",
+                "externalUrl": "",
+                "extras": { "analyticsKey": "retention_myths", "modules": ["story"] }
+              },
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

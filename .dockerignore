@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/.git
+**/.expo
+**/ios
+**/android
+**/.cursor
+**/umbraco/Data
+**/umbraco/Logs
+**/coverage
+**/*.md
+!packages/mockifyer-core/package.json
+!packages/mockifyer-fetch/package.json
+agent-transcripts
+mockifyer-web/node_modules
+packages/*/node_modules
+example-projects/wanderweird-travel/apps

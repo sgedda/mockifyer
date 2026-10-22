@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/.git
+**/umbraco/Data
+**/umbraco/Logs
+**/.expo
+**/ios
+**/android
+apps/mobile
+*.md
+.env
+.env.*
