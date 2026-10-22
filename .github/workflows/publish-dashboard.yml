@@ -10,20 +10,20 @@ jobs:
     name: Build dashboard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       - name: Install core dependencies (local file:)
-        run: npm --prefix packages/mockifyer-core install
+        run: npm --prefix packages/mockifyer-core ci --ignore-scripts
 
       - name: Build core
         run: npm --prefix packages/mockifyer-core run build
 
       - name: Install dashboard dependencies (local file:)
-        run: npm --prefix packages/mockifyer-dashboard install
+        run: npm --prefix packages/mockifyer-dashboard ci --ignore-scripts
 
       - name: Build dashboard
         run: npm --prefix packages/mockifyer-dashboard run build
@@ -36,23 +36,23 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           registry-url: "https://registry.npmjs.org"
 
       - name: Install core dependencies (local file:)
-        run: npm --prefix packages/mockifyer-core install
+        run: npm --prefix packages/mockifyer-core ci --ignore-scripts
 
       - name: Build core
         run: npm --prefix packages/mockifyer-core run build
 
       - name: Install dashboard dependencies (local file:)
-        run: npm --prefix packages/mockifyer-dashboard install
+        run: npm --prefix packages/mockifyer-dashboard ci --ignore-scripts
 
       - name: Build dashboard
         run: npm --prefix packages/mockifyer-dashboard run build
