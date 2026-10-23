@@ -107,6 +107,10 @@ import {
   type MockifyerRuntimeEnabledStorage,
   outboundHeadersToRecord,
   appendParamsToUrl,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
+  isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -685,6 +689,23 @@ class MockifyerClass {
     return undefined;
   }
 
+  private getAllJsonFiles(dir: string): string[] {
+    if (!fs || !path || !fs.existsSync(dir)) return [];
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (isMockRecordingSidecarDir(entry.name)) {
+          continue;
+        }
+        results.push(...this.getAllJsonFiles(fullPath));
+      } else if (entry.name.endsWith('.json')) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
   private findBestMatchingMockFromFiles(
     request: StoredRequest,
     options?: { includePassthroughMocks?: boolean }
@@ -711,16 +732,14 @@ class MockifyerClass {
       return undefined;
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
+    const files = this.getAllJsonFiles(scenarioPath);
 
     const requestKey = this.generateRequestKey(request);
     let exactMatch: CachedMockData | undefined;
     let similarMatch: CachedMockData | undefined;
     
-    for (const file of files) {
+    for (const filePath of files) {
       try {
-        const filePath = path!.join(scenarioPath, file);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
@@ -729,16 +748,17 @@ class MockifyerClass {
         }
         
         const mockKey = this.generateRequestKey(mockData.request);
+        const filename = path.relative(scenarioPath, filePath);
         
         if (mockKey === requestKey) {
           if (
             mockShouldBeIncludedInRequestMatch(mockData, {
               includePassthroughMocks,
-              filename: file,
+              filename,
               scenarioPath,
             })
           ) {
-            exactMatch = { mockData, filename: file, filePath };
+            exactMatch = { mockData, filename, filePath };
             break;
           }
           continue;
@@ -820,11 +840,11 @@ class MockifyerClass {
                 if (
                   mockShouldBeIncludedInRequestMatch(mockData, {
                     includePassthroughMocks,
-                    filename: file,
+                    filename,
                     scenarioPath,
                   })
                 ) {
-                  similarMatch = { mockData, filename: file, filePath };
+                  similarMatch = { mockData, filename, filePath };
                 }
               }
             } catch (e) {
@@ -833,7 +853,7 @@ class MockifyerClass {
           }
         }
       } catch (error) {
-        logger.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        logger.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 
@@ -1552,14 +1572,14 @@ class MockifyerClass {
             `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
           );
         } else {
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
-          const domain = urlParts[0].replace(/\./g, '_');
-          const urlPathPart = urlParts.slice(1).join('_') || 'root';
-          const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
-          const filePath = path.join(scenarioPath, filename);
+          // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+          const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+          const filePath = path.join(scenarioPath, dir, filename);
+          fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
           fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-          logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+          logger.info(
+            `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
+          );
         }
 
         if (this.config.generateTests?.enabled && this.testGenerator) {
