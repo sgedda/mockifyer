@@ -17,6 +17,8 @@ import {
   filterMocksByHopTraffic,
   getChainRootRequestId,
   getMockHopTrafficMode,
+  mockServiceChainSize,
+  mockChainDepth,
   mockChainNodeCanExpand,
   mockHopEndpointFingerprint,
   mockHopHitsUpstream,
@@ -1029,6 +1031,40 @@ describe('domain folder replay plans', () => {
         updatedLive: 3,
       })
     ).toBe('2 mocks on saved response. 1 will capture on next request, then replay. 3 mocks set to Live')
+  })
+})
+
+describe('mockServiceChainSize', () => {
+  it('counts the full subtree so chain roots are not stuck at size 1', () => {
+    const entry = mock({
+      filename: 'entry.json',
+      endpoint: 'http://gateway.example/api/page',
+      requestId: 'entry',
+    })
+    const mid = mock({
+      filename: 'mid.json',
+      endpoint: 'http://bff.example/page',
+      requestId: 'mid',
+      parentRequestId: 'entry',
+    })
+    const leafA = mock({
+      filename: 'leaf-a.json',
+      endpoint: 'http://api.example/a',
+      requestId: 'leaf-a',
+      parentRequestId: 'mid',
+    })
+    const leafB = mock({
+      filename: 'leaf-b.json',
+      endpoint: 'http://api.example/b',
+      requestId: 'leaf-b',
+      parentRequestId: 'mid',
+    })
+    const maps = buildMockChainMaps([entry, mid, leafA, leafB])
+
+    expect(mockServiceChainSize(entry, maps)).toBe(4)
+    expect(mockServiceChainSize(mid, maps)).toBe(4)
+    expect(mockServiceChainSize(leafA, maps)).toBe(4)
+    expect(mockChainDepth(leafA, maps.byRequestId, maps.childrenByParent)).toBe(2)
   })
 })
 
