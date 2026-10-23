@@ -105,8 +105,13 @@ router.get('/trace', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
-    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
+    const [{ events: stored }, networkLogConfig] = await Promise.all([
+      store.list({ scenario, clientId, limit: scanLimit }),
+      store.getConfig(scenario),
+    ]);
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const trace = resolveNetworkRequestTrace(events, {
       by: requestId ? 'requestId' : 'eventId',
       value: requestId || eventId,
@@ -121,7 +126,6 @@ router.get('/trace', async (req: Request, res: Response) => {
           'Enable network logging and captureBodies, then run traffic through the proxy or SDK. Use the X-Mockifyer-Request-Id from the entry service response (or proxy JSON requestId).',
       });
     }
-    const networkLogConfig = await store.getConfig(scenario);
     return res.json({
       provider: config.provider,
       networkLogConfig,
@@ -157,8 +161,13 @@ router.get('/explain', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
-    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
+    const [{ events: stored }, networkLogConfig] = await Promise.all([
+      store.list({ scenario, clientId, limit: scanLimit }),
+      store.getConfig(scenario),
+    ]);
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const context = explainIncidentFromEvents(events, {
       incidentId: incidentId || undefined,
       sessionId,
@@ -199,7 +208,9 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
-    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario);
+    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, hydrated).map(polishNetworkEventBodies);
     return res.json({
       scenario,

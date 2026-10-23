@@ -20,10 +20,19 @@ function mockLookupKey(scenario: string, hash: string): string {
   return `${scenario}\n${hash}`;
 }
 
+export interface HydrateResponsePreviewOptions {
+  /**
+   * When `false`, do not copy mock response bodies onto hops.
+   * Previews already stored on the event are left unchanged.
+   */
+  captureBodies?: boolean;
+}
+
 /**
  * Fill `responseBodyPreview` on hops that were logged without one, using the recorded
- * mock for the hop's `requestHash`. The hop log keeps only request data; the response
- * body already lives in the mock, so it is read on demand instead of stored per hop.
+ * mock for the hop's `requestHash`. Used when body capture is on and a hop was stored
+ * without a preview. When `captureBodies` is false this is a no-op so the Network
+ * page does not reattach a body the toggle just turned off.
  *
  * Hops with no stored mock, or a mock still waiting for its response, stay without a body.
  * The preview reflects the mock as it is now, which can differ from the original response
@@ -32,8 +41,10 @@ function mockLookupKey(scenario: string, hash: string): string {
 export async function hydrateResponsePreviewsFromMocks(
   events: NetworkEvent[],
   reader: MockResponseReader,
-  fallbackScenario: string
+  fallbackScenario: string,
+  options?: HydrateResponsePreviewOptions
 ): Promise<NetworkEvent[]> {
+  if (options?.captureBodies === false) return events;
   const lookups = new Map<string, Promise<MockData | null | undefined>>();
   for (const event of events) {
     if (!needsResponseHydration(event)) continue;
@@ -69,12 +80,14 @@ export async function hydrateResponsePreviewsForDashboard(
   events: NetworkEvent[],
   config: DashboardContextConfig,
   mockDataPath: string,
-  scenario: string
+  scenario: string,
+  options?: HydrateResponsePreviewOptions
 ): Promise<NetworkEvent[]> {
+  if (options?.captureBodies === false) return events;
   if (!isCentralizedDashboardProvider(config.provider)) return events;
   const store = createDashboardMockStore(config, mockDataPath);
   try {
-    return await hydrateResponsePreviewsFromMocks(events, store, scenario);
+    return await hydrateResponsePreviewsFromMocks(events, store, scenario, options);
   } finally {
     await store.close().catch(() => undefined);
   }
