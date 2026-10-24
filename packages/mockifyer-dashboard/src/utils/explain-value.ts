@@ -144,13 +144,14 @@ async function findMockByUrl(
   if (isCentralizedDashboardProvider(config.provider)) {
     const store = createDashboardMockStore(config, mockDataPath);
     try {
-      const { items } = await store.search(scenario, [searchPath], 1);
-      if (items.length > 0) {
-        const item = items[0];
-        return {
-          mockFile: `redis/${item.hash}.json`,
-          mockData: item.mockData,
-        };
+      const { items } = await store.search(scenario, [searchPath], 10);
+      for (const item of items) {
+        if (item.mockData.request?.url && item.mockData.request.url.includes(searchPath)) {
+          return {
+            mockFile: `redis/${item.hash}.json`,
+            mockData: item.mockData,
+          };
+        }
       }
     } finally {
       await store.close().catch(() => undefined);
