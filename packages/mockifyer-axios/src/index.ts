@@ -1072,13 +1072,19 @@ class MockifyerClass {
           getCurrentScenario(this.config.mockDataPath, this.config.clientId)
         );
         ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+        
+        if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
+        }
+
         const mockResponseBody = this.prepareStoredResponseBody(mockData, filename, hitScenarioPath);
+        const effectiveStatus = mockData.statusOverride ?? mockData.response.status;
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
             url: this.resolveLoggedRequestUrl(config, request.url),
             source: 'mock-hit',
-            status: mockData.response.status,
+            status: effectiveStatus,
             requestHash: networkEventHashFromRequestKey(requestKey),
             requestBody: request.data,
             responseBody: mockResponseBody,
@@ -1106,7 +1112,7 @@ class MockifyerClass {
         
         const mockResponse: AxiosResponse = {
           data: mockResponseBody,
-          status: mockData.response.status,
+          status: effectiveStatus,
           statusText: 'OK',
           headers: axiosHeaders,
           config: config as any,

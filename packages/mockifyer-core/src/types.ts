@@ -499,6 +499,16 @@ export interface MockData {
   /** Optional: when serving this mock, replace field values at the given paths (overlay on stored body). */
   responseFieldOverrides?: MockResponseFieldOverride[];
   /**
+   * Optional: override the HTTP status code when serving this mock (e.g. 500 for error simulation, 429 for rate limiting).
+   * When set, replaces `response.status` at replay time without mutating the stored mock.
+   */
+  statusOverride?: number;
+  /**
+   * Optional: delay in milliseconds before returning the mock response (simulates slow network or processing).
+   * Applied before status override and response body preparation.
+   */
+  responseDelayMs?: number;
+  /**
    * When true, this recording is never served as a mock: the real API is always called when Mockifyer is enabled.
    * The file is still kept (e.g. for documentation or for updating while recording).
    * New recordings default this to **true** (store the body, keep calling live) until disabled in the dashboard; see **`MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API`**.
