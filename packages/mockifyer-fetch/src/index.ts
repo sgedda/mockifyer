@@ -1091,16 +1091,17 @@ class MockifyerClass {
             }
           }
           
-          // CRITICAL: Check for Metro rejection message
-          const hasRejectionMessage = responseDataStr && (
-            responseDataStr.includes('Cannot save Mockifyer sync endpoint') ||
-            responseDataStr.includes('Cannot save Mockifyer sync endpoint requests')
+          // Only Metro's own save rejection should skip recording. A business
+          // payload such as `{ success: false, error: "username taken" }` must
+          // still be logged, unwrapped, and saved.
+          const METRO_SAVE_REJECTION = 'Cannot save Mockifyer sync endpoint';
+          const hasRejectionMessage = Boolean(
+            responseDataStr && responseDataStr.includes(METRO_SAVE_REJECTION)
           );
-          
-          const hasRejectionInObject = responseDataObj && (
-            (responseDataObj.error && typeof responseDataObj.error === 'string' && 
-             responseDataObj.error.includes('Cannot save Mockifyer sync endpoint')) ||
-            (responseDataObj.success === false && responseDataObj.error)
+          const hasRejectionInObject = Boolean(
+            responseDataObj &&
+            typeof responseDataObj.error === 'string' &&
+            responseDataObj.error.includes(METRO_SAVE_REJECTION)
           );
           
           if (hasRejectionMessage || hasRejectionInObject) {
