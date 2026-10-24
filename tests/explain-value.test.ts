@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import fs from 'fs';
 import path from 'path';
 import { explainValue } from '../packages/mockifyer-dashboard/src/utils/explain-value';
-import type { DashboardConfig } from '../packages/mockifyer-dashboard/src/utils/dashboard-context';
+import type { DashboardContextConfig } from '../packages/mockifyer-dashboard/src/utils/dashboard-context';
 import type { MockData } from '../packages/mockifyer-core/src/types';
 
 const TEST_MOCK_DATA_PATH = path.join(__dirname, 'fixtures', 'explain-value-test');
@@ -24,14 +24,21 @@ describe('explainValue', () => {
 
   it('should find mock by URL and extract field overrides', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/weather?city=new-york',
-      method: 'GET',
-      status: 200,
-      responseData: {
-        temperature_2m: 20,
-        humidity: 65,
-        wind_speed: 10,
+      request: {
+        url: 'https://api.example.com/weather?city=new-york',
+        method: 'GET',
+        headers: {},
       },
+      response: {
+        status: 200,
+        data: {
+          temperature_2m: 20,
+          humidity: 65,
+          wind_speed: 10,
+        },
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
       responseFieldOverrides: [
         {
           path: 'temperature_2m',
@@ -47,7 +54,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -77,18 +84,25 @@ describe('explainValue', () => {
 
   it('should extract date overrides', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/trips',
-      method: 'GET',
-      status: 200,
-      responseData: {
-        trips: [
-          {
-            id: 'trip-1',
-            departure: '2024-01-15T10:00:00Z',
-            status: 'confirmed',
-          },
-        ],
+      request: {
+        url: 'https://api.example.com/trips',
+        method: 'GET',
+        headers: {},
       },
+      response: {
+        status: 200,
+        data: {
+          trips: [
+            {
+              id: 'trip-1',
+              departure: '2024-01-15T10:00:00Z',
+              status: 'confirmed',
+            },
+          ],
+        },
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
       responseDateOverrides: [
         {
           path: 'trips.0.departure',
@@ -104,7 +118,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -127,7 +141,7 @@ describe('explainValue', () => {
   });
 
   it('should report when mock not found', async () => {
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -145,12 +159,19 @@ describe('explainValue', () => {
 
   it('should report when no modifications found', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/users',
-      method: 'GET',
-      status: 200,
-      responseData: {
-        users: [{ id: 1, name: 'Alice' }],
+      request: {
+        url: 'https://api.example.com/users',
+        method: 'GET',
+        headers: {},
       },
+      response: {
+        status: 200,
+        data: {
+          users: [{ id: 1, name: 'Alice' }],
+        },
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
     };
 
     const mockFile = 'GET_api.example.com_users.json';
@@ -160,7 +181,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -177,11 +198,18 @@ describe('explainValue', () => {
 
   it('should report passthrough mode', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/live',
-      method: 'GET',
-      status: 200,
+      request: {
+        url: 'https://api.example.com/live',
+        method: 'GET',
+        headers: {},
+      },
+      response: {
+        status: 200,
+        data: {},
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
       alwaysUseRealApi: true,
-      responseData: {},
     };
 
     const mockFile = 'GET_api.example.com_live.json';
@@ -191,7 +219,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -207,19 +235,26 @@ describe('explainValue', () => {
 
   it('should extract sibling fields at nested path', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/bookings',
-      method: 'GET',
-      status: 200,
-      responseData: {
-        bookings: [
-          {
-            id: 'booking-1',
-            status: 'confirmed',
-            price: 100,
-            date: '2024-01-15',
-          },
-        ],
+      request: {
+        url: 'https://api.example.com/bookings',
+        method: 'GET',
+        headers: {},
       },
+      response: {
+        status: 200,
+        data: {
+          bookings: [
+            {
+              id: 'booking-1',
+              status: 'confirmed',
+              price: 100,
+              date: '2024-01-15',
+            },
+          ],
+        },
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
     };
 
     const mockFile = 'GET_api.example.com_bookings.json';
@@ -229,7 +264,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {
@@ -251,14 +286,21 @@ describe('explainValue', () => {
 
   it('should handle multiple field overrides', async () => {
     const mockData: MockData = {
-      url: 'https://api.example.com/data',
-      method: 'GET',
-      status: 200,
-      responseData: {
-        value1: 10,
-        value2: 20,
-        value3: 30,
+      request: {
+        url: 'https://api.example.com/data',
+        method: 'GET',
+        headers: {},
       },
+      response: {
+        status: 200,
+        data: {
+          value1: 10,
+          value2: 20,
+          value3: 30,
+        },
+        headers: {},
+      },
+      timestamp: new Date().toISOString(),
       responseFieldOverrides: [
         {
           path: 'value1',
@@ -278,7 +320,7 @@ describe('explainValue', () => {
       JSON.stringify(mockData, null, 2)
     );
 
-    const config: DashboardConfig = { provider: 'filesystem' };
+    const config: DashboardContextConfig = { provider: 'filesystem' };
 
     const result = await explainValue(
       {

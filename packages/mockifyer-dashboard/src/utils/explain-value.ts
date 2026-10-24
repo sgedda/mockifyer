@@ -8,8 +8,10 @@ import {
 } from '@sgedda/mockifyer-core';
 import { createNetworkLogStore } from './network-log-store';
 import { hydrateResponsePreviewsForDashboard } from './network-event-response-hydration';
-import type { DashboardConfig } from './dashboard-context';
+import type { DashboardContextConfig } from './dashboard-context';
 import { getAtlasStore } from './atlas-store';
+import { createDashboardMockStore } from './create-dashboard-mock-store';
+import { isCentralizedDashboardProvider } from './dashboard-provider';
 import path from 'path';
 import fs from 'fs';
 
@@ -130,15 +132,34 @@ function findMockByRequestId(
   return null;
 }
 
-function findMockByUrl(
+async function findMockByUrl(
   mockDataPath: string,
   scenario: string,
-  urlOrPath: string
-): { mockFile: string; mockData: MockData } | null {
+  urlOrPath: string,
+  config: DashboardContextConfig
+): Promise<{ mockFile: string; mockData: MockData } | null> {
+  const isFullUrl = urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://');
+  const searchPath = isFullUrl || urlOrPath.startsWith('/') ? urlOrPath : `/${urlOrPath}`;
+  
+  if (isCentralizedDashboardProvider(config.provider)) {
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      const { items } = await store.search(scenario, [searchPath], 1);
+      if (items.length > 0) {
+        const item = items[0];
+        return {
+          mockFile: `redis/${item.hash}.json`,
+          mockData: item.mockData,
+        };
+      }
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+    return null;
+  }
+  
   const scenarioPath = path.join(mockDataPath, scenario);
   if (!fs.existsSync(scenarioPath)) return null;
-  
-  const searchPath = urlOrPath.startsWith('/') ? urlOrPath : `/${urlOrPath}`;
   
   try {
     const files = fs.readdirSync(scenarioPath, { recursive: true });
@@ -150,7 +171,7 @@ function findMockByUrl(
       try {
         const content = fs.readFileSync(filePath, 'utf-8');
         const mockData = JSON.parse(content) as MockData;
-        if (mockData.url && mockData.url.includes(searchPath)) {
+        if (mockData.request?.url && mockData.request.url.includes(searchPath)) {
           return {
             mockFile: path.relative(scenarioPath, filePath),
             mockData,
@@ -176,8 +197,8 @@ function extractModifications(
   if (mockData.responseFieldOverrides && mockData.responseFieldOverrides.length > 0) {
     for (const override of mockData.responseFieldOverrides) {
       if (!fieldPath || override.path === fieldPath || override.path.startsWith(`${fieldPath}.`)) {
-        const originalValue = mockData.responseData
-          ? getAtPath(mockData.responseData, override.path)
+        const originalValue = mockData.response?.data
+          ? getAtPath(mockData.response.data, override.path)
           : undefined;
         
         modifications.push({
@@ -218,7 +239,7 @@ function extractModifications(
 
 export async function explainValue(
   input: ExplainValueInput,
-  config: DashboardConfig,
+  config: DashboardContextConfig,
   mockDataPath: string
 ): Promise<ExplainValueResult> {
   const result: ExplainValueResult = {
@@ -263,7 +284,7 @@ export async function explainValue(
         };
         
         if (found.event.source === 'mock-hit' && found.event.url) {
-          const mockSearch = findMockByUrl(mockDataPath, input.scenario, found.event.url);
+          const mockSearch = await findMockByUrl(mockDataPath, input.scenario, found.event.url, config);
           if (mockSearch) {
             mockFile = mockSearch.mockFile;
             mockData = mockSearch.mockData;
@@ -292,7 +313,7 @@ export async function explainValue(
       }
     } else if (input.url || input.path) {
       const searchPath = input.url || input.path!;
-      const mockSearch = findMockByUrl(mockDataPath, input.scenario, searchPath);
+      const mockSearch = await findMockByUrl(mockDataPath, input.scenario, searchPath, config);
       if (mockSearch) {
         mockFile = mockSearch.mockFile;
         mockData = mockSearch.mockData;
@@ -310,8 +331,8 @@ export async function explainValue(
       const modifications = extractModifications(mockData, input.fieldPath);
       result.modifications.push(...modifications);
       
-      if (mockData.responseData && input.fieldPath) {
-        const siblingFields = getSiblingFields(mockData.responseData, input.fieldPath);
+      if (mockData.response?.data && input.fieldPath) {
+        const siblingFields = getSiblingFields(mockData.response.data, input.fieldPath);
         if (Object.keys(siblingFields).length > 0) {
           result.siblingFields = siblingFields;
         }
@@ -333,9 +354,9 @@ export async function explainValue(
     }
     
     const atlasStore = getAtlasStore();
-    const atlasDoc = atlasStore.getDoc(input.scenario);
-    if (atlasDoc && input.requestId) {
-      const usage = atlasDoc.usage?.find((u) => u.requestId === input.requestId);
+    if (input.requestId) {
+      const usageList = atlasStore.listUsage(input.scenario);
+      const usage = usageList.find((u) => u.requestId === input.requestId);
       if (usage) {
         result.notes?.push(
           `Used in: ${usage.usage.screen || usage.usage.component || 'unknown screen'}`
