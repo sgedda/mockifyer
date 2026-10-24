@@ -432,6 +432,10 @@ export default function MockEditor({
   async function handleStatusOverrideChange(value: string) {
     const newStatus = value === '' ? null : parseInt(value, 10)
     if (newStatus !== null && (isNaN(newStatus) || newStatus < 100 || newStatus >= 600)) {
+      setStatusOverrideInput(statusOverride !== null ? String(statusOverride) : '')
+      return
+    }
+    if (newStatus === statusOverride) {
       return
     }
     setStatusOverride(newStatus)
@@ -461,6 +465,10 @@ export default function MockEditor({
   async function handleResponseDelayChange(value: string) {
     const newDelay = value === '' ? null : parseInt(value, 10)
     if (newDelay !== null && (isNaN(newDelay) || newDelay < 0)) {
+      setResponseDelayInput(responseDelayMs !== null ? String(responseDelayMs) : '')
+      return
+    }
+    if (newDelay === responseDelayMs) {
       return
     }
     setResponseDelayMs(newDelay)
