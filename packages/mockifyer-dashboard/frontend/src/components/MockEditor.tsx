@@ -208,6 +208,8 @@ export default function MockEditor({
   const [refreshingLive, setRefreshingLive] = useState(false)
   const [statusOverride, setStatusOverride] = useState<number | null>(null)
   const [responseDelayMs, setResponseDelayMs] = useState<number | null>(null)
+  const [statusOverrideInput, setStatusOverrideInput] = useState<string>('')
+  const [responseDelayInput, setResponseDelayInput] = useState<string>('')
   const { toast } = useToast()
   const overrideCount = countStoredOverrides(mock)
 
@@ -263,8 +265,12 @@ export default function MockEditor({
             : JSON.stringify(parsedData)
     )
     setReplayMode(resolveReplayModeFromMock(mock))
-    setStatusOverride(mock.data.statusOverride ?? null)
-    setResponseDelayMs(mock.data.responseDelayMs ?? null)
+    const status = mock.data.statusOverride ?? null
+    const delay = mock.data.responseDelayMs ?? null
+    setStatusOverride(status)
+    setResponseDelayMs(delay)
+    setStatusOverrideInput(status !== null ? String(status) : '')
+    setResponseDelayInput(delay !== null ? String(delay) : '')
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -441,6 +447,7 @@ export default function MockEditor({
       }
     } catch (error: any) {
       setStatusOverride(mock.data.statusOverride ?? null)
+      setStatusOverrideInput(mock.data.statusOverride !== null && mock.data.statusOverride !== undefined ? String(mock.data.statusOverride) : '')
       toast({
         title: 'Error',
         description: error.message || 'Failed to update status override',
@@ -469,6 +476,7 @@ export default function MockEditor({
       }
     } catch (error: any) {
       setResponseDelayMs(mock.data.responseDelayMs ?? null)
+      setResponseDelayInput(mock.data.responseDelayMs !== null && mock.data.responseDelayMs !== undefined ? String(mock.data.responseDelayMs) : '')
       toast({
         title: 'Error',
         description: error.message || 'Failed to update response delay',
@@ -692,8 +700,9 @@ export default function MockEditor({
                       min="100"
                       max="599"
                       placeholder="e.g. 500, 429, 404"
-                      value={statusOverride ?? ''}
-                      onChange={(e) => void handleStatusOverrideChange(e.target.value)}
+                      value={statusOverrideInput}
+                      onChange={(e) => setStatusOverrideInput(e.target.value)}
+                      onBlur={(e) => void handleStatusOverrideChange(e.target.value)}
                       disabled={saving || readOnly}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     />
@@ -701,7 +710,10 @@ export default function MockEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void handleStatusOverrideChange('')}
+                        onClick={() => {
+                          setStatusOverrideInput('')
+                          void handleStatusOverrideChange('')
+                        }}
                         disabled={saving || readOnly}
                         className="shrink-0"
                       >
@@ -723,8 +735,9 @@ export default function MockEditor({
                       type="number"
                       min="0"
                       placeholder="e.g. 500, 1000, 3000"
-                      value={responseDelayMs ?? ''}
-                      onChange={(e) => void handleResponseDelayChange(e.target.value)}
+                      value={responseDelayInput}
+                      onChange={(e) => setResponseDelayInput(e.target.value)}
+                      onBlur={(e) => void handleResponseDelayChange(e.target.value)}
                       disabled={saving || readOnly}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                     />
@@ -732,7 +745,10 @@ export default function MockEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => void handleResponseDelayChange('')}
+                        onClick={() => {
+                          setResponseDelayInput('')
+                          void handleResponseDelayChange('')
+                        }}
                         disabled={saving || readOnly}
                         className="shrink-0"
                       >

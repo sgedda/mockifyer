@@ -1416,6 +1416,17 @@ class MockifyerClass {
           logger.debug(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
+          
+          const hitScenarioPath = getScenarioFolderPath(
+            this.config.mockDataPath,
+            getCurrentScenario(this.config.mockDataPath, this.config.clientId)
+          );
+          ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+          
+          if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
+          }
+          
           const responseHeaders = {
             ...mockData.response.headers,
             'x-mockifyer': 'true',
@@ -1431,17 +1442,16 @@ class MockifyerClass {
 
           logger.debug(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
           
+          const effectiveStatus = mockData.statusOverride ?? mockData.response.status;
+          
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
             data: this.prepareStoredResponseBody(
               mockData,
               filename,
-              getScenarioFolderPath(
-                this.config.mockDataPath,
-                getCurrentScenario(this.config.mockDataPath, this.config.clientId)
-              )
+              hitScenarioPath
             ),
-            status: mockData.response.status,
+            status: effectiveStatus,
             statusText: 'OK',
             headers: axiosHeaders,
             config: config as any,
