@@ -144,9 +144,10 @@ async function findMockByUrl(
   if (isCentralizedDashboardProvider(config.provider)) {
     const store = createDashboardMockStore(config, mockDataPath);
     try {
-      const { items } = await store.search(scenario, [searchPath], 10);
+      const searchLower = searchPath.toLowerCase();
+      const { items } = await store.search(scenario, [searchPath], 100);
       for (const item of items) {
-        if (item.mockData.request?.url && item.mockData.request.url.includes(searchPath)) {
+        if (item.mockData.request?.url && item.mockData.request.url.toLowerCase().includes(searchLower)) {
           return {
             mockFile: `redis/${item.hash}.json`,
             mockData: item.mockData,
@@ -172,7 +173,7 @@ async function findMockByUrl(
       try {
         const content = fs.readFileSync(filePath, 'utf-8');
         const mockData = JSON.parse(content) as MockData;
-        if (mockData.request?.url && mockData.request.url.includes(searchPath)) {
+        if (mockData.request?.url && mockData.request.url.toLowerCase().includes(searchPath.toLowerCase())) {
           return {
             mockFile: path.relative(scenarioPath, filePath),
             mockData,
