@@ -307,4 +307,43 @@ router.delete('/', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/explain-value', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const scenario = resolveScenario(req, mockDataPath);
+  const requestId = typeof req.query.requestId === 'string' ? req.query.requestId.trim() : undefined;
+  const url = typeof req.query.url === 'string' ? req.query.url.trim() : undefined;
+  const path = typeof req.query.path === 'string' ? req.query.path.trim() : undefined;
+  const fieldPath = typeof req.query.fieldPath === 'string' ? req.query.fieldPath.trim() : undefined;
+  const value = req.query.value;
+  const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
+
+  if (!requestId && !url && !path) {
+    return res.status(400).json({
+      error: 'Provide requestId, url, or path',
+    });
+  }
+
+  const { explainValue } = await import('../utils/explain-value');
+  
+  try {
+    const result = await explainValue(
+      {
+        scenario,
+        requestId,
+        url,
+        path,
+        fieldPath,
+        value,
+        clientId,
+      },
+      config,
+      mockDataPath
+    );
+    
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to explain value' });
+  }
+});
+
 export const networkEventsRouter = router;
