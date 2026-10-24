@@ -206,6 +206,10 @@ export default function MockEditor({
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [replayMode, setReplayMode] = useState<MockReplayMode>('stored')
   const [refreshingLive, setRefreshingLive] = useState(false)
+  const [statusOverride, setStatusOverride] = useState<number | null>(null)
+  const [responseDelayMs, setResponseDelayMs] = useState<number | null>(null)
+  const [statusOverrideInput, setStatusOverrideInput] = useState<string>('')
+  const [responseDelayInput, setResponseDelayInput] = useState<string>('')
   const { toast } = useToast()
   const overrideCount = countStoredOverrides(mock)
 
@@ -261,6 +265,12 @@ export default function MockEditor({
             : JSON.stringify(parsedData)
     )
     setReplayMode(resolveReplayModeFromMock(mock))
+    const status = mock.data.statusOverride ?? null
+    const delay = mock.data.responseDelayMs ?? null
+    setStatusOverride(status)
+    setResponseDelayMs(delay)
+    setStatusOverrideInput(status !== null ? String(status) : '')
+    setResponseDelayInput(delay !== null ? String(delay) : '')
   }, [mock])
 
   function validateJSON(text: string): boolean {
@@ -416,6 +426,72 @@ export default function MockEditor({
       })
     } finally {
       setRefreshingLive(false)
+    }
+  }
+
+  async function handleStatusOverrideChange(value: string) {
+    const newStatus = value === '' ? null : parseInt(value, 10)
+    if (newStatus !== null && (isNaN(newStatus) || newStatus < 100 || newStatus >= 600)) {
+      setStatusOverrideInput(statusOverride !== null ? String(statusOverride) : '')
+      return
+    }
+    if (newStatus === statusOverride) {
+      return
+    }
+    setStatusOverride(newStatus)
+    try {
+      setSaving(true)
+      await updateMock(mock.filename, { statusOverride: newStatus }, scenario)
+      toast({
+        title: 'Saved',
+        description: newStatus === null ? 'Status override cleared' : `Status override set to ${newStatus}`,
+      })
+      if (onListRefresh) {
+        await onListRefresh()
+      }
+    } catch (error: any) {
+      setStatusOverride(mock.data.statusOverride ?? null)
+      setStatusOverrideInput(mock.data.statusOverride !== null && mock.data.statusOverride !== undefined ? String(mock.data.statusOverride) : '')
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update status override',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleResponseDelayChange(value: string) {
+    const newDelay = value === '' ? null : parseInt(value, 10)
+    if (newDelay !== null && (isNaN(newDelay) || newDelay < 0)) {
+      setResponseDelayInput(responseDelayMs !== null ? String(responseDelayMs) : '')
+      return
+    }
+    if (newDelay === responseDelayMs) {
+      return
+    }
+    setResponseDelayMs(newDelay)
+    try {
+      setSaving(true)
+      await updateMock(mock.filename, { responseDelayMs: newDelay }, scenario)
+      toast({
+        title: 'Saved',
+        description: newDelay === null ? 'Response delay cleared' : `Response delay set to ${newDelay}ms`,
+      })
+      if (onListRefresh) {
+        await onListRefresh()
+      }
+    } catch (error: any) {
+      setResponseDelayMs(mock.data.responseDelayMs ?? null)
+      setResponseDelayInput(mock.data.responseDelayMs !== null && mock.data.responseDelayMs !== undefined ? String(mock.data.responseDelayMs) : '')
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update response delay',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -616,6 +692,82 @@ export default function MockEditor({
                     </span>
                   </label>
                 ))}
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="text-sm font-medium">Response Simulation</div>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <label htmlFor="status-override" className="text-sm font-medium">
+                    Status Override
+                  </label>
+                  <div className="flex gap-2 items-start">
+                    <input
+                      id="status-override"
+                      type="number"
+                      min="100"
+                      max="599"
+                      placeholder="e.g. 500, 429, 404"
+                      value={statusOverrideInput}
+                      onChange={(e) => setStatusOverrideInput(e.target.value)}
+                      onBlur={(e) => void handleStatusOverrideChange(e.target.value)}
+                      disabled={saving || readOnly}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    {statusOverride !== null && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setStatusOverrideInput('')
+                          void handleStatusOverrideChange('')
+                        }}
+                        disabled={saving || readOnly}
+                        className="shrink-0"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Override the HTTP status code (100-599) to simulate errors. Leave empty to use the stored status ({mock.data.response.status}).
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="response-delay" className="text-sm font-medium">
+                    Response Delay (ms)
+                  </label>
+                  <div className="flex gap-2 items-start">
+                    <input
+                      id="response-delay"
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 500, 1000, 3000"
+                      value={responseDelayInput}
+                      onChange={(e) => setResponseDelayInput(e.target.value)}
+                      onBlur={(e) => void handleResponseDelayChange(e.target.value)}
+                      disabled={saving || readOnly}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    {responseDelayMs !== null && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setResponseDelayInput('')
+                          void handleResponseDelayChange('')
+                        }}
+                        disabled={saving || readOnly}
+                        className="shrink-0"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Add artificial latency in milliseconds before the response is returned.
+                  </p>
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-between">

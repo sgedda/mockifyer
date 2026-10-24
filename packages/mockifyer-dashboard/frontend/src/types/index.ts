@@ -125,6 +125,10 @@ export interface MockData {
     responseDateOverrides?: MockResponseDateOverride[]
     /** Replay-time path/value overlays (stored body unchanged). */
     responseFieldOverrides?: MockResponseFieldOverride[]
+    /** Optional: override the HTTP status code when serving this mock (e.g. 500 for error simulation, 429 for rate limiting). */
+    statusOverride?: number
+    /** Optional: delay in milliseconds before returning the mock response (simulates slow network or processing). */
+    responseDelayMs?: number
     /** When true, Mockifyer skips this recording and uses the real API (replay mode). */
     alwaysUseRealApi?: boolean
     refreshOnNextRequest?: boolean

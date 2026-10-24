@@ -265,15 +265,63 @@ export async function updateMock(
   responseDateOverrides?: MockResponseDateOverride[] | null,
   replayMode?: MockReplayMode | null,
   scenario?: string
+): Promise<void>
+export async function updateMock(
+  filename: string,
+  updates: {
+    responseData?: any
+    responseDateOverrides?: MockResponseDateOverride[] | null
+    replayMode?: MockReplayMode | null
+    statusOverride?: number | null
+    responseDelayMs?: number | null
+  },
+  scenario?: string
+): Promise<void>
+export async function updateMock(
+  filename: string,
+  responseDataOrUpdates: any,
+  responseDateOverridesOrScenario?: MockResponseDateOverride[] | null | string,
+  replayMode?: MockReplayMode | null,
+  scenario?: string
 ): Promise<void> {
-  const body: Record<string, unknown> = { responseData }
-  if (responseDateOverrides !== undefined) {
-    body.responseDateOverrides = responseDateOverrides
+  let body: Record<string, unknown>
+  let targetScenario: string | undefined
+
+  if (typeof responseDataOrUpdates === 'object' && 
+      (responseDataOrUpdates.responseData !== undefined || 
+       responseDataOrUpdates.responseDateOverrides !== undefined ||
+       responseDataOrUpdates.replayMode !== undefined ||
+       responseDataOrUpdates.statusOverride !== undefined ||
+       responseDataOrUpdates.responseDelayMs !== undefined)) {
+    body = {}
+    if (responseDataOrUpdates.responseData !== undefined) {
+      body.responseData = responseDataOrUpdates.responseData
+    }
+    if (responseDataOrUpdates.responseDateOverrides !== undefined) {
+      body.responseDateOverrides = responseDataOrUpdates.responseDateOverrides
+    }
+    if (responseDataOrUpdates.replayMode !== undefined) {
+      body.replayMode = responseDataOrUpdates.replayMode
+    }
+    if (responseDataOrUpdates.statusOverride !== undefined) {
+      body.statusOverride = responseDataOrUpdates.statusOverride
+    }
+    if (responseDataOrUpdates.responseDelayMs !== undefined) {
+      body.responseDelayMs = responseDataOrUpdates.responseDelayMs
+    }
+    targetScenario = typeof responseDateOverridesOrScenario === 'string' ? responseDateOverridesOrScenario : undefined
+  } else {
+    body = { responseData: responseDataOrUpdates }
+    if (responseDateOverridesOrScenario !== undefined && typeof responseDateOverridesOrScenario !== 'string') {
+      body.responseDateOverrides = responseDateOverridesOrScenario
+    }
+    if (replayMode !== undefined) {
+      body.replayMode = replayMode
+    }
+    targetScenario = scenario
   }
-  if (replayMode !== undefined) {
-    body.replayMode = replayMode
-  }
-  await putMockUpdate(filename, body, scenario)
+
+  await putMockUpdate(filename, body, targetScenario)
 }
 
 /** Persist only replay mode — avoids re-uploading a large GraphQL response body. */
