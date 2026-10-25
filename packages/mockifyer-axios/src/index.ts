@@ -111,6 +111,7 @@ import {
   configureAtlas,
   resolveActiveMockifyerSessionId,
   outboundHeadersToRecord,
+  clampRecordingFilename,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -2321,7 +2322,10 @@ class MockifyerClass {
         const urlSafe = request.url
           .replace(/^https?:\/\//, '')
           .replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = `${dateStr}_${request.method}_${urlSafe}.json`;
+        const filename = clampRecordingFilename(
+          `${dateStr}_${request.method}_${urlSafe}.json`,
+          `${request.method}:${request.url}`
+        );
         const filePath = path.join(scenarioPath, filename);
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
         logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);

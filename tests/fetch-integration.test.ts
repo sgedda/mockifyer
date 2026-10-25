@@ -331,4 +331,26 @@ describe("Mockifyer Fetch Integration", () => {
       }
     }
   });
+
+  it("records and replays URLs that would exceed the filesystem name limit", async () => {
+    const longQuery = `https://api.example.com/search?q=${"a".repeat(400)}`;
+    const longSegment = `https://cdn.example.com/${"b".repeat(300)}/asset`;
+    const queryPayload = { ok: true, kind: "query" };
+    const segmentPayload = { ok: true, kind: "segment" };
+
+    const queryResponse = await recordThenReplay(longQuery, queryPayload);
+    expect(queryResponse.status).toBe(200);
+    expect(queryResponse.data).toEqual(queryPayload);
+
+    const segmentResponse = await recordThenReplay(longSegment, segmentPayload);
+    expect(segmentResponse.status).toBe(200);
+    expect(segmentResponse.data).toEqual(segmentPayload);
+
+    const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
+    const names = fs.readdirSync(scratchScenarioPath);
+    expect(names.some((name) => name.endsWith(".json"))).toBe(true);
+    for (const name of names) {
+      expect(Buffer.byteLength(name)).toBeLessThanOrEqual(255);
+    }
+  });
 });

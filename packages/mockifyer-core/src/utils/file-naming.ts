@@ -1,4 +1,66 @@
 import { MockData } from '../types';
+import { sha256Hex, utf8ByteLength } from './crypto-digest';
+
+/**
+ * Linux `NAME_MAX`. `writeFileSync` throws `ENAMETOOLONG` when any path
+ * component is longer than this, which fails the in-flight request on fetch
+ * (the save is awaited) and drops the recording on axios.
+ */
+export const MAX_FILE_NAME_BYTES = 255;
+
+/**
+ * Truncate UTF-8 text to at most `maxBytes` without appending a marker.
+ * {@link truncateUtf8} adds a suffix that would push a filename back over the limit.
+ */
+function truncateUtf8ToBytes(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) {
+    return '';
+  }
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= maxBytes) {
+    return text;
+  }
+  let end = maxBytes;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) {
+    end -= 1;
+  }
+  return new TextDecoder().decode(bytes.slice(0, end));
+}
+
+/**
+ * Keep one directory entry within {@link MAX_FILE_NAME_BYTES}.
+ * A hash suffix preserves uniqueness when two long segments share a prefix.
+ */
+function clampFsPathSegment(segment: string): string {
+  if (utf8ByteLength(segment) <= MAX_FILE_NAME_BYTES) {
+    return segment;
+  }
+  const suffix = `_${sha256Hex(segment).slice(0, 10)}`;
+  const budget = MAX_FILE_NAME_BYTES - utf8ByteLength(suffix);
+  return `${truncateUtf8ToBytes(segment, budget)}${suffix}`;
+}
+
+/**
+ * Keep a flat recording filename within {@link MAX_FILE_NAME_BYTES}.
+ * Names that already fit are returned unchanged. Over-long names keep a prefix
+ * plus a hash of `uniquenessKey` so distinct URLs do not overwrite one file.
+ */
+export function clampRecordingFilename(filename: string, uniquenessKey: string): string {
+  if (utf8ByteLength(filename) <= MAX_FILE_NAME_BYTES) {
+    return filename;
+  }
+  const digest = sha256Hex(uniquenessKey).slice(0, 16);
+  const suffix = `_${digest}.json`;
+  const stem = filename.endsWith('.json') ? filename.slice(0, -'.json'.length) : filename;
+  const budget = MAX_FILE_NAME_BYTES - utf8ByteLength(suffix);
+  if (budget <= 0) {
+    const fallback = `${digest}.json`;
+    return utf8ByteLength(fallback) <= MAX_FILE_NAME_BYTES
+      ? fallback
+      : digest.slice(0, MAX_FILE_NAME_BYTES);
+  }
+  return `${truncateUtf8ToBytes(stem, budget)}${suffix}`;
+}
 
 /**
  * Computes a structured { dir, filename } for saving a mock file.
@@ -31,7 +93,7 @@ export function getMockFilePath(
   }
 
   // Sanitize hostname (keep dots so it reads like a domain)
-  const hostSafe = host.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const hostSafe = clampFsPathSegment(host.replace(/[^a-zA-Z0-9.-]/g, '_'));
 
   // Detect type and remaining path segments
   const graphqlIdx = pathSegments.lastIndexOf('graphql');
@@ -75,7 +137,7 @@ export function getMockFilePath(
   // Sanitize identifier
   identifier = identifier.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 60);
 
-  const dirParts = [hostSafe, type, ...remainingSegments].filter(Boolean);
+  const dirParts = [hostSafe, type, ...remainingSegments.map(clampFsPathSegment)].filter(Boolean);
   const dir = dirParts.join('/');
   const filename = identifier
     ? `${method}_${identifier}_${dateStr}.json`

@@ -107,6 +107,7 @@ import {
   type MockifyerRuntimeEnabledStorage,
   outboundHeadersToRecord,
   appendParamsToUrl,
+  clampRecordingFilename,
 } from '@sgedda/mockifyer-core';
 import { logger, setLogLevel } from '@sgedda/mockifyer-core';
 import {
@@ -1556,7 +1557,11 @@ class MockifyerClass {
           const urlParts = (response.config.url || '').replace(/https?:\/\//, '').split('/');
           const domain = urlParts[0].replace(/\./g, '_');
           const urlPathPart = urlParts.slice(1).join('_') || 'root';
-          const filename = `${timestamp}_${response.config.method?.toUpperCase() || 'GET'}_${domain}_${urlPathPart}.json`;
+          const method = response.config.method?.toUpperCase() || 'GET';
+          const filename = clampRecordingFilename(
+            `${timestamp}_${method}_${domain}_${urlPathPart}.json`,
+            `${method}:${response.config.url || ''}`
+          );
           const filePath = path.join(scenarioPath, filename);
           fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
           logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);

@@ -37,6 +37,8 @@ import {
   prepareLocalInboundParentStub,
   ensureLocalInboundParentStubSaved,
   inboundParentStubFilename,
+  clampRecordingFilename,
+  getMockFilePath,
 } from '../packages/mockifyer-core/src/index.react-native';
 import {
   ENV_VARS as ENV_VARS_FROM_RN_ENTRY,
@@ -85,6 +87,8 @@ describe('mockifyer-fetch React Native entry', () => {
     expect(typeof prepareLocalInboundParentStub).toBe('function');
     expect(typeof ensureLocalInboundParentStubSaved).toBe('function');
     expect(typeof inboundParentStubFilename).toBe('function');
+    expect(typeof clampRecordingFilename).toBe('function');
+    expect(typeof getMockFilePath).toBe('function');
   });
 
   it('keeps dynamic require() out of the Metro sibling-setup entry', () => {
