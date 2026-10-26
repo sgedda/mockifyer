@@ -58,14 +58,6 @@ export async function ensureTestData() {
     await dashboard.createScenario(BASE_SCENARIO);
   }
   
-  // Create other scenarios if needed
-  for (const scenario of ['heatwave', 'rainy-weekend']) {
-    if (!existingScenarios.includes(scenario)) {
-      console.log(`[Setup] Creating scenario: ${scenario}`);
-      await dashboard.createScenario(scenario);
-    }
-  }
-  
   // Check if Athens mock exists in base scenario
   const baseMocks = await dashboard.listMocks(BASE_SCENARIO);
   let athensMock = baseMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
@@ -153,14 +145,23 @@ export async function ensureTestData() {
   for (const [scenario, expectedTemp] of Object.entries(EXPECTED_TEMP)) {
     if (scenario === BASE_SCENARIO) continue; // Skip base scenario
     
+    // Check if scenario exists
+    const config2 = await dashboard.scenarioConfig();
+    const scenarios = config2.scenarios || [];
+    
+    if (!scenarios.includes(scenario)) {
+      // Create by deriving from base scenario (this copies the Athens mock)
+      console.log(`[Setup] Creating ${scenario} by deriving from ${BASE_SCENARIO}...`);
+      await dashboard.createScenario(scenario, BASE_SCENARIO);
+    }
+    
     // Check if scenario has Athens mock
     const scenarioMocks = await dashboard.listMocks(scenario);
     const scenarioAthensMock = scenarioMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
     
     if (!scenarioAthensMock) {
-      // Derive from base scenario
-      console.log(`[Setup] Deriving ${scenario} from ${BASE_SCENARIO}...`);
-      await dashboard.createScenario(scenario, BASE_SCENARIO);
+      console.warn(`[Setup] ⚠️  ${scenario} is missing Athens mock (skipping temperature update)`);
+      continue;
     }
     
     // Check temperature
