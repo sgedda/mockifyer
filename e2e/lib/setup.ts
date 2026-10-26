@@ -141,18 +141,22 @@ export async function ensureTestData() {
   
   console.log(`[Setup] Athens mock found: ${athensMock.filename}`);
   
-  // Ensure correct temperatures for each scenario (heatwave: 44, rainy-weekend: 11)
+  // Ensure correct temperatures for each scenario (guide-demo-2: 99, heatwave: 44, rainy-weekend: 11)
   for (const [scenario, expectedTemp] of Object.entries(EXPECTED_TEMP)) {
-    if (scenario === BASE_SCENARIO) continue; // Skip base scenario
-    
     // Check if scenario exists
     const config2 = await dashboard.scenarioConfig();
     const scenarios = config2.scenarios || [];
     
     if (!scenarios.includes(scenario)) {
-      // Create by deriving from base scenario (this copies the Athens mock)
-      console.log(`[Setup] Creating ${scenario} by deriving from ${BASE_SCENARIO}...`);
-      await dashboard.createScenario(scenario, BASE_SCENARIO);
+      if (scenario === BASE_SCENARIO) {
+        // BASE should already exist, but create if missing
+        console.log(`[Setup] Creating missing BASE scenario: ${BASE_SCENARIO}`);
+        await dashboard.createScenario(BASE_SCENARIO);
+      } else {
+        // Create by deriving from base scenario (this copies the Athens mock)
+        console.log(`[Setup] Creating ${scenario} by deriving from ${BASE_SCENARIO}...`);
+        await dashboard.createScenario(scenario, BASE_SCENARIO);
+      }
     }
     
     // Check if scenario has Athens mock
