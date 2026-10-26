@@ -1,0 +1,75 @@
+# DRAFT, not active. To use it, review and copy to .github/workflows/e2e.yml.
+# Runs the Playwright suite headless against the WanderWeird demo stack on a Linux runner.
+name: e2e (WanderWeird + Mockifyer)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'           # nightly
+  pull_request:
+    paths:
+      - 'packages/mockifyer-dashboard/**'
+      - 'packages/mockifyer-core/**'
+      - 'packages/mockifyer-fetch/**'
+      - 'packages/mockifyer-axios/**'
+      - 'packages/mockifyer-mcp/**'
+      - 'example-projects/wanderweird-travel/**'
+      - 'e2e/**'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      WW: example-projects/wanderweird-travel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+
+      - name: Install WanderWeird + MCP server
+        run: |
+          npm ci --prefix "$WW"
+          npm ci --prefix "$WW/apps/mobile"
+          npm ci --prefix packages/mockifyer-mcp && npm run build --prefix packages/mockifyer-mcp
+
+      # TODO: the suite needs the demo data (scenarios guide-demo-2 / heatwave / rainy-weekend in
+      # mock-data/mockifyer-dashboard.db). Commit a fixture DB or seed it here, e.g. from a
+      # release artifact, before starting the dashboard.
+      - name: Seed demo data
+        run: echo "seed mock-data/mockifyer-dashboard.db here"
+
+      - name: Start dashboard (sqlite) and services
+        working-directory: example-projects/wanderweird-travel
+        run: |
+          nohup npm run dashboard:sqlite > /tmp/dashboard.log 2>&1 &
+          npx wait-on -t 120000 http-get://127.0.0.1:3002/api/scenario-config
+          # services pinned to the base scenario, like the demo's start-stack.sh
+          MOCKIFYER_SCENARIO=guide-demo-2 nohup npm run dev:proxy:record > /tmp/services.log 2>&1 &
+          npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
+
+      - name: Start Expo web (Metro :8090)
+        working-directory: example-projects/wanderweird-travel/apps/mobile
+        run: |
+          nohup npx expo start --web --port 8090 > /tmp/metro.log 2>&1 &
+          npx wait-on -t 180000 http-get://127.0.0.1:8090
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: npm ci && npx playwright install --with-deps chromium
+
+      - name: Run tests
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Upload report and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            /tmp/*.log
+          retention-days: 14
