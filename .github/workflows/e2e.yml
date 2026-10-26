@@ -104,7 +104,7 @@ jobs:
       - name: Start Expo web (Metro)
         working-directory: ${{ env.WW }}/apps/mobile
         run: |
-          nohup npx expo start --web --port 8090 > /tmp/metro.log 2>&1 &
+          EXPO_PUBLIC_MOCKIFYER_CLIENT_ID=wanderweird-demo nohup npx expo start --web --port 8090 > /tmp/metro.log 2>&1 &
           echo "Metro PID: $!"
 
       - name: Wait for Expo web
