@@ -4,31 +4,76 @@
 
 Location: `example-projects/wanderweird-travel/` inside the `sgedda/mockifyer` monorepo.
 
-> **About the side-by-side GIFs:** they were recorded against the Expo **web** build on Metro port `8090` (so Atlas lives at `http://localhost:8090/mockifyer-atlas-live` there, not `8081`), with the dashboard in proxy + SQLite mode and scenario `guide-demo-2`. Because the web build sends no hops of its own, a small local pass-through in front of the gateway was used as the root of each chain; that pass-through is not part of the example.
+> **About the side-by-side GIFs:** Most were recorded against the Expo **web** build on Metro port `8090` (so Atlas lives at `http://localhost:8090/mockifyer-atlas-live` there, not `8081`). Section 5.2 simulator recordings use the native Metro server on port `8081`. All recordings used the dashboard in proxy + SQLite mode with scenario `guide-demo-2`. Because the web build sends no hops of its own, a small local pass-through in front of the gateway was used as the root of each chain; that pass-through is not part of the example.
+
+---
+
+## Table of Contents
+
+1. [What's inside](#1-whats-inside)
+2. [How it works](#2-how-it-works)
+3. [Quick start](#3-quick-start-about-5-minutes)
+4. [Walkthroughs](#4-walkthroughs)
+   - [4.1 Record real traffic](#41-record-real-traffic)
+   - [4.2 Replay and edit a mock](#42-replay-and-edit-a-mock)
+   - [4.3 Record a multi-service "hop tree"](#43-record-a-multi-service-hop-tree)
+   - [4.4 Switch scenarios with client lanes](#44-switch-scenarios-with-client-lanes)
+   - [4.5 The in-app Mockifyer dev menu](#45-the-in-app-mockifyer-dev-menu)
+   - [4.6 Run everything in Docker](#46-run-everything-in-docker)
+   - [4.7 Edit a mock over MCP](#47-edit-a-mock-over-mcp)
+   - [4.8 Time travel: date overrides](#48-time-travel-date-overrides)
+   - [4.9 A miss: record, then replay](#49-a-miss-record-then-replay)
+   - [4.10 From bug report to fix](#410-from-bug-report-to-fix)
+   - [4.11 Backend down: keep working from mocks](#411-backend-down-keep-working-from-mocks)
+   - [4.12 Pair-debugging with a real AI agent over MCP](#412-pair-debugging-with-a-real-ai-agent-over-mcp)
+   - [4.13 Asking an AI agent about your data (read-only)](#413-asking-an-ai-agent-about-your-data-read-only)
+   - [4.14 Three data sets, one build](#414-three-data-sets-one-build)
+5. [Tracing: see every hop, live](#5-tracing-see-every-hop-live)
+   - [5.1 Turn tracing on in Wanderweird](#51-turn-tracing-on-in-wanderweird)
+   - [5.2 Mockifyer Atlas, the live Metro hop stream](#52-mockifyer-atlas-the-live-metro-hop-stream)
+   - [5.3 Dashboard → Hops](#53-dashboard--hops)
+   - [5.4 Other dashboard pages that help here](#54-other-dashboard-pages-that-help-here)
+   - [5.5 Walkthrough: trace a login → TravelerDashboard flow](#55-walkthrough-trace-a-login--travelerdashboard-flow)
+6. [Handy knobs](#6-handy-knobs)
+7. [Current Limitations](#7-current-limitations)
+8. [Troubleshooting](#8-troubleshooting)
+9. [FAQ](#9-faq)
 
 ---
 
 ## Reproducing the GIFs
 
-Every GIF below has a **How to reproduce** block. In those blocks, **Mockifyer** marks a Mockifyer feature (dashboard UI or API, MCP tool, env var), and *helper* marks a small demo script from the helper scripts folder. Helpers are not part of Mockifyer core — they are convenience wrappers around Mockifyer APIs. Each block shows which Mockifyer API call or MCP tool a helper wraps.
+Most side-by-side GIF clips below have a **How to reproduce** block. In those blocks, **[Mockifyer]** marks a Mockifyer feature (dashboard UI or API, MCP tool, env var), and **[helper]** marks a small demo script from the helper scripts folder. Helpers are not part of Mockifyer core — they are convenience wrappers around Mockifyer APIs. Each block shows which Mockifyer API call or MCP tool a helper wraps.
 
 **Helper scripts location:** `docs/guides/wanderweird-demo-scripts/` (see the [helper scripts README](wanderweird-demo-scripts/README.md) for usage and configuration)
 
 **Setup used for all clips**
 
-- **Stack:** `docs/guides/wanderweird-demo-scripts/start-stack.sh` (run from anywhere in the mockifyer repo) starts:
-  - the dashboard on **:3002** (`npm run dashboard:sqlite`),
-  - the services on **:4200–4206** with `MOCKIFYER_RUNTIME=proxy`, `MOCKIFYER_PROXY_URL=http://127.0.0.1:3002`, `MOCKIFYER_ACTIVATION_MODE=always`, `MOCKIFYER_RECORD=true`, `MOCKIFYER_RECORD_RESPONSES=true` and **`MOCKIFYER_SCENARIO=guide-demo-2`**,
-  - the Expo web app on **:8090** (`npm run web:demo`).
-- **Helpers:** they read `MOCKIFYER_DASHBOARD_URL` (default `http://127.0.0.1:3002`) and `SCENARIO` (default `guide-demo-2`). They find mocks by endpoint through `GET /api/mocks?scenario=…`, so they work with your own mock file names.
-- **Second client** for the lane clips: `docs/guides/wanderweird-demo-scripts/start-teammate-b.sh` (wander-api :4213, graphql-api :4216, `MOCKIFYER_CLIENT_ID=teammate-b`).
-- **Side-by-side pages:** `docs/guides/wanderweird-demo-scripts/recording/sbs/*.html`, two iframes each (the app and a dashboard page). Serve the folder with any static server, e.g. `npx serve docs/guides/wanderweird-demo-scripts/recording/sbs`.
-- **Demo-branch app changes:** the gateway returns a 502 when an upstream fails, and trip dates use `mockifyerNow()` (see 4.8).
-- **AI agent clips (4.12, 4.13)** use the Cursor CLI (`cursor-agent`):
-  - Copy `docs/guides/wanderweird-demo-scripts/agent-demo/` to `<repo>/agent-demo`. It contains only `.cursor/mcp.json` and `.cursor/rules/mockifyer-only.mdc`.
-  - `mcp.json` defines server `mockifyer` → `node ../packages/mockifyer-mcp/dist/cli.js` with `MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3002`.
-  - The rules file says: use only Mockifyer MCP tools, no file reads, no shell.
-  - Set `CURSOR_API_KEY` in your environment, then use `docs/guides/wanderweird-demo-docs/guides/wanderweird-demo-scripts/agent/*.sh`.
+Run the helper stack script from anywhere in the mockifyer repo:
+
+```bash
+./docs/guides/wanderweird-demo-scripts/start-stack.sh
+```
+
+This starts:
+- the dashboard on **:3002** (`npm run dashboard:sqlite`)
+- the services on **:4200–4206** with `MOCKIFYER_RUNTIME=proxy`, `MOCKIFYER_PROXY_URL=http://127.0.0.1:3002`, `MOCKIFYER_ACTIVATION_MODE=always`, `MOCKIFYER_RECORD=true`, `MOCKIFYER_RECORD_RESPONSES=true` and **`MOCKIFYER_SCENARIO=guide-demo-2`**
+- the Expo web app on **:8090** (`npm run web:demo`)
+
+**Configuration:**
+- **Helpers** read `MOCKIFYER_DASHBOARD_URL` (default `http://127.0.0.1:3002`) and `SCENARIO` (default `guide-demo-2`). They find mocks by endpoint through `GET /api/mocks?scenario=…`, so they work with your own mock file names.
+- **Second client** for the lane clips: `docs/guides/wanderweird-demo-scripts/start-teammate-b.sh` (wander-api :4213, graphql-api :4216, `MOCKIFYER_CLIENT_ID=teammate-b`)
+- **Side-by-side pages:** `docs/guides/wanderweird-demo-scripts/recording/sbs/*.html`, two iframes each (the app and a dashboard page). Serve with any static server, e.g. `npx serve docs/guides/wanderweird-demo-scripts/recording/sbs`.
+
+**Demo-branch app changes (sections 4.8, 4.11):**
+- Section 4.8 (date overrides affecting trip countdown) requires the `mockifyerNow()` helper in `packages/mock-bootstrap` and its use in `services/graphql-api/src/mappers.ts`. These changes are not on `main`. On `main`, date overrides work but don't affect the trip dates shown in the app.
+- Section 4.11 (gateway 502 handling) assumes the gateway returns a 502 when an upstream service fails. On `main`, the gateway crashes instead. The 502 handling is not on `main`.
+
+**AI agent clips (4.12, 4.13)** use the Cursor CLI (`cursor-agent`):
+1. Copy `docs/guides/wanderweird-demo-scripts/agent-demo/` to `<repo>/agent-demo` (contains `.cursor/mcp.json` and `.cursor/rules/mockifyer-only.mdc`)
+2. `mcp.json` defines server `mockifyer` → `node ../packages/mockifyer-mcp/dist/cli.js` with `MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3002`
+3. The rules file says: use only Mockifyer MCP tools, no file reads, no shell
+4. Set `CURSOR_API_KEY` in your environment, then use `docs/guides/wanderweird-demo-scripts/agent/*.sh`
 
 ---
 
@@ -122,6 +167,10 @@ GraphQL playground: http://127.0.0.1:4206/graphql (the app reaches it through `P
 
 ### 4.1 Record real traffic
 
+The clip below shows recording with the **proxy + SQLite** setup from the "Reproducing the GIFs" section above.
+
+For filesystem-only recording (no database):
+
 ```bash
 npm run dashboard
 npm run dev:record          # MOCKIFYER_RECORD=true
@@ -137,16 +186,21 @@ Use the app as you normally would. Each outbound call, including the weather, FX
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Prereqs: the stack from **Reproducing the GIFs** at the top (`docs/guides/wanderweird-demo-scripts/start-stack.sh`). *helper* It starts `npm run dashboard:sqlite` and the 7 services with `MOCKIFYER_RUNTIME=proxy`, `MOCKIFYER_RECORD=true`, `MOCKIFYER_RECORD_RESPONSES=true` and `MOCKIFYER_SCENARIO=guide-demo-2`.
-- Open `docs/guides/wanderweird-demo-scripts/recording/sbs/index.html`: the app (`http://localhost:8090`) on the left, the dashboard `http://127.0.0.1:3002/hops` on the right. *helper* A static side-by-side page with two iframes.
-- Log in as `wanderer`/`wanderer` and tap through Trips and Discover. **Mockifyer** Each outbound call is recorded into `guide-demo-2` through the dashboard proxy.
-- Refresh the dashboard page to see the new chains. **Mockifyer** Hops page, backed by `GET /api/mocks?scenario=guide-demo-2`.
+- **[helper]** Prereqs: the stack from **Reproducing the GIFs** at the top (`docs/guides/wanderweird-demo-scripts/start-stack.sh`). It starts `npm run dashboard:sqlite` and the 7 services with `MOCKIFYER_RUNTIME=proxy`, `MOCKIFYER_RECORD=true`, `MOCKIFYER_RECORD_RESPONSES=true` and `MOCKIFYER_SCENARIO=guide-demo-2`.
+
+- **[helper]** Open `docs/guides/wanderweird-demo-scripts/recording/sbs/index.html`: the app (`http://localhost:8090`) on the left, the dashboard `http://127.0.0.1:3002/hops` on the right (a static side-by-side page with two iframes).
+
+- **[Mockifyer]** Log in as `wanderer`/`wanderer` and tap through Trips and Discover. Each outbound call is recorded into `guide-demo-2` through the dashboard proxy.
+
+- **[Mockifyer]** Refresh the dashboard page to see the new chains. Hops page, backed by `GET /api/mocks?scenario=guide-demo-2`.
 
 </details>
 
-### 4.2 Replay (work offline)
+### 4.2 Replay and edit a mock
 
 Stop the record script and run `npm run dev`. Calls that already have a recording are served from `mock-data/`, so you can demo with no network.
+
+The GIFs below show editing a recorded forecast mock to 99 °C and replaying it.
 
 ![Editing a recorded forecast mock to 99 °C and replaying it](https://github.com/user-attachments/assets/892c395d-37a1-469c-b942-5e4ea7cc1aa0)
 
@@ -154,9 +208,11 @@ Stop the record script and run `npm run dev`. Calls that already have a recordin
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Open Discover → Atlantis Boardwalk in the app. **Mockifyer** The Open-Meteo call for Athens (`latitude=37.9838`) is a recorded mock.
-- Dashboard → **Mocks**: search `forecast`, open the Athens mock, set replay mode **Use saved mock**, edit `current.temperature_2m` to `99` in the response, **Save Changes**. **Mockifyer** Mock editor. The API call is `PUT /api/mocks/<file>?scenario=guide-demo-2` with `{"responseData": …}`.
-- Reload Discover: 99°. **Mockifyer** Replay of the stored body.
+- **[Mockifyer]** Open Discover → Atlantis Boardwalk in the app. The Open-Meteo call for Athens (`latitude=37.9838`) is a recorded mock.
+
+- **[Mockifyer]** Dashboard → **Mocks**: search `forecast`, open the Athens mock, set replay mode **Use saved mock**, edit `current.temperature_2m` to `99` in the response, **Save Changes**. Mock editor. The API call is `PUT /api/mocks/<file>?scenario=guide-demo-2` with `{"responseData": …}`.
+
+- **[Mockifyer]** Reload Discover: 99°. Replay of the stored body.
 
 </details>
 
@@ -166,8 +222,9 @@ Stop the record script and run `npm run dev`. Calls that already have a recordin
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Dashboard → **Network** (`/network?scenario=guide-demo-2`), then reload Discover in the app. **Mockifyer** Network log. Replayed forecast hops carry the **Mock** badge (`source: mock-hit`).
-- Type `forecast` in the search box. **Mockifyer** Filters the network events (`GET /api/network-events`).
+- **[Mockifyer]** Dashboard → **Network** (`/network?scenario=guide-demo-2`), then reload Discover in the app. Network log. Replayed forecast hops carry the **Mock** badge (`source: mock-hit`).
+
+- **[Mockifyer]** Type `forecast` in the search box. Filters the network events (`GET /api/network-events`).
 
 </details>
 
@@ -347,8 +404,9 @@ A planted bug: a field override sets `current.temperature_2m` to `-999` on the r
 
 1. **Network** (`/network`): open the latest `/discover?destinationKey=atlantis` request. Its hops include the Open-Meteo forecast as a **Mock** hit, so the value comes from a mock, not the live API.
 2. **Overrides** (`/overrides`): the forecast mock is listed with `current.temperature_2m = -999`.
-3. Clear the override and save. The mock editor's "1 override" badge links to the same Overrides page.
-4. Reload Discover. It shows the mock's stored value again (99° in this scenario, from the edit in 4.2).
+3. (The mock editor's "1 override" badge also links to the Overrides page)
+4. Clear the override and save.
+5. Reload Discover. It shows the mock's stored value again (99° in this scenario, from the edit in 4.2).
 
 ![Bug report to fix: -999 traced to a field override and cleared](https://github.com/user-attachments/assets/2117f6c1-3f77-4c86-8b42-13208ae1a1f5)
 
@@ -356,27 +414,43 @@ A planted bug: a field override sets `current.temperature_2m` to `-999` on the r
 
 <details><summary><b>How to reproduce</b></summary>
 
-- `docs/guides/wanderweird-demo-scripts/bug-set.sh`. *helper* Finds the Athens forecast mock and calls **Mockifyer** `PATCH /api/mocks/<file>/field-overrides` with `current.temperature_2m = -999`.
-- Open `docs/guides/wanderweird-demo-scripts/recording/sbs/story.html` (app on the left, dashboard on the right with step buttons 1–4). Discover shows -999°.
-- Step 1, **Network**: open the latest `/discover?destinationKey=atlantis` request and its hops. **Mockifyer**
-- Step 3, **Overrides** (`/overrides?scenario=guide-demo-2`): find `current.temperature_2m = -999`, then **Clear overlays** and **Save overlays**. **Mockifyer** (Step 4 opens the mock editor, whose "1 override" badge links back here.)
-- Reload Discover: 99°. Run `docs/guides/wanderweird-demo-scripts/bug-reset.sh` afterwards as a safety net.
+- **[helper]** Run `docs/guides/wanderweird-demo-scripts/bug-set.sh` to plant the bug:
+
+```bash
+./docs/guides/wanderweird-demo-scripts/bug-set.sh
+```
+
+This finds the Athens forecast mock and calls **[Mockifyer]** `PATCH /api/mocks/<file>/field-overrides` with `current.temperature_2m = -999`.
+
+- **[helper]** Open `docs/guides/wanderweird-demo-scripts/recording/sbs/story.html` (app on the left, dashboard on the right with step buttons 1–4). Discover shows -999°.
+
+- **[Mockifyer]** Step 1 (**Network**): open the latest `/discover?destinationKey=atlantis` request and its hops.
+
+- **[Mockifyer]** Step 2 (**Overrides** at `/overrides?scenario=guide-demo-2`): find `current.temperature_2m = -999`, then **Clear overlays** and **Save overlays**. (Step 3 opens the mock editor, whose "1 override" badge links back here.)
+
+- Reload Discover: 99°.
+
+- **[helper]** Run `docs/guides/wanderweird-demo-scripts/bug-reset.sh` afterwards as a safety net.
 
 </details>
 
-The trace tells you a response came from a mock, but not that an override changed it. That's why step 2 is a separate page (see Honest limits).
+The trace tells you a response came from a mock, but not that an override changed it. That's why step 2 is a separate page (see section 7).
 
-### 4.11 Backend down: keep working from mocks
+###
 
-Mocks only help when the service is down if they hold a recorded body and are set to replay. In the demo scenario the `wander-api` discover mocks start as "Always use live API" stubs. With wander-api stopped, the gateway returns **502** and Discover shows its error text. (The demo gateway turns upstream failures into a 502; before that fix it crashed.)
+ 4.11 Backend down: keep working from mocks
 
-`offline-set.sh` (demo helper, not part of Mockifyer):
+> **Note:** This section assumes the gateway returns a 502 when an upstream service fails. On `main`, the gateway crashes instead. The 502 handling is not yet on `main`.
+
+Mocks only help when the service is down if they hold a recorded body and are set to replay. In the demo scenario the `wander-api` discover mocks start as "Always use live API" stubs. With wander-api stopped, the gateway returns **502** and Discover shows its error text.
+
+The `offline-set.sh` helper (demo convenience wrapper, not part of Mockifyer core):
 
 1. Sets the `127.0.0.1:4203/discover` and `…/discover?destinationKey=atlantis` mocks to **Use saved mock**. Their next call goes upstream once and stores the body.
 2. Makes one call to each so the bodies are recorded.
 3. Stops wander-api (:4203).
 
-Then `curl 127.0.0.1:4203/discover` gets no connection (`000`), and Discover still loads from the mocks. `offline-reset.sh` restarts wander-api and switches the mocks back to live API.
+Then `curl 127.0.0.1:4203/discover` gets no connection (`000`), and Discover still loads from the mocks. The `offline-reset.sh` helper restarts wander-api and switches the mocks back to live API.
 
 ![Discover keeps working with wander-api stopped](https://github.com/user-attachments/assets/b14ec05c-74bc-454c-b2ba-8674538d1ca2)
 
@@ -445,13 +519,13 @@ Real time was about **50–60 s**. In the GIF the thinking is sped up about 3.5�
 
 </details>
 
-### 4.14 Switching scenarios
+### 4.14 Three data sets, one build
 
 One app build, three sets of data. The same Atlantis Discover card shows a different forecast depending on the scenario its client lane points at, and switching takes effect on the very next request. You don't rebuild or change code, and the dashboard isn't restarted.
 
 | Scenario | Made how | Atlantis Discover card |
 | :--- | :--- | :--- |
-| `guide-demo-2` | the recorded scenario used throughout this guide | 99° · wind 6 (the value left by the 4.7 MCP edit) |
+| `guide-demo-2` | the recorded scenario used throughout this guide | 99° · wind 6 (from the 4.2 edit; 4.7's MCP edit changed it to 42, then reset it back to 99) |
 | `heatwave` | derived from `guide-demo-2`, Athens forecast edited | 44° · wind 3 (weather_code 0) |
 | `rainy-weekend` | derived from `guide-demo-2`, Athens forecast edited | 11° · wind 52 (weather_code 63) |
 
