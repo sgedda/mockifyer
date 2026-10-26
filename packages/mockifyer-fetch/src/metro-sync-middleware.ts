@@ -45,7 +45,7 @@ import {
   POOL_ID_PATTERN,
   loadPoolResponseItem,
   type PoolResponseItem,
-  mergeDomainPathRuleUpserts,
+  mergeDiscoveredDomainPathUpserts,
   parseDomainPathRules,
   readDomainPathRulesFile,
   writeDomainPathRulesFile,
@@ -2237,7 +2237,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             parsed.upserts ?? parsed.rules ?? {},
           );
           const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
-          const { rules, changed } = mergeDomainPathRuleUpserts(
+          const { rules, changed } = mergeDiscoveredDomainPathUpserts(
             existing,
             upserts,
           );

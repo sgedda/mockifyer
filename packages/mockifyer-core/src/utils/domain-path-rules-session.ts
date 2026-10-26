@@ -3,7 +3,7 @@ import {
   type DomainPathRulesMap,
   type DomainPathTrafficGate,
   discoverDomainPathRulesForUrl,
-  mergeDomainPathRuleUpserts,
+  mergeDiscoveredDomainPathUpserts,
   parseDomainPathRules,
   resolveDomainPathRulesMode,
   resolveDomainPathTrafficGate,
@@ -411,10 +411,9 @@ export class DomainPathRulesSession {
     }
 
     const recording = this.isRecording();
-    // Allowlist + not recording: do not persist disabled catalog rows that later block Record.
-    if (this.mode === 'allowlist' && !recording) {
-      return;
-    }
+    // Allowlist + not recording: repair existing deny seeds under an allowing parent,
+    // but do not insert new keys (those `recordResponses: false` rows later block Record).
+    const repairOnly = this.mode === 'allowlist' && !recording;
 
     // Without fs, wait for Metro hydrate so discovery does not seed allowlist
     // defaults over project rules that are enabled on disk.
@@ -438,7 +437,7 @@ export class DomainPathRulesSession {
       rawUrl,
       this.mode,
       baseUrl ?? this.config.baseUrl,
-      { recording }
+      { recording, repairOnly }
     );
     if (!changed) {
       return;
@@ -485,7 +484,7 @@ export class DomainPathRulesSession {
           writeDomainPathRulesFile,
         } = require('./domain-path-rules-file') as typeof import('./domain-path-rules-file');
         const onDisk = readDomainPathRulesFile(this.config.mockDataPath, scenario);
-        const merged = mergeDomainPathRuleUpserts(onDisk, upsertMap);
+        const merged = mergeDiscoveredDomainPathUpserts(onDisk, upsertMap);
         const wrote =
           !merged.changed ||
           writeDomainPathRulesFile(this.config.mockDataPath, scenario, merged.rules);
