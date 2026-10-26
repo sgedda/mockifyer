@@ -5,11 +5,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "react-native": "dist/react-native.js",
-  "browser": "dist/react-native.js",
   "exports": {
     ".": {
       "react-native": "./dist/react-native.js",
-      "browser": "./dist/react-native.js",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
