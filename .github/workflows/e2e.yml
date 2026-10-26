@@ -70,10 +70,10 @@ jobs:
           npm ci --legacy-peer-deps
           cd apps/mobile && npm ci --legacy-peer-deps
 
-      - name: Start dashboard (sqlite) in background
+      - name: Start dashboard (filesystem) in background
         working-directory: ${{ env.WW }}
         run: |
-          nohup npm run dashboard:sqlite > /tmp/dashboard.log 2>&1 &
+          nohup npm run dashboard:filesystem > /tmp/dashboard.log 2>&1 &
           DASH_PID=$!
           echo "Dashboard PID: $DASH_PID"
           echo $DASH_PID > /tmp/dashboard.pid
