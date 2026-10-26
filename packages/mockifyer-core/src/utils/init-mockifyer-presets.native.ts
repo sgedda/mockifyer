@@ -1,7 +1,7 @@
 /**
  * Metro entry for init-mockifyer-presets.
  *
- * Re-exports everything from init-mockifyer-presets, but overrides the
+ * Re-exports everything from init-mockifyer-presets.base, but overrides the
  * loadAxiosSetupMockifyer and loadFetchSetupMockifyer functions to use
  * the native versions (without dynamic require() calls that Metro rejects).
  */
@@ -21,7 +21,7 @@ export type {
   DualClientInitResult,
   DualMockifyerControlSurface,
   ResolveClientInitFlagsDefaults,
-} from './init-mockifyer-presets';
+} from './init-mockifyer-presets.base';
 
 export {
   omitProxyFromPartialConfig,
@@ -36,4 +36,4 @@ export {
   initMockifyerForDashboardProxyClients,
   initMockifyerForLocalFilesystem,
   initMockifyerForLocalFilesystemClients,
-} from './init-mockifyer-presets';
+} from './init-mockifyer-presets.base';

@@ -6,7 +6,7 @@
  * load-sibling-setup resolves to the web variant (which avoids
  * dynamic require() calls that Metro rejects).
  * 
- * This file re-exports everything from init-mockifyer-presets
+ * This file re-exports everything from init-mockifyer-presets.base
  * but overrides the two load functions with web/native stubs.
  */
 
@@ -25,7 +25,7 @@ export type {
   DualClientInitResult,
   DualMockifyerControlSurface,
   ResolveClientInitFlagsDefaults,
-} from './init-mockifyer-presets';
+} from './init-mockifyer-presets.base';
 
 export {
   omitProxyFromPartialConfig,
@@ -40,4 +40,4 @@ export {
   initMockifyerForDashboardProxyClients,
   initMockifyerForLocalFilesystem,
   initMockifyerForLocalFilesystemClients,
-} from './init-mockifyer-presets';
+} from './init-mockifyer-presets.base';
