@@ -2,6 +2,8 @@
 
 A playful Expo travel showcase for **Mockifyer** + **Umbraco CMS**: login, manage absurd trips, browse CMS-driven tab/stack navigation, discover open-API weather/FX mashed with fictional destinations, stamp a passport, and roll chaos dice.
 
+**📚 [Complete walkthrough guide with GIF demos](../../docs/guides/wanderweird-demo.md)** — scenarios, client lanes, MCP tools, Atlas tracing, and more.
+
 ```
 apps/mobile          Expo SDK 57 — bottom tabs + stacked screens from CMS menu
 cms/umbraco          Umbraco 18 + Delivery API (menu tree + content texts/images)
