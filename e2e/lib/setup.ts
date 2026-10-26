@@ -21,6 +21,22 @@ const ATHENS_FIXTURE = JSON.parse(readFileSync(join(__dirname, '../fixtures/athe
 export async function ensureTestData() {
   console.log('[Setup] Ensuring test scenarios and mocks exist...');
   
+  // Wait for dashboard to be ready
+  console.log('[Setup] Waiting for dashboard...');
+  for (let i = 0; i < 30; i++) {
+    try {
+      const healthRes = await fetch('http://127.0.0.1:3002/health');
+      if (healthRes.ok) break;
+    } catch {
+      // Dashboard not ready yet
+    }
+    if (i === 29) {
+      console.error('[Setup] ❌ Dashboard not available after 30 seconds');
+      return false;
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  
   // Get provider type to determine approach
   const health = await fetch('http://127.0.0.1:3002/health').then(r => r.json());
   const provider = health.provider || 'filesystem';
