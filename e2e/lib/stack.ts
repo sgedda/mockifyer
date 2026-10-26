@@ -5,7 +5,11 @@ import { BASE_SCENARIO, GATEWAY } from './env';
 const WANDER = path.resolve(__dirname, '../scripts/wander.sh');
 
 function run(...args: string[]) {
-  return execFileSync(WANDER, args, { encoding: 'utf8', timeout: 90_000 }).trim();
+  return execFileSync(WANDER, args, { 
+    encoding: 'utf8', 
+    timeout: 90_000,
+    env: { ...process.env, WW: process.env.WW || 'example-projects/wanderweird-travel' }
+  }).trim();
 }
 export const wander = {
   stop: () => run('stop'),

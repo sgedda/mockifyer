@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { dashboard, gatewayAtlantis, gatewayTemp } from '../lib/dashboard';
 import { wander, waitForGateway } from '../lib/stack';
 import { openDiscover, expectTemperature, refetchDiscover } from '../lib/app';
-import { BASE_SCENARIO, EXPECTED_TEMP } from '../lib/env';
+import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY } from '../lib/env';
 
 // Stops wander-api (:4203) like the guide's offline-set.sh, then always restarts it pinned and
 // restores the replay modes of the two wander /discover mocks to what they were before.
