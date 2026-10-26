@@ -32,7 +32,7 @@ test.describe('offline: backend down', () => {
     // record fresh bodies ("refresh-next"), exactly like offline-set.sh
     for (const f of files) await dashboard.putMock(f, { replayMode: 'refresh-next' }, BASE_SCENARIO);
     await gatewayAtlantis();
-    await fetch('http://127.0.0.1:4200/api/discover').catch(() => undefined);
+    await fetch(`${GATEWAY}/api/discover`).catch(() => undefined);
     wander.stop();
     const r = await gatewayAtlantis();
     expect(r.status).toBe(200);

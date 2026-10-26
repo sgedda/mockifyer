@@ -6,9 +6,12 @@
 #                                          without it the dashboard resolves the scenario from the client lane
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WW="${WW:-$HERE/../../example-projects/wanderweird-travel}"
+REPO_ROOT="$HERE/../.."
+WW="${WW:-$REPO_ROOT/example-projects/wanderweird-travel}"
+# If WW is relative, resolve it from repo root
+[[ "$WW" != /* ]] && WW="$REPO_ROOT/$WW"
 DASH="${MOCKIFYER_DASHBOARD_URL:-http://127.0.0.1:3002}"
-pid4203() { ss -ltnp 2>/dev/null | grep -oP ':4203 .*pid=\K[0-9]+' | head -1; }
+pid4203() { lsof -ti:4203 2>/dev/null | head -1; }
 stop() {
   local p; p=$(pid4203)
   if [ -n "$p" ]; then
@@ -26,7 +29,7 @@ start() {
   env ${1:+MOCKIFYER_SCENARIO=$1} MOCKIFYER_RUNTIME=proxy MOCKIFYER_PROXY_URL="$DASH" \
     MOCKIFYER_DASHBOARD_URL="$DASH" MOCKIFYER_ACTIVATION_MODE=always MOCKIFYER_RECORD=true \
     MOCKIFYER_RECORD_RESPONSES=true MOCKIFYER_PATH=../../mock-data MOCKIFYER_CLIENT_ID=wanderweird-demo \
-    MOCKIFYER_METRO_URL=http://localhost:8090 setsid npx tsx watch src/server.ts > /tmp/wander-api.log 2>&1 < /dev/null &
+    MOCKIFYER_METRO_URL=http://localhost:8090 nohup npx tsx watch src/server.ts > /tmp/wander-api.log 2>&1 < /dev/null &
   for _ in $(seq 40); do [ -n "$(pid4203)" ] && break; sleep 1; done
   [ -n "$(pid4203)" ] && echo "wander-api up (scenario: ${1:-from client lane})" || { echo "wander-api DOWN"; exit 1; }
 }
