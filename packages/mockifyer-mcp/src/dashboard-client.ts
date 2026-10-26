@@ -870,4 +870,32 @@ export class DashboardApiClient {
     const suffix = qs.toString() ? `?${qs.toString()}` : '';
     return this.request(`/atlas/generated/bodies/${encodeURIComponent(eventId)}${suffix}`);
   }
+
+  async explainValue(params: {
+    scenario?: string;
+    requestId?: string;
+    url?: string;
+    path?: string;
+    fieldPath?: string;
+    value?: unknown;
+    clientId?: string;
+  }): Promise<unknown> {
+    const requestId = params.requestId?.trim();
+    const url = params.url?.trim();
+    const path = params.path?.trim();
+    if (!requestId && !url && !path) {
+      throw new Error('Provide requestId, url, or path');
+    }
+    
+    const qs = new URLSearchParams();
+    if (params.scenario) qs.set('scenario', params.scenario);
+    if (requestId) qs.set('requestId', requestId);
+    if (url) qs.set('url', url);
+    if (path) qs.set('path', path);
+    if (params.fieldPath) qs.set('fieldPath', params.fieldPath);
+    if (params.value !== undefined) qs.set('value', JSON.stringify(params.value));
+    if (params.clientId) qs.set('clientId', params.clientId);
+    
+    return this.request(`/network-events/explain-value?${qs.toString()}`);
+  }
 }

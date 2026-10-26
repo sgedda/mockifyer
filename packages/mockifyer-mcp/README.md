@@ -81,6 +81,7 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_list_network_events` | Recent network log hops (find `requestId` / `eventId`) |
 | `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
 | `mockifyer_explain_incident` | Crash / incident context with preceding hops and heuristic suspects |
+| `mockifyer_explain_value` | **One-call answer**: where a value comes from (mock file, overrides, trace, siblings) |
 | `mockifyer_get_network_log_config` | Whether network logging and body capture are enabled |
 | `mockifyer_get_atlas_doc` | Atlas screen/CMS/datasource map (summary by default) |
 | `mockifyer_list_atlas_events` | Live prefetch/presentation events |
@@ -141,6 +142,12 @@ Requires network logging enabled in the dashboard Network tab (persistent with `
 3. `mockifyer_set_client_lane_scenario({ clientId: "trips-e2e-checkin", scenario: "check-in-open" })`
 
 Use `mockifyer_set_scenario` only for the global/active scenario; prefer lane mapping for isolated E2E runs.
+
+> "Why does the screen show temperature = -999?"
+
+1. `mockifyer_explain_value({ scenario: "default", url: "/api/weather", fieldPath: "temperature_2m" })`
+
+Returns: origin (mock file + request), modifications (field overrides, date overrides, lane overrides), original vs effective value, hop chain, and sibling fields in one call. No need to chain ~10 tools (list_scenarios, search_mocks, get_atlas_doc, get_field_overrides, get_network_trace, etc.).
 
 ## Environment variables
 
