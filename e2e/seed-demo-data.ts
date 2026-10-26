@@ -185,6 +185,7 @@ async function main() {
       'http://127.0.0.1:4203/discover',
     ];
 
+    const crypto = await import('node:crypto');
     for (const url of wanderEndpoints) {
       const existing = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
       if (!existing.find((m: any) => m.endpoint === url)) {
@@ -202,11 +203,13 @@ async function main() {
         const mock = updated.find((m: any) => m.endpoint === url);
         if (mock) {
           await ok('PUT', `/mocks/${mock.filename}?scenario=${BASE_SCENARIO}`, { replayMode: 'stored' });
+        } else {
+          console.log(`⚠️  Could not find mock for ${url} after recording, skipping replay mode update`);
         }
       }
     }
   } else {
-    console.log('⚠️  wander-api not available, skipping wander mock creation (tests may fail)');
+    console.log('⚠️  wander-api not available, skipping wander mock creation (offline tests will be skipped)');
   }
 
   // 6. Set global scenario to guide-demo-2
