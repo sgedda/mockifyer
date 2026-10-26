@@ -75,16 +75,24 @@ async function main() {
   // Ensure guide-demo-2 has 99° temperature and is in stored mode
   const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
   let needsUpdate = false;
-  if (mock.data?.response?.data?.current?.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
-    console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
-    mock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
-    needsUpdate = true;
+  
+  if (mock.data?.response?.data?.current) {
+    if (mock.data.response.data.current.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
+      console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
+      mock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+      needsUpdate = true;
+    }
+  } else {
+    console.log(`⚠️  Mock structure missing current.temperature_2m, skipping temperature fix`);
   }
+  
   if (needsUpdate || mock.data?.replayMode !== 'stored') {
-    await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
-      responseData: mock.data.response.data,
-      replayMode: 'stored',
-    });
+    if (mock.data?.response?.data) {
+      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
+        responseData: mock.data.response.data,
+        replayMode: 'stored',
+      });
+    }
   }
 
   // 3. Create heatwave and rainy-weekend by cloning guide-demo-2 and changing temperature
