@@ -75,6 +75,7 @@ export async function ensureTestData() {
         scenario: BASE_SCENARIO,
         allowUpstream: true,
         record: true,
+        recordResponses: true, // Required to persist response data in SQLite
       });
       
       if (proxyResult.status === 200) {
