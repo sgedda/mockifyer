@@ -82,7 +82,11 @@ async function main() {
   const scenarioDir = join(mockDataRoot, BASE_SCENARIO);
   
   const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-  let athensMock = mocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+  // Search for Athens mock by either real API or local mock server endpoint
+  let athensMock = mocks.find((m: any) => 
+    m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX) || 
+    m.endpoint?.startsWith(MOCK_API_URL)
+  );
 
   if (!athensMock && canWriteFiles) {
     console.log('  Writing Athens mock file directly (filesystem provider)...');
@@ -124,7 +128,6 @@ async function main() {
       throw new Error('Mock file written but not visible via dashboard API');
     }
   } else if (!athensMock) {
-  } else if (!athensMock) {
     // Fallback for SQLite/Redis: record via proxy (requires external API)
     console.log('  Recording Athens mock via proxy (SQLite/Redis provider)...');
     
@@ -143,7 +146,10 @@ async function main() {
         if (proxyResult.status === 200) {
           // Verify the mock was created with valid data
           const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-          athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+          athensMock = updatedMocks.find((m: any) => 
+            m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX) || 
+            m.endpoint?.startsWith(MOCK_API_URL)
+          );
           
           if (athensMock) {
             const checkMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
