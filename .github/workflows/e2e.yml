@@ -59,6 +59,11 @@ jobs:
           cd ../mockifyer-dashboard && npm ci && npm run build:backend
           cd ../mockifyer-mcp && npm ci && npm run build
 
+      - name: Verify dashboard build
+        run: |
+          ls -lh packages/mockifyer-dashboard/dist/
+          file packages/mockifyer-dashboard/dist/cli.js || echo "cli.js not found"
+
       - name: Install WanderWeird
         working-directory: ${{ env.WW }}
         run: |
@@ -69,10 +74,21 @@ jobs:
         working-directory: ${{ env.WW }}
         run: |
           nohup npm run dashboard:sqlite > /tmp/dashboard.log 2>&1 &
-          echo "Dashboard PID: $!"
+          DASH_PID=$!
+          echo "Dashboard PID: $DASH_PID"
+          echo $DASH_PID > /tmp/dashboard.pid
+          sleep 2
+          if ! ps -p $DASH_PID > /dev/null; then
+            echo "Dashboard failed to start!"
+            cat /tmp/dashboard.log
+            exit 1
+          fi
 
       - name: Wait for dashboard
-        run: npx wait-on -t 120000 http-get://127.0.0.1:3002/api/scenario-config
+        run: |
+          echo "Waiting for dashboard..."
+          npx wait-on -t 120000 -i 2000 http-get://127.0.0.1:3002/api/scenario-config
+          echo "Dashboard is ready"
 
       - name: Start WanderWeird services (gateway + wander-api)
         working-directory: ${{ env.WW }}
