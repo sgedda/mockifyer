@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dashboard } from './dashboard';
-import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT_PREFIX } from './env';
+import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT_PREFIX, LANE } from './env';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { generateRequestKey } from '@sgedda/mockifyer-core';
 import crypto from 'node:crypto';
@@ -182,20 +182,70 @@ export async function ensureTestData() {
     }
   }
   
+  // Create the wanderweird-demo lane if it doesn't exist
+  console.log(`[Setup] Ensuring ${LANE} lane exists...`);
+  try {
+    const lanesResult = await dashboard.lanes();
+    const demoLane = lanesResult.lanes.find((l: any) => l.clientId === LANE);
+    if (!demoLane) {
+      console.log(`[Setup] Creating lane: ${LANE}`);
+      await dashboard.call('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
+    } else {
+      console.log(`[Setup] Lane ${LANE} already exists`);
+    }
+  } catch (err: any) {
+    console.warn(`[Setup] Could not create lane ${LANE}:`, err.message);
+  }
+  
+  // Warm the base scenario by recording WanderWeird endpoints (needed for offline.spec.ts)
+  const WANDER_ENDPOINTS = [
+    'http://127.0.0.1:4203/discover?destinationKey=atlantis',
+    'http://127.0.0.1:4203/discover'
+  ];
+  
+  console.log('[Setup] Checking WanderWeird mocks in base scenario...');
+  const baseMocksForWander = await dashboard.listMocks(BASE_SCENARIO);
+  const missingEndpoints = WANDER_ENDPOINTS.filter(ep => 
+    !baseMocksForWander.some((m: any) => m.endpoint === ep)
+  );
+  
+  if (missingEndpoints.length > 0) {
+    console.log(`[Setup] Recording ${missingEndpoints.length} WanderWeird endpoints through gateway...`);
+    for (const endpoint of missingEndpoints) {
+      try {
+        // Call through the gateway with the lane ID header
+        const gatewayUrl = endpoint.replace('http://127.0.0.1:4203', 'http://127.0.0.1:4200/api');
+        console.log(`[Setup] Recording: ${endpoint}`);
+        await fetch(gatewayUrl, {
+          headers: { 'X-Mockifyer-Client-Id': LANE }
+        });
+        // Give it a moment to record
+        await new Promise(r => setTimeout(r, 500));
+      } catch (err: any) {
+        console.warn(`[Setup] Could not record ${endpoint}:`, err.message);
+      }
+    }
+    
+    // Verify they were recorded
+    const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
+    const recordedCount = WANDER_ENDPOINTS.filter(ep => 
+      updatedMocks.some((m: any) => m.endpoint === ep)
+    ).length;
+    console.log(`[Setup] WanderWeird mocks: ${recordedCount}/${WANDER_ENDPOINTS.length} recorded`);
+  } else {
+    console.log('[Setup] ✓ All WanderWeird mocks already exist');
+  }
+  
   // Reset global scenario to BASE_SCENARIO (scenario creates switch the global scenario)
   console.log(`[Setup] Resetting global scenario to ${BASE_SCENARIO}...`);
   await dashboard.setGlobalScenario(BASE_SCENARIO);
   
-  // Also reset wanderweird-demo lane to BASE_SCENARIO if it exists
+  // Reset wanderweird-demo lane to BASE_SCENARIO
   try {
-    const lanesResult = await dashboard.lanes();
-    const demoLane = lanesResult.lanes.find((l: any) => l.name === 'wanderweird-demo');
-    if (demoLane) {
-      console.log(`[Setup] Resetting wanderweird-demo lane to ${BASE_SCENARIO}...`);
-      await dashboard.setLaneScenario(demoLane.clientId, BASE_SCENARIO);
-    }
+    console.log(`[Setup] Resetting ${LANE} lane to ${BASE_SCENARIO}...`);
+    await dashboard.call('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
   } catch (err: any) {
-    console.warn('[Setup] Could not reset wanderweird-demo lane:', err.message);
+    console.warn(`[Setup] Could not reset ${LANE} lane:`, err.message);
   }
   
   console.log('[Setup] ✓ Test data ready');
