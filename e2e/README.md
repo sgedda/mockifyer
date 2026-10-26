@@ -24,12 +24,17 @@ Demo data: scenarios `guide-demo-2` (Atlantis 99°), `heatwave` (44°), `rainy-w
 `wanderweird-demo` → `guide-demo-2` (see the guide, section 4.14). `global-setup.ts` fails fast if a
 piece is down. The MCP tests use `../packages/mockifyer-mcp/dist/cli.js` (build it first).
 
-## Run
+## Run locally
 
 ```bash
 cd e2e
 npm install
 npx playwright install chromium
+
+# First time: seed demo data (dashboard must be running on :3002)
+npm run seed
+
+# Then run tests
 npm test                      # headless
 npm run test:headed           # watch it in a browser window
 npx playwright test tests/scenarios.spec.ts
@@ -86,6 +91,14 @@ MAIN_DASHBOARD_URL=http://127.0.0.1:3012 MAIN_MCP_CLI=<path>/mockifyer-mcp/dist/
 
 ## CI
 
-`ci.workflow.example.yml` is a **draft** GitHub Actions workflow (not in `.github/workflows`). It starts
-the stack, waits for the ports, runs the suite and uploads the report/traces/videos. It still needs a way
-to seed the demo scenarios on the runner (marked TODO).
+The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
+- **Schedule**: nightly at 3 AM UTC
+- **Manual**: via workflow_dispatch in the Actions tab
+- **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/
+
+The workflow builds Mockifyer packages, starts the WanderWeird stack, seeds demo scenarios via `npm run seed`,
+and runs the suite. Reports/traces/videos are uploaded as artifacts on failure.
+
+Demo data seeding (`seed-demo-data.ts`) creates the three scenarios (guide-demo-2 99°, heatwave 44°,
+rainy-weekend 11°) with an Open-Meteo Athens forecast mock and the wanderweird-demo client lane,
+all via the real dashboard API. Idempotent and deterministic.

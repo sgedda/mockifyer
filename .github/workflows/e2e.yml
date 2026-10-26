@@ -1,0 +1,127 @@
+name: E2E (WanderWeird + Mockifyer)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC daily
+  pull_request:
+    paths:
+      - 'packages/mockifyer-dashboard/**'
+      - 'packages/mockifyer-core/**'
+      - 'packages/mockifyer-fetch/**'
+      - 'packages/mockifyer-axios/**'
+      - 'packages/mockifyer-mcp/**'
+      - 'example-projects/wanderweird-travel/**'
+      - 'e2e/**'
+      - '.github/workflows/e2e.yml'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      WW: example-projects/wanderweird-travel
+      NODE_ENV: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+            example-projects/wanderweird-travel/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build Mockifyer packages
+        run: |
+          cd packages/mockifyer-core && npm ci && npm run build
+          cd ../mockifyer-axios && npm ci && npm run build
+          cd ../mockifyer-fetch && npm ci && npm run build
+          cd ../mockifyer-dashboard && npm ci && npm run build:backend
+          cd ../mockifyer-mcp && npm ci && npm run build
+
+      - name: Install WanderWeird
+        working-directory: ${{ env.WW }}
+        run: |
+          npm ci
+          cd apps/mobile && npm ci
+
+      - name: Start dashboard (sqlite) in background
+        working-directory: ${{ env.WW }}
+        run: |
+          nohup npm run dashboard:sqlite > /tmp/dashboard.log 2>&1 &
+          echo "Dashboard PID: $!"
+
+      - name: Wait for dashboard
+        run: npx wait-on -t 120000 http-get://127.0.0.1:3002/api/scenario-config
+
+      - name: Seed demo data
+        working-directory: e2e
+        run: |
+          npm ci
+          npm run seed
+
+      - name: Start WanderWeird services (gateway + wander-api)
+        working-directory: ${{ env.WW }}
+        run: |
+          MOCKIFYER_SCENARIO=guide-demo-2 nohup npm run dev:proxy:record > /tmp/services.log 2>&1 &
+          echo "Services PID: $!"
+
+      - name: Wait for services
+        run: |
+          npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
+          sleep 3
+
+      - name: Start Expo web (Metro)
+        working-directory: ${{ env.WW }}/apps/mobile
+        run: |
+          nohup npx expo start --web --port 8090 > /tmp/metro.log 2>&1 &
+          echo "Metro PID: $!"
+
+      - name: Wait for Expo web
+        run: npx wait-on -t 180000 http-get://127.0.0.1:8090
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: e2e
+        run: npx playwright test
+
+      - name: Upload report and artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-${{ github.run_number }}
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            /tmp/dashboard.log
+            /tmp/services.log
+            /tmp/metro.log
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Debug logs on failure
+        if: failure()
+        run: |
+          echo "=== Dashboard log ==="
+          tail -100 /tmp/dashboard.log || echo "No dashboard log"
+          echo "=== Services log ==="
+          tail -100 /tmp/services.log || echo "No services log"
+          echo "=== Metro log ==="
+          tail -100 /tmp/metro.log || echo "No metro log"

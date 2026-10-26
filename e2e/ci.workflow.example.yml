@@ -1,6 +1,6 @@
-# DRAFT, not active. To use it, review and copy to .github/workflows/e2e.yml.
+# Active workflow at .github/workflows/e2e.yml (this file is kept as reference/documentation only).
 # Runs the Playwright suite headless against the WanderWeird demo stack on a Linux runner.
-name: e2e (WanderWeird + Mockifyer)
+name: e2e (WanderWeird + Mockifyer) [EXAMPLE ONLY - see .github/workflows/e2e.yml]
 
 on:
   workflow_dispatch:

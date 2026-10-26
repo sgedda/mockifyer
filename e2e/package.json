@@ -8,12 +8,14 @@
     "test:headed": "playwright test --headed",
     "test:main": "MAIN_DASHBOARD_URL=http://127.0.0.1:3012 playwright test tests/main-features.spec.ts",
     "report": "playwright show-report",
-    "install:browsers": "playwright install --with-deps chromium"
+    "install:browsers": "playwright install --with-deps chromium",
+    "seed": "npx tsx seed-demo-data.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@playwright/test": "^1.56.0",
     "@types/node": "^20.11.24",
+    "tsx": "^4.23.15",
     "typescript": "^5.4.0"
   }
 }
