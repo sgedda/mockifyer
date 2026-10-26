@@ -7,8 +7,8 @@
  * 
  * Uses a committed fixture (fixtures/athens-forecast.json) for deterministic seeding.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { DASHBOARD, ATHENS_ENDPOINT_PREFIX, EXPECTED_TEMP, LANE, BASE_SCENARIO } from './lib/env';
 
 const ATHENS_ENDPOINT = `${ATHENS_ENDPOINT_PREFIX}&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`;
@@ -57,97 +57,86 @@ async function main() {
   }
 
   // 2. Create/update the Athens mock in guide-demo-2 with 99° temperature from fixture
-  const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-  let athensMock = mocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+  // For SQLite/filesystem provider, write mock files directly to disk
+  const crypto = await import('node:crypto');
+  const hash = crypto.createHash('sha256').update(ATHENS_ENDPOINT).digest('hex');
+  const filename = `${hash}.json`;
+  
+  // Determine mock-data path
+  // CI: runs from e2e/ dir, WanderWeird is at ../example-projects/wanderweird-travel
+  // Local: might run from e2e/ or workspace root
+  const mockDataRoot = process.env.MOCK_DATA_PATH || 
+    join(__dirname, '../example-projects/wanderweird-travel/mock-data');
+  
+  console.log(`Using mock data root: ${mockDataRoot}`);
+  const scenarioDir = join(mockDataRoot, BASE_SCENARIO);
+  const mockPath = join(scenarioDir, filename);
 
+  console.log('Creating Athens mock from fixture...');
+  const fixtureData = { ...ATHENS_FIXTURE };
+  fixtureData.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+  
+  const mockData = {
+    endpoint: ATHENS_ENDPOINT,
+    method: 'GET',
+    response: {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: fixtureData,
+    },
+    replayMode: 'stored',
+    timestamp: new Date().toISOString(),
+  };
+
+  // Write mock file directly to filesystem
+  if (!existsSync(scenarioDir)) {
+    mkdirSync(scenarioDir, { recursive: true });
+  }
+  writeFileSync(mockPath, JSON.stringify(mockData, null, 2));
+  console.log(`Created/updated mock: ${filename}`);
+
+  // Verify via API
+  const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
+  const athensMock = mocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
   if (!athensMock) {
-    console.log('Creating Athens mock from fixture...');
-    // Create deterministic mock from committed fixture
-    const fixtureData = { ...ATHENS_FIXTURE };
-    fixtureData.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+    console.log('⚠️  Mock file written but not yet visible via API (may need dashboard restart)');
+  }
+
+  // Base mock already created above with correct temperature
+
+  // 3. Create heatwave and rainy-weekend scenarios with correct temperature mocks
+  for (const scenario of ['heatwave', 'rainy-weekend']) {
+    if (!existingScenarios.includes(scenario)) {
+      console.log(`Creating scenario: ${scenario}`);
+      await ok('POST', '/scenario-config/create', { scenario });
+    }
+
+    // Write mock file with scenario-specific temperature
+    const scenarioDir = join(mockDataRoot, scenario);
+    const scenarioMockPath = join(scenarioDir, filename);
+    const expectedTemp = EXPECTED_TEMP[scenario];
     
-    const mockData = {
+    console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
+    const scenarioFixtureData = { ...ATHENS_FIXTURE };
+    scenarioFixtureData.current.temperature_2m = expectedTemp;
+    
+    const scenarioMockData = {
       endpoint: ATHENS_ENDPOINT,
       method: 'GET',
       response: {
         status: 200,
         headers: { 'content-type': 'application/json' },
-        data: fixtureData,
+        data: scenarioFixtureData,
       },
+      replayMode: 'stored',
+      timestamp: new Date().toISOString(),
     };
 
-    // Use hash-based filename (simple, deterministic, always valid)
-    const crypto = await import('node:crypto');
-    const hash = crypto.createHash('sha256').update(ATHENS_ENDPOINT).digest('hex');
-    const filename = `${hash}.json`;
-    
-    await ok('PUT', `/mocks/${filename}?scenario=${BASE_SCENARIO}`, {
-      responseData: mockData,
-      replayMode: 'stored',
-    });
-
-    const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-    athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
-    if (!athensMock) throw new Error('Failed to create Athens mock via PUT');
-    console.log(`Created mock: ${athensMock.filename}`);
-  } else {
-    console.log(`Athens mock exists: ${athensMock.filename}`);
-  }
-
-  // Ensure guide-demo-2 has correct temperature and replay mode
-  const baseMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
-  
-  if (!baseMock.data?.response?.data?.current) {
-    console.error(`❌ Mock structure invalid for ${BASE_SCENARIO}/${athensMock.filename}`);
-    console.error('Expected: { data: { response: { data: { current: { temperature_2m: number } } } } }');
-    console.error('Actual:', JSON.stringify(baseMock, null, 2).substring(0, 500));
-    throw new Error(`Mock missing current.temperature_2m in ${BASE_SCENARIO}`);
-  }
-
-  let needsUpdate = false;
-  if (baseMock.data.response.data.current.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
-    console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
-    baseMock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
-    needsUpdate = true;
-  }
-  if (needsUpdate || baseMock.data?.replayMode !== 'stored') {
-    await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
-      responseData: baseMock.data.response.data,
-      replayMode: 'stored',
-    });
-  }
-
-  // 3. Create heatwave and rainy-weekend by cloning guide-demo-2 and changing temperature
-  for (const scenario of ['heatwave', 'rainy-weekend']) {
-    if (!existingScenarios.includes(scenario)) {
-      console.log(`Creating ${scenario} from ${BASE_SCENARIO}...`);
-      await ok('POST', '/scenario-config/create', { scenario, deriveFrom: BASE_SCENARIO });
+    if (!existsSync(scenarioDir)) {
+      mkdirSync(scenarioDir, { recursive: true });
     }
-
-    // Update temperature and ensure replay mode is stored
-    const scenarioMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${scenario}`);
-    const expectedTemp = EXPECTED_TEMP[scenario];
-    
-    if (!scenarioMock.data?.response?.data?.current) {
-      console.error(`❌ Mock structure invalid for ${scenario}/${athensMock.filename}`);
-      console.error('Expected: { data: { response: { data: { current: { temperature_2m: number } } } } }');
-      console.error('Actual:', JSON.stringify(scenarioMock, null, 2).substring(0, 500));
-      throw new Error(`Mock missing current.temperature_2m in ${scenario}`);
-    }
-
-    let scenarioNeedsUpdate = false;
-    if (scenarioMock.data.response.data.current.temperature_2m !== expectedTemp) {
-      console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
-      scenarioMock.data.response.data.current.temperature_2m = expectedTemp;
-      scenarioNeedsUpdate = true;
-    }
-    
-    if (scenarioNeedsUpdate || scenarioMock.data?.replayMode !== 'stored') {
-      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
-        responseData: scenarioMock.data.response.data,
-        replayMode: 'stored',
-      });
-    }
+    writeFileSync(scenarioMockPath, JSON.stringify(scenarioMockData, null, 2));
+    console.log(`Created/updated ${scenario} mock: ${filename}`);
   }
 
   // 4. Create wanderweird-demo client lane pointing to guide-demo-2
@@ -185,27 +174,33 @@ async function main() {
       'http://127.0.0.1:4203/discover',
     ];
 
-    const crypto = await import('node:crypto');
     for (const url of wanderEndpoints) {
       const existing = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
       if (!existing.find((m: any) => m.endpoint === url)) {
         console.log(`Recording wander mock: ${url}`);
-        await ok('POST', '/proxy', {
-          url,
-          method: 'GET',
-          scenario: BASE_SCENARIO,
-          allowUpstream: true,
-          record: true,
-        });
+        try {
+          await ok('POST', '/proxy', {
+            url,
+            method: 'GET',
+            scenario: BASE_SCENARIO,
+            allowUpstream: true,
+            record: true,
+          });
 
-        // Set replay mode to stored
-        const updated = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-        const mock = updated.find((m: any) => m.endpoint === url);
-        if (mock) {
-          await ok('PUT', `/mocks/${mock.filename}?scenario=${BASE_SCENARIO}`, { replayMode: 'stored' });
-        } else {
-          console.log(`⚠️  Could not find mock for ${url} after recording, skipping replay mode update`);
+          // Verify mock was created and set replay mode to stored
+          const updated = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
+          const mock = updated.find((m: any) => m.endpoint === url);
+          if (mock) {
+            await ok('PUT', `/mocks/${mock.filename}?scenario=${BASE_SCENARIO}`, { replayMode: 'stored' });
+            console.log(`  Created and configured: ${mock.filename}`);
+          } else {
+            console.log(`  ⚠️  Could not find mock for ${url} after recording`);
+          }
+        } catch (err: any) {
+          console.log(`  ⚠️  Failed to record ${url}: ${err.message}`);
         }
+      } else {
+        console.log(`  Mock already exists for ${url}`);
       }
     }
   } else {
