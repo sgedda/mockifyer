@@ -56,8 +56,7 @@ jobs:
           cd packages/mockifyer-core && npm ci && npm run build
           cd ../mockifyer-axios && npm ci && npm run build
           cd ../mockifyer-fetch && npm ci && npm run build
-          cd ../mockifyer-dashboard && npm ci && npm run build:backend
-          mkdir -p packages/mockifyer-dashboard/public && echo '<!DOCTYPE html><html><body>E2E Dashboard</body></html>' > packages/mockifyer-dashboard/public/index.html
+          cd ../mockifyer-dashboard && npm ci && npm run build:backend && mkdir -p public && echo '<!DOCTYPE html><html><body>E2E Dashboard API</body></html>' > public/index.html
           cd ../mockifyer-mcp && npm ci && npm run build
 
       - name: Verify dashboard build
