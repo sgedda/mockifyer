@@ -156,6 +156,25 @@ function readScenarioQuery(req: Request, res: Response): string | undefined | nu
   return parsed;
 }
 
+/**
+ * Scenario from a JSON body. Rejects path separators and `..` before any mock write.
+ * Sends 400 and returns null when the name is missing or unsafe.
+ */
+function readScenarioBody(scenario: unknown, res: Response): string | null {
+  if (typeof scenario !== 'string' || !scenario.trim()) {
+    res.status(400).json({ error: 'scenario is required' });
+    return null;
+  }
+  const parsed = parseScenarioName(scenario);
+  if (parsed === null) {
+    res.status(400).json({
+      error: `Invalid scenario name: "${scenario.trim()}". Use only letters, numbers, hyphens, and underscores.`,
+    });
+    return null;
+  }
+  return parsed;
+}
+
 /** Scenario from ?scenario= or Redis active key + filesystem fallback (matches proxy when body scenario is omitted). */
 async function resolveRedisScenario(
   req: Request,
@@ -1640,9 +1659,8 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
     const { scenario, domainPath, useLiveApi } = req.body || {};
-    if (typeof scenario !== 'string' || !scenario.trim()) {
-      return res.status(400).json({ error: 'scenario is required' });
-    }
+    const scenarioName = readScenarioBody(scenario, res);
+    if (scenarioName === null) return;
     if (typeof domainPath !== 'string' || !domainPath.trim()) {
       return res.status(400).json({ error: 'domainPath is required (host or host/path prefix)' });
     }
@@ -1650,7 +1668,6 @@ router.post('/bulk-live-api', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'useLiveApi must be a boolean' });
     }
 
-    const scenarioName = scenario.trim();
     if (isCentralizedDashboardProvider(config.provider)) {
       const store = createDashboardMockStore(config, mockDataPath);
       try {
@@ -1686,9 +1703,8 @@ router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
   try {
     const { mockDataPath, config } = getDashboardContext(req);
     const { scenario, stored, passthrough } = req.body || {};
-    if (typeof scenario !== 'string' || !scenario.trim()) {
-      return res.status(400).json({ error: 'scenario is required' });
-    }
+    const scenarioName = readScenarioBody(scenario, res);
+    if (scenarioName === null) return;
     if (stored !== undefined && !Array.isArray(stored)) {
       return res.status(400).json({ error: 'stored must be an array of filenames' });
     }
@@ -1699,7 +1715,6 @@ router.post('/bulk-replay-mode', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'stored or passthrough filenames are required' });
     }
 
-    const scenarioName = scenario.trim();
     if (isCentralizedDashboardProvider(config.provider)) {
       const store = createDashboardMockStore(config, mockDataPath);
       try {

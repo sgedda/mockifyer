@@ -3,6 +3,7 @@ import path from 'path';
 import {
   applyMockReplayModeSetting,
   getScenarioFolderPath,
+  parseScenarioName,
   type MockData,
   type MockReplayMode,
 } from '@sgedda/mockifyer-core';
@@ -44,6 +45,21 @@ function mockEndpointForMatch(mockData: MockData): string | null {
 }
 
 const BULK_STORE_WRITE_CONCURRENCY = 16;
+
+/**
+ * Scenario names are joined under mock-data. Reject traversal and separators
+ * before any filesystem or store write.
+ */
+function requireSafeScenarioName(scenario: string): string {
+  const parsed = parseScenarioName(scenario);
+  if (parsed !== null) {
+    return parsed;
+  }
+  const shown = scenario.trim();
+  throw new Error(
+    `Invalid scenario name: "${shown}". Use only letters, numbers, hyphens, and underscores.`
+  );
+}
 
 type ReplayModeApplyOutcome = 'stored' | 'refresh-next' | 'passthrough';
 
@@ -116,7 +132,7 @@ export async function bulkSetLiveApiForDomain(opts: {
   keyPrefix?: string;
   redisCluster?: boolean;
 }): Promise<BulkLiveApiResult> {
-  const scenarioName = opts.scenario.trim();
+  const scenarioName = requireSafeScenarioName(opts.scenario);
   const prefix = opts.domainPath.trim();
   const desiredMode: MockReplayMode = opts.useLiveApi ? 'passthrough' : 'stored';
   let updated = 0;
@@ -251,7 +267,7 @@ export async function bulkSetReplayModeForFilenames(opts: {
   keyPrefix?: string;
   redisCluster?: boolean;
 }): Promise<BulkReplayModeResult> {
-  const scenarioName = opts.scenario.trim();
+  const scenarioName = requireSafeScenarioName(opts.scenario);
   const stored = uniqueTrimmedFilenames(opts.stored);
   const storedSet = new Set(stored);
   const passthrough = uniqueTrimmedFilenames(opts.passthrough).filter((name) => !storedSet.has(name));

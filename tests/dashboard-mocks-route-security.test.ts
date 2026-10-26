@@ -84,6 +84,54 @@ describe('dashboard mock routes scenario validation', () => {
     });
   });
 
+  test('rejects scenario traversal before bulk replay-mode writes outside mockDataPath', async () => {
+    await withDashboard(async (baseUrl, { outsideFile }) => {
+      const original = fs.readFileSync(outsideFile, 'utf-8');
+
+      const response = await fetch(`${baseUrl}/api/mocks/bulk-replay-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenario: '..',
+          passthrough: ['outside.json'],
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid scenario name'),
+      });
+      expect(fs.readFileSync(outsideFile, 'utf-8')).toBe(original);
+    });
+  });
+
+  test('rejects scenario traversal before bulk live-api rewrites files outside mockDataPath', async () => {
+    await withDashboard(async (baseUrl, { tempDir }) => {
+      const liveTarget = path.join(tempDir, 'users.json');
+      const original = JSON.stringify({
+        request: { url: 'https://api.example.com/users', method: 'GET' },
+        response: { status: 200, data: { secret: 'keep' }, headers: {} },
+      });
+      fs.writeFileSync(liveTarget, original);
+
+      const response = await fetch(`${baseUrl}/api/mocks/bulk-live-api`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenario: '..',
+          domainPath: 'api.example.com',
+          useLiveApi: true,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid scenario name'),
+      });
+      expect(fs.readFileSync(liveTarget, 'utf-8')).toBe(original);
+    });
+  });
+
   test('rejects reserved pool scenario name on mock routes', async () => {
     await withDashboard(async (baseUrl) => {
       const response = await fetch(`${baseUrl}/api/mocks?scenario=pool`);

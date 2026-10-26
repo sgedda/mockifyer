@@ -122,6 +122,25 @@ describe('bulkSetReplayModeForFilenames', () => {
     expect(after).toContain(marker);
     expect(after).not.toContain('alwaysUseRealApi');
   });
+
+  it('does not rewrite a file outside mock-data when scenario is ..', async () => {
+    const mockDataPath = path.join(tmpRoot, 'mock-data');
+    fs.mkdirSync(mockDataPath, { recursive: true });
+    const outsidePath = path.join(tmpRoot, 'outside.json');
+    const original = JSON.stringify(sampleMock({ alwaysUseRealApi: undefined }), null, 2);
+    fs.writeFileSync(outsidePath, original);
+
+    await expect(
+      bulkSetReplayModeForFilenames({
+        provider: 'filesystem',
+        mockDataPath,
+        scenario: '..',
+        passthrough: ['outside.json'],
+      })
+    ).rejects.toThrow(/Invalid scenario name/);
+
+    expect(fs.readFileSync(outsidePath, 'utf-8')).toBe(original);
+  });
 });
 
 describe('bulkSetLiveApiForDomain', () => {
@@ -195,5 +214,32 @@ describe('bulkSetLiveApiForDomain', () => {
     expect(pending.responsePending).toBeUndefined();
     expect(pending.alwaysUseRealApi).toBeUndefined();
     expect(pending.refreshOnNextRequest).toBe(true);
+  });
+
+  it('does not rewrite mocks outside mock-data when scenario is ..', async () => {
+    const mockDataPath = path.join(tmpRoot, 'mock-data');
+    fs.mkdirSync(path.join(mockDataPath, 'default'), { recursive: true });
+    const outsidePath = path.join(tmpRoot, 'users.json');
+    const original = JSON.stringify(
+      sampleMock({
+        request: { method: 'GET', url: 'https://api.example.com/users', headers: {} },
+        alwaysUseRealApi: undefined,
+      }),
+      null,
+      2
+    );
+    fs.writeFileSync(outsidePath, original);
+
+    await expect(
+      bulkSetLiveApiForDomain({
+        provider: 'filesystem',
+        mockDataPath,
+        scenario: '..',
+        domainPath: 'api.example.com',
+        useLiveApi: true,
+      })
+    ).rejects.toThrow(/Invalid scenario name/);
+
+    expect(fs.readFileSync(outsidePath, 'utf-8')).toBe(original);
   });
 });
