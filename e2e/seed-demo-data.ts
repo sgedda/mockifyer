@@ -194,7 +194,10 @@ async function main() {
   for (const scenario of ['heatwave', 'rainy-weekend']) {
     if (!existingScenarios.includes(scenario)) {
       console.log(`Creating ${scenario}...`);
-      await ok('POST', '/scenario-config/create', { scenario: canWriteFiles ? undefined : { deriveFrom: BASE_SCENARIO } });
+      const createParams = canWriteFiles 
+        ? { scenario } 
+        : { scenario, deriveFrom: BASE_SCENARIO };
+      await ok('POST', '/scenario-config/create', createParams);
     }
 
     if (canWriteFiles) {
