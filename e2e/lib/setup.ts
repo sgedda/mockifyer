@@ -52,8 +52,14 @@ export async function ensureTestData() {
   const config = await dashboard.scenarioConfig();
   const existingScenarios = config.scenarios || [];
   
-  // Create scenarios if needed
-  for (const scenario of [BASE_SCENARIO, 'heatwave', 'rainy-weekend']) {
+  // Create BASE scenario first if missing
+  if (!existingScenarios.includes(BASE_SCENARIO)) {
+    console.log(`[Setup] Creating base scenario: ${BASE_SCENARIO}`);
+    await dashboard.createScenario(BASE_SCENARIO);
+  }
+  
+  // Create other scenarios if needed
+  for (const scenario of ['heatwave', 'rainy-weekend']) {
     if (!existingScenarios.includes(scenario)) {
       console.log(`[Setup] Creating scenario: ${scenario}`);
       await dashboard.createScenario(scenario);
@@ -67,7 +73,8 @@ export async function ensureTestData() {
   if (!athensMock) {
     console.log('[Setup] Athens mock not found, creating via proxy recording...');
     
-    // Record from actual API (will be cached for future test runs)
+    // First, create the mock entry via proxy (this creates the filename)
+    // Note: recordResponses:true in body is IGNORED because dashboard:sqlite has MOCKIFYER_RECORD_RESPONSES=false
     try {
       const proxyResult = await dashboard.call('POST', '/proxy', {
         url: ATHENS_ENDPOINT,
@@ -75,55 +82,85 @@ export async function ensureTestData() {
         scenario: BASE_SCENARIO,
         allowUpstream: true,
         record: true,
-        recordResponses: true, // Required to persist response data in SQLite
       });
       
       if (proxyResult.status === 200) {
-        console.log('[Setup] ✓ Recorded Athens mock from Open-Meteo API');
-        // Re-fetch to get the mock
-        const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
-        athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
-        
-        // Validate the recorded mock has temperature data
-        if (athensMock) {
-          const mockData = await dashboard.getMock(athensMock.filename, BASE_SCENARIO);
-          const temp = mockData.data?.response?.data?.current?.temperature_2m;
-          if (typeof temp !== 'number') {
-            console.error('[Setup] ❌ Recorded mock is missing current.temperature_2m field');
-            console.error('[Setup] Mock structure:', JSON.stringify(mockData.data?.response?.data?.current, null, 2));
-            throw new Error('Recorded Athens mock is invalid: missing current.temperature_2m field');
-          }
-          console.log(`[Setup] ✓ Mock validated with temperature: ${temp}°`);
-        }
+        console.log('[Setup] ✓ Created Athens mock entry');
       } else {
         console.warn(`[Setup] ⚠️  Proxy recording returned status ${proxyResult.status}`);
       }
     } catch (err: any) {
-      console.warn('[Setup] ⚠️  Failed to record from Open-Meteo API:', err.message);
-      console.warn('[Setup] Tests that require Athens mock will be skipped');
-      return false; // Indicate setup incomplete
+      console.warn('[Setup] ⚠️  Failed to create mock entry:', err.message);
+      return false;
     }
-  }
-  
-  if (!athensMock) {
-    console.warn('[Setup] ⚠️  Athens mock still not available after recording');
-    return false;
+    
+    // Re-fetch to get the mock entry (will have responsePending:true, status 0, data null)
+    const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
+    athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+    
+    if (!athensMock) {
+      console.error('[Setup] ❌ Mock entry not created');
+      return false;
+    }
+    
+    // Fetch actual response from Open-Meteo API (retry up to 3 times)
+    let liveData = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`[Setup] Fetching live data from Open-Meteo API (attempt ${attempt}/3)...`);
+        const liveRes = await fetch(ATHENS_ENDPOINT);
+        if (liveRes.ok) {
+          liveData = await liveRes.json();
+          console.log('[Setup] ✓ Got live response from Open-Meteo API');
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`[Setup] Attempt ${attempt} failed:`, err.message);
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 2000)); // 2s delay before retry
+        }
+      }
+    }
+    
+    // Fall back to fixture if live fetch failed
+    if (!liveData) {
+      console.warn('[Setup] ⚠️  Failed to fetch live data after 3 attempts, using fixture');
+      liveData = ATHENS_FIXTURE;
+    }
+    
+    // Write response data into the existing mock via PUT
+    await dashboard.putMock(athensMock.filename, {
+      responseData: liveData,
+      replayMode: 'stored',
+    }, BASE_SCENARIO);
+    
+    console.log('[Setup] ✓ Wrote response data to mock');
+    
+    // Validate the mock has temperature data
+    const mockData = await dashboard.getMock(athensMock.filename, BASE_SCENARIO);
+    const temp = mockData.data?.response?.data?.current?.temperature_2m;
+    if (typeof temp !== 'number') {
+      console.error('[Setup] ❌ Mock is missing current.temperature_2m field');
+      console.error('[Setup] Mock structure:', JSON.stringify(mockData.data?.response?.data?.current, null, 2));
+      throw new Error('Athens mock is invalid: missing current.temperature_2m field');
+    }
+    console.log(`[Setup] ✓ Mock validated with temperature: ${temp}°`);
   }
   
   console.log(`[Setup] Athens mock found: ${athensMock.filename}`);
   
-  // Ensure correct temperatures for each scenario
+  // Ensure correct temperatures for each scenario (heatwave: 44, rainy-weekend: 11)
   for (const [scenario, expectedTemp] of Object.entries(EXPECTED_TEMP)) {
+    if (scenario === BASE_SCENARIO) continue; // Skip base scenario
+    
     // Check if scenario has Athens mock
     const scenarioMocks = await dashboard.listMocks(scenario);
     const scenarioAthensMock = scenarioMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
     
     if (!scenarioAthensMock) {
       // Derive from base scenario
-      if (scenario !== BASE_SCENARIO) {
-        console.log(`[Setup] Deriving ${scenario} from ${BASE_SCENARIO}...`);
-        await dashboard.createScenario(scenario, BASE_SCENARIO);
-      }
+      console.log(`[Setup] Deriving ${scenario} from ${BASE_SCENARIO}...`);
+      await dashboard.createScenario(scenario, BASE_SCENARIO);
     }
     
     // Check temperature
@@ -138,6 +175,22 @@ export async function ensureTestData() {
         replayMode: 'stored',
       }, scenario);
     }
+  }
+  
+  // Reset global scenario to BASE_SCENARIO (scenario creates switch the global scenario)
+  console.log(`[Setup] Resetting global scenario to ${BASE_SCENARIO}...`);
+  await dashboard.setGlobalScenario(BASE_SCENARIO);
+  
+  // Also reset wanderweird-demo lane to BASE_SCENARIO if it exists
+  try {
+    const lanesResult = await dashboard.lanes();
+    const demoLane = lanesResult.lanes.find((l: any) => l.name === 'wanderweird-demo');
+    if (demoLane) {
+      console.log(`[Setup] Resetting wanderweird-demo lane to ${BASE_SCENARIO}...`);
+      await dashboard.setLaneScenario(demoLane.clientId, BASE_SCENARIO);
+    }
+  } catch (err: any) {
+    console.warn('[Setup] Could not reset wanderweird-demo lane:', err.message);
   }
   
   console.log('[Setup] ✓ Test data ready');
