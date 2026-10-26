@@ -1,9 +1,12 @@
 /**
  * Web demo: now that Metro bundling is fixed (.web.ts variants), initialize Mockifyer.
  * Uses dashboard proxy mode (redis backend) with fetch interceptor.
+ * Imports from react-native entry (same as native setup).
  */
-import { setupMockifyer } from '@sgedda/mockifyer-fetch';
-import type { SetupMockifyerForReactNativeResult } from '@sgedda/mockifyer-fetch/react-native';
+import { 
+  initMockifyerForReactNativeDashboard,
+  type SetupMockifyerForReactNativeResult 
+} from '@sgedda/mockifyer-fetch/react-native';
 import {
   resolveDashboardBaseUrl,
   resolveDefaultClientId,
@@ -33,27 +36,28 @@ export async function initializeMockifyer(): Promise<WanderweirdMockifyerBoot> {
   console.info(`[Wanderweird Web] Client ID: ${clientId}`);
   console.info(`[Wanderweird Web] Dashboard: ${dashboardBaseUrl}`);
   
-  // Web uses fetch interceptor with dashboard proxy (redis backend)
-  const instance = setupMockifyer({
+  // Web uses dashboard proxy (same as native redis backend)
+  const result = await initMockifyerForReactNativeDashboard({
+    isDev: __DEV__,
     mockDataPath: 'mock-data',
+    bundledDataPath: './assets/mock-data',
+    dashboardBaseUrl,
     recordMode: false,
-    clientId,
-    logging: __DEV__ ? 'info' : undefined,
-    proxy: {
-      baseUrl: dashboardBaseUrl,
-      recordOnMiss: false,
-      strictLaneScenario: true,
+    config: {
+      clientId,
+      logging: __DEV__ ? 'info' : undefined,
+      databaseProvider: { type: 'memory' },
+      excludedUrls: [
+        ...DEFAULT_EXCLUDED_URLS,
+        '/api/scenario-config',
+        '/api/client-lanes',
+        '/api/date-config',
+      ],
     },
-    excludedUrls: [
-      ...DEFAULT_EXCLUDED_URLS,
-      '/api/scenario-config',
-      '/api/client-lanes',
-      '/api/date-config',
-    ],
   });
   
   return {
-    result: { status: 'activated', instance },
+    result,
     backend: 'redis',
     dashboardBaseUrl,
     clientId,
