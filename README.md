@@ -114,6 +114,8 @@ const response = await axios.get('https://api.example.com/data');
 - Automatic interception driven by env + config
 - **Scenarios** — `mock-data/<scenario>/...` plus `scenario-config.json`
 - Date manipulation (fixed date, offset, timezone) for tests
+- **Status override** — simulate error responses (500, 429, 404) without modifying stored response data
+- **Response delay** — add artificial latency to test slow network conditions
 - **Easy discovery** — JSON files in the repo (searchable in your IDE)
 - **React Native** — device storage + optional Metro sync to keep repo and simulator in sync ([REACT_NATIVE.md](./REACT_NATIVE.md))
 
@@ -243,6 +245,60 @@ Rules use **longest-prefix matching**: `api.example.com/v1/users/:id` is more sp
 **Dashboard:** View and edit rules in the **Domains** view (tree UI) or via `POST /api/mocks/domain-path-rules`.
 
 **React Native:** Metro endpoints `GET/POST /mockifyer-domain-path-rules` (Metro loads project rules onto the device at startup via `reloadMockData`).
+
+## Simulating Errors and Latency
+
+Mock response can be customized at replay time without modifying the stored response data:
+
+### Status Override
+
+Override the HTTP status code to simulate error responses:
+
+```json
+{
+  "request": { ... },
+  "response": {
+    "status": 200,
+    "data": { "message": "success" }
+  },
+  "statusOverride": 500
+}
+```
+
+When `statusOverride` is set, the mock returns status `500` instead of the stored `200`. Useful for testing error handling (e.g., `500`, `429`, `404`).
+
+**Dashboard UI:** Edit any mock and set "Status Override" in the Response Simulation section.
+
+**MCP Tool:** `mockifyer_set_mock_behavior` with `statusOverride` parameter.
+
+### Response Delay
+
+Add artificial latency to test slow network conditions:
+
+```json
+{
+  "request": { ... },
+  "response": { ... },
+  "responseDelayMs": 2000
+}
+```
+
+When `responseDelayMs` is set, the mock waits 2000ms before returning the response. Useful for testing loading states and timeouts.
+
+**Dashboard UI:** Edit any mock and set "Response Delay (ms)" in the Response Simulation section.
+
+**MCP Tool:** `mockifyer_set_mock_behavior` with `responseDelayMs` parameter.
+
+### Combined Usage
+
+Both features can be used together to simulate slow error responses:
+
+```json
+{
+  "statusOverride": 503,
+  "responseDelayMs": 5000
+}
+```
 
 ## Advanced testing
 

@@ -122,12 +122,14 @@ function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefi
   return (
     Object.prototype.hasOwnProperty.call(body, 'responseData') ||
     Object.prototype.hasOwnProperty.call(body, 'responseDateOverrides') ||
+    Object.prototype.hasOwnProperty.call(body, 'statusOverride') ||
+    Object.prototype.hasOwnProperty.call(body, 'responseDelayMs') ||
     bodyHasReplayModeFields(body)
   );
 }
 
 const PUT_BODY_MISSING_FIELDS_ERROR =
-  'Request body must contain responseData, replayMode, or responseDateOverrides';
+  'Request body must contain responseData, replayMode, responseDateOverrides, statusOverride, or responseDelayMs';
 
 /**
  * Read and validate `?scenario=`.
@@ -1517,6 +1519,28 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
+        if (Object.prototype.hasOwnProperty.call(req.body, 'statusOverride')) {
+          const statusOverride = req.body.statusOverride;
+          if (statusOverride === null) {
+            delete (existingData as any).statusOverride;
+          } else if (typeof statusOverride === 'number' && Number.isInteger(statusOverride) && statusOverride >= 100 && statusOverride < 600) {
+            (existingData as any).statusOverride = statusOverride;
+          } else {
+            return res.status(400).json({ error: 'statusOverride must be null or a valid HTTP status code (100-599)' });
+          }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(req.body, 'responseDelayMs')) {
+          const responseDelayMs = req.body.responseDelayMs;
+          if (responseDelayMs === null) {
+            delete (existingData as any).responseDelayMs;
+          } else if (typeof responseDelayMs === 'number' && responseDelayMs >= 0 && Number.isInteger(responseDelayMs)) {
+            (existingData as any).responseDelayMs = responseDelayMs;
+          } else {
+            return res.status(400).json({ error: 'responseDelayMs must be null or a non-negative integer' });
+          }
+        }
+
         await store.setByHash(hash, existingData as any, scenario);
         const payload = JSON.stringify(existingData);
         const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
@@ -1593,6 +1617,28 @@ router.put('/*', async (req: Request, res: Response) => {
       const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
       if (replayErr) {
         return res.status(400).json({ error: replayErr });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'statusOverride')) {
+      const statusOverride = req.body.statusOverride;
+      if (statusOverride === null) {
+        delete existingData.statusOverride;
+      } else if (typeof statusOverride === 'number' && Number.isInteger(statusOverride) && statusOverride >= 100 && statusOverride < 600) {
+        existingData.statusOverride = statusOverride;
+      } else {
+        return res.status(400).json({ error: 'statusOverride must be null or a valid HTTP status code (100-599)' });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'responseDelayMs')) {
+      const responseDelayMs = req.body.responseDelayMs;
+      if (responseDelayMs === null) {
+        delete existingData.responseDelayMs;
+      } else if (typeof responseDelayMs === 'number' && responseDelayMs >= 0 && Number.isInteger(responseDelayMs)) {
+        existingData.responseDelayMs = responseDelayMs;
+      } else {
+        return res.status(400).json({ error: 'responseDelayMs must be null or a non-negative integer' });
       }
     }
 

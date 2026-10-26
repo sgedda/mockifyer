@@ -519,6 +519,46 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_set_mock_behavior',
+    {
+      description:
+        'Set status override and/or response delay on a mock for error simulation and latency testing. Use statusOverride to simulate HTTP errors (e.g. 500, 429, 404) and responseDelayMs to add artificial latency. Pass null to clear an override.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename'),
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        statusOverride: z
+          .number()
+          .int()
+          .min(100)
+          .max(599)
+          .nullable()
+          .optional()
+          .describe('HTTP status code to override (100-599), or null to clear'),
+        responseDelayMs: z
+          .number()
+          .int()
+          .min(0)
+          .nullable()
+          .optional()
+          .describe('Delay in milliseconds before returning response, or null to clear'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.updateMock({
+          filename: args.filename,
+          scenario: args.scenario,
+          statusOverride: args.statusOverride,
+          responseDelayMs: args.responseDelayMs,
+        });
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_list_network_events',
     {
       description:

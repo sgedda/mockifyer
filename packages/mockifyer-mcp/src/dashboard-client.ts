@@ -541,6 +541,27 @@ export class DashboardApiClient {
     });
   }
 
+  async updateMock(params: {
+    filename: string;
+    scenario?: string;
+    statusOverride?: number | null;
+    responseDelayMs?: number | null;
+  }): Promise<{ success: boolean; message: string; filename: string }> {
+    const qs = params.scenario ? `?scenario=${encodeURIComponent(params.scenario)}` : '';
+    const encoded = encodeMockFilename(params.filename);
+    const body: Record<string, unknown> = {};
+    if (params.statusOverride !== undefined) {
+      body.statusOverride = params.statusOverride;
+    }
+    if (params.responseDelayMs !== undefined) {
+      body.responseDelayMs = params.responseDelayMs;
+    }
+    return this.request(`/mocks/${encoded}${qs}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
   async listNetworkEvents(params?: {
     scenario?: string;
     clientId?: string;
