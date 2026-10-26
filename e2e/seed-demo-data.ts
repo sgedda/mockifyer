@@ -15,7 +15,12 @@ import { DASHBOARD, ATHENS_ENDPOINT_PREFIX, EXPECTED_TEMP, LANE, BASE_SCENARIO }
 import type { MockData } from '@sgedda/mockifyer-core';
 import { generateRequestKey } from '@sgedda/mockifyer-core';
 
-const ATHENS_ENDPOINT = `${ATHENS_ENDPOINT_PREFIX}&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`;
+// Use local mock server for recording (reliable, no external API dependency)
+const USE_LOCAL_MOCK_SERVER = process.env.CI === 'true' || process.env.USE_LOCAL_MOCK === 'true';
+const MOCK_API_URL = 'http://127.0.0.1:9999';
+const ATHENS_ENDPOINT = USE_LOCAL_MOCK_SERVER
+  ? `${MOCK_API_URL}/v1/forecast?latitude=37.9838&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`
+  : `${ATHENS_ENDPOINT_PREFIX}&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`;
 
 // Load committed fixture for deterministic seeding
 const ATHENS_FIXTURE = JSON.parse(readFileSync(join(__dirname, 'fixtures/athens-forecast.json'), 'utf8'));
@@ -65,11 +70,16 @@ async function main() {
   // For SQLite/Redis: use proxy endpoint (requires external API access)
   console.log('Creating Athens mock from fixture...');
   
-  // Determine if we can write files directly (filesystem provider)
+  // Detect provider type from dashboard health endpoint
+  const health = await ok('GET', '/health');
+  const providerType = health.provider || 'filesystem';
+  const canWriteFiles = providerType === 'filesystem';
+  
+  console.log(`  Dashboard provider: ${providerType}`);
+  
   const mockDataRoot = process.env.MOCK_DATA_PATH || 
     join(__dirname, '../example-projects/wanderweird-travel/mock-data');
   const scenarioDir = join(mockDataRoot, BASE_SCENARIO);
-  const canWriteFiles = existsSync(mockDataRoot) && !mockDataRoot.endsWith('.db');
   
   const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
   let athensMock = mocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
