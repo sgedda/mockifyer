@@ -263,16 +263,22 @@ async function main() {
   }
 
   // 4. Create wanderweird-demo client lane pointing to guide-demo-2
-  const lanes = await ok('GET', '/client-lanes');
-  const existingLane = lanes.lanes?.find((l: any) => l.clientId === LANE);
-  if (!existingLane) {
-    console.log(`Creating client lane ${LANE} -> ${BASE_SCENARIO}...`);
-    await ok('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
-  } else if (existingLane.scenario !== BASE_SCENARIO) {
-    console.log(`Updating client lane ${LANE} to ${BASE_SCENARIO}...`);
-    await ok('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
+  // Note: Client lanes only work with Redis/SQLite providers, not filesystem
+  if (canWriteFiles) {
+    console.log('⚠️  Skipping client lane setup (filesystem provider does not support client lanes)');
+    console.log('   Tests that require client lanes will use global scenario instead');
   } else {
-    console.log(`Client lane ${LANE} already points to ${BASE_SCENARIO}`);
+    const lanes = await ok('GET', '/client-lanes');
+    const existingLane = lanes.lanes?.find((l: any) => l.clientId === LANE);
+    if (!existingLane) {
+      console.log(`Creating client lane ${LANE} -> ${BASE_SCENARIO}...`);
+      await ok('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
+    } else if (existingLane.scenario !== BASE_SCENARIO) {
+      console.log(`Updating client lane ${LANE} to ${BASE_SCENARIO}...`);
+      await ok('PUT', `/client-lanes/${LANE}/scenario`, { scenario: BASE_SCENARIO });
+    } else {
+      console.log(`Client lane ${LANE} already points to ${BASE_SCENARIO}`);
+    }
   }
 
   // 5. Create wander-api /discover mocks (required by offline.spec.ts)
