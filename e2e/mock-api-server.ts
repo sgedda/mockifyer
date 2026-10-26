@@ -28,8 +28,8 @@ const server = createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Mock Open-Meteo server listening on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Mock Open-Meteo server listening on http://0.0.0.0:${PORT}`);
   console.log('Ready to serve fixture data for E2E seeding');
 });
 
