@@ -7,6 +7,7 @@
  */
 
 import type { NetworkEvent } from './network-event-types';
+import { MOCKIFYER_CLIENT_ID_HEADER } from './activation-mode';
 import { ATLAS_LIVE_STREAM_PATH } from './atlas-live-html';
 import { tryGraphqlDisplayTextToRequestJson } from './graphql-body-display';
 import {
@@ -15,6 +16,7 @@ import {
   MOCKIFYER_TRACE_RESPONSE_KEY,
 } from './inline-trace';
 import { mergeQueryStringOntoUrl } from './append-params-to-url';
+import { REDACTED_SECRET_PLACEHOLDER } from './network-log';
 import {
   ATLAS_CODE_HIGHLIGHT_CSS,
   highlightAtlasCode,
@@ -90,6 +92,38 @@ function findHop(
   );
 }
 
+/**
+ * RN / Metro hops often store `event.clientId` without also keeping
+ * `X-Mockifyer-Client-Id` on `requestHeaders`. Under `activationMode:
+ * client_id_header`, services bypass Mockifyer when that header is missing —
+ * include-trace then returns an empty `mockifyerTrace` shell. Stamp the lane
+ * from the event when the captured headers omit it (or only have a redaction).
+ */
+function ensureClientIdHeaderFromEvent(
+  headers: Record<string, string>,
+  event: NetworkEvent,
+): void {
+  const lane =
+    typeof event.clientId === 'string' ? event.clientId.trim() : '';
+  if (!lane) {
+    return;
+  }
+
+  const existingKey = Object.keys(headers).find(
+    (key) => key.toLowerCase() === MOCKIFYER_CLIENT_ID_HEADER,
+  );
+  if (existingKey) {
+    const existing = headers[existingKey]?.trim() ?? '';
+    if (existing && existing !== REDACTED_SECRET_PLACEHOLDER) {
+      return;
+    }
+    headers[existingKey] = lane;
+    return;
+  }
+
+  headers[MOCKIFYER_CLIENT_ID_HEADER] = lane;
+}
+
 function mergeHopRequestHeaders(
   event: NetworkEvent,
   extras?: Record<string, string>,
@@ -110,6 +144,8 @@ function mergeHopRequestHeaders(
       headers[key] = value;
     }
   }
+
+  ensureClientIdHeaderFromEvent(headers, event);
 
   if (extras) {
     for (const [k, v] of Object.entries(extras)) {
