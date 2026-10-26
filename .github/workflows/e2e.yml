@@ -56,8 +56,8 @@ jobs:
       - name: Install WanderWeird
         working-directory: ${{ env.WW }}
         run: |
-          npm ci
-          cd apps/mobile && npm ci
+          npm ci --legacy-peer-deps
+          cd apps/mobile && npm ci --legacy-peer-deps
 
       - name: Start dashboard (sqlite) in background
         working-directory: ${{ env.WW }}
