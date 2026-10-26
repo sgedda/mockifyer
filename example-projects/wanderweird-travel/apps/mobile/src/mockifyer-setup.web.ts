@@ -9,7 +9,14 @@ import {
   resolveDefaultClientId,
   type MockifyerBackend,
 } from './dev/mockifyer-env';
-import { DEFAULT_EXCLUDED_URLS } from './mockifyer-setup';
+
+// Default excluded URLs (same as native setup)
+const DEFAULT_EXCLUDED_URLS = [
+  '/mockifyer',
+  '/mockifyer-trace',
+  '/assets',
+  '/api/react-native',
+];
 
 export interface WanderweirdMockifyerBoot {
   result: SetupMockifyerForReactNativeResult;
