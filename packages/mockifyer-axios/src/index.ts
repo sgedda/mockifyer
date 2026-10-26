@@ -1161,6 +1161,9 @@ class MockifyerClass {
         throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
       }
 
+      // Same key the matcher used. saveResponse after setRecordMode(true) must not invent a second key.
+      (config as any).__mockifyer_requestKey = requestKey;
+      (config as any).__mockifyer_startTime = Date.now();
       return config;
     });
   }
@@ -1207,6 +1210,13 @@ class MockifyerClass {
         response.config?.headers
       );
       this.unwrapResponseInlineTrace(response);
+
+      // This interceptor is installed only when recordMode started off. setRecordMode(true)
+      // does not add the record-mode response interceptor, so save here when the live flag is on.
+      // useGlobalAxios records on the global axios interceptor instead (same instance would double-save).
+      if (!this.config.useGlobalAxios && this.config.recordMode && !this.config.proxy?.baseUrl) {
+        await this.saveResponse(response);
+      }
 
       return response;
     });
@@ -2729,7 +2739,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)
-      if (resolvedConfig.recordMode) {
+      // Always install. setRecordMode(true) after startup must still save local misses.
+      // isRecordMode() inside the handler skips saves while recording is off.
         logger.debug('[Mockifyer] Adding response interceptor directly to global axios for recording');
         const interceptorId = globalAxios.interceptors.response.use(
           async function(axiosResponse: any) {
@@ -2750,6 +2761,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               if (requestKey) {
                 mockifyer['processingRequests'].delete(requestKey);
                 logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
+              }
+
+              if (!mockifyer.isRecordMode()) {
+                return axiosResponse;
               }
               
               // Check if this is a mocked response - if so, don't record it
@@ -2879,6 +2894,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
               }
             }
+
+            if (!mockifyer.isRecordMode()) {
+              return mockifyer['rejectWithMockifyerRequestId'](error);
+            }
             
             if (error.response) {
               // Check if this is a mocked error response
@@ -2952,8 +2971,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         // Verify interceptors are registered
         const handlers = (globalAxios.interceptors.response as any).handlers || [];
         logger.debug('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
-      }
-      
+
       // Copy adapter if it exists (for mock responses)
       if (axiosInstance.defaults && axiosInstance.defaults.adapter) {
         axios.defaults.adapter = axiosInstance.defaults.adapter;
