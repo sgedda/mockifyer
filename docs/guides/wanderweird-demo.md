@@ -370,7 +370,7 @@ and `services/graphql-api/src/mappers.ts` computes `daysUntil` from `mockifyerNo
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Client B must be running (`docs/guides/wanderweird-demo-scripts/start-teammate-b.sh`, see sbs9). Terminal: `docs/guides/wanderweird-demo-scripts/lanes-date-watch.sh`. *helper* Every 3 s it reads `GET /api/date-config?clientId=…` (now + `configSource`) for both clients and asks each graphql-api (:4206 for A, :4216 for B) for the `travelerDashboard` headline.
+- **[helper]** Client B must be running (`docs/guides/wanderweird-demo-scripts/start-teammate-b.sh`, see section 4.4). Terminal: `docs/guides/wanderweird-demo-scripts/lanes-date-watch.sh`. Every 3 s it reads `GET /api/date-config?clientId=…` (now + `configSource`) for both clients and asks each graphql-api (:4206 for A, :4216 for B) for the `travelerDashboard` headline.
 - Open `docs/guides/wanderweird-demo-scripts/recording/sbs/lanes-date.html` (app `/trips` + dashboard `/settings`). In **Settings → Client lanes**, set the `teammate-b` date to 1 Dec 2026. **Mockifyer** API: `PUT /api/client-lanes/teammate-b/date` with `{"fixedDate":"2026-12-01T09:00:00.000Z"}`.
 - Clear it: the same call with `{"fixedDate":null}`.
 
@@ -490,9 +490,17 @@ It made no file reads and ran no shell commands. Real time was about **20–25 s
 - One-time setup: install the Cursor CLI, copy `docs/guides/wanderweird-demo-scripts/agent-demo/` to `<repo>/agent-demo`, `export CURSOR_API_KEY=…`, and build `packages/mockifyer-mcp`.
 - `docs/guides/wanderweird-demo-docs/guides/wanderweird-demo-scripts/agent/warmup.sh`. *helper* Runs `cursor-agent mcp list` (expect `mockifyer: ready`) and one print-mode call to `mockifyer_list_scenarios`, so the first recorded run isn't slowed by startup.
 - `docs/guides/wanderweird-demo-scripts/bug-set.sh`, then reload Discover in the app: -999. *helper* → **Mockifyer** `PATCH /api/mocks/<file>/field-overrides`.
-- `docs/guides/wanderweird-demo-docs/guides/wanderweird-demo-scripts/agent/run.sh`. *helper* `cd`s into `agent-demo`, pre-approves the server (`cursor-agent mcp enable mockifyer`), then runs `cursor-agent --trust --approve-mcps --force --sandbox disabled "<prompt>"`. The agent only uses **Mockifyer** MCP tools.
+- **[helper]** Run `docs/guides/wanderweird-demo-scripts/agent/run.sh`:
+
+```bash
+./docs/guides/wanderweird-demo-scripts/agent/run.sh
+```
+
+This `cd`s into `agent-demo`, pre-approves the server (`cursor-agent mcp enable mockifyer`), then runs `cursor-agent --trust --approve-mcps --force --sandbox disabled "<prompt>"`. The agent only uses **[Mockifyer]** MCP tools.
+
 - Reload Discover: 99. Leave the agent with `/exit`.
-- Why `--sandbox disabled`: in our runs the interactive CLI sometimes reported "tool discovery failed" for the MCP server with the sandbox on. Print mode wasn't affected.
+
+- **Safety note on `--sandbox disabled`:** This flag disables the Cursor CLI's sandbox protections. **Only use it in a throwaway demo checkout, not in production code.** In our test runs, the interactive CLI sometimes reported "tool discovery failed" for the MCP server with the sandbox on. Print mode wasn't affected.
 
 </details>
 
@@ -571,7 +579,7 @@ Mocking is half the story. Mockifyer can also show you **how one tap in the app 
 
 | View | Where | Best for |
 |---|---|---|
-| **Mockifyer Atlas** | Metro dev server, `http://localhost:8081/mockifyer-atlas-live` | Watching live traffic from the Expo app while you click around |
+| **Mockifyer Atlas** | Metro dev server, `http://localhost:8081/mockifyer-atlas-live` for native or `http://localhost:8090/mockifyer-atlas-live` for web | Watching live traffic from the Expo app while you click around |
 | **Dashboard → Hops** | `http://127.0.0.1:3002/hops` | Browsing the multi-service chains *recorded* in a scenario |
 
 ### 5.1 Turn tracing on in Wanderweird
@@ -646,6 +654,8 @@ Shortcuts are ignored while you're typing in the search box.
 
 ![Include-trace re-call](https://github.com/user-attachments/assets/88b85577-0656-4a9a-a33a-fcf8943673a6)
 
+*The include-trace confirmation dialog asking whether to re-call the request.*
+
 ![Include-trace result page](https://github.com/user-attachments/assets/08c4d76d-6529-4c62-992d-02956d32d2fa)
 
 *The include-trace page for TravelerDashboard. The curl carries `x-mockifyer-client-id: wanderweird-demo`, a request id and a parent request id.*
@@ -656,8 +666,8 @@ Shortcuts are ignored while you're typing in the search box.
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Open `docs/guides/wanderweird-demo-scripts/recording/sbs/atlas.html`: the app + Atlas live (`http://localhost:8090/mockifyer-atlas-live`). **Mockifyer** Atlas is served by the Metro sync middleware.
-- Start capture with `t` in the Metro terminal, use the app, and click `res` / `curl` on a row. **Mockifyer**
+- **[helper]** Open `docs/guides/wanderweird-demo-scripts/recording/sbs/atlas.html`: the app + Atlas live (`http://localhost:8090/mockifyer-atlas-live`). **[Mockifyer]** Atlas is served by the Metro sync middleware.
+- Start capture with `t` in the Metro terminal, use the app, and click `res` / `curl` on a row. **[Mockifyer]**
 - Web-only note: the web build sends no root hop, so these clips used a small local pass-through in front of the gateway. It is not part of the example.
 
 </details>
@@ -668,7 +678,7 @@ Shortcuts are ignored while you're typing in the search box.
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Same page as sbs5. Type `graphql`, then `temperature_2m`, then `Casey Compass` in the Atlas search box; open `res` and use the browser's find. **Mockifyer** Atlas search matches paths and bodies.
+- Same page as the "App next to Atlas live" clip above. Type `graphql`, then `temperature_2m`, then `Casey Compass` in the Atlas search box; open `res` and use the browser's find. **[Mockifyer]** Atlas search matches paths and bodies.
 
 </details>
 
@@ -678,7 +688,7 @@ Shortcuts are ignored while you're typing in the search box.
 
 <details><summary><b>How to reproduce</b></summary>
 
-- Same page as sbs5. Click **trace** on `GET /api/discover` and confirm. **Mockifyer** Opens `/mockifyer-atlas-trace?id=<hopId>&format=html` and re-calls the hop with `X-Mockifyer-Include-Trace`.
+- Same page as the "App next to Atlas live" clip above. Click **trace** on `GET /api/discover` and confirm. **[Mockifyer]** Opens `/mockifyer-atlas-trace?id=<hopId>&format=html` and re-calls the hop with `X-Mockifyer-Include-Trace`.
 
 </details>
 
@@ -691,6 +701,8 @@ Shortcuts are ignored while you're typing in the search box.
 *Hops for `Testing_Scenario`: "9 chains, 35 hops". Each card shows "N service hops", a "one user request" tag, the root request id, and an entry hop such as `GET /discover` tagged **+3 nested**, **Pending** and **entry**.*
 
 ![Scrolling the Hops page](https://github.com/user-attachments/assets/d083b539-10f9-4d93-9aa4-5c094c32b893)
+
+*Scrolling through hop cards in the dashboard Hops view.*
 
 Open **Hops** in the dashboard sidebar, or go to `http://127.0.0.1:3002/hops?scenario=hello`. The header reads *"Multi-service request chains recorded in this scenario"*.
 
@@ -705,7 +717,10 @@ Open **Hops** in the dashboard sidebar, or go to `http://127.0.0.1:3002/hops?sce
   - **+N nested** means children are hidden. Click to expand.
   - a traffic badge shows **Replay**, **Live**, **Refresh**, or **Pending**. *Pending* is a request-only stub (`responsePending`). That's what `MOCKIFYER_RECORD_RESPONSES=false` gives you, and it captures a body on the next matching request.
   - **entry hop** (amber) means the hop was added from the same recording run by URL and time, and may lack a parent link.
+
 ![Expanding a Hops card](https://github.com/user-attachments/assets/5b844165-bfa8-470c-af35-06d5c9161de3)
+
+*Clicking to expand a hop card with nested requests.*
 
 ![Expanded 9-hop card](https://github.com/user-attachments/assets/6db9d31e-6428-47c7-a427-493f38819875)
 
@@ -782,18 +797,23 @@ Open **Hops** in the dashboard sidebar, or go to `http://127.0.0.1:3002/hops?sce
 | `EXPO_PUBLIC_GATEWAY_URL` | URL | Override the gateway (Android emulator default: `http://10.0.2.2:4200`) |
 | `OPENTRIPMAP_API_KEY` | key | Enables nearby POIs on Discover (free signup) |
 
-## Honest limits
+## 7. Current Limitations
 
-What Mockifyer doesn't do (yet), as of this demo:
+What Mockifyer doesn't do or doesn't do everywhere, as of this version:
 
-- **No status-code or latency override.** A mock replays the status it was recorded with, but the dashboard and MCP tools can't change that status or add a delay. Error and slow-response states can't be faked from the dashboard yet. A PR to add this is in progress.
+- **Status-code and latency overrides: proxy limitation.** In-process axios/fetch clients (filesystem and hybrid modes) apply `statusOverride` and `responseDelayMs` from mock files ([PR #476](https://github.com/sgedda/mockifyer/pull/476)). However, the dashboard's `POST /api/proxy` route ignores these fields and always returns the stored status. The published npm dashboard may also predate this feature. To test error states or slow responses in proxy mode, edit the stored `response.status` directly or use the in-process clients.
+
 - **The trace doesn't show overrides.** A Network hop says it was a Mock hit, but not which field override changed the response. Its body preview is the stored body without the override. Use the Overrides page to see that.
+
 - **Overrides are edited on the Overrides page.** The mock editor shows an "N override(s)" badge that links there; you can't edit overrides inline in the editor.
-- **The scenario is pinned per process.** A service started with `MOCKIFYER_SCENARIO` sends that scenario on every proxy request, so switching its client lane has no effect. To switch a running service, restart it without the env var so it follows its lane (4.14), or use a second process with another clientId to show two scenarios side by side.
+
+- **The scenario is pinned per process.** A service started with `MOCKIFYER_SCENARIO` sends that scenario on every proxy request, so switching its client lane has no effect. To switch a running service, restart it without the env var so it follows its lane (see 4.14), or use a second process with another clientId to show two scenarios side by side.
+
 - **The header Scenario picker doesn't move clients that have a clientId.** It sets only the global scenario. With strict lane mode on (the default), a client with a clientId but no lane gets unscoped live traffic, not the global scenario. Switch clients through **Settings → Client lanes**.
+
 - **Derived scenarios start on live API.** Mocks copied with "derive from" are reset to live API, so set the ones you edit back to **Use saved mock**.
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 - **Nothing shows up in `/hops`.** Check that the services were started with a record script and that the app sends the `wanderweird-demo` client id. In `client_id_header` mode, requests without that id are ignored.
 - **Mocks have no bodies.** That's expected, because the default is stubs only. Record again with `MOCKIFYER_RECORD_RESPONSES=true`.
@@ -805,7 +825,7 @@ What Mockifyer doesn't do (yet), as of this demo:
 - **Hops cards say "inferred chain".** Re-record with `npm run dev:proxy:record` so parent ids are stored.
 - **Dev menu can't create scenarios.** Start `npm run dashboard`.
 
-## 8. FAQ
+## 9. FAQ
 
 **Do I need Umbraco, Docker or Redis?** No. `npm run dev` plus the app is enough. Everything else is optional.
 
