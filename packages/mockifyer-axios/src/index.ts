@@ -2358,6 +2358,7 @@ class MockifyerClass {
         );
       } else {
         // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+        // getMockFilePath clamps over-long path segments to stay within NAME_MAX.
         const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
         const filePath = path.join(scenarioPath, dir, filename);
         fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });

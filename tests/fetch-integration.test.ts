@@ -306,19 +306,29 @@ describe("Mockifyer Fetch Integration", () => {
       expect(recordedResponse.data).toEqual(testResponseData);
 
       // Verify mock file was created under the unscoped scratch scenario
+      // (nested host/path layout: api.example.com/record-test/GET_<date>.json)
       const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
       expect(fs.existsSync(scratchScenarioPath)).toBe(true);
 
-      const files = fs.readdirSync(scratchScenarioPath);
+      const collectRelativeJsonFiles = (dir: string, prefix = ""): string[] => {
+        const results: string[] = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            results.push(...collectRelativeJsonFiles(path.join(dir, entry.name), rel));
+          } else if (entry.name.endsWith(".json")) {
+            results.push(rel);
+          }
+        }
+        return results;
+      };
+      const files = collectRelativeJsonFiles(scratchScenarioPath);
       expect(files.length).toBeGreaterThan(0);
 
-      // Find the mock file for this URL (filename format: YYYY-MM-DDTHH-MM-SS-MSSZ_METHOD_url.json)
-      // Note: URL sanitization replaces non-alphanumeric chars with hyphens, so 'record-test' stays as 'record-test'
       const mockFile = files.find(
         (file) =>
           file.includes("GET") &&
-          (file.includes("api_example_com_record-test") ||
-            file.includes("api_example_com_record_test")),
+          (file.includes("record-test") || file.includes("record_test")),
       );
       expect(mockFile).toBeDefined();
 
@@ -396,6 +406,37 @@ describe("Mockifyer Fetch Integration", () => {
         process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API =
           prevRecordAlwaysLive;
       }
+    }
+  });
+
+  it("records and replays URLs that would exceed the filesystem name limit", async () => {
+    const longQuery = `https://api.example.com/search?q=${"a".repeat(400)}`;
+    const longSegment = `https://cdn.example.com/${"b".repeat(300)}/asset`;
+    const queryPayload = { ok: true, kind: "query" };
+    const segmentPayload = { ok: true, kind: "segment" };
+
+    const queryResponse = await recordThenReplay(longQuery, queryPayload);
+    expect(queryResponse.status).toBe(200);
+    expect(queryResponse.data).toEqual(queryPayload);
+
+    const segmentResponse = await recordThenReplay(longSegment, segmentPayload);
+    expect(segmentResponse.status).toBe(200);
+    expect(segmentResponse.data).toEqual(segmentPayload);
+
+    const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
+    const pathComponents: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        pathComponents.push(entry.name);
+        if (entry.isDirectory()) {
+          walk(path.join(dir, entry.name));
+        }
+      }
+    };
+    walk(scratchScenarioPath);
+    expect(pathComponents.some((name) => name.endsWith(".json"))).toBe(true);
+    for (const name of pathComponents) {
+      expect(Buffer.byteLength(name)).toBeLessThanOrEqual(255);
     }
   });
 });
