@@ -82,6 +82,13 @@ See [mcp-config.example.json](./mcp-config.example.json).
 | `mockifyer_get_network_trace` | Multi-service call chain with optional body previews |
 | `mockifyer_explain_incident` | Crash / incident context with preceding hops and heuristic suspects |
 | `mockifyer_get_network_log_config` | Whether network logging and body capture are enabled |
+| `mockifyer_get_atlas_doc` | Atlas screen/CMS/datasource map (summary by default) |
+| `mockifyer_list_atlas_events` | Live prefetch/presentation events |
+| `mockifyer_list_atlas_usage` | requestId → screen/component annotations |
+| `mockifyer_list_atlas_sessions` / `mockifyer_get_atlas_tree` | Sessions + CMS tree |
+| `mockifyer_get_atlas_generated_status` | Whether `atlas-html` generate output exists |
+| `mockifyer_list_atlas_generated_hops` | Hops from `atlas-events.json` after generate |
+| `mockifyer_search_atlas_bodies` / `mockifyer_get_atlas_hop_body` | Search/read `bodies-search.json` (+ spills) |
 | `mockifyer_list_entities` | List fixture-pool entities (filter by type/tag) |
 | `mockifyer_get_entity` / `mockifyer_create_entity` / `mockifyer_delete_entity` | Entity CRUD |
 | `mockifyer_extract_entity` | Extract from a mock (`jsonPath`, optional all array items) |
@@ -114,6 +121,18 @@ The assistant can call:
 2. `mockifyer_get_network_trace({ requestId: "...", scenario: "default" })` — ordered `trace.hops[]` root-first
 
 Requires network logging enabled in the dashboard Network tab (persistent with `redis` / `sqlite` providers).
+
+> "What did Atlas generate, and where is trip status in the bodies?"
+
+1. `mockifyer_get_atlas_generated_status()` — confirm `atlas-html` exists after Dev Menu / `mockifyer-atlas` render
+2. `mockifyer_list_atlas_generated_hops({ onlyWithBodies: true })` — hop ids with searchable bodies
+3. `mockifyer_search_atlas_bodies({ q: "CONFIRMED" })` or `mockifyer_get_atlas_hop_body({ eventId })`
+4. If bodies are empty (`captureBodies` was off), use `mockifyer_get_mock` / `mockifyer_get_mock_ai_context` for mock-hit responses instead
+
+> "Which screens/datasources did Atlas see (live, before generate)?"
+
+1. `mockifyer_get_atlas_doc({ summary: true })`
+2. `mockifyer_list_atlas_usage()` — join `requestId` to `mockifyer_get_network_trace`
 
 > "Create `check-in-open` from `default`, then point Playwright lane `trips-e2e-checkin` at it"
 

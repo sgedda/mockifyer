@@ -1,0 +1,25 @@
+node_modules/
+.expo/
+dist/
+*.log
+.env
+.env.local
+.DS_Store
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/assets/mock-data.ts
+apps/mobile/mock-data
+
+# Recorded mocks / local dashboard DB (generated at runtime)
+mock-data/**
+!mock-data/scenario-config.json
+!mock-data/.gitkeep
+
+# Umbraco local SQLite + media
+cms/umbraco/umbraco/Data/
+cms/umbraco/umbraco/Logs/
+cms/umbraco/wwwroot/media/
+
+# Editor / agent noise
+.claude/
+**/.claude/

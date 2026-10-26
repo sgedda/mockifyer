@@ -753,4 +753,100 @@ export class DashboardApiClient {
       body: JSON.stringify({ pool: body.pool, path: body.path ?? null }),
     });
   }
+
+  async getAtlasDoc(params?: {
+    scenario?: string;
+    summary?: boolean;
+  }): Promise<unknown> {
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.summary !== false) qs.set('summary', '1');
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request(`/atlas/doc${suffix}`);
+  }
+
+  async listAtlasEvents(params?: {
+    scenario?: string;
+    sessionId?: string;
+    clientId?: string;
+    kind?: 'prefetch' | 'presentation';
+    limit?: number;
+  }): Promise<unknown> {
+    const qs = new URLSearchParams();
+    if (params?.scenario) qs.set('scenario', params.scenario);
+    if (params?.sessionId) qs.set('sessionId', params.sessionId);
+    if (params?.clientId) qs.set('clientId', params.clientId);
+    if (params?.kind) qs.set('kind', params.kind);
+    if (typeof params?.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request(`/atlas/events${suffix}`);
+  }
+
+  async listAtlasUsage(scenario?: string): Promise<unknown> {
+    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
+    return this.request(`/atlas/usage${qs}`);
+  }
+
+  async listAtlasSessions(scenario?: string): Promise<unknown> {
+    const qs = scenario ? `?scenario=${encodeURIComponent(scenario)}` : '';
+    return this.request(`/atlas/sessions${qs}`);
+  }
+
+  async getAtlasTree(params: { sessionId: string; scenario?: string }): Promise<unknown> {
+    const sessionId = params.sessionId.trim();
+    if (!sessionId) throw new Error('sessionId is required');
+    const qs = new URLSearchParams();
+    qs.set('sessionId', sessionId);
+    if (params.scenario) qs.set('scenario', params.scenario);
+    return this.request(`/atlas/tree?${qs.toString()}`);
+  }
+
+  async getAtlasGeneratedStatus(): Promise<unknown> {
+    return this.request(`/atlas/generated`);
+  }
+
+  async listAtlasGeneratedHops(params?: {
+    limit?: number;
+    onlyWithBodies?: boolean;
+  }): Promise<unknown> {
+    const qs = new URLSearchParams();
+    if (typeof params?.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    if (params?.onlyWithBodies) qs.set('onlyWithBodies', '1');
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request(`/atlas/generated/hops${suffix}`);
+  }
+
+  async searchAtlasGeneratedBodies(params: {
+    q: string;
+    limit?: number;
+    includeHop?: boolean;
+  }): Promise<unknown> {
+    const q = params.q.trim();
+    if (!q) throw new Error('q is required');
+    const qs = new URLSearchParams();
+    qs.set('q', q);
+    if (typeof params.limit === 'number' && Number.isFinite(params.limit)) {
+      qs.set('limit', String(params.limit));
+    }
+    if (params.includeHop === false) qs.set('includeHop', '0');
+    return this.request(`/atlas/generated/bodies/search?${qs.toString()}`);
+  }
+
+  async getAtlasGeneratedHopBody(params: {
+    eventId: string;
+    maxChars?: number;
+  }): Promise<unknown> {
+    const eventId = params.eventId.trim();
+    if (!eventId) throw new Error('eventId is required');
+    const qs = new URLSearchParams();
+    if (typeof params.maxChars === 'number' && Number.isFinite(params.maxChars)) {
+      qs.set('maxChars', String(params.maxChars));
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return this.request(`/atlas/generated/bodies/${encodeURIComponent(eventId)}${suffix}`);
+  }
 }

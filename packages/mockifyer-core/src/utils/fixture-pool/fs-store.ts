@@ -40,6 +40,11 @@ export interface FixturePoolFsAdapter {
   /** Required for pool-index locking (releases `pool-index.json.lock`). */
   unlinkSync?: (path: string) => void;
   readdirSync?: (path: string) => string[];
+  /**
+   * mtime of a lock file. Used to reclaim corrupt locks across requests.
+   * When omitted, Node `fs.statSync` is used for real paths.
+   */
+  statSync?: (path: string) => { mtimeMs: number };
 }
 
 /**
@@ -118,9 +123,57 @@ interface PoolIndexLockPayload {
 }
 
 /**
+ * mtime of a lock file so a corrupt payload can still age out.
+ * Callers that persist the lock on a real filesystem pass `statSync` (the dashboard
+ * adapter does). Virtual adapters without it fall back to a single-acquire timer.
+ * This module stays free of `require('fs')` so the React Native barrel can load it.
+ */
+function readLockMtimeMs(lockPath: string, fsAdapter: FixturePoolFsAdapter): number | null {
+  if (typeof fsAdapter.statSync !== 'function') return null;
+  try {
+    const mtimeMs = fsAdapter.statSync(lockPath).mtimeMs;
+    return typeof mtimeMs === 'number' && Number.isFinite(mtimeMs) ? mtimeMs : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Drop a corrupt or timestamp-less lock once its file is older than `staleMs`.
+ * The wait timeout (10s) is shorter than the stale window (30s), and each
+ * acquire starts a new in-memory clock, so a process-local timer can never
+ * reach `staleMs` under the defaults. File mtime persists across requests.
+ */
+function stealCorruptLockIfStale(
+  lockPath: string,
+  fsAdapter: FixturePoolFsAdapter,
+  nowMs: number,
+  staleMs: number,
+  corruptFirstSeenMs: { value: number | null }
+): boolean {
+  if (!fsAdapter.unlinkSync) return false;
+  const mtimeMs = readLockMtimeMs(lockPath, fsAdapter);
+  if (mtimeMs != null) {
+    if (nowMs - mtimeMs < staleMs) return false;
+    fsAdapter.unlinkSync(lockPath);
+    corruptFirstSeenMs.value = null;
+    return true;
+  }
+
+  // No stat (virtual fs): one acquire can still reclaim when its timeout outlasts staleMs.
+  if (corruptFirstSeenMs.value === null) {
+    corruptFirstSeenMs.value = nowMs;
+  }
+  if (nowMs - corruptFirstSeenMs.value < staleMs) return false;
+  fsAdapter.unlinkSync(lockPath);
+  corruptFirstSeenMs.value = null;
+  return true;
+}
+
+/**
  * Attempt to remove a stale pool-index lock.
  * @param corruptFirstSeenMs Mutable holder: first time we observed an unreadable lock
- *   (used so corrupt locks are reclaimed after `staleMs`, matching readable stale locks).
+ *   without an mtime (virtual filesystems only).
  */
 function tryStealStaleLock(
   lockPath: string,
@@ -132,27 +185,19 @@ function tryStealStaleLock(
   if (!fs.unlinkSync || !fs.existsSync(lockPath)) return false;
   try {
     const raw = JSON.parse(fs.readFileSync(lockPath, 'utf8')) as Partial<PoolIndexLockPayload>;
-    // Readable payload — reset corrupt tracking.
-    corruptFirstSeenMs.value = null;
     const createdAtMs = raw.createdAt ? Date.parse(raw.createdAt) : NaN;
-    if (!Number.isFinite(createdAtMs) || nowMs - createdAtMs < staleMs) {
-      return false;
+    if (Number.isFinite(createdAtMs)) {
+      corruptFirstSeenMs.value = null;
+      if (nowMs - createdAtMs < staleMs) return false;
+      fs.unlinkSync(lockPath);
+      return true;
     }
-    fs.unlinkSync(lockPath);
-    return true;
   } catch {
-    // Corrupt / unreadable lock: reclaim after the same stale window so a crashed
-    // writer cannot permanently block all pool mutations.
-    if (corruptFirstSeenMs.value === null) {
-      corruptFirstSeenMs.value = nowMs;
-    }
-    if (nowMs - corruptFirstSeenMs.value < staleMs) {
-      return false;
-    }
-    fs.unlinkSync(lockPath);
-    corruptFirstSeenMs.value = null;
-    return true;
+    // Unreadable payload — age it by file mtime below.
   }
+
+  // Missing/invalid createdAt or non-JSON. A readable young lock is handled above.
+  return stealCorruptLockIfStale(lockPath, fs, nowMs, staleMs, corruptFirstSeenMs);
 }
 
 /**

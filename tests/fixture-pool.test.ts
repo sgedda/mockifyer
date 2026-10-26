@@ -296,6 +296,34 @@ describe('fixture-pool compose helper (deferred activation)', () => {
   });
 });
 
+function createMemoryPoolFsWithMtime(): FixturePoolFsAdapter & {
+  files: Map<string, string>;
+  mtimes: Map<string, number>;
+} {
+  const base = createMemoryPoolFs();
+  const mtimes = new Map<string, number>();
+  return {
+    ...base,
+    mtimes,
+    writeFileSync: (p, data, encodingOrOptions) => {
+      base.writeFileSync(p, data, encodingOrOptions);
+      mtimes.set(p, Date.now());
+    },
+    unlinkSync: (p) => {
+      base.unlinkSync?.(p);
+      mtimes.delete(p);
+    },
+    statSync: (p) => {
+      if (!base.existsSync(p)) {
+        const err = new Error(`ENOENT: ${p}`) as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      }
+      return { mtimeMs: mtimes.get(p) ?? Date.now() };
+    },
+  };
+}
+
 function createMemoryPoolFs(): FixturePoolFsAdapter & { files: Map<string, string> } {
   const files = new Map<string, string>();
   return {
@@ -452,6 +480,39 @@ describe('fixture-pool index locking', () => {
     });
     expect(acquired).toBe(lockPath);
     releasePoolIndexLock(lockPath, fsAdapter);
+  });
+
+  it('reclaims a corrupt lock from file mtime when the wait is shorter than the stale window', () => {
+    const fsAdapter = createMemoryPoolFsWithMtime();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const lockPath = getPoolIndexLockPath(root, fsAdapter);
+    fsAdapter.writeFileSync(lockPath, '{not-json', 'utf8');
+    fsAdapter.mtimes.set(lockPath, Date.now() - 60_000);
+
+    // Defaults are timeout 10s and stale 30s. An in-memory first-seen clock
+    // resets on every attempt and can never reach the stale window.
+    const acquired = acquirePoolIndexLock(root, fsAdapter, {
+      timeoutMs: 40,
+      retryMs: 10,
+      staleMs: 30_000,
+    });
+    expect(acquired).toBe(lockPath);
+    releasePoolIndexLock(lockPath, fsAdapter);
+  });
+
+  it('keeps a fresh corrupt lock until its mtime is stale', () => {
+    const fsAdapter = createMemoryPoolFsWithMtime();
+    const root = '/mock-data';
+    ensurePoolLayout(root, fsAdapter);
+    const lockPath = getPoolIndexLockPath(root, fsAdapter);
+    fsAdapter.writeFileSync(lockPath, '', 'utf8');
+    fsAdapter.mtimes.set(lockPath, Date.now());
+
+    expect(() =>
+      acquirePoolIndexLock(root, fsAdapter, { timeoutMs: 40, retryMs: 10, staleMs: 30_000 })
+    ).toThrow(PoolIndexLockError);
+    expect(fsAdapter.existsSync(lockPath)).toBe(true);
   });
 });
 

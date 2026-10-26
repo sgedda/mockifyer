@@ -118,3 +118,57 @@ export function pickPreservedQuery(
   }
   return extras
 }
+
+export type ScenarioUrlSyncPlan =
+  | { action: 'none' }
+  | { action: 'stamp-url'; scenario: string }
+  | { action: 'apply-url'; urlScenario: string }
+
+/**
+ * Decide how the dashboard should sync `?scenario=` with React/server state.
+ *
+ * Must not run until GET /api/scenario-config has populated the real active
+ * scenario. Booting with placeholder `default` and stamping that onto the URL
+ * makes the later mismatch look like the user chose `default`, so
+ * POST /api/scenario-config/set would clobber `_scratch` / named scenarios.
+ */
+/**
+ * Query string for sidebar and tab navigation.
+ *
+ * Before scenario-config loads, `scenario` is the boot placeholder (`default`).
+ * Writing that into the URL makes the later sync treat it as an explicit choice
+ * and POST it over the real active scenario. Keep an existing `?scenario=` and
+ * otherwise omit the param until config is ready.
+ */
+export function scenarioQueryForNavigation(input: {
+  scenarioConfigReady: boolean
+  scenario: string
+  urlScenario: string | null
+}): string {
+  if (!input.scenarioConfigReady) {
+    return input.urlScenario ? buildSearch({ scenario: input.urlScenario }) : ''
+  }
+  return buildSearch({ scenario: input.scenario })
+}
+
+export function planScenarioUrlSync(input: {
+  scenarioConfigReady: boolean
+  urlScenario: string | null
+  scenario: string
+  switchingScenario: boolean
+  rejectedUrlScenario: string | null
+}): ScenarioUrlSyncPlan {
+  if (!input.scenarioConfigReady || input.switchingScenario) {
+    return { action: 'none' }
+  }
+  if (!input.urlScenario) {
+    return { action: 'stamp-url', scenario: input.scenario }
+  }
+  if (input.urlScenario === input.scenario) {
+    return { action: 'none' }
+  }
+  if (input.rejectedUrlScenario === input.urlScenario) {
+    return { action: 'none' }
+  }
+  return { action: 'apply-url', urlScenario: input.urlScenario }
+}

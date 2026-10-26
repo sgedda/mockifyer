@@ -1,0 +1,38 @@
+# Build from mockifyer repo root (compose sets context: ../..).
+FROM node:20.19.5-bookworm-slim
+
+WORKDIR /repo
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY packages/mockifyer-core/package.json packages/mockifyer-core/package-lock.json packages/mockifyer-core/tsconfig.json ./packages/mockifyer-core/
+COPY packages/mockifyer-core/src ./packages/mockifyer-core/src
+COPY packages/mockifyer-core/bin ./packages/mockifyer-core/bin
+
+COPY packages/mockifyer-fetch/package.json packages/mockifyer-fetch/package-lock.json packages/mockifyer-fetch/tsconfig.json ./packages/mockifyer-fetch/
+COPY packages/mockifyer-fetch/src ./packages/mockifyer-fetch/src
+
+RUN npm --prefix packages/mockifyer-core ci \
+  && npm --prefix packages/mockifyer-core run build \
+  && npm --prefix packages/mockifyer-fetch ci \
+  && npm --prefix packages/mockifyer-fetch run build
+
+COPY example-projects/wanderweird-travel/package.json example-projects/wanderweird-travel/package-lock.json ./example-projects/wanderweird-travel/
+COPY example-projects/wanderweird-travel/packages ./example-projects/wanderweird-travel/packages
+COPY example-projects/wanderweird-travel/services ./example-projects/wanderweird-travel/services
+COPY example-projects/wanderweird-travel/mock-data ./example-projects/wanderweird-travel/mock-data
+
+WORKDIR /repo/example-projects/wanderweird-travel
+RUN npm install --legacy-peer-deps
+
+ENV MOCKIFYER_PATH=/repo/example-projects/wanderweird-travel/mock-data
+ENV MOCKIFYER_CLIENT_ID=wanderweird-demo
+ENV MOCKIFYER_RUNTIME=filesystem
+ENV MOCKIFYER_RECORD=false
+ENV SERVICE=gateway-api
+
+WORKDIR /repo/example-projects/wanderweird-travel/services/gateway-api
+EXPOSE 4200
+CMD ["sh", "-c", "cd /repo/example-projects/wanderweird-travel/services/${SERVICE} && exec npx tsx src/server.ts"]

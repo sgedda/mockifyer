@@ -593,6 +593,30 @@ export function mockChainDepth(
   return getMockChain(mock, byRequestId, childrenByParent).length - 1
 }
 
+/**
+ * Full service-chain size for list badges: ancestors stop at the effective root
+ * ({@link getMockChain}), then every downstream hop is counted.
+ * Dedupes by `requestId` so inbound-parent stubs do not inflate the total.
+ */
+export function mockServiceChainSize(
+  mock: MockFile,
+  maps: Pick<MockChainMaps, 'byRequestId' | 'childrenByParent'>
+): number {
+  const ancestors = getMockChain(mock, maps.byRequestId, maps.childrenByParent)
+  const root = ancestors[0] ?? mock
+  const descendants: MockFile[] = []
+  collectDescendants(root, maps as MockChainMaps, descendants)
+  const seen = new Set<string>()
+  let count = 0
+  for (const hop of [root, ...descendants]) {
+    const key = hop.requestId?.trim() || hop.filename
+    if (seen.has(key)) continue
+    seen.add(key)
+    count += 1
+  }
+  return count
+}
+
 export function isMockChainRoot(mock: MockFile, byRequestId: Map<string, MockFile>): boolean {
   return knownParents(mock, byRequestId).length === 0
 }

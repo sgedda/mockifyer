@@ -1,15 +1,20 @@
 import fs from 'fs';
 import path from 'path';
-import type { MockData } from '@sgedda/mockifyer-core';
+import type { DomainPathRulesMap, MockData } from '@sgedda/mockifyer-core';
 import {
   DOMAIN_PATH_RULES_FILENAME,
   getScenarioFolderPath,
   SCENARIO_META_FILENAME,
   OVERRIDE_SETS_DIR_NAME,
+  parseDomainPathRules,
 } from '@sgedda/mockifyer-core';
 import { getAllJsonFiles } from './json-files';
 import { createDashboardMockStore, toDashboardRedisStoreConfig } from './create-dashboard-mock-store';
 import { isCentralizedDashboardProvider, type CentralizedDashboardProvider } from './dashboard-provider';
+import {
+  readDomainPathRulesFile,
+  writeDomainPathRulesFile,
+} from './domain-path-rules-store';
 import { RedisMockStore } from './redis-mock-store';
 
 const DATE_CONFIG_BASENAME = 'date-config.json';
@@ -54,6 +59,11 @@ export interface ScenarioExportBundle {
     allowUpstream: boolean;
     recordResponses: boolean;
   } | null;
+  /**
+   * Domain-path allowlist for the scenario (`domain-path-rules.json` / Redis `path_rules`).
+   * `null` means no rules. Omitted in older bundles — importers must not wipe target rules then.
+   */
+  domainPathRules?: DomainPathRulesMap | null;
 }
 
 function loadMergedDateConfig(mockDataPath: string, scenario: string): {
@@ -128,6 +138,10 @@ function prepareFilesystemMockWrites(
   });
 }
 
+function domainPathRulesForBundle(rules: DomainPathRulesMap): DomainPathRulesMap | null {
+  return Object.keys(rules).length === 0 ? null : rules;
+}
+
 export function buildFilesystemScenarioBundle(
   mockDataPath: string,
   scenario: string,
@@ -139,7 +153,7 @@ export function buildFilesystemScenarioBundle(
   if (fs.existsSync(scenarioPath)) {
     for (const filePath of getAllJsonFiles(scenarioPath)) {
       const rel = path.relative(scenarioPath, filePath);
-      if (rel === DATE_CONFIG_BASENAME) continue;
+      if (rel === DATE_CONFIG_BASENAME || rel === DOMAIN_PATH_RULES_FILENAME) continue;
       let raw: string;
       try {
         raw = fs.readFileSync(filePath, 'utf-8');
@@ -157,6 +171,7 @@ export function buildFilesystemScenarioBundle(
   }
 
   const { dateManipulation } = loadMergedDateConfig(mockDataPath, scenario);
+  const domainPathRules = domainPathRulesForBundle(readDomainPathRulesFile(mockDataPath, scenario));
 
   return {
     formatVersion: SCENARIO_BUNDLE_FORMAT_VERSION,
@@ -166,6 +181,7 @@ export function buildFilesystemScenarioBundle(
     mocks,
     dateManipulation,
     proxyConfig: null,
+    domainPathRules,
   };
 }
 
@@ -204,6 +220,11 @@ export async function buildRedisScenarioBundle(
           }
         : null;
 
+    // Match dashboard GET: effective allowlist is file ∪ store (redis/sqlite wins on key clash).
+    const fromStore = await store.getDomainPathRules(scenario);
+    const fromFile = readDomainPathRulesFile(mockDataPath, scenario);
+    const domainPathRules = domainPathRulesForBundle({ ...fromFile, ...fromStore });
+
     return {
       formatVersion: SCENARIO_BUNDLE_FORMAT_VERSION,
       exportedAt: new Date().toISOString(),
@@ -212,6 +233,7 @@ export async function buildRedisScenarioBundle(
       mocks,
       dateManipulation,
       proxyConfig,
+      domainPathRules,
     };
   } finally {
     await store.close().catch(() => undefined);
@@ -273,6 +295,17 @@ export function assertValidImportBundle(body: unknown): ScenarioExportBundle {
     }
   }
 
+  let domainPathRules: DomainPathRulesMap | null | undefined;
+  if (Object.prototype.hasOwnProperty.call(o, 'domainPathRules')) {
+    if (o.domainPathRules === null) {
+      domainPathRules = null;
+    } else if (typeof o.domainPathRules === 'object' && o.domainPathRules !== null && !Array.isArray(o.domainPathRules)) {
+      domainPathRules = parseDomainPathRules(o.domainPathRules);
+    } else {
+      throw new Error('domainPathRules must be null or an object when provided');
+    }
+  }
+
   return {
     formatVersion: SCENARIO_BUNDLE_FORMAT_VERSION,
     exportedAt: typeof o.exportedAt === 'string' ? o.exportedAt : new Date().toISOString(),
@@ -284,6 +317,7 @@ export function assertValidImportBundle(body: unknown): ScenarioExportBundle {
     mocks,
     dateManipulation,
     proxyConfig,
+    domainPathRules,
   };
 }
 
@@ -580,6 +614,8 @@ export interface ApplyScenarioImportOptions {
   bundleHadDateKey: boolean;
   applyProxyConfig: boolean;
   bundleHadProxyKey: boolean;
+  applyDomainPathRules: boolean;
+  bundleHadDomainPathRulesKey: boolean;
   provider: 'filesystem' | 'sqlite' | 'redis';
   redisUrl?: string;
   keyPrefix?: string;
@@ -590,6 +626,7 @@ export interface ApplyScenarioImportResult {
   mocksWritten: number;
   dateConfigApplied: boolean;
   proxyConfigApplied: boolean;
+  domainPathRulesApplied: boolean;
 }
 
 const IMPORT_META_KEYS = new Set([
@@ -597,6 +634,7 @@ const IMPORT_META_KEYS = new Set([
   'replaceExistingMocks',
   'applyDateConfig',
   'applyProxyConfig',
+  'applyDomainPathRules',
   'bundle',
 ]);
 
@@ -605,6 +643,7 @@ export interface ScenarioImportRequestMeta {
   replaceExistingMocks: boolean;
   applyDateConfig: boolean;
   applyProxyConfig: boolean;
+  applyDomainPathRules: boolean;
 }
 
 /**
@@ -615,6 +654,7 @@ export function parseScenarioImportRequest(body: unknown): {
   bundle: ScenarioExportBundle;
   bundleHadDateKey: boolean;
   bundleHadProxyKey: boolean;
+  bundleHadDomainPathRulesKey: boolean;
 } {
   if (!body || typeof body !== 'object') {
     throw new Error('Request body must be a JSON object');
@@ -629,6 +669,7 @@ export function parseScenarioImportRequest(body: unknown): {
 
   const bundleHadDateKey = Object.prototype.hasOwnProperty.call(pure, 'dateManipulation');
   const bundleHadProxyKey = Object.prototype.hasOwnProperty.call(pure, 'proxyConfig');
+  const bundleHadDomainPathRulesKey = Object.prototype.hasOwnProperty.call(pure, 'domainPathRules');
   const bundle = assertValidImportBundle(pure);
 
   const meta: ScenarioImportRequestMeta = {
@@ -636,9 +677,23 @@ export function parseScenarioImportRequest(body: unknown): {
     replaceExistingMocks: raw.replaceExistingMocks === true,
     applyDateConfig: raw.applyDateConfig !== false,
     applyProxyConfig: raw.applyProxyConfig !== false,
+    applyDomainPathRules: raw.applyDomainPathRules !== false,
   };
 
-  return { meta, bundle, bundleHadDateKey, bundleHadProxyKey };
+  return { meta, bundle, bundleHadDateKey, bundleHadProxyKey, bundleHadDomainPathRulesKey };
+}
+
+async function applyDomainPathRulesToTarget(opts: {
+  mockDataPath: string;
+  targetScenario: string;
+  rules: DomainPathRulesMap | null;
+  store?: RedisMockStore;
+}): Promise<void> {
+  const rules = opts.rules ?? {};
+  if (opts.store) {
+    await opts.store.replaceDomainPathRules(opts.targetScenario, rules);
+  }
+  writeDomainPathRulesFile(opts.mockDataPath, opts.targetScenario, rules);
 }
 
 export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Promise<ApplyScenarioImportResult> {
@@ -651,6 +706,8 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     bundleHadDateKey,
     applyProxyConfig,
     bundleHadProxyKey,
+    applyDomainPathRules,
+    bundleHadDomainPathRulesKey,
     provider,
     redisUrl,
     keyPrefix,
@@ -660,6 +717,7 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
   let mocksWritten = 0;
   let dateConfigApplied = false;
   let proxyConfigApplied = false;
+  let domainPathRulesApplied = false;
 
   if (isCentralizedDashboardProvider(provider)) {
     if (provider === 'redis' && !redisUrl) {
@@ -708,10 +766,20 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
         }
         proxyConfigApplied = true;
       }
+
+      if (applyDomainPathRules && bundleHadDomainPathRulesKey) {
+        await applyDomainPathRulesToTarget({
+          mockDataPath,
+          targetScenario,
+          rules: bundle.domainPathRules ?? null,
+          store,
+        });
+        domainPathRulesApplied = true;
+      }
     } finally {
       await store.close().catch(() => undefined);
     }
-    return { mocksWritten, dateConfigApplied, proxyConfigApplied };
+    return { mocksWritten, dateConfigApplied, proxyConfigApplied, domainPathRulesApplied };
   }
 
   const scenarioFolder = getScenarioFolderPath(mockDataPath, targetScenario);
@@ -740,5 +808,14 @@ export async function applyScenarioImport(opts: ApplyScenarioImportOptions): Pro
     dateConfigApplied = true;
   }
 
-  return { mocksWritten, dateConfigApplied, proxyConfigApplied };
+  if (applyDomainPathRules && bundleHadDomainPathRulesKey) {
+    await applyDomainPathRulesToTarget({
+      mockDataPath,
+      targetScenario,
+      rules: bundle.domainPathRules ?? null,
+    });
+    domainPathRulesApplied = true;
+  }
+
+  return { mocksWritten, dateConfigApplied, proxyConfigApplied, domainPathRulesApplied };
 }
