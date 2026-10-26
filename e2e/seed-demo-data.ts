@@ -76,8 +76,11 @@ async function main() {
       },
     };
 
-    // Generate filename (same pattern as dashboard uses)
-    const filename = `${ATHENS_ENDPOINT.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100)}.json`;
+    // Use hash-based filename (simple, deterministic, always valid)
+    const crypto = await import('node:crypto');
+    const hash = crypto.createHash('sha256').update(ATHENS_ENDPOINT).digest('hex');
+    const filename = `${hash}.json`;
+    
     await ok('PUT', `/mocks/${filename}?scenario=${BASE_SCENARIO}`, {
       responseData: mockData,
       replayMode: 'stored',
