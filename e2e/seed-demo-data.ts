@@ -27,23 +27,6 @@ async function ok(method: string, path: string, body?: any): Promise<any> {
   return r.json;
 }
 
-/** Open-Meteo Athens forecast response fixture (public API, no secrets). */
-const ATHENS_MOCK_FIXTURE = {
-  latitude: 37.984,
-  longitude: 23.727997,
-  generationtime_ms: 0.08296966552734375,
-  utc_offset_seconds: 7200,
-  timezone: 'Europe/Athens',
-  timezone_abbreviation: 'EET',
-  elevation: 126.0,
-  current_units: { time: 'iso8601', interval: 'seconds', temperature_2m: '°C', relative_humidity_2m: '%', wind_speed_10m: 'km/h' },
-  current: { time: '2024-03-15T14:00', interval: 900, temperature_2m: 18.5, relative_humidity_2m: 65, wind_speed_10m: 12.3 },
-  hourly_units: { time: 'iso8601', temperature_2m: '°C' },
-  hourly: {
-    time: Array.from({ length: 24 }, (_, i) => `2024-03-15T${String(i).padStart(2, '0')}:00`),
-    temperature_2m: Array.from({ length: 24 }, (_, i) => 15 + Math.sin(i / 24 * Math.PI * 2) * 5),
-  },
-};
 
 async function main() {
   console.log('Waiting for dashboard...');
@@ -72,38 +55,14 @@ async function main() {
 
   if (!athensMock) {
     console.log('Recording Athens mock...');
-    // Try to fetch live API, fall back to fixture
-    let liveData: any;
-    try {
-      const liveRes = await fetch(ATHENS_ENDPOINT, { signal: AbortSignal.timeout(5000) });
-      if (liveRes.ok) liveData = await liveRes.json();
-    } catch { /* use fixture */ }
-
-    const mockData = liveData ?? ATHENS_MOCK_FIXTURE;
-    // Set temperature to 99° for guide-demo-2
-    mockData.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
-
-    // Create mock via dashboard proxy (simulates a recorded request)
-    const proxyRes = await call('POST', '/proxy', {
+    // Create mock via dashboard proxy with allowUpstream to record a real request
+    await ok('POST', '/proxy', {
       url: ATHENS_ENDPOINT,
       method: 'GET',
       scenario: BASE_SCENARIO,
-      allowUpstream: false,
-      response: { status: 200, headers: { 'content-type': 'application/json' }, data: mockData },
+      allowUpstream: true,
+      record: true,
     });
-
-    if (proxyRes.status !== 200) {
-      // Fallback: use the mock store directly (not all dashboard builds have POST /proxy)
-      console.log('Proxy unavailable, seeding mock file directly...');
-      const filename = `${ATHENS_ENDPOINT.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
-      await ok('PUT', `/mocks/${filename}?scenario=${BASE_SCENARIO}`, {
-        responseData: {
-          endpoint: ATHENS_ENDPOINT,
-          method: 'GET',
-          response: { status: 200, headers: { 'content-type': 'application/json' }, data: mockData },
-        },
-      });
-    }
 
     const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
     athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
@@ -111,13 +70,21 @@ async function main() {
     console.log(`Created mock: ${athensMock.filename}`);
   } else {
     console.log(`Athens mock exists: ${athensMock.filename}`);
-    // Ensure guide-demo-2 has 99° temperature
-    const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
-    if (mock.data?.response?.data?.current?.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
-      console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
-      mock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
-      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, { responseData: mock.data });
-    }
+  }
+
+  // Ensure guide-demo-2 has 99° temperature and is in stored mode
+  const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
+  let needsUpdate = false;
+  if (mock.data?.response?.data?.current?.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
+    console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
+    mock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+    needsUpdate = true;
+  }
+  if (needsUpdate || mock.data?.replayMode !== 'stored') {
+    await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
+      responseData: mock.data.response.data,
+      replayMode: 'stored',
+    });
   }
 
   // 3. Create heatwave and rainy-weekend by cloning guide-demo-2 and changing temperature
@@ -127,13 +94,16 @@ async function main() {
       await ok('POST', '/scenario-config/create', { scenario, deriveFrom: BASE_SCENARIO });
     }
 
-    // Update temperature
+    // Update temperature and ensure replay mode is stored
     const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${scenario}`);
     const expectedTemp = EXPECTED_TEMP[scenario];
-    if (mock.data?.response?.data?.current?.temperature_2m !== expectedTemp) {
-      console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
+    if (mock.data?.response?.data?.current?.temperature_2m !== expectedTemp || mock.data?.replayMode !== 'stored') {
+      console.log(`Setting ${scenario} temperature to ${expectedTemp}° and replay mode to stored...`);
       mock.data.response.data.current.temperature_2m = expectedTemp;
-      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, { responseData: mock.data });
+      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
+        responseData: mock.data.response.data,
+        replayMode: 'stored',
+      });
     }
   }
 
@@ -150,7 +120,53 @@ async function main() {
     console.log(`Client lane ${LANE} already points to ${BASE_SCENARIO}`);
   }
 
-  // 5. Set global scenario to guide-demo-2
+  // 5. Create wander-api /discover mocks (required by offline.spec.ts)
+  console.log('Waiting for wander-api service...');
+  const wanderStart = Date.now();
+  let wanderReady = false;
+  while (Date.now() - wanderStart < 120_000) {
+    try {
+      const healthRes = await fetch('http://127.0.0.1:4203/health', { signal: AbortSignal.timeout(2000) });
+      if (healthRes.ok) {
+        wanderReady = true;
+        break;
+      }
+    } catch { /* retry */ }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  if (wanderReady) {
+    console.log('Creating wander-api discover mocks...');
+    const wanderEndpoints = [
+      'http://127.0.0.1:4203/discover?destinationKey=atlantis',
+      'http://127.0.0.1:4203/discover',
+    ];
+
+    for (const url of wanderEndpoints) {
+      const existing = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
+      if (!existing.find((m: any) => m.endpoint === url)) {
+        console.log(`Recording wander mock: ${url}`);
+        await ok('POST', '/proxy', {
+          url,
+          method: 'GET',
+          scenario: BASE_SCENARIO,
+          allowUpstream: true,
+          record: true,
+        });
+
+        // Set replay mode to stored
+        const updated = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
+        const mock = updated.find((m: any) => m.endpoint === url);
+        if (mock) {
+          await ok('PUT', `/mocks/${mock.filename}?scenario=${BASE_SCENARIO}`, { replayMode: 'stored' });
+        }
+      }
+    }
+  } else {
+    console.log('⚠️  wander-api not available, skipping wander mock creation (tests may fail)');
+  }
+
+  // 6. Set global scenario to guide-demo-2
   const finalCfg = await ok('GET', '/scenario-config');
   if (finalCfg.currentScenario !== BASE_SCENARIO) {
     console.log(`Setting global scenario to ${BASE_SCENARIO}...`);

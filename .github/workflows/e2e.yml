@@ -74,12 +74,6 @@ jobs:
       - name: Wait for dashboard
         run: npx wait-on -t 120000 http-get://127.0.0.1:3002/api/scenario-config
 
-      - name: Seed demo data
-        working-directory: e2e
-        run: |
-          npm ci
-          npm run seed
-
       - name: Start WanderWeird services (gateway + wander-api)
         working-directory: ${{ env.WW }}
         run: |
@@ -90,6 +84,12 @@ jobs:
         run: |
           npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
           sleep 3
+
+      - name: Seed demo data
+        working-directory: e2e
+        run: |
+          npm ci
+          npm run seed
 
       - name: Start Expo web (Metro)
         working-directory: ${{ env.WW }}/apps/mobile
