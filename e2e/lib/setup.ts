@@ -25,9 +25,15 @@ export async function ensureTestData() {
   console.log('[Setup] Waiting for dashboard...');
   for (let i = 0; i < 30; i++) {
     try {
-      const healthRes = await fetch('http://127.0.0.1:3002/health');
-      if (healthRes.ok) break;
-    } catch {
+      const healthRes = await fetch('http://127.0.0.1:3002/api/health');
+      if (healthRes.ok) {
+        const contentType = healthRes.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          console.log('[Setup] Dashboard is ready');
+          break;
+        }
+      }
+    } catch (err: any) {
       // Dashboard not ready yet
     }
     if (i === 29) {
@@ -37,8 +43,8 @@ export async function ensureTestData() {
     await new Promise(r => setTimeout(r, 1000));
   }
   
-  // Get provider type to determine approach
-  const health = await fetch('http://127.0.0.1:3002/health').then(r => r.json());
+  // Get provider type
+  const health = await fetch('http://127.0.0.1:3002/api/health').then(r => r.json());
   const provider = health.provider || 'filesystem';
   console.log(`[Setup] Provider: ${provider}`);
   
@@ -76,6 +82,20 @@ export async function ensureTestData() {
         // Re-fetch to get the mock
         const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
         athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+        
+        // Validate the recorded mock has temperature data
+        if (athensMock) {
+          const mockData = await dashboard.getMock(athensMock.filename, BASE_SCENARIO);
+          const temp = mockData.data?.response?.data?.current?.temperature_2m;
+          if (typeof temp !== 'number') {
+            console.error('[Setup] ❌ Recorded mock is missing current.temperature_2m field');
+            console.error('[Setup] Mock structure:', JSON.stringify(mockData.data?.response?.data?.current, null, 2));
+            throw new Error('Recorded Athens mock is invalid: missing current.temperature_2m field');
+          }
+          console.log(`[Setup] ✓ Mock validated with temperature: ${temp}°`);
+        }
+      } else {
+        console.warn(`[Setup] ⚠️  Proxy recording returned status ${proxyResult.status}`);
       }
     } catch (err: any) {
       console.warn('[Setup] ⚠️  Failed to record from Open-Meteo API:', err.message);
