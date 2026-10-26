@@ -60,7 +60,7 @@ async function main() {
   }
 
   // 2. Create/update the Athens mock in guide-demo-2 with 99° temperature from fixture
-  // For SQLite provider: use proxy endpoint to record mock from fixture data
+  // For SQLite provider: use proxy endpoint to record mock, with retry and fixture fallback
   console.log('Creating Athens mock from fixture...');
   
   const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
@@ -68,31 +68,53 @@ async function main() {
 
   if (!athensMock) {
     console.log('  Recording Athens mock via proxy (one-time setup)...');
-    try {
-      // Record the mock by proxying to the real API
-      await ok('POST', '/proxy', {
-        url: ATHENS_ENDPOINT,
-        method: 'GET',
-        scenario: BASE_SCENARIO,
-        allowUpstream: true,
-        record: true,
-      });
+    
+    // Try to record from real API with retries
+    let recorded = false;
+    for (let attempt = 1; attempt <= 3 && !recorded; attempt++) {
+      try {
+        const proxyResult = await call('POST', '/proxy', {
+          url: ATHENS_ENDPOINT,
+          method: 'GET',
+          scenario: BASE_SCENARIO,
+          allowUpstream: true,
+          record: true,
+        });
 
-      // Find the newly created mock
-      const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
-      athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
-      
-      if (athensMock) {
-        console.log(`  ✓ Recorded mock: ${athensMock.filename}`);
-      } else {
-        throw new Error('Failed to record Athens mock via proxy');
+        if (proxyResult.status === 200) {
+          // Verify the mock was created with valid data
+          const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
+          athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+          
+          if (athensMock) {
+            const checkMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
+            if (checkMock.data?.response?.status > 0 && checkMock.data?.response?.data) {
+              console.log(`  ✓ Recorded mock: ${athensMock.filename}`);
+              recorded = true;
+            } else {
+              console.log(`  ⚠️  Attempt ${attempt}: Mock recorded but response is empty (status: ${checkMock.data?.response?.status})`);
+              athensMock = null; // Try again
+            }
+          }
+        } else {
+          console.log(`  ⚠️  Attempt ${attempt}: Proxy returned ${proxyResult.status}`);
+        }
+      } catch (err: any) {
+        console.log(`  ⚠️  Attempt ${attempt}: ${err.message}`);
       }
-    } catch (err: any) {
-      console.log(`  ⚠️  Failed to record via proxy: ${err.message}`);
-      console.log('  Will use fixture data to create mock...');
       
-      // Fallback: Try to seed using fixture (may fail if unsupported)
-      throw new Error('Proxy recording failed and direct SQLite access not available while dashboard is running');
+      if (!recorded && attempt < 3) {
+        console.log('  Retrying in 2 seconds...');
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    if (!athensMock) {
+      throw new Error(
+        'Failed to record Athens mock from Open-Meteo API after 3 attempts. ' +
+        'The external API may be down or unreachable from CI. ' +
+        'Consider switching to filesystem provider or pre-seeding mock data.'
+      );
     }
   } else {
     console.log(`  Athens mock already exists: ${athensMock.filename}`);
