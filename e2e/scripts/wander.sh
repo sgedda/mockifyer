@@ -7,7 +7,23 @@ set -euo pipefail
 #   wander.sh start             - start unpinned (follows lane)
 #   wander.sh start <scenario>  - start pinned to scenario
 
-WW_DIR="${WW:-../../WanderWeird}"
+# Resolve repo root from script location (e2e/scripts/wander.sh -> repo root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Resolve WW_DIR: if relative, make it relative to REPO_ROOT
+if [ -n "${WW:-}" ]; then
+  # If WW doesn't start with /, it's relative - resolve against REPO_ROOT
+  if [[ ! "$WW" = /* ]]; then
+    WW_DIR="$REPO_ROOT/$WW"
+  else
+    WW_DIR="$WW"
+  fi
+else
+  # Default to WanderWeird location in monorepo
+  WW_DIR="$REPO_ROOT/example-projects/wanderweird-travel"
+fi
+
 LOG_FILE="${LOG_FILE:-/tmp/services.log}"
 PID_FILE="/tmp/wander-services.pid"
 
