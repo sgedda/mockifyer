@@ -5,6 +5,7 @@ on:
         types: [opened, synchronize, reopened]
         branches:
             - main # Only trigger for PRs targeting main (adjust as needed)
+    workflow_dispatch:
 
 jobs:
     deploy:
@@ -14,8 +15,8 @@ jobs:
             - name: Checkout code
               uses: actions/checkout@v4
               with:
-                  # Use head SHA so fork PRs work (head.ref only exists on the fork, not base repo)
-                  ref: ${{ github.event.pull_request.head.sha }}
+                  # PR: head SHA (fork-safe). Manual run: selected branch tip.
+                  ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
