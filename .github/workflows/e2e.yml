@@ -101,21 +101,6 @@ jobs:
           npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
           sleep 3
 
-      - name: Start mock API server
-        working-directory: e2e
-        run: |
-          nohup npx tsx mock-api-server.ts > /tmp/mock-api.log 2>&1 &
-          API_PID=$!
-          echo "Mock API PID: $API_PID"
-          npx wait-on -t 10000 tcp:127.0.0.1:9999
-          sleep 1
-
-      - name: Seed demo data
-        working-directory: e2e
-        run: |
-          npm ci
-          npm run seed
-
       - name: Start Expo web (Metro)
         working-directory: ${{ env.WW }}/apps/mobile
         run: |
@@ -153,7 +138,6 @@ jobs:
             /tmp/dashboard.log
             /tmp/services.log
             /tmp/metro.log
-            /tmp/mock-api.log
           retention-days: 30
           if-no-files-found: warn
 
