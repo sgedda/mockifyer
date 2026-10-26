@@ -142,6 +142,8 @@ async function main() {
           allowUpstream: true,
           record: true,
         });
+        
+        console.log(`  Proxy response: status=${proxyResult.status}, data=`, JSON.stringify(proxyResult.json).substring(0, 200));
 
         if (proxyResult.status === 200) {
           // Verify the mock was created with valid data
