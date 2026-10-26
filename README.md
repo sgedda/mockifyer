@@ -28,6 +28,10 @@ This repository is a **monorepo**. Prefer the scoped packages below; the root `p
 | [`@sgedda/mockifyer-dashboard`](./packages/mockifyer-dashboard) | Local UI to browse/edit `mock-data` (optional; separate dev server) |
 | [`@sgedda/mockifyer-mcp`](./packages/mockifyer-mcp) | **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io) integration for Cursor and Claude Desktop (query/modify mocks via natural language) |
 
+**Example Projects:**
+
+- **[Wanderweird Travel](./example-projects/wanderweird-travel)** — Full-stack Expo + multi-service demo (7 Node services, Umbraco CMS, scenarios, hops, Atlas). See the [comprehensive walkthrough guide](./docs/guides/wanderweird-demo.md).
+
 **Initializing Mockifyer (all entrypoints):** **[MOCKIFYER_INITIALIZATION.md](./MOCKIFYER_INITIALIZATION.md)**.
 
 **Team workflow (recorded vs curated mocks, re-recording):** **[MOCK_WORKFLOW.md](./MOCK_WORKFLOW.md)**.
