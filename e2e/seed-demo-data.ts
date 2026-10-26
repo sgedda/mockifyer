@@ -56,50 +56,62 @@ async function main() {
     await ok('POST', '/scenario-config/create', { scenario: BASE_SCENARIO });
   }
 
-  // 2. Record/create the Athens mock in guide-demo-2 with 99° temperature
+  // 2. Create/update the Athens mock in guide-demo-2 with 99° temperature from fixture
   const mocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
   let athensMock = mocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
 
   if (!athensMock) {
-    console.log('Recording Athens mock...');
-    // Create mock via dashboard proxy with allowUpstream to record a real request
-    await ok('POST', '/proxy', {
-      url: ATHENS_ENDPOINT,
+    console.log('Creating Athens mock from fixture...');
+    // Create deterministic mock from committed fixture
+    const fixtureData = { ...ATHENS_FIXTURE };
+    fixtureData.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+    
+    const mockData = {
+      endpoint: ATHENS_ENDPOINT,
       method: 'GET',
-      scenario: BASE_SCENARIO,
-      allowUpstream: true,
-      record: true,
+      response: {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        data: fixtureData,
+      },
+    };
+
+    // Generate filename (same pattern as dashboard uses)
+    const filename = `${ATHENS_ENDPOINT.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100)}.json`;
+    await ok('PUT', `/mocks/${filename}?scenario=${BASE_SCENARIO}`, {
+      responseData: mockData,
+      replayMode: 'stored',
     });
 
     const updatedMocks = (await ok('GET', `/mocks?scenario=${BASE_SCENARIO}`)).files ?? [];
     athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
-    if (!athensMock) throw new Error('Failed to create Athens mock');
+    if (!athensMock) throw new Error('Failed to create Athens mock via PUT');
     console.log(`Created mock: ${athensMock.filename}`);
   } else {
     console.log(`Athens mock exists: ${athensMock.filename}`);
   }
 
-  // Ensure guide-demo-2 has 99° temperature and is in stored mode
-  const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
-  let needsUpdate = false;
+  // Ensure guide-demo-2 has correct temperature and replay mode
+  const baseMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`);
   
-  if (mock.data?.response?.data?.current) {
-    if (mock.data.response.data.current.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
-      console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
-      mock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
-      needsUpdate = true;
-    }
-  } else {
-    console.log(`⚠️  Mock structure missing current.temperature_2m, skipping temperature fix`);
+  if (!baseMock.data?.response?.data?.current) {
+    console.error(`❌ Mock structure invalid for ${BASE_SCENARIO}/${athensMock.filename}`);
+    console.error('Expected: { data: { response: { data: { current: { temperature_2m: number } } } } }');
+    console.error('Actual:', JSON.stringify(baseMock, null, 2).substring(0, 500));
+    throw new Error(`Mock missing current.temperature_2m in ${BASE_SCENARIO}`);
   }
-  
-  if (needsUpdate || mock.data?.replayMode !== 'stored') {
-    if (mock.data?.response?.data) {
-      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
-        responseData: mock.data.response.data,
-        replayMode: 'stored',
-      });
-    }
+
+  let needsUpdate = false;
+  if (baseMock.data.response.data.current.temperature_2m !== EXPECTED_TEMP[BASE_SCENARIO]) {
+    console.log(`Fixing ${BASE_SCENARIO} temperature to ${EXPECTED_TEMP[BASE_SCENARIO]}°...`);
+    baseMock.data.response.data.current.temperature_2m = EXPECTED_TEMP[BASE_SCENARIO];
+    needsUpdate = true;
+  }
+  if (needsUpdate || baseMock.data?.replayMode !== 'stored') {
+    await ok('PUT', `/mocks/${athensMock.filename}?scenario=${BASE_SCENARIO}`, {
+      responseData: baseMock.data.response.data,
+      replayMode: 'stored',
+    });
   }
 
   // 3. Create heatwave and rainy-weekend by cloning guide-demo-2 and changing temperature
@@ -110,25 +122,28 @@ async function main() {
     }
 
     // Update temperature and ensure replay mode is stored
-    const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${scenario}`);
+    const scenarioMock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${scenario}`);
     const expectedTemp = EXPECTED_TEMP[scenario];
-    let scenarioNeedsUpdate = false;
     
-    if (mock.data?.response?.data?.current) {
-      if (mock.data.response.data.current.temperature_2m !== expectedTemp) {
-        console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
-        mock.data.response.data.current.temperature_2m = expectedTemp;
-        scenarioNeedsUpdate = true;
-      }
-      
-      if (scenarioNeedsUpdate || mock.data?.replayMode !== 'stored') {
-        await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
-          responseData: mock.data.response.data,
-          replayMode: 'stored',
-        });
-      }
-    } else {
-      console.log(`⚠️  Mock structure missing current.temperature_2m in ${scenario}, skipping temperature fix`);
+    if (!scenarioMock.data?.response?.data?.current) {
+      console.error(`❌ Mock structure invalid for ${scenario}/${athensMock.filename}`);
+      console.error('Expected: { data: { response: { data: { current: { temperature_2m: number } } } } }');
+      console.error('Actual:', JSON.stringify(scenarioMock, null, 2).substring(0, 500));
+      throw new Error(`Mock missing current.temperature_2m in ${scenario}`);
+    }
+
+    let scenarioNeedsUpdate = false;
+    if (scenarioMock.data.response.data.current.temperature_2m !== expectedTemp) {
+      console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
+      scenarioMock.data.response.data.current.temperature_2m = expectedTemp;
+      scenarioNeedsUpdate = true;
+    }
+    
+    if (scenarioNeedsUpdate || scenarioMock.data?.replayMode !== 'stored') {
+      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
+        responseData: scenarioMock.data.response.data,
+        replayMode: 'stored',
+      });
     }
   }
 
