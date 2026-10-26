@@ -519,6 +519,46 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
   );
 
   server.registerTool(
+    'mockifyer_set_mock_behavior',
+    {
+      description:
+        'Set status override and/or response delay on a mock for error simulation and latency testing. Use statusOverride to simulate HTTP errors (e.g. 500, 429, 404) and responseDelayMs to add artificial latency. Pass null to clear an override.',
+      inputSchema: {
+        filename: z.string().describe('Mock filename'),
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        statusOverride: z
+          .number()
+          .int()
+          .min(100)
+          .max(599)
+          .nullable()
+          .optional()
+          .describe('HTTP status code to override (100-599), or null to clear'),
+        responseDelayMs: z
+          .number()
+          .int()
+          .min(0)
+          .nullable()
+          .optional()
+          .describe('Delay in milliseconds before returning response, or null to clear'),
+      },
+    },
+    async (args) => {
+      try {
+        const result = await client.updateMock({
+          filename: args.filename,
+          scenario: args.scenario,
+          statusOverride: args.statusOverride,
+          responseDelayMs: args.responseDelayMs,
+        });
+        return jsonResult(result);
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
     'mockifyer_list_network_events',
     {
       description:
@@ -1103,6 +1143,55 @@ export function createMockifyerMcpServer(client = new DashboardApiClient()): Mcp
           await client.getAtlasGeneratedHopBody({
             eventId: args.eventId,
             maxChars: args.maxChars,
+          })
+        );
+      } catch (error) {
+        return toolError(error instanceof Error ? error.message : String(error));
+      }
+    }
+  );
+
+  server.registerTool(
+    'mockifyer_explain_value',
+    {
+      description:
+        'Explain where a response value comes from in one call: origin (mock file, request), what modified it (field/date/lane overrides), original vs effective value, hop chain from traces, and sibling fields. Use to answer "why does the app show this value?" without chaining multiple tools.',
+      inputSchema: {
+        scenario: z.string().optional().describe('Scenario name (defaults to active scenario)'),
+        requestId: z
+          .string()
+          .optional()
+          .describe('X-Mockifyer-Request-Id from the response (preferred lookup key)'),
+        url: z
+          .string()
+          .optional()
+          .describe('URL or path to search for (e.g. /api/discover?destinationKey=atlantis)'),
+        path: z
+          .string()
+          .optional()
+          .describe('Path to search for when URL is not provided'),
+        fieldPath: z
+          .string()
+          .optional()
+          .describe('Dot path to the field in response.data (e.g. temperature_2m or trips.0.status)'),
+        value: z
+          .unknown()
+          .optional()
+          .describe('Expected value to verify (e.g. -999 or "CONFIRMED")'),
+        clientId: z.string().optional().describe('Client lane filter'),
+      },
+    },
+    async (args) => {
+      try {
+        return jsonResult(
+          await client.explainValue({
+            scenario: args.scenario,
+            requestId: args.requestId,
+            url: args.url,
+            path: args.path,
+            fieldPath: args.fieldPath,
+            value: args.value,
+            clientId: args.clientId,
           })
         );
       } catch (error) {

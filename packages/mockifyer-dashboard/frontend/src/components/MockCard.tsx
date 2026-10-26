@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { MockFile, MockData } from '@/types'
 import {
-  getMockChain,
   mockChainDepth,
   mockHasChainChildren,
   mockIsInServiceChain,
+  mockServiceChainSize,
   isMockChainRoot,
   type MockChainMaps,
 } from '@/lib/mock-correlation-chains'
@@ -72,10 +72,8 @@ export function MockCard({
     chainMaps && inServiceChain
       ? mockChainDepth(mock, chainMaps.byRequestId, chainMaps.childrenByParent)
       : 0
-  const chainLength =
-    chainMaps && inServiceChain
-      ? getMockChain(mock, chainMaps.byRequestId, chainMaps.childrenByParent).length
-      : 0
+  // Full tree size (not ancestor-only): roots used to stay at length 1 and hide the badge.
+  const chainLength = chainMaps && inServiceChain ? mockServiceChainSize(mock, chainMaps) : 0
   const isRoot = chainMaps ? isMockChainRoot(mock, chainMaps.byRequestId) : false
   const hasChildren = chainMaps ? mockHasChainChildren(mock, chainMaps.childrenByParent) : false
 

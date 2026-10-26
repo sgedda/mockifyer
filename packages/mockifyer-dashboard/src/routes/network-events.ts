@@ -105,8 +105,13 @@ router.get('/trace', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
-    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
+    const [{ events: stored }, networkLogConfig] = await Promise.all([
+      store.list({ scenario, clientId, limit: scanLimit }),
+      store.getConfig(scenario),
+    ]);
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const trace = resolveNetworkRequestTrace(events, {
       by: requestId ? 'requestId' : 'eventId',
       value: requestId || eventId,
@@ -121,7 +126,6 @@ router.get('/trace', async (req: Request, res: Response) => {
           'Enable network logging and captureBodies, then run traffic through the proxy or SDK. Use the X-Mockifyer-Request-Id from the entry service response (or proxy JSON requestId).',
       });
     }
-    const networkLogConfig = await store.getConfig(scenario);
     return res.json({
       provider: config.provider,
       networkLogConfig,
@@ -157,8 +161,13 @@ router.get('/explain', async (req: Request, res: Response) => {
 
   const store = createNetworkLogStore(config);
   try {
-    const { events: stored } = await store.list({ scenario, clientId, limit: scanLimit });
-    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario);
+    const [{ events: stored }, networkLogConfig] = await Promise.all([
+      store.list({ scenario, clientId, limit: scanLimit }),
+      store.getConfig(scenario),
+    ]);
+    const events = await hydrateResponsePreviewsForDashboard(stored, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const context = explainIncidentFromEvents(events, {
       incidentId: incidentId || undefined,
       sessionId,
@@ -199,7 +208,9 @@ router.get('/', async (req: Request, res: Response) => {
       store.list({ scenario, clientId, limit, since }),
       store.getConfig(scenario),
     ]);
-    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario);
+    const hydrated = await hydrateResponsePreviewsForDashboard(events, config, mockDataPath, scenario, {
+      captureBodies: networkLogConfig.captureBodies,
+    });
     const withUsage = mergeNetworkEventsWithAtlasUsage(scenario, hydrated).map(polishNetworkEventBodies);
     return res.json({
       scenario,
@@ -304,6 +315,45 @@ router.delete('/', async (req: Request, res: Response) => {
     return res.status(500).json({ error: error?.message ?? 'Failed to clear network events' });
   } finally {
     await store.close().catch(() => undefined);
+  }
+});
+
+router.get('/explain-value', async (req: Request, res: Response) => {
+  const { mockDataPath, config } = getDashboardContext(req);
+  const scenario = resolveScenario(req, mockDataPath);
+  const requestId = typeof req.query.requestId === 'string' ? req.query.requestId.trim() : undefined;
+  const url = typeof req.query.url === 'string' ? req.query.url.trim() : undefined;
+  const path = typeof req.query.path === 'string' ? req.query.path.trim() : undefined;
+  const fieldPath = typeof req.query.fieldPath === 'string' ? req.query.fieldPath.trim() : undefined;
+  const value = req.query.value;
+  const clientId = typeof req.query.clientId === 'string' ? req.query.clientId : undefined;
+
+  if (!requestId && !url && !path) {
+    return res.status(400).json({
+      error: 'Provide requestId, url, or path',
+    });
+  }
+
+  const { explainValue } = await import('../utils/explain-value');
+  
+  try {
+    const result = await explainValue(
+      {
+        scenario,
+        requestId,
+        url,
+        path,
+        fieldPath,
+        value,
+        clientId,
+      },
+      config,
+      mockDataPath
+    );
+    
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error?.message ?? 'Failed to explain value' });
   }
 });
 

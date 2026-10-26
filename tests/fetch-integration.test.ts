@@ -111,6 +111,73 @@ describe("Mockifyer Fetch Integration", () => {
     }
   }
 
+  it("records HTTP 200 bodies whose JSON is a business failure", async () => {
+    const payload = { success: false, error: "username taken" };
+    const response = await recordThenReplay(
+      "https://api.example.com/register",
+      payload
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual(payload);
+    expect(response.headers["x-mockifyer"]).toBe("true");
+  });
+
+  it("does not record Metro sync-endpoint rejection payloads", async () => {
+    const prevRecordAlwaysLive =
+      process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API;
+    process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = "false";
+    const testUrl = "https://api.example.com/not-a-sync-call";
+    const payload = {
+      success: false,
+      error: "Cannot save Mockifyer sync endpoint requests",
+    };
+    const originalFetch = global.fetch;
+    try {
+      delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => payload,
+        text: async () => JSON.stringify(payload),
+      } as Response);
+
+      const recorder = setupMockifyer({
+        mockDataPath: testMockDataPath,
+        recordMode: true,
+        recordResponses: true,
+        useGlobalFetch: false,
+      });
+      const live = await recorder.get(testUrl);
+      expect(live.status).toBe(200);
+      expect(live.data).toEqual(payload);
+
+      const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
+      const savedBodies: unknown[] = [];
+      if (fs.existsSync(scratchScenarioPath)) {
+        for (const file of fs.readdirSync(scratchScenarioPath)) {
+          if (!file.endsWith(".json")) continue;
+          const saved = JSON.parse(
+            fs.readFileSync(path.join(scratchScenarioPath, file), "utf-8")
+          ) as { response?: { data?: unknown } };
+          savedBodies.push(saved.response?.data);
+        }
+      }
+      expect(savedBodies).not.toContainEqual(payload);
+    } finally {
+      global.fetch = originalFetch;
+      delete (global as { __mockifyer_original_fetch?: unknown }).__mockifyer_original_fetch;
+      if (prevRecordAlwaysLive === undefined) {
+        delete process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API;
+      } else {
+        process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API =
+          prevRecordAlwaysLive;
+      }
+    }
+  });
+
   it("should return mock response when mock exists", async () => {
     const payload = { message: "Hello from mock!", id: 123 };
     const response = await recordThenReplay(
@@ -239,19 +306,29 @@ describe("Mockifyer Fetch Integration", () => {
       expect(recordedResponse.data).toEqual(testResponseData);
 
       // Verify mock file was created under the unscoped scratch scenario
+      // (nested host/path layout: api.example.com/record-test/GET_<date>.json)
       const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
       expect(fs.existsSync(scratchScenarioPath)).toBe(true);
 
-      const files = fs.readdirSync(scratchScenarioPath);
+      const collectRelativeJsonFiles = (dir: string, prefix = ""): string[] => {
+        const results: string[] = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            results.push(...collectRelativeJsonFiles(path.join(dir, entry.name), rel));
+          } else if (entry.name.endsWith(".json")) {
+            results.push(rel);
+          }
+        }
+        return results;
+      };
+      const files = collectRelativeJsonFiles(scratchScenarioPath);
       expect(files.length).toBeGreaterThan(0);
 
-      // Find the mock file for this URL (filename format: YYYY-MM-DDTHH-MM-SS-MSSZ_METHOD_url.json)
-      // Note: URL sanitization replaces non-alphanumeric chars with hyphens, so 'record-test' stays as 'record-test'
       const mockFile = files.find(
         (file) =>
           file.includes("GET") &&
-          (file.includes("api_example_com_record-test") ||
-            file.includes("api_example_com_record_test")),
+          (file.includes("record-test") || file.includes("record_test")),
       );
       expect(mockFile).toBeDefined();
 
@@ -347,9 +424,18 @@ describe("Mockifyer Fetch Integration", () => {
     expect(segmentResponse.data).toEqual(segmentPayload);
 
     const scratchScenarioPath = path.join(testMockDataPath, "_scratch");
-    const names = fs.readdirSync(scratchScenarioPath);
-    expect(names.some((name) => name.endsWith(".json"))).toBe(true);
-    for (const name of names) {
+    const pathComponents: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        pathComponents.push(entry.name);
+        if (entry.isDirectory()) {
+          walk(path.join(dir, entry.name));
+        }
+      }
+    };
+    walk(scratchScenarioPath);
+    expect(pathComponents.some((name) => name.endsWith(".json"))).toBe(true);
+    for (const name of pathComponents) {
       expect(Buffer.byteLength(name)).toBeLessThanOrEqual(255);
     }
   });

@@ -11,7 +11,7 @@
     "@multi-service/mock-bootstrap": "file:../../packages/mock-bootstrap",
     "@multi-service/mock-axios-bootstrap": "file:../../packages/mock-axios-bootstrap",
     "@sgedda/mockifyer-core": "file:../../../../packages/mockifyer-core",
-    "axios": "^1.7.9",
+    "axios": "^1.20.0",
     "express": "^4.21.0"
   },
   "devDependencies": {

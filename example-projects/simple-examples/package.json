@@ -22,7 +22,7 @@
     "@sgedda/mockifyer-axios": "file:../../packages/mockifyer-axios",
     "@sgedda/mockifyer-fetch": "file:../../packages/mockifyer-fetch",
     "@sgedda/mockifyer-core": "file:../../packages/mockifyer-core",
-    "axios": "^1.6.7",
+    "axios": "^1.20.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

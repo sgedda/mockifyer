@@ -118,6 +118,8 @@ describe('useGlobalAxios inline-trace unwrap', () => {
       useGlobalAxios: true,
       axiosInstance,
       recordMode: true,
+      // Local recordings are request-only unless this is set; the assertion is about
+      // unwrapping the envelope before the body is stored.
       recordResponses: true,
       domainPathRulesMode: 'record_all',
       networkLog: { includeTraceHeader: true, enabled: false },

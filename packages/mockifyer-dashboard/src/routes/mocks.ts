@@ -122,12 +122,14 @@ function putBodyHasUpdatableFields(body: Record<string, unknown> | null | undefi
   return (
     Object.prototype.hasOwnProperty.call(body, 'responseData') ||
     Object.prototype.hasOwnProperty.call(body, 'responseDateOverrides') ||
+    Object.prototype.hasOwnProperty.call(body, 'statusOverride') ||
+    Object.prototype.hasOwnProperty.call(body, 'responseDelayMs') ||
     bodyHasReplayModeFields(body)
   );
 }
 
 const PUT_BODY_MISSING_FIELDS_ERROR =
-  'Request body must contain responseData, replayMode, or responseDateOverrides';
+  'Request body must contain responseData, replayMode, responseDateOverrides, statusOverride, or responseDelayMs';
 
 /**
  * Read and validate `?scenario=`.
@@ -642,70 +644,41 @@ router.get('/', async (req: Request, res: Response) => {
         const relativeName = path.relative(scenarioPath, filePath);
         const stats = fs.statSync(filePath);
 
-        let endpoint = null;
-        let graphqlInfo = null;
-        let method: string | null = null;
-        let sessionId = null;
-        let activation = extractMockActivationFlags({});
-        let overrideFields = getMockOverrideListFields({});
-        let requestId: string | null = null;
-        let parentRequestId: string | null = null;
-        let parentRequestIds: string[] = [];
-        let requestHash: string | null = null;
         try {
           const raw = fs.readFileSync(filePath, 'utf-8');
           const { mockData } = parseMockJsonForCatalog(raw);
-          const correlation = extractMockCorrelationIds(mockData);
-          requestId = correlation.requestId;
-          parentRequestId = correlation.parentRequestId;
-          parentRequestIds = correlation.parentRequestIds;
-          requestHash = favoriteIdForMock(mockData);
-          if (mockData.request?.url) {
-            endpoint = mockData.request.url;
-          }
-          if (mockData.request?.method) {
-            method = String(mockData.request.method).toUpperCase();
-          }
-          activation = extractMockActivationFlags(mockData);
-          if (mockData.sessionId) sessionId = mockData.sessionId;
-          else if ((mockData as { data?: { sessionId?: string } }).data?.sessionId) {
-            sessionId = (mockData as { data?: { sessionId?: string } }).data?.sessionId ?? null;
-          }
-
-          overrideFields = getMockOverrideListFields(mockData);
-          graphqlInfo = extractGraphqlListInfo(mockData);
-
-          if (!graphqlInfo && mockData.request?.queryParams && Object.keys(mockData.request.queryParams).length > 0) {
-            const params = new URLSearchParams();
-            Object.entries(mockData.request.queryParams).forEach(([key, value]) => {
-              if (value != null) params.append(key, String(value));
-            });
-            const qs = params.toString();
-            if (qs) endpoint += '?' + qs;
-          }
+          const row = toMockListRow({
+            filename: relativeName,
+            filePath,
+            mockData,
+            size: stats.size,
+          });
+          // Prefer filesystem birth/mtime over mock timestamp for local list sort.
+          row.created = stats.birthtime;
+          row.modified = stats.mtime;
+          return row;
         } catch (error) {
           console.warn(`[MocksRoute] Could not extract endpoint from ${relativeName}:`, error);
+          return {
+            filename: relativeName,
+            filePath,
+            size: stats.size,
+            created: stats.birthtime,
+            modified: stats.mtime,
+            endpoint: null,
+            method: null,
+            graphqlInfo: null,
+            sessionId: null,
+            requestId: null,
+            parentRequestId: null,
+            parentRequestIds: [],
+            requestHash: null,
+            ...extractMockActivationFlags({}),
+            ...getMockOverrideListFields({}),
+          };
         }
-
-        return {
-          filename: relativeName,
-          filePath,
-          size: stats.size,
-          created: stats.birthtime,
-          modified: stats.mtime,
-          endpoint,
-          method,
-          graphqlInfo,
-          sessionId,
-          requestId,
-          parentRequestId,
-          parentRequestIds,
-          requestHash,
-          ...activation,
-          ...overrideFields,
-        };
       })
-      .sort((a, b) => b.modified.getTime() - a.modified.getTime());
+      .sort((a, b) => new Date(String(b.modified)).getTime() - new Date(String(a.modified)).getTime());
 
     const similarExtras = finishMockListPayload(files, req, compact);
     res.json({ files, mockDataPath, scenario, ...similarExtras });
@@ -1546,6 +1519,28 @@ router.put('/*', async (req: Request, res: Response) => {
           }
         }
 
+        if (Object.prototype.hasOwnProperty.call(req.body, 'statusOverride')) {
+          const statusOverride = req.body.statusOverride;
+          if (statusOverride === null) {
+            delete (existingData as any).statusOverride;
+          } else if (typeof statusOverride === 'number' && Number.isInteger(statusOverride) && statusOverride >= 100 && statusOverride < 600) {
+            (existingData as any).statusOverride = statusOverride;
+          } else {
+            return res.status(400).json({ error: 'statusOverride must be null or a valid HTTP status code (100-599)' });
+          }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(req.body, 'responseDelayMs')) {
+          const responseDelayMs = req.body.responseDelayMs;
+          if (responseDelayMs === null) {
+            delete (existingData as any).responseDelayMs;
+          } else if (typeof responseDelayMs === 'number' && responseDelayMs >= 0 && Number.isInteger(responseDelayMs)) {
+            (existingData as any).responseDelayMs = responseDelayMs;
+          } else {
+            return res.status(400).json({ error: 'responseDelayMs must be null or a non-negative integer' });
+          }
+        }
+
         await store.setByHash(hash, existingData as any, scenario);
         const payload = JSON.stringify(existingData);
         const ts = (existingData as any).timestamp ? new Date((existingData as any).timestamp) : new Date();
@@ -1622,6 +1617,28 @@ router.put('/*', async (req: Request, res: Response) => {
       const replayErr = applyReplayModeFieldsFromBody(existingData as MockData, req.body);
       if (replayErr) {
         return res.status(400).json({ error: replayErr });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'statusOverride')) {
+      const statusOverride = req.body.statusOverride;
+      if (statusOverride === null) {
+        delete existingData.statusOverride;
+      } else if (typeof statusOverride === 'number' && Number.isInteger(statusOverride) && statusOverride >= 100 && statusOverride < 600) {
+        existingData.statusOverride = statusOverride;
+      } else {
+        return res.status(400).json({ error: 'statusOverride must be null or a valid HTTP status code (100-599)' });
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'responseDelayMs')) {
+      const responseDelayMs = req.body.responseDelayMs;
+      if (responseDelayMs === null) {
+        delete existingData.responseDelayMs;
+      } else if (typeof responseDelayMs === 'number' && responseDelayMs >= 0 && Number.isInteger(responseDelayMs)) {
+        existingData.responseDelayMs = responseDelayMs;
+      } else {
+        return res.status(400).json({ error: 'responseDelayMs must be null or a non-negative integer' });
       }
     }
 

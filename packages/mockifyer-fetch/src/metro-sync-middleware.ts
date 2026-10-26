@@ -39,13 +39,14 @@ import {
   MockData,
   TestGenerator,
   TestGenerationOptions,
+  getMockFilePath,
+  logger,
 } from "@sgedda/mockifyer-core";
-import { logger } from "@sgedda/mockifyer-core";
 import {
   POOL_ID_PATTERN,
   loadPoolResponseItem,
   type PoolResponseItem,
-  mergeDomainPathRuleUpserts,
+  mergeDiscoveredDomainPathUpserts,
   parseDomainPathRules,
   readDomainPathRulesFile,
   writeDomainPathRulesFile,
@@ -364,58 +365,6 @@ function collectRequestBodyUtf8(
     }
   });
   req.on("error", (e: Error) => finish(e, ""));
-}
-
-function getMockFilePathLocal(
-  mockData: MockData,
-  dateStr: string,
-): { dir: string; filename: string } {
-  const url = mockData.request.url || "";
-  const method = (mockData.request.method || "GET").toUpperCase();
-  let host = "unknown";
-  let pathSegments: string[] = [];
-  try {
-    const parsed = new URL(url);
-    host = parsed.hostname;
-    pathSegments = parsed.pathname.split("/").filter(Boolean);
-  } catch {
-    return { dir: "unknown", filename: `${method}_${dateStr}.json` };
-  }
-  const hostSafe = host.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const graphqlIdx = pathSegments.lastIndexOf("graphql");
-  const restIdx = pathSegments.indexOf("rest");
-  let type: string;
-  let remainingSegments: string[];
-  if (graphqlIdx >= 0) {
-    type = "graphql";
-    remainingSegments = pathSegments.slice(graphqlIdx + 1);
-  } else if (restIdx >= 0) {
-    type = "rest";
-    remainingSegments = pathSegments.slice(restIdx + 1);
-  } else {
-    type = "";
-    remainingSegments = pathSegments;
-  }
-  let identifier = "";
-  if (mockData.request.data) {
-    try {
-      const body =
-        typeof mockData.request.data === "string"
-          ? JSON.parse(mockData.request.data)
-          : mockData.request.data;
-      if (body.operationName) identifier = body.operationName;
-      else if (body.path) identifier = body.path;
-      else if (body.webAppName) identifier = body.webAppName;
-    } catch {
-      /* ignore */
-    }
-  }
-  identifier = identifier.replace(/[^a-zA-Z0-9_-]/g, "_").substring(0, 60);
-  const dir = [hostSafe, type, ...remainingSegments].filter(Boolean).join("/");
-  const filename = identifier
-    ? `${method}_${identifier}_${dateStr}.json`
-    : `${method}_${dateStr}.json`;
-  return { dir, filename };
 }
 
 /**
@@ -756,7 +705,7 @@ function saveMockToProjectFolder(
       .replace(/T/, "_")
       .replace(/\..+/, "")
       .replace(/:/g, "-");
-    const { dir, filename } = getMockFilePathLocal(mockData, dateStr);
+    const { dir, filename } = getMockFilePath(mockData, dateStr);
     const fullDir = path.join(scenarioPath, dir);
     const filePath = path.join(fullDir, filename);
 
@@ -2237,7 +2186,7 @@ export function createMockSyncMiddleware(options?: MetroSyncMiddlewareOptions) {
             parsed.upserts ?? parsed.rules ?? {},
           );
           const existing = readDomainPathRulesFile(mockDataPath, scenarioName);
-          const { rules, changed } = mergeDomainPathRuleUpserts(
+          const { rules, changed } = mergeDiscoveredDomainPathUpserts(
             existing,
             upserts,
           );

@@ -74,6 +74,10 @@ import {
   resolveRuntimeEnabledStorage,
   savePersistedRuntimeEnabled,
   type MockifyerRuntimeEnabledStorage,
+  getMockFilePath,
+  formatDateStr,
+  getCurrentDate,
+  isMockRecordingSidecarDir,
 } from '@sgedda/mockifyer-core';
 import { resolveProxyUpstreamTlsInsecure } from '@sgedda/mockifyer-core/utils/proxy-upstream-tls-insecure';
 import { AxiosHTTPClient } from './clients/axios-client';
@@ -111,7 +115,6 @@ import {
   configureAtlas,
   resolveActiveMockifyerSessionId,
   outboundHeadersToRecord,
-  clampRecordingFilename,
 } from '@sgedda/mockifyer-core';
 import {
   resolveClientId,
@@ -660,6 +663,23 @@ class MockifyerClass {
     return this.findBestMatchingMockFromFiles(request, options);
   }
 
+  private getAllJsonFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    const results: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (isMockRecordingSidecarDir(entry.name)) {
+          continue;
+        }
+        results.push(...this.getAllJsonFiles(fullPath));
+      } else if (entry.name.endsWith('.json')) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+
   /**
    * Find best matching mock by reading directly from files (no cache, reads on each request)
    */
@@ -682,24 +702,23 @@ class MockifyerClass {
       return undefined;
     }
 
-    const files = fs.readdirSync(scenarioPath)
-      .filter(file => file.endsWith('.json'));
+    const files = this.getAllJsonFiles(scenarioPath);
 
     const requestKey = this.generateRequestKey(request);
     let exactMatch: CachedMockData | undefined;
     let similarMatch: CachedMockData | undefined;
     
     // Read files one by one and check for matches (no cache structure)
-    for (const file of files) {
+    for (const filePath of files) {
       try {
-        const filePath = path.join(scenarioPath, file);
+        const filename = path.relative(scenarioPath, filePath);
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const mockData: MockData = JSON.parse(fileContent);
         
         // Skip files that don't have a valid request property
         // Check for null explicitly since typeof null === 'object' in JavaScript
         if (!mockData || !mockData.request || mockData.request === null || typeof mockData.request !== 'object') {
-          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (missing or invalid request): ${filename}`, {
             hasMockData: !!mockData,
             hasRequest: !!mockData?.request,
             requestType: typeof mockData?.request,
@@ -711,13 +730,13 @@ class MockifyerClass {
         // Additional safety check - ensure request has required properties
         // Only skip if url is explicitly null or undefined (not empty string, as that will be caught by generateRequestKey)
         if (mockData.request.url === null || mockData.request.url === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request missing url): ${file}`);
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing url): ${filename}`);
           continue;
         }
         
         // Double-check that request is actually an object before calling generateRequestKey
         if (typeof mockData.request !== 'object' || mockData.request === null || mockData.request === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request is not a valid object): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request is not a valid object): ${filename}`, {
             requestType: typeof mockData.request,
             requestIsNull: mockData.request === null,
             requestIsUndefined: mockData.request === undefined
@@ -727,7 +746,7 @@ class MockifyerClass {
         
         // Final safety check - ensure request has method property (required by generateRequestKey)
         if (!mockData.request || mockData.request.method === undefined) {
-          console.warn(`[Mockifyer] Skipping invalid mock file (request missing method): ${file}`, {
+          console.warn(`[Mockifyer] Skipping invalid mock file (request missing method): ${filename}`, {
             hasRequest: !!mockData.request,
             hasMethod: mockData.request?.method !== undefined
           });
@@ -758,7 +777,7 @@ class MockifyerClass {
           mockKey = this.generateRequestKey(normalizedMockRequest);
         } catch (error: any) {
           // Log more details about the error to help debug
-          console.warn(`[Mockifyer] Error generating key for mock file ${file}:`, {
+          console.warn(`[Mockifyer] Error generating key for mock file ${filename}:`, {
             error: error?.message || error,
             requestUrl: mockData.request?.url,
             requestMethod: mockData.request?.method,
@@ -775,14 +794,14 @@ class MockifyerClass {
           if (
             mockShouldBeIncludedInRequestMatch(mockData, {
               includePassthroughMocks,
-              filename: file,
+              filename,
               scenarioPath,
             })
           ) {
             exactMatch = {
               mockData,
-              filename: file,
-              filePath: filePath
+              filename,
+              filePath
             };
             break; // Exact match found, no need to continue
           }
@@ -859,14 +878,14 @@ class MockifyerClass {
                 if (
                   mockShouldBeIncludedInRequestMatch(mockData, {
                     includePassthroughMocks,
-                    filename: file,
+                    filename,
                     scenarioPath,
                   })
                 ) {
                   similarMatch = {
                     mockData,
-                    filename: file,
-                    filePath: filePath
+                    filename,
+                    filePath
                   };
                 }
               }
@@ -877,7 +896,7 @@ class MockifyerClass {
           }
         }
       } catch (error) {
-        console.warn(`[Mockifyer] Failed to load mock file ${file}:`, error);
+        console.warn(`[Mockifyer] Failed to load mock file ${filePath}:`, error);
       }
     }
 
@@ -906,8 +925,7 @@ class MockifyerClass {
       const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
       const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
       if (fs.existsSync(scenarioPath)) {
-        const files = fs.readdirSync(scenarioPath)
-          .filter(file => file.endsWith('.json'));
+        const files = this.getAllJsonFiles(scenarioPath);
         logger.debug(`[Mockifyer] Found ${files.length} mock files in scenario "${currentScenario}" (will read on demand)`);
       } else {
         logger.debug(`[Mockifyer] Scenario folder does not exist: ${scenarioPath}`);
@@ -1073,13 +1091,19 @@ class MockifyerClass {
           getCurrentScenario(this.config.mockDataPath, this.config.clientId)
         );
         ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+        
+        if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
+        }
+
         const mockResponseBody = this.prepareStoredResponseBody(mockData, filename, hitScenarioPath);
+        const effectiveStatus = mockData.statusOverride ?? mockData.response.status;
         this.logNetworkEvent(
           {
             method: (request.method || 'GET').toUpperCase(),
             url: this.resolveLoggedRequestUrl(config, request.url),
             source: 'mock-hit',
-            status: mockData.response.status,
+            status: effectiveStatus,
             requestHash: networkEventHashFromRequestKey(requestKey),
             requestBody: request.data,
             responseBody: mockResponseBody,
@@ -1107,7 +1131,7 @@ class MockifyerClass {
         
         const mockResponse: AxiosResponse = {
           data: mockResponseBody,
-          status: mockData.response.status,
+          status: effectiveStatus,
           statusText: 'OK',
           headers: axiosHeaders,
           config: config as any,
@@ -1143,6 +1167,9 @@ class MockifyerClass {
         throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
       }
 
+      // Same key the matcher used. saveResponse after setRecordMode(true) must not invent a second key.
+      (config as any).__mockifyer_requestKey = requestKey;
+      (config as any).__mockifyer_startTime = Date.now();
       return config;
     });
   }
@@ -1189,6 +1216,13 @@ class MockifyerClass {
         response.config?.headers
       );
       this.unwrapResponseInlineTrace(response);
+
+      // This interceptor is installed only when recordMode started off. setRecordMode(true)
+      // does not add the record-mode response interceptor, so save here when the live flag is on.
+      // useGlobalAxios records on the global axios interceptor instead (same instance would double-save).
+      if (!this.config.useGlobalAxios && this.config.recordMode && !this.config.proxy?.baseUrl) {
+        await this.saveResponse(response);
+      }
 
       return response;
     });
@@ -1411,6 +1445,17 @@ class MockifyerClass {
           logger.debug(`[Mockifyer] ✅ Found mock for ${requestKey}, using it (even if already processing)`);
           // Use existing mock instead of making real API call
           // This is correct behavior - we have a mock, so use it
+          
+          const hitScenarioPath = getScenarioFolderPath(
+            this.config.mockDataPath,
+            getCurrentScenario(this.config.mockDataPath, this.config.clientId)
+          );
+          ensureOverrideGroupRuntimeForScenarioPath(hitScenarioPath, { clientId: this.config.clientId });
+          
+          if (mockData.responseDelayMs && mockData.responseDelayMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, mockData.responseDelayMs));
+          }
+          
           const responseHeaders = {
             ...mockData.response.headers,
             'x-mockifyer': 'true',
@@ -1426,17 +1471,16 @@ class MockifyerClass {
 
           logger.debug(`[Mockifyer] ✅ Found mock, returning mock response for ${requestKey}`);
           
+          const effectiveStatus = mockData.statusOverride ?? mockData.response.status;
+          
           // Axios client - use adapter
           const mockResponse: AxiosResponse = {
             data: this.prepareStoredResponseBody(
               mockData,
               filename,
-              getScenarioFolderPath(
-                this.config.mockDataPath,
-                getCurrentScenario(this.config.mockDataPath, this.config.clientId)
-              )
+              hitScenarioPath
             ),
-            status: mockData.response.status,
+            status: effectiveStatus,
             statusText: 'OK',
             headers: axiosHeaders,
             config: config as any,
@@ -2313,22 +2357,15 @@ class MockifyerClass {
           `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
         );
       } else {
-        const now = new Date();
-        const dateStr = now
-          .toISOString()
-          .replace(/T/, '_')
-          .replace(/\..+/, '')
-          .replace(/:/g, '-');
-        const urlSafe = request.url
-          .replace(/^https?:\/\//, '')
-          .replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = clampRecordingFilename(
-          `${dateStr}_${request.method}_${urlSafe}.json`,
-          `${request.method}:${request.url}`
-        );
-        const filePath = path.join(scenarioPath, filename);
+        // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+        // getMockFilePath clamps over-long path segments to stay within NAME_MAX.
+        const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+        const filePath = path.join(scenarioPath, dir, filename);
+        fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
         fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-        logger.info(`[Mockifyer] Saved new mock to file: ${currentScenario}/${filename}`);
+        logger.info(
+          `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
+        );
       }
 
       await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
@@ -2719,7 +2756,8 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
       // CRITICAL: Add response interceptor directly to global axios for recording
       // When useGlobalAxios is true, we need to add the response interceptor directly here
       // because it's not added to httpClient (line 668 skips it)
-      if (resolvedConfig.recordMode) {
+      // Always install. setRecordMode(true) after startup must still save local misses.
+      // isRecordMode() inside the handler skips saves while recording is off.
         logger.debug('[Mockifyer] Adding response interceptor directly to global axios for recording');
         const interceptorId = globalAxios.interceptors.response.use(
           async function(axiosResponse: any) {
@@ -2740,6 +2778,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
               if (requestKey) {
                 mockifyer['processingRequests'].delete(requestKey);
                 logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request completed`);
+              }
+
+              if (!mockifyer.isRecordMode()) {
+                return axiosResponse;
               }
               
               // Check if this is a mocked response - if so, don't record it
@@ -2869,6 +2911,10 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
                 logger.debug(`[Mockifyer] ✅ Removed ${requestKey} from processingRequests after request failed`);
               }
             }
+
+            if (!mockifyer.isRecordMode()) {
+              return mockifyer['rejectWithMockifyerRequestId'](error);
+            }
             
             if (error.response) {
               // Check if this is a mocked error response
@@ -2942,8 +2988,7 @@ export function setupMockifyer(config: MockifyerConfig): MockifyerInstance {
         // Verify interceptors are registered
         const handlers = (globalAxios.interceptors.response as any).handlers || [];
         logger.debug('[Mockifyer] Verified: Global axios has', handlers.length, 'response interceptors registered');
-      }
-      
+
       // Copy adapter if it exists (for mock responses)
       if (axiosInstance.defaults && axiosInstance.defaults.adapter) {
         axios.defaults.adapter = axiosInstance.defaults.adapter;
