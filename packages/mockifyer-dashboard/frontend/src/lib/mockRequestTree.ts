@@ -1,19 +1,6 @@
 import type { MockFile } from '@/types'
 import type { MockFolderNode } from '@/lib/mockFolderTree'
-
-function safeParseUrl(input: string): URL | null {
-  try {
-    return new URL(input)
-  } catch {
-    return null
-  }
-}
-
-function splitPathname(pathname: string): string[] {
-  const cleaned = pathname.replace(/\/+/g, '/').replace(/^\/|\/$/g, '')
-  if (!cleaned) return []
-  return cleaned.split('/').filter(Boolean)
-}
+import { safeParseUrl, splitPathname } from '@/lib/mock-tree-url'
 
 /**
  * Group mocks by endpoint URL:
