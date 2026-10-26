@@ -4,10 +4,17 @@
  * Creates guide-demo-2 (99°), heatwave (44°), rainy-weekend (11°) scenarios
  * with an Open-Meteo Athens forecast mock, plus the wanderweird-demo client lane.
  * Idempotent: can run multiple times safely.
+ * 
+ * Uses a committed fixture (fixtures/athens-forecast.json) for deterministic seeding.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DASHBOARD, ATHENS_ENDPOINT_PREFIX, EXPECTED_TEMP, LANE, BASE_SCENARIO } from './lib/env';
 
 const ATHENS_ENDPOINT = `${ATHENS_ENDPOINT_PREFIX}&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`;
+
+// Load committed fixture for deterministic seeding
+const ATHENS_FIXTURE = JSON.parse(readFileSync(join(__dirname, 'fixtures/athens-forecast.json'), 'utf8'));
 
 async function call(method: string, path: string, body?: any): Promise<{ status: number; json: any }> {
   const res = await fetch(DASHBOARD + '/api' + path, {
@@ -113,17 +120,15 @@ async function main() {
         mock.data.response.data.current.temperature_2m = expectedTemp;
         scenarioNeedsUpdate = true;
       }
-    } else {
-      console.log(`⚠️  Mock structure missing current.temperature_2m in ${scenario}, skipping`);
-    }
-    
-    if (scenarioNeedsUpdate || mock.data?.replayMode !== 'stored') {
-      if (mock.data?.response?.data) {
+      
+      if (scenarioNeedsUpdate || mock.data?.replayMode !== 'stored') {
         await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
           responseData: mock.data.response.data,
           replayMode: 'stored',
         });
       }
+    } else {
+      console.log(`⚠️  Mock structure missing current.temperature_2m in ${scenario}, skipping temperature fix`);
     }
   }
 
