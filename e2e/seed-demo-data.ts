@@ -105,13 +105,25 @@ async function main() {
     // Update temperature and ensure replay mode is stored
     const mock = await ok('GET', `/mocks/${athensMock.filename}?scenario=${scenario}`);
     const expectedTemp = EXPECTED_TEMP[scenario];
-    if (mock.data?.response?.data?.current?.temperature_2m !== expectedTemp || mock.data?.replayMode !== 'stored') {
-      console.log(`Setting ${scenario} temperature to ${expectedTemp}° and replay mode to stored...`);
-      mock.data.response.data.current.temperature_2m = expectedTemp;
-      await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
-        responseData: mock.data.response.data,
-        replayMode: 'stored',
-      });
+    let scenarioNeedsUpdate = false;
+    
+    if (mock.data?.response?.data?.current) {
+      if (mock.data.response.data.current.temperature_2m !== expectedTemp) {
+        console.log(`Setting ${scenario} temperature to ${expectedTemp}°...`);
+        mock.data.response.data.current.temperature_2m = expectedTemp;
+        scenarioNeedsUpdate = true;
+      }
+    } else {
+      console.log(`⚠️  Mock structure missing current.temperature_2m in ${scenario}, skipping`);
+    }
+    
+    if (scenarioNeedsUpdate || mock.data?.replayMode !== 'stored') {
+      if (mock.data?.response?.data) {
+        await ok('PUT', `/mocks/${athensMock.filename}?scenario=${scenario}`, {
+          responseData: mock.data.response.data,
+          replayMode: 'stored',
+        });
+      }
     }
   }
 
