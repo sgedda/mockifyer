@@ -92,12 +92,14 @@ MAIN_DASHBOARD_URL=http://127.0.0.1:3012 MAIN_MCP_CLI=<path>/mockifyer-mcp/dist/
 ## CI
 
 The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
-- **Schedule**: nightly at 3 AM UTC
-- **Manual**: via workflow_dispatch in the Actions tab
-- **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/
+- **Schedule**: nightly at 3 AM UTC (records all videos)
+- **Manual**: via workflow_dispatch in the Actions tab (checkbox to record all videos)
+- **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/ (videos only on failure)
+
+Artifacts (reports, traces, videos, logs) are retained for **30 days**.
 
 The workflow builds Mockifyer packages, starts the WanderWeird stack, seeds demo scenarios via `npm run seed`,
-and runs the suite. Reports/traces/videos are uploaded as artifacts on failure.
+and runs the suite. Videos are uploaded separately when recording all tests; reports/traces are uploaded on failure.
 
 Demo data seeding (`seed-demo-data.ts`) creates the three scenarios (guide-demo-2 99°, heatwave 44°,
 rainy-weekend 11°) with an Open-Meteo Athens forecast mock and the wanderweird-demo client lane,

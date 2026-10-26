@@ -2,6 +2,11 @@ name: E2E (WanderWeird + Mockifyer)
 
 on:
   workflow_dispatch:
+    inputs:
+      record_video:
+        description: 'Record video for all tests (not just failures)'
+        type: boolean
+        default: false
   schedule:
     - cron: '0 3 * * *'  # 3 AM UTC daily
   pull_request:
@@ -27,6 +32,7 @@ jobs:
       CI: 'true'
       WW: example-projects/wanderweird-travel
       NODE_ENV: development
+      E2E_VIDEO: ${{ (github.event_name == 'schedule' || inputs.record_video) && 'on' || 'off' }}
 
     steps:
       - name: Checkout
@@ -102,6 +108,15 @@ jobs:
         working-directory: e2e
         run: npx playwright test
 
+      - name: Upload videos (when recording all tests)
+        if: env.E2E_VIDEO == 'on'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-videos-${{ github.run_number }}
+          path: e2e/test-results/**/*.webm
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Upload report and artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -113,7 +128,7 @@ jobs:
             /tmp/dashboard.log
             /tmp/services.log
             /tmp/metro.log
-          retention-days: 14
+          retention-days: 30
           if-no-files-found: warn
 
       - name: Debug logs on failure

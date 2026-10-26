@@ -16,7 +16,7 @@ export default defineConfig({
     headless: true,
     viewport: { width: 430, height: 900 },
     trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.E2E_VIDEO === 'on' ? 'on' : 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 430, height: 900 } } }],
