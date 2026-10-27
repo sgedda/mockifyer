@@ -169,6 +169,31 @@ Priority: env vars → `setupMockifyer` config → system time.
 
 See `@sgedda/mockifyer-core` `ENV_VARS` and package READMEs for the full set.
 
+## Client ID configuration
+
+The **client ID** (also called **lane ID**) identifies which client or test session is making requests. Used with the dashboard proxy to isolate mocks per client, and with strict lane mode to control whether traffic uses mocks or goes to live API.
+
+### Resolution precedence
+
+Client ID is resolved in the following order:
+
+| Priority | Source | Platforms | Notes |
+| :--- | :--- | :--- | :--- |
+| 1 | `MOCKIFYER_CLIENT_ID` env var | All | Build-time configuration |
+| 2 | `EXPO_PUBLIC_MOCKIFYER_CLIENT_ID` env var | **Web only** (Expo) | Embedded in web bundle at build time |
+| 3 | URL query parameter `?mockifyerClientId=...` | **Web only** | Runtime override, persisted to localStorage |
+| 4 | `localStorage['mockifyer-client-id']` | **Web only** | Persistent across sessions |
+| 5 | `config.clientId` | All | Passed to `setupMockifyer` / `setupMockifyerForReactNative` |
+| 6 | `MOCKIFYER_CLIENT_LANE` env var | All | Precomputed lane identifier |
+| 7 | Build metadata | All | Computed from `MOCKIFYER_APPLICATION_ID`, `MOCKIFYER_MARKET`, `MOCKIFYER_VERSION_NAME`, `MOCKIFYER_VERSION_CODE` |
+
+**Web-specific features** (v1.10.191+):
+- **Expo public env var**: Set `EXPO_PUBLIC_MOCKIFYER_CLIENT_ID=your-lane` at build time
+- **URL parameter**: Navigate to `http://localhost:3000?mockifyerClientId=test-lane` to override the client ID for that session (automatically persisted to localStorage)
+- **localStorage**: URL parameters are saved to localStorage and reused in future sessions
+
+**Native platforms** (iOS/Android) can also use launch arguments via `react-native-launch-arguments` for E2E testing with Maestro/XCTest.
+
 ## Scenario name precedence
 
 ### SDK / filesystem (`getCurrentScenario` — local mocks, fallbacks)
