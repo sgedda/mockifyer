@@ -28,6 +28,25 @@ export function bodyHasReplayModeFields(body: Record<string, unknown> | null | u
   return REPLAY_MODE_BODY_KEYS.some((key) => Object.prototype.hasOwnProperty.call(body, key));
 }
 
+const PLACEHOLDER_RESPONSE_STATUS = 0;
+const DEFAULT_RESPONSE_STATUS = 200;
+
+/**
+ * Writes a PUT body's `responseData`. Supplying the body turns a request-only stub
+ * (`responsePending`, status 0) into a captured mock, so a `stored` replay mode in the
+ * same request is kept instead of being queued as `refresh-next`.
+ */
+export function applyResponseDataFromBody(mockData: MockData, responseData: unknown): void {
+  if (!mockData.response) {
+    mockData.response = { status: DEFAULT_RESPONSE_STATUS, data: {}, headers: {} };
+  }
+  mockData.response.data = responseData;
+  if (mockData.response.status === PLACEHOLDER_RESPONSE_STATUS) {
+    mockData.response.status = DEFAULT_RESPONSE_STATUS;
+  }
+  delete mockData.responsePending;
+}
+
 /**
  * Applies replay-mode fields from a dashboard PATCH/PUT body onto mock data.
  * Supports `replayMode` (mutually exclusive) or individual boolean flags.

@@ -78,7 +78,24 @@ export interface RedisMockSearchItem extends RedisMockListItem {
 }
 
 /** How the dashboard proxy resolved the effective scenario name for Redis keys / date config / proxy settings. */
-export type ScenarioResolutionSource = 'body_override' | 'lane_redis' | 'global_redis' | 'filesystem_fallback';
+const TRUE_FLAGS = new Set(['1', 'true', 'yes', 'on']);
+const FALSE_FLAGS = new Set(['0', 'false', 'no', 'off']);
+
+/** `true`/`false` for recognised on/off strings, `undefined` when unset or unrecognised. */
+function parseEnvFlag(raw: string | null | undefined): boolean | undefined {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (TRUE_FLAGS.has(value)) return true;
+  if (FALSE_FLAGS.has(value)) return false;
+  return undefined;
+}
+
+export type ScenarioResolutionSource =
+  | 'body_override'
+  | 'lane_redis'
+  | 'global_redis'
+  /** Strict lane mode, client id without a lane, and the opt-in lane global fallback is on. */
+  | 'global_fallback'
+  | 'filesystem_fallback';
 
 /** Observation record for `/api/client-lanes` (“last seen resolved”; not continuous heartbeats). */
 export interface LaneEffectiveObservation {
@@ -169,6 +186,8 @@ export class RedisMockStore {
   private readonly clientLaneIdsSetKey: string;
   private readonly proxyConfigPrefix: string;
   private readonly strictLaneScenarioResolution: boolean;
+  private readonly laneGlobalFallbackKey: string;
+  private readonly laneGlobalFallbackDefault: boolean;
   private static readonly EFFECTIVE_TTL_SEC = 60 * 60 * 24 * 14;
   private readonly catalogCache = new Map<string, { expiresAt: number; items: RedisMockListItem[] }>();
 
@@ -194,21 +213,12 @@ export class RedisMockStore {
     this.scenarioRegistrySetKey = `${this.keyPrefix}:scenarios`;
     this.clientLaneIdsSetKey = `${this.keyPrefix}:client_lane_ids`;
     this.proxyConfigPrefix = `${this.keyPrefix}:proxy_config:`;
+    this.laneGlobalFallbackKey = `${this.keyPrefix}:lane_global_fallback`;
+    this.laneGlobalFallbackDefault = parseEnvFlag(process.env.MOCKIFYER_LANE_GLOBAL_FALLBACK) ?? false;
     this.useCentralizedScenario = true;
 
-    if (config.strictLaneScenarioResolution !== undefined) {
-      this.strictLaneScenarioResolution = config.strictLaneScenarioResolution;
-    } else {
-      const raw =
-        typeof process !== 'undefined' ? String(process.env.MOCKIFYER_STRICT_LANE_SCENARIO || '').trim().toLowerCase() : '';
-      if (raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on') {
-        this.strictLaneScenarioResolution = true;
-      } else if (raw === '0' || raw === 'false' || raw === 'no' || raw === 'off') {
-        this.strictLaneScenarioResolution = false;
-      } else {
-        this.strictLaneScenarioResolution = true;
-      }
-    }
+    this.strictLaneScenarioResolution =
+      config.strictLaneScenarioResolution ?? parseEnvFlag(process.env.MOCKIFYER_STRICT_LANE_SCENARIO) ?? true;
 
 
   }
@@ -263,7 +273,18 @@ export class RedisMockStore {
           };
         }
         if (strictLane) {
-          return { scenario: null, resolutionSource: 'lane_redis', hadBodyScenarioOverride: false };
+          if (!(await this.getLaneGlobalFallback())) {
+            return { scenario: null, resolutionSource: 'lane_redis', hadBodyScenarioOverride: false };
+          }
+          const globalScenario = await this.kv.get(this.activeScenarioKey);
+          return {
+            scenario:
+              typeof globalScenario === 'string' && globalScenario.trim()
+                ? globalScenario.trim()
+                : getCurrentScenario(this.mockDataPath),
+            resolutionSource: 'global_fallback',
+            hadBodyScenarioOverride: false,
+          };
         }
       }
       const centralizedScenario = await this.kv.get(this.activeScenarioKey);
@@ -312,6 +333,20 @@ export class RedisMockStore {
 
   async getActiveScenario(): Promise<string> {
     return this.scenarioKey();
+  }
+
+  /**
+   * Opt-in for strict lane mode (#484): a client that sends a client id but has no lane follows the
+   * global scenario instead of going to the live API. Stored setting wins over
+   * `MOCKIFYER_LANE_GLOBAL_FALLBACK`; off by default.
+   */
+  async getLaneGlobalFallback(): Promise<boolean> {
+    const stored = parseEnvFlag(await this.kv.get(this.laneGlobalFallbackKey));
+    return stored ?? this.laneGlobalFallbackDefault;
+  }
+
+  async setLaneGlobalFallback(enabled: boolean): Promise<void> {
+    await this.kv.set(this.laneGlobalFallbackKey, enabled ? 'true' : 'false');
   }
 
   async setActiveScenario(scenario: string): Promise<void> {
