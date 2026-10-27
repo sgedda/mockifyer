@@ -66,7 +66,10 @@ export class Dashboard {
 
 /** Atlantis Discover through the gateway, the same call the app makes. */
 export async function gatewayAtlantis(): Promise<{ status: number; json: Json }> {
-  const res = await fetch(`${GATEWAY}/api/discover?destinationKey=atlantis`, { signal: AbortSignal.timeout(15000) });
+  const res = await fetch(`${GATEWAY}/api/discover?destinationKey=atlantis`, {
+    signal: AbortSignal.timeout(15000),
+    headers: { 'X-Mockifyer-Client-Id': 'wanderweird-demo' },
+  });
   const text = await res.text();
   let json: Json = text; try { json = JSON.parse(text); } catch { /* */ }
   return { status: res.status, json };
