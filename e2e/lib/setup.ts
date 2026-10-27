@@ -236,9 +236,10 @@ export async function ensureTestData() {
     
     // Set replayMode to 'stored' for each recorded mock (new recordings default to alwaysUseRealApi:true)
     for (const mock of recordedMocks) {
-      console.log(`[Setup] Setting ${mock.filename} to replayMode: stored`);
+      console.log(`[Setup] Setting ${mock.filename} to replayMode: stored, alwaysUseRealApi: false`);
       await dashboard.putMock(mock.filename, {
         replayMode: 'stored',
+        alwaysUseRealApi: false,
       }, BASE_SCENARIO);
     }
   } else {
