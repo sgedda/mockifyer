@@ -452,6 +452,7 @@ router.post('/', async (req: Request, res: Response) => {
           : (mock as any);
       const responseWithOverrides = {
         ...mock.response,
+        status: (mock as any).statusOverride ?? mock.response?.status ?? 200,
         data: prepareMockResponseBody(sanitizedMock as MockData, getNow, {
           loadPoolResponse: createServeTimePoolResponseLoader({
             mockDataPath,
@@ -476,7 +477,7 @@ router.post('/', async (req: Request, res: Response) => {
         clientId: clientId || null,
         deviceId: deviceId || null,
         source: 'mock-hit',
-        status: mock.response?.status ?? 200,
+        status: responseWithOverrides.status,
         requestHash: hash,
         requestHeaders: toRecordStringHeaders(headers),
         responseHeaders: mock.response?.headers as Record<string, string> | undefined,
