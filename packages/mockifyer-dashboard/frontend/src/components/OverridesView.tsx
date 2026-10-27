@@ -189,6 +189,8 @@ export default function OverridesView({
       })
     return () => {
       cancelled = true
+      // The `mocks` prop can fill the picker while this fetch runs; its `finally` then skips the reset.
+      setPickerLoading(false)
     }
   }, [pickerMocks.length, scenario, scenarioConfigReady, toast])
 
