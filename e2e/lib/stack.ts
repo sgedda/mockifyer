@@ -5,7 +5,9 @@ import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY } from './env';
 
 const WANDER = path.resolve(__dirname, '../scripts/wander.sh');
 const WANDER_SH_TIMEOUT_MS = 90_000;
-const GATEWAY_ATTEMPT_TIMEOUT_MS = 10_000;
+// A healthy attempt takes < 1 s in CI. After a restart some attempts hang with no slow hop
+// in the dashboard log, and a fresh attempt then succeeds, so abort early and retry.
+const GATEWAY_ATTEMPT_TIMEOUT_MS = 3_000;
 const GATEWAY_POLL_INTERVAL_MS = 1_000;
 
 function seconds(sinceMs: number): string {
