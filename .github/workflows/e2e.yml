@@ -92,6 +92,14 @@ jobs:
           npx wait-on -t 120000 -i 2000 http-get://127.0.0.1:3002/api/scenario-config
           echo "Dashboard is ready"
 
+      # Second instance of the branch build for main-features.spec (MAIN_DASHBOARD_URL): own port and
+      # data dir, so it never touches the :3002 demo stack. The spec seeds it via scenario import.
+      - name: Start main dashboard (branch build, :3012)
+        run: |
+          mkdir -p /tmp/mockifyer-main-data
+          nohup node packages/mockifyer-dashboard/bin/mockifyer-dashboard --provider sqlite --path /tmp/mockifyer-main-data --port 3012 --host 127.0.0.1 > /tmp/main-dashboard.log 2>&1 &
+          npx wait-on -t 60000 -i 1000 http-get://127.0.0.1:3012/api/scenario-config
+
       - name: Start WanderWeird services unpinned (follow lane)
         working-directory: ${{ env.WW }}
         run: |
@@ -120,6 +128,9 @@ jobs:
 
       - name: Run E2E tests
         working-directory: e2e
+        env:
+          MAIN_DASHBOARD_URL: http://127.0.0.1:3012
+          MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
         run: npx playwright test --max-failures=3
 
       - name: Upload videos (when recording all tests)
@@ -140,6 +151,7 @@ jobs:
             e2e/playwright-report
             e2e/test-results
             /tmp/dashboard.log
+            /tmp/main-dashboard.log
             /tmp/services.log
             /tmp/metro.log
           retention-days: 30
@@ -150,6 +162,8 @@ jobs:
         run: |
           echo "=== Dashboard log ==="
           tail -100 /tmp/dashboard.log || echo "No dashboard log"
+          echo "=== Main dashboard (:3012) log ==="
+          tail -50 /tmp/main-dashboard.log || echo "No main dashboard log"
           echo "=== Services log ==="
           tail -100 /tmp/services.log || echo "No services log"
           echo "=== Metro log ==="
