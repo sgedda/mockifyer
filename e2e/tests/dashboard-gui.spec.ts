@@ -8,6 +8,7 @@ import {
   expectTemperature,
   expectTemperatureAfterRefetch,
   expectTemperatureOtherThanAfterRefetch,
+  temperatureTile,
 } from '../lib/app';
 import {
   ATHENS_ENDPOINT_PREFIX,
@@ -40,7 +41,7 @@ function gui(asserts: string, steps: Array<[Actor, string]>) {
 /** Re-open Discover until the app shows n, then keep it on screen for the clip. */
 async function appShows(page: Page, n: number) {
   await expectTemperatureAfterRefetch(page, n);
-  await holdForClip(page);
+  await holdForClip(temperatureTile(page));
 }
 
 test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
@@ -150,7 +151,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await dash.pickHeaderScenario('heatwave');
     // Strict lane mode (#484): a clientId without a lane gets live API traffic, not the global scenario.
     await expectTemperatureOtherThanAfterRefetch(page, [BASE_TEMP, EXPECTED_TEMP.heatwave]);
-    await holdForClip(page);
+    await holdForClip(temperatureTile(page));
     await dash.setLaneGlobalFallback(true);
     await appShows(page, EXPECTED_TEMP.heatwave);
     expect((await dashboard.lanes()).laneGlobalFallback).toBe(true);

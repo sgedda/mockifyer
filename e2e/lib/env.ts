@@ -16,6 +16,13 @@ export const WANDER_DISCOVER_URL = 'http://127.0.0.1:4203/discover';
 export const WANDER_FALLBACK_TEMP = 18;
 /** Values the demo data shows on the Atlantis card per scenario (see guide 4.14). */
 export const EXPECTED_TEMP: Record<string, number> = { 'guide-demo-2': 99, heatwave: 44, 'rainy-weekend': 11 };
+/** `E2E_PRESENTATION=1`: GUI tests hold at every value change so their recordings are readable. */
+export const PRESENTATION_ENV = 'E2E_PRESENTATION';
+/** Presentation mode hold before and after each value change, and on each new app value. */
+export const PRESENTATION_HOLD_MS = 2_500;
+export function presentationOn(value = process.env[PRESENTATION_ENV]): boolean {
+  return value === '1' || value === 'true';
+}
 /** Optional: dashboard built from current main (see README "Testing main"). */
 export const MAIN_DASHBOARD = process.env.MAIN_DASHBOARD_URL;
 export const MAIN_MCP_CLI = process.env.MAIN_MCP_CLI;
