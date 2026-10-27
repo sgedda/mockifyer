@@ -27,7 +27,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       CI: 'true'
       WW: example-projects/wanderweird-travel
@@ -89,6 +89,17 @@ jobs:
           echo "Waiting for dashboard..."
           npx wait-on -t 120000 -i 2000 http-get://127.0.0.1:3002/api/scenario-config
           echo "Dashboard is ready"
+
+      - name: Start WanderWeird services unpinned (follow lane)
+        working-directory: ${{ env.WW }}
+        run: |
+          nohup npm run dev:proxy:record > /tmp/services.log 2>&1 &
+          echo "Services PID: $!"
+
+      - name: Wait for services
+        run: |
+          npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
+          sleep 3
 
       - name: Start Expo web (Metro)
         working-directory: ${{ env.WW }}/apps/mobile
