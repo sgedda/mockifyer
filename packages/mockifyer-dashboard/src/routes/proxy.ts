@@ -441,6 +441,10 @@ router.post('/', async (req: Request, res: Response) => {
     const effectiveAllowUpstream = allowResolution.allowUpstream;
 
     if (mock && mockShouldServeStoredBody(mock as MockData)) {
+      const { responseDelayMs } = mock as MockData;
+      if (responseDelayMs && responseDelayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, responseDelayMs));
+      }
       const sanitizedMock: any =
         (mock as any).responseDateOverrides && Array.isArray((mock as any).responseDateOverrides)
           ? {

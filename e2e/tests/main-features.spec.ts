@@ -102,10 +102,7 @@ test.describe('main: status/delay overrides (#476)', () => {
     }, { cli: MAIN_MCP_CLI, dashboardUrl: MAIN_DASHBOARD });
   });
 
-  // KNOWN GAP: the dashboard proxy route (POST /api/proxy, used by MOCKIFYER_RUNTIME=proxy as in
-  // WanderWeird) returns the statusOverride but does not apply responseDelayMs.
   test('proxy runtime returns the statusOverride and applies the delay', async () => {
-    test.fail(true, 'POST /api/proxy ignores responseDelayMs');
     await main.putMock(file, { statusOverride: 503, responseDelayMs: 800 }, SCENARIO);
     const url = (await main.listMocks(SCENARIO)).find((f: any) => f.endpoint.startsWith(ATHENS)).endpoint;
     const t0 = Date.now();
