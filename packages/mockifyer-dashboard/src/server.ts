@@ -18,6 +18,7 @@ import overrideGroupsRouter from './routes/override-groups';
 import { favoritesRouter } from './routes/favorites';
 import { memoryRouter } from './routes/memory';
 import { dashboardApiNoCache } from './utils/api-no-cache';
+import { dashboardCors } from './utils/cors';
 import {
   attachDashboardContext,
   type DashboardContextConfig,
@@ -81,16 +82,7 @@ export function createServer(
   /** Avoid stale dashboard data: browsers may cache GET /api/* otherwise. */
   app.use('/api', dashboardApiNoCache);
   
-  // CORS for local development
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
+  app.use(dashboardCors);
 
   // API routes - must be registered BEFORE static file serving
   app.use('/api/mocks', mocksRouter);
