@@ -126,6 +126,12 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      # Composes the dashboard GUI tests' side-by-side clips (scripts/compose-gui-videos.ts).
+      - name: Install ffmpeg
+        run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg)
+
+      # The `gui` project always records (app + dashboard) and traces; the `chromium` project
+      # records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
       - name: Run E2E tests
         working-directory: e2e
         env:
@@ -133,29 +139,69 @@ jobs:
           MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
         run: npx playwright test
 
-      - name: Upload videos (when recording all tests)
-        if: env.E2E_VIDEO == 'on'
+      - name: Compose side-by-side GUI videos
+        if: ${{ !cancelled() && hashFiles('e2e/test-results/results.json') != '' }}
+        working-directory: e2e
+        run: npm run videos:gui
+
+      - name: Upload side-by-side GUI videos
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-videos-${{ github.run_number }}
-          path: e2e/test-results/**/*.webm
+          name: e2e-gui-videos
+          path: e2e/gui-videos/*.mp4
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          overwrite: true
 
-      - name: Upload report and artifacts on failure
+      - name: Upload individual videos
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-videos
+          path: |
+            e2e/gui-videos/individual/*.webm
+            e2e/test-results/**/*.webm
+            !e2e/test-results/dashboard-gui-*/**
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: e2e/playwright-report
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: e2e/test-results/**/trace.zip
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload test results and service logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report-${{ github.run_number }}
+          name: e2e-logs
           path: |
-            e2e/playwright-report
             e2e/test-results
             /tmp/dashboard.log
             /tmp/main-dashboard.log
             /tmp/services.log
             /tmp/metro.log
+            /tmp/wander-api.log
           retention-days: 30
           if-no-files-found: warn
+          overwrite: true
 
       - name: Debug logs on failure
         if: failure()
