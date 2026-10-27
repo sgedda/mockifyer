@@ -40,9 +40,9 @@ npm run test:headed           # watch it in a browser window
 npx playwright test tests/scenarios.spec.ts
 npm run report                # HTML report; traces/videos/screenshots are kept on failure
 
-# Dashboard GUI tests only (always recorded), then the side-by-side clips (needs ffmpeg on PATH)
+# Dashboard GUI tests only (always recorded), then the side-by-side clips and run docs (ffmpeg on PATH)
 npm run test:gui              # same as: npx playwright test --project=gui  (or --grep @gui)
-npm run videos:gui            # writes gui-videos/*.mp4 and gui-videos/individual/*.webm
+npm run artifacts             # gui-videos/*.mp4 + *.md, e2e-run-summary.md, other-tests/*.md, individual/*.webm
 npx playwright test --project=gui --headed   # watch both windows
 ```
 
@@ -87,7 +87,7 @@ existing labels, placeholders, `aria-label`s and the two `data-testid`s from #48
 
 ### Side-by-side videos
 
-`scripts/compose-gui-videos.ts` (`npm run videos:gui`) reads the JSON report (`test-results/results.json`),
+`scripts/build-run-artifacts.ts` (`npm run artifacts`) reads the JSON report (`test-results/results.json`),
 takes the last attempt of each test that has both an app and a dashboard video, and runs ffmpeg:
 
 ```
@@ -97,6 +97,37 @@ takes the last attempt of each test that has both an app and a dashboard video, 
 Output: `gui-videos/<spec>--<test title>.mp4` (app left, dashboard right) and the two source recordings
 renamed after the test in `gui-videos/individual/<name>.app.webm` / `<name>.dashboard.webm`. The originals
 stay in `test-results/` and the HTML report. Recordings contain only the two browser pages.
+
+### Run docs (a Markdown description per recording)
+
+The same script writes, from the JSON report plus `.github/workflows/e2e.yml`:
+
+- `gui-videos/<name>.md` next to each `<name>.mp4`, and `gui-videos/other-tests/<name>.md` for every other
+  test. Each has: result, duration, spec `file:line`, project and tags; where the videos and trace are in
+  the CI artifacts; **what the test does and asserts**, step by step, labelled by who acts (Mockifyer
+  dashboard UI, Mockifyer dashboard API, Mockifyer MCP server, WanderWeird app, helper); the **exact test
+  command** (`config.argv` from the report), working directory and env (`CI`, `E2E_VIDEO`, `MAIN_*`, URL
+  overrides, recorded in `playwright.config.ts` metadata with repo paths as `<repo>`); the **workflow steps**
+  in order, each tagged Mockifyer / Demo app (WanderWeird) / Test run / Helper with its command; and the
+  local reproduce commands (the workflow's Mockifyer, demo and wait steps, then
+  `npx playwright test tests/<file>:<line> --project=<project>`).
+- `gui-videos/e2e-run-summary.md`: run link, passed/failed/flaky/skipped counts, all tests with their
+  "asserts" line, artifacts, workflow steps and reproduce commands. In CI it is also appended to
+  `$GITHUB_STEP_SUMMARY` (the run's Summary page).
+
+In CI the step list comes from the running job via the Actions API (`GITHUB_TOKEN`, `actions: read`), with
+each step's status; elsewhere, or if that call fails, from the workflow YAML. The descriptions come from
+annotations on each test: `documented(asserts, steps)` in `lib/docs.ts`, e.g.
+
+```ts
+test('Settings client lane: ...', documented('Switching the lane scenario in Settings moves the app.', [
+  [ACTOR.dashboardUi, 'Settings > Client lanes: lane scenario select = heatwave'],
+  [ACTOR.app, 'Refetch until 44°'],
+]), async ({ page, dash }) => { /* ... */ });
+```
+
+API and app tests carry the one-line "asserts" annotation only. Any machine hostname is replaced by
+`<host>` in the generated files.
 
 ## State reset
 
@@ -138,12 +169,12 @@ The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
   (GUI tests always recorded; other tests only on failure)
 
 The workflow builds Mockifyer packages, starts the WanderWeird stack, runs the suite (global setup seeds the
-demo data), installs ffmpeg if the runner lacks it and composes the GUI clips. Artifacts of every run
+demo data), installs ffmpeg if the runner lacks it, composes the GUI clips and writes the run docs. Artifacts of every run
 (pass or fail), retained for **30 days**, fixed names so a collector can `gh run download <run-id> -n <name>`:
 
 | Artifact | Contents |
 |---|---|
-| `e2e-gui-videos` | one side-by-side mp4 per GUI test (app left, dashboard right) |
+| `e2e-gui-videos` | one side-by-side mp4 per GUI test (app left, dashboard right) with its `.md` description of the same base name, `e2e-run-summary.md`, and `other-tests/*.md` |
 | `e2e-videos` | individual recordings: `gui-videos/individual/*.{app,dashboard}.webm` plus any other test's video (failures, or all with `E2E_VIDEO=on`) |
 | `e2e-report` | Playwright HTML report (`npx playwright show-report <dir>`) |
 | `e2e-traces` | `trace.zip` per GUI test, plus traces of failed tests (`npx playwright show-trace <zip>`) |
