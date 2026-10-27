@@ -2,6 +2,16 @@ import { expect, type Page } from '@playwright/test';
 
 /** Open the Expo web app, sign in as the demo user and open Discover. */
 export async function openDiscover(page: Page) {
+  // Log failed requests to help diagnose login issues
+  page.on('requestfailed', req => {
+    console.error(`[Request failed] ${req.method()} ${req.url()} - ${req.failure()?.errorText}`);
+  });
+  page.on('console', msg => {
+    if (msg.type() === 'error') {
+      console.error(`[Browser console error] ${msg.text()}`);
+    }
+  });
+  
   await page.goto('/');
   const inputs = page.locator('input');
   await expect(inputs.first().or(page.getByText('Discover').last())).toBeVisible({ timeout: 60_000 });
