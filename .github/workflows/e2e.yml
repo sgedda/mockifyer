@@ -28,6 +28,9 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     env:
       CI: 'true'
       WW: example-projects/wanderweird-travel
@@ -126,7 +129,7 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      # Composes the dashboard GUI tests' side-by-side clips (scripts/compose-gui-videos.ts).
+      # Composes the dashboard GUI tests' side-by-side clips (scripts/build-run-artifacts.ts).
       - name: Install ffmpeg
         run: command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg)
 
@@ -139,17 +142,24 @@ jobs:
           MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
         run: npx playwright test
 
-      - name: Compose side-by-side GUI videos
+      # Side-by-side clips plus a Markdown description per test and the run summary (also the job summary).
+      # GITHUB_TOKEN reads this job's step list for the docs; without it they list the steps from this file.
+      - name: Compose side-by-side GUI videos and run docs
         if: ${{ !cancelled() && hashFiles('e2e/test-results/results.json') != '' }}
         working-directory: e2e
-        run: npm run videos:gui
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run artifacts
 
-      - name: Upload side-by-side GUI videos
+      - name: Upload side-by-side GUI videos and run docs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-gui-videos
-          path: e2e/gui-videos/*.mp4
+          path: |
+            e2e/gui-videos/*.mp4
+            e2e/gui-videos/*.md
+            e2e/gui-videos/other-tests/*.md
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
