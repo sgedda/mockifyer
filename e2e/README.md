@@ -39,6 +39,11 @@ npm test                      # headless
 npm run test:headed           # watch it in a browser window
 npx playwright test tests/scenarios.spec.ts
 npm run report                # HTML report; traces/videos/screenshots are kept on failure
+
+# Dashboard GUI tests only (always recorded), then the side-by-side clips (needs ffmpeg on PATH)
+npm run test:gui              # same as: npx playwright test --project=gui  (or --grep @gui)
+npm run videos:gui            # writes gui-videos/*.mp4 and gui-videos/individual/*.webm
+npx playwright test --project=gui --headed   # watch both windows
 ```
 
 ## Tests
@@ -52,14 +57,46 @@ npm run report                # HTML report; traces/videos/screenshots are kept 
 | `trace.spec.ts` | an app load logs a `mock-hit` for Open-Meteo with `parentRequestId`; MCP `mockifyer_list_network_events` returns it |
 | `dates.spec.ts` | scenario `fixedDate` set / invalid → 400 / clear; client-lane `fixedDate` set and clear (API level only: the app computes dates from the browser clock) |
 | `main-features.spec.ts` | features on `main` newer than the demo's installed dashboard 1.5.92: status/delay overrides (#476, REST + MCP `mockifyer_set_mock_behavior`) and explain-value (#477, REST + MCP `mockifyer_explain_value`) |
+| `dashboard-gui.spec.ts` (`@gui`) | the real dashboard UI changes what the app shows; see below |
 
-### Known gaps (marked `test.fail`, so the suite stays green and flips to "unexpected pass" when fixed)
+### Dashboard GUI tests (`@gui`, project `gui`)
 
-- **Header Scenario picker doesn't move a client with a clientId** (strict lane mode, no fallback to the
-  global scenario). `scenarios.spec.ts`.
-- **Proxy runtime ignores `statusOverride` / `responseDelayMs`** on main: only the in-process
-  axios/fetch clients apply them; `POST /api/proxy` returns the stored status with no delay, so a
-  proxy-mode app like WanderWeird can't show a 503 yet. `main-features.spec.ts`.
+Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These six tests use the
+**dashboard UI** like a user would, in a second browser context (1280×800, so the sidebar is shown), while
+the app runs in the first (`page`, 430×900). Each test ends by asserting the **new value on screen in the
+app**, so the recording shows the change travel from the dashboard to the app.
+
+| Test | Dashboard UI steps | App shows |
+|---|---|---|
+| mock editor: response body | Mocks editor (`/mock`), Form Editor, `current` → `temperature_2m` = 37, Save Changes | 99° → 37° |
+| overrides page: field override | Overrides, Add field override `current.temperature_2m` = 61, Save overlays, then Open mock | 61°, while the editor still shows the stored 99 |
+| mock editor: status override | Request tab, Status Override 503 | 18° (wander-api's fallback weather when Open-Meteo fails) |
+| Settings client lane | Settings > Client lanes, lane scenario select heatwave → rainy-weekend → guide-demo-2 | 44° → 11° → 99° |
+| header Scenario picker | remove the lane, header picker → heatwave, then tick "Lane global fallback" | strict default (#484): live weather, not 44°; with the fallback on: 44° |
+| Network view | lane → heatwave, header → heatwave, Network filtered to the lane, Clear, app reload | 44°, and the trace lists the Open-Meteo `Mock` hop under wander-api `GET /discover` |
+
+A date override test is not included: the app shows no date derived from the mocks, so there is nothing
+to see change on screen (dates stay covered at API level in `dates.spec.ts`).
+
+How it works: `lib/gui.ts` extends `test` with a `dash` fixture (dashboard context with its own
+`recordVideo`, wrapped in a small page object). The video is attached to the result as `dashboard-video`;
+Playwright's own `video` attachment is the app. The `gui` project in `playwright.config.ts` sets
+`video: 'on'` (at the app's full size) and `trace: 'on'`, so GUI tests are recorded on **every** run; the
+`chromium` project (everything else) keeps video and trace on failure only. Selectors are the dashboard's
+existing labels, placeholders, `aria-label`s and the two `data-testid`s from #484; no frontend change was needed.
+
+### Side-by-side videos
+
+`scripts/compose-gui-videos.ts` (`npm run videos:gui`) reads the JSON report (`test-results/results.json`),
+takes the last attempt of each test that has both an app and a dashboard video, and runs ffmpeg:
+
+```
+[0:v]scale=-2:800[app]; [1:v]scale=-2:800[dash]; [app][dash]hstack   ->  H.264 mp4, 1662×800
+```
+
+Output: `gui-videos/<spec>--<test title>.mp4` (app left, dashboard right) and the two source recordings
+renamed after the test in `gui-videos/individual/<name>.app.webm` / `<name>.dashboard.webm`. The originals
+stay in `test-results/` and the HTML report. Recordings contain only the two browser pages.
 
 ## State reset
 
@@ -70,6 +107,9 @@ npm run report                # HTML report; traces/videos/screenshots are kept 
   or stopped), and always restart it **pinned to `guide-demo-2`** at the end. Offline tests also restore
   the replay modes of the two wander `/discover` mocks.
 - Temporary scenario `e2e-tmp-*` is deleted in `afterAll`. Dates are restored to their prior values.
+- GUI tests: `afterEach` restores the Athens body, clears its status and field overrides, puts the lane
+  (re-created if the test removed it) and global back on `guide-demo-2` and turns the lane global fallback
+  off. The Network test clears the network log for `heatwave` + the demo lane only (telemetry, not restored).
 - If a run is killed mid-test: `scripts/wander.sh start guide-demo-2`, then set the lane back with
   `curl -X PUT -H 'content-type: application/json' -d '{"scenario":"guide-demo-2"}' http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario`.
 
@@ -94,12 +134,20 @@ MAIN_DASHBOARD_URL=http://127.0.0.1:3012 MAIN_MCP_CLI=<path>/mockifyer-mcp/dist/
 The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
 - **Schedule**: nightly at 3 AM UTC (records all videos)
 - **Manual**: via workflow_dispatch in the Actions tab (checkbox to record all videos)
-- **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/ (videos only on failure)
+- **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/
+  (GUI tests always recorded; other tests only on failure)
 
-Artifacts (reports, traces, videos, logs) are retained for **30 days**.
+The workflow builds Mockifyer packages, starts the WanderWeird stack, runs the suite (global setup seeds the
+demo data), installs ffmpeg if the runner lacks it and composes the GUI clips. Artifacts of every run
+(pass or fail), retained for **30 days**, fixed names so a collector can `gh run download <run-id> -n <name>`:
 
-The workflow builds Mockifyer packages, starts the WanderWeird stack, seeds demo scenarios via `npm run seed`,
-and runs the suite. Videos are uploaded separately when recording all tests; reports/traces are uploaded on failure.
+| Artifact | Contents |
+|---|---|
+| `e2e-gui-videos` | one side-by-side mp4 per GUI test (app left, dashboard right) |
+| `e2e-videos` | individual recordings: `gui-videos/individual/*.{app,dashboard}.webm` plus any other test's video (failures, or all with `E2E_VIDEO=on`) |
+| `e2e-report` | Playwright HTML report (`npx playwright show-report <dir>`) |
+| `e2e-traces` | `trace.zip` per GUI test, plus traces of failed tests (`npx playwright show-trace <zip>`) |
+| `e2e-logs` | on failure only: `test-results/` and the dashboard, services, Metro and wander-api logs |
 
 Demo data seeding (`seed-demo-data.ts`) creates the three scenarios (guide-demo-2 99°, heatwave 44°,
 rainy-weekend 11°) with an Open-Meteo Athens forecast mock and the wanderweird-demo client lane,
