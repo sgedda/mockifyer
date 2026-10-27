@@ -13,6 +13,7 @@ import {
   setClientLaneNote,
   setClientLaneOverrideGroup,
   setClientLaneScenario,
+  setLaneGlobalFallback,
   type ClientLane,
   type OverrideGroupSummary,
 } from '@/lib/api'
@@ -122,6 +123,8 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
   const [lanes, setLanes] = useState<ClientLane[]>([])
   const [discoveredLanes, setDiscoveredLanes] = useState<string[]>([])
   const [globalScenario, setGlobalScenario] = useState<string>('default')
+  const [laneGlobalFallback, setLaneGlobalFallbackState] = useState(false)
+  const [savingFallback, setSavingFallback] = useState(false)
   const [newLaneId, setNewLaneId] = useState('')
   const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({})
   const [overrideGroupsByScenario, setOverrideGroupsByScenario] = useState<
@@ -153,6 +156,7 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
       setLanes(data.lanes || [])
       setDiscoveredLanes((data as any).discoveredLanes || [])
       setGlobalScenario(data.globalScenario || 'default')
+      setLaneGlobalFallbackState(data.laneGlobalFallback === true)
       const scenarios = Array.from(
         new Set([
           ...(data.lanes || []).map((l: ClientLane) => l.scenario),
@@ -209,6 +213,27 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
         description: e?.message ?? 'Failed to create lane',
         variant: 'destructive',
       })
+    }
+  }
+
+  async function handleLaneGlobalFallbackChange(next: boolean) {
+    try {
+      setSavingFallback(true)
+      setLaneGlobalFallbackState(await setLaneGlobalFallback(next))
+      toast({
+        title: 'Saved',
+        description: next
+          ? 'Clients with a clientId but no lane now follow the global scenario.'
+          : 'Clients with a clientId but no lane get live API traffic (strict lane mode).',
+      })
+    } catch (e: unknown) {
+      toast({
+        title: 'Error',
+        description: e instanceof Error ? e.message : 'Failed to update lane global fallback',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingFallback(false)
     }
   }
 
@@ -335,6 +360,26 @@ export default function ClientLanes({ availableScenarios }: { availableScenarios
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!loading && enabled ? (
+          <label className="flex items-start gap-3 rounded-md border p-3 text-sm" data-testid="lane-global-fallback">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4"
+              checked={laneGlobalFallback}
+              disabled={savingFallback}
+              onChange={(e) => void handleLaneGlobalFallbackChange(e.target.checked)}
+            />
+            <span className="space-y-1">
+              <span className="block font-medium">Lane global fallback</span>
+              <span className="block text-muted-foreground">
+                Off (default): in strict lane mode a client that sends a <span className="font-mono">clientId</span>{' '}
+                but has no lane gets live API traffic, so the header Scenario picker does not move it. On: such
+                clients follow the global scenario (<span className="font-mono">{globalScenario}</span>). Lanes
+                still win.
+              </span>
+            </span>
+          </label>
+        ) : null}
         {loading ? (
           <div className="text-center py-6 text-muted-foreground">Loading client lanes…</div>
         ) : !enabled ? (

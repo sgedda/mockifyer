@@ -22,6 +22,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDown, Lock } from 'lucide-react'
@@ -30,7 +31,13 @@ import {
   isScratchScenario,
   scenarioDisplayName,
 } from '@/lib/scenario-display'
-import { DASHBOARD_Q, mockEditorPath, planScenarioUrlSync, scenarioQueryForNavigation } from '@/lib/dashboard-urls'
+import {
+  CLIENT_LANES_SECTION_ID,
+  DASHBOARD_Q,
+  mockEditorPath,
+  planScenarioUrlSync,
+  scenarioQueryForNavigation,
+} from '@/lib/dashboard-urls'
 import { FavoritesProvider } from '@/lib/favorites-context'
 import { applyCatalogReplayModeFlags } from '@/lib/mock-correlation-chains'
 
@@ -495,7 +502,7 @@ export default function Dashboard({
                       ? `Temporary unscoped traffic (expires in ~${scratchTtlLabel}). Select a named scenario to keep mocks.`
                       : scenarioLocked
                         ? 'Scenario is locked (read-only mocks)'
-                        : 'Change scenario'
+                        : 'Change the global scenario (clients without a lane)'
                   }
                 >
                   {scenarioLocked ? (
@@ -545,6 +552,20 @@ export default function Dashboard({
                     ))
                   )}
                 </div>
+                <DropdownMenuSeparator />
+                <p className="px-2 py-1.5 text-xs text-muted-foreground" data-testid="scenario-picker-scope-note">
+                  Sets the <strong>global</strong> scenario. It applies to clients without a client lane. A client
+                  that sends a <span className="font-mono">clientId</span> follows its lane; with no lane it gets
+                  live API traffic in strict lane mode, unless <strong>Lane global fallback</strong> is on.
+                </p>
+                <DropdownMenuItem
+                  className="text-xs"
+                  onClick={() =>
+                    navigate({ pathname: '/settings', search: location.search, hash: `#${CLIENT_LANES_SECTION_ID}` })
+                  }
+                >
+                  Client lanes and lane global fallback…
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
