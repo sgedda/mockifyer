@@ -1,4 +1,6 @@
 export const DASHBOARD = process.env.MOCKIFYER_DASHBOARD_URL ?? 'http://127.0.0.1:3002';
+/** Empty, throw-away dashboard of the from-scratch GUI test (scripts/scratch-dashboard.sh). */
+export const SCRATCH_DASHBOARD = `http://127.0.0.1:${process.env.SCRATCH_DASHBOARD_PORT ?? '3022'}`;
 export const GATEWAY = process.env.GATEWAY_URL ?? 'http://127.0.0.1:4200';
 export const APP = process.env.APP_URL ?? 'http://127.0.0.1:8090';
 /** Scenario the demo is left in (and must be restored to). */

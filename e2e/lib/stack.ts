@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect } from '@playwright/test';
 import { dashboard, gatewayTemp } from './dashboard';
-import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY } from './env';
+import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY, SCRATCH_DASHBOARD } from './env';
 
-const WANDER = path.resolve(__dirname, '../scripts/wander.sh');
-const WANDER_SH_TIMEOUT_MS = 90_000;
+const SCRIPTS = path.resolve(__dirname, '../scripts');
+const SCRIPT_TIMEOUT_MS = 90_000;
 // A healthy attempt takes < 1 s in CI. After a restart some attempts hang with no slow hop
 // in the dashboard log, and a fresh attempt then succeeds, so abort early and retry.
 const GATEWAY_ATTEMPT_TIMEOUT_MS = 3_000;
@@ -15,22 +15,46 @@ function seconds(sinceMs: number): string {
   return `${((Date.now() - sinceMs) / 1000).toFixed(1)}s`;
 }
 
-function run(...args: string[]) {
+/** Run one of e2e/scripts with extra env and log what it printed. */
+function run(script: string, args: string[], env: Record<string, string> = {}) {
   const started = Date.now();
-  const out = execFileSync(WANDER, args, {
+  const out = execFileSync(path.join(SCRIPTS, script), args, {
     encoding: 'utf8',
-    timeout: WANDER_SH_TIMEOUT_MS,
-    env: { ...process.env, WW: process.env.WW || 'example-projects/wanderweird-travel' }
+    timeout: SCRIPT_TIMEOUT_MS,
+    env: { ...process.env, WW: process.env.WW || 'example-projects/wanderweird-travel', ...env },
   }).trim();
-  console.log(`[stack] wander.sh ${args.join(' ')} took ${seconds(started)}: ${out.replace(/\n/g, ' | ')}`);
+  console.log(`[stack] ${script} ${args.join(' ')} took ${seconds(started)}: ${out.replace(/\n/g, ' | ')}`);
   return out;
 }
 export const wander = {
-  stop: () => run('stop'),
+  stop: () => run('wander.sh', ['stop']),
   /** Unpinned: wander-api follows the client lane. */
-  followLane: () => run('start'),
+  followLane: () => run('wander.sh', ['start']),
   /** Pinned to a scenario, which is how the demo stack normally runs it. */
-  pin: (scenario = BASE_SCENARIO) => run('start', scenario),
+  pin: (scenario = BASE_SCENARIO) => run('wander.sh', ['start', scenario]),
+};
+
+/**
+ * The from-scratch GUI test's own stack: an empty dashboard on SCRATCH_DASHBOARD, with the gateway and
+ * wander-api proxying through it (unpinned, without the record env, so only the dashboard's Record switch
+ * and its rules decide what is stored). The app and the rest of the services keep using the demo dashboard.
+ */
+export const scratchStack = {
+  async start() {
+    run('scratch-dashboard.sh', ['start']);
+    const viaScratch = { MOCKIFYER_DASHBOARD_URL: SCRATCH_DASHBOARD, WW_RECORD: 'off' };
+    run('ww-service.sh', ['wander-api', 'start'], viaScratch);
+    run('ww-service.sh', ['gateway-api', 'start'], viaScratch);
+    // Not waitForGateway(): a discover call without a clientId would resolve to the scratch dashboard's
+    // global scenario and store placeholders there before the test starts.
+    await expect.poll(async () => (await fetch(`${GATEWAY}/health`).catch(() => undefined))?.status, { timeout: 30_000 }).toBe(200);
+  },
+  /** Back to the demo stack: gateway as `dev:proxy:record` starts it, wander-api pinned to the base scenario. */
+  async stop() {
+    run('ww-service.sh', ['gateway-api', 'start']);
+    run('scratch-dashboard.sh', ['stop']);
+    await pinToBaseAndWait();
+  },
 };
 
 /** Restart wander-api unpinned, so client lane switches reach the app, and wait until it serves. */
