@@ -6,12 +6,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dashboard } from './dashboard';
-import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT_PREFIX, LANE } from './env';
+import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT, LANE } from './env';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { generateRequestKey } from '@sgedda/mockifyer-core';
 import crypto from 'node:crypto';
 
-const ATHENS_ENDPOINT = `${ATHENS_ENDPOINT_PREFIX}&longitude=23.7275&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&timezone=Europe%2FAthens`;
 const ATHENS_FIXTURE = JSON.parse(readFileSync(join(__dirname, '../fixtures/athens-forecast.json'), 'utf8'));
 
 /**
@@ -60,7 +59,7 @@ export async function ensureTestData() {
   
   // Check if Athens mock exists in base scenario
   const baseMocks = await dashboard.listMocks(BASE_SCENARIO);
-  let athensMock = baseMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+  let athensMock = baseMocks.find((m: any) => m.endpoint === ATHENS_ENDPOINT);
   
   if (!athensMock) {
     console.log('[Setup] Athens mock not found, creating via proxy recording...');
@@ -88,7 +87,7 @@ export async function ensureTestData() {
     
     // Re-fetch to get the mock entry (will have responsePending:true, status 0, data null)
     const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
-    athensMock = updatedMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+    athensMock = updatedMocks.find((m: any) => m.endpoint === ATHENS_ENDPOINT);
     
     if (!athensMock) {
       console.error('[Setup] ❌ Mock entry not created');
@@ -124,6 +123,7 @@ export async function ensureTestData() {
     await dashboard.putMock(athensMock.filename, {
       responseData: liveData,
       replayMode: 'stored',
+      alwaysUseRealApi: false,
     }, BASE_SCENARIO);
     
     console.log('[Setup] ✓ Wrote response data to mock');
@@ -161,7 +161,7 @@ export async function ensureTestData() {
     
     // Check if scenario has Athens mock
     const scenarioMocks = await dashboard.listMocks(scenario);
-    const scenarioAthensMock = scenarioMocks.find((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+    const scenarioAthensMock = scenarioMocks.find((m: any) => m.endpoint === ATHENS_ENDPOINT);
     
     if (!scenarioAthensMock) {
       console.warn(`[Setup] ⚠️  ${scenario} is missing Athens mock (skipping temperature update)`);
@@ -178,6 +178,7 @@ export async function ensureTestData() {
       await dashboard.putMock(athensMock.filename, {
         responseData: mockData.data.response.data,
         replayMode: 'stored',
+        alwaysUseRealApi: false,
       }, scenario);
     }
   }
@@ -197,53 +198,11 @@ export async function ensureTestData() {
     console.warn(`[Setup] Could not create lane ${LANE}:`, err.message);
   }
   
-  // Warm the base scenario by recording WanderWeird endpoints (needed for offline.spec.ts)
-  const WANDER_ENDPOINTS = [
-    'http://127.0.0.1:4203/discover?destinationKey=atlantis',
-    'http://127.0.0.1:4203/discover'
-  ];
-  
-  console.log('[Setup] Checking WanderWeird mocks in base scenario...');
-  const baseMocksForWander = await dashboard.listMocks(BASE_SCENARIO);
-  const missingEndpoints = WANDER_ENDPOINTS.filter(ep => 
-    !baseMocksForWander.some((m: any) => m.endpoint === ep)
-  );
-  
-  if (missingEndpoints.length > 0) {
-    console.log(`[Setup] Recording ${missingEndpoints.length} WanderWeird endpoints through gateway...`);
-    for (const endpoint of missingEndpoints) {
-      try {
-        // Call through the gateway with the lane ID header
-        const gatewayUrl = endpoint.replace('http://127.0.0.1:4203', 'http://127.0.0.1:4200/api');
-        console.log(`[Setup] Recording: ${endpoint}`);
-        await fetch(gatewayUrl, {
-          headers: { 'X-Mockifyer-Client-Id': LANE }
-        });
-        // Give it a moment to record
-        await new Promise(r => setTimeout(r, 500));
-      } catch (err: any) {
-        console.warn(`[Setup] Could not record ${endpoint}:`, err.message);
-      }
-    }
-    
-    // Verify they were recorded and set them to replayMode 'stored'
-    const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
-    const recordedMocks = WANDER_ENDPOINTS
-      .map(ep => updatedMocks.find((m: any) => m.endpoint === ep))
-      .filter(Boolean);
-    
-    console.log(`[Setup] WanderWeird mocks: ${recordedMocks.length}/${WANDER_ENDPOINTS.length} recorded`);
-    
-    // Set replayMode to 'stored' for each recorded mock (new recordings default to alwaysUseRealApi:true)
-    for (const mock of recordedMocks) {
-      console.log(`[Setup] Setting ${mock.filename} to replayMode: stored, alwaysUseRealApi: false`);
-      await dashboard.putMock(mock.filename, {
-        replayMode: 'stored',
-        alwaysUseRealApi: false,
-      }, BASE_SCENARIO);
-    }
-  } else {
-    console.log('[Setup] ✓ All WanderWeird mocks already exist');
+  // List guide-demo-2 mocks to verify setup (should show exactly one Open-Meteo Athens mock with 99°)
+  console.log('[Setup] Listing guide-demo-2 mocks:');
+  const finalMocks = await dashboard.listMocks(BASE_SCENARIO);
+  for (const mock of finalMocks) {
+    console.log(`[Setup]   - ${mock.endpoint} -> ${mock.filename}`);
   }
   
   // Reset global scenario to BASE_SCENARIO (scenario creates switch the global scenario)
@@ -274,7 +233,7 @@ export async function hasTestData(): Promise<boolean> {
     if (!hasScenarios) return false;
     
     const mocks = await dashboard.listMocks(BASE_SCENARIO);
-    const hasMock = mocks.some((m: any) => m.endpoint?.startsWith(ATHENS_ENDPOINT_PREFIX));
+    const hasMock = mocks.some((m: any) => m.endpoint === ATHENS_ENDPOINT);
     
     return hasMock;
   } catch {

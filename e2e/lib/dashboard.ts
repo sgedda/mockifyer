@@ -1,4 +1,4 @@
-import { DASHBOARD, ATHENS_ENDPOINT_PREFIX, GATEWAY } from './env';
+import { DASHBOARD, ATHENS_ENDPOINT, ATHENS_ENDPOINT_PREFIX, GATEWAY } from './env';
 
 type Json = any;
 
@@ -52,7 +52,7 @@ export class Dashboard {
     if (!f) throw new Error(`mock ${file} not in ${scenario}`);
     return f;
   }
-  athensMock(scenario: string) { return this.findMock(scenario, (e) => e.startsWith(ATHENS_ENDPOINT_PREFIX)); }
+  athensMock(scenario: string) { return this.findMock(scenario, (e) => e === ATHENS_ENDPOINT); }
 
   // dates
   dateConfig(scenario?: string) { return this.ok('GET', '/date-config' + this.q(scenario)); }

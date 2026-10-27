@@ -6,6 +6,10 @@ export const BASE_SCENARIO = process.env.BASE_SCENARIO ?? 'guide-demo-2';
 export const LANE = process.env.MOCKIFYER_CLIENT_ID ?? 'wanderweird-demo';
 /** Open-Meteo Athens forecast, the mock behind the Atlantis Discover card. */
 export const ATHENS_ENDPOINT_PREFIX = 'https://api.open-meteo.com/v1/forecast?latitude=37.9838';
+export const ATHENS_ENDPOINT =
+  'https://api.open-meteo.com/v1/forecast?latitude=37.9838' +
+  '&longitude=23.7275&current=temperature_2m,weather_code,wind_speed_10m' +
+  '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3';
 /** Values the demo data shows on the Atlantis card per scenario (see guide 4.14). */
 export const EXPECTED_TEMP: Record<string, number> = { 'guide-demo-2': 99, heatwave: 44, 'rainy-weekend': 11 };
 /** Optional: dashboard built from current main (see README "Testing main"). */
