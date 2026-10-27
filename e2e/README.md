@@ -76,6 +76,7 @@ app**, so the recording shows the change travel from the dashboard to the app.
 | Settings client lane | Settings > Client lanes, lane scenario select heatwave → rainy-weekend → guide-demo-2 | 44° → 11° → 99° |
 | header Scenario picker | remove the lane, header picker → heatwave, then tick "Lane global fallback" | strict default (#484): live weather, not 44°; with the fallback on: 44° |
 | Network view | lane → heatwave, header → heatwave, Network filtered to the lane, Clear, app reload | 44°, and the trace lists the Open-Meteo `Mock` hop under wander-api `GET /discover` |
+| tracing walkthrough | Network: Bodies on, Clear, Paused, Trace: Collapse all → expand `GET /api/discover` → `GET /discover` → Open-Meteo hop; Details (Source, Status, Duration, Lane, Request headers, Response body); Client connections; then a heatwave lane switch and a 503 status override | 99° (body `"temperature_2m": 99`, Mock) → 44° (heatwave, Last resolved heatwave) → 18° (Open-Meteo hop 503, wander-api body `"source": "fallback"`) |
 
 Both panes start at their entry screen, and the two recordings start together: the GUI `beforeEach`
 requests the dashboard first, so it waits on its start screen while the app signs in. The **app** opens
@@ -114,6 +115,16 @@ The flow, all in the UI:
 Why the placeholder step: the dashboard's per-endpoint controls (a mock's replay mode, reached from a hop, or a
 path folder's **Record response** in the Mocks › Domains tree) need the endpoint to be stored first, and the Hops
 page lists stored entries only. The Network page shows live hops but has no per-endpoint toggle.
+
+Tracing views in the dashboard UI: **Network** (`/network`; List / Trace / Waterfall / Gantt / Journey, plus a
+**Details** pane with URL, Method, Source Mock/Upstream/Error, Transport, Request id, Triggered by, Status, Duration,
+Lane, Call chain, Request/Response headers and, with **Bodies on** for that scenario, Request/Response body) and
+**Hops** (`/hops`, stored chains; a hop opens its mock editor with Request / Response / Metadata tabs). The scenario
+and lane resolution of a client is in the header's **Client connections** panel (Scenario (lane), Last resolved).
+There is no separate "Atlas" trace page in the UI (`/atlas` redirects to Network). The tracing walkthrough uses the
+Network trace: the demo's Athens forecast mock is stored without a parent link, so Hops does not nest it under
+`GET /discover`, while the live trace does. The test turns Bodies on for `guide-demo-2` and `heatwave` and
+`afterEach` turns them off again.
 
 A date override test is not included: the app shows no date derived from the mocks, so there is nothing
 to see change on screen (dates stay covered at API level in `dates.spec.ts`).
