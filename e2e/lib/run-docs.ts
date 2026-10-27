@@ -150,7 +150,7 @@ function reproduceSection(ctx: RunContext, test?: TestRun): string[] {
   lines.push(`${stackSteps.length + 1}. ${STEP_KIND.test}${test ? ', this test only' : ', the whole suite'}:`);
   lines.push(['', '```bash', `cd ${E2E_DIR} && npm ci && npx playwright install chromium`,
     `${env ? `${env} ` : ''}npx playwright test ${target}`.trimEnd(), '```', ''].join('\n'));
-  lines.push(`${stackSteps.length + 2}. ${STEP_KIND.helper}: \`${ARTIFACTS_SCRIPT}\` (needs ffmpeg) for the side-by-side videos and these docs. ` +
+  lines.push(`${stackSteps.length + 2}. ${STEP_KIND.helper}: \`${ARTIFACTS_SCRIPT}\` (ffmpeg from the ffmpeg-static devDependency) for the side-by-side videos and these docs. ` +
     'All GUI tests at once: `npx playwright test --project=gui` (or `--grep @gui`).');
   return lines;
 }

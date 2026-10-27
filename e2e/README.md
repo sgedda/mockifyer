@@ -40,7 +40,7 @@ npm run test:headed           # watch it in a browser window
 npx playwright test tests/scenarios.spec.ts
 npm run report                # HTML report; traces/videos/screenshots are kept on failure
 
-# Dashboard GUI tests only (always recorded), then the side-by-side clips and run docs (ffmpeg on PATH)
+# Dashboard GUI tests only (always recorded), then the side-by-side clips and run docs
 npm run test:gui              # same as: npx playwright test --project=gui  (or --grep @gui)
 npm run artifacts             # gui-videos/*.mp4 + *.md, e2e-run-summary.md, other-tests/*.md, individual/*.webm
 npx playwright test --project=gui --headed   # watch both windows
@@ -107,7 +107,8 @@ pull requests. The run summary and each test's Markdown file show a "Presentatio
 ### Side-by-side videos
 
 `scripts/build-run-artifacts.ts` (`npm run artifacts`) reads the JSON report (`test-results/results.json`),
-takes the last attempt of each test that has both an app and a dashboard video, and runs ffmpeg:
+takes the last attempt of each test that has both an app and a dashboard video, and runs ffmpeg (the
+`ffmpeg-static` devDependency, so no apt or system ffmpeg is needed; `FFMPEG_PATH` overrides it):
 
 ```
 [0:v]scale=-2:800[app]; [1:v]scale=-2:800[dash]; [app][dash]hstack   ->  H.264 mp4, 1662×800
@@ -188,7 +189,7 @@ The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
   (GUI tests always recorded at normal speed; other tests only on failure)
 
 The workflow builds Mockifyer packages, starts the WanderWeird stack, runs the suite (global setup seeds the
-demo data), installs ffmpeg if the runner lacks it, composes the GUI clips and writes the run docs. Artifacts of every run
+demo data), composes the GUI clips and writes the run docs. Artifacts of every run
 (pass or fail), retained for **30 days**, fixed names so a collector can `gh run download <run-id> -n <name>`:
 
 | Artifact | Contents |

@@ -36,7 +36,7 @@ function kindOf(step: YamlStep): StepKind {
   const name = step.name ?? step.uses ?? '';
   const text = `${name}\n${step.run ?? ''}`;
   if (/playwright test/.test(step.run ?? '')) return STEP_KIND.test;
-  if (/^(Checkout|Setup|Install root|Install Playwright|Install ffmpeg|Wait|Verify|Compose|Write|Upload|Debug)/i.test(name)) {
+  if (/^(Checkout|Setup|Install root|Install Playwright|Wait|Verify|Compose|Write|Upload|Debug)/i.test(name)) {
     return STEP_KIND.helper;
   }
   if (/wanderweird|expo|metro/i.test(text)) return STEP_KIND.demo;

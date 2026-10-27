@@ -6,17 +6,20 @@
  *    assertions, workflow steps, local reproduce commands), and one per other test in gui-videos/other-tests/;
  *  - the run summary gui-videos/e2e-run-summary.md, also appended to $GITHUB_STEP_SUMMARY when set.
  *
- *   npm run artifacts      (after `npx playwright test`; needs ffmpeg on PATH for the clips)
+ *   npm run artifacts      (after `npx playwright test`; ffmpeg comes from the ffmpeg-static devDependency)
  */
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import ffmpegStatic from 'ffmpeg-static';
 import { readReport, testRuns, type TestRun } from '../lib/report';
 import { relativeTo, runSummary, testDoc, type RunContext, type TestFiles } from '../lib/run-docs';
 import { GUI_VIDEOS_DIR, INDIVIDUAL_DIR, OTHER_TESTS_DIR, RESULTS_JSON, RUN_SUMMARY_FILE } from '../lib/videos';
 import { runSteps } from '../lib/workflow';
 
 const CLIP_HEIGHT = 800;
+/** FFMPEG_PATH, else the ffmpeg-static devDependency binary (no apt needed in CI), else ffmpeg on PATH. */
+const FFMPEG = process.env.FFMPEG_PATH || (ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : 'ffmpeg');
 const MAX_SLUG_LENGTH = 80;
 /** Root of the e2e-videos artifact (see the upload step) is e2e/, of e2e-traces e2e/test-results. */
 const VIDEOS_ARTIFACT_ROOT = '.';
@@ -31,7 +34,7 @@ function sideBySide(appVideo: string, dashboardVideo: string, out: string) {
     `[0:v]scale=-2:${CLIP_HEIGHT},setsar=1[app];` +
     `[1:v]scale=-2:${CLIP_HEIGHT},setsar=1[dash];` +
     '[app][dash]hstack=inputs=2[v]';
-  execFileSync('ffmpeg', [
+  execFileSync(FFMPEG, [
     '-y', '-loglevel', 'error',
     '-i', appVideo, '-i', dashboardVideo,
     '-filter_complex', filter, '-map', '[v]',

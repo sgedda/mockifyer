@@ -135,18 +135,6 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
-      # Composes the dashboard GUI tests' side-by-side clips (scripts/build-run-artifacts.ts).
-      # The package lists are fresh from `playwright install --with-deps`. A hung mirror must not hold
-      # up the tests: capped and non-fatal; without ffmpeg the docs say the clips were not composed.
-      - name: Install ffmpeg
-        timeout-minutes: 5
-        continue-on-error: true
-        run: |
-          command -v ffmpeg && exit 0
-          APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
-          sudo apt-get install -y --no-install-recommends $APT_OPTS ffmpeg \
-            || (sudo apt-get update $APT_OPTS && sudo apt-get install -y --no-install-recommends $APT_OPTS ffmpeg)
-
       # The `gui` project always records (app + dashboard) and traces; the `chromium` project
       # records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
       - name: Run E2E tests
