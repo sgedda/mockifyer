@@ -6,8 +6,9 @@ import { APP_VIDEO_ATTACHMENT, DASHBOARD_VIDEO_ATTACHMENT } from './videos';
 /** Repository root; absolute paths under it are written as REPO_ROOT_PLACEHOLDER in generated docs. */
 export const REPO_ROOT = path.resolve(__dirname, '../..');
 export const REPO_ROOT_PLACEHOLDER = '<repo>';
+const E2E_ABS = path.resolve(__dirname, '..');
 /** The e2e package folder, relative to the repository root. */
-export const E2E_DIR = path.relative(REPO_ROOT, path.resolve(__dirname, '..'));
+export const E2E_DIR = path.relative(REPO_ROOT, E2E_ABS);
 
 interface ReportAttachment { name: string; path?: string }
 interface ReportResult { status: string; duration: number; retry: number; annotations?: Annotation[]; attachments: ReportAttachment[] }
@@ -15,7 +16,8 @@ interface ReportTest { projectName: string; status: string; annotations: Annotat
 interface ReportSpec { title: string; file: string; line: number; tags: string[]; tests: ReportTest[] }
 interface ReportSuite { title: string; specs?: ReportSpec[]; suites?: ReportSuite[] }
 export interface PlaywrightReport {
-  config: { argv?: string[]; metadata?: { cwd?: string; env?: Record<string, string> } };
+  /** `rootDir` is the testDir; each spec's `file` is relative to it. */
+  config: { rootDir: string; argv?: string[]; metadata?: { cwd?: string; env?: Record<string, string> } };
   suites: ReportSuite[];
   stats: { startTime: string; duration: number; expected: number; unexpected: number; flaky: number; skipped: number };
 }
@@ -24,7 +26,7 @@ export interface PlaywrightReport {
 export interface TestRun {
   title: string;
   describe: string;
-  /** Spec path relative to e2e/ (includes tests/ prefix from Playwright JSON reporter). */
+  /** Spec path relative to e2e/ (e.g. tests/dashboard-gui.spec.ts), as `npx playwright test` takes it there. */
   file: string;
   line: number;
   project: string;
@@ -74,7 +76,7 @@ export function testRuns(report: PlaywrightReport): TestRun[] {
         runs.push({
           title: spec.title,
           describe: describe.join(' › '),
-          file: spec.file,
+          file: path.relative(E2E_ABS, path.resolve(report.config.rootDir, spec.file)),
           line: spec.line,
           project: test.projectName,
           tags: spec.tags.map((t) => (t.startsWith('@') ? t : `@${t}`)),
