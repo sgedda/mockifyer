@@ -8,7 +8,7 @@ const APP_VIEWPORT = { width: 430, height: 900 };
 const GUI_SPEC = /dashboard-gui\.spec\.ts$/;
 /** Env that changes what the suite runs against; recorded in the JSON report for the run docs. */
 const RECORDED_ENV = [
-  'CI', 'E2E_VIDEO', 'APP_URL', 'MOCKIFYER_DASHBOARD_URL', 'GATEWAY_URL', 'BASE_SCENARIO',
+  'CI', 'E2E_VIDEO', 'E2E_PRESENTATION', 'APP_URL', 'MOCKIFYER_DASHBOARD_URL', 'GATEWAY_URL', 'BASE_SCENARIO',
   'MOCKIFYER_CLIENT_ID', 'MAIN_DASHBOARD_URL', 'MAIN_MCP_CLI',
 ];
 const recordedEnv = Object.fromEntries(

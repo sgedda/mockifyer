@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { ACTOR_LABEL } from './docs';
+import { PRESENTATION_ENV, PRESENTATION_HOLD_MS, presentationOn } from './env';
 import { E2E_DIR, REPO_ROOT_PLACEHOLDER, type PlaywrightReport, type TestRun } from './report';
 import { ARTIFACT, GUI_VIDEOS_DIR, INDIVIDUAL_DIR, RUN_SUMMARY_FILE } from './videos';
 import { STEP_KIND, WORKFLOW_FILE, type WorkflowStep } from './workflow';
@@ -59,6 +60,14 @@ export function testCommand(ctx: RunContext): string {
 
 function runEnv(ctx: RunContext): Record<string, string> {
   return ctx.report.config.metadata?.env ?? {};
+}
+
+/** Presentation mode as recorded for the run; it only changes the timing of GUI tests. */
+function presentationMode(ctx: RunContext, test?: TestRun): string {
+  const value = runEnv(ctx)[PRESENTATION_ENV];
+  if (!presentationOn(value)) return `off (\`${PRESENTATION_ENV}\` ${value === undefined ? 'unset' : `= ${value}`}; normal speed)`;
+  if (test && !(test.appVideo && test.dashboardVideo)) return `on (\`${PRESENTATION_ENV}=${value}\`), no effect on this test (GUI tests only)`;
+  return `on (\`${PRESENTATION_ENV}=${value}\`): GUI tests hold ${PRESENTATION_HOLD_MS / 1000} s, outline the element and type visibly at each value change`;
 }
 
 function runLink(): string {
@@ -173,6 +182,7 @@ export function testDoc(ctx: RunContext, test: TestRun, files: TestFiles): strin
     '|---|---|',
     `| Result | ${result(test)} |`,
     `| Duration | ${duration(test.durationMs)} |`,
+    `| Presentation mode | ${presentationMode(ctx, test)} |`,
     `| Spec | \`${E2E_DIR}/${test.file}:${test.line}\`${test.describe ? ` › ${test.describe}` : ''} |`,
     `| Project | \`${test.project}\`${test.tags.length ? ` · ${test.tags.map((t) => `\`${t}\``).join(' ')}` : ''} |`,
     ...filesRows(test, files),
@@ -215,6 +225,7 @@ export function runSummary(ctx: RunContext, tests: Array<{ test: TestRun; files:
     '# E2E run summary (WanderWeird + Mockifyer)',
     '',
     `- Run: ${runLink()}`,
+    `- Presentation mode: ${presentationMode(ctx)}`,
     `- Result: **${stats.expected} passed, ${stats.unexpected} failed, ${stats.flaky} flaky, ${stats.skipped} skipped** in ${duration(stats.duration)} (started ${stats.startTime})`,
     ...commandSection(ctx),
     '',

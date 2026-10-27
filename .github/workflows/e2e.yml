@@ -7,6 +7,10 @@ on:
         description: 'Record video for all tests (not just failures)'
         type: boolean
         default: false
+      presentation:
+        description: 'Presentation mode: GUI tests hold ~2.5 s at each value change (slow, readable recordings)'
+        type: boolean
+        default: true
   schedule:
     - cron: '0 3 * * *'  # 3 AM UTC daily
   pull_request:
@@ -36,6 +40,8 @@ jobs:
       WW: example-projects/wanderweird-travel
       NODE_ENV: development
       E2E_VIDEO: ${{ (github.event_name == 'schedule' || inputs.record_video) && 'on' || 'off' }}
+      # On for the nightly schedule and for manual runs (unless unticked); off for pull requests.
+      E2E_PRESENTATION: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.presentation)) && '1' || '0' }}
 
     steps:
       - name: Checkout
