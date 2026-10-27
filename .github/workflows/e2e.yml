@@ -118,7 +118,7 @@ jobs:
 
       - name: Run E2E tests
         working-directory: e2e
-        run: npx playwright test
+        run: npx playwright test --max-failures=3
 
       - name: Upload videos (when recording all tests)
         if: env.E2E_VIDEO == 'on'
