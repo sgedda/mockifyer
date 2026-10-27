@@ -44,6 +44,7 @@ npm run report                # HTML report; traces/videos/screenshots are kept 
 npm run test:gui              # same as: npx playwright test --project=gui  (or --grep @gui)
 npm run artifacts             # gui-videos/*.mp4 + *.md, e2e-run-summary.md, other-tests/*.md, individual/*.webm
 npx playwright test --project=gui --headed   # watch both windows
+E2E_PRESENTATION=1 npm run test:gui          # presentation mode: slow, readable GUI recordings
 ```
 
 ## Tests
@@ -84,6 +85,24 @@ Playwright's own `video` attachment is the app. The `gui` project in `playwright
 `video: 'on'` (at the app's full size) and `trace: 'on'`, so GUI tests are recorded on **every** run; the
 `chromium` project (everything else) keeps video and trace on failure only. Selectors are the dashboard's
 existing labels, placeholders, `aria-label`s and the two `data-testid`s from #484; no frontend change was needed.
+
+### Presentation mode (`E2E_PRESENTATION=1`)
+
+Off by default: the GUI tests run at normal speed with short holds (0.5 s on each new app value, 0.75 s at
+the end). With `E2E_PRESENTATION=1` (or `true`) the GUI tests, and only they, slow down at the moments
+where a value changes, so the clips can be watched without slowing the video afterwards:
+
+- the element being changed (input, select, checkbox, menu item, Save / Clear button, hop row) gets an
+  orange outline, with a 2.5 s hold before the change and 2.5 s after it, while the toast is visible;
+- values are typed key by key (`pressSequentially`, 120 ms per key) instead of filled;
+- each new value in the app (Temperature tile) is outlined and held for 2.5 s after the refetch shows it;
+- navigation and page loads keep their normal speed; assertions are the same.
+
+It is one helper set in `lib/gui.ts` (`presentChange`, `presentationPause`, `holdForClip`), a no-op or the
+normal timing when the switch is off. Locally the six GUI tests take about 35 s off and about 3.3 min on.
+CI turns it on for the nightly schedule and for manual runs (`presentation` input, default on) and off for
+pull requests. The run summary and each test's Markdown file show a "Presentation mode" line and list
+`E2E_PRESENTATION` with the other env.
 
 ### Side-by-side videos
 
@@ -163,10 +182,10 @@ MAIN_DASHBOARD_URL=http://127.0.0.1:3012 MAIN_MCP_CLI=<path>/mockifyer-mcp/dist/
 ## CI
 
 The suite runs in GitHub Actions (`.github/workflows/e2e.yml`):
-- **Schedule**: nightly at 3 AM UTC (records all videos)
-- **Manual**: via workflow_dispatch in the Actions tab (checkbox to record all videos)
+- **Schedule**: nightly at 3 AM UTC (records all videos, presentation mode on)
+- **Manual**: via workflow_dispatch in the Actions tab (checkboxes: record all videos; presentation mode, default on)
 - **Pull requests**: when touching dashboard, core, axios, fetch, MCP server, WanderWeird example, or e2e/
-  (GUI tests always recorded; other tests only on failure)
+  (GUI tests always recorded at normal speed; other tests only on failure)
 
 The workflow builds Mockifyer packages, starts the WanderWeird stack, runs the suite (global setup seeds the
 demo data), installs ffmpeg if the runner lacks it, composes the GUI clips and writes the run docs. Artifacts of every run
