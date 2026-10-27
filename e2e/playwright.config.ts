@@ -5,7 +5,7 @@ import { REPO_ROOT, REPO_ROOT_PLACEHOLDER } from './lib/report';
 
 const APP_VIEWPORT = { width: 430, height: 900 };
 /** Dashboard GUI tests (two pages, app + dashboard), run in their own project. */
-const GUI_SPEC = /dashboard-gui\.spec\.ts$/;
+const GUI_SPEC = /dashboard-gui(-[a-z]+)?\.spec\.ts$/;
 /** Env that changes what the suite runs against; recorded in the JSON report for the run docs. */
 const RECORDED_ENV = [
   'CI', 'E2E_VIDEO', 'E2E_PRESENTATION', 'APP_URL', 'MOCKIFYER_DASHBOARD_URL', 'GATEWAY_URL', 'BASE_SCENARIO',

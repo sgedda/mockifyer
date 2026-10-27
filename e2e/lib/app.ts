@@ -75,7 +75,13 @@ export function temperatureTile(page: Page) {
 }
 
 /** Re-open Discover until the tile shows a temperature that is none of `excluded` (e.g. live weather). */
-export async function expectTemperatureOtherThanAfterRefetch(page: Page, excluded: number[]) {
-  const otherTemperature = new RegExp(`^(?!(${excluded.join('|')})°$)-?\\d+(\\.\\d+)?°$`);
+export async function expectTemperatureOtherThanAfterRefetch(page: Page, excluded: number[] = []) {
+  const notExcluded = excluded.length ? `(?!(${excluded.join('|')})°$)` : '';
+  const otherTemperature = new RegExp(`^${notExcluded}-?\\d+(\\.\\d+)?°$`);
   await untilAfterRefetch(page, () => expect(temperatureTile(page)).toHaveText(otherTemperature, { timeout: 5_000 }));
+}
+
+/** The temperature the Atlantis card shows right now. */
+export async function shownTemperature(page: Page): Promise<number> {
+  return Number.parseFloat((await temperatureTile(page).textContent()) ?? '');
 }

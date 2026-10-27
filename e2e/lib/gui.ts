@@ -88,10 +88,12 @@ export async function holdForClip(target: Locator) {
  * `page` is the WanderWeird app (project viewport). `dash` drives the real dashboard UI in its
  * own desktop-sized context, recorded to a separate video that is attached to the test result.
  */
-export const test = base.extend<{ dash: DashboardUi }>({
-  dash: async ({ browser, page }, use, testInfo) => {
+export const test = base.extend<{ dash: DashboardUi; dashboardUrl: string }>({
+  /** Which dashboard `dash` opens; the from-scratch spec points it at its own empty instance. */
+  dashboardUrl: [DASHBOARD, { option: true }],
+  dash: async ({ browser, page, dashboardUrl }, use, testInfo) => {
     const context = await browser.newContext({
-      baseURL: DASHBOARD,
+      baseURL: dashboardUrl,
       viewport: DASHBOARD_VIEWPORT,
       recordVideo: { dir: testInfo.outputPath('dashboard-video'), size: DASHBOARD_VIEWPORT },
     });
@@ -128,7 +130,7 @@ export class DashboardUi {
   }
 
   // Mocks list -> search -> Expand all -> the Athens forecast card -> mock editor (Form Editor).
-  async openAthensMock(file: string) {
+  async openAthensMock(file?: string) {
     await this.openFromSidebar('Mocks');
     const search = this.page.getByLabel('Search mocks');
     await navigateBy(search, async () => {
@@ -140,7 +142,19 @@ export class DashboardUi {
     const card = this.page.getByRole('heading', { name: 'forecast', level: 3, exact: true });
     await navigateBy(card);
     await expect(this.page.getByText('Edit Mock:')).toBeVisible();
-    await expect(this.page.getByText(file)).toBeVisible();
+    if (file) await expect(this.page.getByText(file)).toBeVisible();
+  }
+
+  /** Request tab (optionally checking its URL) > Replay mode > "Use saved mock", then back to the Response tab. */
+  async useSavedMock(expectedToast: string, requestUrlPrefix?: string) {
+    await navigateBy(this.page.getByRole('tab', { name: 'Request' }));
+    if (requestUrlPrefix) await expect(this.page.getByText(requestUrlPrefix).first()).toBeVisible();
+    const option = this.page.locator('label').filter({ hasText: 'Use saved mock' });
+    await presentChange(option, async () => {
+      await option.click();
+      await this.expectToast(expectedToast);
+    });
+    await navigateBy(this.page.getByRole('tab', { name: 'Response' }));
   }
 
   /** Number input for `parent.field` of the stored response body (key inputs carry the key as value). */
@@ -218,7 +232,93 @@ export class DashboardUi {
     await expect(this.page.getByTestId('lane-global-fallback')).toBeVisible();
     // Client lanes is the last card on Settings: scroll down to it like a user would.
     await this.page.locator('#client-lanes').evaluate((card) => card.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-    await expect(this.laneScenarioSelect()).toBeInViewport();
+    await expect(this.page.locator('#client-lanes')).toBeInViewport();
+  }
+
+  /** Client lanes card: type the lane id and Add lane (the lane starts on the global scenario). */
+  async addLane(lane = LANE) {
+    const input = this.page.getByPlaceholder(/^Add lane id \(clientId\)/);
+    await presentChange(input, () => enterValue(input, lane));
+    const add = this.page.getByRole('button', { name: 'Add lane', exact: true });
+    await presentChange(add, async () => {
+      await add.click();
+      await this.expectToast(`Lane "${lane}" created.`);
+    });
+    await expect(this.laneScenarioSelect(lane)).toBeVisible();
+  }
+
+  /** Settings > Scenarios > Create New Scenario, optionally derived from another one; it becomes the global scenario. */
+  async createScenario(name: string, deriveFrom: string) {
+    await this.openFromSidebar('Settings');
+    const derive = this.page.locator('select').filter({ has: this.page.locator('option', { hasText: 'None (empty scenario)' }) });
+    await derive.evaluate((select) => select.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    await presentChange(derive, () => derive.selectOption(deriveFrom));
+    const nameInput = this.page.getByPlaceholder('Enter scenario name (e.g., api-error, no-data)');
+    await presentChange(nameInput, () => enterValue(nameInput, name));
+    const create = this.page.getByRole('button', { name: 'Create & Switch' });
+    await presentChange(create, async () => {
+      await create.click();
+      await this.expectToast(`Scenario changed to ${name}`);
+    });
+    await expect(this.page.getByTitle(name).first()).toBeVisible();
+  }
+
+  // Header controls: the scratch-scenario banner and the Record switch (per header scenario).
+  async switchToDefaultScenario() {
+    const button = this.page.getByRole('button', { name: 'Switch to default' });
+    await presentChange(button, async () => {
+      await button.click();
+      await this.expectToast('Switched to "default"');
+    });
+  }
+
+  recordSwitch(): Locator {
+    return this.page.getByRole('button', { name: /^Record: (On|Off)$/ });
+  }
+
+  /** Record on = the proxy stores a request-only placeholder (no response body, Live) for each new request. */
+  async setRecord(on: boolean) {
+    const button = this.recordSwitch();
+    const target = `Record: ${on ? 'On' : 'Off'}`;
+    if ((await button.textContent())?.trim() === target) return;
+    await presentChange(button, async () => {
+      await button.click();
+      await expect(button).toHaveText(target);
+    });
+  }
+
+  // Empty states of an empty dashboard.
+  async expectNoMocks() {
+    await this.openFromSidebar('Mocks');
+    await expect(this.page.getByText('No mocks found', { exact: true })).toBeVisible();
+    await presentationPause(this.page, PRESENTATION_NAV_HOLD_MS);
+  }
+
+  async expectNoHops() {
+    await this.openFromSidebar('Hops');
+    await expect(this.page.getByText('No linked service chains in this scenario yet.')).toBeVisible();
+    await presentationPause(this.page, PRESENTATION_NAV_HOLD_MS);
+  }
+
+  // Hops (/hops): recorded multi-service chains; nested hops start collapsed.
+  hopRow(label: RegExp): Locator {
+    return this.page.getByRole('button', { name: label }).first();
+  }
+
+  async expandHop(row: Locator) {
+    const toggle = row.locator('xpath=preceding-sibling::div[1]').getByRole('button', { name: 'Expand nested hops' });
+    await navigateBy(toggle);
+  }
+
+  /** Clicking a leaf hop opens its mock in the editor. */
+  async openHop(row: Locator) {
+    await navigateBy(row);
+    await expect(this.page.getByText('Edit Mock:')).toBeVisible();
+  }
+
+  /** Mocks list, Domains tree: a host folder with its `N pending · N mocked · N live` counts. */
+  domainFolder(host: string): Locator {
+    return this.page.getByRole('button', { name: new RegExp(`^${host.replace(/\./g, '\\.')}\\d+ pending`) });
   }
 
   laneScenarioSelect(lane = LANE): Locator {
