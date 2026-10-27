@@ -1,5 +1,9 @@
 import { MockData } from '../types';
 import { sha256Hex, utf8ByteLength } from './crypto-digest';
+import { generateRequestKey } from './mock-matcher';
+
+/** Hex chars of the request-key hash appended so same-second saves do not collide. */
+const RECORDING_IDENTITY_HASH_HEX_LENGTH = 12;
 
 /**
  * Linux `NAME_MAX`. `writeFileSync` throws `ENAMETOOLONG` when any path
@@ -63,6 +67,36 @@ export function clampRecordingFilename(filename: string, uniquenessKey: string):
 }
 
 /**
+ * Identity used to keep two recordings from sharing a file.
+ * Matches the request key the matcher uses, so the same call keeps one
+ * filename and a different query or body gets another.
+ */
+function requestIdentityForFilename(mockData: MockData): string {
+  try {
+    if (mockData?.request) {
+      return generateRequestKey(mockData.request);
+    }
+  } catch {
+    // Fall through to a raw identity when the request cannot be keyed.
+  }
+  const method = mockData?.request?.method ?? 'GET';
+  const url = mockData?.request?.url ?? '';
+  return `${method}\n${url}`;
+}
+
+/**
+ * Append a short hash of the request key. `formatDateStr` is only unique per
+ * second, and the directory layout ignores the query string and most bodies,
+ * so two different calls in the same second used to overwrite one JSON file.
+ */
+function recordingFilename(filename: string, mockData: MockData): string {
+  const identity = requestIdentityForFilename(mockData);
+  const suffix = `_${sha256Hex(identity).slice(0, RECORDING_IDENTITY_HASH_HEX_LENGTH)}`;
+  const stem = filename.endsWith('.json') ? filename.slice(0, -'.json'.length) : filename;
+  return clampRecordingFilename(`${stem}${suffix}.json`, identity);
+}
+
+/**
  * Computes a structured { dir, filename } for saving a mock file.
  *
  * Directory structure (relative to scenario root):
@@ -70,7 +104,7 @@ export function clampRecordingFilename(filename: string, uniquenessKey: string):
  *   {hostname}/rest/{path…}/{method}[_{id}].json   ← REST  (/rest/… endpoint)
  *   {hostname}/{path…}/{method}.json               ← everything else
  *
- * The filename is kept short: {dateStr}_{METHOD}[_{identifier}].json
+ * The filename is kept short: {METHOD}[_{identifier}]_{dateStr}_{requestHash}.json
  */
 export function getMockFilePath(
   mockData: MockData,
@@ -89,7 +123,13 @@ export function getMockFilePath(
   } catch {
     // fallback: use raw URL slug
     const urlSafe = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '_');
-    return { dir: 'unknown', filename: `${method}_${urlSafe.substring(0, 60)}_${dateStr}.json` };
+    return {
+      dir: 'unknown',
+      filename: recordingFilename(
+        `${method}_${urlSafe.substring(0, 60)}_${dateStr}.json`,
+        mockData
+      ),
+    };
   }
 
   // Sanitize hostname (keep dots so it reads like a domain)
@@ -143,7 +183,7 @@ export function getMockFilePath(
     ? `${method}_${identifier}_${dateStr}.json`
     : `${method}_${dateStr}.json`;
 
-  return { dir, filename };
+  return { dir, filename: recordingFilename(filename, mockData) };
 }
 
 /**

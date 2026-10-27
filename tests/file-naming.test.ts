@@ -46,4 +46,45 @@ describe('recording filenames', () => {
     expect(left.dir).not.toBe(right.dir);
     expect(Buffer.byteLength(left.filename)).toBeLessThanOrEqual(MAX_FILE_NAME_BYTES);
   });
+
+  it('keeps distinct same-second recordings from sharing one file', () => {
+    const dateStr = '2026-10-27_04-00-00';
+    const alpha = getMockFilePath(
+      mockWithUrl('https://api.example.com/search?q=alpha'),
+      dateStr
+    );
+    const beta = getMockFilePath(
+      mockWithUrl('https://api.example.com/search?q=beta'),
+      dateStr
+    );
+
+    expect(alpha.dir).toBe('api.example.com/search');
+    expect(beta.dir).toBe(alpha.dir);
+    expect(alpha.filename).not.toBe(beta.filename);
+    expect(alpha.filename.endsWith('.json')).toBe(true);
+    expect(Buffer.byteLength(alpha.filename)).toBeLessThanOrEqual(MAX_FILE_NAME_BYTES);
+    expect(getMockFilePath(mockWithUrl('https://api.example.com/search?q=alpha'), dateStr)).toEqual(
+      alpha
+    );
+
+    const graphql = (id: string): MockData => ({
+      request: {
+        method: 'POST',
+        url: 'https://api.example.com/graphql',
+        headers: {},
+        data: {
+          operationName: 'GetUser',
+          query: 'query GetUser($id: ID!) { user(id: $id) { name } }',
+          variables: { id },
+        },
+      },
+      response: { status: 200, data: { id }, headers: {} },
+      timestamp: '2026-10-27T04:00:00.000Z',
+    });
+    const firstUser = getMockFilePath(graphql('1'), dateStr);
+    const secondUser = getMockFilePath(graphql('2'), dateStr);
+    expect(firstUser.dir).toBe(secondUser.dir);
+    expect(firstUser.filename).not.toBe(secondUser.filename);
+    expect(getMockFilePath(graphql('1'), dateStr).filename).toBe(firstUser.filename);
+  });
 });
