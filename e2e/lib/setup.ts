@@ -6,11 +6,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dashboard } from './dashboard';
-import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT, LANE } from './env';
+import { BASE_SCENARIO, EXPECTED_TEMP, ATHENS_ENDPOINT, LANE, DASHBOARD } from './env';
 import type { MockData } from '@sgedda/mockifyer-core';
 import { generateRequestKey } from '@sgedda/mockifyer-core';
 import crypto from 'node:crypto';
 
+const DASHBOARD_HEALTH_URL = `${DASHBOARD}/api/health`;
 const ATHENS_FIXTURE = JSON.parse(readFileSync(join(__dirname, '../fixtures/athens-forecast.json'), 'utf8'));
 
 /**
@@ -24,7 +25,7 @@ export async function ensureTestData() {
   console.log('[Setup] Waiting for dashboard...');
   for (let i = 0; i < 30; i++) {
     try {
-      const healthRes = await fetch('http://127.0.0.1:3002/api/health');
+      const healthRes = await fetch(DASHBOARD_HEALTH_URL);
       if (healthRes.ok) {
         const contentType = healthRes.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -43,7 +44,7 @@ export async function ensureTestData() {
   }
   
   // Get provider type
-  const health = await fetch('http://127.0.0.1:3002/api/health').then(r => r.json());
+  const health = await fetch(DASHBOARD_HEALTH_URL).then(r => r.json());
   const provider = health.provider || 'filesystem';
   console.log(`[Setup] Provider: ${provider}`);
   
