@@ -109,6 +109,14 @@ export const test = base.extend<{ dash: DashboardUi; dashboardUrl: string }>({
   },
 });
 
+/** Mock editor > Request tab > Response Simulation fields (their visible labels). */
+export const SIMULATION = { status: 'Status Override', delay: 'Response Delay (ms)' } as const;
+type SimulationField = (typeof SIMULATION)[keyof typeof SIMULATION];
+const SIMULATION_TOASTS: Record<SimulationField, { set: (value: number) => string; cleared: string }> = {
+  'Status Override': { set: (value) => `Status override set to ${value}`, cleared: 'Status override cleared' },
+  'Response Delay (ms)': { set: (value) => `Response delay set to ${value}ms`, cleared: 'Response delay cleared' },
+};
+
 /** The dashboard used like a user would: navigation, form fields, buttons and the resulting toasts. */
 export class DashboardUi {
   constructor(readonly page: Page) {}
@@ -180,14 +188,27 @@ export class DashboardUi {
     });
   }
 
-  /** Request tab > Response Simulation > Status Override; saved when the field loses focus. */
-  async saveStatusOverride(status: number) {
-    await this.page.getByRole('tab', { name: 'Request' }).click();
-    const input = this.page.getByLabel('Status Override');
+  /**
+   * Request tab > Response Simulation: set a field (saved when it loses focus) or clear it with its Clear button.
+   * These are per mock, so they change one endpoint of one scenario.
+   */
+  async setResponseSimulation(field: SimulationField, value: number | null) {
+    await navigateBy(this.page.getByRole('tab', { name: 'Request' }));
+    const input = this.page.getByLabel(field, { exact: true });
+    const toast = SIMULATION_TOASTS[field];
+    if (value === null) {
+      const clear = input.locator('xpath=..').getByRole('button', { name: 'Clear', exact: true });
+      await presentChange(clear, async () => {
+        await clear.click();
+        await this.expectToast(toast.cleared);
+      });
+      await expect(input).toHaveValue('');
+      return;
+    }
     await presentChange(input, async () => {
-      await enterValue(input, String(status));
+      await enterValue(input, String(value));
       await input.blur();
-      await this.expectToast(`Status override set to ${status}`);
+      await this.expectToast(toast.set(value));
     });
   }
 
@@ -418,11 +439,16 @@ export class DashboardUi {
       const parent = rows[rows.length - 1];
       await expect(parent).toBeVisible();
       await navigateBy(parent.locator('xpath=preceding-sibling::button[1]'));
-      const child = parent.locator(`xpath=../following-sibling::div[button[2][contains(., "${label}")]][1]/button[2]`);
+      const child = this.traceChild(parent, label);
       await expect(child).toBeVisible();
       rows.push(child);
     }
     return rows;
+  }
+
+  /** First trace row below an (expanded) parent row whose label contains `label`. */
+  traceChild(parent: Locator, label: string): Locator {
+    return parent.locator(`xpath=../following-sibling::div[button[2][contains(., "${label}")]][1]/button[2]`);
   }
 
   private detailsPane(): Locator {
@@ -438,6 +464,13 @@ export class DashboardUi {
     const row = this.detailsPane().getByText(label, { exact: true }).locator('xpath=..');
     await expect(row).toContainText(value);
     await presentChange(row, async () => undefined, PRESENTATION_NAV_HOLD_MS);
+  }
+
+  /** The selected event's Duration in ms (Details pane). */
+  async detailDurationMs(): Promise<number> {
+    const row = this.detailsPane().getByText('Duration', { exact: true }).locator('xpath=..');
+    await expect(row).toContainText(/\d+ ms/);
+    return Number(/(\d+) ms/.exec((await row.textContent()) ?? '')?.[1]);
   }
 
   /** A Details block (Request headers, Response headers, Request body, Response body) of the selected event. */

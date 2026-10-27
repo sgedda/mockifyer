@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { test, holdForClip, openAppFromLogin, PRESENTATION } from '../lib/gui';
+import { test, holdForClip, openAppFromLogin, PRESENTATION, SIMULATION, type DashboardUi } from '../lib/gui';
 import { ACTOR, documented, type Actor } from '../lib/docs';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
 import { followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
@@ -8,6 +8,7 @@ import {
   expectTemperatureAfterRefetch,
   expectTemperatureOtherThanAfterRefetch,
   temperatureTile,
+  timedRefetchDiscover,
 } from '../lib/app';
 import {
   ATHENS_ENDPOINT_PREFIX,
@@ -29,6 +30,8 @@ const UPSTREAM_ERROR_STATUS = 503;
 /** Scenarios whose network log the tracing walkthrough switches to "Bodies on" (restored in afterEach). */
 const TRACE_SCENARIOS = [BASE_SCENARIO, 'heatwave'];
 const TRACING_TIMEOUT_MS = PRESENTATION ? 600_000 : 180_000;
+/** Per-endpoint Response Delay on the Open-Meteo mock: long enough to stand out from a normal ~0.5 s load. */
+const RESPONSE_DELAY_MS = 2_500;
 
 const { dashboardUi: UI, app: APP, dashboardApi: API, helper: HELPER } = ACTOR;
 
@@ -54,6 +57,25 @@ function gui(asserts: string, steps: Array<[Actor, string]>) {
   ]);
 }
 
+/**
+ * Network page (lane filter set): clear the lane's log, run `load` (one app load), wait for its Open-Meteo
+ * hop, pause the live list and open the trace GET /api/discover -> GET /discover -> GET /v1/forecast.
+ */
+async function traceAppLoad(dash: DashboardUi, load: () => Promise<unknown>) {
+  await dash.clearNetworkLog();
+  await load();
+  await expect(dash.networkHop('Mock', 'GET /v1/forecast').first()).toBeVisible({ timeout: 20_000 });
+  await dash.pauseLiveTraffic();
+  const [, wanderRow, forecastRow] = await dash.expandTrace(
+    dash.networkHop('Upstream', 'GET /api/discover').first(),
+    'GET /discover',
+    'GET /v1/forecast',
+  );
+  await expect(wanderRow).toContainText('Upstream');
+  await expect(forecastRow).toContainText('Mock');
+  return { wanderRow, forecastRow };
+}
+
 /** Re-open Discover until the app shows n, then keep it on screen for the clip. */
 async function appShows(page: Page, n: number) {
   await expectTemperatureAfterRefetch(page, n);
@@ -70,7 +92,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await followLaneAndWait();
   });
   test.afterEach(async () => {
-    await dashboard.putMock(file, { responseData: original, statusOverride: null }, BASE_SCENARIO);
+    await dashboard.putMock(file, { responseData: original, statusOverride: null, responseDelayMs: null }, BASE_SCENARIO);
     await dashboard.clearFieldOverrides(file, BASE_SCENARIO);
     await dashboard.restoreDemoScenarios();
     for (const scenario of TRACE_SCENARIOS) await dashboard.setNetworkBodies(scenario, false);
@@ -125,19 +147,90 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     expect(JSON.stringify(await dashboard.getFieldOverrides(file, BASE_SCENARIO))).toContain(String(OVERRIDE_TEMP));
   });
 
-  test('mock editor: a 503 status override makes wander-api fall back to its improvised weather', gui(
-    'A status override set in the mock editor is served through the proxy: wander-api sees a 503 from Open-Meteo and the app shows its fallback weather.',
+  test('mock editor: response delay and status override on the Open-Meteo endpoint only', gui(
+    `Per-endpoint Response Delay and Status Override on the Open-Meteo mock: the app's Discover call takes at least the delay and still shows its value, a 503 makes wander-api fall back (${WANDER_FALLBACK_TEMP}°), both combine, and clearing them brings back ${BASE_TEMP}° at normal speed; other endpoints keep their timing and status, and only this mock stores the settings.`,
     [
       NAV.athensMock,
-      [UI, 'Mock editor, Request tab, Response Simulation > Status Override = 503 (saved on blur), toast: Status override set to 503'],
-      [APP, `Refetch until the Temperature tile shows ${WANDER_FALLBACK_TEMP}° (wander-api fallback, wind 9)`],
-      [API, 'Stored statusOverride is 503'],
+      [UI, `Request tab > Response Simulation > Response Delay (ms) = ${RESPONSE_DELAY_MS} (saved on blur), toast: Response delay set to ${RESPONSE_DELAY_MS}ms`],
+      [UI, `${NAV.network[1]}; Clear`],
+      [APP, `Refetch Discover: the Discover request takes >= ${RESPONSE_DELAY_MS} ms (measured in the browser) and the tile still shows ${BASE_TEMP}°; there is no loading indicator on a refetch, the old card stays until the answer arrives`],
+      [UI, `Trace (Paused, Collapse all, expand GET /api/discover -> GET /discover): Open-Meteo hop Mock, Status 200, Duration >= ${RESPONSE_DELAY_MS} ms; GET /countries/name/greece Upstream, Status 200, Duration < ${RESPONSE_DELAY_MS} ms`],
+      [UI, `Back to the mock editor (same navigation): Status Override = ${UPSTREAM_ERROR_STATUS}, delay kept`],
+      [UI, `${NAV.network[1]}; Clear`],
+      [APP, `Refetch Discover: >= ${RESPONSE_DELAY_MS} ms and the tile shows ${WANDER_FALLBACK_TEMP}° (wander-api's fallback weather for any non-2xx answer)`],
+      [UI, `Trace: Open-Meteo hop Status ${UPSTREAM_ERROR_STATUS}, Duration >= ${RESPONSE_DELAY_MS} ms; countries hop Status 200, Duration < ${RESPONSE_DELAY_MS} ms`],
+      [API, `The Athens forecast mock of ${BASE_SCENARIO} stores statusOverride ${UPSTREAM_ERROR_STATUS} / responseDelayMs ${RESPONSE_DELAY_MS}; every other mock there, and the heatwave copy of the same endpoint, keeps the settings it had before the test`],
+      [UI, 'Back to the mock editor: Response Delay Clear, toast: Response delay cleared'],
+      [APP, `Refetch Discover: < ${RESPONSE_DELAY_MS} ms, still ${WANDER_FALLBACK_TEMP}° (status override alone)`],
+      [UI, 'Status Override Clear, toast: Status override cleared'],
+      [APP, `Refetch Discover: < ${RESPONSE_DELAY_MS} ms and ${BASE_TEMP}° (the stored value)`],
+      [API, 'The mock stores neither override any more'],
     ],
   ), async ({ page, dash }) => {
+    test.setTimeout(TRACING_TIMEOUT_MS);
+    /** One timed app load: the Discover request time and the value it brings, kept on screen. */
+    async function timedLoad(appValue: number) {
+      const ms = await timedRefetchDiscover(page);
+      await expectTemperature(page, appValue);
+      await holdForClip(temperatureTile(page));
+      return ms;
+    }
+    /** In a fresh trace: the Open-Meteo hop's status and duration, and a sibling hop that stays fast and 200. */
+    async function expectOnlyOpenMeteoAffected(status: number) {
+      let ms = 0;
+      const { wanderRow, forecastRow } = await traceAppLoad(dash, async () => {
+        ms = await timedLoad(status === 200 ? BASE_TEMP : WANDER_FALLBACK_TEMP);
+      });
+      expect(ms).toBeGreaterThanOrEqual(RESPONSE_DELAY_MS);
+      await dash.selectHop(forecastRow, ATHENS_ENDPOINT_PREFIX);
+      await dash.expectDetail('Status', String(status));
+      expect(await dash.detailDurationMs()).toBeGreaterThanOrEqual(RESPONSE_DELAY_MS);
+      const countriesRow = dash.traceChild(wanderRow, 'GET /countries/name/greece');
+      await dash.selectHop(countriesRow, 'https://www.apicountries.com/countries/name/greece');
+      await dash.expectDetail('Source', 'Upstream');
+      await dash.expectDetail('Status', '200');
+      expect(await dash.detailDurationMs()).toBeLessThan(RESPONSE_DELAY_MS);
+    }
+
+    /** statusOverride / responseDelayMs of every mock except the Athens forecast of the base scenario. */
+    async function otherMocksSimulation() {
+      const settings: Record<string, unknown[]> = {};
+      const scenarioFiles = [
+        ...(await dashboard.listMocks(BASE_SCENARIO)).filter((m) => m.filename !== file).map((m) => [BASE_SCENARIO, m.filename]),
+        ['heatwave', await dashboard.athensMock('heatwave')],
+      ];
+      for (const [scenario, filename] of scenarioFiles) {
+        const data = (await dashboard.getMock(filename, scenario)).data;
+        settings[`${scenario}/${filename}`] = [data.statusOverride ?? null, data.responseDelayMs ?? null];
+      }
+      return settings;
+    }
+    const othersBefore = await otherMocksSimulation();
+
+    // Delay only: slower, same value.
     await dash.openAthensMock(file);
-    await dash.saveStatusOverride(UPSTREAM_ERROR_STATUS);
-    await appShows(page, WANDER_FALLBACK_TEMP);
-    expect((await storedMock()).statusOverride).toBe(UPSTREAM_ERROR_STATUS);
+    await dash.setResponseSimulation(SIMULATION.delay, RESPONSE_DELAY_MS);
+    await dash.openNetworkForLane();
+    await expectOnlyOpenMeteoAffected(200);
+
+    // Delay + 503: slower and wander-api's fallback.
+    await dash.openAthensMock(file);
+    await dash.setResponseSimulation(SIMULATION.status, UPSTREAM_ERROR_STATUS);
+    await dash.openNetworkForLane();
+    await expectOnlyOpenMeteoAffected(UPSTREAM_ERROR_STATUS);
+
+    // Stored on this one mock only: every other mock (and the heatwave copy of this endpoint) is unchanged.
+    expect(await storedMock()).toMatchObject({ statusOverride: UPSTREAM_ERROR_STATUS, responseDelayMs: RESPONSE_DELAY_MS });
+    expect(await otherMocksSimulation()).toEqual(othersBefore);
+
+    // Clear the delay (503 alone), then the status: back to the stored value at normal speed.
+    await dash.openAthensMock(file);
+    await dash.setResponseSimulation(SIMULATION.delay, null);
+    expect(await timedLoad(WANDER_FALLBACK_TEMP)).toBeLessThan(RESPONSE_DELAY_MS);
+    await dash.setResponseSimulation(SIMULATION.status, null);
+    expect(await timedLoad(BASE_TEMP)).toBeLessThan(RESPONSE_DELAY_MS);
+    const cleared = await storedMock();
+    expect([cleared.statusOverride ?? null, cleared.responseDelayMs ?? null]).toEqual([null, null]);
   });
 
   test('Settings client lane: heatwave 44 -> rainy-weekend 11 -> base 99 in the app', gui(
@@ -236,24 +329,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     ],
   ), async ({ page, dash }) => {
     test.setTimeout(TRACING_TIMEOUT_MS);
-    /**
-     * Clear the lane's log, load Discover once more, wait for the fresh Open-Meteo hop, pause the live
-     * list and open the trace GET /api/discover -> GET /discover -> GET /v1/forecast.
-     */
-    async function traceFreshLoad(appValue: number) {
-      await dash.clearNetworkLog();
-      await appShows(page, appValue);
-      await expect(dash.networkHop('Mock', 'GET /v1/forecast').first()).toBeVisible({ timeout: 20_000 });
-      await dash.pauseLiveTraffic();
-      const [, wanderRow, forecastRow] = await dash.expandTrace(
-        dash.networkHop('Upstream', 'GET /api/discover').first(),
-        'GET /discover',
-        'GET /v1/forecast',
-      );
-      await expect(wanderRow).toContainText('Upstream');
-      await expect(forecastRow).toContainText('Mock');
-      return { wanderRow, forecastRow };
-    }
+    const traceFreshLoad = (appValue: number) => traceAppLoad(dash, () => appShows(page, appValue));
 
     // (a) Open-Meteo served from the mock under wander-api GET /discover.
     await dash.openNetworkForLane();
@@ -290,7 +366,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await dash.setLaneScenario(BASE_SCENARIO);
     await dash.pickHeaderScenario(BASE_SCENARIO);
     await dash.openAthensMock(file);
-    await dash.saveStatusOverride(UPSTREAM_ERROR_STATUS);
+    await dash.setResponseSimulation(SIMULATION.status, UPSTREAM_ERROR_STATUS);
     await appShows(page, WANDER_FALLBACK_TEMP);
     await dash.openNetworkForLane();
     ({ wanderRow, forecastRow } = await traceFreshLoad(WANDER_FALLBACK_TEMP));

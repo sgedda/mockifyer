@@ -51,6 +51,19 @@ export async function refetchDiscover(page: Page) {
   await page.getByText('Discover').last().click();
 }
 
+/** Re-open Discover once and return how long the app's Discover request took (ms), measured in the browser. */
+export async function timedRefetchDiscover(page: Page): Promise<number> {
+  // On web the app's fetch goes through the dashboard proxy: POST /api/proxy with the gateway URL in the body.
+  const discover = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' && (response.request().postData() ?? '').includes('/api/discover?'),
+  );
+  await refetchDiscover(page);
+  const response = await discover;
+  await response.finished();
+  return response.request().timing().responseEnd;
+}
+
 /** The Temperature tile on the Atlantis card shows `${n}°`. */
 export async function expectTemperature(page: Page, n: number) {
   await expect(page.getByText(`${n}°`, { exact: true })).toBeVisible({ timeout: 20_000 });
