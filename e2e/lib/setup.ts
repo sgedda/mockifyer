@@ -226,12 +226,21 @@ export async function ensureTestData() {
       }
     }
     
-    // Verify they were recorded
+    // Verify they were recorded and set them to replayMode 'stored'
     const updatedMocks = await dashboard.listMocks(BASE_SCENARIO);
-    const recordedCount = WANDER_ENDPOINTS.filter(ep => 
-      updatedMocks.some((m: any) => m.endpoint === ep)
-    ).length;
-    console.log(`[Setup] WanderWeird mocks: ${recordedCount}/${WANDER_ENDPOINTS.length} recorded`);
+    const recordedMocks = WANDER_ENDPOINTS
+      .map(ep => updatedMocks.find((m: any) => m.endpoint === ep))
+      .filter(Boolean);
+    
+    console.log(`[Setup] WanderWeird mocks: ${recordedMocks.length}/${WANDER_ENDPOINTS.length} recorded`);
+    
+    // Set replayMode to 'stored' for each recorded mock (new recordings default to alwaysUseRealApi:true)
+    for (const mock of recordedMocks) {
+      console.log(`[Setup] Setting ${mock.filename} to replayMode: stored`);
+      await dashboard.putMock(mock.filename, {
+        replayMode: 'stored',
+      }, BASE_SCENARIO);
+    }
   } else {
     console.log('[Setup] ✓ All WanderWeird mocks already exist');
   }
