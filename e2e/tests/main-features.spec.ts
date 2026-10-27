@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 import { Dashboard, dashboard } from '../lib/dashboard';
 import { withMcp } from '../lib/mcp';
 import { ATHENS_ENDPOINT, EXPECTED_TEMP, MAIN_DASHBOARD, MAIN_MCP_CLI } from '../lib/env';
+import { documented } from '../lib/docs';
 
 // Features merged to main after dashboard 1.5.92 (the version the demo stack used to install):
 //   PR #476  statusOverride / responseDelayMs on mocks + MCP mockifyer_set_mock_behavior
@@ -54,7 +55,7 @@ test.describe('main dashboard build', () => {
   const main = new Dashboard(MAIN_DASHBOARD);
   test.beforeAll(async () => { await seedMainDashboard(main); });
 
-  test('MAIN_DASHBOARD_URL serves #476 (statusOverride) and #477 (explain-value)', async () => {
+  test('MAIN_DASHBOARD_URL serves #476 (statusOverride) and #477 (explain-value)', documented('The main-branch dashboard (:3012) accepts statusOverride and serves explain-value.'), async () => {
     const demoExplain = await dashboard.call('GET', '/network-events/explain-value');
     test.info().annotations.push({ type: 'demo-dashboard', description: `:3002 explain-value without params -> ${demoExplain.status} (404 = predates #477)` });
 
@@ -75,7 +76,7 @@ test.describe('main: status/delay overrides (#476)', () => {
   });
   test.afterEach(async () => { await main.putMock(file, { statusOverride: null, responseDelayMs: null }, SCENARIO); });
 
-  test('PUT statusOverride + responseDelayMs is stored and cleared with null', async () => {
+  test('PUT statusOverride + responseDelayMs is stored and cleared with null', documented('PUT statusOverride + responseDelayMs is stored on the mock and null clears both.'), async () => {
     expect((await main.putMock(file, { statusOverride: 503, responseDelayMs: 250 }, SCENARIO)).status).toBe(200);
     let m = (await main.getMock(file, SCENARIO)).data;
     expect([m.statusOverride, m.responseDelayMs]).toEqual([503, 250]);
@@ -85,12 +86,12 @@ test.describe('main: status/delay overrides (#476)', () => {
     expect(m.responseDelayMs).toBeUndefined();
   });
 
-  test('invalid values are rejected with 400', async () => {
+  test('invalid values are rejected with 400', documented('PUT statusOverride 700 and responseDelayMs -5 each answer 400.'), async () => {
     expect((await main.putMock(file, { statusOverride: 700 }, SCENARIO)).status).toBe(400);
     expect((await main.putMock(file, { responseDelayMs: -5 }, SCENARIO)).status).toBe(400);
   });
 
-  test('MCP mockifyer_set_mock_behavior sets and clears the override (no agent)', async () => {
+  test('MCP mockifyer_set_mock_behavior sets and clears the override (no agent)', documented('MCP tool mockifyer_set_mock_behavior sets and clears status/delay on the mock.'), async () => {
     test.skip(!MAIN_MCP_CLI, 'set MAIN_MCP_CLI to packages/mockifyer-mcp/dist/cli.js built from main');
     await withMcp(async (call, tools) => {
       expect(tools).toContain('mockifyer_set_mock_behavior');
@@ -102,7 +103,7 @@ test.describe('main: status/delay overrides (#476)', () => {
     }, { cli: MAIN_MCP_CLI, dashboardUrl: MAIN_DASHBOARD });
   });
 
-  test('proxy runtime returns the statusOverride and applies the delay', async () => {
+  test('proxy runtime returns the statusOverride and applies the delay', documented('POST /api/proxy on a mock hit answers with the statusOverride and waits at least responseDelayMs.'), async () => {
     await main.putMock(file, { statusOverride: 503, responseDelayMs: 800 }, SCENARIO);
     const url = (await main.listMocks(SCENARIO)).find((f: any) => f.endpoint.startsWith(ATHENS)).endpoint;
     const t0 = Date.now();
@@ -127,11 +128,11 @@ test.describe('main: explain-value (#477)', () => {
 
   const query = `/network-events/explain-value?scenario=${SCENARIO}&url=${encodeURIComponent(ATHENS)}&fieldPath=current.temperature_2m`;
 
-  test('missing lookup params return 400', async () => {
+  test('missing lookup params return 400', documented('GET explain-value without lookup params answers 400.'), async () => {
     expect((await main.call('GET', '/network-events/explain-value')).status).toBe(400);
   });
 
-  test('traces a value to its mock file and reports a field override', async () => {
+  test('traces a value to its mock file and reports a field override', documented('explain-value names the mock file for a value and reports the field override that produced it.'), async () => {
     let r = await main.call('GET', query);
     expect(r.status).toBe(200);
     expect(r.json.origin.mockFile).toBe(file);
@@ -142,7 +143,7 @@ test.describe('main: explain-value (#477)', () => {
     expect(JSON.stringify(r.json.modifications)).toContain('-999');
   });
 
-  test('MCP mockifyer_explain_value answers the same question (no agent)', async () => {
+  test('MCP mockifyer_explain_value answers the same question (no agent)', documented('MCP tool mockifyer_explain_value names the same Athens mock file as the REST endpoint.'), async () => {
     test.skip(!MAIN_MCP_CLI, 'set MAIN_MCP_CLI to packages/mockifyer-mcp/dist/cli.js built from main');
     await withMcp(async (call, tools) => {
       expect(tools).toContain('mockifyer_explain_value');
