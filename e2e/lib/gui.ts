@@ -306,7 +306,7 @@ export class DashboardUi {
   }
 
   async expandHop(row: Locator) {
-    const toggle = row.locator('xpath=preceding-sibling::div[1]').getByRole('button', { name: 'Expand nested hops' });
+    const toggle = row.locator('xpath=..').getByRole('button', { name: 'Expand nested hops' });
     await navigateBy(toggle);
   }
 
@@ -318,7 +318,7 @@ export class DashboardUi {
 
   /** Mocks list, Domains tree: a host folder with its `N pending · N mocked · N live` counts. */
   domainFolder(host: string): Locator {
-    return this.page.getByRole('button', { name: new RegExp(`^${host.replace(/\./g, '\\.')}\\d+ pending`) });
+    return this.page.getByRole('button', { name: new RegExp(`^${host.replace(/\./g, '\\.')}\\s*\\d+ pending`) });
   }
 
   laneScenarioSelect(lane = LANE): Locator {

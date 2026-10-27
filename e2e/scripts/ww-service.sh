@@ -58,7 +58,7 @@ stop_service() {
 start_service() {
   local scenario="${1:-}"
   local record_env=(MOCKIFYER_RECORD=true MOCKIFYER_RECORD_RESPONSES=false)
-  [ "${WW_RECORD:-on}" = off ] && record_env=()
+  [ "${WW_RECORD:-on}" = off ] && record_env=(-u MOCKIFYER_RECORD -u MOCKIFYER_RECORD_RESPONSES)
   port_open && stop_service
   cd "$WW_DIR"
   local mode="unpinned (follows client lane)"
