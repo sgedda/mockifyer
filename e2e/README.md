@@ -62,7 +62,8 @@ E2E_PRESENTATION=1 npm run test:gui          # presentation mode: slow, readable
 
 ### Dashboard GUI tests (`@gui`, project `gui`)
 
-Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These six tests use the
+Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These six tests (plus the
+from-scratch test below) use the
 **dashboard UI** like a user would, in a second browser context (1280×800, so the sidebar is shown), while
 the app runs in the first (`page`, 430×900). Each test ends by asserting the **new value on screen in the
 app**, so the recording shows the change travel from the dashboard to the app.
@@ -91,6 +92,29 @@ test's Markdown:
 - the header Scenario picker (top right);
 - Network: sidebar Network, Client lane filter.
 
+### From scratch (`dashboard-gui-scratch.spec.ts`)
+
+A seventh GUI test starts with **completely empty data**: its own branch-built dashboard on `:3022` with a fresh
+sqlite dir (`scripts/scratch-dashboard.sh`), and the gateway and wander-api restarted to proxy through it without
+the record env (`scripts/ww-service.sh … start` with `MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3022 WW_RECORD=off`).
+The app and the other services keep using the demo dashboard; `afterAll` puts the gateway and wander-api back and
+deletes the scratch data, so the test is idempotent and the shared stack is unaffected.
+
+The flow, all in the UI:
+1. Empty start screen; the app's first Discover load is all live and stores nothing: no lane yet, so strict
+   lane mode passes calls through. The test shows Mocks ("No mocks found"), Network (live hops) and Hops (empty).
+2. Switch to `default`, then add the `wanderweird-demo` lane. One app load runs with the header **Record: On**
+   (the default), which stores a request-only placeholder (no body, served live) per called endpoint.
+3. Turn **Record** off. On the Hops page, expand `GET /api/discover` → `GET /discover`, open the Open-Meteo hop
+   and choose **Use saved mock**. The next load captures that one response; Hops shows it as Replay, Network as
+   Mock, and every other endpoint stays live.
+4. Create scenario A from `default`, then B from A, each with its own temperature (55°, 66°). Switch the lane
+   A ↔ B; the app follows.
+
+Why the placeholder step: the dashboard's per-endpoint controls (a mock's replay mode, reached from a hop, or a
+path folder's **Record response** in the Mocks › Domains tree) need the endpoint to be stored first, and the Hops
+page lists stored entries only. The Network page shows live hops but has no per-endpoint toggle.
+
 A date override test is not included: the app shows no date derived from the mocks, so there is nothing
 to see change on screen (dates stay covered at API level in `dates.spec.ts`).
 
@@ -116,7 +140,8 @@ where a value changes, so the clips can be watched without slowing the video aft
 - navigation and page loads keep their normal speed; assertions are the same.
 
 It is one helper set in `lib/gui.ts` (`presentChange`, `presentationPause`, `holdForClip`), a no-op or the
-normal timing when the switch is off. Locally the six GUI tests take about 35 s off and about 3.3 min on.
+normal timing when the switch is off. Locally the six demo-stack GUI tests take about 45 s off and about 5 min on;
+the from-scratch test about 30 s off.
 CI turns it on for the nightly schedule and for manual runs (`presentation` input, default on) and off for
 pull requests. The run summary and each test's Markdown file show a "Presentation mode" line and list
 `E2E_PRESENTATION` with the other env.
@@ -171,6 +196,8 @@ API and app tests carry the one-line "asserts" annotation only. Any machine host
 - Field/body edits: `afterEach` writes back the original `responseData` and clears field overrides, then
   waits until the gateway serves 99° again.
 - Lanes/global: `afterEach`/`afterAll` set lane and global back to `guide-demo-2`.
+- From scratch: `afterAll` restarts the gateway as `dev:proxy:record` does, stops the scratch dashboard,
+  deletes its data dir and pins wander-api back to `guide-demo-2`.
 - wander-api: scenario and offline tests restart it via `scripts/wander.sh` (unpinned to follow the lane,
   or stopped), and always restart it **pinned to `guide-demo-2`** at the end. Offline tests also restore
   the replay modes of the two wander `/discover` mocks.
@@ -178,7 +205,8 @@ API and app tests carry the one-line "asserts" annotation only. Any machine host
 - GUI tests: `afterEach` restores the Athens body, clears its status and field overrides, puts the lane
   (re-created if the test removed it) and global back on `guide-demo-2` and turns the lane global fallback
   off. The Network test clears the network log for `heatwave` + the demo lane only (telemetry, not restored).
-- If a run is killed mid-test: `scripts/wander.sh start guide-demo-2`, then set the lane back with
+- If a run is killed mid-test: `scripts/ww-service.sh gateway-api start`, `scripts/scratch-dashboard.sh stop`,
+  `scripts/wander.sh start guide-demo-2`, then set the lane back with
   `curl -X PUT -H 'content-type: application/json' -d '{"scenario":"guide-demo-2"}' http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario`.
 
 ## Testing main

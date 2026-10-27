@@ -211,6 +211,8 @@ jobs:
             /tmp/services.log
             /tmp/metro.log
             /tmp/wander-api.log
+            /tmp/gateway-api.log
+            /tmp/scratch-dashboard.log
           retention-days: 30
           if-no-files-found: warn
           overwrite: true
