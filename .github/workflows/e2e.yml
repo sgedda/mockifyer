@@ -73,7 +73,7 @@ jobs:
       - name: Start dashboard (sqlite) in background
         working-directory: ${{ env.WW }}
         run: |
-          nohup npm run dashboard:sqlite > /tmp/dashboard.log 2>&1 &
+          nohup env MOCKIFYER_RECORD_RESPONSES=true mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1 > /tmp/dashboard.log 2>&1 &
           DASH_PID=$!
           echo "Dashboard PID: $DASH_PID"
           echo $DASH_PID > /tmp/dashboard.pid
