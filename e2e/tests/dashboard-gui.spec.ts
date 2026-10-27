@@ -1,10 +1,9 @@
 import { expect, type Page } from '@playwright/test';
-import { test, holdForClip } from '../lib/gui';
+import { test, holdForClip, openAppFromLogin } from '../lib/gui';
 import { ACTOR, documented, type Actor } from '../lib/docs';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
 import { followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
 import {
-  openDiscover,
   expectTemperature,
   expectTemperatureAfterRefetch,
   expectTemperatureOtherThanAfterRefetch,
@@ -42,8 +41,11 @@ const NAV = {
 function gui(asserts: string, steps: Array<[Actor, string]>) {
   return documented(asserts, [
     [HELPER, 'beforeAll: restart wander-api unpinned (scripts/wander.sh start) so it follows the client lane'],
-    [APP, `Open Discover, sign in as wanderer: the Atlantis Temperature tile shows ${BASE_TEMP}° (Open-Meteo mock, scenario ${BASE_SCENARIO})`],
-    [UI, 'Start screen: the dashboard opens at / (Statistics); the only direct URL load, every page after it is reached by clicks'],
+    [UI, 'Start screen: the dashboard opens at / (Statistics), its only direct URL load, and waits there while the app signs in'],
+    [APP, 'Login screen: the app opens at / in a fresh browser context (no stored session), its only direct URL load'],
+    [APP, 'Type the demo user "wanderer" into the username field and the demo password into the password field, click Sign in'],
+    [APP, `Click the Discover tab: the Atlantis Boardwalk card's Temperature tile shows ${BASE_TEMP}° (Open-Meteo mock, scenario ${BASE_SCENARIO})`],
+    [UI, 'Then the dashboard steps start; every dashboard page is reached by clicks'],
     ...steps,
     [HELPER, 'afterEach: restore the Athens body, status and field overrides, lane, global scenario and lane global fallback (dashboard API)'],
   ]);
@@ -72,8 +74,11 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   });
   test.afterAll(pinToBaseAndWait);
 
-  test.beforeEach(async ({ page }) => {
-    await openDiscover(page);
+  // Requesting `dash` here opens the dashboard start screen before the app loads, so both recordings
+  // start together and the app login is on screen next to the dashboard start screen.
+  test.beforeEach(async ({ page, dash }) => {
+    await expect(dash.page.getByRole('heading', { name: 'Total Files' })).toBeVisible();
+    await openAppFromLogin(page);
     await expectTemperature(page, BASE_TEMP);
   });
 

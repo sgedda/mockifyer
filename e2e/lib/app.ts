@@ -1,7 +1,26 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
+
+/** Demo account the WanderWeird web app signs in with (username and password are the same). */
+const DEMO_USER = 'wanderer';
+
+/** How a helper clicks and types; GUI tests pass presentation-aware versions (lib/gui.ts). */
+export interface UiActions {
+  click(target: Locator): Promise<void>;
+  type(input: Locator, value: string): Promise<void>;
+}
+const PLAIN_UI: UiActions = {
+  click: (target) => target.click(),
+  type: (input, value) => input.fill(value),
+};
+
+interface OpenDiscoverOptions {
+  ui?: UiActions;
+  /** Fail unless the app starts on its login screen (fresh context, no stored session). */
+  fromLoginScreen?: boolean;
+}
 
 /** Open the Expo web app, sign in as the demo user and open Discover. */
-export async function openDiscover(page: Page) {
+export async function openDiscover(page: Page, { ui = PLAIN_UI, fromLoginScreen = false }: OpenDiscoverOptions = {}) {
   // Log failed requests to help diagnose login issues
   page.on('requestfailed', req => {
     console.error(`[Request failed] ${req.method()} ${req.url()} - ${req.failure()?.errorText}`);
@@ -14,13 +33,15 @@ export async function openDiscover(page: Page) {
   
   await page.goto('/');
   const inputs = page.locator('input');
+  const signIn = page.getByText('Sign in').last();
   await expect(inputs.first().or(page.getByText('Discover').last())).toBeVisible({ timeout: 60_000 });
+  if (fromLoginScreen) await expect(signIn).toBeVisible();
   if ((await inputs.count()) >= 2) {
-    await inputs.nth(0).fill('wanderer');
-    await inputs.nth(1).fill('wanderer');
-    await page.getByText('Sign in').last().click();
+    await ui.type(inputs.nth(0), DEMO_USER);
+    await ui.type(inputs.nth(1), DEMO_USER);
+    await ui.click(signIn);
   }
-  await page.getByText('Discover').last().click();
+  await ui.click(page.getByText('Discover').last());
   await expect(page.getByText('Atlantis Boardwalk').first()).toBeVisible({ timeout: 30_000 });
 }
 

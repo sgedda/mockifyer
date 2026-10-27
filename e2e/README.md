@@ -76,7 +76,13 @@ app**, so the recording shows the change travel from the dashboard to the app.
 | header Scenario picker | remove the lane, header picker → heatwave, then tick "Lane global fallback" | strict default (#484): live weather, not 44°; with the fallback on: 44° |
 | Network view | lane → heatwave, header → heatwave, Network filtered to the lane, Clear, app reload | 44°, and the trace lists the Open-Meteo `Mock` hop under wander-api `GET /discover` |
 
-Every test starts on the dashboard **start screen** (`/`, Statistics): that is the only direct URL load.
+Both panes start at their entry screen, and the two recordings start together: the GUI `beforeEach`
+requests the dashboard first, so it waits on its start screen while the app signs in. The **app** opens
+at its login screen in a fresh browser context (no stored session), types the demo user and password
+into the form, clicks Sign in, then clicks the Discover tab to reach the Atlantis Temperature tile.
+Only then do the dashboard steps start; app and dashboard steps are not interleaved during login.
+
+The dashboard starts on its **start screen** (`/`, Statistics): that is its only direct URL load.
 The target page is then reached by clicks a user would make, and each one is listed as a step in the
 test's Markdown:
 - the mock editor: sidebar Mocks, search `latitude=37.9838`, Expand all, the "forecast" card;
@@ -104,8 +110,8 @@ where a value changes, so the clips can be watched without slowing the video aft
 - the element being changed (input, select, checkbox, menu item, Save / Clear button, hop row) gets an
   orange outline, with a 2.5 s hold before the change and 2.5 s after it, while the toast is visible;
 - values are typed key by key (`pressSequentially`, 120 ms per key) instead of filled;
-- each navigation click (sidebar link, search, Expand all, list card, picker option) is outlined, with a
-  1 s hold before and after it;
+- each navigation click (sidebar link, search, Expand all, list card, picker option) and each app login
+  step (username, password, Sign in, Discover tab) is outlined, with a 1 s hold before and after it;
 - each new value in the app (Temperature tile) is outlined and held for 2.5 s after the refetch shows it;
 - navigation and page loads keep their normal speed; assertions are the same.
 

@@ -1,4 +1,5 @@
 import { test as base, expect, type ElementHandle, type Locator, type Page } from '@playwright/test';
+import { openDiscover, type UiActions } from './app';
 import { ATHENS_LATITUDE, DASHBOARD, LANE, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS, presentationOn } from './env';
 import { DASHBOARD_VIDEO_ATTACHMENT } from './videos';
 
@@ -61,6 +62,17 @@ async function enterValue(input: Locator, value: string) {
   }
   await input.press('ControlOrMeta+a');
   await input.pressSequentially(value, { delay: PRESENTATION_TYPING_DELAY_MS });
+}
+
+/** App clicks and typing for GUI tests: outlined with 1 s holds and visible typing in presentation mode. */
+const PRESENTED_UI: UiActions = {
+  click: (target) => navigateBy(target),
+  type: (input, value) => presentChange(input, () => enterValue(input, value), PRESENTATION_NAV_HOLD_MS),
+};
+
+/** The app from its login screen: sign in through the form, then click the Discover tab. */
+export async function openAppFromLogin(page: Page) {
+  await openDiscover(page, { ui: PRESENTED_UI, fromLoginScreen: true });
 }
 
 /** Leave a just-asserted app value on screen long enough to read (outlined and longer in presentation mode). */
