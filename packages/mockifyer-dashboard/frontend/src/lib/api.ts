@@ -675,10 +675,25 @@ export async function getClientLanes(): Promise<{
   discoveredLanes?: string[]
   connections?: ClientConnectionRow[]
   globalScenario: string | null
+  /** #484: clients with a clientId but no lane follow the global scenario (strict lane mode). */
+  laneGlobalFallback?: boolean
 }> {
   const response = await fetchApi(`${API_BASE}/client-lanes`, noStore)
   if (!response.ok) throw new Error('Failed to fetch client lanes')
   return response.json()
+}
+
+export async function setLaneGlobalFallback(enabled: boolean): Promise<boolean> {
+  const response = await fetchApi(`${API_BASE}/client-lanes/settings/global-fallback`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  const body = await response.json()
+  if (!response.ok) {
+    throw new Error(body.error || body.message || 'Failed to set lane global fallback')
+  }
+  return body.laneGlobalFallback === true
 }
 
 export async function setClientLaneScenario(clientId: string, scenario: string | null): Promise<void> {
