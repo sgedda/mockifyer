@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import type { AddressInfo } from 'net';
 import { createServer } from '../packages/mockifyer-dashboard/src/server';
-import { DASHBOARD_CORS_DEFAULT_ALLOW_HEADERS } from '../packages/mockifyer-dashboard/src/utils/cors';
+import { DASHBOARD_CORS_ALLOW_HEADERS } from '../packages/mockifyer-dashboard/src/utils/cors';
 
 function preflight(
   server: http.Server,
@@ -62,18 +62,30 @@ describe('dashboard CORS preflight', () => {
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.headers['access-control-allow-methods']).toContain('POST');
-    const allowed = String(res.headers['access-control-allow-headers']).toLowerCase();
-    expect(allowed).toContain('x-mockifyer-client-id');
-    expect(allowed).toContain('content-type');
+    const allowed = String(res.headers['access-control-allow-headers'])
+      .toLowerCase()
+      .split(/\s*,\s*/);
+    expect(allowed).toEqual(
+      expect.arrayContaining([
+        'content-type',
+        'x-mockifyer-client-id',
+        'x-mockifyer-device-id',
+        'x-mockifyer-request-id',
+        'x-mockifyer-parent-request-id',
+        'x-mockifyer-include-trace',
+        'x-mockifyer-override-group',
+      ])
+    );
   });
 
-  it('falls back to the default header list when none are requested', async () => {
+  it('does not echo arbitrary requested headers', async () => {
     const res = await preflight(server, '/api/date-config', {
       Origin: 'http://127.0.0.1:8090',
       'Access-Control-Request-Method': 'GET',
+      'Access-Control-Request-Headers': 'x-not-a-mockifyer-header',
     });
 
     expect(res.status).toBe(200);
-    expect(res.headers['access-control-allow-headers']).toBe(DASHBOARD_CORS_DEFAULT_ALLOW_HEADERS);
+    expect(res.headers['access-control-allow-headers']).toBe(DASHBOARD_CORS_ALLOW_HEADERS);
   });
 });
