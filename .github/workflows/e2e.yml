@@ -131,7 +131,7 @@ jobs:
         env:
           MAIN_DASHBOARD_URL: http://127.0.0.1:3012
           MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
-        run: npx playwright test --max-failures=3
+        run: npx playwright test
 
       - name: Upload videos (when recording all tests)
         if: env.E2E_VIDEO == 'on'
