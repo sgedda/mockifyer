@@ -229,7 +229,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
       [UI, `(c) Client lanes: lane scenario = ${BASE_SCENARIO}; header picker -> ${BASE_SCENARIO}`],
       [UI, NAV.athensMock[1] + `; Request tab, Status Override = ${UPSTREAM_ERROR_STATUS}`],
       [APP, `Refetch until ${WANDER_FALLBACK_TEMP}° (wander-api fallback weather)`],
-      [UI, 'Sidebar Network, Clear'],
+      [UI, `${NAV.network[1]}; Clear`],
       [APP, `Refetch Discover: ${WANDER_FALLBACK_TEMP}°`],
       [UI, `Trace: expand GET /api/discover -> GET /discover; Open-Meteo hop "Mock" -> Details Status ${UPSTREAM_ERROR_STATUS}`],
       [UI, `Click wander-api GET /discover -> Details: Status 200; Response body has "source": "fallback", "temperature_2m": ${WANDER_FALLBACK_TEMP} and the upstream error "Upstream ${UPSTREAM_ERROR_STATUS}"`],
@@ -292,7 +292,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await dash.openAthensMock(file);
     await dash.saveStatusOverride(UPSTREAM_ERROR_STATUS);
     await appShows(page, WANDER_FALLBACK_TEMP);
-    await dash.openFromSidebar('Network');
+    await dash.openNetworkForLane();
     ({ wanderRow, forecastRow } = await traceFreshLoad(WANDER_FALLBACK_TEMP));
     await dash.selectHop(forecastRow, ATHENS_ENDPOINT_PREFIX);
     await dash.expectDetail('Status', String(UPSTREAM_ERROR_STATUS));
