@@ -1,22 +1,17 @@
 import { test, expect } from '@playwright/test';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
-import { wander, waitForGateway } from '../lib/stack';
+import { wander, waitForGateway, followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
 import { openDiscover, expectTemperatureAfterRefetch, expectTemperature } from '../lib/app';
 import { ATHENS_ENDPOINT, BASE_SCENARIO, EXPECTED_TEMP, LANE } from '../lib/env';
 
 // Lane switching only moves a service that is NOT pinned with MOCKIFYER_SCENARIO (body_override wins).
 // beforeAll restarts wander-api following the lane; afterAll pins it back and resets lane + global.
 test.describe('scenarios: client lane vs global', () => {
-  test.beforeAll(async () => {
-    wander.followLane();
-    await waitForGateway();
-  });
+  test.beforeAll(followLaneAndWait);
   test.afterAll(async () => {
     await dashboard.setLaneScenario(LANE, BASE_SCENARIO).catch(() => undefined);
     await dashboard.setGlobalScenario(BASE_SCENARIO);
-    wander.pin(BASE_SCENARIO);
-    await waitForGateway();
-    await expect.poll(gatewayTemp, { timeout: 30_000 }).toBe(EXPECTED_TEMP[BASE_SCENARIO]);
+    await pinToBaseAndWait();
   });
   test.afterEach(async () => {
     await dashboard.setLaneScenario(LANE, BASE_SCENARIO);
@@ -51,8 +46,7 @@ test.describe('scenarios: client lane vs global', () => {
       await expect.poll(gatewayTemp, { timeout: 20_000 }).toBe(EXPECTED_TEMP[BASE_SCENARIO]);
       expect((await dashboard.lane(LANE)).lastSeenResolved.resolutionSource).toBe('body_override');
     } finally {
-      wander.followLane();
-      await waitForGateway();
+      await followLaneAndWait();
     }
   });
 

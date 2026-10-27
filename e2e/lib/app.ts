@@ -35,10 +35,26 @@ export async function expectTemperature(page: Page, n: number) {
   await expect(page.getByText(`${n}°`, { exact: true })).toBeVisible({ timeout: 20_000 });
 }
 
-/** Re-open Discover until the tile shows n (the first refetch can race a just-made change). */
-export async function expectTemperatureAfterRefetch(page: Page, n: number) {
+/** Re-open Discover until `assertion` passes (the first refetch can race a just-made change). */
+async function untilAfterRefetch(page: Page, assertion: () => Promise<void>) {
   await expect(async () => {
     await refetchDiscover(page);
-    await expect(page.getByText(`${n}°`, { exact: true })).toBeVisible({ timeout: 5_000 });
+    await assertion();
   }).toPass({ timeout: 45_000 });
+}
+
+/** Re-open Discover until the tile shows n. */
+export async function expectTemperatureAfterRefetch(page: Page, n: number) {
+  await untilAfterRefetch(page, () => expect(page.getByText(`${n}°`, { exact: true })).toBeVisible({ timeout: 5_000 }));
+}
+
+/** Value text under the Temperature label on the Atlantis card. */
+export function temperatureTile(page: Page) {
+  return page.getByText('Temperature', { exact: true }).locator('xpath=following-sibling::*[1]');
+}
+
+/** Re-open Discover until the tile shows a temperature that is none of `excluded` (e.g. live weather). */
+export async function expectTemperatureOtherThanAfterRefetch(page: Page, excluded: number[]) {
+  const otherTemperature = new RegExp(`^(?!(${excluded.join('|')})°$)-?\\d+(\\.\\d+)?°$`);
+  await untilAfterRefetch(page, () => expect(temperatureTile(page)).toHaveText(otherTemperature, { timeout: 5_000 }));
 }

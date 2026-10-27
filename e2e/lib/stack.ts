@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { dashboard } from './dashboard';
+import { expect } from '@playwright/test';
+import { dashboard, gatewayTemp } from './dashboard';
 import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY } from './env';
 
 const WANDER = path.resolve(__dirname, '../scripts/wander.sh');
@@ -31,6 +32,19 @@ export const wander = {
   /** Pinned to a scenario, which is how the demo stack normally runs it. */
   pin: (scenario = BASE_SCENARIO) => run('start', scenario),
 };
+
+/** Restart wander-api unpinned, so client lane switches reach the app, and wait until it serves. */
+export async function followLaneAndWait() {
+  wander.followLane();
+  await waitForGateway();
+}
+
+/** Pin wander-api back to the base scenario (how the demo stack normally runs) and wait for its value. */
+export async function pinToBaseAndWait() {
+  wander.pin(BASE_SCENARIO);
+  await waitForGateway();
+  await expect.poll(gatewayTemp, { timeout: 30_000 }).toBe(EXPECTED_TEMP[BASE_SCENARIO]);
+}
 
 const SLOW_HOP_MS = 2_000;
 const DEMO_SCENARIOS = Object.keys(EXPECTED_TEMP);

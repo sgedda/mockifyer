@@ -19,7 +19,7 @@ test.describe('overrides: dashboard edits reach the app', () => {
   test.afterEach(async () => {
     // Always put the response body back and clear field overrides.
     await dashboard.putMock(file, { responseData: original }, BASE_SCENARIO);
-    await dashboard.call('PATCH', `/mocks/${file}/field-overrides?scenario=${BASE_SCENARIO}`, { responseFieldOverrides: null });
+    await dashboard.clearFieldOverrides(file, BASE_SCENARIO);
     await expect.poll(gatewayTemp, { timeout: 20_000 }).toBe(BASE_TEMP);
   });
 
