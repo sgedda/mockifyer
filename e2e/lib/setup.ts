@@ -198,6 +198,17 @@ export async function ensureTestData() {
     console.warn(`[Setup] Could not create lane ${LANE}:`, err.message);
   }
   
+  // Delete internal hop mocks (gateway->wander-api) that would block wander-api from running
+  console.log('[Setup] Cleaning up internal hop mocks...');
+  for (const scenario of [BASE_SCENARIO, 'heatwave', 'rainy-weekend']) {
+    const mocks = await dashboard.listMocks(scenario);
+    const internalMocks = mocks.filter((m: any) => m.endpoint?.startsWith('http://127.0.0.1:42'));
+    for (const mock of internalMocks) {
+      console.log(`[Setup]   Deleting internal mock in ${scenario}: ${mock.endpoint}`);
+      await dashboard.deleteMock(mock.filename, scenario);
+    }
+  }
+  
   // List guide-demo-2 mocks to verify setup (should show exactly one Open-Meteo Athens mock with 99°)
   console.log('[Setup] Listing guide-demo-2 mocks:');
   const finalMocks = await dashboard.listMocks(BASE_SCENARIO);

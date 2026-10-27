@@ -40,6 +40,7 @@ export class Dashboard {
   async listMocks(scenario?: string): Promise<Json[]> { return (await this.ok('GET', '/mocks' + this.q(scenario))).files; }
   getMock(file: string, scenario?: string) { return this.ok('GET', `/mocks/${file}${this.q(scenario)}`); }
   putMock(file: string, body: Json, scenario?: string) { return this.call('PUT', `/mocks/${file}${this.q(scenario)}`, body); }
+  deleteMock(file: string, scenario?: string) { return this.call('DELETE', `/mocks/${file}${this.q(scenario)}`); }
   getFieldOverrides(file: string, scenario?: string) { return this.ok('GET', `/mocks/${file}/field-overrides${this.q(scenario)}`); }
   async findMock(scenario: string, predicate: (endpoint: string) => boolean): Promise<string> {
     const f = (await this.listMocks(scenario)).find((m) => predicate(m.endpoint));
