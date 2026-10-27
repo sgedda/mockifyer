@@ -59,18 +59,19 @@ test.describe('scenarios: client lane vs global', () => {
     }
   });
 
-  // KNOWN GAP (by design today): the header Scenario picker only sets the global scenario
-  // (POST /api/scenario-config/set). With strict lane mode (default) a client that has a clientId
-  // but no lane gets unscoped live traffic instead of falling back to the global scenario.
-  // This test asserts the behaviour a user would expect, so it is expected to fail.
-  test('header picker (global scenario) moves a client without a lane', async ({ page }) => {
-    test.fail(true, 'strict lane mode: no fallback to the global scenario for clients with a clientId');
+  // The header Scenario picker only sets the global scenario (POST /api/scenario-config/set). In strict
+  // lane mode (default) a client with a clientId but no lane gets live traffic; the opt-in lane global
+  // fallback (#484) makes it follow the global scenario instead.
+  test('header picker (global scenario) moves a client without a lane when the lane global fallback is on', async () => {
     const lane = await dashboard.lane(LANE);
     await dashboard.deleteLane(LANE);
     try {
       await dashboard.setGlobalScenario('heatwave');
+      expect(await gatewayTemp(), 'strict default: no fallback').not.toBe(EXPECTED_TEMP.heatwave);
+      await dashboard.setLaneGlobalFallback(true);
       await expect.poll(gatewayTemp, { timeout: 15_000 }).toBe(EXPECTED_TEMP.heatwave);
     } finally {
+      await dashboard.setLaneGlobalFallback(false);
       await dashboard.setLaneScenario(LANE, lane?.scenario ?? BASE_SCENARIO);
       await dashboard.setGlobalScenario(BASE_SCENARIO);
     }

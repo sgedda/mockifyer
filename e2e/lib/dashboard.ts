@@ -35,6 +35,8 @@ export class Dashboard {
   setLaneScenario(clientId: string, scenario: string) { return this.ok('PUT', `/client-lanes/${clientId}/scenario`, { scenario }); }
   deleteLane(clientId: string) { return this.ok('DELETE', `/client-lanes/${clientId}`); }
   setLaneDate(clientId: string, fixedDate: string | null) { return this.ok('PUT', `/client-lanes/${clientId}/date`, { fixedDate }); }
+  /** #484: strict lane mode, clients with a clientId but no lane follow the global scenario. */
+  setLaneGlobalFallback(enabled: boolean) { return this.ok('PUT', '/client-lanes/settings/global-fallback', { enabled }); }
 
   // mocks
   async listMocks(scenario?: string): Promise<Json[]> { return (await this.ok('GET', '/mocks' + this.q(scenario))).files; }
