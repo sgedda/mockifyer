@@ -41,7 +41,12 @@ import {
   bulkSetLiveApiForDomain,
   bulkSetReplayModeForFilenames,
 } from '../utils/bulk-domain-mocks';
-import { applyReplayModeFieldsFromBody, bodyHasReplayModeFields, getMockReplayModeListFlags } from '../utils/mock-replay-mode-patch';
+import {
+  applyReplayModeFieldsFromBody,
+  applyResponseDataFromBody,
+  bodyHasReplayModeFields,
+  getMockReplayModeListFlags,
+} from '../utils/mock-replay-mode-patch';
 import { fetchUpstreamResponse } from '../utils/capture-upstream-response';
 import {
   readDomainPathRulesFile,
@@ -1491,8 +1496,7 @@ router.put('/*', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid JSON', details: e.message });
           }
 
-          if (!(existingData as any).response) (existingData as any).response = { status: 200, data: {}, headers: {} };
-          (existingData as any).response.data = parsedResponseData;
+          applyResponseDataFromBody(existingData as MockData, parsedResponseData);
         }
 
         // In Redis mode, the dashboard "Recent (last 5 saved)" list is derived from `mockData.timestamp`.
@@ -1601,8 +1605,7 @@ router.put('/*', async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Invalid JSON', details: e.message });
       }
 
-      if (!existingData.response) existingData.response = { status: 200, data: {}, headers: {} };
-      existingData.response.data = parsedResponseData;
+      applyResponseDataFromBody(existingData as MockData, parsedResponseData);
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'responseDateOverrides')) {
