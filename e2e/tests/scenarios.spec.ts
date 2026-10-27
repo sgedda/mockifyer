@@ -44,6 +44,9 @@ test.describe('scenarios: client lane vs global', () => {
   });
 
   test('a pinned service ignores its lane (resolutionSource body_override)', async () => {
+    // Restarts wander-api twice (pin, then follow the lane again); each restart plus
+    // waitForGateway took about 35 s in CI, which does not fit the suite's 45 s default.
+    test.setTimeout(120_000);
     wander.pin(BASE_SCENARIO);
     try {
       await waitForGateway();
