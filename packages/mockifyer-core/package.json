@@ -1,6 +1,6 @@
 {
   "name": "@sgedda/mockifyer-core",
-  "version": "1.10.193",
+  "version": "1.10.191",
   "description": "Core utilities and types for Mockifyer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

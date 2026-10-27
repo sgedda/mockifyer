@@ -66,6 +66,7 @@ router.get('/', async (req: Request, res: Response) => {
       const discoveredDetailed = await store.listDiscoveredLanesDetailed();
       const discoveredLanes = discoveredDetailed.map((d) => d.clientId);
       const globalScenario = await store.getActiveScenario();
+      const laneGlobalFallback = await store.getLaneGlobalFallback();
       const connections = buildClientConnectionRows(lanesWithDevices, discoveredDetailed);
       return res.json({
         enabled: true,
@@ -73,6 +74,7 @@ router.get('/', async (req: Request, res: Response) => {
         discoveredLanes,
         connections,
         globalScenario,
+        laneGlobalFallback,
       });
     } finally {
       await store.close().catch(() => undefined);
@@ -80,6 +82,30 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[ClientLanesRoute] List - Error:', error);
     return res.status(500).json({ error: 'Failed to list client lanes', details: error.message });
+  }
+});
+
+/** Opt-in (#484): clients with a client id but no lane follow the global scenario in strict lane mode. */
+router.put('/settings/global-fallback', async (req: Request, res: Response) => {
+  try {
+    const { mockDataPath, config } = getDashboardContext(req);
+    if (!isCentralizedDashboardProvider(config.provider)) {
+      return res.status(400).json({ error: "client lanes require dashboard provider 'redis' or 'sqlite'." });
+    }
+    const { enabled } = req.body || {};
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+    const store = createDashboardMockStore(config, mockDataPath);
+    try {
+      await store.setLaneGlobalFallback(enabled);
+      return res.json({ success: true, laneGlobalFallback: await store.getLaneGlobalFallback() });
+    } finally {
+      await store.close().catch(() => undefined);
+    }
+  } catch (error: any) {
+    console.error('[ClientLanesRoute] Set global fallback - Error:', error);
+    return res.status(500).json({ error: 'Failed to set lane global fallback', details: error.message });
   }
 });
 

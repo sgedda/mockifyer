@@ -633,7 +633,7 @@ export async function setScenario(scenario: string): Promise<void> {
 export interface ClientLaneLastSeenResolved {
   scenario: string
   lastSeenAt: string
-  resolutionSource: 'body_override' | 'lane_redis' | 'global_redis' | 'filesystem_fallback'
+  resolutionSource: 'body_override' | 'lane_redis' | 'global_redis' | 'global_fallback' | 'filesystem_fallback'
   clientBodyScenarioOverride: boolean
 }
 
