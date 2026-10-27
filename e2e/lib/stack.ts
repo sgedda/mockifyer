@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { BASE_SCENARIO, GATEWAY } from './env';
+import { dashboard } from './dashboard';
+import { BASE_SCENARIO, EXPECTED_TEMP, GATEWAY } from './env';
 
 const WANDER = path.resolve(__dirname, '../scripts/wander.sh');
 const WANDER_SH_TIMEOUT_MS = 90_000;
@@ -29,6 +30,26 @@ export const wander = {
   pin: (scenario = BASE_SCENARIO) => run('start', scenario),
 };
 
+const SLOW_HOP_MS = 2_000;
+const DEMO_SCENARIOS = Object.keys(EXPECTED_TEMP);
+
+/** Dashboard hops since `sinceMs` that were slow or failed, to explain a missed gateway attempt. */
+async function slowHopsSince(sinceMs: number): Promise<string> {
+  const since = new Date(sinceMs).toISOString();
+  const lines: string[] = [];
+  for (const scenario of DEMO_SCENARIOS) {
+    const r = await dashboard.call(
+      'GET',
+      `/network-events?scenario=${encodeURIComponent(scenario)}&since=${encodeURIComponent(since)}&limit=200`
+    );
+    for (const e of r.json?.events ?? []) {
+      if ((e.durationMs ?? 0) < SLOW_HOP_MS && e.source !== 'error') continue;
+      lines.push(`${scenario} ${e.source} ${e.status} ${e.durationMs}ms ${String(e.url).slice(0, 100)}`);
+    }
+  }
+  return lines.length ? lines.join(' ; ') : 'none';
+}
+
 /** Wait until the gateway serves Atlantis with HTTP 200 (wander-api warm after a restart). */
 export async function waitForGateway(timeoutMs = 60_000) {
   const started = Date.now();
@@ -42,6 +63,7 @@ export async function waitForGateway(timeoutMs = 60_000) {
       });
       if (r.status === 200) {
         console.log(`[stack] gateway 200 after ${seconds(started)}${misses.length ? ` (misses: ${misses.join(', ')})` : ''}`);
+        if (misses.length) console.log(`[stack] slow or failed hops: ${await slowHopsSince(started)}`);
         return;
       }
       misses.push(`${r.status} in ${seconds(attemptStarted)}`);
