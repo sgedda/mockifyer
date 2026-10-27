@@ -14,12 +14,16 @@ export const ATHENS_ENDPOINT =
 export const WANDER_DISCOVER_URL = 'http://127.0.0.1:4203/discover';
 /** wander-api's improvised weather when the Open-Meteo hop fails (`source: 'fallback'`). */
 export const WANDER_FALLBACK_TEMP = 18;
+/** Typed into the dashboard's mock search and the Overrides picker to find the Athens forecast. */
+export const ATHENS_LATITUDE = new URL(ATHENS_ENDPOINT).searchParams.get('latitude') ?? '';
 /** Values the demo data shows on the Atlantis card per scenario (see guide 4.14). */
 export const EXPECTED_TEMP: Record<string, number> = { 'guide-demo-2': 99, heatwave: 44, 'rainy-weekend': 11 };
 /** `E2E_PRESENTATION=1`: GUI tests hold at every value change so their recordings are readable. */
 export const PRESENTATION_ENV = 'E2E_PRESENTATION';
 /** Presentation mode hold before and after each value change, and on each new app value. */
 export const PRESENTATION_HOLD_MS = 2_500;
+/** Presentation mode hold before and after each navigation click (sidebar link, search, row). */
+export const PRESENTATION_NAV_HOLD_MS = 1_000;
 export function presentationOn(value = process.env[PRESENTATION_ENV]): boolean {
   return value === '1' || value === 'true';
 }

@@ -1,5 +1,5 @@
 import { test as base, expect, type ElementHandle, type Locator, type Page } from '@playwright/test';
-import { BASE_SCENARIO, DASHBOARD, LANE, PRESENTATION_HOLD_MS, presentationOn } from './env';
+import { ATHENS_LATITUDE, DASHBOARD, LANE, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS, presentationOn } from './env';
 import { DASHBOARD_VIDEO_ATTACHMENT } from './videos';
 
 /** Desktop size: the dashboard sidebar is only static from the `lg` breakpoint (1024px). */
@@ -31,7 +31,7 @@ async function outline(element: ElementHandle, on: boolean) {
  * Presentation mode: outline `target`, hold, run `action` (edit, save, toast check), hold while the
  * result and its toast are visible, then drop the outline. Otherwise just `action`.
  */
-export async function presentChange(target: Locator, action: () => Promise<unknown>) {
+export async function presentChange(target: Locator, action: () => Promise<unknown>, holdMs = PRESENTATION_HOLD_MS) {
   if (!PRESENTATION) {
     await action();
     return;
@@ -39,13 +39,18 @@ export async function presentChange(target: Locator, action: () => Promise<unkno
   await target.scrollIntoViewIfNeeded();
   const element = await target.elementHandle();
   if (element) await outline(element, true);
-  await presentationPause(target.page());
+  await presentationPause(target.page(), holdMs);
   await action();
-  await presentationPause(target.page());
+  await presentationPause(target.page(), holdMs);
   if (element) {
     await outline(element, false).catch(() => undefined);
     await element.dispose();
   }
+}
+
+/** A navigation click (sidebar link, list row, button that opens a page); short holds in presentation mode. */
+async function navigateBy(target: Locator, action: () => Promise<unknown> = () => target.click()) {
+  await presentChange(target, action, PRESENTATION_NAV_HOLD_MS);
 }
 
 /** Fill `input`; in presentation mode select its content and type the new value visibly instead. */
@@ -78,11 +83,12 @@ export const test = base.extend<{ dash: DashboardUi }>({
       viewport: DASHBOARD_VIEWPORT,
       recordVideo: { dir: testInfo.outputPath('dashboard-video'), size: DASHBOARD_VIEWPORT },
     });
-    const dashPage = await context.newPage();
-    await use(new DashboardUi(dashPage));
+    const dash = new DashboardUi(await context.newPage());
+    await dash.openStartScreen();
+    await use(dash);
     await page.waitForTimeout(PRESENTATION ? PRESENTATION_HOLD_MS : FINAL_FRAME_HOLD_MS);
     await context.close();
-    const video = dashPage.video();
+    const video = dash.page.video();
     if (video) {
       await testInfo.attach(DASHBOARD_VIDEO_ATTACHMENT, { path: await video.path(), contentType: 'video/webm' });
     }
@@ -97,10 +103,32 @@ export class DashboardUi {
     await expect(this.page.getByText(text, { exact: true }).first()).toBeVisible();
   }
 
-  // Mock editor (/mock): Form Editor renders every JSON key and value as an input.
-  async openMock(file: string) {
-    await this.page.goto(`/mock?file=${encodeURIComponent(file)}&scenario=${encodeURIComponent(BASE_SCENARIO)}`);
+  /** The only direct URL load: the dashboard start screen (Statistics). Everything else is clicked. */
+  async openStartScreen() {
+    await this.page.goto('/');
+    await expect(this.page.getByRole('heading', { name: 'Total Files' })).toBeVisible();
+  }
+
+  /** Sidebar navigation, e.g. Mocks, Overrides, Network, Settings. */
+  async openFromSidebar(name: string) {
+    const link = this.page.getByRole('link', { name, exact: true });
+    await navigateBy(link);
+  }
+
+  // Mocks list -> search -> Expand all -> the Athens forecast card -> mock editor (Form Editor).
+  async openAthensMock(file: string) {
+    await this.openFromSidebar('Mocks');
+    const search = this.page.getByLabel('Search mocks');
+    await navigateBy(search, async () => {
+      await enterValue(search, `latitude=${ATHENS_LATITUDE}`);
+      await search.press('Enter');
+    });
+    const expandAll = this.page.getByRole('button', { name: 'Expand all' });
+    await navigateBy(expandAll);
+    const card = this.page.getByRole('heading', { name: 'forecast', level: 3, exact: true });
+    await navigateBy(card);
     await expect(this.page.getByText('Edit Mock:')).toBeVisible();
+    await expect(this.page.getByText(file)).toBeVisible();
   }
 
   /** Number input for `parent.field` of the stored response body (key inputs carry the key as value). */
@@ -137,10 +165,18 @@ export class DashboardUi {
     });
   }
 
-  // Overrides (/overrides): mock-level field overrides, applied at serve time.
-  async openOverrides(file: string) {
-    await this.page.goto(`/overrides?file=${encodeURIComponent(file)}&scenario=${encodeURIComponent(BASE_SCENARIO)}`);
+  // Overrides (sidebar) -> "Open mock for overlays" picker -> Athens forecast -> Edit overlays.
+  async openAthensOverrides(file: string) {
+    await this.openFromSidebar('Overrides');
+    const picker = this.page.getByRole('button', { name: 'Open mock for overlays' });
+    await expect(picker).toBeEnabled();
+    await navigateBy(picker);
+    const filter = this.page.getByLabel('Filter mocks');
+    await navigateBy(filter, () => enterValue(filter, ATHENS_LATITUDE));
+    await navigateBy(this.page.getByRole('option').filter({ hasText: ATHENS_LATITUDE }).getByRole('button'));
+    await navigateBy(this.page.getByRole('button', { name: 'Edit overlays' }));
     await expect(this.page.getByRole('button', { name: 'Save overlays' })).toBeVisible();
+    await expect(this.page).toHaveURL(new RegExp(`file=${encodeURIComponent(file)}`));
     // The detail pane reloads its drafts while the mock lists arrive; wait for that to settle.
     await this.page.waitForLoadState('networkidle');
   }
@@ -166,10 +202,11 @@ export class DashboardUi {
 
   // Settings > Client lanes
   async openClientLanes() {
-    await this.page.goto('/settings#client-lanes');
+    await this.openFromSidebar('Settings');
     await expect(this.page.getByTestId('lane-global-fallback')).toBeVisible();
-    // The hash scroll can land early while the cards above are still loading.
-    await this.page.locator('#client-lanes').evaluate((card) => card.scrollIntoView({ block: 'start' }));
+    // Client lanes is the last card on Settings: scroll down to it like a user would.
+    await this.page.locator('#client-lanes').evaluate((card) => card.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    await expect(this.laneScenarioSelect()).toBeInViewport();
   }
 
   laneScenarioSelect(lane = LANE): Locator {
@@ -217,7 +254,7 @@ export class DashboardUi {
 
   // Network (/network): live hops for the header scenario, polled every few seconds.
   async openNetworkForLane(lane = LANE) {
-    await this.page.getByRole('link', { name: 'Network', exact: true }).click();
+    await this.openFromSidebar('Network');
     const laneFilter = this.page.getByPlaceholder('Client lane (clientId)');
     await presentChange(laneFilter, () => enterValue(laneFilter, lane));
     await expect(this.page).toHaveURL(new RegExp(`clientId=${lane}`));

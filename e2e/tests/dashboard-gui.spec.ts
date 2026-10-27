@@ -12,8 +12,10 @@ import {
 } from '../lib/app';
 import {
   ATHENS_ENDPOINT_PREFIX,
+  ATHENS_LATITUDE,
   BASE_SCENARIO,
   EXPECTED_TEMP,
+  LANE,
   WANDER_DISCOVER_URL,
   WANDER_FALLBACK_TEMP,
 } from '../lib/env';
@@ -28,11 +30,20 @@ const UPSTREAM_ERROR_STATUS = 503;
 
 const { dashboardUi: UI, app: APP, dashboardApi: API, helper: HELPER } = ACTOR;
 
+/** How each test reaches its dashboard page from the start screen, by clicks only. */
+const NAV = {
+  athensMock: [UI, `Navigate: sidebar Mocks -> search "latitude=${ATHENS_LATITUDE}" + Enter -> Expand all -> click the "forecast" card (Athens Open-Meteo mock) -> mock editor`],
+  overrides: [UI, `Navigate: sidebar Overrides -> "Open mock for overlays" picker -> filter "${ATHENS_LATITUDE}" -> pick the Athens forecast -> Edit overlays`],
+  clientLanes: [UI, 'Navigate: sidebar Settings -> scroll down to the Client lanes card'],
+  network: [UI, `Navigate: sidebar Network -> Client lane filter = ${LANE}`],
+} satisfies Record<string, [Actor, string]>;
+
 /** Steps every GUI test shares around its own: the app on the base value first, state restored after. */
 function gui(asserts: string, steps: Array<[Actor, string]>) {
   return documented(asserts, [
     [HELPER, 'beforeAll: restart wander-api unpinned (scripts/wander.sh start) so it follows the client lane'],
     [APP, `Open Discover, sign in as wanderer: the Atlantis Temperature tile shows ${BASE_TEMP}° (Open-Meteo mock, scenario ${BASE_SCENARIO})`],
+    [UI, 'Start screen: the dashboard opens at / (Statistics); the only direct URL load, every page after it is reached by clicks'],
     ...steps,
     [HELPER, 'afterEach: restore the Athens body, status and field overrides, lane, global scenario and lane global fallback (dashboard API)'],
   ]);
@@ -72,13 +83,14 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('mock editor: saving a new response body value shows it in the app', gui(
     'A response body edit saved in the mock editor is what the app shows after a refetch, and it is stored.',
     [
-      [UI, 'Mocks editor (/mock?file=<Athens forecast>): Form Editor shows current.temperature_2m = 99'],
+      NAV.athensMock,
+      [UI, 'Mock editor, Form Editor: current.temperature_2m = 99'],
       [UI, 'Set current.temperature_2m to 37, click Save Changes, toast: Mock updated successfully'],
       [API, 'GET /api/mocks/<file>: stored current.temperature_2m is 37'],
       [APP, 'Trips -> Discover (refetch) until the Temperature tile shows 37°'],
     ],
   ), async ({ page, dash }) => {
-    await dash.openMock(file);
+    await dash.openAthensMock(file);
     await dash.expectResponseNumber('current', 'temperature_2m', BASE_TEMP);
     await dash.saveResponseNumber('current', 'temperature_2m', EDITED_TEMP);
     expect(await storedTemp()).toBe(EDITED_TEMP);
@@ -88,13 +100,14 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('overrides page: a field override shows in the app while the stored body keeps its value', gui(
     'A field override saved on the Overrides page changes the served value only; the stored body keeps 99.',
     [
-      [UI, 'Overrides (/overrides?file=<Athens forecast>): Add field override, path current.temperature_2m, value 61, Save overlays, toast: Overrides saved'],
+      NAV.overrides,
+      [UI, 'Add field override, path current.temperature_2m, value 61, Save overlays, toast: Overrides saved'],
       [APP, 'Refetch until the Temperature tile shows 61°'],
-      [UI, 'Open mock: the Form Editor still shows the stored current.temperature_2m = 99'],
+      [UI, 'Click the "Open mock" link: the Form Editor still shows the stored current.temperature_2m = 99'],
       [API, 'Stored body is 99 and GET .../field-overrides contains 61'],
     ],
   ), async ({ page, dash }) => {
-    await dash.openOverrides(file);
+    await dash.openAthensOverrides(file);
     await dash.saveFieldOverride('current.temperature_2m', OVERRIDE_TEMP);
     await appShows(page, OVERRIDE_TEMP);
     await dash.openMockFromOverrides();
@@ -106,12 +119,13 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('mock editor: a 503 status override makes wander-api fall back to its improvised weather', gui(
     'A status override set in the mock editor is served through the proxy: wander-api sees a 503 from Open-Meteo and the app shows its fallback weather.',
     [
-      [UI, 'Mocks editor, Request tab, Response Simulation > Status Override = 503 (saved on blur), toast: Status override set to 503'],
+      NAV.athensMock,
+      [UI, 'Mock editor, Request tab, Response Simulation > Status Override = 503 (saved on blur), toast: Status override set to 503'],
       [APP, `Refetch until the Temperature tile shows ${WANDER_FALLBACK_TEMP}° (wander-api fallback, wind 9)`],
       [API, 'Stored statusOverride is 503'],
     ],
   ), async ({ page, dash }) => {
-    await dash.openMock(file);
+    await dash.openAthensMock(file);
     await dash.saveStatusOverride(UPSTREAM_ERROR_STATUS);
     await appShows(page, WANDER_FALLBACK_TEMP);
     expect((await storedMock()).statusOverride).toBe(UPSTREAM_ERROR_STATUS);
@@ -120,7 +134,8 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('Settings client lane: heatwave 44 -> rainy-weekend 11 -> base 99 in the app', gui(
     'Switching the demo client lane scenario in Settings moves the app between the scenario values.',
     [
-      [UI, 'Settings > Client lanes: "Scenario for wanderweird-demo" select = heatwave, toast: Lane "wanderweird-demo" updated.'],
+      NAV.clientLanes,
+      [UI, 'Client lanes: "Scenario for wanderweird-demo" select = heatwave, toast: Lane "wanderweird-demo" updated.'],
       [APP, 'Refetch until 44°'],
       [UI, 'Same select = rainy-weekend'],
       [APP, 'Refetch until 11°'],
@@ -138,8 +153,9 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('header Scenario picker: strict lane default ignores it, the lane global fallback moves the app to heatwave 44', gui(
     'The header picker sets the global scenario; in strict lane mode (#484) a client with a clientId but no lane does not follow it until "Lane global fallback" is on.',
     [
-      [UI, 'Settings > Client lanes: Remove lane wanderweird-demo (confirm), toast: Lane "wanderweird-demo" was removed.'],
-      [UI, 'Header Scenario picker = heatwave, toast: Switched to "heatwave"'],
+      NAV.clientLanes,
+      [UI, 'Client lanes: Remove lane wanderweird-demo (confirm), toast: Lane "wanderweird-demo" was removed.'],
+      [UI, 'Header Scenario picker (top right) -> heatwave, toast: Switched to "heatwave"'],
       [APP, `Refetch until the tile shows a temperature that is neither ${BASE_TEMP}° nor 44° (live Open-Meteo or the fallback)`],
       [UI, 'Tick "Lane global fallback" (checkbox turns on after the save)'],
       [APP, 'Refetch until 44° (heatwave via global_fallback)'],
@@ -160,10 +176,12 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
   test('Network view: an app load shows the Open-Meteo mock hit and the wander-api hop', gui(
     'After an app load the Network trace lists the Open-Meteo mock hit and the wander-api hop for the demo lane.',
     [
-      [UI, 'Settings > Client lanes: lane scenario = heatwave'],
+      NAV.clientLanes,
+      [UI, 'Client lanes: lane scenario = heatwave'],
       [APP, 'Refetch until 44°'],
-      [UI, 'Header Scenario picker = heatwave (the Network view lists the header scenario; the lane still decides what the app gets)'],
-      [UI, 'Sidebar > Network, Client lane filter = wanderweird-demo, Clear, toast: Network log cleared for this scope; no Mock GET /v1/forecast row'],
+      [UI, 'Header Scenario picker (top right) -> heatwave (the Network view lists the header scenario; the lane still decides what the app gets)'],
+      NAV.network,
+      [UI, 'Clear, toast: Network log cleared for this scope; no Mock GET /v1/forecast row'],
       [APP, 'Refetch until 44° (new app load)'],
       [UI, 'Trace shows a "Mock" GET /v1/forecast row and an "Upstream" GET /discover row; Details show http://127.0.0.1:4203/discover and the Open-Meteo URL'],
     ],

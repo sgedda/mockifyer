@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { ACTOR_LABEL } from './docs';
-import { PRESENTATION_ENV, PRESENTATION_HOLD_MS, presentationOn } from './env';
+import { PRESENTATION_ENV, PRESENTATION_HOLD_MS, PRESENTATION_NAV_HOLD_MS, presentationOn } from './env';
 import { E2E_DIR, REPO_ROOT_PLACEHOLDER, type PlaywrightReport, type TestRun } from './report';
 import { ARTIFACT, GUI_VIDEOS_DIR, INDIVIDUAL_DIR, RUN_SUMMARY_FILE } from './videos';
 import { STEP_KIND, WORKFLOW_FILE, type WorkflowStep } from './workflow';
@@ -67,7 +67,7 @@ function presentationMode(ctx: RunContext, test?: TestRun): string {
   const value = runEnv(ctx)[PRESENTATION_ENV];
   if (!presentationOn(value)) return `off (\`${PRESENTATION_ENV}\` ${value === undefined ? 'unset' : `= ${value}`}; normal speed)`;
   if (test && !(test.appVideo && test.dashboardVideo)) return `on (\`${PRESENTATION_ENV}=${value}\`), no effect on this test (GUI tests only)`;
-  return `on (\`${PRESENTATION_ENV}=${value}\`): GUI tests hold ${PRESENTATION_HOLD_MS / 1000} s, outline the element and type visibly at each value change`;
+  return `on (\`${PRESENTATION_ENV}=${value}\`): GUI tests hold ${PRESENTATION_HOLD_MS / 1000} s, outline the element and type visibly at each value change, and hold ${PRESENTATION_NAV_HOLD_MS / 1000} s on each navigation click`;
 }
 
 function runLink(): string {
