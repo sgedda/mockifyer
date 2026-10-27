@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mockifyer": {
+      "command": "node",
+      "args": ["../packages/mockifyer-mcp/dist/cli.js"],
+      "env": { "MOCKIFYER_DASHBOARD_URL": "http://127.0.0.1:3002" }
+    }
+  }
+}
