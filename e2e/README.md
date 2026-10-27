@@ -72,7 +72,7 @@ app**, so the recording shows the change travel from the dashboard to the app.
 |---|---|---|
 | mock editor: response body | Mocks editor (`/mock`), Form Editor, `current` → `temperature_2m` = 37, Save Changes | 99° → 37° |
 | overrides page: field override | Overrides, Add field override `current.temperature_2m` = 61, Save overlays, then Open mock | 61°, while the editor still shows the stored 99 |
-| mock editor: status override | Request tab, Status Override 503 | 18° (wander-api's fallback weather when Open-Meteo fails) |
+| mock editor: delay and status override (Open-Meteo only) | Request tab, Response Delay 2500 ms; then Status Override 503 (delay kept); then Clear each; Network trace for the first two | 99° after ≥ 2.5 s (hop Duration ≥ 2500 ms) → 18° after ≥ 2.5 s (hop 503) → 18° fast → 99° fast; the countries hop stays 200 and fast; only this mock stores the settings |
 | Settings client lane | Settings > Client lanes, lane scenario select heatwave → rainy-weekend → guide-demo-2 | 44° → 11° → 99° |
 | header Scenario picker | remove the lane, header picker → heatwave, then tick "Lane global fallback" | strict default (#484): live weather, not 44°; with the fallback on: 44° |
 | Network view | lane → heatwave, header → heatwave, Network filtered to the lane, Clear, app reload | 44°, and the trace lists the Open-Meteo `Mock` hop under wander-api `GET /discover` |
