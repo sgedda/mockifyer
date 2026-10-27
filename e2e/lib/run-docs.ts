@@ -128,7 +128,7 @@ function reproduceEnv(ctx: RunContext): string {
 function reproduceSection(ctx: RunContext, test?: TestRun): string[] {
   const stackSteps = ctx.steps.filter((s) => s.run && (STACK_KINDS.has(s.kind) || /^Wait/.test(s.name)));
   const env = reproduceEnv(ctx);
-  const target = test ? `tests/${test.file}:${test.line} --project=${test.project}` : '';
+  const target = test ? `${test.file}:${test.line} --project=${test.project}` : '';
   const lines = [
     'From the repository root, the same commands the workflow ran, each in a subshell so it starts at the root',
     '(Node 20; see the README "Run locally"):',
@@ -148,7 +148,7 @@ function reproduceSection(ctx: RunContext, test?: TestRun): string[] {
 
 function stepsOfTest(test: TestRun): string[] {
   if (!test.steps.length) {
-    return [`API/app test: the assertion is summarized above (no step annotations); see \`${E2E_DIR}/tests/${test.file}:${test.line}\`.`];
+    return [`API/app test: the assertion is summarized above (no step annotations); see \`${E2E_DIR}/${test.file}:${test.line}\`.`];
   }
   return test.steps.map((s, i) => `${i + 1}. **${ACTOR_LABEL[s.actor]}**: ${s.description}`);
 }
@@ -173,7 +173,7 @@ export function testDoc(ctx: RunContext, test: TestRun, files: TestFiles): strin
     '|---|---|',
     `| Result | ${result(test)} |`,
     `| Duration | ${duration(test.durationMs)} |`,
-    `| Spec | \`${E2E_DIR}/tests/${test.file}:${test.line}\`${test.describe ? ` › ${test.describe}` : ''} |`,
+    `| Spec | \`${E2E_DIR}/${test.file}:${test.line}\`${test.describe ? ` › ${test.describe}` : ''} |`,
     `| Project | \`${test.project}\`${test.tags.length ? ` · ${test.tags.map((t) => `\`${t}\``).join(' ')}` : ''} |`,
     ...filesRows(test, files),
     `| Run | ${runLink()} |`,
@@ -187,7 +187,7 @@ export function testDoc(ctx: RunContext, test: TestRun, files: TestFiles): strin
     `## Command that produced this ${files.individual.length ? 'recording' : 'test result'}`,
     '',
     ...commandSection(ctx),
-    `- This test: \`tests/${test.file}:${test.line}\`, project \`${test.project}\`, attempt ${test.retry + 1}.`,
+    `- This test: \`${test.file}:${test.line}\`, project \`${test.project}\`, attempt ${test.retry + 1}.`,
     '',
     '## Workflow steps that produced the run',
     '',

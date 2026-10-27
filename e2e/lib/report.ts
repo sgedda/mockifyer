@@ -24,7 +24,7 @@ export interface PlaywrightReport {
 export interface TestRun {
   title: string;
   describe: string;
-  /** Spec path relative to e2e/tests. */
+  /** Spec path relative to e2e/ (includes tests/ prefix from Playwright JSON reporter). */
   file: string;
   line: number;
   project: string;
