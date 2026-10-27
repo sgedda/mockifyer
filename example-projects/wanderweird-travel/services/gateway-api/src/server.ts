@@ -13,18 +13,34 @@ const CMS_BASE = (process.env.CMS_URL ?? 'http://127.0.0.1:4204').replace(/\/$/,
 const LORE_BASE = (process.env.LORE_URL ?? 'http://127.0.0.1:4205').replace(/\/$/, '');
 const GRAPHQL_BASE = (process.env.GRAPHQL_URL ?? 'http://127.0.0.1:4206').replace(/\/$/, '');
 
+const UPSTREAM_UNAVAILABLE_STATUS = 502;
+
+/**
+ * Express 4 does not catch rejected async handlers, so an unreachable upstream
+ * (fetch throws on ECONNREFUSED) would crash the gateway. Answer 502 JSON instead.
+ */
 async function proxyJson(
   url: string,
   init?: RequestInit
 ): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    const details = err instanceof Error ? err.message : String(err);
+    console.error(`[gateway-api] upstream unavailable: ${url}: ${details}`);
+    return {
+      status: UPSTREAM_UNAVAILABLE_STATUS,
+      body: { error: 'Upstream unavailable', upstream: url, details },
+    };
+  }
   const body: unknown = await response.json().catch(async () => response.text());
   return { status: response.status, body };
 }

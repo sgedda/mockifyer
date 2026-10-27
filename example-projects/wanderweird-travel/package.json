@@ -19,6 +19,7 @@
     "cms:build": "NUGET_PACKAGES=$HOME/.nuget/packages dotnet build cms/umbraco/Wanderweird.Cms.csproj",
     "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002 --host 127.0.0.1",
     "dashboard:sqlite": "cross-env MOCKIFYER_RECORD_RESPONSES=false mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1",
+    "dashboard:filesystem": "cross-env MOCKIFYER_RECORD_RESPONSES=false mockifyer-dashboard --provider filesystem --path ./mock-data --port 3002 --host 127.0.0.1",
     "dashboard:redis": "cross-env MOCKIFYER_REDIS_URL=redis://127.0.0.1:6379 MOCKIFYER_RECORD_RESPONSES=false mockifyer-dashboard --provider redis --port 3002 --host 127.0.0.1",
     "lane:hello": "curl -sS -X PUT http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario -H 'Content-Type: application/json' -d '{\"scenario\":\"hello\"}'",
     "lane:default": "curl -sS -X PUT http://127.0.0.1:3002/api/client-lanes/wanderweird-demo/scenario -H 'Content-Type: application/json' -d '{\"scenario\":\"default\"}'",
