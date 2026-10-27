@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
 import { wander, waitForGateway } from '../lib/stack';
 import { openDiscover, expectTemperatureAfterRefetch, expectTemperature } from '../lib/app';
-import { BASE_SCENARIO, EXPECTED_TEMP, LANE } from '../lib/env';
+import { ATHENS_ENDPOINT, BASE_SCENARIO, EXPECTED_TEMP, LANE } from '../lib/env';
 
 // Lane switching only moves a service that is NOT pinned with MOCKIFYER_SCENARIO (body_override wins).
 // beforeAll restarts wander-api following the lane; afterAll pins it back and resets lane + global.
@@ -59,19 +59,46 @@ test.describe('scenarios: client lane vs global', () => {
   // The header Scenario picker only sets the global scenario (POST /api/scenario-config/set). In strict
   // lane mode (default) a client with a clientId but no lane gets live traffic; the opt-in lane global
   // fallback (#484) makes it follow the global scenario instead.
-  test('header picker (global scenario) moves a client without a lane when the lane global fallback is on', async () => {
+  /** Lane removed and global set to heatwave, as after using the header picker; restored afterwards. */
+  async function withoutLaneOnGlobalHeatwave(fn: () => Promise<void>) {
     const lane = await dashboard.lane(LANE);
     await dashboard.deleteLane(LANE);
     try {
       await dashboard.setGlobalScenario('heatwave');
-      expect(await gatewayTemp(), 'strict default: no fallback').not.toBe(EXPECTED_TEMP.heatwave);
-      await dashboard.setLaneGlobalFallback(true);
-      await expect.poll(gatewayTemp, { timeout: 15_000 }).toBe(EXPECTED_TEMP.heatwave);
+      await fn();
     } finally {
       await dashboard.setLaneGlobalFallback(false);
       await dashboard.setLaneScenario(LANE, lane?.scenario ?? BASE_SCENARIO);
       await dashboard.setGlobalScenario(BASE_SCENARIO);
     }
+  }
+  /** What a strict-lane proxy client (the default) sends for the Open-Meteo hop, without going upstream. */
+  const strictLaneProbe = () =>
+    dashboard.call('POST', '/proxy', {
+      url: ATHENS_ENDPOINT,
+      method: 'GET',
+      clientId: LANE,
+      strictLaneScenario: true,
+      allowUpstream: false,
+    });
+
+  test('strict lane default: the header picker does not move a client with a clientId but no lane', async () => {
+    await withoutLaneOnGlobalHeatwave(async () => {
+      expect((await dashboard.lanes()).laneGlobalFallback).toBe(false);
+      const probe = await strictLaneProbe();
+      expect(probe.status).toBe(412);
+      expect(probe.json.source).toBe('blocked_strict_lane');
+      expect(await gatewayTemp()).not.toBe(EXPECTED_TEMP.heatwave);
+    });
+  });
+
+  test('header picker (global scenario) moves a client without a lane when the lane global fallback is on', async () => {
+    await withoutLaneOnGlobalHeatwave(async () => {
+      await dashboard.setLaneGlobalFallback(true);
+      const probe = await strictLaneProbe();
+      expect(probe.json.scenarioResolution).toMatchObject({ scenario: 'heatwave', resolutionSource: 'global_fallback' });
+      await expect.poll(gatewayTemp, { timeout: 15_000 }).toBe(EXPECTED_TEMP.heatwave);
+    });
   });
 });
 

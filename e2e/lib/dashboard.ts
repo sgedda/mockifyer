@@ -30,7 +30,7 @@ export class Dashboard {
   deleteScenario(scenario: string) { return this.call('POST', '/scenario-config/delete', { scenario }); }
 
   // client lanes
-  lanes(): Promise<{ enabled: boolean; lanes: Json[] }> { return this.ok('GET', '/client-lanes'); }
+  lanes(): Promise<{ enabled: boolean; lanes: Json[]; laneGlobalFallback?: boolean }> { return this.ok('GET', '/client-lanes'); }
   async lane(clientId: string) { return (await this.lanes()).lanes.find((l: Json) => l.clientId === clientId); }
   setLaneScenario(clientId: string, scenario: string) { return this.ok('PUT', `/client-lanes/${clientId}/scenario`, { scenario }); }
   deleteLane(clientId: string) { return this.ok('DELETE', `/client-lanes/${clientId}`); }
