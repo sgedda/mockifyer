@@ -122,6 +122,8 @@ export async function ensureTestData() {
     // Write response data into the existing mock via PUT
     await dashboard.putMock(athensMock.filename, {
       responseData: liveData,
+      responseStatus: 200,
+      responseHeaders: { 'content-type': 'application/json' },
       replayMode: 'stored',
       alwaysUseRealApi: false,
     }, BASE_SCENARIO);
@@ -177,6 +179,8 @@ export async function ensureTestData() {
       mockData.data.response.data.current.temperature_2m = expectedTemp;
       await dashboard.putMock(athensMock.filename, {
         responseData: mockData.data.response.data,
+        responseStatus: 200,
+        responseHeaders: { 'content-type': 'application/json' },
         replayMode: 'stored',
         alwaysUseRealApi: false,
       }, scenario);
