@@ -454,7 +454,13 @@ export class DashboardUi {
   async expectClientConnection(scenario: string, lane = LANE) {
     const toggle = this.page.getByRole('button', { name: /^Client connections/ });
     await navigateBy(toggle);
-    const row = this.page.locator('div.grid').filter({ has: this.page.getByTitle(lane, { exact: true }) });
+    const laneTitle = this.page.getByTitle(lane, { exact: true });
+    const table = this.page
+      .locator('div')
+      .filter({ has: this.page.getByText('Last resolved', { exact: true }) })
+      .filter({ has: laneTitle })
+      .last();
+    const row = table.locator(':scope > div').filter({ has: laneTitle });
     await expect(row.locator('span').nth(1)).toHaveText(scenario);
     await expect(row.locator('span').nth(2)).toContainText(scenario);
     await presentChange(row, async () => undefined);
