@@ -54,7 +54,10 @@ function readRecordResponses(): boolean {
  */
 export async function initializeMockifyerFromEnv(options: { label: string }): Promise<void> {
   const mode = (process.env[MOCKIFYER_RUNTIME_KEY] ?? 'filesystem').toLowerCase();
-  const record = process.env.MOCKIFYER_RECORD === 'true';
+  const recordEnv = process.env.MOCKIFYER_RECORD?.trim();
+  const record = recordEnv === 'true';
+  // Unset: leave recordOnMiss undefined so /api/proxy omits `record` and the dashboard's Record switch decides.
+  const recordOnMiss = recordEnv ? record : undefined;
   const recordResponses = readRecordResponses();
   const mockDataPath = readMockDataPath();
   const clientId = process.env.MOCKIFYER_CLIENT_ID?.trim() || undefined;
@@ -75,7 +78,7 @@ export async function initializeMockifyerFromEnv(options: { label: string }): Pr
     await initMockifyerForDashboardProxy({
       dashboardBaseUrl,
       mockDataPath,
-      recordOnMiss: record,
+      recordOnMiss,
       recordResponses,
       useGlobalFetch: true,
       clientId,
@@ -98,7 +101,7 @@ export async function initializeMockifyerFromEnv(options: { label: string }): Pr
     console.log(
       `[Mockifyer] ${options.label}: dashboard proxy ready (${dashboardBaseUrl})` +
         ` · activation=${activationMode}` +
-        ` · recordOnMiss=${String(record)}` +
+        ` · recordOnMiss=${recordOnMiss === undefined ? 'dashboard Record switch' : String(recordOnMiss)}` +
         ` · recordBodies=${String(recordResponses)}`
     );
     return;
