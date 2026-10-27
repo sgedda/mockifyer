@@ -388,6 +388,79 @@ export class DashboardUi {
       .filter({ has: this.page.getByText(source, { exact: true }) });
   }
 
+  /** Network log option for the header scenario: store request/response body previews on new events. */
+  async setNetworkBodies(on: boolean) {
+    const button = this.page.getByRole('button', { name: /^Bodies (on|off)$/ });
+    if ((await button.textContent())?.trim() === `Bodies ${on ? 'on' : 'off'}`) return;
+    await presentChange(button, async () => {
+      await button.click();
+      await this.expectToast(on ? 'Body capture enabled (privacy caution)' : 'Body capture disabled');
+    });
+  }
+
+  /** Network: stop polling so the trace tree holds still while it is explored ("Live" -> "Paused"). */
+  async pauseLiveTraffic() {
+    const live = this.page.getByRole('button', { name: 'Live', exact: true });
+    await presentChange(live, async () => {
+      await live.click();
+      await expect(this.page.getByRole('button', { name: 'Paused', exact: true })).toBeVisible();
+    }, PRESENTATION_NAV_HOLD_MS);
+  }
+
+  /**
+   * Trace view: Collapse all, expand `root`, then each nested hop whose label is next in `labels`.
+   * Rows are flat siblings indented by depth, so a child is the first matching row below its parent.
+   */
+  async expandTrace(root: Locator, ...labels: string[]): Promise<Locator[]> {
+    await navigateBy(this.page.getByRole('button', { name: 'Collapse all', exact: true }));
+    const rows = [root];
+    for (const label of labels) {
+      const parent = rows[rows.length - 1];
+      await expect(parent).toBeVisible();
+      await navigateBy(parent.locator('xpath=preceding-sibling::button[1]'));
+      const child = parent.locator(`xpath=../following-sibling::div[button[2][contains(., "${label}")]][1]/button[2]`);
+      await expect(child).toBeVisible();
+      rows.push(child);
+    }
+    return rows;
+  }
+
+  private detailsPane(): Locator {
+    return this.page
+      .locator('div')
+      .filter({ has: this.page.getByRole('heading', { name: 'Details', exact: true }) })
+      .filter({ has: this.page.getByText('URL', { exact: true }) })
+      .last();
+  }
+
+  /** A Details row (Source, Status, Duration, Lane, ...) of the selected network event. */
+  async expectDetail(label: string, value: string | RegExp) {
+    const row = this.detailsPane().getByText(label, { exact: true }).locator('xpath=..');
+    await expect(row).toContainText(value);
+    await presentChange(row, async () => undefined, PRESENTATION_NAV_HOLD_MS);
+  }
+
+  /** A Details block (Request headers, Response headers, Request body, Response body) of the selected event. */
+  async expectDetailBlock(title: string, contains: string) {
+    const block = this.detailsPane()
+      .getByText(title, { exact: true })
+      .locator('xpath=(following-sibling::pre | ancestor::div[1]/following-sibling::pre)[1]');
+    await block.scrollIntoViewIfNeeded();
+    await expect(block).toContainText(contains);
+    await presentChange(block, async () => undefined);
+  }
+
+  /** Header panel "Client connections": a lane's configured and last resolved scenario. */
+  async expectClientConnection(scenario: string, lane = LANE) {
+    const toggle = this.page.getByRole('button', { name: /^Client connections/ });
+    await navigateBy(toggle);
+    const row = this.page.locator('div.grid').filter({ has: this.page.getByTitle(lane, { exact: true }) });
+    await expect(row.locator('span').nth(1)).toHaveText(scenario);
+    await expect(row.locator('span').nth(2)).toContainText(scenario);
+    await presentChange(row, async () => undefined);
+    await navigateBy(toggle);
+  }
+
   /** Click a hop row; the Details pane then shows its URL. */
   async selectHop(hop: Locator, urlPrefix: string) {
     await presentChange(hop, async () => {

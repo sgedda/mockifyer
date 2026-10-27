@@ -71,6 +71,9 @@ export class Dashboard {
   setDateConfig(body: Json) { return this.ok('POST', '/date-config', body); }
 
   // network log / traces
+  setNetworkBodies(scenario: string, captureBodies: boolean) {
+    return this.ok('PUT', '/network-events/config', { scenario, captureBodies });
+  }
   async networkEvents(scenario: string, limit = 50): Promise<Json[]> {
     return (await this.ok('GET', `/network-events?scenario=${encodeURIComponent(scenario)}&limit=${limit}`)).events;
   }

@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import { test, holdForClip, openAppFromLogin } from '../lib/gui';
+import { test, holdForClip, openAppFromLogin, PRESENTATION } from '../lib/gui';
 import { ACTOR, documented, type Actor } from '../lib/docs';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
 import { followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
@@ -26,6 +26,9 @@ const BASE_TEMP = EXPECTED_TEMP[BASE_SCENARIO];
 const EDITED_TEMP = 37;
 const OVERRIDE_TEMP = 61;
 const UPSTREAM_ERROR_STATUS = 503;
+/** Scenarios whose network log the tracing walkthrough switches to "Bodies on" (restored in afterEach). */
+const TRACE_SCENARIOS = [BASE_SCENARIO, 'heatwave'];
+const TRACING_TIMEOUT_MS = PRESENTATION ? 600_000 : 180_000;
 
 const { dashboardUi: UI, app: APP, dashboardApi: API, helper: HELPER } = ACTOR;
 
@@ -70,6 +73,7 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await dashboard.putMock(file, { responseData: original, statusOverride: null }, BASE_SCENARIO);
     await dashboard.clearFieldOverrides(file, BASE_SCENARIO);
     await dashboard.restoreDemoScenarios();
+    for (const scenario of TRACE_SCENARIOS) await dashboard.setNetworkBodies(scenario, false);
     await expect.poll(gatewayTemp, { timeout: 20_000 }).toBe(BASE_TEMP);
   });
   test.afterAll(pinToBaseAndWait);
@@ -206,5 +210,96 @@ test.describe('dashboard GUI drives the app', { tag: '@gui' }, () => {
     await expect(wanderHop).toBeVisible();
     await dash.selectHop(wanderHop, WANDER_DISCOVER_URL);
     await dash.selectHop(mockHit, ATHENS_ENDPOINT_PREFIX);
+  });
+
+  test('tracing walkthrough: Network trace and Details for a mock hit, a lane switch and a 503 fallback', gui(
+    'Real app traffic traced in the dashboard: the nested Open-Meteo hop is served from the mock with the value the app shows (99°), a lane switch to heatwave resolves to that scenario (44°), and a 503 status override shows up on the hop while wander-api falls back (18°).',
+    [
+      [UI, `(a) ${NAV.network[1]}; "Bodies off" -> "Bodies on" (store body previews for ${BASE_SCENARIO}); Clear`],
+      [APP, `Refetch Discover: ${BASE_TEMP}°`],
+      [UI, 'Trace view: Collapse all; expand GET /api/discover (gateway) -> GET /discover (wander-api); the Open-Meteo GET /v1/forecast hop under it is "Mock"'],
+      [UI, `Click the Open-Meteo hop -> Details: URL, Source Mock, Status 200, Duration, Lane ${LANE}; Request headers carry x-mockifyer-client-id: ${LANE}; Response body has "temperature_2m": ${BASE_TEMP}`],
+      [UI, `Click wander-api GET /discover -> Details: Source Upstream (live), Status 200; Response body is the Discover payload with "temperature_2m": ${BASE_TEMP}`],
+      [UI, '(b) ' + NAV.clientLanes[1] + '; lane scenario = heatwave'],
+      [APP, `Refetch until ${EXPECTED_TEMP.heatwave}°`],
+      [UI, 'Header Scenario picker -> heatwave (the Network view lists the header scenario); sidebar Network: "Bodies on" for heatwave, Clear'],
+      [APP, `Refetch Discover: ${EXPECTED_TEMP.heatwave}°`],
+      [UI, `Trace: expand GET /api/discover -> GET /discover; Open-Meteo hop "Mock" -> Details Source Mock, Lane ${LANE}; Response body "temperature_2m": ${EXPECTED_TEMP.heatwave}`],
+      [UI, `Header "Client connections": ${LANE} has Scenario (lane) heatwave and Last resolved heatwave`],
+      [UI, `(c) Client lanes: lane scenario = ${BASE_SCENARIO}; header picker -> ${BASE_SCENARIO}`],
+      [UI, NAV.athensMock[1] + `; Request tab, Status Override = ${UPSTREAM_ERROR_STATUS}`],
+      [APP, `Refetch until ${WANDER_FALLBACK_TEMP}° (wander-api fallback weather)`],
+      [UI, 'Sidebar Network, Clear'],
+      [APP, `Refetch Discover: ${WANDER_FALLBACK_TEMP}°`],
+      [UI, `Trace: expand GET /api/discover -> GET /discover; Open-Meteo hop "Mock" -> Details Status ${UPSTREAM_ERROR_STATUS}`],
+      [UI, `Click wander-api GET /discover -> Details: Status 200; Response body has "source": "fallback", "temperature_2m": ${WANDER_FALLBACK_TEMP} and the upstream error "Upstream ${UPSTREAM_ERROR_STATUS}"`],
+    ],
+  ), async ({ page, dash }) => {
+    test.setTimeout(TRACING_TIMEOUT_MS);
+    /**
+     * Clear the lane's log, load Discover once more, wait for the fresh Open-Meteo hop, pause the live
+     * list and open the trace GET /api/discover -> GET /discover -> GET /v1/forecast.
+     */
+    async function traceFreshLoad(appValue: number) {
+      await dash.clearNetworkLog();
+      await appShows(page, appValue);
+      await expect(dash.networkHop('Mock', 'GET /v1/forecast').first()).toBeVisible({ timeout: 20_000 });
+      await dash.pauseLiveTraffic();
+      const [, wanderRow, forecastRow] = await dash.expandTrace(
+        dash.networkHop('Upstream', 'GET /api/discover').first(),
+        'GET /discover',
+        'GET /v1/forecast',
+      );
+      await expect(wanderRow).toContainText('Upstream');
+      await expect(forecastRow).toContainText('Mock');
+      return { wanderRow, forecastRow };
+    }
+
+    // (a) Open-Meteo served from the mock under wander-api GET /discover.
+    await dash.openNetworkForLane();
+    await dash.setNetworkBodies(true);
+    let { wanderRow, forecastRow } = await traceFreshLoad(BASE_TEMP);
+    await dash.selectHop(forecastRow, ATHENS_ENDPOINT_PREFIX);
+    await dash.expectDetail('Source', 'Mock');
+    await dash.expectDetail('Status', '200');
+    await dash.expectDetail('Duration', /\d+ ms/);
+    await dash.expectDetail('Lane', LANE);
+    await dash.expectDetailBlock('Request headers', `x-mockifyer-client-id: ${LANE}`);
+    await dash.expectDetailBlock('Response body', `"temperature_2m": ${BASE_TEMP}`);
+    await dash.selectHop(wanderRow, WANDER_DISCOVER_URL);
+    await dash.expectDetail('Source', 'Upstream');
+    await dash.expectDetail('Status', '200');
+    await dash.expectDetailBlock('Response body', `"temperature_2m": ${BASE_TEMP}`);
+
+    // (b) The same call after a lane switch to heatwave.
+    await dash.openClientLanes();
+    await dash.setLaneScenario('heatwave');
+    await appShows(page, EXPECTED_TEMP.heatwave);
+    await dash.pickHeaderScenario('heatwave');
+    await dash.openNetworkForLane();
+    await dash.setNetworkBodies(true);
+    ({ wanderRow, forecastRow } = await traceFreshLoad(EXPECTED_TEMP.heatwave));
+    await dash.selectHop(forecastRow, ATHENS_ENDPOINT_PREFIX);
+    await dash.expectDetail('Source', 'Mock');
+    await dash.expectDetail('Lane', LANE);
+    await dash.expectDetailBlock('Response body', `"temperature_2m": ${EXPECTED_TEMP.heatwave}`);
+    await dash.expectClientConnection('heatwave');
+
+    // (c) A 503 status override on the Open-Meteo mock; wander-api falls back.
+    await dash.openClientLanes();
+    await dash.setLaneScenario(BASE_SCENARIO);
+    await dash.pickHeaderScenario(BASE_SCENARIO);
+    await dash.openAthensMock(file);
+    await dash.saveStatusOverride(UPSTREAM_ERROR_STATUS);
+    await appShows(page, WANDER_FALLBACK_TEMP);
+    await dash.openFromSidebar('Network');
+    ({ wanderRow, forecastRow } = await traceFreshLoad(WANDER_FALLBACK_TEMP));
+    await dash.selectHop(forecastRow, ATHENS_ENDPOINT_PREFIX);
+    await dash.expectDetail('Status', String(UPSTREAM_ERROR_STATUS));
+    await dash.selectHop(wanderRow, WANDER_DISCOVER_URL);
+    await dash.expectDetail('Status', '200');
+    await dash.expectDetailBlock('Response body', '"source": "fallback"');
+    await dash.expectDetailBlock('Response body', `"temperature_2m": ${WANDER_FALLBACK_TEMP}`);
+    await dash.expectDetailBlock('Response body', `Upstream ${UPSTREAM_ERROR_STATUS}`);
   });
 });
