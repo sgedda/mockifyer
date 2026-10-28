@@ -6,9 +6,9 @@ import { DASHBOARD_VIDEO_ATTACHMENT } from './videos';
 /** Desktop size: the dashboard sidebar is only static from the `lg` breakpoint (1024px). */
 export const DASHBOARD_VIEWPORT = { width: 1280, height: 800 };
 /** Keeps the final state on screen for a moment so each clip ends on the result. */
-const FINAL_FRAME_HOLD_MS = 750;
+export const FINAL_FRAME_HOLD_MS = 750;
 /** Long enough for a viewer to read an intermediate app value in the recording. */
-const CHANGE_HOLD_MS = 500;
+export const CHANGE_HOLD_MS = 500;
 
 /** E2E_PRESENTATION=1: slow, readable recordings. Off: every helper below keeps the normal timing. */
 export const PRESENTATION = presentationOn();
@@ -122,6 +122,9 @@ const SIMULATION_TOASTS: Record<SimulationField, { set: (value: number) => strin
 
 /** The dashboard used like a user would: navigation, form fields, buttons and the resulting toasts. */
 export class DashboardUi {
+  /** When the page (and so its recording) was opened, to line the clip up with an emulator recording. */
+  readonly openedAtMs = Date.now();
+
   constructor(readonly page: Page) {}
 
   private async expectToast(text: string) {

@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 /** Demo account the WanderWeird web app signs in with (username and password are the same). */
-const DEMO_USER = 'wanderer';
+export const DEMO_USER = 'wanderer';
 
 /** How a helper clicks and types; GUI tests pass presentation-aware versions (lib/gui.ts). */
 export interface UiActions {
