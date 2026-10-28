@@ -109,6 +109,9 @@ export const test = base.extend<{ dash: DashboardUi; dashboardUrl: string }>({
   },
 });
 
+/** Header Client connections panel: polls getClientLanes every 15 s (POLL_MS); one poll plus margin. */
+const CLIENT_CONNECTIONS_REFRESH_MS = 20_000;
+
 /** Mock editor > Request tab > Response Simulation fields (their visible labels). */
 export const SIMULATION = { status: 'Status Override', delay: 'Response Delay (ms)' } as const;
 type SimulationField = (typeof SIMULATION)[keyof typeof SIMULATION];
@@ -494,8 +497,10 @@ export class DashboardUi {
       .filter({ has: laneTitle })
       .last();
     const row = table.locator(':scope > div').filter({ has: laneTitle });
-    await expect(row.locator('span').nth(1)).toHaveText(scenario);
-    await expect(row.locator('span').nth(2)).toContainText(scenario);
+    // Opening the panel does not refetch: it stays mounted and polls getClientLanes, so wait for a poll.
+    const refresh = { timeout: CLIENT_CONNECTIONS_REFRESH_MS };
+    await expect(row.locator('span').nth(1)).toHaveText(scenario, refresh);
+    await expect(row.locator('span').nth(2)).toContainText(scenario, refresh);
     await presentChange(row, async () => undefined);
     await navigateBy(toggle);
   }
