@@ -1,7 +1,9 @@
 /**
  * Builds what CI uploads in e2e-gui-videos from the JSON report of the last run:
  *  - one side-by-side clip per dashboard GUI test (app left, dashboard right, same height, ffmpeg hstack),
- *    gui-videos/<spec>--<test title>.mp4, with the source webms copied to gui-videos/individual/;
+ *    gui-videos/<spec>--<test title>.mp4, with the source recordings copied to gui-videos/individual/.
+ *    The app pane is the browser page (webm) or, for Android tests, the emulator recording (mp4); Android
+ *    tests record when each clip started, and the one that started first is trimmed so both line up;
  *  - a Markdown description next to each clip with the same base name (command, env, steps and
  *    assertions, workflow steps, local reproduce commands), and one per other test in gui-videos/other-tests/;
  *  - the run summary gui-videos/e2e-run-summary.md, also appended to $GITHUB_STEP_SUMMARY when set.
@@ -9,17 +11,14 @@
  *   npm run artifacts      (after `npx playwright test`; ffmpeg comes from the ffmpeg-static devDependency)
  */
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import ffmpegStatic from 'ffmpeg-static';
 import { readReport, testRuns, type TestRun } from '../lib/report';
 import { relativeTo, runSummary, testDoc, type RunContext, type TestFiles } from '../lib/run-docs';
-import { GUI_VIDEOS_DIR, INDIVIDUAL_DIR, OTHER_TESTS_DIR, RESULTS_JSON, RUN_SUMMARY_FILE } from '../lib/videos';
+import { clipStartOffsets, FFMPEG, GUI_VIDEOS_DIR, INDIVIDUAL_DIR, OTHER_TESTS_DIR, RESULTS_JSON, RUN_SUMMARY_FILE, type ClipTiming } from '../lib/videos';
 import { runSteps } from '../lib/workflow';
 
 const CLIP_HEIGHT = 800;
-/** FFMPEG_PATH, else the ffmpeg-static devDependency binary (no apt needed in CI), else ffmpeg on PATH. */
-const FFMPEG = process.env.FFMPEG_PATH || (ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : 'ffmpeg');
 const MAX_SLUG_LENGTH = 80;
 /** Root of the e2e-videos artifact (see the upload step) is e2e/, of e2e-traces e2e/test-results. */
 const VIDEOS_ARTIFACT_ROOT = '.';
@@ -29,14 +28,16 @@ function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, MAX_SLUG_LENGTH);
 }
 
-function sideBySide(appVideo: string, dashboardVideo: string, out: string) {
+function sideBySide(appVideo: string, dashboardVideo: string, out: string, timing?: ClipTiming) {
+  const skip = clipStartOffsets(timing);
+  const input = (file: string, seconds: number) => [...(seconds > 0 ? ['-ss', seconds.toFixed(3)] : []), '-i', file];
   const filter =
     `[0:v]scale=-2:${CLIP_HEIGHT},setsar=1[app];` +
     `[1:v]scale=-2:${CLIP_HEIGHT},setsar=1[dash];` +
     '[app][dash]hstack=inputs=2[v]';
   execFileSync(FFMPEG, [
     '-y', '-loglevel', 'error',
-    '-i', appVideo, '-i', dashboardVideo,
+    ...input(appVideo, skip.app), ...input(dashboardVideo, skip.dashboard),
     '-filter_complex', filter, '-map', '[v]',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     out,
@@ -53,12 +54,12 @@ function filesFor(ctx: RunContext, test: TestRun, name: string): TestFiles {
   }
   const individual = path.join(GUI_VIDEOS_DIR, INDIVIDUAL_DIR);
   for (const [source, suffix] of [[test.appVideo, 'app'], [test.dashboardVideo, 'dashboard']] as const) {
-    const copy = path.join(individual, `${name}.${suffix}.webm`);
+    const copy = path.join(individual, `${name}.${suffix}${path.extname(source)}`);
     copyFileSync(source, copy);
     files.individual.push(copy);
   }
   try {
-    sideBySide(test.appVideo, test.dashboardVideo, path.join(GUI_VIDEOS_DIR, `${name}.mp4`));
+    sideBySide(test.appVideo, test.dashboardVideo, path.join(GUI_VIDEOS_DIR, `${name}.mp4`), test.clipTiming);
     files.sideBySide = `${name}.mp4`;
   } catch (error) {
     files.videoError = (error as { stderr?: Buffer }).stderr?.toString().trim() || String(error);

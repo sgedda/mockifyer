@@ -8,7 +8,9 @@ app must keep rendering from mocks when a backend is down.
 
 - Drives the **Expo web build** of WanderWeird in headless Chromium. It exercises the same Mockifyer
   clients, proxy runtime and dashboard, but **not** native React Native code paths (native HTTP stack,
-  RN fetch/axios patching on a device). That belongs in Maestro flows later.
+  RN fetch/axios patching on a device). The GUI tests that map onto the native app also run against the
+  Android debug APK with Maestro (project `android`, `.github/workflows/e2e-android.yml`); see
+  [native/README.md](native/README.md).
 - Talks to a **live demo stack**; it is not hermetic. Tests run serially (1 worker) and every test
   restores what it changes.
 
@@ -255,6 +257,10 @@ demo data), composes the GUI clips and writes the run docs. Artifacts of every r
 | `e2e-report` | Playwright HTML report (`npx playwright show-report <dir>`) |
 | `e2e-traces` | `trace.zip` per GUI test, plus traces of failed tests (`npx playwright show-trace <zip>`) |
 | `e2e-logs` | on failure only: `test-results/` and the dashboard, services, Metro and wander-api logs |
+
+`.github/workflows/e2e-android.yml` (nightly at 02:30 UTC, and manual with presentation mode on by default;
+not on pull requests) runs the `android` project on an emulator and uploads artifacts under the same names.
+In `e2e-videos`, the app recordings are `.mp4` files from `adb shell screenrecord`.
 
 Demo data seeding (`seed-demo-data.ts`) creates the three scenarios (guide-demo-2 99°, heatwave 44°,
 rainy-weekend 11°) with an Open-Meteo Athens forecast mock and the wanderweird-demo client lane,
