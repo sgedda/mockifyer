@@ -16,7 +16,7 @@ test.describe('E2E Tutorial Page', () => {
 
   test('should display branch note callout', async ({ page }) => {
     await expect(page.getByText(/Branch note.*PR #487/i)).toBeVisible();
-    await expect(page.getByText(/cursor\/e2e-dashboard-gui-videos-7d37/i)).toBeVisible();
+    await expect(page.getByText(/cursor\/e2e-dashboard-gui-videos-7d37/i).first()).toBeVisible();
   });
 
   test('should display all major sections', async ({ page }) => {
@@ -31,9 +31,9 @@ test.describe('E2E Tutorial Page', () => {
 
   test('should display stack components table', async ({ page }) => {
     await expect(page.getByText(/WanderWeird app.*Expo web via Metro/i)).toBeVisible();
-    await expect(page.getByText(/gateway-api/i)).toBeVisible();
-    await expect(page.getByText(/wander-api/i)).toBeVisible();
-    await expect(page.getByText(/Mockifyer dashboard.*sqlite/i)).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'gateway-api' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'wander-api', exact: true })).toBeVisible();
+    await expect(page.getByText(/Mockifyer dashboard.*sqlite/i).first()).toBeVisible();
   });
 
   test('should have code blocks with installation commands', async ({ page }) => {
@@ -58,10 +58,10 @@ test.describe('E2E Tutorial Page', () => {
   });
 
   test('should display key temperatures mentioned in scenarios', async ({ page }) => {
-    await expect(page.getByText(/99°/i)).toBeVisible();
-    await expect(page.getByText(/44°/i)).toBeVisible();
-    await expect(page.getByText(/11°/i)).toBeVisible();
-    await expect(page.getByText(/18°/i)).toBeVisible();
+    await expect(page.getByText(/99°/i).first()).toBeVisible();
+    await expect(page.getByText(/44°/i).first()).toBeVisible();
+    await expect(page.getByText(/11°/i).first()).toBeVisible();
+    await expect(page.getByText(/18°/i).first()).toBeVisible();
   });
 
   test('should display conclusion with key benefits', async ({ page }) => {
