@@ -1,0 +1,55 @@
+# Login screen -> sign in through the form as the demo user -> Discover tab -> the Atlantis card's
+# Temperature tile matches TEMP_TEXT. NAV_HOLD_MS holds between the steps (presentation mode, else 0).
+# Env (all required, passed by lib/android.ts): USERNAME, PASSWORD, TEMP_TEXT (regex for the whole tile
+# text, e.g. "99°"), NAV_HOLD_MS, HOLD_MS.
+appId: com.mockifyer.wanderweird
+name: Sign in and open Discover
+---
+- assertVisible:
+    id: login-screen
+- tapOn:
+    id: login-username
+- eraseText
+- inputText: ${USERNAME}
+- runFlow:
+    when:
+      true: ${NAV_HOLD_MS > 0}
+    file: hold.yaml
+    env:
+      HOLD_MS: ${NAV_HOLD_MS}
+- tapOn:
+    id: login-password
+- eraseText
+- inputText: ${PASSWORD}
+- hideKeyboard
+- runFlow:
+    when:
+      true: ${NAV_HOLD_MS > 0}
+    file: hold.yaml
+    env:
+      HOLD_MS: ${NAV_HOLD_MS}
+- tapOn:
+    id: login-sign-in
+- extendedWaitUntil:
+    visible:
+      id: tab-discover
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${NAV_HOLD_MS > 0}
+    file: hold.yaml
+    env:
+      HOLD_MS: ${NAV_HOLD_MS}
+- tapOn:
+    id: tab-discover
+- extendedWaitUntil:
+    visible:
+      id: discover-temperature
+      text: ${TEMP_TEXT}
+    timeout: 30000
+- assertNotVisible:
+    id: discover-error
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: ${HOLD_MS}

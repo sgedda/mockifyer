@@ -3,8 +3,9 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import { REPO_ROOT, REPO_ROOT_PLACEHOLDER } from './report';
 
-export const WORKFLOW_FILE = '.github/workflows/e2e.yml';
-const JOB_ID = 'e2e';
+/** The workflow and job that ran the suite; e2e-android.yml sets both for its run docs. */
+export const WORKFLOW_FILE = process.env.E2E_WORKFLOW_FILE ?? '.github/workflows/e2e.yml';
+export const JOB_ID = process.env.E2E_WORKFLOW_JOB ?? 'e2e';
 const API_TIMEOUT_MS = 10_000;
 
 export const STEP_KIND = {
@@ -28,14 +29,23 @@ export interface WorkflowStep {
   durationS?: number;
 }
 
-interface YamlStep { name?: string; run?: string; uses?: string; 'working-directory'?: string; if?: string }
+/** `with.script` / `with.working-directory`: actions that run commands, e.g. the Android emulator runner. */
+interface YamlStep {
+  name?: string;
+  run?: string;
+  uses?: string;
+  'working-directory'?: string;
+  if?: string;
+  with?: { script?: string; 'working-directory'?: string };
+}
 interface ApiStep { name: string; status: string; conclusion: string | null; started_at?: string | null; completed_at?: string | null }
 
 /** Demo is checked first: the Expo and services steps carry MOCKIFYER_* env but run the demo app. */
 function kindOf(step: YamlStep): StepKind {
   const name = step.name ?? step.uses ?? '';
-  const text = `${name}\n${step.run ?? ''}`;
-  if (/playwright test/.test(step.run ?? '')) return STEP_KIND.test;
+  const command = step.run ?? step.with?.script ?? '';
+  const text = `${name}\n${command}`;
+  if (/playwright test/.test(command)) return STEP_KIND.test;
   if (/^(Checkout|Setup|Install root|Install Playwright|Wait|Verify|Compose|Write|Upload|Debug)/i.test(name)) {
     return STEP_KIND.helper;
   }
@@ -60,9 +70,9 @@ export function workflowSteps(): WorkflowStep[] {
   return (job.steps as YamlStep[]).map((step) => ({
     name: step.name ?? step.uses ?? 'step',
     kind: kindOf(step),
-    run: resolve(step.run),
+    run: resolve(step.run ?? step.with?.script),
     uses: step.uses,
-    workingDirectory: resolve(step['working-directory']),
+    workingDirectory: resolve(step['working-directory'] ?? step.with?.['working-directory']),
     if: step.if,
   }));
 }
