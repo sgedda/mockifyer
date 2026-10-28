@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ASSERTS_ANNOTATION, isActor, type Actor, type Annotation } from './docs';
-import { APP_VIDEO_ATTACHMENT, DASHBOARD_VIDEO_ATTACHMENT } from './videos';
+import {
+  APP_VIDEO_ATTACHMENT,
+  CLIP_TIMING_ATTACHMENT,
+  DASHBOARD_VIDEO_ATTACHMENT,
+  DEVICE_VIDEO_ATTACHMENT,
+  EXECUTED_STEPS_ATTACHMENT,
+  type ClipTiming,
+  type ExecutedStep,
+} from './videos';
 
 /** Repository root; absolute paths under it are written as REPO_ROOT_PLACEHOLDER in generated docs. */
 export const REPO_ROOT = path.resolve(__dirname, '../..');
@@ -40,13 +48,22 @@ export interface TestRun {
   asserts?: string;
   steps: Array<{ actor: Actor; description: string }>;
   notes: Annotation[];
+  /** Browser page recording, or the emulator recording of an Android test. */
   appVideo?: string;
   dashboardVideo?: string;
   trace?: string;
+  /** Android tests: when each recording started, to line them up. */
+  clipTiming?: ClipTiming;
+  /** Android tests: Maestro runs and dashboard actions as they ran. */
+  executedSteps?: ExecutedStep[];
 }
 
 export function readReport(file: string): PlaywrightReport {
   return JSON.parse(readFileSync(file, 'utf8'));
+}
+
+function readJsonAttachment<T>(file?: string): T | undefined {
+  return file && existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as T) : undefined;
 }
 
 function* specsOf(suite: ReportSuite, describe: string[] = []): Generator<{ spec: ReportSpec; describe: string[] }> {
@@ -87,9 +104,11 @@ export function testRuns(report: PlaywrightReport): TestRun[] {
           asserts: annotations.find((a) => a.type === ASSERTS_ANNOTATION)?.description,
           steps: annotations.flatMap((a) => (isActor(a.type) ? [{ actor: a.type, description: a.description ?? '' }] : [])),
           notes: annotations.filter((a) => a.type !== ASSERTS_ANNOTATION && !isActor(a.type)),
-          appVideo: attachment(APP_VIDEO_ATTACHMENT),
+          appVideo: attachment(APP_VIDEO_ATTACHMENT) ?? attachment(DEVICE_VIDEO_ATTACHMENT),
           dashboardVideo: attachment(DASHBOARD_VIDEO_ATTACHMENT),
           trace: attachment('trace'),
+          clipTiming: readJsonAttachment<ClipTiming>(attachment(CLIP_TIMING_ATTACHMENT)),
+          executedSteps: readJsonAttachment<ExecutedStep[]>(attachment(EXECUTED_STEPS_ATTACHMENT)),
         });
       }
     }

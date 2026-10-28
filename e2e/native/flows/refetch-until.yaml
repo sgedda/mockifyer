@@ -1,0 +1,25 @@
+# Re-open Discover (Trips tab -> Discover tab refetches /api/discover) until the Temperature tile matches
+# TEMP_TEXT, with no error text on screen, then hold it for HOLD_MS. A refetch shows no loading state:
+# the old card stays until the answer arrives, so each attempt waits for the new value.
+# Env (passed by lib/android.ts): TEMP_TEXT (regex for the whole tile text, e.g. "37°"), HOLD_MS.
+appId: com.mockifyer.wanderweird
+name: Refetch Discover until the Temperature tile matches
+---
+- retry:
+    maxRetries: 3
+    commands:
+      - tapOn:
+          id: tab-trips
+      - tapOn:
+          id: tab-discover
+      - extendedWaitUntil:
+          visible:
+            id: discover-temperature
+            text: ${TEMP_TEXT}
+          timeout: 10000
+      - assertNotVisible:
+          id: discover-error
+- runFlow:
+    file: hold.yaml
+    env:
+      HOLD_MS: ${HOLD_MS}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { LogBox } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -20,10 +21,16 @@ import {
 } from '../src/context/MockifyerContext';
 import { initializeMockifyer } from '../src/mockifyer-setup';
 import { registerMockifyerDevMenuShortcut } from '../src/dev/register-dev-menu';
+import { readEnv } from '../src/dev/mockifyer-env';
 import { LoadingBlock, Screen } from '../src/components/ui';
 import { colors } from '../src/theme/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+// Native e2e (e2e/native): LogBox warning banners would cover the tab bar the flows tap.
+if (readEnv('EXPO_PUBLIC_E2E') === '1') {
+  LogBox.ignoreAllLogs();
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
