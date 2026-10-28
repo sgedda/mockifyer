@@ -3,6 +3,7 @@ import { dashboard, gatewayTemp } from '../lib/dashboard';
 import { withMcp } from '../lib/mcp';
 import { openDiscover, expectTemperature, expectTemperatureAfterRefetch } from '../lib/app';
 import { BASE_SCENARIO, EXPECTED_TEMP } from '../lib/env';
+import { documented } from '../lib/docs';
 
 // The demo runs wander-api pinned to BASE_SCENARIO, so edits to that scenario reach the app.
 const BASE_TEMP = EXPECTED_TEMP[BASE_SCENARIO];
@@ -19,11 +20,11 @@ test.describe('overrides: dashboard edits reach the app', () => {
   test.afterEach(async () => {
     // Always put the response body back and clear field overrides.
     await dashboard.putMock(file, { responseData: original }, BASE_SCENARIO);
-    await dashboard.call('PATCH', `/mocks/${file}/field-overrides?scenario=${BASE_SCENARIO}`, { responseFieldOverrides: null });
+    await dashboard.clearFieldOverrides(file, BASE_SCENARIO);
     await expect.poll(gatewayTemp, { timeout: 20_000 }).toBe(BASE_TEMP);
   });
 
-  test('responseData edit via PUT /api/mocks shows in the app', async ({ page }) => {
+  test('responseData edit via PUT /api/mocks shows in the app', documented('A responseData edit through PUT /api/mocks makes the app show 37°.'), async ({ page }) => {
     await openDiscover(page);
     await expectTemperature(page, BASE_TEMP);
     const edited = structuredClone(original);
@@ -33,7 +34,7 @@ test.describe('overrides: dashboard edits reach the app', () => {
     await expectTemperatureAfterRefetch(page, 37);
   });
 
-  test('field override via PATCH field-overrides shows in the app, stored body unchanged', async ({ page }) => {
+  test('field override via PATCH field-overrides shows in the app, stored body unchanged', documented('A field override through PATCH field-overrides makes the app show -999° while the stored body stays 99.'), async ({ page }) => {
     const r = await dashboard.call('PATCH', `/mocks/${file}/field-overrides?scenario=${BASE_SCENARIO}`, {
       responseFieldOverrides: [{ path: 'current.temperature_2m', value: -999 }],
     });
@@ -45,7 +46,7 @@ test.describe('overrides: dashboard edits reach the app', () => {
     await expectTemperatureAfterRefetch(page, -999);
   });
 
-  test('MCP tool mockifyer_set_field_overrides (no agent) changes the app value', async ({ page }) => {
+  test('MCP tool mockifyer_set_field_overrides (no agent) changes the app value', documented('MCP tool mockifyer_set_field_overrides makes the app show 23° and reads back through MCP.'), async ({ page }) => {
     await withMcp(async (call, tools) => {
       expect(tools).toContain('mockifyer_set_field_overrides');
       const out = await call('mockifyer_set_field_overrides', {

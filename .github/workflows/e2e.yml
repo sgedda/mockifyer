@@ -7,6 +7,10 @@ on:
         description: 'Record video for all tests (not just failures)'
         type: boolean
         default: false
+      presentation:
+        description: 'Presentation mode: GUI tests hold ~2.5 s at each value change (slow, readable recordings)'
+        type: boolean
+        default: true
   schedule:
     - cron: '0 3 * * *'  # 3 AM UTC daily
   pull_request:
@@ -28,11 +32,16 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
     env:
       CI: 'true'
       WW: example-projects/wanderweird-travel
       NODE_ENV: development
       E2E_VIDEO: ${{ (github.event_name == 'schedule' || inputs.record_video) && 'on' || 'off' }}
+      # On for the nightly schedule and for manual runs (unless unticked); off for pull requests.
+      E2E_PRESENTATION: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.presentation)) && '1' || '0' }}
 
     steps:
       - name: Checkout
@@ -126,6 +135,8 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      # The `gui` project always records (app + dashboard) and traces; the `chromium` project
+      # records only on failure unless E2E_VIDEO is on (schedule / manual checkbox).
       - name: Run E2E tests
         working-directory: e2e
         env:
@@ -133,29 +144,78 @@ jobs:
           MAIN_MCP_CLI: ${{ github.workspace }}/packages/mockifyer-mcp/dist/cli.js
         run: npx playwright test
 
-      - name: Upload videos (when recording all tests)
-        if: env.E2E_VIDEO == 'on'
+      # Side-by-side clips plus a Markdown description per test and the run summary (also the job summary).
+      # GITHUB_TOKEN reads this job's step list for the docs; without it they list the steps from this file.
+      - name: Compose side-by-side GUI videos and run docs
+        if: ${{ !cancelled() && hashFiles('e2e/test-results/results.json') != '' }}
+        working-directory: e2e
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run artifacts
+
+      - name: Upload side-by-side GUI videos and run docs
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-videos-${{ github.run_number }}
-          path: e2e/test-results/**/*.webm
+          name: e2e-gui-videos
+          path: |
+            e2e/gui-videos/*.mp4
+            e2e/gui-videos/*.md
+            e2e/gui-videos/other-tests/*.md
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: warn
+          overwrite: true
 
-      - name: Upload report and artifacts on failure
+      - name: Upload individual videos
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-videos
+          path: |
+            e2e/gui-videos/individual/*.webm
+            e2e/test-results/**/*.webm
+            !e2e/test-results/dashboard-gui-*/**
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: e2e/playwright-report
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: e2e/test-results/**/trace.zip
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload test results and service logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report-${{ github.run_number }}
+          name: e2e-logs
           path: |
-            e2e/playwright-report
             e2e/test-results
             /tmp/dashboard.log
             /tmp/main-dashboard.log
             /tmp/services.log
             /tmp/metro.log
+            /tmp/wander-api.log
+            /tmp/gateway-api.log
+            /tmp/scratch-dashboard.log
           retention-days: 30
           if-no-files-found: warn
+          overwrite: true
 
       - name: Debug logs on failure
         if: failure()

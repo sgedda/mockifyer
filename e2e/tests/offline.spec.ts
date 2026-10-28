@@ -3,6 +3,7 @@ import { dashboard, gatewayAtlantis } from '../lib/dashboard';
 import { wander, waitForGateway } from '../lib/stack';
 import { openDiscover, expectTemperature } from '../lib/app';
 import { BASE_SCENARIO, EXPECTED_TEMP, LANE } from '../lib/env';
+import { documented } from '../lib/docs';
 
 const WANDER_DISCOVER = 'http://127.0.0.1:4203/discover';
 
@@ -21,7 +22,7 @@ test.describe('offline: wander-api down', () => {
     await waitForGateway();
   });
 
-  test('gateway answers 5xx JSON (no crash) when wander-api is down and the hop is on live API', async () => {
+  test('gateway answers 5xx JSON (no crash) when wander-api is down and the hop is on live API', documented('With wander-api stopped and its hop on live API, the gateway answers a 5xx JSON error and keeps running.'), async () => {
     wander.stop();
     const r = await gatewayAtlantis();
     expect(r.status).toBeGreaterThanOrEqual(500);
@@ -32,7 +33,7 @@ test.describe('offline: wander-api down', () => {
     expect(again.status).toBeGreaterThanOrEqual(500);
   });
 
-  test('app keeps rendering Discover from saved hop mocks when wander-api is down', async ({ page }) => {
+  test('app keeps rendering Discover from saved hop mocks when wander-api is down', documented('With wander-api stopped, the app still renders Atlantis from the saved gateway -> wander-api hop mocks.'), async ({ page }) => {
     wander.followLane();
     await waitForGateway();
     await openDiscover(page);
