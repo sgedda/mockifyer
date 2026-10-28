@@ -4,6 +4,7 @@ import {
   createMockifyerCorrelationMiddleware,
   initializeMockifyerFromEnv,
 } from '@wanderweird/mock-bootstrap';
+import { proxyJson } from './proxy-json';
 
 const PORT = Number(process.env.PORT ?? '4200');
 const AUTH_BASE = (process.env.AUTH_URL ?? 'http://127.0.0.1:4201').replace(/\/$/, '');
@@ -12,38 +13,6 @@ const WANDER_BASE = (process.env.WANDER_URL ?? 'http://127.0.0.1:4203').replace(
 const CMS_BASE = (process.env.CMS_URL ?? 'http://127.0.0.1:4204').replace(/\/$/, '');
 const LORE_BASE = (process.env.LORE_URL ?? 'http://127.0.0.1:4205').replace(/\/$/, '');
 const GRAPHQL_BASE = (process.env.GRAPHQL_URL ?? 'http://127.0.0.1:4206').replace(/\/$/, '');
-
-const UPSTREAM_UNAVAILABLE_STATUS = 502;
-
-/**
- * Express 4 does not catch rejected async handlers, so an unreachable upstream
- * (fetch throws on ECONNREFUSED) would crash the gateway. Answer 502 JSON instead.
- */
-async function proxyJson(
-  url: string,
-  init?: RequestInit
-): Promise<{ status: number; body: unknown }> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(init?.headers ?? {}),
-      },
-    });
-  } catch (err) {
-    const details = err instanceof Error ? err.message : String(err);
-    console.error(`[gateway-api] upstream unavailable: ${url}: ${details}`);
-    return {
-      status: UPSTREAM_UNAVAILABLE_STATUS,
-      body: { error: 'Upstream unavailable', upstream: url, details },
-    };
-  }
-  const body: unknown = await response.json().catch(async () => response.text());
-  return { status: response.status, body };
-}
 
 async function main(): Promise<void> {
   await initializeMockifyerFromEnv({ label: 'gateway-api' });
@@ -82,19 +51,15 @@ async function main(): Promise<void> {
       method: req.method,
       headers,
     };
+    let target = `${GRAPHQL_BASE}/graphql`;
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       init.body = JSON.stringify(req.body ?? {});
     } else if (typeof req.url === 'string' && req.url.includes('?')) {
-      const qs = req.url.slice(req.url.indexOf('?'));
-      const result = await fetch(`${GRAPHQL_BASE}/graphql${qs}`, { headers });
-      const body: unknown = await result.json().catch(async () => result.text());
-      res.status(result.status).json(body);
-      return;
+      target += req.url.slice(req.url.indexOf('?'));
     }
 
-    const result = await fetch(`${GRAPHQL_BASE}/graphql`, init);
-    const body: unknown = await result.json().catch(async () => result.text());
-    res.status(result.status).json(body);
+    const result = await proxyJson(target, init);
+    res.status(result.status).json(result.body);
   });
 
   app.get('/api/cms/navigation', async (_req, res) => {
