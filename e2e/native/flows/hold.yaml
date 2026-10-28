@@ -1,0 +1,10 @@
+# Keep the current frame on screen for HOLD_MS (presentation mode / readable clips). Maestro has no sleep
+# command: wait for an element that never exists and treat the timeout as success.
+appId: com.mockifyer.wanderweird
+name: Hold the current frame
+---
+- extendedWaitUntil:
+    visible:
+      id: e2e-hold-never-present
+    timeout: ${HOLD_MS}
+    optional: true
