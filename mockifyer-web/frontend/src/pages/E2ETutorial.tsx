@@ -306,6 +306,13 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-md text-sm">
+            <p className="text-blue-900 dark:text-blue-200">
+              <strong>Note:</strong> The clips below were recorded with <code className="bg-muted px-1 rounded">E2E_PRESENTATION=1</code>, 
+              which holds the moments where a value changes to make them easier to follow. They run longer than a normal CI run.
+            </p>
+          </div>
+          
           <div className="space-y-4">
             <div className="p-4 border rounded-lg">
               <h4 className="font-semibold mb-2">5.1 Mock editor: response body edit</h4>
@@ -316,9 +323,25 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                 <code className="bg-muted px-1 rounded text-xs">current → temperature_2m</code> = 37 → Save Changes. 
                 The app goes from <strong>99° → 37°</strong>.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> the saved body is what the app shows after a refetch, and it's stored.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/mock-editor-body-edit_bd79.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 46 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -327,10 +350,26 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                 <strong>You'll see:</strong> in Overrides, Add field override{' '}
                 <code className="bg-muted px-1 rounded text-xs">current.temperature_2m</code> = 61 → Save overlays → Open mock.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> the app shows <strong>61°</strong>, while the stored body (and the editor) 
                 still has <strong>99</strong>. The override changes only the value that's served.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/overrides-field-override_d0ea.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/overrides-field-override_2f53.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/overrides-field-override_2f53.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 54 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -338,9 +377,25 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
               <p className="text-sm text-muted-foreground mb-2">
                 <strong>You'll see:</strong> mock editor → Status Override = 503. The app shows <strong>18°</strong>.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> the proxy serves the 503, and wander-api uses its fallback weather.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/status-override-503_76a6.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/status-override-503_5fa0.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/status-override-503_5fa0.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 40 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -349,9 +404,25 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                 <strong>You'll see:</strong> Settings → Client lanes, where the lane scenario goes heatwave → 
                 rainy-weekend → guide-demo-2. The app shows <strong>44° → 11° → 99°</strong>.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> switching the lane's scenario moves the app with no restart and no code change.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/settings-client-lane_57a0.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/settings-client-lane_9642.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/settings-client-lane_9642.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 55 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -361,10 +432,26 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                 The app keeps showing <strong>live</strong> weather, not 44°. Ticking "Lane global fallback" 
                 moves it to <strong>44°</strong>.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> in strict lane mode (#484), a client with a client id but no lane 
                 ignores the global scenario until you opt in to the fallback.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/header-scenario-picker_bdbe.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 49 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -373,10 +460,26 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                 <strong>You'll see:</strong> the lane and header are both set to heatwave. Network is filtered 
                 to the lane, then Clear and an app reload. The app shows <strong>44°</strong>.
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-3">
                 <strong>Asserts:</strong> the trace lists the Open-Meteo <code className="bg-muted px-1 rounded text-xs">Mock</code> hop 
                 under wander-api <code className="bg-muted px-1 rounded text-xs">GET /discover</code>.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/network-view_be10.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/network-view_06c0.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/network-view_06c0.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 1 minute 9 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -384,7 +487,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 27 s in presentation mode. It uses its own empty dashboard on :3022.
               </p>
-              <div className="text-sm text-muted-foreground space-y-2">
+              <div className="text-sm text-muted-foreground space-y-2 mb-3">
                 <p>
                   <strong>1.</strong> The start screen is empty ("Total Files 0"). The app's first load is all live, 
                   and nothing is stored. Mocks shows "No mocks found". Network shows{' '}
@@ -417,13 +520,29 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                   Switching the lane A ↔ B moves the app between <strong>55°</strong> and <strong>66°</strong>.
                 </p>
               </div>
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="text-sm text-muted-foreground mb-2">
                 <strong>Asserts:</strong> only the Open-Meteo mock has a stored body, and every other entry is a placeholder.
               </p>
-              <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+              <p className="text-sm text-amber-600 dark:text-amber-400 mb-3">
                 <strong>Note:</strong> the per-endpoint control needs the endpoint to be stored first. Network shows 
                 live hops but has no per-endpoint toggle.
               </p>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/from-scratch_c4f2.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/from-scratch_f345.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/from-scratch_f345.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 4 minutes 26 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
@@ -431,7 +550,7 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
               <p className="text-sm text-muted-foreground mb-3">
                 4 min 23 s in presentation mode.
               </p>
-              <div className="text-sm text-muted-foreground space-y-2">
+              <div className="text-sm text-muted-foreground space-y-2 mb-3">
                 <p>
                   <strong>1. Mock hit:</strong> in Network (lane{' '}
                   <code className="bg-muted px-1 rounded text-xs">wanderweird-demo</code>), turn Bodies on and Clear. 
@@ -458,16 +577,32 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                   <code className="bg-muted px-1 rounded text-xs">"temperature_2m": 18</code> and "Upstream 503".
                 </p>
               </div>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/tracing-walkthrough_f4fb.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/tracing-walkthrough_7b9a.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/tracing-walkthrough_7b9a.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 4 minutes 23 seconds</p>
+              </div>
             </div>
 
             <div className="p-4 border rounded-lg">
               <h4 className="font-semibold mb-2">5.9 Delay and status override on one endpoint</h4>
               <p className="text-sm text-muted-foreground mb-3">
-                3.1 min in presentation mode. The test is in{' '}
+                3 min 7 s in presentation mode. The test is in{' '}
                 <code className="bg-muted px-1 rounded text-xs">dashboard-gui.spec.ts</code>, which runs the test{' '}
                 <code className="bg-muted px-1 rounded text-xs">-g 'response delay and status'</code>.
               </p>
-              <div className="text-sm text-muted-foreground space-y-2">
+              <div className="text-sm text-muted-foreground space-y-2 mb-3">
                 <p>
                   <strong>1.</strong> In the Request tab, set Response Delay = 2500 ms. Discover takes <strong>≥ 2500 ms</strong> and 
                   the app still shows <strong>99°</strong>. In the trace, the Open-Meteo hop has a Duration ≥ 2500 ms, 
@@ -487,6 +622,22 @@ dev@wanderweird:~/mockifyer/e2e$ npm run report        # Playwright HTML report`
                   <strong>4.</strong> Clear the delay, and the app shows <strong>18°</strong> fast. Clear the status, 
                   and it shows <strong>99°</strong> fast.
                 </p>
+              </div>
+              <div className="mb-2">
+                <video 
+                  controls 
+                  preload="none" 
+                  playsInline 
+                  poster="/videos/e2e-tutorial/delay-and-status-override_cc36.jpg"
+                  className="w-full rounded border"
+                >
+                  <source src="/videos/e2e-tutorial/delay-and-status-override_b200.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.{' '}
+                  <a href="/videos/e2e-tutorial/delay-and-status-override_b200.mp4" className="text-primary underline">
+                    Download the video
+                  </a>
+                </video>
+                <p className="text-xs text-muted-foreground mt-1 italic">Recording: 3 minutes 7 seconds</p>
               </div>
             </div>
           </div>

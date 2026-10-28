@@ -78,6 +78,32 @@ test.describe('E2E Tutorial Page', () => {
     await expect(page.getByText(/The tests drive the Expo.*web.*build/i)).toBeVisible();
   });
 
+  test('should embed video recordings for all nine scenarios', async ({ page }) => {
+    // Check that all 9 videos are present with correct sources
+    const videos = [
+      { section: '5.1', src: '/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4', poster: '/videos/e2e-tutorial/mock-editor-body-edit_bd79.jpg' },
+      { section: '5.2', src: '/videos/e2e-tutorial/overrides-field-override_2f53.mp4', poster: '/videos/e2e-tutorial/overrides-field-override_d0ea.jpg' },
+      { section: '5.3', src: '/videos/e2e-tutorial/status-override-503_5fa0.mp4', poster: '/videos/e2e-tutorial/status-override-503_76a6.jpg' },
+      { section: '5.4', src: '/videos/e2e-tutorial/settings-client-lane_9642.mp4', poster: '/videos/e2e-tutorial/settings-client-lane_57a0.jpg' },
+      { section: '5.5', src: '/videos/e2e-tutorial/header-scenario-picker_4de8.mp4', poster: '/videos/e2e-tutorial/header-scenario-picker_bdbe.jpg' },
+      { section: '5.6', src: '/videos/e2e-tutorial/network-view_06c0.mp4', poster: '/videos/e2e-tutorial/network-view_be10.jpg' },
+      { section: '5.7', src: '/videos/e2e-tutorial/from-scratch_f345.mp4', poster: '/videos/e2e-tutorial/from-scratch_c4f2.jpg' },
+      { section: '5.8', src: '/videos/e2e-tutorial/tracing-walkthrough_7b9a.mp4', poster: '/videos/e2e-tutorial/tracing-walkthrough_f4fb.jpg' },
+      { section: '5.9', src: '/videos/e2e-tutorial/delay-and-status-override_b200.mp4', poster: '/videos/e2e-tutorial/delay-and-status-override_cc36.jpg' },
+    ];
+
+    for (const video of videos) {
+      const videoElement = page.locator(`video source[src="${video.src}"]`);
+      await expect(videoElement).toBeAttached();
+      
+      const videoParent = page.locator(`video[poster="${video.poster}"]`);
+      await expect(videoParent).toBeAttached();
+    }
+
+    // Check that the presentation mode note is visible
+    await expect(page.getByText(/recorded with.*E2E_PRESENTATION/i)).toBeVisible();
+  });
+
   test('should be accessible from navigation', async ({ page }) => {
     await page.goto('/');
     const navLink = page.getByRole('navigation').getByRole('link', { name: 'E2E Tutorial' });
