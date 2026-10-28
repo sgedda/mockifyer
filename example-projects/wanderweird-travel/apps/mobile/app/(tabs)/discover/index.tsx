@@ -97,12 +97,12 @@ export default function DiscoverScreen() {
           <Text style={styles.banner}>{appConfig.maintenanceBanner}</Text>
         ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text testID="discover-error" style={styles.error}>{error}</Text> : null}
 
         {discover ? (
           <View style={styles.panel}>
             <View style={styles.placeHeader}>
-              <Text style={styles.place}>{discover.destination.name}</Text>
+              <Text testID="discover-place" style={styles.place}>{discover.destination.name}</Text>
               <Chip label={`match ${discover.serendipityScore}%`} tone="amber" />
             </View>
             <Text style={styles.blurb}>{discover.destination.blurb}</Text>
@@ -110,7 +110,7 @@ export default function DiscoverScreen() {
             <View style={styles.row}>
               <View style={styles.stat}>
                 <Text style={styles.statLabel}>Temperature</Text>
-                <Text style={styles.statValue}>
+                <Text testID="discover-temperature" style={styles.statValue}>
                   {weather?.temperature_2m != null ? `${weather.temperature_2m}°` : '—'}
                 </Text>
               </View>
