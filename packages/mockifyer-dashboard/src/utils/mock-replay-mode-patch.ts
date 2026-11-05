@@ -36,7 +36,18 @@ const DEFAULT_RESPONSE_STATUS = 200;
  * (`responsePending`, status 0) into a captured mock, so a `stored` replay mode in the
  * same request is kept instead of being queued as `refresh-next`.
  */
+function hasCapturedBody(mockData: MockData): boolean {
+  if (!mockData.response) return false;
+  return mockData.response.status !== PLACEHOLDER_RESPONSE_STATUS || mockData.response.data !== null;
+}
+
 export function applyResponseDataFromBody(mockData: MockData, responseData: unknown): void {
+  // A request-only stub stores status 0 and data null. Saving that null (the editor
+  // sends the current body) must not promote it to a captured 200, or the next
+  // "use saved mock" serves null instead of recording from live.
+  if (responseData == null && !hasCapturedBody(mockData)) {
+    return;
+  }
   if (!mockData.response) {
     mockData.response = { status: DEFAULT_RESPONSE_STATUS, data: {}, headers: {} };
   }

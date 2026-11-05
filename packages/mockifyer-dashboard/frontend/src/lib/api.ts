@@ -16,6 +16,7 @@ import type {
   FavoriteRequest,
 } from '@/types'
 import { getApiBase } from '@/lib/base-path'
+import { buildMockBehaviorUpdate, buildMockResponseUpdate } from '@/lib/mock-update-request'
 
 const API_BASE = getApiBase()
 
@@ -261,67 +262,30 @@ async function putMockUpdate(
 
 export async function updateMock(
   filename: string,
-  responseData: any,
+  responseData: unknown,
   responseDateOverrides?: MockResponseDateOverride[] | null,
   replayMode?: MockReplayMode | null,
   scenario?: string
-): Promise<void>
-export async function updateMock(
+): Promise<void> {
+  const update = buildMockResponseUpdate({
+    responseData,
+    responseDateOverrides,
+    replayMode,
+    scenario,
+  })
+  await putMockUpdate(filename, update.body, update.scenario)
+}
+
+/** Persist status override and/or response delay without replacing the stored body. */
+export async function updateMockBehavior(
   filename: string,
   updates: {
-    responseData?: any
-    responseDateOverrides?: MockResponseDateOverride[] | null
-    replayMode?: MockReplayMode | null
     statusOverride?: number | null
     responseDelayMs?: number | null
   },
   scenario?: string
-): Promise<void>
-export async function updateMock(
-  filename: string,
-  responseDataOrUpdates: any,
-  responseDateOverridesOrScenario?: MockResponseDateOverride[] | null | string,
-  replayMode?: MockReplayMode | null,
-  scenario?: string
 ): Promise<void> {
-  let body: Record<string, unknown>
-  let targetScenario: string | undefined
-
-  if (typeof responseDataOrUpdates === 'object' && 
-      (responseDataOrUpdates.responseData !== undefined || 
-       responseDataOrUpdates.responseDateOverrides !== undefined ||
-       responseDataOrUpdates.replayMode !== undefined ||
-       responseDataOrUpdates.statusOverride !== undefined ||
-       responseDataOrUpdates.responseDelayMs !== undefined)) {
-    body = {}
-    if (responseDataOrUpdates.responseData !== undefined) {
-      body.responseData = responseDataOrUpdates.responseData
-    }
-    if (responseDataOrUpdates.responseDateOverrides !== undefined) {
-      body.responseDateOverrides = responseDataOrUpdates.responseDateOverrides
-    }
-    if (responseDataOrUpdates.replayMode !== undefined) {
-      body.replayMode = responseDataOrUpdates.replayMode
-    }
-    if (responseDataOrUpdates.statusOverride !== undefined) {
-      body.statusOverride = responseDataOrUpdates.statusOverride
-    }
-    if (responseDataOrUpdates.responseDelayMs !== undefined) {
-      body.responseDelayMs = responseDataOrUpdates.responseDelayMs
-    }
-    targetScenario = typeof responseDateOverridesOrScenario === 'string' ? responseDateOverridesOrScenario : undefined
-  } else {
-    body = { responseData: responseDataOrUpdates }
-    if (responseDateOverridesOrScenario !== undefined && typeof responseDateOverridesOrScenario !== 'string') {
-      body.responseDateOverrides = responseDateOverridesOrScenario
-    }
-    if (replayMode !== undefined) {
-      body.replayMode = replayMode
-    }
-    targetScenario = scenario
-  }
-
-  await putMockUpdate(filename, body, targetScenario)
+  await putMockUpdate(filename, buildMockBehaviorUpdate(updates), scenario)
 }
 
 /** Persist only replay mode — avoids re-uploading a large GraphQL response body. */

@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/use-toast'
-import { updateMock, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
+import { updateMock, updateMockBehavior, updateMockReplayMode, refreshMockFromLive } from '@/lib/api'
 import JsonFieldEditor from './JsonFieldEditor'
 import type { MockData, MockFile, MockReplayMode } from '@/types'
 import {
@@ -441,7 +441,7 @@ export default function MockEditor({
     setStatusOverride(newStatus)
     try {
       setSaving(true)
-      await updateMock(mock.filename, { statusOverride: newStatus }, scenario)
+      await updateMockBehavior(mock.filename, { statusOverride: newStatus }, scenario)
       toast({
         title: 'Saved',
         description: newStatus === null ? 'Status override cleared' : `Status override set to ${newStatus}`,
@@ -474,7 +474,7 @@ export default function MockEditor({
     setResponseDelayMs(newDelay)
     try {
       setSaving(true)
-      await updateMock(mock.filename, { responseDelayMs: newDelay }, scenario)
+      await updateMockBehavior(mock.filename, { responseDelayMs: newDelay }, scenario)
       toast({
         title: 'Saved',
         description: newDelay === null ? 'Response delay cleared' : `Response delay set to ${newDelay}ms`,
