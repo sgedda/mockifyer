@@ -1,0 +1,258 @@
+name: E2E Android (WanderWeird native + Mockifyer dashboard)
+
+# The dashboard GUI tests of e2e.yml that map cleanly onto the native app (e2e/native/README.md):
+# Playwright drives the dashboard, Maestro drives the WanderWeird debug APK on an Android emulator.
+# Nightly and manual only (an emulator run is slow); e2e.yml stays the pull request check.
+on:
+  workflow_dispatch:
+    inputs:
+      presentation:
+        description: 'Presentation mode: hold ~2.5 s at each value change and between app navigation steps (slow, readable recordings)'
+        type: boolean
+        default: true
+  schedule:
+    - cron: '30 2 * * *'  # 02:30 UTC daily
+
+concurrency:
+  group: e2e-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+    env:
+      CI: 'true'
+      WW: example-projects/wanderweird-travel
+      NODE_ENV: development
+      E2E_ANDROID: '1'
+      E2E_PRESENTATION: ${{ (github.event_name == 'schedule' || inputs.presentation) && '1' || '0' }}
+      # The run docs (e2e/lib/workflow.ts) list the steps of this file and this job.
+      E2E_WORKFLOW_FILE: .github/workflows/e2e-android.yml
+      E2E_WORKFLOW_JOB: e2e-android
+      ANDROID_API_LEVEL: '34'
+      ANDROID_ABI: x86_64
+      MAESTRO_VERSION: '2.12.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+            example-projects/wanderweird-travel/package-lock.json
+
+      - name: Setup Java 17 (Gradle, Maestro)
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build Mockifyer packages
+        run: |
+          cd packages/mockifyer-core && npm ci && npm run build
+          cd ../mockifyer-axios && npm ci && npm run build
+          cd ../mockifyer-fetch && npm ci && npm run build
+          cd ../mockifyer-dashboard && npm ci && npm run build:backend
+          (cd frontend && npm ci && npm run build)
+
+      - name: Install WanderWeird
+        working-directory: ${{ env.WW }}
+        run: |
+          npm ci --legacy-peer-deps
+          cd apps/mobile && npm ci --legacy-peer-deps
+
+      - name: Start dashboard (sqlite) in background
+        working-directory: ${{ env.WW }}
+        run: |
+          nohup npx mockifyer-dashboard --provider sqlite --path ./mock-data --port 3002 --host 127.0.0.1 > /tmp/dashboard.log 2>&1 &
+          DASH_PID=$!
+          echo "Dashboard PID: $DASH_PID"
+          sleep 2
+          if ! ps -p $DASH_PID > /dev/null; then
+            echo "Dashboard failed to start!"
+            cat /tmp/dashboard.log
+            exit 1
+          fi
+
+      - name: Wait for dashboard
+        run: npx wait-on -t 120000 -i 2000 http-get://127.0.0.1:3002/api/scenario-config
+
+      - name: Start WanderWeird services unpinned (follow lane)
+        working-directory: ${{ env.WW }}
+        run: |
+          nohup npm run dev:proxy:record > /tmp/services.log 2>&1 &
+          echo "Services PID: $!"
+
+      - name: Wait for services
+        run: |
+          npx wait-on -t 120000 tcp:127.0.0.1:4200 tcp:127.0.0.1:4203
+          sleep 3
+
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION="$MAESTRO_VERSION" bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Check Maestro flow syntax
+        run: for f in e2e/native/flows/*.yaml; do "$HOME/.maestro/bin/maestro" check-syntax "$f"; done
+
+      - name: Setup Gradle (cache)
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Build WanderWeird debug APK
+        run: e2e/native/scripts/build-apk.sh
+
+      # The debug APK loads its JavaScript from here; metro.sh sets the e2e app env (dashboard proxy backend).
+      - name: Start Metro (Android, e2e env)
+        run: |
+          nohup e2e/native/scripts/metro.sh start > /tmp/metro.log 2>&1 &
+          echo "Metro PID: $!"
+
+      - name: Wait for Metro and build the Android bundle
+        run: |
+          npx wait-on -t 180000 http-get://127.0.0.1:8081/status
+          e2e/native/scripts/metro.sh warm
+
+      - name: Install Playwright browsers
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: AVD cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ env.ANDROID_API_LEVEL }}-${{ env.ANDROID_ABI }}-google_apis-pixel_6
+
+      - name: Create AVD and boot snapshot (cache miss)
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ABI }}
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "AVD created and boot snapshot saved for the cache."
+
+      # Each script line runs on its own (android-emulator-runner); the emulator reaches the host's
+      # 127.0.0.1 services (dashboard :3002, gateway :4200, Metro :8081) as 10.0.2.2.
+      - name: Run Android E2E tests (emulator)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ABI }}
+          target: google_apis
+          profile: pixel_6
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          working-directory: e2e
+          script: |
+            echo "Emulator up; uptime (s since boot or snapshot restore): $(adb shell cat /proc/uptime)"
+            adb install -r ../example-projects/wanderweird-travel/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            npx playwright test --project=android
+
+      # Side-by-side clips (emulator recording next to the dashboard) plus a Markdown description per test.
+      - name: Compose side-by-side GUI videos and run docs
+        if: ${{ !cancelled() && hashFiles('e2e/test-results/results.json') != '' }}
+        working-directory: e2e
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run artifacts
+
+      - name: Upload side-by-side GUI videos and run docs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-gui-videos
+          path: |
+            e2e/gui-videos/*.mp4
+            e2e/gui-videos/*.md
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload individual videos
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-videos
+          path: |
+            e2e/gui-videos/individual/*.mp4
+            e2e/gui-videos/individual/*.webm
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload Playwright HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-report
+          path: e2e/playwright-report
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-traces
+          path: e2e/test-results/**/trace.zip
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Upload test results, Maestro output and service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e-logs
+          path: |
+            e2e/test-results
+            /tmp/dashboard.log
+            /tmp/services.log
+            /tmp/metro.log
+            /tmp/wander-api.log
+            /tmp/gateway-api.log
+            /tmp/scratch-dashboard.log
+          retention-days: 30
+          if-no-files-found: warn
+          overwrite: true
+
+      - name: Debug logs on failure
+        if: failure()
+        run: |
+          echo "=== Dashboard log ==="
+          tail -100 /tmp/dashboard.log || echo "No dashboard log"
+          echo "=== Services log ==="
+          tail -100 /tmp/services.log || echo "No services log"
+          echo "=== Metro log ==="
+          tail -100 /tmp/metro.log || echo "No metro log"
