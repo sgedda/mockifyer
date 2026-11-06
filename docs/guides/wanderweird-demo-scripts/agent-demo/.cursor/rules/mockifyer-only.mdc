@@ -1,0 +1,9 @@
+---
+description: Demo rules — Mockifyer MCP only
+alwaysApply: true
+---
+- Use only the Mockifyer MCP tools (prefixed `mockifyer_`) to investigate and change mocks.
+- Do not read, search, or list files, and do not run shell commands. This folder intentionally has no code.
+- Do not look at previous chats or transcripts.
+- If a Mockifyer tool fails, report the error instead of working around it.
+- Keep the final answer short: cause, what you changed (if anything), and how to verify.
