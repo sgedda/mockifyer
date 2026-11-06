@@ -1,4 +1,4 @@
-import { DASHBOARD, ATHENS_ENDPOINT, ATHENS_ENDPOINT_PREFIX, GATEWAY } from './env';
+import { DASHBOARD, ATHENS_ENDPOINT, ATHENS_ENDPOINT_PREFIX, GATEWAY, BASE_SCENARIO, LANE } from './env';
 
 type Json = any;
 
@@ -37,6 +37,12 @@ export class Dashboard {
   setLaneDate(clientId: string, fixedDate: string | null) { return this.ok('PUT', `/client-lanes/${clientId}/date`, { fixedDate }); }
   /** #484: strict lane mode, clients with a clientId but no lane follow the global scenario. */
   setLaneGlobalFallback(enabled: boolean) { return this.ok('PUT', '/client-lanes/settings/global-fallback', { enabled }); }
+  /** Demo defaults: lane and global on the base scenario, lane global fallback off. */
+  async restoreDemoScenarios() {
+    await this.setLaneGlobalFallback(false);
+    await this.setLaneScenario(LANE, BASE_SCENARIO);
+    await this.setGlobalScenario(BASE_SCENARIO);
+  }
 
   // mocks
   async listMocks(scenario?: string): Promise<Json[]> { return (await this.ok('GET', '/mocks' + this.q(scenario))).files; }
@@ -44,6 +50,9 @@ export class Dashboard {
   putMock(file: string, body: Json, scenario?: string) { return this.call('PUT', `/mocks/${file}${this.q(scenario)}`, body); }
   deleteMock(file: string, scenario?: string) { return this.call('DELETE', `/mocks/${file}${this.q(scenario)}`); }
   getFieldOverrides(file: string, scenario?: string) { return this.ok('GET', `/mocks/${file}/field-overrides${this.q(scenario)}`); }
+  clearFieldOverrides(file: string, scenario?: string) {
+    return this.call('PATCH', `/mocks/${file}/field-overrides${this.q(scenario)}`, { responseFieldOverrides: null });
+  }
   async findMock(scenario: string, predicate: (endpoint: string) => boolean): Promise<string> {
     const f = (await this.listMocks(scenario)).find((m) => predicate(m.endpoint));
     if (!f) throw new Error(`no matching mock in ${scenario}`);
@@ -62,6 +71,9 @@ export class Dashboard {
   setDateConfig(body: Json) { return this.ok('POST', '/date-config', body); }
 
   // network log / traces
+  setNetworkBodies(scenario: string, captureBodies: boolean) {
+    return this.ok('PUT', '/network-events/config', { scenario, captureBodies });
+  }
   async networkEvents(scenario: string, limit = 50): Promise<Json[]> {
     return (await this.ok('GET', `/network-events?scenario=${encodeURIComponent(scenario)}&limit=${limit}`)).events;
   }

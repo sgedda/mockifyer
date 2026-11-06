@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { dashboard } from '../lib/dashboard';
 import { LANE } from '../lib/env';
+import { documented } from '../lib/docs';
 
 // Date overrides are checked at the API level only: the WanderWeird app computes "in N days"
 // from the browser clock, so there is no app-visible value to assert end to end.
@@ -19,24 +20,24 @@ test.describe('dates: overrides', () => {
     await dashboard.setLaneDate(LANE, laneBefore);
   });
 
-  test('scenario fixedDate is stored and returned as the current date', async () => {
+  test('scenario fixedDate is stored and returned as the current date', documented('POST /api/date-config stores a scenario fixedDate and GET returns it as the current date.'), async () => {
     await dashboard.setDateConfig({ scenario: SCENARIO, fixedDate: FIXED });
     const cfg = await dashboard.dateConfig(SCENARIO);
     expect(cfg.dateManipulation.fixedDate).toBe(FIXED);
     expect(new Date(cfg.currentDate).toISOString()).toBe(FIXED);
   });
 
-  test('invalid fixedDate is rejected with 400', async () => {
+  test('invalid fixedDate is rejected with 400', documented('POST /api/date-config with fixedDate \'not-a-date\' answers 400.'), async () => {
     const r = await dashboard.call('POST', '/date-config', { scenario: SCENARIO, fixedDate: 'not-a-date' });
     expect(r.status).toBe(400);
   });
 
-  test('clearing the scenario date removes the override', async () => {
+  test('clearing the scenario date removes the override', documented('POST /api/date-config with fixedDate null clears the scenario override.'), async () => {
     await dashboard.setDateConfig({ scenario: SCENARIO, fixedDate: null });
     expect((await dashboard.dateConfig(SCENARIO)).dateManipulation.fixedDate ?? null).toBeNull();
   });
 
-  test('client lane fixedDate can be set and cleared', async () => {
+  test('client lane fixedDate can be set and cleared', documented('PUT /api/client-lanes/<lane>/date sets and clears the lane fixedDate.'), async () => {
     await dashboard.setLaneDate(LANE, FIXED);
     expect(JSON.stringify(await dashboard.lane(LANE))).toContain(FIXED);
     await dashboard.setLaneDate(LANE, null);

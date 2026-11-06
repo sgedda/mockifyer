@@ -1,29 +1,25 @@
 import { test, expect } from '@playwright/test';
 import { dashboard, gatewayTemp } from '../lib/dashboard';
-import { wander, waitForGateway } from '../lib/stack';
+import { wander, waitForGateway, followLaneAndWait, pinToBaseAndWait } from '../lib/stack';
 import { openDiscover, expectTemperatureAfterRefetch, expectTemperature } from '../lib/app';
 import { ATHENS_ENDPOINT, BASE_SCENARIO, EXPECTED_TEMP, LANE } from '../lib/env';
+import { documented } from '../lib/docs';
 
 // Lane switching only moves a service that is NOT pinned with MOCKIFYER_SCENARIO (body_override wins).
 // beforeAll restarts wander-api following the lane; afterAll pins it back and resets lane + global.
 test.describe('scenarios: client lane vs global', () => {
-  test.beforeAll(async () => {
-    wander.followLane();
-    await waitForGateway();
-  });
+  test.beforeAll(followLaneAndWait);
   test.afterAll(async () => {
     await dashboard.setLaneScenario(LANE, BASE_SCENARIO).catch(() => undefined);
     await dashboard.setGlobalScenario(BASE_SCENARIO);
-    wander.pin(BASE_SCENARIO);
-    await waitForGateway();
-    await expect.poll(gatewayTemp, { timeout: 30_000 }).toBe(EXPECTED_TEMP[BASE_SCENARIO]);
+    await pinToBaseAndWait();
   });
   test.afterEach(async () => {
     await dashboard.setLaneScenario(LANE, BASE_SCENARIO);
     await dashboard.setGlobalScenario(BASE_SCENARIO);
   });
 
-  test('switching the lane moves the app: heatwave 44 -> rainy-weekend 11 -> base 99', async ({ page }) => {
+  test('switching the lane moves the app: heatwave 44 -> rainy-weekend 11 -> base 99', documented('Lane switches through the dashboard API move the app 44° -> 11° -> 99°.'), async ({ page }) => {
     await openDiscover(page);
     for (const s of ['heatwave', 'rainy-weekend', BASE_SCENARIO]) {
       await dashboard.setLaneScenario(LANE, s);
@@ -31,7 +27,7 @@ test.describe('scenarios: client lane vs global', () => {
     }
   });
 
-  test('the lane wins over the global scenario (resolutionSource lane_redis)', async ({ page }) => {
+  test('the lane wins over the global scenario (resolutionSource lane_redis)', documented('With the lane on guide-demo-2 and global on heatwave, the app shows 99° (resolutionSource lane_redis).'), async ({ page }) => {
     await dashboard.setLaneScenario(LANE, BASE_SCENARIO);
     await dashboard.setGlobalScenario('heatwave');
     expect((await dashboard.scenarioConfig()).currentScenario).toBe('heatwave');
@@ -43,7 +39,7 @@ test.describe('scenarios: client lane vs global', () => {
     await expectTemperature(page, EXPECTED_TEMP[BASE_SCENARIO]);
   });
 
-  test('a pinned service ignores its lane (resolutionSource body_override)', async () => {
+  test('a pinned service ignores its lane (resolutionSource body_override)', documented('wander-api pinned with MOCKIFYER_SCENARIO ignores a lane switch (resolutionSource body_override).'), async () => {
     wander.pin(BASE_SCENARIO);
     try {
       await waitForGateway();
@@ -51,8 +47,7 @@ test.describe('scenarios: client lane vs global', () => {
       await expect.poll(gatewayTemp, { timeout: 20_000 }).toBe(EXPECTED_TEMP[BASE_SCENARIO]);
       expect((await dashboard.lane(LANE)).lastSeenResolved.resolutionSource).toBe('body_override');
     } finally {
-      wander.followLane();
-      await waitForGateway();
+      await followLaneAndWait();
     }
   });
 
@@ -82,7 +77,7 @@ test.describe('scenarios: client lane vs global', () => {
       allowUpstream: false,
     });
 
-  test('strict lane default: the header picker does not move a client with a clientId but no lane', async () => {
+  test('strict lane default: the header picker does not move a client with a clientId but no lane', documented('Strict lane default: a clientId without a lane is blocked from the global scenario (412 blocked_strict_lane).'), async () => {
     await withoutLaneOnGlobalHeatwave(async () => {
       expect((await dashboard.lanes()).laneGlobalFallback).toBe(false);
       const probe = await strictLaneProbe();
@@ -92,7 +87,7 @@ test.describe('scenarios: client lane vs global', () => {
     });
   });
 
-  test('header picker (global scenario) moves a client without a lane when the lane global fallback is on', async () => {
+  test('header picker (global scenario) moves a client without a lane when the lane global fallback is on', documented('With the lane global fallback on, a clientId without a lane follows the global heatwave scenario (44°).'), async () => {
     await withoutLaneOnGlobalHeatwave(async () => {
       await dashboard.setLaneGlobalFallback(true);
       const probe = await strictLaneProbe();
@@ -111,7 +106,7 @@ test.describe('scenarios: create and clone', () => {
     await dashboard.setGlobalScenario(BASE_SCENARIO);
   });
 
-  test('POST /api/scenario-config/create clones mocks, resets them to live API, and switches global', async () => {
+  test('POST /api/scenario-config/create clones mocks, resets them to live API, and switches global', documented('Creating a scenario from guide-demo-2 copies its mocks as passthrough and makes it the global scenario.'), async () => {
     await dashboard.createScenario(name, BASE_SCENARIO);
     const cfg = await dashboard.scenarioConfig();
     expect(cfg.scenarios).toContain(name);
@@ -128,7 +123,7 @@ test.describe('scenarios: create and clone', () => {
     expect((await dashboard.mockMeta(file, name)).replayMode).toBe('passthrough');
   });
 
-  test('"Use saved mock" sets replayMode stored on the copy only', async () => {
+  test('"Use saved mock" sets replayMode stored on the copy only', documented('Setting replayMode stored on the copy leaves the base scenario\'s mock unchanged.'), async () => {
     const file = await dashboard.athensMock(name);
     expect((await dashboard.putMock(file, { replayMode: 'stored' }, name)).status).toBe(200);
     expect((await dashboard.mockMeta(file, name)).replayMode).toBe('stored');
@@ -137,7 +132,7 @@ test.describe('scenarios: create and clone', () => {
     expect(baseMode).toBe('stored'); // the base scenario's mock is untouched
   });
 
-  test('deleting the scenario removes it', async () => {
+  test('deleting the scenario removes it', documented('POST /api/scenario-config/delete removes the temporary scenario.'), async () => {
     const r = await dashboard.deleteScenario(name);
     expect(r.status).toBe(200);
     expect((await dashboard.scenarioConfig()).scenarios).not.toContain(name);
