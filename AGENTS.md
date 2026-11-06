@@ -15,6 +15,7 @@ Packages must be built in dependency order: `mockifyer-core` → `mockifyer-axio
 - **Root-level unit tests**: `npm test` from `/workspace` (Jest + ts-jest, 20 suites, ~160 tests). The Jest config maps `@sgedda/*` imports to source via `moduleNameMapper`.
 - **mockifyer-web tests**: `npm test` from `/workspace/mockifyer-web`.
 - **E2E (Playwright)**: `npm run test:e2e` from `/workspace/mockifyer-web` (requires browsers installed via `npx playwright install`).
+- **Repo-level E2E suite** (`/workspace/e2e`): Headless Playwright against the WanderWeird Expo web build plus sqlite dashboard on :3002 and :3022. Run with `npm test` (headless), `npm run test:gui` (8 GUI tests, always recorded), `npm run artifacts` (compose side-by-side videos), or `E2E_PRESENTATION=1 npm run test:gui` (presentation mode: slow, readable recordings). CI runs via `.github/workflows/e2e.yml` (nightly 03:00 UTC, workflow_dispatch with `record_video` and `presentation` inputs, PRs on relevant paths). See `e2e/README.md` for full details.
 
 ### Running the demo web app (`mockifyer-web`)
 
