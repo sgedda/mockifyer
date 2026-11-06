@@ -1,0 +1,15 @@
+# Fresh start on the login screen: app stopped, its data cleared (no stored session), JavaScript loaded
+# from Metro (scripts/metro.sh). Runs before the screen recording starts, so each clip opens on login.
+appId: com.mockifyer.wanderweird
+name: Launch on the login screen
+---
+- launchApp:
+    clearState: true
+    stopApp: true
+# A debug build fetches its bundle from Metro on first launch.
+- extendedWaitUntil:
+    visible:
+      id: login-screen
+    timeout: 180000
+- assertVisible:
+    id: login-sign-in
