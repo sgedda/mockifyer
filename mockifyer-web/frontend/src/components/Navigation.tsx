@@ -10,6 +10,7 @@ const navItems = [
   { href: '/playground', label: 'Playground' },
   { href: '/timeline', label: 'Timeline' },
   { href: '/comparisons', label: 'Comparisons' },
+  { href: '/e2e-tutorial', label: 'E2E Tutorial' },
   { href: '/settings', label: 'Settings' },
   { href: '/contact', label: 'Contact' },
 ]

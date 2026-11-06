@@ -85,6 +85,12 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'Get in touch about Mockifyer — questions, feedback, and support for API mocking and record-replay testing.',
     path: '/contact',
   },
+  '/e2e-tutorial': {
+    title: 'E2E Tutorial: Controlling a nested multi-service stack',
+    description:
+      'End-to-end walkthrough of the WanderWeird demo stack with Mockifyer. Drive the dashboard GUI, switch scenarios, inject failures, and trace nested HTTP calls across services.',
+    path: '/e2e-tutorial',
+  },
 }
 
 export function getPageSeo(pathname: string): PageSeoConfig {

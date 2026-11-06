@@ -11,6 +11,7 @@ Use Mockifyer when you need reliable integration tests without depending on live
 - [Getting Started (markdown)](https://mockifyer.dev/getting-started.md): Static install guide for crawlers
 - [Overview (markdown)](https://mockifyer.dev/overview.md): Short product summary
 - [Playground](https://mockifyer.dev/playground): Try record/replay and scenario switching in the browser
+- [E2E Tutorial](https://mockifyer.dev/e2e-tutorial): End-to-end walkthrough of the WanderWeird multi-service stack with the dashboard GUI
 - [Configuration Reference](https://mockifyer.dev/config-reference): Environment variables and setup options
 - [Configuration (markdown)](https://mockifyer.dev/config-reference.md): Static env var reference
 

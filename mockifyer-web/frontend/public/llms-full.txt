@@ -79,4 +79,5 @@ Outbound headers: `x-mockifyer-request-id`, `x-mockifyer-parent-request-id` for 
 - https://mockifyer.dev
 - https://mockifyer.dev/getting-started.md
 - https://mockifyer.dev/config-reference.md
+- https://mockifyer.dev/e2e-tutorial
 - https://github.com/sgedda/mockifyer
