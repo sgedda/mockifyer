@@ -62,7 +62,7 @@ E2E_PRESENTATION=1 npm run test:gui          # presentation mode: slow, readable
 
 ### Dashboard GUI tests (`@gui`, project `gui`)
 
-Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These six tests (plus the
+Every other spec drives the dashboard through its HTTP API (`lib/dashboard.ts`). These seven tests (plus the
 from-scratch test below) use the
 **dashboard UI** like a user would, in a second browser context (1280×800, so the sidebar is shown), while
 the app runs in the first (`page`, 430×900). Each test ends by asserting the **new value on screen in the
@@ -95,7 +95,7 @@ test's Markdown:
 
 ### From scratch (`dashboard-gui-scratch.spec.ts`)
 
-A seventh GUI test starts with **completely empty data**: its own branch-built dashboard on `:3022` with a fresh
+An eighth GUI test starts with **completely empty data**: its own branch-built dashboard on `:3022` with a fresh
 sqlite dir (`scripts/scratch-dashboard.sh`), and the gateway and wander-api restarted to proxy through it without
 the record env (`scripts/ww-service.sh … start` with `MOCKIFYER_DASHBOARD_URL=http://127.0.0.1:3022 WW_RECORD=off`).
 The app and the other services keep using the demo dashboard; `afterAll` puts the gateway and wander-api back and
@@ -222,8 +222,11 @@ API and app tests carry the one-line "asserts" annotation only. Any machine host
 
 ## Testing main
 
-The demo stack runs the published dashboard 1.5.92, which predates PRs #476/#477, so those tests skip
-unless you point them at a dashboard built from main, ideally on a **copy** of the demo DB:
+The monorepo's WanderWeird example uses `file:` dependencies, so local development and CI always run the
+branch-built dashboard (currently 1.5.95). The `main-features.spec.ts` tests run against a separate
+dashboard instance (:3012 in CI) built from the checkout with its own data dir. These tests validate
+features from PRs #476 (status/delay overrides) and #477 (explain-value) that were added after the
+originally-deployed dashboard 1.5.92. To run them locally against a branch build with a **copy** of the demo DB:
 
 ```bash
 git clone https://github.com/sgedda/mockifyer mockifyer-main && cd mockifyer-main/packages
