@@ -75,4 +75,33 @@ describe('applyResponseDataFromBody', () => {
     applyResponseDataFromBody(mock, { error: 'still nope' });
     expect(mock.response.status).toBe(404);
   });
+
+  it('does not promote a request-only stub when the saved body is null', () => {
+    const mock = pendingStub();
+    applyResponseDataFromBody(mock, null);
+    expect(mock.response).toEqual({ status: 0, data: null, headers: {} });
+    expect(mock.responsePending).toBe(true);
+    expect(mock.alwaysUseRealApi).toBe(true);
+
+    expect(applyReplayModeFieldsFromBody(mock, { replayMode: 'passthrough' })).toBeNull();
+    expect(resolveMockReplayMode(mock)).toBe('passthrough');
+    expect(mock.response.status).toBe(0);
+    expect(mock.responsePending).toBe(true);
+  });
+
+  it('still queues refresh-next when a stub is saved as stored with a null body', () => {
+    const mock = pendingStub();
+    applyResponseDataFromBody(mock, null);
+    expect(applyReplayModeFieldsFromBody(mock, { replayMode: 'stored' })).toBeNull();
+    expect(resolveMockReplayMode(mock)).toBe('refresh-next');
+    expect(mock.response.status).toBe(0);
+    expect(mock.response.data).toBeNull();
+  });
+
+  it('stores JSON null on a mock that already has a captured body', () => {
+    const mock = snapshot({ response: { status: 200, data: { ok: true }, headers: {} } });
+    applyResponseDataFromBody(mock, null);
+    expect(mock.response.status).toBe(200);
+    expect(mock.response.data).toBeNull();
+  });
 });
