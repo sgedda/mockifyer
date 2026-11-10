@@ -20,8 +20,8 @@ test.describe('Introduction Page', () => {
     // How it works section
     await expect(page.getByRole('heading', { name: /How It Works/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: '1. Record' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '2. Replay' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '3. Scenarios' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '2. Organize Scenarios' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '3. Replay in Tests' })).toBeVisible();
   });
 
   test('should display showcase videos', async ({ page }) => {

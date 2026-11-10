@@ -22,12 +22,9 @@ test.describe('Getting Started Page', () => {
   });
 
   test('should have sections for different platforms', async ({ page }) => {
-    // Check for platform-specific sections
-    const hasNodeSection = await page.getByText(/Node Service/i).isVisible().catch(() => false);
-    const hasReactNativeSection = await page.getByText(/React Native/i).isVisible().catch(() => false);
-    
-    // At least one platform section should exist
-    expect(hasNodeSection || hasReactNativeSection).toBeTruthy();
+    // Check for platform tabs
+    await expect(page.getByRole('tab', { name: 'Node Service' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'React Native' })).toBeVisible();
   });
 
   test('should have Next Steps section without Playground', async ({ page }) => {
@@ -44,12 +41,11 @@ test.describe('Getting Started Page', () => {
   });
 
   test('should have Example Projects section', async ({ page }) => {
-    // Check for WanderWeird example (use first() to avoid strict mode)
-    await expect(page.getByText(/WanderWeird/i).first()).toBeVisible();
+    // Check for Example Project heading
+    await expect(page.getByRole('heading', { name: /Example Project/i })).toBeVisible();
     
-    // Check for link to GitHub
-    const githubLinks = page.getByRole('link', { name: /View on GitHub/i });
-    expect(await githubLinks.count()).toBeGreaterThan(0);
+    // Check for WanderWeird example (use first() to avoid strict mode)
+    await expect(page.getByText(/WanderWeird Travel Demo/i)).toBeVisible();
   });
 });
 
