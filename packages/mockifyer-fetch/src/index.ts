@@ -1,16 +1,30 @@
 // Fetch-only Mockifyer implementation
-// Conditionally import fs - will be undefined in React Native
-let fs: typeof import('fs') | undefined;
-let path: typeof import('path') | undefined;
+// fs and path are lazy-loaded via dynamic require to avoid breaking browser bundles
+//
+// DO NOT change this to static require() or import - bundlers will fail on browser builds.
+// The dynamic require is hidden inside functions to prevent bundle-time resolution.
 
-try {
-  // Try to require fs and path - will fail in React Native where they're stubbed
-  fs = require('fs');
-  path = require('path');
-} catch (e) {
-  // fs/path not available (React Native environment)
-  fs = undefined;
-  path = undefined;
+// Lazy-load Node.js built-ins (hidden from bundlers via function scope + indirect eval)
+function lazyRequire(moduleName: string): any {
+  // Only works in Node.js
+  if (typeof process === 'undefined' || !process.versions?.node) {
+    return null;
+  }
+  try {
+    // Use indirect eval to prevent bundlers from seeing the require
+    const req = (0, eval)('require');
+    return req(moduleName);
+  } catch {
+    return null;
+  }
+}
+
+function getFs(): typeof import('fs') | null {
+  return lazyRequire('fs');
+}
+
+function getPath(): typeof import('path') | null {
+  return lazyRequire('path');
 }
 
 // Import from core package
@@ -323,6 +337,8 @@ class MockifyerClass {
    * missing or Metro-stubbed — so `$pool` refs resolve via disk and/or {@link poolResponseCache}.
    */
   private prepareStoredResponseBody(mockData: MockData, filename?: string, scenarioPath?: string): unknown {
+    const fs = getFs();
+    const path = getPath();
     const joinPath =
       path && typeof path.join === 'function' ? path.join.bind(path) : null;
     return prepareMockResponseBody(mockData, createServeTimeClock(this.config), {
@@ -345,6 +361,7 @@ class MockifyerClass {
     if (!arePoolRefsEnabled() || !containsPoolRefs(mockData.response?.data)) {
       return;
     }
+    const fs = getFs();
     if (isUsableNodeLikePoolFs(fs)) {
       return;
     }
@@ -606,6 +623,7 @@ class MockifyerClass {
   }
 
   private ensureMockDataDirectory(): void {
+    const fs = getFs();
     // Only use fs if available (Node.js environment) and no database provider is set
     if (!fs || this.databaseProvider) {
       return;
@@ -690,6 +708,8 @@ class MockifyerClass {
   }
 
   private getAllJsonFiles(dir: string): string[] {
+    const fs = getFs();
+    const path = getPath();
     if (!fs || !path || !fs.existsSync(dir)) return [];
     const results: string[] = [];
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -710,6 +730,8 @@ class MockifyerClass {
     request: StoredRequest,
     options?: { includePassthroughMocks?: boolean }
   ): CachedMockData | undefined {
+    const fs = getFs();
+    const path = getPath();
     const includePassthroughMocks = options?.includePassthroughMocks === true;
     // Only use fs if available (Node.js environment)
     // This method should never be called when using a database provider
@@ -861,6 +883,7 @@ class MockifyerClass {
   }
 
   private loadMockData(): void {
+    const fs = getFs();
     // Skip if using database provider or fs not available
     if (this.databaseProvider || !fs) {
       return;
@@ -961,6 +984,7 @@ class MockifyerClass {
             `[Mockifyer-Fetch] Mock hit: ${request.method} ${request.url} → ${filename}` +
               (filePath ? ` (${filePath})` : '')
           );
+          const path = getPath();
           const hitScenarioPath = path
             ? getScenarioFolderPath(
                 path.resolve(this.config.mockDataPath),
@@ -1059,7 +1083,18 @@ class MockifyerClass {
       }
 
       if (this.config.failOnMissingMock) {
-        throw new Error(`No mock data found for request: ${this.generateRequestKey(request)}`);
+        const scenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+        throw new Error(
+          `[Mockifyer] No mock found for ${request.method} ${request.url}\n` +
+          `Scenario: ${scenario}\n` +
+          `Request key: ${this.generateRequestKey(request)}\n` +
+          `\n` +
+          `In replay mode with failOnMissingMock=true, all requests must have recorded mocks.\n` +
+          `To fix:\n` +
+          `  1. Record this request: set recordMode: true\n` +
+          `  2. Or preload fixture: databaseProvider: { type: 'memory', options: { fixtures: [...] } }\n` +
+          `  3. Or allow passthrough: set failOnMissingMock: false`
+        );
       }
 
       return config;
@@ -1228,6 +1263,7 @@ class MockifyerClass {
             );
           }
 
+          const path = getPath();
           const liveScenarioPath = path
             ? getScenarioFolderPath(
                 path.resolve(this.config.mockDataPath),
@@ -1327,6 +1363,7 @@ class MockifyerClass {
       logPrefix: 'Mockifyer-Fetch',
     });
 
+    const fs = getFs();
     if (providerType === 'hybrid' && hash && scenarioName && mockData) {
       await this.tryMirrorProxyRecordingViaMetro(mockData, scenarioName, hash);
     } else if (!fs && hash && scenarioName && mockData) {
@@ -1562,39 +1599,42 @@ class MockifyerClass {
           );
           throw error;
         }
-      } else if (fs && path) {
-        const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
-        const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
-        ensureScenarioFolder(this.config.mockDataPath, currentScenario);
-
-        const limitCheck = checkRequestLimit(this.config.mockDataPath);
-        if (limitCheck.limitReached && limitCheck.error) {
-          console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
-          return;
-        }
-
-        if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
-          fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
-          logger.info(
-            `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
-          );
-        } else {
-          // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
-          // getMockFilePath clamps over-long path segments to stay within NAME_MAX.
-          const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
-          const filePath = path.join(scenarioPath, dir, filename);
-          fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
-          fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
-          logger.info(
-            `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
-          );
-        }
-
-        if (this.config.generateTests?.enabled && this.testGenerator) {
-          await this.generateTestForMock(mockData);
-        }
       } else {
-        console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
+        const fs = getFs();
+        const path = getPath();
+        if (fs && path) {
+          const currentScenario = getCurrentScenario(this.config.mockDataPath, this.config.clientId);
+          const scenarioPath = getScenarioFolderPath(this.config.mockDataPath, currentScenario);
+          ensureScenarioFolder(this.config.mockDataPath, currentScenario);
+
+          const limitCheck = checkRequestLimit(this.config.mockDataPath);
+          if (limitCheck.limitReached && limitCheck.error) {
+            console.warn(`[Mockifyer] ⚠️ ${limitCheck.error.message}`);
+            return;
+          }
+
+          if (saveDecision.action === 'overwrite' && existingMock?.filePath) {
+            fs.writeFileSync(existingMock.filePath, JSON.stringify(mockData, null, 2));
+            logger.info(
+              `[Mockifyer] Refreshed passthrough mock: ${currentScenario}/${existingMock.filename}`
+            );
+          } else {
+            // Same nested host/path layout as FilesystemProvider / Expo (Folders view).
+            // getMockFilePath clamps over-long path segments to stay within NAME_MAX.
+            const { dir, filename } = getMockFilePath(mockData, formatDateStr(getCurrentDate()));
+            const filePath = path.join(scenarioPath, dir, filename);
+            fs.mkdirSync(path.join(scenarioPath, dir), { recursive: true });
+            fs.writeFileSync(filePath, JSON.stringify(mockData, null, 2));
+            logger.info(
+              `[Mockifyer] Saved new mock to file: ${currentScenario}/${dir ? `${dir}/` : ''}${filename}`
+            );
+          }
+          if (this.config.generateTests?.enabled && this.testGenerator) {
+            await this.generateTestForMock(mockData);
+          }
+        } else {
+          console.warn('[Mockifyer] Cannot save mock: no database provider and fs/path not available');
+        }
       }
 
       await this.ensureInboundParentStubForChild(hopIds.parentRequestId, response.config);
@@ -1621,6 +1661,8 @@ class MockifyerClass {
         parentRequestId,
         hop,
         parentExists: (id) => {
+          const fs = getFs();
+          const path = getPath();
           if (!fs || !path || this.databaseProvider) {
             return false;
           }
@@ -1633,6 +1675,8 @@ class MockifyerClass {
             await this.databaseProvider.save(row.mock);
             return;
           }
+          const fs = getFs();
+          const path = getPath();
           if (!fs || !path) {
             return;
           }
@@ -1669,6 +1713,7 @@ class MockifyerClass {
       return;
     }
 
+    const fs = getFs();
     if (fs && cachedMock.filePath) {
       fs.writeFileSync(cachedMock.filePath, JSON.stringify(updated, null, 2));
       logger.info(`[Mockifyer-Fetch] Refreshed mock from live API: ${cachedMock.filename}`);
@@ -1679,6 +1724,7 @@ class MockifyerClass {
    * Simple path resolution fallback for React Native (when path module is stubbed)
    */
   private resolvePath(...parts: string[]): string {
+    const path = getPath();
     if (path && typeof path.resolve === 'function') {
       return path.resolve(...parts);
     }
@@ -1700,6 +1746,7 @@ class MockifyerClass {
    * Simple dirname fallback for React Native (when path module is stubbed)
    */
   private dirname(filePath: string): string {
+    const path = getPath();
     if (path && typeof path.dirname === 'function') {
       return path.dirname(filePath);
     }
@@ -1721,15 +1768,10 @@ class MockifyerClass {
     
     // Check if fs is available for writing test files
     // In React Native runtime, fs is not available, but in Metro bundler (Node.js) it should be
-    // Try to require it dynamically if not already available
-    let testFs = fs;
+    const testFs = getFs();
     
     if (!testFs) {
-      try {
-        testFs = require('fs');
-      } catch (e) {
-        return;
-      }
+      return;
     }
     
     // Use the available fs - ensure it's defined and has required methods
