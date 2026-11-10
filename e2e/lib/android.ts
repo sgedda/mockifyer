@@ -183,6 +183,9 @@ export class ScreenRecorder {
   private stopping = false;
   private size = '';
   private readonly id = Date.now();
+  private consecutiveFailures = 0;
+  private readonly MAX_CONSECUTIVE_FAILURES = 3;
+  private readonly MIN_CHUNK_DURATION_MS = 5_000;
 
   async start() {
     this.size = await recordSize();
@@ -191,6 +194,7 @@ export class ScreenRecorder {
 
   private recordChunk() {
     const remote = `/sdcard/e2e-${this.id}-${this.chunks.length}.mp4`;
+    const startedAtMs = Date.now();
     const child = spawn(ADB, [
       'shell', 'screenrecord',
       '--time-limit', String(SCREENRECORD_TIME_LIMIT_S),
@@ -198,10 +202,39 @@ export class ScreenRecorder {
       '--bit-rate', String(RECORD_BIT_RATE),
       remote,
     ], { stdio: 'ignore' });
-    this.chunks.push({ remote, startedAtMs: Date.now() });
+    this.chunks.push({ remote, startedAtMs });
     this.exited = new Promise((resolve) => {
-      child.once('exit', () => {
-        if (!this.stopping) this.recordChunk();
+      child.once('exit', (code) => {
+        const elapsedMs = Date.now() - startedAtMs;
+        const fastFailure = elapsedMs < this.MIN_CHUNK_DURATION_MS;
+        
+        if (code !== 0 || fastFailure) {
+          this.consecutiveFailures++;
+          console.warn(
+            `[ScreenRecorder] Chunk ${this.chunks.length - 1} exited with code ${code} after ${elapsedMs}ms ` +
+            `(consecutive failures: ${this.consecutiveFailures}/${this.MAX_CONSECUTIVE_FAILURES})`
+          );
+          
+          if (this.consecutiveFailures >= this.MAX_CONSECUTIVE_FAILURES) {
+            console.error(
+              `[ScreenRecorder] Stopping recording after ${this.MAX_CONSECUTIVE_FAILURES} consecutive failures. ` +
+              `Tests will continue but screen recording is disabled.`
+            );
+            this.stopping = true;
+          }
+        } else {
+          this.consecutiveFailures = 0;
+        }
+        
+        if (!this.stopping) {
+          if (this.consecutiveFailures > 0 && this.consecutiveFailures < this.MAX_CONSECUTIVE_FAILURES) {
+            const backoffMs = Math.min(1000 * Math.pow(2, this.consecutiveFailures - 1), 5000);
+            console.warn(`[ScreenRecorder] Backing off ${backoffMs}ms before retry`);
+            setTimeout(() => this.recordChunk(), backoffMs);
+          } else {
+            this.recordChunk();
+          }
+        }
         resolve();
       });
     });
