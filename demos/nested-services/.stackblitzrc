@@ -1,7 +1,5 @@
 {
   "installDependencies": true,
   "startCommand": "npm start",
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "view": "5173"
 }
