@@ -1,0 +1,77 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "https://restcountries.com/v3.1/alpha/GB",
+    "headers": {
+      "x-mockifyer-request-id": "demo-london-001"
+    }
+  },
+  "response": {
+    "status": 200,
+    "data": [
+      {
+        "name": {
+          "common": "United Kingdom",
+          "official": "United Kingdom of Great Britain and Northern Ireland",
+          "nativeName": {
+            "eng": {
+              "official": "United Kingdom of Great Britain and Northern Ireland",
+              "common": "United Kingdom"
+            }
+          }
+        },
+        "tld": [
+          ".uk"
+        ],
+        "cca2": "GB",
+        "ccn3": "826",
+        "cca3": "GBR",
+        "independent": true,
+        "status": "officially-assigned",
+        "unMember": true,
+        "currencies": {
+          "GBP": {
+            "name": "British pound",
+            "symbol": "£"
+          }
+        },
+        "capital": [
+          "London"
+        ],
+        "region": "Europe",
+        "subregion": "Northern Europe",
+        "languages": {
+          "eng": "English"
+        },
+        "latlng": [
+          54,
+          -2
+        ],
+        "landlocked": false,
+        "area": 242900,
+        "flag": "🇬🇧",
+        "population": 67215293,
+        "fifa": "ENG",
+        "timezones": [
+          "UTC-08:00",
+          "UTC-05:00",
+          "UTC-04:00",
+          "UTC-03:00",
+          "UTC-02:00",
+          "UTC",
+          "UTC+01:00",
+          "UTC+02:00",
+          "UTC+06:00"
+        ]
+      }
+    ],
+    "headers": {
+      "access-control-allow-origin": "*",
+      "content-type": "application/json"
+    }
+  },
+  "timestamp": "2026-11-10T12:00:00.000Z",
+  "duration": 187,
+  "sessionId": "demo-session-001",
+  "requestId": "demo-london-001"
+}

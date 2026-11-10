@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import CodeBlock from '@/components/CodeBlock'
+import RunItButton from '@/components/RunItButton'
 import { MCP_TOOLS } from '@/lib/product-docs'
 
 export default function Dashboard() {
@@ -52,11 +53,26 @@ export default function Dashboard() {
               language="bash"
               code={`npx @sgedda/mockifyer-dashboard --path ./mock-data`}
             />
-            <Link to="/config-reference">
-              <Button variant="outline" size="sm">
-                Configuration Reference
-              </Button>
-            </Link>
+            <div className="flex gap-3 flex-wrap">
+              <Link to="/config-reference">
+                <Button variant="outline" size="sm">
+                  Configuration Reference
+                </Button>
+              </Link>
+              <RunItButton 
+                project="nested-services"
+                title="Try Live Demo: Nested Services + Tracing"
+                size="sm"
+              />
+            </div>
+            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+              <p className="text-sm text-foreground">
+                <strong>Live Demo:</strong> <span className="text-muted-foreground">
+                  See the dashboard in action with a BFF calling 3 downstream services (Weather → Places → Currency). 
+                  Watch request tracing correlate the entire chain, switch scenarios from the UI, and explore mocks in the dashboard.
+                </span>
+              </p>
+            </div>
           </CardContent>
         </Card>
       </section>

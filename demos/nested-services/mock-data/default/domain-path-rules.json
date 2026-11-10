@@ -1,0 +1,10 @@
+{
+  "api.openweathermap.org": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.openweathermap.org/data/2.5/weather": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}
