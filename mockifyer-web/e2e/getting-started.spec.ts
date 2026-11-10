@@ -7,7 +7,7 @@ test.describe('Getting Started Page', () => {
 
   test('should display getting started content', async ({ page }) => {
     // Check main heading
-    await expect(page.getByText(/Getting Started with Mockifyer/i)).toBeVisible();
+    await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
   });
 
   test('should have Quick Start section', async ({ page }) => {
@@ -30,8 +30,26 @@ test.describe('Getting Started Page', () => {
     expect(hasNodeSection || hasReactNativeSection).toBeTruthy();
   });
 
-  test('should have environment configuration section', async ({ page }) => {
-    await expect(page.getByText(/Environment Configuration/i)).toBeVisible({ timeout: 5000 });
+  test('should have Next Steps section without Playground', async ({ page }) => {
+    // Check Next Steps heading
+    await expect(page.getByRole('heading', { name: /Next Steps/i })).toBeVisible();
+    
+    // Should have E2E Tutorial and Dashboard links
+    await expect(page.getByRole('link', { name: /E2E Tutorial/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Dashboard/i })).toBeVisible();
+    
+    // Should NOT have Playground link
+    const playgroundLink = page.getByRole('link', { name: /Playground/i });
+    expect(await playgroundLink.count()).toBe(0);
+  });
+
+  test('should have Example Projects section', async ({ page }) => {
+    // Check for WanderWeird example
+    await expect(page.getByText(/WanderWeird/i)).toBeVisible();
+    
+    // Check for link to GitHub
+    const githubLinks = page.getByRole('link', { name: /View on GitHub/i });
+    expect(await githubLinks.count()).toBeGreaterThan(0);
   });
 });
 

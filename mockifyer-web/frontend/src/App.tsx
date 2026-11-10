@@ -52,9 +52,9 @@ function App() {
               <Route path="/guides/nuxt-ssr-fixtures" element={<NuxtSsrFixtures />} />
               
               {/* Redirects for removed pages */}
-              <Route path="/playground" element={<Navigate to="/e2e-tutorial" replace />} />
-              <Route path="/timeline" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/settings" element={<Navigate to="/#date-config" replace />} />
+              <Route path="/playground" element={<Navigate to="/" replace />} />
+              <Route path="/timeline" element={<Navigate to="/" replace />} />
+              <Route path="/settings" element={<Navigate to="/" replace />} />
               
               <Route path="/date-config" element={<DateConfig />} />
               <Route path="/getting-started" element={<GettingStarted />} />

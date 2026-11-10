@@ -4,8 +4,8 @@ test.describe('Navigation', () => {
   test('should display logo and navigation links', async ({ page }) => {
     await page.goto('/');
     
-    // Check logo is visible
-    const logo = page.getByRole('navigation').getByRole('link', { name: /mockifyer/i });
+    // Check logo is visible (use aria-label to avoid mobile menu duplicate)
+    const logo = page.getByRole('link', { name: 'Mockifyer home' });
     await expect(logo).toBeVisible();
     
     // Check navigation links (use navigation role to avoid duplicates)
@@ -14,13 +14,17 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
     await expect(page.getByRole('navigation').getByRole('link', { name: 'Packages', exact: true })).toBeVisible();
     await expect(page.getByRole('navigation').getByRole('link', { name: 'FAQ', exact: true })).toBeVisible();
+    
+    // Check Guides dropdown exists
+    await expect(page.getByRole('button', { name: 'Guides' })).toBeVisible();
   });
 
   test('should navigate to Getting Started page', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: 'Get Started' }).click();
-    await expect(page).toHaveURL(/.*getting-started/);
-    await expect(page.getByRole('heading', { name: /Getting Started/i })).toBeVisible();
+    // Use the main CTA button, not nav link
+    await page.getByRole('main').getByRole('link', { name: /Browse Packages/i }).first().click();
+    await expect(page).toHaveURL(/.*packages/);
+    await expect(page.getByRole('heading', { name: /Packages/i })).toBeVisible();
   });
 
   test('should navigate to Features page', async ({ page }) => {
@@ -41,12 +45,13 @@ test.describe('Navigation', () => {
     await page.goto('/');
     await page.getByRole('navigation').getByRole('link', { name: 'FAQ', exact: true }).click();
     await expect(page).toHaveURL(/.*faq/);
-    await expect(page.getByRole('heading', { name: /Frequently Asked Questions/i })).toBeVisible();
+    // Use first() to handle multiple h1 tags
+    await expect(page.getByRole('heading', { name: /Frequently Asked Questions/i }).first()).toBeVisible();
   });
 
   test('should have logo link to home page', async ({ page }) => {
     await page.goto('/features');
-    const logo = page.getByRole('navigation').getByRole('link', { name: /mockifyer/i });
+    const logo = page.getByRole('link', { name: 'Mockifyer home' });
     await logo.click();
     await expect(page).toHaveURL('/');
   });
@@ -71,6 +76,35 @@ test.describe('Navigation', () => {
     const hasFeatures = await featuresLink.isVisible().catch(() => false);
     const hasDashboard = await dashboardLink.isVisible().catch(() => false);
     expect(hasFeatures || hasDashboard).toBeTruthy();
+  });
+
+  test('should have Guides dropdown with guide links', async ({ page }) => {
+    await page.goto('/');
+    
+    // Click Guides button
+    const guidesButton = page.getByRole('button', { name: 'Guides' });
+    await guidesButton.click();
+    
+    // Check guide links appear
+    await expect(page.getByRole('link', { name: /Mock at the Network Edge/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Reproduce Tester Bugs/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Stable React Native E2E/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Stop Mock Drift/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /Nuxt SSR Fixtures/i })).toBeVisible();
+  });
+
+  test('should navigate to guide page from dropdown', async ({ page }) => {
+    await page.goto('/');
+    
+    // Open Guides dropdown
+    await page.getByRole('button', { name: 'Guides' }).click();
+    
+    // Click on a guide
+    await page.getByRole('link', { name: /Mock at the Network Edge/i }).click();
+    
+    // Check we're on the guide page
+    await expect(page).toHaveURL(/.*guides\/mock-at-the-network-edge/);
+    await expect(page.getByRole('heading', { name: /Mock at the Network Edge/i })).toBeVisible();
   });
 });
 

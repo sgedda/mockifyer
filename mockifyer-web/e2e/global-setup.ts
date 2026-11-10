@@ -1,28 +1,24 @@
 import { execSync } from 'child_process';
+import * as path from 'path';
 
 async function globalSetup() {
-  console.log('Building root packages before e2e tests...');
+  console.log('\n=== Building root packages before e2e tests ===\n');
   
-  const packagesToBuild = [
-    'mockifyer-core',
-    'mockifyer-axios',
-    'mockifyer-fetch',
-  ];
+  // Use the build-all script from the repo root
+  const repoRoot = path.resolve(__dirname, '../..');
   
-  for (const pkg of packagesToBuild) {
-    console.log(`Building ${pkg}...`);
-    try {
-      execSync(`cd ../../packages/${pkg} && npm install && npm run build`, {
-        stdio: 'inherit',
-        cwd: __dirname,
-      });
-    } catch (error) {
-      console.error(`Failed to build ${pkg}:`, error);
-      // Continue anyway - packages might already be built
-    }
+  try {
+    console.log('Running packages/build-all.sh...');
+    execSync('sh packages/build-all.sh', {
+      stdio: 'inherit',
+      cwd: repoRoot,
+    });
+    console.log('\n=== Package build complete! ===\n');
+  } catch (error) {
+    console.error('Failed to build packages:', error);
+    // Don't fail completely - packages might already be built
+    console.log('Continuing with tests...\n');
   }
-  
-  console.log('Package build complete!');
 }
 
 export default globalSetup;

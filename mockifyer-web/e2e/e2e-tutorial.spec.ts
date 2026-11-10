@@ -106,7 +106,8 @@ test.describe('E2E Tutorial Page', () => {
 
   test('should be accessible from navigation', async ({ page }) => {
     await page.goto('/');
-    const navLink = page.getByRole('navigation').getByRole('link', { name: 'E2E Tutorial' });
+    // E2E Tutorial is in the main nav
+    const navLink = page.getByRole('navigation').getByRole('link', { name: 'E2E Tutorial', exact: true });
     await expect(navLink).toBeVisible();
     await navLink.click();
     await expect(page).toHaveURL(/.*e2e-tutorial/);
