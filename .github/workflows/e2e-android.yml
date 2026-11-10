@@ -2,7 +2,7 @@ name: E2E Android (WanderWeird native + Mockifyer dashboard)
 
 # The dashboard GUI tests of e2e.yml that map cleanly onto the native app (e2e/native/README.md):
 # Playwright drives the dashboard, Maestro drives the WanderWeird debug APK on an Android emulator.
-# Nightly and manual only (an emulator run is slow); e2e.yml stays the pull request check.
+# Manual only (an emulator run is slow); e2e.yml stays the pull request check.
 on:
   workflow_dispatch:
     inputs:
@@ -10,8 +10,6 @@ on:
         description: 'Presentation mode: hold ~2.5 s at each value change and between app navigation steps (slow, readable recordings)'
         type: boolean
         default: true
-  schedule:
-    - cron: '30 2 * * *'  # 02:30 UTC daily
 
 concurrency:
   group: e2e-android-${{ github.ref }}
@@ -29,7 +27,7 @@ jobs:
       WW: example-projects/wanderweird-travel
       NODE_ENV: development
       E2E_ANDROID: '1'
-      E2E_PRESENTATION: ${{ (github.event_name == 'schedule' || inputs.presentation) && '1' || '0' }}
+      E2E_PRESENTATION: ${{ inputs.presentation && '1' || '0' }}
       # The run docs (e2e/lib/workflow.ts) list the steps of this file and this job.
       E2E_WORKFLOW_FILE: .github/workflows/e2e-android.yml
       E2E_WORKFLOW_JOB: e2e-android

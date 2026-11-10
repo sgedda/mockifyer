@@ -112,6 +112,18 @@ const response = await axios.get('https://api.example.com/data');
 
 **Date manipulation:** use **`getCurrentDate()`** from the same package you use for `setupMockifyer` instead of `new Date()`, so fixed date / offset / timezone apply. With the dashboard Redis/SQLite proxy, that call follows the **active scenario’s Date Config** (a client-lane date wins). Switch scenarios or update the date in the dashboard and `getCurrentDate()` tracks it — no extra arguments.
 
+## E2E Tests
+
+The `e2e/` directory contains a Playwright test suite that validates Mockifyer end-to-end against the WanderWeird example app:
+
+- **Stack:** Expo web build of WanderWeird + live dashboard (sqlite, ports 3002 and 3022) + multi-service backend
+- **Tests:** Headless Chromium tests plus 8 GUI tests that drive the real dashboard UI and record side-by-side videos (app + dashboard)
+- **Run locally:** `cd e2e && npm install && npm test` (headless), `npm run test:gui` (GUI tests), `npm run artifacts` (compose videos)
+- **Presentation mode:** `E2E_PRESENTATION=1 npm run test:gui` slows GUI tests for readable screen recordings
+- **CI:** `.github/workflows/e2e.yml` runs nightly at 03:00 UTC, on workflow_dispatch (with `record_video` and `presentation` inputs), and on PRs touching relevant paths
+
+See [e2e/README.md](./e2e/README.md) for full documentation, test descriptions, and artifact details.
+
 ## Features
 
 - Record and replay HTTP requests (axios or fetch)
