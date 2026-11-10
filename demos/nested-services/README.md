@@ -1,154 +1,139 @@
-# Mockifyer: Nested Services Demo
+# Nested Services Demo
 
-**Fan-out topology with multi-level API calls and request tracing**
+Mockifyer demo showcasing nested/chained service calls with request tracing, offline replay, and scenario switching.
 
-## Topology
-
-This demo shows a realistic microservices architecture:
+## Architecture
 
 ```
-Frontend
-    ↓
-Gateway (BFF)
-    ├─→ Weather API (1st level)
-    ├─→ Places API → Reviews API (2nd level - nested call!)
-    └─→ Currency API (1st level)
+Gateway (BFF) - Promise.all() fan-out
+    ├→ Weather API (parallel, 1st level)
+    ├→ Places → Reviews (nested, 2nd level)  
+    └→ Currency API (parallel, 1st level)
 ```
 
-All requests correlated with `x-mockifyer-request-id` for full tracing.
+## Key Features
 
-## Quick Start
+- **Fan-out topology**: Gateway calls multiple services in parallel
+- **Nested calls**: Places service calls Reviews service (2nd level hop)
+- **Request tracing**: `x-mockifyer-request-id` propagated across all hops
+- **Offline replay**: All mocks recorded, no real network needed
+- **Scenario switching**: 3 scenarios (default, empty-reviews, currency-error)
+- **No API keys**: Local Express stubs simulate external services
+
+## Setup
 
 ```bash
 npm install
-npm run dev
+npx playwright install chromium  # For e2e tests
 ```
 
-This starts:
-- **Frontend**: http://localhost:5173
-- **Gateway**: http://localhost:3001
-- **Dashboard**: http://localhost:3002
+## Recording Fixtures
 
-## What's Different from DevXTools Demo
+**IMPORTANT**: Must set `recordResponses: true` for full response bodies!
 
-### DevXTools' Mockifyer Demo
-- Single API call
-- No nested services
-- No request tracing
-- No dashboard integration
-
-### This Demo
-- ✅ **Fan-out topology**: Gateway calls 3 services in parallel
-- ✅ **Nested calls**: Places service calls Reviews (2nd level hop)
-- ✅ **Request tracing**: All 4 API calls correlated by request ID
-- ✅ **Live dashboard**: Real Mockifyer dashboard showing trace
-- ✅ **3 scenarios**: default, empty-reviews, currency-error
-- ✅ **Date freezing**: Fixed date for deterministic tests
-
-## Features
-
-### 1. Fan-Out Topology
-The gateway makes 3 parallel calls:
-- Weather API (simple 1st level)
-- Places API → Reviews API (nested 2nd level)
-- Currency API (simple 1st level)
-
-### 2. Request Correlation
-Every call includes `x-mockifyer-request-id`, so the dashboard shows:
-- Complete call graph
-- All 4 API calls in one trace
-- Request/response for each hop
-
-### 3. Scenarios
-Three scenarios demonstrate different states:
-- **default**: All services return data
-- **empty-reviews**: Reviews API returns empty array
-- **currency-error**: Currency API returns 503 error
-
-### 4. Date Freezing
-All mocks use fixed date `2026-11-10T12:00:00.000Z` for deterministic testing.
-
-## Project Structure
-
-```
-demos/nested-services/
-├── gateway.js              # Express BFF with Mockifyer
-├── index.html              # Frontend UI
-├── main.js                 # Frontend logic
-├── record.js               # Script to record mocks
-├── test-offline.js         # Offline replay test
-├── package.json            # Dependencies
-├── .stackblitzrc           # StackBlitz config
-└── mock-data/              # Pre-recorded fixtures
-    ├── default/            # Happy path
-    ├── empty-reviews/      # Empty reviews scenario
-    └── currency-error/     # Currency error scenario
+```javascript
+setupMockifyer({
+  recordMode: true,
+  recordResponses: true,  // REQUIRED for full recording!
+  mockDataPath: './mock-data',
+  // ...
+});
 ```
 
-## How It Works
+### Record from stubs
 
-### Recording (Development)
 ```bash
-npm run record
-```
-Calls real APIs and saves responses to `mock-data/default/`.
+# Terminal 1: Start stubs
+node stubs.js
 
-### Replay (Demo / Testing)
+# Terminal 2: Record
+node record.js
+```
+
+### Verify recorded mocks
+
 ```bash
-npm run dev
+cat mock-data/default/localhost/weather/*.json | jq .response
+# Should have: status: 200, data: {...}, no responsePending
 ```
-Loads mocks from disk. No network calls (100% offline).
-
-### Switching Scenarios
-The dashboard API or frontend dropdown changes the active scenario.
-Mockifyer loads mocks from `mock-data/{scenario}/`.
-
-### Request Correlation
-Each request gets a `x-mockifyer-request-id` that propagates through:
-- Frontend → Gateway
-- Gateway → Weather, Places, Currency
-- Places → Reviews (2nd level)
-
-The dashboard traces all 4 calls.
 
 ## Testing
 
-### Offline Test
+### Offline replay
+
 ```bash
 node test-offline.js
 ```
 
-This verifies mocks replay without network.
+### Network blocking proof
 
-### Network Blocking Test
 ```bash
-# Linux
-unshare -rn node test-offline.js
-
-# Verifies true offline capability
+node test-offline-network-blocked.js
 ```
 
-## Known Issues
+### All scenarios
 
-1. **Mock matching**: The URL parameter handling for API keys may need adjustment
-2. **Dashboard**: Requires `npm install` in the dashboard package first
-3. **Concurrency**: `npm run dev` starts 3 processes - may need manual starts
+```bash
+node test-scenarios.js
+```
 
-## Requirements
+### E2E tests
 
-- Node.js 20+
-- No API keys needed (uses pre-recorded mocks)
-- No network required (100% offline)
+```bash
+npm run test:e2e
+```
 
-## Packages
+## Running the Demo
 
-- `@sgedda/mockifyer-core@^1.10.181`
-- `@sgedda/mockifyer-fetch@^1.8.100`
-- `@sgedda/mockifyer-dashboard@^1.5.93`
+### Gateway + Frontend
 
-## Next Steps
+```bash
+# Terminal 1
+node gateway.js
 
-1. Fix mock matching for API keys in URLs
-2. Add Playwright e2e test
-3. Test in actual StackBlitz WebContainer
-4. Create screenshots/video walkthrough
+# Terminal 2
+npm run frontend
+
+# Open http://localhost:5173
+```
+
+### With Dashboard
+
+```bash
+# Terminal 3
+npm run dashboard
+
+# Open http://localhost:3002
+```
+
+## Files
+
+### Core
+- `gateway.js` - BFF with fan-out topology
+- `stubs.js` - Local Express stub services
+- `index.html` + `main.js` - Frontend UI
+
+### Recording
+- `record.js` - Records default scenario (with recordResponses: true!)
+
+### Testing
+- `test-offline.js` - Basic offline replay
+- `test-offline-network-blocked.js` - Network guard proof
+- `test-scenarios.js` - 3-scenario switcher
+- `e2e.spec.js` - Playwright e2e tests
+- `playwright.config.js` - Test orchestration
+
+### Mock Data (All Recorded)
+- `mock-data/default/` - Default scenario
+- `mock-data/empty-reviews/` - Empty reviews variation
+- `mock-data/currency-error/` - Currency error variation
+
+## Key Learning
+
+**Mockifyer defaults to request-only stubs** (for dashboard proxy compatibility).
+
+For local filesystem recording, you MUST set:
+- `recordResponses: true` in config, OR
+- `MOCKIFYER_RECORD_RESPONSES=true` env var
+
+Without this, mocks will have `responsePending: true` and won't replay!
