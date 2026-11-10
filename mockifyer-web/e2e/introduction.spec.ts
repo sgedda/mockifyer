@@ -15,7 +15,7 @@ test.describe('Introduction Page', () => {
     await expect(page.getByText(/Hard-to-reproduce states/i)).toBeVisible();
     await expect(page.getByText(/E2E tests flake/i)).toBeVisible();
     await expect(page.getByText(/Trace requests across services/i)).toBeVisible();
-    await expect(page.getByText(/Replicate requests with curl/i)).toBeVisible();
+    await expect(page.getByText(/Replicate Any Request with curl/i)).toBeVisible();
 
     // How it works section
     await expect(page.getByRole('heading', { name: /How It Works/i })).toBeVisible();

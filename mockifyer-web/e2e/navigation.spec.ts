@@ -84,7 +84,9 @@ test.describe('Navigation', () => {
     // Click Guides button and wait for menu to appear
     const guidesButton = page.getByRole('button', { name: 'Guides' });
     await guidesButton.click();
-    await page.waitForTimeout(300); // Wait for dropdown animation
+    
+    // Wait for dropdown menu to be visible (use a reliable selector)
+    await page.waitForSelector('[role="menu"]', { state: 'visible', timeout: 5000 });
     
     // Check guide links appear
     await expect(page.getByRole('link', { name: 'Mock at the Network Edge' })).toBeVisible();
@@ -99,7 +101,7 @@ test.describe('Navigation', () => {
     
     // Open Guides dropdown and wait for menu
     await page.getByRole('button', { name: 'Guides' }).click();
-    await page.waitForTimeout(300); // Wait for dropdown animation
+    await page.waitForSelector('[role="menu"]', { state: 'visible', timeout: 5000 });
     
     // Click on a guide
     await page.getByRole('link', { name: 'Mock at the Network Edge' }).click();
