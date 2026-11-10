@@ -3,8 +3,23 @@
  * Avoids statically loading Node built-ins by not re-exporting the full main index barrel.
  */
 
-// Re-export all browser-safe core exports (uses core's browser entry via package.json browser field)
-export * from '@sgedda/mockifyer-core';
+// Re-export only essential types and browser-safe utilities from core
+// DO NOT use `export * from '@sgedda/mockifyer-core'` - it pulls in Node-dependent modules
+export type {
+  MockifyerConfig,
+  MockData,
+  StoredRequest,
+  StoredResponse,
+  HTTPClient,
+  HTTPResponse,
+  DatabaseProvider,
+  DatabaseProviderConfig,
+} from '@sgedda/mockifyer-core';
+
+export {
+  MemoryProvider,
+  createProvider,
+} from '@sgedda/mockifyer-core';
 
 // Re-export browser-safe fetch utilities
 export { FetchHTTPClient } from './clients/fetch-client';
