@@ -30,7 +30,14 @@ function HashScrollHandler() {
       const element = document.getElementById(location.hash.substring(1))
       if (element) {
         setTimeout(() => {
-          element.scrollIntoView({ behavior: 'smooth' })
+          const headerOffset = 64
+          const elementPosition = element.getBoundingClientRect().top
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset
+          
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          })
         }, 0)
       }
     }
