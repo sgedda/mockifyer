@@ -141,21 +141,22 @@ export const handlers = [
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <CodeBlock language="json" code={`// mock-data/default/trips_123_GET.json
+              <CodeBlock language="json" code={`// mock-data/default/demo.devxtools.dev/tasks/GET_2026-11-10_15-34-10.json
 {
   "request": {
     "method": "GET",
-    "path": "/api/trips/123"
+    "url": "https://demo.devxtools.dev/tasks"
   },
   "response": {
     "status": 200,
-    "body": {
-      "id": 123,
-      "title": "Paris",        // ✅ Captured from real API
-      "message": "Unavailable"  // ✅ Matches production
-    }
+    "data": [
+      { "id": 1, "title": "Set up project repository", "completed": true, "userId": 1 },
+      { "id": 2, "title": "Write API documentation", "completed": true, "userId": 1 }
+    ],
+    "headers": { ... }
   },
-  "recordedAt": "2024-12-10T10:30:00Z"
+  "timestamp": "2026-11-10T15:34:10.459Z",
+  "duration": 158
 }`} />
               <p className="text-sm text-muted-foreground">
                 <strong>Benefits:</strong>
@@ -188,21 +189,29 @@ export const handlers = [
             <div>
               <h4 className="font-semibold mb-2">1. Enable recording mode</h4>
               <CodeBlock language="bash" code={`MOCKIFYER_RECORD=true npm run dev`} />
+              <p className="text-sm text-muted-foreground mt-2">
+                Requests land in <code className="text-xs bg-muted px-1 py-0.5 rounded">_scratch/</code> and keep calling the live API. Activate mocks in the dashboard (untick "Always use live API") or use domain-path rules to record responses. For quick demos, see <code className="text-xs bg-muted px-1 py-0.5 rounded">demos/mock-drift-detection/record.js</code> which uses <code className="text-xs bg-muted px-1 py-0.5 rounded">recordResponses: true</code> + <code className="text-xs bg-muted px-1 py-0.5 rounded">domainPathRulesMode: 'record_all'</code> (heavy).
+              </p>
             </div>
 
             <div>
               <h4 className="font-semibold mb-2">2. Trigger the API calls</h4>
               <p className="text-sm text-muted-foreground">
-                Click through your app to make the same requests. Mockifyer overwrites the old JSON files with new responses.
+                Click through your app to make the same requests. New recordings get a new timestamped filename (e.g., <code className="bg-muted px-1 rounded">GET_2026-11-11_10-00-00.json</code>), so record into a new scenario folder like <code className="bg-muted px-1 rounded">updated/</code> and diff the folders.
               </p>
             </div>
 
             <div>
               <h4 className="font-semibold mb-2">3. Review the diff</h4>
-              <CodeBlock language="bash" code={`git diff mock-data/default/trips_123_GET.json`} />
+              <CodeBlock language="bash" code={`# Compare scenario folders
+diff -r mock-data/default/ mock-data/updated/
+
+# Or diff individual files
+diff mock-data/default/demo.devxtools.dev/tasks/GET_2026-06-01_10-00-00.json \\
+     mock-data/updated/demo.devxtools.dev/tasks/GET_2026-11-10_15-00-00.json`} />
               <p className="text-sm text-muted-foreground mt-2">
                 This shows exactly what the API changed. If you see breaking changes (fields renamed, types changed), 
-                update your app code before committing the new mocks.
+                update your app code before committing the new mocks. The <code className="bg-muted px-1 rounded">demos/mock-drift-detection</code> example does exactly this.
               </p>
             </div>
 
@@ -210,7 +219,7 @@ export const handlers = [
               <h4 className="font-semibold mb-2">Example Diff</h4>
               <CodeBlock language="diff" code={`  "response": {
     "status": 200,
-    "body": {
+    "data": {
       "id": 123,
 -     "name": "Paris",
 +     "title": "Paris",
@@ -292,7 +301,7 @@ export const handlers = [
               <tr className="border-b align-top">
                 <td className="py-3 pr-4 font-semibold text-foreground">React Native Support</td>
                 <td className="py-3 pr-4">
-                  <span className="text-red-600 dark:text-red-400">✗ Browser/Node only</span>
+                  <span className="text-muted-foreground">⚠ RN via <code className="text-xs bg-muted px-1 py-0.5 rounded">msw/native</code> + polyfills</span>
                 </td>
                 <td className="py-3">
                   <span className="text-primary">✓ React Native, Expo, Node, browser</span>

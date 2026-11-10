@@ -21,12 +21,12 @@ export default function Introduction() {
     },
     {
       src: '/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4',
-      poster: '/videos/e2e-tutorial/mock-editor-body-edit-poster.webp',
+      poster: '/videos/e2e-tutorial/mock-editor-body-edit_bd79.jpg',
       caption: 'Edit mock response bodies in real-time'
     },
     {
       src: '/videos/e2e-tutorial/header-scenario-picker_4de8.mp4',
-      poster: '/videos/e2e-tutorial/header-scenario-picker-poster.webp',
+      poster: '/videos/e2e-tutorial/header-scenario-picker_bdbe.jpg',
       caption: 'Switch scenarios to test different states'
     }
   ]
@@ -218,7 +218,7 @@ export default function Introduction() {
               </div>
               <h3 className="font-semibold text-lg mb-2">1. Record</h3>
               <p className="text-sm text-muted-foreground">
-                Run with <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_RECORD=true</code>. Every HTTP request is captured as JSON.
+                Run with <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_RECORD=true</code>. Requests land in <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">_scratch/</code> and keep hitting the live API. Activate mocks in the dashboard or via domain-path rules to save responses.
               </p>
             </div>
             
@@ -238,7 +238,7 @@ export default function Introduction() {
               </div>
               <h3 className="font-semibold text-lg mb-2">3. Replay in Tests</h3>
               <p className="text-sm text-muted-foreground">
-                Lock the scenario with launch arguments—same state every run.
+                Lock the scenario with launch arguments (React Native), <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">MOCKIFYER_SCENARIO</code> (Node), or <code className="text-xs bg-muted px-1 py-0.5 rounded border border-border">x-mockifyer-client-id</code> header (per-lane)—same state every run.
               </p>
             </div>
           </div>
@@ -255,18 +255,22 @@ export default function Introduction() {
           
           <CodeBlock
             language="typescript"
-            code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
+            code={`import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch/react-native';
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 
-setupMockifyerForReactNative({
-  mockDataPath: './mock-data',
-  recordMode: false,
-  dateManipulation: {
-    fixedDate: '2024-12-20',
-    timezone: 'America/New_York'
+await setupMockifyerForReactNative({
+  isDev: __DEV__,
+  mockDataPath: 'mock-data',
+  config: {
+    dateManipulation: {
+      fixedDate: '2024-12-20',
+      timezone: 'America/New_York'
+    }
   }
 });
 
-// Your app code runs normally—fetch is patched automatically`}
+// Read time via getCurrentDate() — Mockifyer doesn't patch global Date
+const now = getCurrentDate();`}
           />
           
           <div className="mt-8 p-5 rounded-xl border border-primary/20 bg-primary/5">

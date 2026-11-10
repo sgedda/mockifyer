@@ -102,20 +102,20 @@ export default function StableReactNativeE2E() {
           <CardContent>
             <CodeBlock language="bash" code={`mock-data/
   trips-empty/
-    trips_GET.json           → { "data": [] }
+    demo.devxtools.dev/tasks/GET_2026-11-10_00-00-00.json  → { "response": { "data": [] } }
   
   trips-with-data/
-    trips_GET.json           → { "data": [{...}, {...}, {...}] }
-    trips_123_GET.json       → { "id": 123, "name": "Paris", ... }
+    demo.devxtools.dev/tasks/GET_2026-11-10_15-34-10.json  → { "response": { "data": [{...}, {...}] } }
+    demo.devxtools.dev/tasks/1/GET_2026-11-10_15-34-10.json → { "response": { "data": { "id": 1, "title": "..." } } }
   
   trips-error-500/
-    trips_GET.json           → status 500, {"error": "Internal server error"}
+    demo.devxtools.dev/tasks/GET_2026-11-10_00-00-00.json  → status 500 via statusOverride
   
   trips-logged-out/
-    trips_GET.json           → status 401, {"error": "Unauthorized"}
+    demo.devxtools.dev/tasks/GET_2026-11-10_00-00-00.json  → status 401 via statusOverride
   
   trips-slow-network/
-    trips_GET.json           → same as trips-with-data, but 5-second delay`} />
+    demo.devxtools.dev/tasks/GET_2026-11-10_15-34-10.json  → same data, but 5-second delay via responseDelayMs`} />
           </CardContent>
         </Card>
       </section>
@@ -237,26 +237,23 @@ const client = await wdio.remote(opts);
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <h4 className="font-semibold mb-2">Option 1: Launch Argument</h4>
-              <CodeBlock language="javascript" code={`await device.launchApp({
-  launchArgs: {
-    scenario: 'trips-with-data',
-    mockifyerDate: '2024-12-20T00:00:00Z'
-  }
-});
-
-// getCurrentDate() now returns Dec 20, 2024 for the entire session`} />
-            </div>
-
-            <div>
-              <h4 className="font-semibold mb-2">Option 2: Scenario Config</h4>
-              <CodeBlock language="json" code={`// mock-data/trips-with-data/scenario-config.json
+              <h4 className="font-semibold mb-2">Option 1: Per-Scenario Date Config</h4>
+              <CodeBlock language="json" code={`// mock-data/trips-with-data/date-config.json
 {
-  "dateConfig": {
+  "dateManipulation": {
     "fixedDate": "2024-12-20T00:00:00Z",
     "timezone": "America/New_York"
   }
-}`} />
+}
+
+// getCurrentDate() now returns Dec 20, 2024 for this scenario`} />
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-2">Option 2: Node Environment Variable</h4>
+              <CodeBlock language="bash" code={`MOCKIFYER_DATE='2024-12-20T00:00:00Z' npm test
+
+// Or use client-lane dates in the dashboard (per-lane override)`} />
             </div>
 
             <div>
@@ -267,9 +264,10 @@ const client = await wdio.remote(opts);
 const now = Date.now();
 
 // ✅ Use getCurrentDate() instead
+import { getCurrentDate } from '@sgedda/mockifyer-core';
 const now = getCurrentDate().getTime();
 
-// When mockifyerDate is set, this returns the frozen date
+// With date-config.json or MOCKIFYER_DATE, this returns the frozen date
 // When not set, it returns the real current time`} />
             </div>
           </CardContent>

@@ -7,6 +7,8 @@ This demo shows the core Mockifyer workflow:
 3. **Switch scenarios** (empty list, error states)
 4. **Freeze dates** for time-dependent tests
 
+**Note:** This demo uses `demo.devxtools.dev` (a third-party public demo API) for demonstration purposes.
+
 ## Try it
 
 ### Option 1: Record new mocks

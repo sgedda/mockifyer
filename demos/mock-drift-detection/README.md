@@ -2,6 +2,8 @@
 
 This demo shows how Mockifyer detects when your mocks drift from the real API.
 
+**Note:** This demo uses `demo.devxtools.dev` (a third-party public demo API) for demonstration purposes.
+
 ## The Problem
 
 Your mocks were recorded 6 months ago. The API has changed:

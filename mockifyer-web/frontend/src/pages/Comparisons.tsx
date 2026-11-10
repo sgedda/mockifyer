@@ -122,7 +122,7 @@ const featureMatrix: {
   {
     feature: 'Fetch / React Native',
     mockifyer: 'fetch + RN',
-    msw: 'Browser + Node',
+    msw: 'Browser + Node + RN (msw/native)',
     polly: 'Browser + Node',
     nock: false,
     mirage: 'Browser',
