@@ -209,7 +209,7 @@ export class ScreenRecorder {
         const elapsedMs = Date.now() - startedAtMs;
         const fastFailure = elapsedMs < this.MIN_CHUNK_DURATION_MS;
         
-        if (code !== 0 || fastFailure) {
+        if (code !== 0 || (fastFailure && !this.stopping)) {
           this.consecutiveFailures++;
           console.warn(
             `[ScreenRecorder] Chunk ${chunkIndex} exited with code ${code} after ${elapsedMs}ms ` +
@@ -262,6 +262,9 @@ export class ScreenRecorder {
       local.push(file);
     }
     const startedAtMs = this.chunks[0].startedAtMs;
+    if (local.length === 0) {
+      throw new Error('[ScreenRecorder] No valid recording chunks available');
+    }
     if (local.length === 1) return { file: local[0], startedAtMs };
     const list = path.join(dir, 'chunks.txt');
     writeFileSync(list, local.map((f) => `file '${f}'`).join('\n'));
