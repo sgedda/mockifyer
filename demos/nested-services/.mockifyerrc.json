@@ -1,0 +1,4 @@
+{
+  "mockDataPath": "./mock-data",
+  "defaultScenario": "default"
+}

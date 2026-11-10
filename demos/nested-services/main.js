@@ -45,7 +45,10 @@ async function fetchTripInfo() {
   elements.fetchButton.disabled = true;
   
   try {
-    const response = await fetch(`${GATEWAY_URL}/api/trip/${encodeURIComponent(city)}`);
+    // Get current scenario from selector
+    const scenario = elements.scenarioSelect.value;
+    const url = `${GATEWAY_URL}/api/trip/${encodeURIComponent(city)}?scenario=${encodeURIComponent(scenario)}`;
+    const response = await fetch(url);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));

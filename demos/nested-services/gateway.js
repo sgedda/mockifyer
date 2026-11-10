@@ -1,5 +1,5 @@
 import express from 'express';
-import { getCurrentDate } from '@sgedda/mockifyer-core';
+import { getCurrentDate, setScenarioLaunchOverride } from '@sgedda/mockifyer-core';
 import { setupMockifyer } from '@sgedda/mockifyer-fetch';
 
 const PORT = 3001;
@@ -32,10 +32,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// Mock service endpoints (these would be real services in production)
-const WEATHER_API = 'https://api.weatherapi.com';
-const PLACES_API = 'https://api.geoapify.com';
-const REVIEWS_API = 'https://jsonplaceholder.typicode.com';
+// Local stub services (in production these would be real external APIs)
+const STUB_BASE = 'http://localhost:3003';
+const WEATHER_API = STUB_BASE;
+const PLACES_API = STUB_BASE;
+const REVIEWS_API = STUB_BASE;
 
 /**
  * Weather service - first-level service
@@ -45,7 +46,7 @@ async function getWeather(city, requestId) {
   console.log(`  [Gateway] → Weather API: ${city}`);
   
   const response = await fetch(
-    `${WEATHER_API}/v1/current.json?key=demo&q=${city}`,
+    `${WEATHER_API}/weather?city=${city}`,
     { headers }
   );
   
@@ -65,7 +66,7 @@ async function getLocationReviews(city, requestId) {
   
   // First call: get place details
   const placesResponse = await fetch(
-    `${PLACES_API}/v2/places?text=${city}&format=json&apiKey=demo`,
+    `${PLACES_API}/places?city=${city}`,
     { headers }
   );
   
@@ -74,12 +75,12 @@ async function getLocationReviews(city, requestId) {
   }
   
   const places = await placesResponse.json();
-  const placeId = 1;
+  const placeId = places.place_id || '12345';
   
   // Second call: get reviews for that place (second-level hop!)
   console.log(`    [Places] → Reviews API: place ${placeId}`);
   const reviewsResponse = await fetch(
-    `${REVIEWS_API}/posts/${placeId}/comments`,
+    `${REVIEWS_API}/reviews/${placeId}`,
     { headers }
   );
   
@@ -98,7 +99,7 @@ async function getCurrencyRate(from, to, requestId) {
   console.log(`  [Gateway] → Currency API: ${from} to ${to}`);
   
   const response = await fetch(
-    `https://api.frankfurter.dev/latest?from=${from}&to=${to}`,
+    `${STUB_BASE}/currency?from=${from}&to=${to}`,
     { headers }
   );
   
@@ -115,8 +116,15 @@ async function getCurrencyRate(from, to, requestId) {
  */
 app.get('/api/trip/:city', async (req, res) => {
   const { city } = req.params;
+  const { scenario } = req.query;
   const requestId = req.headers['x-mockifyer-request-id'] || 
                     `trip-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  
+  // Switch scenario if provided
+  if (scenario) {
+    setScenarioLaunchOverride(scenario);
+    console.log(`[Gateway] Switched to scenario: ${scenario}`);
+  }
   
   console.log(`\n[Gateway] Processing trip request for ${city} (request-id: ${requestId})`);
   
