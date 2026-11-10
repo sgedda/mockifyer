@@ -73,6 +73,36 @@ export const PAGE_SEO: Record<string, PageSeoConfig> = {
       'End-to-end walkthrough of the WanderWeird demo stack with Mockifyer. Drive the dashboard GUI, switch scenarios, inject failures, and trace nested HTTP calls across services.',
     path: '/e2e-tutorial',
   },
+  '/guides/mock-at-the-network-edge': {
+    title: 'Mock at the Network Edge - Testing Guide',
+    description:
+      'Stop mocking hooks and components. Mock HTTP at the network edge to test what users see. Real response shapes, survive refactors, catch breaking API changes.',
+    path: '/guides/mock-at-the-network-edge',
+  },
+  '/guides/reproduce-tester-bugs': {
+    title: 'Reproduce Tester Bugs Locally - Testing Guide',
+    description:
+      'Capture API calls from tester devices, trace requests across services via x-mockifyer-request-id, export as curl, and replay bugs locally.',
+    path: '/guides/reproduce-tester-bugs',
+  },
+  '/guides/stable-react-native-e2e': {
+    title: 'Stable React Native E2E Tests - Detox, Appium, Maestro',
+    description:
+      'Stop Detox, Appium, and Maestro flakes. Lock scenarios with launch arguments, freeze dates, and make the backend deterministic.',
+    path: '/guides/stable-react-native-e2e',
+  },
+  '/guides/mock-drift': {
+    title: 'Stop Mock Drift - Record Real API Responses',
+    description:
+      'Hand-written mocks drift from real APIs. Record real responses, re-record when APIs change, and git diff to catch breaking changes. MSW vs record-replay comparison.',
+    path: '/guides/mock-drift',
+  },
+  '/guides/nuxt-ssr-fixtures': {
+    title: 'Nuxt SSR Fixtures - Server-Side Fetch Mocking',
+    description:
+      'Record backend responses for flaky Nuxt 3/Nitro CI. Intercept server-side $fetch and ofetch in the Node.js layer where Playwright can\'t reach.',
+    path: '/guides/nuxt-ssr-fixtures',
+  },
 }
 
 export function getPageSeo(pathname: string): PageSeoConfig {

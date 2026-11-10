@@ -41,12 +41,6 @@ export const PUBLISHED_PACKAGES: PublishedPackage[] = [
     npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-dashboard',
   },
   {
-    name: '@sgedda/mockifyer-mcp',
-    version: '0.1.0',
-    role: 'AI tools for Cursor and Claude (experimental)',
-    npmUrl: 'https://www.npmjs.com/package/@sgedda/mockifyer-mcp',
-  },
-  {
     name: '@sgedda/mockifyer-test-helper',
     version: '1.8.9',
     role: 'Test utilities and auto-setup for realistic mock data in tests',

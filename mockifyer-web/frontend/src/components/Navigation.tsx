@@ -1,9 +1,15 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Menu, Moon, Sun, Github } from 'lucide-react'
+import { Menu, Moon, Sun, Github, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import Logo from './Logo'
 import { useTheme } from '@/lib/use-theme'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const navItems = [
   { href: '/getting-started', label: 'Get Started' },
@@ -11,6 +17,14 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/packages', label: 'Packages' },
   { href: '/faq', label: 'FAQ' },
+]
+
+const guideItems = [
+  { href: '/guides/mock-at-the-network-edge', label: 'Mock at the Network Edge' },
+  { href: '/guides/reproduce-tester-bugs', label: 'Reproduce Tester Bugs' },
+  { href: '/guides/stable-react-native-e2e', label: 'Stable React Native E2E' },
+  { href: '/guides/mock-drift', label: 'Stop Mock Drift' },
+  { href: '/guides/nuxt-ssr-fixtures', label: 'Nuxt SSR Fixtures' },
 ]
 
 export default function Navigation() {
@@ -21,6 +35,10 @@ export default function Navigation() {
   const isActive = (path: string) => {
     return location.pathname === path || 
            (path === '/' && location.pathname === '/')
+  }
+
+  const isGuidesActive = () => {
+    return location.pathname.startsWith('/guides/')
   }
 
   return (
@@ -45,6 +63,31 @@ export default function Navigation() {
               {item.label}
             </Link>
           ))}
+          
+          {/* Guides Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`px-3 py-1.5 rounded-md text-[15px] font-medium transition-colors inline-flex items-center gap-1 ${
+                  isGuidesActive()
+                    ? 'text-foreground bg-muted'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                }`}
+              >
+                Guides
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {guideItems.map((guide) => (
+                <DropdownMenuItem key={guide.href} asChild>
+                  <Link to={guide.href} className="cursor-pointer">
+                    {guide.label}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </nav>
 
         {/* Desktop Actions */}
@@ -123,6 +166,26 @@ export default function Navigation() {
               {item.label}
             </Link>
           ))}
+          
+          {/* Guides submenu */}
+          <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Guides
+          </div>
+          {guideItems.map((guide) => (
+            <Link
+              key={guide.href}
+              to={guide.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-3 py-2 ml-2 rounded-lg text-sm font-medium ${
+                isActive(guide.href)
+                  ? 'text-foreground bg-muted'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+              }`}
+            >
+              {guide.label}
+            </Link>
+          ))}
+          
           <a
             href="https://github.com/sgedda/mockifyer"
             target="_blank"
