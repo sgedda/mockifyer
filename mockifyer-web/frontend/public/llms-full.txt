@@ -6,12 +6,12 @@
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `@sgedda/mockifyer-core` | 1.8.37 | Types, matching, scenarios, dates, activation, AI context |
-| `@sgedda/mockifyer-axios` | 1.8.21 | `setupMockifyer` for Axios |
-| `@sgedda/mockifyer-fetch` | 1.8.31 | fetch, React Native, dashboard proxy |
-| `@sgedda/mockifyer-dashboard` | 1.4.50 | CLI + UI, Redis proxy, client lanes |
-| `@sgedda/mockifyer-mcp` | 0.1.0 | MCP for Cursor/Claude (requires dashboard) |
-| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities |
+| `@sgedda/mockifyer-core` | 1.10.190 | Types, matching, scenarios, dates, activation, AI context |
+| `@sgedda/mockifyer-axios` | 1.10.35 | `setupMockifyer` for Axios |
+| `@sgedda/mockifyer-fetch` | 1.8.106 | fetch, React Native, dashboard proxy |
+| `@sgedda/mockifyer-dashboard` | 1.5.93 | CLI + UI, Redis proxy, client lanes |
+| `@sgedda/mockifyer-mcp` | 0.1.5 | 42 MCP tools for Cursor/Claude (not on npm — build from `packages/mockifyer-mcp`) |
+| `@sgedda/mockifyer-test-helper` | 1.8.9 | Test utilities (not on npm — build from `packages/mockifyer-test-helper`) |
 
 ## Setup (axios)
 
@@ -41,7 +41,7 @@ Env: `MOCKIFYER_ACTIVATION_MODE` overrides config.
 
 ## React Native startup
 
-`MOCKIFYER_MODE`: `on` (default) | `launch_client` | `off` — gates fetch patching at startup via `setupMockifyerForReactNative`.
+`MOCKIFYER_MODE`: `on` (default) | `launch_client` | `manual` | `off` — gates fetch patching at startup via `setupMockifyerForReactNative`. `manual` (aliases: `e2e`, `maestro`, `gui`, `toggle`) enables programmatic control.
 
 ## Common environment variables
 
@@ -66,7 +66,7 @@ Request keys: normalized query + sorted variables JSON.
 npx @sgedda/mockifyer-dashboard --path ./mock-data
 ```
 
-MCP tools (with dashboard running): `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`.
+MCP server (42 tools) includes: `mockifyer_get_mock_ai_context`, `mockifyer_search_mocks`, `mockifyer_set_field_overrides`, `mockifyer_list_scenarios`, `mockifyer_explain_value`, `mockifyer_explain_incident`, `mockifyer_set_mock_behavior` (status/delay overrides), override group tools, Atlas tools, fixture pool tools, and `mockifyer_promote_response`. Build from `packages/mockifyer-mcp` (not on npm).
 
 Dashboard mock API also exposes `/api/mocks/:file/ai-context` for lightweight field/schema projections.
 
