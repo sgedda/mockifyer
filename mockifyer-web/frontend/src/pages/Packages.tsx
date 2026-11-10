@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Folder, ExternalLink } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import PackagesOverview from '@/components/PackagesOverview'
+import { REPO_ONLY_PACKAGES, SITE_GITHUB } from '@/lib/product-docs'
 
 export default function Packages() {
   return (
@@ -14,10 +16,10 @@ export default function Packages() {
           </Button>
         </Link>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight">
-          Published Packages
+          Packages
         </h1>
         <p className="text-muted-foreground mt-4 text-lg max-w-3xl">
-          All @sgedda/mockifyer-* packages published to npm
+          npm packages and repo-only tools
         </p>
       </header>
 
@@ -25,21 +27,41 @@ export default function Packages() {
         <PackagesOverview />
       </section>
 
-      <section className="p-4 border border-blue-500/50 bg-blue-500/10 rounded-md">
-        <p className="text-blue-900 dark:text-blue-200 text-sm">
-          <strong>Note:</strong> The MCP server for Cursor and Claude Desktop is available at{' '}
-          <code className="bg-muted px-1 py-0.5 rounded">packages/mockifyer-mcp</code> in the{' '}
-          <a 
-            href="https://github.com/sgedda/mockifyer" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-primary hover:underline font-medium"
-          >
-            GitHub repo
-          </a>
-          . It's experimental and local-only (not published to npm). See{' '}
-          <code className="bg-muted px-1 py-0.5 rounded">.cursor/README.md</code> for setup instructions.
-        </p>
+      <section className="space-y-6">
+        <h2 className="text-2xl font-semibold">Build from Source (Not on npm)</h2>
+        {REPO_ONLY_PACKAGES.map((pkg) => (
+          <Card key={pkg.name}>
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <Folder className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle className="text-xl">{pkg.name}</CardTitle>
+                    <CardDescription className="mt-1">v{pkg.version}</CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-muted-foreground">{pkg.role}</p>
+              <div className="text-sm">
+                <strong>Build:</strong>{' '}
+                <code className="bg-muted px-1 py-0.5 rounded text-xs">
+                  cd {pkg.buildPath} && npm install && npm run build
+                </code>
+              </div>
+              <a 
+                href={`${SITE_GITHUB}/tree/main/${pkg.buildPath}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+              >
+                <ExternalLink className="h-4 w-4" />
+                View in GitHub
+              </a>
+            </CardContent>
+          </Card>
+        ))}
       </section>
     </div>
   )
