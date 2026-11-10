@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "url": "http://localhost:3099/test",
+    "headers": {
+      "x-mockifyer-request-id": "66e7006d-9b12-436c-b62e-369c5f92a8d3"
+    },
+    "queryParams": {
+      "param": "value"
+    }
+  },
+  "response": {
+    "status": 0,
+    "data": null,
+    "headers": {}
+  },
+  "timestamp": "2026-11-10T19:13:24.965Z",
+  "responsePending": true,
+  "alwaysUseRealApi": true,
+  "duration": 36,
+  "sessionId": "session-1794338004964-ic0wgzhzw",
+  "requestId": "66e7006d-9b12-436c-b62e-369c5f92a8d3"
+}

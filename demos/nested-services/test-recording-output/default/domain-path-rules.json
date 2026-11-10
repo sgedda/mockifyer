@@ -1,0 +1,10 @@
+{
+  "localhost:3099": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "localhost:3099/test": {
+    "recordResponses": true,
+    "autoMock": true
+  }
+}

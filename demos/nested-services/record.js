@@ -32,8 +32,8 @@ async function recordMocks() {
     await weatherRes.json();
     console.log('  ✓ Recorded');
     
-    // Wait for async file write
-    await new Promise(resolve => setImmediate(resolve));
+    // Wait for async file write (response body triggers the update)
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Record places API (localhost stub)
     console.log('\n→ Recording Places API...');
@@ -69,8 +69,8 @@ async function recordMocks() {
     await currencyRes.json();
     console.log('  ✓ Recorded');
     
-    // Wait for all async writes
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for all async writes to complete
+    await new Promise(resolve => setTimeout(resolve, 5000));
     
     console.log('\n✅ All mocks recorded!');
     console.log('Mock files saved to: mock-data/default/\n');

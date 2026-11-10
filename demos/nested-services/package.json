@@ -10,7 +10,8 @@
     "dashboard": "mockifyer-dashboard --path ./mock-data --port 3002",
     "record": "node record.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@sgedda/mockifyer-core": "^1.10.181",

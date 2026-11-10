@@ -18,5 +18,29 @@
   "localhost:3003/currency": {
     "recordResponses": true,
     "autoMock": true
+  },
+  "api.weatherapi.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.weatherapi.com/v1/current.json": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.geoapify.com": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.geoapify.com/v2/places": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.frankfurter.dev": {
+    "recordResponses": true,
+    "autoMock": true
+  },
+  "api.frankfurter.dev/latest": {
+    "recordResponses": true,
+    "autoMock": true
   }
 }
