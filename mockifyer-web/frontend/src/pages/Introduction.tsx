@@ -88,13 +88,22 @@ export default function Introduction() {
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <video
               src="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4"
+              poster="/videos/e2e-tutorial/mock-editor-body-edit-poster.webp"
               muted
               loop
               playsInline
               preload="metadata"
-              className="w-full"
+              className="w-full cursor-pointer"
               onMouseEnter={(e) => e.currentTarget.play()}
               onMouseLeave={(e) => e.currentTarget.pause()}
+              onClick={(e) => {
+                const video = e.currentTarget;
+                if (video.paused) {
+                  video.play();
+                } else {
+                  video.pause();
+                }
+              }}
             >
               Your browser doesn't support video playback.
             </video>
@@ -106,13 +115,22 @@ export default function Introduction() {
           <div className="rounded-lg border border-border bg-card overflow-hidden">
             <video
               src="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4"
+              poster="/videos/e2e-tutorial/header-scenario-picker-poster.webp"
               muted
               loop
               playsInline
               preload="metadata"
-              className="w-full"
+              className="w-full cursor-pointer"
               onMouseEnter={(e) => e.currentTarget.play()}
               onMouseLeave={(e) => e.currentTarget.pause()}
+              onClick={(e) => {
+                const video = e.currentTarget;
+                if (video.paused) {
+                  video.play();
+                } else {
+                  video.pause();
+                }
+              }}
             >
               Your browser doesn't support video playback.
             </video>
