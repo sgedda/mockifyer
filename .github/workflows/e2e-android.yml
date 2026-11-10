@@ -172,19 +172,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           working-directory: e2e
-          script: |
-            echo "Emulator up; uptime (s since boot or snapshot restore): $(adb shell cat /proc/uptime)"
-            
-            # Stream logcat to file for failure diagnostics (capture from start, before tests)
-            adb logcat -v time > /tmp/logcat.txt 2>&1 &
-            LOGCAT_PID=$!
-            echo "Started logcat capture (PID: $LOGCAT_PID)"
-            
-            # Ensure logcat stops when script exits
-            trap "kill $LOGCAT_PID 2>/dev/null || true" EXIT
-            
-            adb install -r ../example-projects/wanderweird-travel/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-            npx playwright test --project=android
+          script: native/scripts/run-with-logcat.sh
 
       # Side-by-side clips (emulator recording next to the dashboard) plus a Markdown description per test.
       - name: Compose side-by-side GUI videos and run docs
