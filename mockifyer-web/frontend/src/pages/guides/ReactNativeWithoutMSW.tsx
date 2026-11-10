@@ -135,10 +135,12 @@ import { setupMockifyerForReactNative } from '@sgedda/mockifyer-fetch';
 setupMockifyerForReactNative({
   mockDataPath: './mock-data',
   recordMode: __DEV__ && process.env.EXPO_PUBLIC_MOCKIFYER_RECORD === 'true',
-  recordResponses: true,
   useGlobalFetch: true,
 });`} 
             />
+            <p className="text-sm text-muted-foreground mt-3">
+              This uses <strong>selective recording</strong>: requests land as request-only stubs in <code className="bg-muted px-1 rounded text-xs">_scratch</code> and stay on the live API until you activate them in the dashboard.
+            </p>
           </div>
 
           <div>
@@ -163,15 +165,59 @@ export default function App() {
 
         <div className="space-y-6">
           <div>
-            <h3 className="text-xl font-semibold mb-3">Start Recording</h3>
+            <h3 className="text-xl font-semibold mb-3">Selective Recording (Default)</h3>
             <CodeBlock 
               language="bash" 
               code="EXPO_PUBLIC_MOCKIFYER_RECORD=true npx expo start" 
             />
             <p className="text-muted-foreground mt-3">
-              Run your app, navigate screens, trigger API calls. Responses are saved to <code className="bg-muted px-1 rounded text-xs">mock-data/default/</code> in your app's filesystem.
+              Run your app, navigate screens, trigger API calls. Requests land as request-only stubs in the <code className="bg-muted px-1 rounded text-xs">_scratch</code> scenario. 
+              Calls stay on the live API until you activate mocks in the dashboard or via domain-path rules.
             </p>
           </div>
+
+          <Card className="border-amber-500/50 bg-amber-500/10">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Quick Demo Mode (Capture-Everything)
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                For quick demos or throwaway testing, capture full responses and replay immediately:
+              </p>
+              <CodeBlock 
+                language="bash" 
+                code="EXPO_PUBLIC_MOCKIFYER_RECORD=true EXPO_PUBLIC_MOCKIFYER_RECORD_RESPONSES=true npx expo start" 
+              />
+              <p className="text-sm text-muted-foreground">
+                Or configure in setup:
+              </p>
+              <CodeBlock 
+                language="typescript" 
+                code={`process.env.MOCKIFYER_RECORD_RESPONSES = 'true';
+process.env.MOCKIFYER_RECORD_DEFAULT_ALWAYS_USE_REAL_API = 'false';
+
+setupMockifyerForReactNative({
+  mockDataPath: './mock-data',
+  recordMode: true,
+  domainPathRulesMode: 'record_all'
+});`} 
+              />
+              <p className="text-sm text-muted-foreground">
+                Heavy. Captures everything. See{' '}
+                <a 
+                  href="https://github.com/sgedda/mockifyer/tree/main/demos/record-replay-basics" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  demos/record-replay-basics
+                </a>
+              </p>
+            </CardContent>
+          </Card>
 
           <Card className="border-primary/20 bg-primary/5">
             <CardHeader>

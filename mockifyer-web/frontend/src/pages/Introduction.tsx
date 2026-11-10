@@ -52,7 +52,7 @@ export default function Introduction() {
             
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-tight">
               <span className="inline-block">Record real APIs.</span>{' '}
-              <span className="inline-block bg-gradient-to-r from-primary via-blue-500 to-violet-500 bg-clip-text text-transparent animate-gradient">
+              <span className="inline-block bg-gradient-to-r from-primary via-blue-500 to-violet-500 bg-clip-text text-transparent animate-gradient pb-2 leading-normal">
                 Replay them anywhere.
               </span>
             </h1>
