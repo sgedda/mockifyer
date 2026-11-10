@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Github, ArrowRight, PlayCircle, Database, Code2, Sparkles, Construction, Target, Zap, GitBranch, Terminal, Play } from 'lucide-react'
@@ -5,7 +6,32 @@ import Logo from '@/components/Logo'
 import CodeBlock from '@/components/CodeBlock'
 import RunItButton from '@/components/RunItButton'
 
+interface MediaItem {
+  src: string
+  poster?: string
+  caption: string
+}
+
 export default function Introduction() {
+  const [selectedMedia, setSelectedMedia] = useState(0)
+
+  const mediaItems: MediaItem[] = [
+    {
+      src: '/videos/e2e-tutorial/delay-and-status-override_b200.mp4',
+      caption: 'Override delays and HTTP status codes per scenario'
+    },
+    {
+      src: '/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4',
+      poster: '/videos/e2e-tutorial/mock-editor-body-edit-poster.webp',
+      caption: 'Edit mock response bodies in real-time'
+    },
+    {
+      src: '/videos/e2e-tutorial/header-scenario-picker_4de8.mp4',
+      poster: '/videos/e2e-tutorial/header-scenario-picker-poster.webp',
+      caption: 'Switch scenarios to test different states'
+    }
+  ]
+
   return (
     <div className="space-y-0">
       {/* Hero Section */}
@@ -70,9 +96,12 @@ export default function Introduction() {
           </p>
         </div>
         
+        {/* Main player */}
         <div className="max-w-4xl mx-auto rounded-xl border border-border bg-card overflow-hidden">
           <video
-            src="/videos/e2e-tutorial/delay-and-status-override_b200.mp4"
+            key={mediaItems[selectedMedia].src}
+            src={mediaItems[selectedMedia].src}
+            poster={mediaItems[selectedMedia].poster}
             autoPlay
             muted
             loop
@@ -82,62 +111,41 @@ export default function Introduction() {
           >
             Your browser doesn't support video playback.
           </video>
+          <div className="p-4 text-center text-muted-foreground">
+            {mediaItems[selectedMedia].caption}
+          </div>
         </div>
         
-        <div className="grid md:grid-cols-2 gap-4 mt-6 max-w-4xl mx-auto">
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <video
-              src="/videos/e2e-tutorial/mock-editor-body-edit_7064.mp4"
-              poster="/videos/e2e-tutorial/mock-editor-body-edit-poster.webp"
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="w-full cursor-pointer"
-              onMouseEnter={(e) => e.currentTarget.play()}
-              onMouseLeave={(e) => e.currentTarget.pause()}
-              onClick={(e) => {
-                const video = e.currentTarget;
-                if (video.paused) {
-                  video.play();
-                } else {
-                  video.pause();
-                }
-              }}
+        {/* Thumbnail gallery */}
+        <div className="grid md:grid-cols-3 gap-4 mt-6 max-w-4xl mx-auto">
+          {mediaItems.map((item, index) => (
+            <button
+              key={item.src}
+              onClick={() => setSelectedMedia(index)}
+              aria-pressed={selectedMedia === index}
+              className={`rounded-lg border overflow-hidden transition-all ${
+                selectedMedia === index 
+                  ? 'border-primary ring-2 ring-primary/20' 
+                  : 'border-border hover:border-primary/50'
+              }`}
             >
-              Your browser doesn't support video playback.
-            </video>
-            <div className="p-3 text-sm text-center text-muted-foreground">
-              Edit mock response bodies in real-time
-            </div>
-          </div>
-          
-          <div className="rounded-lg border border-border bg-card overflow-hidden">
-            <video
-              src="/videos/e2e-tutorial/header-scenario-picker_4de8.mp4"
-              poster="/videos/e2e-tutorial/header-scenario-picker-poster.webp"
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="w-full cursor-pointer"
-              onMouseEnter={(e) => e.currentTarget.play()}
-              onMouseLeave={(e) => e.currentTarget.pause()}
-              onClick={(e) => {
-                const video = e.currentTarget;
-                if (video.paused) {
-                  video.play();
-                } else {
-                  video.pause();
-                }
-              }}
-            >
-              Your browser doesn't support video playback.
-            </video>
-            <div className="p-3 text-sm text-center text-muted-foreground">
-              Switch scenarios to test different states
-            </div>
-          </div>
+              <video
+                src={item.src}
+                poster={item.poster}
+                muted
+                playsInline
+                preload="metadata"
+                className="w-full"
+              />
+              <div className={`p-3 text-xs text-center ${
+                selectedMedia === index 
+                  ? 'text-primary font-medium' 
+                  : 'text-muted-foreground'
+              }`}>
+                {item.caption}
+              </div>
+            </button>
+          ))}
         </div>
       </section>
 

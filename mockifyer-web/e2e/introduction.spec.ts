@@ -64,5 +64,50 @@ test.describe('Introduction Page', () => {
     await expect(page.getByText(/React Native Development/i)).toBeVisible();
     await expect(page.getByText(/Deterministic E2E Tests/i)).toBeVisible();
   });
+
+  test('should switch gallery media when clicking thumbnails', async ({ page }) => {
+    await page.goto('/');
+    
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+    
+    // Find the main video player
+    const mainPlayer = page.locator('video').first();
+    
+    // Get initial src
+    const initialSrc = await mainPlayer.getAttribute('src');
+    expect(initialSrc).toContain('delay-and-status-override');
+    
+    // Find all thumbnail buttons (should be 3)
+    const thumbnails = page.locator('button[aria-pressed]');
+    await expect(thumbnails).toHaveCount(3);
+    
+    // First thumbnail should be pressed (active)
+    await expect(thumbnails.nth(0)).toHaveAttribute('aria-pressed', 'true');
+    
+    // Click second thumbnail
+    await thumbnails.nth(1).click();
+    await page.waitForTimeout(100); // Allow state update
+    
+    // Main player src should change to mock-editor-body-edit
+    const newSrc = await mainPlayer.getAttribute('src');
+    expect(newSrc).toContain('mock-editor-body-edit');
+    
+    // Second thumbnail should now be pressed
+    await expect(thumbnails.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(thumbnails.nth(0)).toHaveAttribute('aria-pressed', 'false');
+    
+    // Click third thumbnail
+    await thumbnails.nth(2).click();
+    await page.waitForTimeout(100);
+    
+    // Main player src should change to header-scenario-picker
+    const thirdSrc = await mainPlayer.getAttribute('src');
+    expect(thirdSrc).toContain('header-scenario-picker');
+    
+    // Third thumbnail should now be pressed
+    await expect(thumbnails.nth(2)).toHaveAttribute('aria-pressed', 'true');
+    await expect(thumbnails.nth(1)).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 

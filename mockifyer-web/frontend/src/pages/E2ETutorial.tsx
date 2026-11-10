@@ -4,25 +4,27 @@ import CodeBlock from '@/components/CodeBlock'
 
 export default function E2ETutorial() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Play className="h-8 w-8" />
-          Controlling a nested multi-service stack with Mockifyer
-        </h1>
-        <p className="text-muted-foreground mt-2">
+    <div className="mx-auto max-w-4xl px-5 py-12 space-y-8">
+      <header className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Play className="h-8 w-8 text-primary flex-shrink-0" />
+          <h1 className="text-3xl font-bold">
+            Controlling a nested multi-service stack with Mockifyer
+          </h1>
+        </div>
+        <p className="text-muted-foreground text-lg">
           An end-to-end walkthrough of the WanderWeird demo stack
         </p>
-      </div>
-
-      <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
-        <div className="flex gap-2">
-          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="text-amber-900 dark:text-amber-200 text-sm">
-            <strong>Disclosure:</strong> Mockifyer is my own open-source project (github.com/sgedda/mockifyer).
+        
+        <div className="p-4 border border-amber-500/50 bg-amber-500/10 rounded-md">
+          <div className="flex gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="text-amber-900 dark:text-amber-200 text-sm">
+              <strong>Disclosure:</strong> Mockifyer is my own open-source project (github.com/sgedda/mockifyer).
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
       <Card>
         <CardHeader>
